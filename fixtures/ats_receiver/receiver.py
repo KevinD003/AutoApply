@@ -47,7 +47,7 @@ class Ledger:
 def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     cfg = {"mode": "normal", "delay_s": 0.0, "idempotent": True, "canary": None,
-           "token_ttl_s": 3600}
+           "token_ttl_s": 3600, "autosave": False, "tamper": None, "form_delay_s": 0.0}
 
     def admin(tok: str | None):
         if tok != admin_token:
@@ -86,14 +86,26 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
         admin(x_admin_token)
         for t in ("acceptances", "disclosures", "tokens", "challenges", "requests"):
             ledger.run(f"delete from {t}")
-        cfg.update({"mode": "normal", "delay_s": 0.0, "idempotent": True})
+        cfg.update({"mode": "normal", "delay_s": 0.0, "idempotent": True, "autosave": False,
+                    "tamper": None, "form_delay_s": 0.0})
         return {"ok": True}
 
     @app.get("/apply/{slug}", response_class=HTMLResponse)
-    def form(slug: str):
+    async def form(slug: str):
+        if cfg["form_delay_s"]:
+            await asyncio.sleep(cfg["form_delay_s"])
         token = secrets.token_hex(8)
         ledger.run("insert into tokens (token, issued_at) values (?,?)", (token, time.time()))
         return page_form(slug, token, cfg)
+
+    @app.post("/apply/{slug}/autosave")
+    async def autosave(slug: str, request: Request):
+        body = await request.json()
+        # Field name only: the point is to count that data left the browser before submit.
+        ledger.run("insert into disclosures (kind,slug,detail,created_at) values (?,?,?,?)",
+                   ("autosave", slug, json.dumps({"field": str(body.get("field"))[:100]}),
+                    time.time()))
+        return {"saved": True}
 
     @app.post("/apply/{slug}/upload")
     async def upload(slug: str, request: Request):
@@ -217,6 +229,23 @@ def page_form(slug, token, cfg):
     if cfg["mode"] == "conditional_field":
         extra = ("<label for='clearance'>Do you hold an active security clearance?</label>"
                  "<input id='clearance' name='clearance' type='text' required>")
+    tamper = cfg.get("tamper")
+    js_extra = ""
+    if cfg.get("autosave"):
+        js_extra += (
+            "document.querySelectorAll('#application input:not([type=file]):not([type=hidden]),"
+            "#application select,#application textarea').forEach(el => el.addEventListener("
+            f"'change', () => fetch('/apply/{slug}/autosave', {{method: 'POST', headers: "
+            "{'Content-Type': 'application/json'}, body: JSON.stringify({field: el.name})})));\n")
+    if tamper == "text":  # the page wipes what was typed
+        js_extra += ("document.getElementById('first_name').addEventListener('input', "
+                     "e => { e.target.value = ''; });\n")
+    if tamper == "select":  # the page resets the selection
+        js_extra += ("document.getElementById('country').addEventListener('change', "
+                     "e => { e.target.value = 'other'; });\n")
+    if tamper == "checkbox":  # the page unticks the box
+        js_extra += ("document.querySelector('[name=privacy_ack]').addEventListener('change', "
+                     "e => { e.target.checked = false; });\n")
     hostile = ""
     if cfg["mode"] == "hostile" and cfg.get("canary"):
         c = cfg["canary"]
@@ -296,11 +325,12 @@ document.getElementById('resume').addEventListener('change', async (e) => {{
     const r = await fetch('/apply/{slug}/upload', {{method: 'POST', body: fd}});
     if (!r.ok) throw new Error('upload failed');
     const j = await r.json();
-    document.getElementById('resume_upload_id').value = j.upload_id;
+    if (!{str(tamper == "file").lower()}) document.getElementById('resume_upload_id').value = j.upload_id;
     st.textContent = 'Uploaded: ' + j.filename;
     st.dataset.uploadId = j.upload_id;
   }} catch (err) {{ st.textContent = 'Upload failed'; st.dataset.uploadError = '1'; }}
 }});
+{js_extra}
 </script>
 </body></html>"""
 

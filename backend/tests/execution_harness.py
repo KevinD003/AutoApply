@@ -76,7 +76,7 @@ class Receiver:
             self.proc.wait(timeout=5)
 
 
-def prepared_application(api, receiver, *, slug="clinic", why_text=None) -> str:
+def prepared_application(api, receiver, *, slug="clinic", why_text=None, hear_about="input") -> str:
     """Synthetic candidate + approved package for the receiver's form. Returns app id."""
     api.put(
         "/profile",
@@ -115,7 +115,12 @@ def prepared_application(api, receiver, *, slug="clinic", why_text=None) -> str:
     r = api.post(f"/jobs/{job_id}/form", json={"html": receiver.form_html(slug)})
     assert r.status_code in (200, 201), r.text
     app_id = api.post("/applications", json={"job_id": job_id}).json()["id"]
-    api.put(f"/applications/{app_id}/answers/hear_about", json={"value": {"label": "Referral"}})
+    if hear_about in ("input", "save_to_bank"):
+        api.put(
+            f"/applications/{app_id}/answers/hear_about",
+            json={"value": {"label": "Referral"}, "save_to_bank": hear_about == "save_to_bank"},
+        )
+    # hear_about == "bank": rely on an existing saved answer for the same wording
     if why_text:
         api.put(f"/applications/{app_id}/answers/why_us", json={"value": {"text": why_text}})
     v = api.put(f"/applications/{app_id}/consents/privacy_ack", json={"choice": "agree"}).json()

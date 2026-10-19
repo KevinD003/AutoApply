@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit
 
+from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PWTimeout
 
@@ -48,48 +49,62 @@ class FixtureAtsAdapter:
 
     # -- fill -------------------------------------------------------------------------------
     def fill(self, page: Page) -> list[dict]:
+        """Fill every answered control. A control that refuses its value is left for readback
+        to report as a mismatch, rather than crashing the attempt."""
         disclosures = []
         for a in self.content["answers"]:
-            v, key, t = a["value"], a["key"], a["type"]
-            if v is None:
+            if a["value"] is None:
                 continue
-            loc = page.locator(_sel(key))
-            if t == "file":
-                name, ctype, data = self.documents[key]
-                loc.set_input_files(files=[{"name": name, "mimeType": ctype, "buffer": data}])
-                page.wait_for_function(
-                    "() => { const s = document.getElementById('upload-status');"
-                    " return s && (s.dataset.uploadId || s.dataset.uploadError); }"
-                )
-                status = page.locator("#upload-status")
-                if status.get_attribute("data-upload-error"):
-                    raise UploadFailed(f"upload of {key} failed")
-                disclosures.append(
-                    {
-                        "field": key,
-                        "upload_id": status.get_attribute("data-upload-id"),
-                        "sha256": a.get("document_sha256"),
-                    }
-                )
-            elif t in ("radio",):
-                page.locator(f'input[name="{key}"][value="{v["option"]}"]').check()
-            elif t == "checkbox_group":
-                want = {o["option"] for o in v["options"]}
-                for box in page.locator(f'input[name="{key}"]').all():
-                    box.set_checked(box.get_attribute("value") in want)
-            elif t == "checkbox":
-                loc.set_checked(bool(v["checked"]))
-            elif t == "select":
-                loc.select_option(value=v["option"])
-            elif t == "multiselect":
-                loc.select_option(value=[o["option"] for o in v["options"]])
-            elif t == "number":
-                loc.fill(f"{v['number']:g}")
-            elif t == "date":
-                loc.fill(v["date"])
-            else:
-                loc.fill(v["text"])
+            if a["type"] == "file":
+                disclosures.append(self._fill_one(page, a))
+                continue
+            try:
+                self._fill_one(page, a)
+            except PWTimeout:
+                raise
+            except PWError:
+                continue  # readback will flag this key
         return disclosures
+
+    def _fill_one(self, page: Page, a: dict) -> dict | None:
+        v, key, t = a["value"], a["key"], a["type"]
+        loc = page.locator(_sel(key))
+        if t == "file":
+            name, ctype, data = self.documents[key]
+            loc.set_input_files(files=[{"name": name, "mimeType": ctype, "buffer": data}])
+            page.wait_for_function(
+                "() => { const s = document.getElementById('upload-status');"
+                " return s && (s.dataset.uploadId || s.dataset.uploadError); }"
+            )
+            status = page.locator("#upload-status")
+            if status.get_attribute("data-upload-error"):
+                raise UploadFailed(f"upload of {key} failed")
+            return {
+                "field": key,
+                "upload_id": status.get_attribute("data-upload-id"),
+                "sha256": next(
+                    (d["sha256"] for d in self.content["documents"] if d["field"] == key), None
+                ),
+            }
+        elif t in ("radio",):
+            page.locator(f'input[name="{key}"][value="{v["option"]}"]').check()
+        elif t == "checkbox_group":
+            want = {o["option"] for o in v["options"]}
+            for box in page.locator(f'input[name="{key}"]').all():
+                box.set_checked(box.get_attribute("value") in want)
+        elif t == "checkbox":
+            loc.set_checked(bool(v["checked"]))
+        elif t == "select":
+            loc.select_option(value=v["option"])
+        elif t == "multiselect":
+            loc.select_option(value=[o["option"] for o in v["options"]])
+        elif t == "number":
+            loc.fill(f"{v['number']:g}")
+        elif t == "date":
+            loc.fill(v["date"])
+        else:
+            loc.fill(v["text"])
+        return None
 
     # -- verify -----------------------------------------------------------------------------
     def readback(self, page: Page) -> list[str]:
