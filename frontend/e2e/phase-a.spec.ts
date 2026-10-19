@@ -8,6 +8,10 @@ test("phase A slice", async ({ page }, info) => {
   await page.goto("/jobs");
   await expect(page).toHaveURL(/\/login/);
   await page.getByRole("link", { name: "Create an account" }).click();
+  // The login page has fields with the same labels: wait until the register page is really
+  // showing before filling (CI run #2 failed on exactly this race; see e2e/navigation-race).
+  await expect(page).toHaveURL(/\/register$/);
+  await expect(page.getByRole("button", { name: "Create account" })).toBeVisible();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill("synthetic-password-1");
   await page.getByRole("button", { name: "Create account" }).click();
