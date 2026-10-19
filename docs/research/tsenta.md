@@ -18,10 +18,19 @@
 
 ## Developer API
 
-**Correction (2026-10-19, recheck):** the first pass labelled the developer API "not found". That
-overstated what was observed. The project owner reports the developer documentation at
-https://docs.tsenta.com/developers/introduction is publicly accessible. From this environment it
-is **inaccessible**, not proven absent:
+**Accessibility is environment-specific.** Observations, each with its environment:
+
+| When (2026-10-19) | Environment | Result |
+|---|---|---|
+| First pass and recheck | This project's cloud sandbox via the Firecrawl fetcher (no login) | HTTP 200, final URL `/product/introduction`; `/api-reference/introduction` redirects to a Mintlify sign-in page |
+| Phase C recheck | Same | Same redirect |
+| External review (reported by the owner) | Reviewer's environment | Page readable; describes a server-side developer API with bearer-key authentication and application status reporting |
+
+Conclusion: the developer documentation **is publicly readable in at least one environment**
+(reported, not reproduced here) and **was not served to this environment's fetcher**. Neither
+observation proves the docs are universally gated or universally open. The content summary
+from the external review (bearer keys, server-side API, status reporting) is **reported, not
+verified here**.
 
 | Fact | Label | Source |
 |---|---|---|
@@ -39,7 +48,7 @@ is **inaccessible**, not proven absent:
 
 | Question | Answer |
 |---|---|
-| Documentation found? | Developer docs: reported public by the owner; **inaccessible from this environment** (redirect / sign-in). Product + MCP docs: yes. |
+| Documentation found? | Developer docs: readable in the reviewer's environment (reported); not served to this environment's fetcher. Product + MCP docs: read here. |
 | API/account access available? | **No.** No Tsenta account, API key or OAuth grant exists for this project. None will be created without the owner's approval. |
 | Integration implemented? | **No.** No Tsenta code exists in the repository. |
 | Integration tested? | **No.** |

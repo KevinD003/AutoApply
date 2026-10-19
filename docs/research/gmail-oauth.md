@@ -54,11 +54,13 @@ Google's **approved use cases** for Gmail scopes (S5, quoted list):
    benefit of users that improve the email experience (e.g. travel itineraries, flight or
    package tracking).
 
-Assessment (**inferred, not a determination**): retrieving verification codes to complete
-third-party job applications is **not explicitly listed**. Category 4 is the closest analogue,
-but whether Google accepts it is uncertain and is Google's decision during verification. We
-must not promise approval. S3 notes that if unsure of the application type you can leave the
-features question blank and Google's team will decide.
+Assessment: **classification and approval unconfirmed.** Retrieving verification codes to
+complete a user's own job applications is not named in the list, but the list describes broad
+categories (email productivity; user-benefiting monitoring/reporting), and absence of the exact
+words neither prohibits nor approves the use. Only Google's review would settle it. If this
+integration is pursued, seek authoritative clarification; until then manual code entry is the
+default path and nothing is promised. S3 notes that if unsure of the application type you can
+leave the features question blank and Google's team will decide.
 
 Other S5 obligations that apply if we ever request a Gmail read scope:
 - Minimum permissions; request in context (incremental auth), not up front.
@@ -75,9 +77,9 @@ Other S5 obligations that apply if we ever request a Gmail read scope:
 
 | Deployment | Verification | Security assessment | Practical limits |
 |---|---|---|---|
-| **Personal use** — only you, or a few users all personally known to you | Not required (S3 exception) | Not required by the exception | Users click through the "unverified app" screen. Policies (Limited Use, User Data Policy) still apply. |
-| **Testing** publishing status | Not required (S3 exception) | Not required | ≤100 listed test users; their authorizations and refresh tokens **expire after 7 days** (S2), so users must reconnect weekly. |
-| **Public, server-side** (any Google user, tokens and mail data on our servers) | Brand verification + restricted-scope verification: permitted app type, privacy policy, domain verification, demo video, justification of scopes | **Annual third-party CASA assessment**, re-verification at least every 12 months | Takes weeks; cost not stated on Google's pages (unknown). Approval not guaranteed, especially as the use case is not explicitly listed. |
+| **Personal use** — only you, or a few users all personally known to you | Not required (S3 exception) | Not required by the exception | Users click through the "unverified app" screen. A verification exception is **not** an exemption from the User Data Policy, Limited Use, privacy or security obligations. |
+| **Testing** publishing status | Not required (S3 exception) | Not required | Only listed test users (≤100). For the Gmail scopes we would request, test-user authorizations and refresh tokens expire after 7 days (S2), so users reconnect weekly. This is not universal: S2 exempts apps requesting only basic identity scopes, and Google's app-state table varies by configuration. |
+| **Public, server-side** (any Google user, tokens and mail data on our servers) | Brand verification + restricted-scope verification: permitted app type, privacy policy, domain verification, demo video, justification of scopes | **Annual third-party CASA assessment**, re-verification at least every 12 months | Takes weeks; cost not stated on Google's pages (unknown). Approval not guaranteed; the use-case classification is unconfirmed. |
 
 ## Decision for NoEfforts
 

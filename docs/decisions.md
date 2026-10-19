@@ -37,8 +37,10 @@ Not reachable from the current cloud sandbox (proxy 403), so integration must be
 Details: `docs/research/freehire.md`.
 
 ## D8 — Tsenta: optional, disabled by default; public docs only
-Tsenta's developer documentation is reported public by the owner but is **inaccessible from this
-environment** (redirects to the product intro; `/api-reference/*` requires a docs sign-in). No
+Tsenta's developer documentation was readable in an external reviewer's environment (reported:
+bearer keys, server-side API, status reporting) but was not served to this environment's fetcher
+(redirect to the product intro; `/api-reference/*` → docs sign-in). Accessibility is
+environment-specific. No
 Tsenta account, credential, code or test exists. Its terms (eff. 2025-09-23, §3(c)) prohibit
 automated access "in ways not intended" and scraping, so the evidence matrix uses public pages
 only. A Tsenta execution provider may be added later behind the provider interface,
@@ -56,7 +58,7 @@ Every Gmail scope that can read mail (including `gmail.metadata`) is restricted.
 testing projects are exempt from verification (testing: ≤100 users, 7-day tokens). Public
 server-side access needs restricted-scope verification plus an annual CASA assessment, and
 reading verification codes for job applications is not an explicitly listed approved Gmail use
-case, so approval is uncertain. Details: `docs/research/gmail-oauth.md`.
+case. That absence neither prohibits nor approves it: classification and approval are unconfirmed. Details: `docs/research/gmail-oauth.md`.
 
 ## D11 — Execution adapters before any "universal agent"
 Order per the brief: documented API with valid credentials → tested deterministic browser
