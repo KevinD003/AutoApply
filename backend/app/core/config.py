@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     # when env == "production" (see app/core/urlsafety.py and app/modules/execution/policy.py).
     fixture_origins: list[str] = Field(default_factory=list)
 
+    # Execution (Phase C)
+    lease_seconds: int = 60
+    max_safe_retries: int = 2  # only for attempts that stopped before disclosing anything
+    checkpoint_ttl_seconds: int = 600
+    submit_timeout_seconds: int = 30
+    navigation_timeout_seconds: int = 20
+    evidence_retention_days: int = 365
+
     # Optional integrations. Absent credentials disable the feature rather than failing.
     anthropic_api_key: str | None = None
 

@@ -124,9 +124,11 @@ def test_full_workflow_with_zero_llm_calls(api, no_llm):
         json={"version": pkg["version"], "content_hash": pkg["content_hash"]},
     ).json()
     assert v["approval"]["status"] == "approved"
-    # Queueing is allowed with a live approval.
+    # Approved, but this job has no captured destination, so execution is refused rather than
+    # queued into something that can never run (Phase C supports only local fixtures).
     q = api.post(f"/applications/{app['id']}/transition", json={"to": "queued"})
-    assert q.status_code == 200 and q.json()["state"] == "queued"
+    assert q.status_code == 409 and "no captured destination" in q.json()["detail"]
+    assert api.get(f"/applications/{app['id']}").json()["state"] == "awaiting_approval"
     assert no_llm == []
 
 

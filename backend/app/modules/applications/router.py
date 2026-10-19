@@ -190,6 +190,21 @@ def transition_application(
     db: Session = Depends(get_db),
 ):
     app = _owned(db, user, app_id)
+    if body.to == AppState.cancelled:
+        # Cancellation goes through execution so it is serialized with the final send gate.
+        from app.modules.execution.service import cancel
+
+        try:
+            check(app.state, body.to, Actor.user)
+            cancel(db, app)
+        except PermissionError as e:
+            db.rollback()
+            raise conflict(str(e)) from None
+        except IllegalTransition as e:
+            db.rollback()
+            raise bad_request(str(e)) from None
+        db.commit()
+        return _out(db, app, detail=True)
     try:
         check(app.state, body.to, Actor.user)
         if body.to == AppState.queued:
@@ -206,6 +221,16 @@ def transition_application(
                 db.commit()
                 raise conflict(str(e)) from None
         transition(db, app, body.to, Actor.user, body.reason)
+        if body.to == AppState.queued:
+            # Same transaction: the attempt and its outbox message exist iff the queue happened.
+            from app.modules.execution.policy import UnsupportedDestination
+            from app.modules.execution.service import enqueue
+
+            try:
+                enqueue(db, app)
+            except UnsupportedDestination as e:
+                db.rollback()
+                raise conflict(str(e)) from None
         record(db, user.id, "application.transition", "application", app.id, to=body.to.value)
         db.commit()
     except IllegalTransition as e:

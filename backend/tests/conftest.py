@@ -13,6 +13,12 @@ if not TEST_DB.rsplit("/", 1)[-1].split("?")[0].endswith("_test"):
     raise SystemExit(f"Refusing to run tests against a non-test database: {TEST_DB}")
 os.environ["NOEFFORTS_DATABASE_URL"] = TEST_DB
 os.environ.setdefault("NOEFFORTS_ENV", "test")
+# Execution tests talk only to the synthetic receiver on this fixed local origin.
+RECEIVER_PORT = int(os.environ.get("NOEFFORTS_TEST_RECEIVER_PORT", "8799"))
+os.environ.setdefault("NOEFFORTS_FIXTURE_ORIGINS", f'["http://127.0.0.1:{RECEIVER_PORT}"]')
+os.environ.setdefault("NOEFFORTS_SUBMIT_TIMEOUT_SECONDS", "4")
+os.environ.setdefault("NOEFFORTS_NAVIGATION_TIMEOUT_SECONDS", "10")
+os.environ.setdefault("NOEFFORTS_CHECKPOINT_TTL_SECONDS", "25")
 os.environ["NOEFFORTS_STORAGE_DIR"] = tempfile.mkdtemp(prefix="noefforts-test-")
 
 import pytest  # noqa: E402

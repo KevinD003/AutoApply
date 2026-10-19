@@ -61,14 +61,18 @@ TRANSITIONS: dict[AppState, dict[AppState, set[Actor]]] = {
     },
     S.queued: {S.running: {W}, S.cancelled: {U}, S.expired: {SY}, S.awaiting_approval: {SY}},
     S.running: {
-        S.needs_user_action: {W},
+        # SY: the sweeper acts for a worker that died (lease expired).
+        S.needs_user_action: {W, SY},
         S.ready_to_submit: {W},
-        S.failed_retryable: {W},
+        S.failed_retryable: {W, SY},
         S.failed_terminal: {W},
         S.cancelled: {U},
     },
     S.needs_user_action: {
         S.running: {U, W},
+        S.submitting: {W},  # verification code supplied; same attempt continues
+        S.submitted_confirmed: {W},
+        S.submitted_unconfirmed: {W, SY},
         S.preparing: {U, SY},
         S.cancelled: {U},
         S.expired: {SY},
@@ -78,6 +82,8 @@ TRANSITIONS: dict[AppState, dict[AppState, set[Actor]]] = {
     S.submitting: {
         S.submitted_confirmed: {W, SY},
         S.submitted_unconfirmed: {W, SY},
+        # The employer asked for a verification code after the data was sent.
+        S.needs_user_action: {W, SY},
         S.failed_terminal: {W},  # only when the worker knows nothing was sent
     },
     S.submitted_unconfirmed: {

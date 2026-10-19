@@ -1,0 +1,181 @@
+"""Run one execution attempt end to end. Called by the Celery task (or the CLI in tests).
+
+Phases and what a failure in each one means:
+  before disclosure  -> failed_safe   (nothing left NoEfforts; may be retried by the sweeper)
+  after disclosure   -> abandoned     (data entered/uploaded, not submitted; user decides)
+  after send gate    -> unknown       (may have been accepted; reconcile, never auto-retry)
+"""
+
+import hashlib
+import logging
+import time
+import uuid
+
+from sqlalchemy import select
+
+from app.core.config import get_settings
+from app.core.db import SessionLocal
+from app.modules.documents.models import Document
+from app.modules.documents.storage import get_storage
+from app.modules.execution import service as svc
+from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, UploadFailed
+from app.modules.execution.browser import browser_session
+from app.modules.execution.faults import fault
+from app.modules.execution.models import ExecutionAttempt
+from app.modules.preparation.models import ApplicationPackage
+
+log = logging.getLogger("noefforts.execution")
+
+
+def _snapshot(attempt_id):
+    """Everything the browser needs comes from the immutable approved package, never from
+    live profile data, so what is sent is what was approved."""
+    with SessionLocal() as db:
+        att = db.get(ExecutionAttempt, attempt_id)
+        pkg = db.get(ApplicationPackage, att.package_id)
+        content = pkg.content
+        docs = {}
+        for d in content["documents"]:
+            doc = db.scalar(
+                select(Document).where(
+                    Document.id == uuid.UUID(d["document_id"]), Document.user_id == att.user_id
+                )
+            )
+            data = get_storage().get(doc.storage_key)
+            if hashlib.sha256(data).hexdigest() != d["sha256"]:
+                raise RuntimeError("stored document does not match the approved digest")
+            docs[d["field"]] = (doc.original_filename, doc.content_type, data)
+        return content, docs
+
+
+def run_attempt(attempt_id: str, worker: str) -> str:
+    aid = uuid.UUID(attempt_id)
+    gen = svc.claim(aid, worker)
+    if gen is None:
+        log.info("attempt %s: delivery ignored (already claimed, finished or not eligible)", aid)
+        return "ignored"
+    fault("after_claim")
+    s = get_settings()
+    phase = "before_disclosure"
+
+    def beat():
+        svc.heartbeat(aid, worker, gen)
+
+    try:
+        content, docs = _snapshot(aid)
+        adapter = FixtureAtsAdapter(content, docs)
+        dest = content["destination"]
+        with browser_session(dest["origin"], s.navigation_timeout_seconds * 1000) as (page, eg):
+            beat()
+            fault("before_navigate")
+            try:
+                page.goto(dest["url"])
+            except Exception as e:  # noqa: BLE001 - any navigation failure is a safe stop
+                svc.fail_safe(aid, worker, gen, f"could not open the form ({type(e).__name__})")
+                return "failed_safe"
+            reason = adapter.schema_matches(page)
+            if reason:
+                svc.fail_safe(aid, worker, gen, reason)
+                return "failed_safe"
+            beat()
+            try:
+                svc.gate_before_disclosure(aid, worker, gen)
+            except svc.GateRefused as e:
+                svc.fail_safe(aid, worker, gen, str(e))
+                return "failed_safe"
+            phase = "after_disclosure"
+            fault("after_disclosure_gate")
+            try:
+                disclosures = adapter.fill(page)
+            except UploadFailed as e:
+                svc.abandon(aid, worker, gen, str(e))
+                return "abandoned"
+            for d in disclosures:
+                svc.record_evidence(aid, worker, gen, "disclosure", d)
+            mismatches = adapter.readback(page)
+            svc.record_evidence(
+                aid,
+                worker,
+                gen,
+                "readback",
+                {"checked": len(content["answers"]), "mismatches": mismatches},
+            )
+            if mismatches:
+                svc.abandon(aid, worker, gen, f"fields did not keep their values: {mismatches}")
+                return "abandoned"
+            reason = adapter.schema_matches(page)  # conditional fields appear after filling
+            if reason:
+                svc.abandon(aid, worker, gen, reason)
+                return "abandoned"
+            beat()
+            fault("before_send_gate")
+            try:
+                svc.gate_before_send(aid, worker, gen)
+            except svc.GateRefused as e:
+                svc.abandon(aid, worker, gen, str(e))
+                return "abandoned"
+            phase = "after_send"
+            fault("before_click")
+            out = adapter.submit(page, s.submit_timeout_seconds * 1000)
+            fault("after_click")
+            if out.kind == "otp":
+                return _verification_loop(aid, worker, gen, adapter, page, s)
+            if eg.blocked:
+                log.info("attempt %s: blocked %d off-origin requests", aid, len(eg.blocked))
+            return _conclude(aid, worker, gen, adapter, page, out)
+    except svc.LostAuthority:
+        # Browser is already closed by the context manager. If we had passed the send gate the
+        # sweeper will mark the attempt unknown; we never act on it again from here.
+        log.warning("attempt %s: lost authority in phase %s; stopped", aid, phase)
+        return "lost_authority"
+    except Exception as e:  # noqa: BLE001
+        log.exception("attempt %s failed in phase %s", aid, phase)
+        reason = f"internal error ({type(e).__name__})"
+        if phase == "before_disclosure":
+            svc.fail_safe(aid, worker, gen, reason)
+        elif phase == "after_disclosure":
+            svc.abandon(aid, worker, gen, reason)
+        else:
+            svc.unknown(aid, worker, gen, reason)
+        return "error"
+
+
+def _conclude(aid, worker, gen, adapter, page, out) -> str:
+    if out.kind == "accepted":
+        ev = adapter.receipt_evidence(page, out)
+        fault("after_receipt_before_commit")
+        svc.confirmed(
+            aid, worker, gen, [{"kind": "receipt", "data": ev, "strength": "employer_receipt"}]
+        )
+        return "confirmed"
+    if out.kind == "rejected":
+        svc.rejected(aid, worker, gen, out.detail)
+        return "rejected"
+    svc.unknown(aid, worker, gen, out.detail)
+    return "unknown"
+
+
+def _verification_loop(aid, worker, gen, adapter, page, s) -> str:
+    cp = svc.open_checkpoint(aid, worker, gen, "Enter the code the employer emailed you.")
+    deadline = time.monotonic() + s.checkpoint_ttl_seconds
+    while True:
+        if time.monotonic() > deadline:
+            svc.abandon(aid, worker, gen, "no code was entered in time")
+            return "abandoned"
+        code, status = svc.take_code(cp, aid, worker, gen)
+        if status in ("expired", "failed"):
+            svc.abandon(aid, worker, gen, f"verification {status}")
+            return "abandoned"
+        if code is None:
+            time.sleep(0.3)
+            continue
+        out = adapter.enter_code(page, code, s.submit_timeout_seconds * 1000)
+        del code
+        if out.kind == "wrong_code":
+            if svc.code_result(cp, aid, worker, gen, accepted=False) == "failed":
+                svc.abandon(aid, worker, gen, "too many incorrect codes")
+                return "abandoned"
+            continue
+        if out.kind == "accepted":
+            svc.code_result(cp, aid, worker, gen, accepted=True)
+        return _conclude(aid, worker, gen, adapter, page, out)

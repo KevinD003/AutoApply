@@ -16,8 +16,21 @@ class UnsafeURL(ValueError):
     pass
 
 
+def is_fixture_origin(url: str) -> bool:
+    """True only outside production, for an exact origin listed in NOEFFORTS_FIXTURE_ORIGINS."""
+    from app.core.config import get_settings
+
+    s = get_settings()
+    if s.env == "production" or not s.fixture_origins:
+        return False
+    p = urlsplit(url.strip())
+    return f"{p.scheme}://{p.netloc}".lower() in {o.lower().rstrip("/") for o in s.fixture_origins}
+
+
 def check_url_syntax(url: str) -> str:
     url = url.strip()
+    if is_fixture_origin(url):
+        return url  # test-only synthetic receiver; production never reaches this branch
     if len(url) > 2048:
         raise UnsafeURL("URL is too long")
     parts = urlsplit(url)

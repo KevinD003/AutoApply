@@ -183,7 +183,7 @@ def build_content(db: Session, app: Application) -> dict:
                     "display": a["display"],
                 }
             )
-    job_url = job.canonical_url or job.url
+    job_url = job.url or job.canonical_url  # as given; canonical form is for dedupe only
     return {
         "schema": SCHEMA_VERSION,
         "owner": {"user_id": str(app.user_id), "application_id": str(app.id)},
@@ -195,7 +195,7 @@ def build_content(db: Session, app: Application) -> dict:
             "job_id": str(job.id),
             "employer": job.employer,
             "title": job.title,
-            "url": job.canonical_url or job.url,
+            "url": job_url,
             "ats_provider": job.ats_provider,
             "form_id": str(form.id),
             "form_version": form.version,

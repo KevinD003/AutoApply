@@ -6,6 +6,7 @@ from app.core.config import get_settings
 from app.core.db import engine
 from app.modules.applications.router import router as applications_router
 from app.modules.documents.router import router as documents_router
+from app.modules.execution.router import router as execution_router
 from app.modules.identity.router import router as auth_router
 from app.modules.jobs.router import router as jobs_router
 from app.modules.preparation.router import router as preparation_router
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
         documents_router,
         applications_router,
         preparation_router,
+        execution_router,
     ):
         app.include_router(r, prefix="/api")
 
