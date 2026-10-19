@@ -147,12 +147,15 @@ test("cancel before dispatch stops it; nothing reaches the employer", async ({ p
 
 test("cancel refused once the submit step has begun", async ({ page, request }, info) => {
   const slug = `late-cancel-${info.project.name}-${RUN}`;
-  const { appId } = await setup(page, slug);
+  const { appId, csrf } = await setup(page, slug);
   await admin(request, "config", { mode: "delay", delay_s: 8 });
   await approveAndSubmit(page, appId);
   await expect(badge(page, "Submitting")).toBeVisible({ timeout: 30_000 });
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "may already be in flight" })).toBeVisible();
+  // The UI no longer offers cancel, and the API refuses it: the data may already be in flight.
+  await expect(page.getByRole("button", { name: "Cancel" })).toHaveCount(0, { timeout: 10_000 });
+  const r = await page.request.post(`/api/applications/${appId}/cancel`, { headers: { "X-CSRF-Token": csrf } });
+  expect(r.status()).toBe(409);
+  expect(await r.text()).toContain("may already be in flight");
   await expect(badge(page, "Employer receipt received")).toBeVisible({ timeout: 60_000 });
   expect((await ledger(request, slug)).accepted).toBe(1);
 });
