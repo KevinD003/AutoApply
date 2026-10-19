@@ -1,0 +1,47 @@
+# Local development stack. Not hardened for production; see docs/architecture.md.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: noefforts
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports: ["127.0.0.1:6379:6379"]
+
+  backend:
+    build: ./backend
+    environment: &backend-env
+      NOEFFORTS_DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/noefforts
+      NOEFFORTS_REDIS_URL: redis://redis:6379/0
+      NOEFFORTS_CORS_ORIGINS: '["http://localhost:3000"]'
+    volumes: [storage:/data/storage]
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+
+  worker:
+    build: ./backend
+    command: ["celery", "-A", "app.worker", "worker", "--beat", "--loglevel=info", "--concurrency=2"]
+    environment: *backend-env
+    volumes: [storage:/data/storage]
+    depends_on: [backend]
+
+  frontend:
+    build:
+      context: ./frontend
+      args: { NOEFFORTS_BACKEND_URL: "http://backend:8000" }
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [backend]
+
+volumes:
+  pgdata:
+  storage:
