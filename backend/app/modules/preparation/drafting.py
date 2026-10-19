@@ -91,3 +91,45 @@ def validate_draft(req: DraftRequest, result: DraftResult) -> str:
     if invented:
         raise InvalidDraft(f"draft contains numbers not found in your facts: {invented}")
     return text
+
+
+def grounding_facts(db, user_id) -> tuple[GroundingFact, ...]:
+    """Approved facts a draft may use, with stable ids."""
+    from sqlalchemy import select
+
+    from app.modules.profiles.models import (
+        Approval,
+        CandidateProfile,
+        EducationRecord,
+        EmploymentRecord,
+    )
+
+    facts = []
+    p = db.scalar(select(CandidateProfile).where(CandidateProfile.user_id == user_id))
+    if p is not None and p.approval_status == Approval.approved:
+        if p.summary:
+            facts.append(GroundingFact(f"profile:{p.id}:summary", "summary", p.summary))
+        if p.skills:
+            facts.append(GroundingFact(f"profile:{p.id}:skills", "skills", ", ".join(p.skills)))
+    for e in db.scalars(
+        select(EmploymentRecord).where(
+            EmploymentRecord.user_id == user_id,
+            EmploymentRecord.approval_status == Approval.approved,
+        )
+    ):
+        text = f"{e.title} at {e.employer}" + (f": {e.description}" if e.description else "")
+        facts.append(GroundingFact(f"employment:{e.id}", "employment", text))
+    for ed in db.scalars(
+        select(EducationRecord).where(
+            EducationRecord.user_id == user_id,
+            EducationRecord.approval_status == Approval.approved,
+        )
+    ):
+        text = ", ".join(x for x in (ed.degree, ed.field_of_study, ed.institution) if x)
+        facts.append(GroundingFact(f"education:{ed.id}", "education", text))
+    return tuple(facts)
+
+
+def grounding_hash(facts) -> str:
+    payload = sorted((f.id, f.text) for f in facts)
+    return hashlib.sha256(json.dumps(payload).encode()).hexdigest()

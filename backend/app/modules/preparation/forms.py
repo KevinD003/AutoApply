@@ -64,6 +64,9 @@ class FormField(BaseModel):
 
 class FormSchema(BaseModel):
     title: str | None = Field(default=None, max_length=300)
+    # The form's own submission target as written in the page (may be relative).
+    action: str | None = Field(default=None, max_length=2048)
+    method: str | None = Field(default=None, max_length=10)
     fields: list[FormField] = Field(min_length=1, max_length=300)
 
     @model_validator(mode="after")
@@ -94,9 +97,9 @@ def field_fingerprint(f: FormField) -> str:
 
 
 def form_fingerprint(schema: FormSchema) -> str:
-    return hashlib.sha256(
-        "|".join(field_fingerprint(f) for f in schema.fields).encode()
-    ).hexdigest()
+    parts = [f"action={schema.action or ''}", f"method={(schema.method or '').lower()}"]
+    parts += [field_fingerprint(f) for f in schema.fields]
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
 
 # ----------------------------------------------------------------------------------------------
@@ -289,4 +292,10 @@ def extract_form_schema(html: str) -> FormSchema:
         )
     if not fields:
         raise ExtractionError("no form fields found")
-    return FormSchema(title=title_node.all_text() if title_node else None, fields=fields)
+    form_node = next((n for n in nodes if n.tag == "form"), None)
+    return FormSchema(
+        title=title_node.all_text() if title_node else None,
+        action=form_node.attrs.get("action") if form_node else None,
+        method=(form_node.attrs.get("method") or "get").lower() if form_node else None,
+        fields=fields,
+    )

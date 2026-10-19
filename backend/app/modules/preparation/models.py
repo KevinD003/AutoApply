@@ -77,6 +77,9 @@ class ApplicationInput(Base):
     field_key: Mapped[str] = mapped_column(String(200))
     value: Mapped[dict] = mapped_column(JSON)
     provenance: Mapped[str] = mapped_column(String(30), default="user_entered")
+    # For accepted drafts: {"draft_id", "evidence": [...], "grounding_hash"} so a later change
+    # to the facts a draft relied on is detected.
+    meta: Mapped[dict | None] = mapped_column(JSON)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
@@ -115,6 +118,7 @@ class PackageApproval(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     content_hash: Mapped[str] = mapped_column(String(64))
     approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     invalidation_reason: Mapped[str | None] = mapped_column(Text)
 

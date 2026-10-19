@@ -24,6 +24,12 @@ class Settings(BaseSettings):
 
     login_rate_limit_per_minute: int = 10
 
+    # Approvals lapse after this long; the user must re-approve.
+    approval_ttl_hours: int = 72
+    # Origins of local synthetic fixture receivers that execution may target. Ignored entirely
+    # when env == "production" (see app/core/urlsafety.py and app/modules/execution/policy.py).
+    fixture_origins: list[str] = Field(default_factory=list)
+
     # Optional integrations. Absent credentials disable the feature rather than failing.
     anthropic_api_key: str | None = None
 

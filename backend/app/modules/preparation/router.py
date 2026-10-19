@@ -43,9 +43,6 @@ from app.modules.preparation.resolver import (
 )
 from app.modules.profiles.models import (
     Approval,
-    CandidateProfile,
-    EducationRecord,
-    EmploymentRecord,
     Provenance,
 )
 
@@ -285,7 +282,9 @@ def _upsert_input(
     key: str,
     value: dict,
     provenance: str = "user_entered",
+    meta: dict | None = None,
 ) -> None:
+    pk.lock_application(db, app.id)  # serialize with approve/revoke/claim
     row = db.scalar(
         select(ApplicationInput).where(
             ApplicationInput.application_id == app.id,
@@ -301,10 +300,11 @@ def _upsert_input(
             field_key=key,
             value=value,
             provenance=provenance,
+            meta=meta,
         )
         db.add(row)
     else:
-        row.value, row.provenance = value, provenance
+        row.value, row.provenance, row.meta = value, provenance, meta
 
 
 class AnswerIn(BaseModel):
@@ -501,34 +501,6 @@ def revoke_package(
 # Long-form drafting (optional)
 
 
-def _grounding(db: Session, user: User) -> tuple[drafting.GroundingFact, ...]:
-    facts = []
-    p = db.scalar(select(CandidateProfile).where(CandidateProfile.user_id == user.id))
-    if p is not None and p.approval_status == Approval.approved:
-        if p.summary:
-            facts.append(drafting.GroundingFact(f"profile:{p.id}:summary", "summary", p.summary))
-        if p.skills:
-            facts.append(
-                drafting.GroundingFact(f"profile:{p.id}:skills", "skills", ", ".join(p.skills))
-            )
-    for e in db.scalars(
-        select(EmploymentRecord).where(
-            EmploymentRecord.user_id == user.id,
-            EmploymentRecord.approval_status == Approval.approved,
-        )
-    ):
-        text = f"{e.title} at {e.employer}" + (f": {e.description}" if e.description else "")
-        facts.append(drafting.GroundingFact(f"employment:{e.id}", "employment", text))
-    for ed in db.scalars(
-        select(EducationRecord).where(
-            EducationRecord.user_id == user.id, EducationRecord.approval_status == Approval.approved
-        )
-    ):
-        text = ", ".join(x for x in (ed.degree, ed.field_of_study, ed.institution) if x)
-        facts.append(drafting.GroundingFact(f"education:{ed.id}", "education", text))
-    return tuple(facts)
-
-
 @router.post("/applications/{app_id}/answers/{key}/draft")
 def request_draft(
     app_id: uuid.UUID, key: str, user: User = Depends(current_user), db: Session = Depends(get_db)
@@ -544,7 +516,7 @@ def request_draft(
             "AI drafting is not configured. Write this answer yourself.",
         )
     job = db.get(Job, app.job_id)
-    facts = _grounding(db, user)
+    facts = drafting.grounding_facts(db, user.id)
     if not facts:
         raise bad_request(
             "Add work history or a summary to your profile first; drafts only "
@@ -623,6 +595,11 @@ def accept_draft(
     if d is None or d.application_id != app.id:
         raise not_found("Draft")
     _, f = _field(db, app, d.field_key)
+    pk.lock_application(db, app.id)
+    current = {g.id: g for g in drafting.grounding_facts(db, user.id)}
+    used = [current[e] for e in d.evidence if e in current]
+    if len(used) != len(d.evidence):
+        raise conflict("Facts this draft relied on have changed; request a new draft.")
     _upsert_input(
         db,
         app,
@@ -630,6 +607,11 @@ def accept_draft(
         d.field_key,
         normalize_input(f, {"text": d.text}),
         provenance="draft_accepted",
+        meta={
+            "draft_id": str(d.id),
+            "evidence": list(d.evidence),
+            "grounding_hash": drafting.grounding_hash(used),
+        },
     )
     d.status = "accepted"
     db.flush()

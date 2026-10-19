@@ -193,7 +193,20 @@ def resolve_field(f: FormField, ctx: Context) -> Resolution:
         if err:
             return _unresolved(r, f, f"Your saved answer no longer fits this question: {err}")
         r.status, r.value, r.display = "resolved", inp.value, display_value(f, inp.value)
+        if inp.provenance == "draft_accepted" and getattr(inp, "stale", False):
+            return _unresolved(
+                r, f, "The facts this accepted draft was based on have changed. Review it again."
+            )
         if inp.provenance == "draft_accepted":
+            meta = inp.meta or {}
+            r.fact_refs = [
+                {
+                    "type": "draft",
+                    "id": meta.get("draft_id"),
+                    "field": "grounding",
+                    "value": meta.get("grounding_hash"),
+                }
+            ]
             r.source, r.explanation = "draft", "AI draft that you reviewed and accepted."
         else:
             r.source, r.explanation = "user_entered", "You answered this for this application."

@@ -8,7 +8,11 @@ import tempfile
 TEST_DB = os.environ.get(
     "NOEFFORTS_TEST_DATABASE_URL", "postgresql+psycopg://postgres@127.0.0.1:5432/noefforts_test"
 )
+# The suite drops and recreates the schema. Refuse anything not explicitly a test database.
+if not TEST_DB.rsplit("/", 1)[-1].split("?")[0].endswith("_test"):
+    raise SystemExit(f"Refusing to run tests against a non-test database: {TEST_DB}")
 os.environ["NOEFFORTS_DATABASE_URL"] = TEST_DB
+os.environ.setdefault("NOEFFORTS_ENV", "test")
 os.environ["NOEFFORTS_STORAGE_DIR"] = tempfile.mkdtemp(prefix="noefforts-test-")
 
 import pytest  # noqa: E402

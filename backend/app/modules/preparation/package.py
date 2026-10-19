@@ -13,10 +13,13 @@ referenced fact, a document, an answer, the destination or a consent produces a 
 import hashlib
 import json
 import uuid
+from datetime import timedelta
+from urllib.parse import urljoin, urlsplit
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.db import utcnow
 from app.modules.applications.models import Application
 from app.modules.applications.service import transition
@@ -24,6 +27,7 @@ from app.modules.applications.states import Actor, AppState
 from app.modules.audit.service import record
 from app.modules.documents.models import Document, DocumentKind
 from app.modules.jobs.models import Job
+from app.modules.preparation import drafting
 from app.modules.preparation.forms import FormSchema
 from app.modules.preparation.models import (
     AnswerBankEntry,
@@ -35,7 +39,11 @@ from app.modules.preparation.models import (
 from app.modules.preparation.resolver import Context, resolve_field
 from app.modules.profiles.models import CandidateProfile, JobPreferences, WorkAuthorization
 
-SCHEMA_VERSION = 1
+# Bumped to 2 (Phase C hardening): the manifest now binds owner, destination origin and submit
+# endpoint, explicit document digests, policy versions. Every existing package hash changes,
+# so existing approvals stop matching and must be re-approved. That is intended.
+SCHEMA_VERSION = 2
+RESOLVER_VERSION = "deterministic-1"
 # Packages are only rebuilt while nothing has been sent; later states keep their history frozen.
 REBUILDABLE = {
     AppState.draft,
@@ -54,6 +62,19 @@ class NoForm(LookupError):
 
 class ApprovalError(ValueError):
     pass
+
+
+def lock_application(db: Session, app_id: uuid.UUID) -> Application:
+    """Row-lock the application. Approve, revoke, consent/answer writes, package rebuilds,
+    claim and the final dispatch gate all take this lock, so they serialize per application."""
+    return db.scalar(select(Application).where(Application.id == app_id).with_for_update())
+
+
+def _origin(url: str | None) -> str | None:
+    if not url:
+        return None
+    p = urlsplit(url)
+    return f"{p.scheme}://{p.netloc}" if p.scheme and p.netloc else None
 
 
 def latest_form(db: Session, job_id: uuid.UUID) -> JobForm | None:
@@ -81,6 +102,15 @@ def load_context(db: Session, app: Application) -> Context:
         lineages = {d.lineage_id for d in resumes}
         if len(lineages) == 1:
             docs["resume"] = max(resumes, key=lambda d: d.version)
+    answer_inputs = {i.field_key: i for i in inputs if i.kind == "answer"}
+    if any(i.provenance == "draft_accepted" for i in answer_inputs.values()):
+        current = {f.id: f for f in drafting.grounding_facts(db, uid)}
+        for i in answer_inputs.values():
+            if i.provenance == "draft_accepted" and i.meta:
+                used = [current.get(e) for e in i.meta.get("evidence", [])]
+                now = drafting.grounding_hash([f for f in used if f is not None])
+                # Flag only; the resolver turns a stale draft into a checkpoint.
+                i.stale = None in used or now != i.meta.get("grounding_hash")
     return Context(
         profile=db.scalar(select(CandidateProfile).where(CandidateProfile.user_id == uid)),
         work_auth={
@@ -92,7 +122,7 @@ def load_context(db: Session, app: Application) -> Context:
             e.question_key: e
             for e in db.scalars(select(AnswerBankEntry).where(AnswerBankEntry.user_id == uid))
         },
-        inputs={i.field_key: i for i in inputs if i.kind == "answer"},
+        inputs=answer_inputs,
         consents={i.field_key: i.value.get("choice") for i in inputs if i.kind == "consent"},
         documents=docs,
     )
@@ -140,19 +170,28 @@ def build_content(db: Session, app: Application) -> dict:
     docs = []
     for a in answers:
         if a["source"] == "document":
-            ref = a["fact_refs"][0]
+            doc = db.get(Document, uuid.UUID(a["value"]["document_id"]))
             docs.append(
                 {
                     "field": a["key"],
-                    "document_id": ref["id"],
-                    "version": ref["version"],
-                    "sha256": ref["field"],
+                    "document_id": str(doc.id),
+                    "lineage_id": str(doc.lineage_id),
+                    "version": doc.version,
+                    "sha256": doc.sha256,
+                    "size_bytes": doc.size_bytes,
+                    "content_type": doc.content_type,
                     "display": a["display"],
                 }
             )
+    job_url = job.canonical_url or job.url
     return {
         "schema": SCHEMA_VERSION,
+        "owner": {"user_id": str(app.user_id), "application_id": str(app.id)},
+        "policy": {"resolver": RESOLVER_VERSION, "package_schema": SCHEMA_VERSION},
         "destination": {
+            "origin": _origin(job_url),
+            "submit_url": urljoin(job_url, schema.action) if job_url and schema.action else None,
+            "submit_method": schema.method,
             "job_id": str(job.id),
             "employer": job.employer,
             "title": job.title,
@@ -225,12 +264,17 @@ def active_approval(db: Session, pkg: ApplicationPackage | None) -> PackageAppro
             PackageApproval.package_id == pkg.id,
             PackageApproval.invalidated_at.is_(None),
             PackageApproval.content_hash == pkg.content_hash,
+            or_(PackageApproval.expires_at.is_(None), PackageApproval.expires_at > utcnow()),
         )
     )
 
 
 def ensure_current(db: Session, app: Application) -> ApplicationPackage:
-    """Return the current package version, writing a new one if inputs changed."""
+    """Return the current package version, writing a new one if inputs changed.
+
+    Takes the application row lock, so concurrent rebuilds cannot both write version N+1."""
+    lock_application(db, app.id)
+    db.refresh(app)
     latest = latest_package(db, app.id)
     if app.state not in REBUILDABLE:
         if latest is None:
@@ -322,8 +366,14 @@ def approve(db: Session, app: Application, version: int, expected_hash: str) -> 
         raise ApprovalError("Resolve every required question before approving.")
     if active_approval(db, pkg) is not None:
         return active_approval(db, pkg)
+    now = utcnow()
     appr = PackageApproval(
-        package_id=pkg.id, application_id=app.id, user_id=app.user_id, content_hash=pkg.content_hash
+        package_id=pkg.id,
+        application_id=app.id,
+        user_id=app.user_id,
+        content_hash=pkg.content_hash,
+        approved_at=now,
+        expires_at=now + timedelta(hours=get_settings().approval_ttl_hours),
     )
     db.add(appr)
     record(
@@ -339,6 +389,7 @@ def approve(db: Session, app: Application, version: int, expected_hash: str) -> 
 
 
 def revoke(db: Session, app: Application) -> None:
+    lock_application(db, app.id)
     for appr in db.scalars(
         select(PackageApproval).where(
             PackageApproval.application_id == app.id, PackageApproval.invalidated_at.is_(None)
