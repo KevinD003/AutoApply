@@ -13,6 +13,7 @@ from datetime import timedelta
 
 import pytest
 
+from app.core.config import get_settings
 from app.core.db import SessionLocal, utcnow
 from app.modules.execution import runner
 from app.modules.execution import service as svc
@@ -190,6 +191,19 @@ def test_accepted_but_response_dropped(api, receiver):
     assert runner.run_attempt(aid, "w2") == "ignored"
     assert receiver.ledger()["accepted"] == 1
     assert api.get(f"/applications/{app_id}").json()["state"] == "submitted_unconfirmed"
+
+
+@pytest.mark.parametrize("nav_s", [10, 4])
+def test_giving_up_on_a_dropped_response_sends_nothing_more(api, receiver, monkeypatch, nav_s):
+    """Found by the browser test: when the worker gave up waiting and closed the browser while
+    the intercepted submit request was still pending, a second copy of the POST reached the
+    employer. nav_s == submit timeout (4s) is the timing the browser test hit."""
+    monkeypatch.setattr(get_settings(), "navigation_timeout_seconds", nav_s)
+    receiver.config(mode="drop_after_accept")
+    app_id, aid = ready(api, receiver)
+    assert runner.run_attempt(aid, "w1") == "unknown"
+    time.sleep(3)  # bounded observation window: a late duplicate would land here
+    assert receiver.ledger()["accepted"] == 1
 
 
 @pytest.mark.parametrize(

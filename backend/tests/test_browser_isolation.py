@@ -4,9 +4,11 @@ gets through."""
 
 import http.server
 import os
+import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
@@ -15,9 +17,22 @@ from playwright.sync_api import Error as PlaywrightError
 
 from app.core.config import get_settings
 from app.modules.execution import runner
-from app.modules.execution.browser import browser_session, isolation_self_check
+from app.modules.execution.browser import (
+    IsolationUnavailable,
+    _netns_wrapper,
+    browser_session,
+    hidden_paths,
+    isolation_self_check,
+)
 from app.modules.execution.sandbox.egress_proxy import EgressProxy
-from tests.execution_harness import BASE, Receiver, attempt, prepared_application, queue
+from tests.execution_harness import (
+    BACKEND,
+    BASE,
+    Receiver,
+    attempt,
+    prepared_application,
+    queue,
+)
 
 CANARY = 8798
 
@@ -195,3 +210,133 @@ def test_free_port_helper_is_not_reachable_from_namespace():
             timeout=20,
         ).stdout
         assert "closed" in out
+
+
+class _SlowPost(http.server.BaseHTTPRequestHandler):
+    posts: list[float] = []
+
+    def do_GET(self):  # noqa: N802
+        self.send_response(200)
+        self.send_header("content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(
+            b"<form method=post action=/submit><input name=a value=1>"
+            b"<button id=go>Send</button></form>"
+        )
+
+    def do_POST(self):  # noqa: N802
+        _SlowPost.posts.append(time.monotonic())
+        self.rfile.read(int(self.headers.get("content-length", 0)))
+        time.sleep(30)  # accepted; the reply never arrives in time
+
+    def log_message(self, *a):
+        pass
+
+
+@pytest.mark.parametrize("isolation", ["netns", "off"])
+def test_closing_the_browser_mid_submit_never_resends(isolation):
+    """Found by the browser test (the receiver counted two acceptances for one attempt): a POST
+    answered via route.fetch + fulfill was re-sent by Playwright when the browser closed while
+    that fetch was still pending or had timed out. The employer must see exactly one POST."""
+    _SlowPost.posts = []
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _SlowPost)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    origin = f"http://127.0.0.1:{srv.server_port}"
+    try:
+        with browser_session(origin, 3000, isolation=isolation, allow_private_destination=True) as (
+            page,
+            _log,
+        ):
+            page.goto(origin + "/")
+            page.click("#go", no_wait_after=True)
+            # Wait the way the adapter does (through Playwright, so route handlers run).
+            for _ in range(100):
+                if _SlowPost.posts:
+                    break
+                page.wait_for_timeout(100)
+            assert len(_SlowPost.posts) == 1
+            page.wait_for_timeout(4000)  # past the 3s timeout; then the worker gives up
+        time.sleep(2)  # bounded observation window for a late duplicate
+        assert len(_SlowPost.posts) == 1, _SlowPost.posts
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+PROBE = """#!/bin/sh
+# Runs exactly where Chromium would: inside the browser's namespaces.
+[ -e "/proc/$1" ] && echo WORKER_VISIBLE || echo worker_hidden
+cat "$2/marker" 2>/dev/null | grep -q SYNTHETIC && echo DIR_LEAK || echo dir_hidden
+grep -q SYNTHETIC "$3" 2>/dev/null && echo FILE_LEAK || echo file_hidden
+[ -e "$4" ] && echo SIBLING_VISIBLE || echo sibling_hidden
+umount "$2" 2>/dev/null && echo UMOUNT_OK || echo umount_refused
+cat "$2/marker" 2>/dev/null | grep -q SYNTHETIC && echo DIR_LEAK_AFTER_UMOUNT
+[ -x "$0" ] && echo own_workdir_visible
+echo "procs=$(ls /proc | grep -cE '^[0-9]+$')"
+"""
+
+
+def test_browser_cannot_see_worker_process_secrets_or_other_attempts():
+    """Credential separation, checked from inside the browser's namespaces with synthetic
+    markers: the worker's /proc entry, hidden directories and files, and another attempt's
+    work directory are invisible, and the hiding mounts cannot be undone from inside."""
+    secret_dir = tempfile.mkdtemp(prefix="ne-hidden-", dir="/var/tmp")
+    secret_file = os.path.join(tempfile.mkdtemp(prefix="ne-hidden-", dir="/var/tmp"), "env")
+    sibling = tempfile.mkdtemp(prefix="ne-browser-sibling-")
+    work = tempfile.mkdtemp(prefix="ne-browser-")
+    try:
+        for p in (os.path.join(secret_dir, "marker"), secret_file):
+            with open(p, "w") as f:
+                f.write("SYNTHETIC-SECRET-MARKER\n")
+        probe = os.path.join(work, "probe.sh")
+        with open(probe, "w") as f:
+            f.write(PROBE)
+        os.chmod(probe, 0o700)
+        wrapper = _netns_wrapper(
+            work, os.path.join(work, "unused.sock"), 9, probe, hide=[secret_dir, secret_file]
+        )
+        out = subprocess.run(
+            [wrapper, str(os.getpid()), secret_dir, secret_file, sibling],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env={"PATH": "/usr/bin:/bin"},
+        )
+        lines = out.stdout.split()
+        assert {
+            "worker_hidden",
+            "dir_hidden",
+            "file_hidden",
+            "sibling_hidden",
+            "umount_refused",
+            "own_workdir_visible",
+        } <= set(lines), (out.stdout, out.stderr)
+        assert not {"WORKER_VISIBLE", "DIR_LEAK", "FILE_LEAK", "SIBLING_VISIBLE"} & set(lines)
+        assert "DIR_LEAK_AFTER_UMOUNT" not in lines and "UMOUNT_OK" not in lines
+        procs = int(next(x for x in lines if x.startswith("procs=")).split("=")[1])
+        assert procs <= 5, out.stdout  # only the namespace's own processes
+        # Outside, nothing changed.
+        with open(os.path.join(secret_dir, "marker")) as f:
+            assert "SYNTHETIC" in f.read()
+    finally:
+        for d in (secret_dir, os.path.dirname(secret_file), sibling, work):
+            shutil.rmtree(d, ignore_errors=True)
+
+
+def test_default_hidden_paths_cover_code_config_and_storage():
+    hidden = hidden_paths()
+    backend = os.path.realpath(BACKEND)
+    assert backend in hidden
+    assert os.path.join(os.path.dirname(backend), ".env") in hidden
+    assert str(get_settings().storage_dir.resolve()) in hidden
+    assert os.path.join(os.path.realpath(os.path.expanduser("~")), ".ssh") in hidden
+
+
+def test_refuses_a_browser_binary_inside_a_hidden_path():
+    work = tempfile.mkdtemp(prefix="ne-browser-")
+    try:
+        with pytest.raises(IsolationUnavailable):
+            _netns_wrapper(work, "/unused", 9, "/var/tmp/x/chrome", hide=["/var/tmp/x"])
+    finally:
+        shutil.rmtree(work, ignore_errors=True)

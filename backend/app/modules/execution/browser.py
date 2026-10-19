@@ -4,11 +4,15 @@ Network isolation (enforced outside the browser; see sandbox/):
   * Chromium runs in its own network namespace with only a loopback interface: no routes, no
     DNS, no database or broker. Its only way out is a relay to the egress proxy, which allows
     exactly the approved destination host:port and refuses non-public addresses (except an
-    explicit test-only fixture exception). Chromium gets a minimal environment: no database
-    URL, broker URL, API keys or other credentials.
-  * Remaining limit: the filesystem is not isolated (no mount namespace); a compromised
-    renderer process could read files the worker user can read. Run workers as a dedicated
-    user without access to secrets files, or in a container, before untrusted live browsing.
+    explicit test-only fixture exception).
+  * Separation from the orchestrator's credentials: a minimal environment (no database URL,
+    broker URL, API keys); its own PID namespace and /proc, so the worker's process and
+    environment are invisible; its own mount namespace in which the backend code, `.env`,
+    storage directory, common credential files in $HOME and every other attempt's work
+    directory under /tmp are hidden; and a nested user namespace so those mounts are locked.
+  * Remaining limit: hiding is a deny-list on a shared filesystem under the same OS user.
+    Production must run browser workers as a dedicated user, in a container that mounts no
+    secrets, before untrusted live browsing.
 
 In-process layers on top (defence in depth):
   * a fresh, non-persistent context per attempt: no shared cookies or storage, no downloads;
@@ -17,9 +21,6 @@ In-process layers on top (defence in depth):
     aborted and counted; non-HTTP schemes are aborted;
   * pop-ups are closed immediately;
   * Chromium's host resolver maps every hostname except the destination host to NOTFOUND.
-Production deployments must additionally run browsers in a network namespace whose egress
-firewall permits only the destination (see docs/architecture.md). That layer is not
-implemented in this repository.
 """
 
 import os
@@ -61,31 +62,75 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def _netns_wrapper(workdir: str, sock: str, port: int, chrome: str) -> str:
+def _unshare_flags() -> list[str]:
+    # Network + PID (fresh /proc) + mount namespaces; unprivileged workers add a user namespace.
+    # --kill-child: if unshare dies, the namespace's processes die with it.
+    flags = ["-n", "-p", "-f", "--mount-proc", "--kill-child"]
+    return flags if os.geteuid() == 0 else ["-r", *flags]
+
+
+_HOME_SECRETS = (
+    ".ssh",
+    ".aws",
+    ".azure",
+    ".config",
+    ".docker",
+    ".kube",
+    ".gnupg",
+    ".git-credentials",
+    ".gitconfig",
+    ".netrc",
+    ".pgpass",
+    ".npmrc",
+    ".pypirc",
+)
+
+
+def hidden_paths() -> list[str]:
+    """What the browser must not see: our code and configuration, stored user data, and the
+    usual credential files of the OS user the worker runs as."""
+    from app.core.config import get_settings
+
+    backend = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+    home = os.path.expanduser("~")
+    paths = [
+        backend,
+        os.path.join(os.path.dirname(backend), ".env"),
+        str(get_settings().storage_dir.resolve()),
+        "/run/secrets",
+        *(os.path.join(home, n) for n in _HOME_SECRETS),
+    ]
+    return [os.path.realpath(p) for p in paths]
+
+
+def _netns_wrapper(
+    workdir: str, sock: str, port: int, chrome: str, hide: list[str] | None = None
+) -> str:
     """Executable that Playwright launches instead of Chromium: unshare -> netns_boot -> chrome.
     DevTools pipes (fds 3/4) pass through unshare and exec unchanged."""
     if shutil.which("unshare") is None:
         raise IsolationUnavailable("unshare(1) is not installed")
     boot = os.path.join(os.path.dirname(__file__), "sandbox", "netns_boot.py")
-    flags = "-n" if os.geteuid() == 0 else "-rn"  # unprivileged: user + network namespace
+    hide = hidden_paths() if hide is None else hide
+    if any(os.path.commonpath([h, os.path.realpath(chrome)]) == h for h in hide):
+        raise IsolationUnavailable("the browser binary lies inside a hidden path")
     path = os.path.join(workdir, "chromium-netns")
     with open(path, "w") as f:
         f.write(
-            f'#!/bin/sh\nexec unshare {flags} "{sys.executable}" -I "{boot}" '
-            f'"{sock}" {port} "{chrome}" "$@"\n'
+            f'#!/bin/sh\nexec unshare {" ".join(_unshare_flags())} "{sys.executable}" -I '
+            f'"{boot}" "{sock}" {port} "{workdir}" "{os.pathsep.join(hide)}" "{chrome}" "$@"\n'
         )
     os.chmod(path, 0o700)
     return path
 
 
 def isolation_self_check() -> None:
-    """Fail fast if a network namespace cannot be created here."""
+    """Fail fast if the namespaces cannot be created here."""
     import subprocess
 
-    flags = ["-n"] if os.geteuid() == 0 else ["-r", "-n"]
-    r = subprocess.run(["unshare", *flags, "true"], capture_output=True, timeout=10)
+    r = subprocess.run(["unshare", *_unshare_flags(), "true"], capture_output=True, timeout=10)
     if r.returncode != 0:
-        raise IsolationUnavailable(f"cannot create a network namespace: {r.stderr[:200]!r}")
+        raise IsolationUnavailable(f"cannot create namespaces: {r.stderr[:200]!r}")
 
 
 @contextmanager
@@ -152,9 +197,25 @@ def _install_interception(ctx, allowed: str, log: "EgressLog") -> None:
         if not (url.startswith(("http://", "https://")) and _origin(url) == allowed):
             log.blocked.append(url[:200])
             return r.abort("blockedbyclient")
+        if r.request.method not in ("GET", "HEAD"):
+            # Never fetch-and-fulfill a non-idempotent request: if that fetch is still pending
+            # (or timed out) when the browser closes, Playwright resumes the paused original
+            # and the employer receives it twice (reproduced). The browser sends it, once.
+            # Redirect hops it follows are re-checked by the egress proxy, which allows only
+            # the destination host:port.
+            log.allowed += 1
+            return r.continue_()
         # Redirects followed by the browser are not re-intercepted, so fetch without
         # following them and refuse any hop that leaves the allowed origin.
-        resp = r.fetch(max_redirects=0)
+        try:
+            resp = r.fetch(max_redirects=0)
+        except Exception:
+            # Abort rather than leave the request paused (Playwright would resume it later).
+            try:
+                r.abort("failed")
+            except Exception:
+                pass  # browser already closing
+            return None
         loc = resp.headers.get("location")
         if 300 <= resp.status < 400 and loc:
             target = urljoin(url, loc)
