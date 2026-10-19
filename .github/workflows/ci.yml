@@ -80,3 +80,10 @@ jobs:
       - name: End-to-end (desktop and mobile)
         working-directory: frontend
         run: npx playwright test
+      - name: Keep Playwright results on failure (synthetic data only)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: frontend/test-results/
+          retention-days: 7
