@@ -90,3 +90,12 @@ jobs:
           name: playwright-results
           path: frontend/test-results/
           retention-days: 7
+
+  docker-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare environment file (synthetic defaults only)
+        run: cp .env.example .env
+      - name: Docker Compose smoke test
+        run: ./scripts/docker-smoke.sh
