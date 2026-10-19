@@ -141,3 +141,16 @@ def cancel(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from None
     db.commit()
     return {"state": app.state.value}
+
+
+@router.delete("/applications/{app_id}/evidence")
+def delete_evidence(
+    app_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    app = _owned_app(db, user, app_id)
+    try:
+        n = svc.delete_application_evidence(db, app)
+    except PermissionError as e:
+        raise conflict(str(e)) from None
+    db.commit()
+    return {"deleted": n}

@@ -16,7 +16,7 @@ import re
 import uuid
 from datetime import timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -577,3 +577,31 @@ def sweep(publish_new: bool = True) -> dict:
                 out["failed"] += 1
         db.commit()
     return out
+
+
+# --------------------------------------------------------------------------------------------
+# Evidence lifecycle
+
+
+def purge_expired_evidence() -> int:
+    """Delete evidence past its retention date. Runs daily from Celery beat."""
+    with SessionLocal() as db:
+        n = db.execute(delete(Evidence).where(Evidence.retain_until < utcnow())).rowcount
+        db.commit()
+        return n
+
+
+def delete_application_evidence(db: Session, app: Application) -> int:
+    """User-requested deletion. Refused while an attempt is active (it may still write)."""
+    active = db.scalar(
+        select(ExecutionAttempt.id).where(
+            ExecutionAttempt.application_id == app.id, ExecutionAttempt.state.in_(ACTIVE)
+        )
+    )
+    if active is not None:
+        raise PermissionError("An attempt is still running; wait for it to finish.")
+    n = db.execute(
+        delete(Evidence).where(Evidence.application_id == app.id, Evidence.user_id == app.user_id)
+    ).rowcount
+    record(db, app.user_id, "evidence.delete", "application", app.id, rows=n)
+    return n

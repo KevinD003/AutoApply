@@ -52,6 +52,7 @@ celery_app.conf.update(
         "purge-expired-sessions": {"task": "noefforts.purge_expired_sessions", "schedule": 3600.0},
         "relay-outbox": {"task": "noefforts.relay_outbox", "schedule": 5.0},
         "sweep-attempts": {"task": "noefforts.sweep_attempts", "schedule": 15.0},
+        "purge-expired-evidence": {"task": "noefforts.purge_expired_evidence", "schedule": 86400.0},
     },
 )
 
@@ -91,3 +92,10 @@ def purge_expired_sessions() -> int:
         n = db.execute(delete(UserSession).where(UserSession.expires_at < utcnow())).rowcount
         db.commit()
         return n
+
+
+@celery_app.task(name="noefforts.purge_expired_evidence")
+def purge_expired_evidence() -> int:
+    from app.modules.execution.service import purge_expired_evidence as purge
+
+    return purge()
