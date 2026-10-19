@@ -36,23 +36,27 @@ public form-schema endpoints and "unconfirmed ⇒ never resubmit" match our desi
 Not reachable from the current cloud sandbox (proxy 403), so integration must be tested locally.
 Details: `docs/research/freehire.md`.
 
-## D8 — Tsenta: public documentation only; no automated inspection
-Tsenta has no public developer API (only an OAuth MCP connector), and its terms (eff.
-2025-09-23, §3(c)) prohibit automated access "in ways not intended" and scraping. We therefore
-use only public pages and normal manual use for the evidence matrix. Static analysis of its
-extension or apps needs legal review first. A Tsenta execution provider stays out of scope until
-a documented, permitted API exists. Details: `docs/research/tsenta.md`.
+## D8 — Tsenta: optional, disabled by default; public docs only
+Tsenta's developer documentation is reported public by the owner but is **inaccessible from this
+environment** (redirects to the product intro; `/api-reference/*` requires a docs sign-in). No
+Tsenta account, credential, code or test exists. Its terms (eff. 2025-09-23, §3(c)) prohibit
+automated access "in ways not intended" and scraping, so the evidence matrix uses public pages
+only. A Tsenta execution provider may be added later behind the provider interface,
+**disabled by default**, only after its documented contract, approval semantics and confirmation
+evidence are verified, and never with spending, account creation or real submissions without
+explicit approval. Details: `docs/research/tsenta.md`.
 
 ## D9 — REA: optional development aid
 `rea-agents@6.7.0` (MIT, `morluto/rea@b4938ae`) runs headless with no credentials. Usable for
 static analysis of public JS or our own HAR captures. Not a dependency of the product and not
 used against logged-in competitor surfaces. Details: `docs/research/rea.md`.
 
-## D10 — Gmail: manual code entry first, Gmail OAuth later and opt-in
-Every Gmail read scope (including `gmail.metadata`) is *restricted*: public use needs Google
-verification plus an annual CASA security assessment; testing mode caps at 100 users with
-7-day refresh tokens. Phase D starts with manual code entry; Gmail stays optional.
-Details: `docs/research/gmail-oauth.md`.
+## D10 — Gmail: manual code entry first; Gmail OAuth personal/testing only at first
+Every Gmail scope that can read mail (including `gmail.metadata`) is restricted. Personal-use and
+testing projects are exempt from verification (testing: ≤100 users, 7-day tokens). Public
+server-side access needs restricted-scope verification plus an annual CASA assessment, and
+reading verification codes for job applications is not an explicitly listed approved Gmail use
+case, so approval is uncertain. Details: `docs/research/gmail-oauth.md`.
 
 ## D11 — Execution adapters before any "universal agent"
 Order per the brief: documented API with valid credentials → tested deterministic browser

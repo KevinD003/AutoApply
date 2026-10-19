@@ -18,16 +18,37 @@
 
 ## Developer API
 
+**Correction (2026-10-19, recheck):** the first pass labelled the developer API "not found". That
+overstated what was observed. The project owner reports the developer documentation at
+https://docs.tsenta.com/developers/introduction is publicly accessible. From this environment it
+is **inaccessible**, not proven absent:
+
 | Fact | Label | Source |
 |---|---|---|
-| `llms.txt` index lists only `/product/*` pages + index; **no developer/API pages** | observed | D0 |
-| `/developers/introduction` did not return developer docs; it resolved to the product "What is Tsenta?" page | observed | D1 (metadata `url`) |
-| `site:docs.tsenta.com developers API` search returned only the product intro page | observed | Firecrawl search |
-| A public REST developer API, API-key auth model, application/job endpoints, webhooks: **not found** — **unknown** whether they exist privately or were removed | unknown | — |
-| The only programmatic surface documented is a **remote MCP connector**: `https://api.autojobs.me/api/v1/mcp`, OAuth sign-in/approval in browser; `claude mcp add --transport http tsenta https://api.autojobs.me/api/v1/mcp` | documented | D4 |
-| MCP tools cover resume profiles, application review/status, tracker, inbox, networking (verified work emails, drafts; "Tsenta never sends outreach"), remaining allowance; "The tools exposed to your client are the current capability list" (no static tool list published) | documented | D4 |
-| Approval semantics for MCP: "Approval behavior depends on your client; connecting it does not guarantee it will prompt before every change." Submitting "sends material to a real employer and uses your allowance" | documented | D4 |
+| Fetching `/developers/introduction` (plain and with JS wait + alternate proxy, no login) returns HTTP 200 but the final URL is `/product/introduction`; no developer content is served to this fetcher | observed | Firecrawl recheck 2026-10-19 (two attempts) |
+| `/api-reference/introduction` redirects to a Mintlify sign-in page (`app.mintlify.com/login?…redirect=/api-reference/introduction`); the docs header also has a "Log In" link | observed | Firecrawl recheck 2026-10-19 |
+| Interpretation: some docs, plausibly the developer/API section, are gated behind docs-site sign-in or served conditionally; an unauthenticated server-side fetcher sees only product pages | inferred | — |
+| `llms.txt` / `llms-full.txt` list only product pages | observed | D0, recheck |
+| Content of the developer docs (auth model, endpoints, webhooks, approval semantics, confirmation evidence) | **inaccessible from this environment** | — |
+| The remote MCP connector `https://api.autojobs.me/api/v1/mcp` (OAuth) is documented on public product pages | documented | D4 |
+| MCP tools cover resume profiles, application review/status, tracker, inbox, networking, allowance; "The tools exposed to your client are the current capability list" | documented | D4 |
+| MCP approval: "Approval behavior depends on your client; connecting it does not guarantee it will prompt before every change." | documented | D4 |
 | Tsenta receives tool arguments, not general conversation/file access | documented | D4, D6 |
+
+### Integration status (four separate questions)
+
+| Question | Answer |
+|---|---|
+| Documentation found? | Developer docs: reported public by the owner; **inaccessible from this environment** (redirect / sign-in). Product + MCP docs: yes. |
+| API/account access available? | **No.** No Tsenta account, API key or OAuth grant exists for this project. None will be created without the owner's approval. |
+| Integration implemented? | **No.** No Tsenta code exists in the repository. |
+| Integration tested? | **No.** |
+
+Next step if the owner wants it: the owner shares the developer docs (export or copy) or grants
+a documented test credential; we then design an optional, **disabled-by-default**
+execution provider behind the provider interface, verify its approval semantics and
+confirmation evidence against our policy, and only then test it. No spending, no account
+creation and no real submissions without explicit approval.
 
 ## Approval / consent semantics (product)
 
