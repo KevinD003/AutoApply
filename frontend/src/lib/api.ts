@@ -186,3 +186,17 @@ export interface BankEntry {
   version: number;
   updated_at: string;
 }
+
+export interface AttemptView {
+  id: string;
+  state: string;
+  adapter: string;
+  created_at: string;
+  disclosure_started_at: string | null;
+  send_started_at: string | null;
+  finished_at: string | null;
+  outcome: string | null;
+  events: { kind: string; generation: number; at: string }[];
+  checkpoints: { id: string; status: string; round: number; message: string | null; expires_at: string; wrong_attempts: number; max_attempts: number }[];
+  evidence: { kind: string; strength: string; data: Record<string, unknown>; at: string }[];
+}

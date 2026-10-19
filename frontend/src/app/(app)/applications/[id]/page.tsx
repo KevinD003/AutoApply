@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import AnswerInput from "@/components/AnswerInput";
+import ExecutionCard from "@/components/ExecutionCard";
 import { Badge, Button, Card, ErrorBox, inputCls, Loading, Notice } from "@/components/ui";
 import { api, ApiError, Doc, PackageAnswer, PackageView } from "@/lib/api";
 
@@ -22,7 +23,11 @@ const SOURCE: Record<string, { label: string; tone: "green" | "indigo" | "amber"
 const STATE_LABEL: Record<string, string> = {
   needs_user_action: "Needs your input",
   awaiting_approval: "Ready for your approval",
-  queued: "Approved and queued (submission is not built yet)",
+  queued: "Approved and queued",
+  running: "Being filled in",
+  submitting: "Submitting",
+  submitted_confirmed: "Submitted (employer receipt)",
+  submitted_unconfirmed: "Submitted? Outcome unknown",
 };
 
 export default function ReviewPage() {
@@ -160,9 +165,11 @@ export default function ReviewPage() {
         </div>
         <p className="mt-2 text-xs text-slate-500">
           Approval is tied to this exact content. Changing a fact, document, answer, consent or the job itself creates a new version
-          that needs approval again. Submitting to employers is not built yet.
+          that needs approval again. Approvals also expire after a few days.
         </p>
       </Card>
+
+      <ExecutionCard appId={id} appState={view.state} approved={view.approval.status === "approved"} onChange={load} />
 
       <Card title="Documents">
         {resumes.length === 0 ? (

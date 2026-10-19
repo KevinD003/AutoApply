@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      NOEFFORTS_TEST_DATABASE_URL: postgresql+psycopg://postgres@127.0.0.1:5432/noefforts_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.32"
+      - name: Install dependencies
+        run: uv sync --frozen --python 3.12
+      - name: Install Chromium for Playwright (Python)
+        run: uv run playwright install --with-deps chromium
+      - name: Create test database
+        run: psql -h 127.0.0.1 -U postgres -c "create database noefforts_test"
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Tests (unit, API, migrations, execution, real Celery worker)
+        run: uv run pytest -p no:warnings -v
+
+  frontend:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.32"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Backend dependencies (the e2e run starts the API)
+        working-directory: backend
+        run: uv sync --frozen --python 3.12
+      - name: Create e2e database
+        run: psql -h 127.0.0.1 -U postgres -c "create database noefforts_e2e"
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+      - name: Typecheck and lint
+        working-directory: frontend
+        run: npx tsc --noEmit && npm run lint
+      - name: Install Chromium for Playwright
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end (desktop and mobile)
+        working-directory: frontend
+        run: npx playwright test
