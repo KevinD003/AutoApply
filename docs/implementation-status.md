@@ -35,7 +35,7 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
 | `uv run ruff check . && uv run ruff format --check .` at `289e0b0` | clean (`64a560a` failed CI's format check; fixed in `289e0b0`) |
 | `cd frontend && npx tsc --noEmit && npm run lint` | clean |
 | `cd frontend && npx playwright test` | 4 passed (Phase A + B, desktop + mobile); execution UI not covered |
-| GitHub Actions CI | run #1 (`64a560a`): failed, backend formatting. Run #2 (`289e0b0`): backend **passed** (lint + full pytest); frontend e2e **failed** — Phase A desktop and mobile timed out waiting for the profile page after registration, Phase B passed. Run #3 (`400f3c0`, same code + docs): **all jobs passed**. The Phase A failure is an unexplained intermittent failure; traces were not kept, so CI now uploads Playwright results on failure. Not fixed, not hidden. |
+| GitHub Actions CI | run #1 (`64a560a`): failed, backend formatting. Run #2 (`289e0b0`): backend **passed** (lint + full pytest); frontend e2e **failed** — Phase A desktop and mobile timed out waiting for the profile page after registration, Phase B passed. Run #3 (`400f3c0`, same code + docs) and run #4 (`ad57210`): **all jobs passed**. The Phase A failure is an unexplained intermittent failure; traces were not kept, so CI now uploads Playwright results on failure. Not fixed, not hidden. |
 | Docker Compose | **untested** — no Docker daemon in the sandbox |
 
 Receiver-counted outcomes (independent ledger), all from `tests/test_execution_failures.py`,
