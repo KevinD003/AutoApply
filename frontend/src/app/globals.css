@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: #f8fafc;
+  color: #0f172a;
+}
