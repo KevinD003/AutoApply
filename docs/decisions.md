@@ -62,3 +62,26 @@ case, so approval is uncertain. Details: `docs/research/gmail-oauth.md`.
 Order per the brief: documented API with valid credentials → tested deterministic browser
 adapter → optional managed provider → manual handoff. Greenhouse and Lever public *submit*
 endpoints need the employer's API key, so the first real adapter will be a browser adapter.
+
+## D12 — Deterministic resolution; LLM only for opt-in long-form drafts
+Standard questions resolve from approved facts, deterministic option mapping and saved answers
+bound to exact wording. Anything ambiguous becomes a user checkpoint. The resolver has no LLM
+dependency at all, which is stronger than "avoid calls" and is covered by a spy-provider test.
+See `docs/answer-policy.md`.
+
+## D13 — Approval bound to a content hash of fact *values*
+Package answers reference the specific fact values used rather than record version counters, so
+editing an unrelated field (e.g. profile summary) does not invalidate an approval, while any
+change to a used value, document, answer, consent or destination does.
+
+## D14 — Protected facts are corrected in the profile, not per application
+Work authorization, sponsorship and residence answers cannot be overridden on one application
+when the profile already answers them. This keeps answers consistent across employers. Where the
+question itself is ambiguous (e.g. "eligible in the country where this job is located"), the user
+answers per application and that answer is never saved for reuse.
+
+## D15 — Uncertain submissions leave quarantine only through reconciliation
+Removed the direct `submitted_unconfirmed → queued` transition. Reconciliation requires a
+written statement of what was checked and explicit confirmation, and re-queueing then requires a
+fresh approval. System actors may not re-queue `failed_retryable` until Phase C defines
+provider-specific retry policies for failures known to have sent nothing.

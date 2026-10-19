@@ -74,3 +74,20 @@ HOME=$PWD/home npm exec --yes --ignore-scripts --cache $PWD/cache \
 - **Yes for static/offline lanes** (inferred from docs + observed `--help`): static JS bundle analysis of downloaded/exported scripts, HAR inspection, APK inspection (after JDK17 + jadx-headless-mcp jar), .NET, etc.
 - **Browser lanes need a Chromium binary** (not present in this container — observed). `capture-browser-scenario` can launch it headless with a temporary profile (documented), so no logged-in browser is required for public pages. CDP inspection needs you to start Chromium with `--remote-debugging-port`; headless Chromium should work but REA docs only discuss headed-under-Xvfb issues — headless CDP behaviour is **unknown/untested here**.
 - Inspecting logged-in competitor surfaces (e.g. a Tsenta dashboard) would require a signed-in profile — out of scope and potentially a ToS issue (see tsenta.md).
+
+## Actual involvement in this project (as of 2026-10-19)
+
+| Question | Answer |
+|---|---|
+| Installed? | Fetched once into a throwaway npm cache with `--ignore-scripts`; not installed in the repository or globally. |
+| Started? | Yes, once: `rea-agents --help` (prints version and command list). |
+| Used for an investigation? | **No.** No REA analysis command (`analyze-javascript-application`, HAR analysis, `capture-browser-scenario`, APK tools) has been run against any target. |
+| Evidence produced? | None beyond the `--help` output. No Tsenta extension, dashboard, HAR or APK has been analysed. |
+| Effect on NoEfforts | None. All NoEfforts code is independent and does not depend on REA. |
+
+Correction: the first pass said no Chromium was available. A Playwright Chromium build *is*
+present at `/opt/pw-browsers/chromium-*/chrome-linux/chrome` (used by our own end-to-end tests);
+it is just not on `PATH`. REA browser scenarios could be pointed at it with `executable_path`.
+
+Any future REA use must be on public material or our own captures (for example a HAR of
+NoEfforts itself), consistent with decision D8 and Tsenta's terms.

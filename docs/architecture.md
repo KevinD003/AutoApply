@@ -97,11 +97,34 @@ Rules that matter:
 - **Login**: rate-limited per IP and email (in-process; move to Redis when running more than one
   API process).
 
+## Preparation (Phase B)
+
+Module `app/modules/preparation/`:
+
+| File | Responsibility |
+|---|---|
+| `forms.py` | `FormField` / `FormSchema` models (text, textarea, email, tel, url, number, date, radio, checkbox, checkbox_group, select, multiselect, file) and HTML schema extraction (`<label for>`, wrapping labels, `<fieldset><legend>` groups, `aria-describedby` help, `data-step` sections). Field and form fingerprints detect wording/option changes. |
+| `fixtures/*.html`, `fixtures_registry.py` | Local ATS-like test forms with fictional employers (`basic`, `tricky`). Served at `/api/fixtures/forms/{name}` outside production for Phase C browser tests. |
+| `classify.py` | Deterministic intent classification (what a question asks), including country, sponsorship time frame, negation, and explicit ambiguity reasons. |
+| `resolver.py` | Resolution order and value validation — see `docs/answer-policy.md`. |
+| `package.py` | Builds package content, hashes it, writes immutable versions, binds and invalidates approvals, and moves the application between `preparing`, `needs_user_action`, `awaiting_approval` and back out of `queued` when content changes. |
+| `drafting.py` | Optional `DraftProvider` interface with grounding validation; `get_provider()` returns `None` (no provider configured). |
+| `router.py` | Form capture, package review, answers, consents, document selection, approve/revoke, drafts, answer bank. |
+
+New tables: `job_forms` (versioned schemas per job), `answer_bank`, `application_inputs`
+(per-application answers, consent choices, document selections), `application_packages`
+(immutable versions), `package_approvals`, `answer_drafts`.
+
+Packages are rebuilt only while nothing can have been sent (`draft` … `queued`,
+`failed_retryable`); later states keep their history frozen.
+
+Reconciliation: `POST /api/applications/{id}/reconcile` is the only way out of
+`submitted_unconfirmed` towards a retry. It requires a written description of what the user
+checked plus explicit confirmation, moves to `failed_retryable`, and re-queueing still needs a
+fresh approval.
+
 ## Planned components (not built)
 
-- Question resolver and answer bank (Phase B): deterministic resolution order, LLM only for
-  long-form prose, user checkpoints for anything missing or sensitive.
-- Application package and approval binding (Phase B).
 - Execution-provider contract, local fixture ATS, first real adapter, evidence store (Phase C).
 - Manual verification-code entry, optional Gmail OAuth, spend tracking (Phase D).
 

@@ -20,6 +20,7 @@ Job-discovery and application platform for any profession. Read these first:
 
 ### Layout
 - `backend/` — FastAPI app (`app/main.py`), domain modules in `app/modules/<domain>/`
+  (Phase B lives in `app/modules/preparation/`; answer rules in `docs/answer-policy.md`)
   (`models.py`, `router.py`, `service.py`), Alembic in `migrations/`, tests in `tests/`.
 - `frontend/` — Next.js App Router in `src/app/(app)/…`, shared UI in `src/components/`,
   API client in `src/lib/api.ts`, Playwright tests in `e2e/`.
@@ -47,3 +48,8 @@ Job-discovery and application platform for any profession. Read these first:
 - Every query is scoped by `user_id`; cross-tenant access returns 404 and needs a test.
 - Never commit `.env`, resumes, real candidate data or captured sessions.
 - Report honestly: update `docs/implementation-status.md` with commands actually run.
+- The resolver must stay LLM-free; any new question pattern needs resolver tests, and anything
+  not clearly understood must become a checkpoint, never a guess.
+- Changing package content shape changes every package hash (and invalidates approvals): bump
+  `SCHEMA_VERSION` in `package.py` deliberately and say so.
+- Kill only processes you have identified as this project's test servers (ports 3100/8100).
