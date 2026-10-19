@@ -252,17 +252,22 @@ def test_real_employer_destination_is_refused_at_queue(api, receiver):
     from app.modules.preparation.fixtures_registry import fixture_html
 
     app_id = prepared_application(api, receiver)  # builds profile, resume, etc.
-    job = api.post("/jobs", json={"url": "https://boards.greenhouse.io/acme/jobs/1",
-                                  "title": "T", "employer": "E"}).json()["job"]
+    job = api.post(
+        "/jobs",
+        json={"url": "https://boards.greenhouse.io/acme/jobs/1", "title": "T", "employer": "E"},
+    ).json()["job"]
     html = fixture_html("basic").replace('action="#"', 'action="/acme/jobs/1/submit"')
     assert api.post(f"/jobs/{job['id']}/form", json={"html": html}).status_code == 201
     real_app = api.post("/applications", json={"job_id": job["id"]}).json()["id"]
     api.put(f"/applications/{real_app}/answers/hear_about", json={"value": {"label": "Referral"}})
-    v = api.put(f"/applications/{real_app}/consents/privacy_ack",
-                json={"choice": "agree"}).json()["package"]
+    v = api.put(f"/applications/{real_app}/consents/privacy_ack", json={"choice": "agree"}).json()[
+        "package"
+    ]
     assert v["content"]["destination"]["origin"] == "https://boards.greenhouse.io"
-    api.post(f"/applications/{real_app}/package/approve",
-             json={"version": v["version"], "content_hash": v["content_hash"]})
+    api.post(
+        f"/applications/{real_app}/package/approve",
+        json={"version": v["version"], "content_hash": v["content_hash"]},
+    )
     r = api.post(f"/applications/{real_app}/transition", json={"to": "queued"})
     assert r.status_code == 409 and "only supported for local test fixtures" in r.json()["detail"]
     assert api.get(f"/applications/{real_app}/attempts").json() == []
