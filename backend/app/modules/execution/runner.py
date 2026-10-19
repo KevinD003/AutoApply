@@ -16,11 +16,12 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.db import SessionLocal
+from app.core.urlsafety import is_fixture_origin
 from app.modules.documents.models import Document
 from app.modules.documents.storage import get_storage
 from app.modules.execution import service as svc
 from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, UploadFailed
-from app.modules.execution.browser import browser_session
+from app.modules.execution.browser import IsolationUnavailable, browser_session
 from app.modules.execution.faults import fault
 from app.modules.execution.models import ExecutionAttempt
 from app.modules.preparation.models import ApplicationPackage
@@ -66,7 +67,22 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         content, docs = _snapshot(aid)
         adapter = FixtureAtsAdapter(content, docs)
         dest = content["destination"]
-        with browser_session(dest["origin"], s.navigation_timeout_seconds * 1000) as (page, eg):
+        if s.browser_isolation != "netns" and s.env == "production":
+            svc.fail_safe(aid, worker, gen, "browser network isolation is required")
+            return "failed_safe"
+        try:
+            session = browser_session(
+                dest["origin"],
+                s.navigation_timeout_seconds * 1000,
+                isolation=s.browser_isolation,
+                # Local fixture receivers live on loopback; only they get this exception.
+                allow_private_destination=is_fixture_origin(dest["origin"]),
+            )
+            page, eg = session.__enter__()
+        except IsolationUnavailable as e:
+            svc.fail_safe(aid, worker, gen, f"browser isolation unavailable ({e})")
+            return "failed_safe"
+        with _Closing(session):
             beat()
             fault("before_navigate")
             try:
@@ -108,14 +124,19 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             if reason:
                 svc.abandon(aid, worker, gen, reason)
                 return "abandoned"
-            if eg.blocked:
+            denied = eg.proxy_denied()
+            if eg.blocked or denied:
                 origins = sorted({_origin_of(u) for u in eg.blocked})
                 svc.record_evidence(
                     aid,
                     worker,
                     gen,
                     "egress",
-                    {"blocked_requests": len(eg.blocked), "origins": origins},
+                    {
+                        "blocked_requests": len(eg.blocked),
+                        "origins": origins,
+                        "proxy_denied": denied,
+                    },
                 )
             beat()
             fault("before_send_gate")
@@ -146,6 +167,19 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         else:
             svc.unknown(aid, worker, gen, reason)
         return "error"
+
+
+class _Closing:
+    """Exit an already-entered context manager when the block ends."""
+
+    def __init__(self, cm):
+        self.cm = cm
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return self.cm.__exit__(*exc)
 
 
 def _origin_of(url: str) -> str:

@@ -34,6 +34,9 @@ jobs:
           version: "0.11.32"
       - name: Install dependencies
         run: uv sync --frozen --python 3.12
+      - name: Allow unprivileged user namespaces (browser network isolation)
+        # Ubuntu 24.04 restricts them via AppArmor; the browser sandbox needs `unshare -rn`.
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Install Chromium for Playwright (Python)
         run: uv run playwright install --with-deps chromium
       - name: Create test database
