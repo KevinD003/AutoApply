@@ -65,7 +65,8 @@ def test_populated_phase_a_upgrades_with_data_preserved(disposable):
         )
         c.execute(
             text(
-                "insert into candidate_profiles (id,user_id,full_name,residence_country,links,skills,"
+                "insert into candidate_profiles (id,user_id,full_name,residence_country,"
+                "links,skills,"
                 "provenance,approval_status,version,updated_at) values "
                 "(:p,:u,'Sam Synthetic','US','[]','[]','user_entered','approved',3,now())"
             ),
