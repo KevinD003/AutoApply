@@ -4,10 +4,11 @@ NoEfforts is a job-discovery and application platform for any profession. You ke
 reviewed profile, collect jobs (links, spreadsheets, later feeds), and NoEfforts prepares
 applications that you approve before anything is sent.
 
-**Current state:** Phase A (local foundation) works end to end: accounts, profile facts,
-preferences, jobs with duplicate detection, CSV/XLSX import and export, document versions, and
-an application tracker. Automated form filling and submission are **not built yet**. See
-[`docs/implementation-status.md`](docs/implementation-status.md).
+**Current state:** profile, jobs, deterministic answer preparation with approval, and
+automatic submission **to local synthetic test forms only**. No real employer system is
+supported for automatic submission. See
+[`docs/implementation-status.md`](docs/implementation-status.md) and
+[`docs/evidence-matrix.md`](docs/evidence-matrix.md).
 
 ## Repository layout
 
@@ -69,9 +70,12 @@ Then open http://localhost:3000. Data lives in the `pgdata` and `storage` volume
 ## Tests
 
 ```bash
-# Backend: needs a PostgreSQL database for tests (it is wiped on each run)
+# Backend: needs PostgreSQL (database noefforts_test, wiped each run; the migration tests also
+# create and drop noefforts_migration_test) and Redis on localhost. Execution tests start the
+# synthetic receiver (ports 8799/8798) and a real Celery worker themselves.
 createdb noefforts_test
-cd backend && uv run pytest
+cd backend && uv run playwright install chromium   # first time only
+uv run pytest
 uv run ruff check .
 
 # Frontend: typecheck, lint, then end-to-end (needs Postgres + a database named noefforts_e2e)

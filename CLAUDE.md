@@ -20,7 +20,8 @@ Job-discovery and application platform for any profession. Read these first:
 
 ### Layout
 - `backend/` — FastAPI app (`app/main.py`), domain modules in `app/modules/<domain>/`
-  (Phase B lives in `app/modules/preparation/`; answer rules in `docs/answer-policy.md`)
+  (Phase B: `app/modules/preparation/`, answer rules in `docs/answer-policy.md`;
+  Phase C: `app/modules/execution/`, evidence in `docs/evidence-matrix.md`)
   (`models.py`, `router.py`, `service.py`), Alembic in `migrations/`, tests in `tests/`.
 - `frontend/` — Next.js App Router in `src/app/(app)/…`, shared UI in `src/components/`,
   API client in `src/lib/api.ts`, Playwright tests in `e2e/`.
@@ -52,4 +53,11 @@ Job-discovery and application platform for any profession. Read these first:
   not clearly understood must become a checkpoint, never a guess.
 - Changing package content shape changes every package hash (and invalidates approvals): bump
   `SCHEMA_VERSION` in `package.py` deliberately and say so.
-- Kill only processes you have identified as this project's test servers (ports 3100/8100).
+- Kill only processes you have identified as this project's test servers (ports 3100/8100,
+  receiver 8799, canary 8798).
+- Execution: never add a retry after `disclosure_started_at` or `sending`; every worker write
+  must be fenced by `generation`; real employer destinations stay refused until a live adapter
+  has its own capability entry and receiver-style tests. Count outcomes with the receiver
+  ledger (`fixtures/ats_receiver`), never with our own tables.
+- No Playwright tracing or screenshots in execution; evidence stays minimal.
+- Run `uv run ruff format .` after the last edit, not before (CI checks formatting).

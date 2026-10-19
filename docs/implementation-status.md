@@ -1,6 +1,7 @@
 # Implementation status
 
-Last updated: 2026-10-19. Labels: **complete**, **partial**, **blocked**, **not started**,
+Last updated: 2026-10-19 (Phase C validation). For requirement-by-requirement evidence see
+`docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
 ## Commits
@@ -15,7 +16,52 @@ Last updated: 2026-10-19. Labels: **complete**, **partial**, **blocked**, **not 
 | `d5ead14` | Phase B backend + Phase A hardening |
 | `29a1960` | Phase B review screen, saved answers, reconciliation UI |
 
-Tests below were run against `29a1960` (plus this documentation update).
+| `ec9b9b7` | Research notes: environment-specific Tsenta access, Gmail classification unconfirmed |
+| `c79a6d4`, `d5d8baf` | Approval hardening (manifest v2, expiry, row locks, draft deps) + migration tests |
+| `05e45a1` | Synthetic ATS receiver (test oracle) |
+| `8fdeef0` | Durable execution (attempts, outbox, leases, fencing, gates, adapter, checkpoints) |
+| `ebb3e3b` | Failure-injection, race, egress, leak, tenancy and real Celery tests + redirect egress fix |
+| `64a560a` | Submission card in the review UI; CI workflow |
+| `289e0b0` | Formatting fix caught by CI |
+
+Phase A/B tests below were run against `29a1960`. Phase C results are in the next section.
+
+## Phase C validation run (2026-10-19)
+
+| Command | Result |
+|---|---|
+| Baseline at `58ac9ea`: `uv run pytest`, `ruff check`, `ruff format --check` | 95 passed; clean |
+| `cd backend && uv run pytest` at `ebb3e3b` | **145 passed** (158 s) — includes 25 failure-injection, 8 security/egress/checkpoint, 3 real-Celery, 3 migration, 11 approval-hardening tests |
+| `uv run ruff check . && uv run ruff format --check .` at `289e0b0` | clean (`64a560a` failed CI's format check; fixed in `289e0b0`) |
+| `cd frontend && npx tsc --noEmit && npm run lint` | clean |
+| `cd frontend && npx playwright test` | 4 passed (Phase A + B, desktop + mobile); execution UI not covered |
+| GitHub Actions CI | run #2 at `289e0b0`: lint passed; tests in progress at time of writing (run #1 at `64a560a` failed on formatting) |
+| Docker Compose | **untested** — no Docker daemon in the sandbox |
+
+Receiver-counted outcomes (independent ledger), all from `tests/test_execution_failures.py`,
+`tests/test_execution_security.py`, `tests/test_celery_execution.py`:
+
+| Injected event | Attempt / application result | Receiver accepted |
+|---|---|---|
+| Duplicate deliveries (sequential, 3 competing processes, 3 Celery deliveries) on a non-idempotent receiver | 1 confirmed, others ignored | 1 |
+| Crash before any external write | re-pended by sweeper, then confirmed | 1 |
+| Crash after disclosure, before send gate | abandoned, not retried | 0 (1 upload disclosed) |
+| Crash at final-send boundary (process and Celery child) | unknown / submitted_unconfirmed; Celery did not redeliver | 0 |
+| Accepted, response dropped | unknown / submitted_unconfirmed | 1 |
+| Crash after receipt, before local commit | unknown → reconciled as received | 1 |
+| Server error after acceptance / before acceptance | unknown (indistinguishable) | 1 / 0 |
+| Validation failure, expired session | rejected | 0 |
+| Upload failure | abandoned | 0 |
+| Form changed after approval | failed_safe before any disclosure | 0 |
+| Lease loss: old worker resumes after replacement confirmed | old worker: lost_authority | 1 |
+| Lease loss after old worker disclosed | abandoned; no replacement | 0 |
+| Revocation before claim / while preparing / after disclosure | failed_safe / failed_safe / abandoned | 0 |
+| Document or protected fact changed while running | abandoned at send gate | 0 |
+| Cancel before send gate / after send gate | cancelled / refused (409), completes | 0 / 1 |
+| Broker outage after commit (**simulated** publish failure) | outbox retained, later published once | 1 |
+| Code checkpoint: wrong then right, replayed round, other user | confirmed; replay 409; other user 404 | 1 |
+| Code checkpoint expired / 3 wrong codes | abandoned | 0 |
+| Hostile page: img/iframe/fetch/beacon/redirects to another port, metadata IP, RFC1918, IPv6 loopback | confirmed; canary server received 0 requests | 1 |
 
 ## Tests actually run (2026-10-19, cloud sandbox, PostgreSQL 16, Redis 7, Python 3.12, Node 22)
 
@@ -87,9 +133,18 @@ employer.
 | Resume parsing into proposed facts | not started (resolver already ignores proposed facts) | — |
 | Capturing forms from live ATS pages | not started (Phase C; network-blocked here) | — |
 
-## Phase C — Controlled execution: not started
-Adapter contract, browser execution against the local fixtures, one narrowly scoped real
-adapter, confirmation evidence, pause/resume, worker-crash tests.
+## Phase C — Controlled execution: partial (local fixtures only)
+
+| Item | Status |
+|---|---|
+| Durable attempts, outbox, leases, fencing, gates, sweeper | complete for the fixture adapter |
+| Fixture adapter (inspect, extract, fill, upload, readback, checkpoint, submit, confirm) | complete, fixture-only |
+| Verification-code checkpoints | complete (worker holds a slot while waiting, bounded) |
+| Minimal evidence | complete; retention date stored, purge job not built |
+| Browser egress (in-process layers) | complete; **network-level isolation not implemented** |
+| Real employer adapter | **not started** — all real destinations are refused |
+| Execution UI | implemented; not browser-tested |
+| Playwright readback-mismatch path | implemented; not forced by a test |
 
 ## Phase D — Verification and integrations: not started
 Manual code entry, optional Gmail OAuth (personal/testing first; see `docs/research/gmail-oauth.md`),
@@ -106,6 +161,7 @@ spend reporting.
 | Freehire API | read in code and public docs | network-blocked here | no | no |
 | Gmail API | requirements documented | none | no | no |
 | LLM provider | — | no key configured | interface only | fake provider in tests only |
+| Real ATS (Greenhouse, Lever, …) | — | — | no adapter; refused at queue | — |
 | REA | README/docs read | `--help` ran once | not used for any analysis | — |
 
 ## Known limitations

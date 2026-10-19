@@ -123,8 +123,56 @@ Reconciliation: `POST /api/applications/{id}/reconcile` is the only way out of
 checked plus explicit confirmation, moves to `failed_retryable`, and re-queueing still needs a
 fresh approval.
 
+## Execution (Phase C, local fixtures only)
+
+Module `app/modules/execution/`. Only destinations whose origin is listed in
+`NOEFFORTS_FIXTURE_ORIGINS` can be executed, and that setting is ignored in production.
+
+```
+user queues ──(same txn)──> attempt(pending) + outbox row
+relay ── publishes attempt id ──> Redis ──> Celery task ──> claim (CAS, generation+1, lease)
+  → open isolated browser (origin allow-list) → load form → re-extract schema, compare
+  → GATE 1 (before disclosure): REPEATABLE READ + app/attempt row locks; approval live,
+    unexpired, same package hash, freshly rebuilt content identical → disclosure_started_at
+  → fill + upload (evidence: disclosures) → read every control back, compare → re-extract
+  → GATE 2 (before send) — the linearization point → attempt `sending`, app `submitting`
+  → click submit → classify: receipt → confirmed | code requested → checkpoint
+    | refusal → rejected | timeout/error/unrecognised → unknown (submitted_unconfirmed)
+sweeper (beat): expired leases → claimed & nothing disclosed: re-pend (≤2) |
+  claimed & disclosed: abandoned | sending/awaiting_code: unknown. Never re-sends.
+```
+
+Key properties and their limits are in the `service.py` docstring. In short: one active
+attempt per application (partial unique index); one worker per attempt can pass gate 2
+(fencing generation); nothing after gate 2 is retried; this is duplicate suppression on our
+side, not exactly-once delivery at the employer.
+
+Disclosure vs submission: gate 1 authorizes sending the approved data to the named
+destination (filling can transmit via autosave, uploads always do). Gate 2 authorizes the
+final submit. A form that changes (new fields, new submit target) stops the attempt before
+disclosing anything new.
+
+Verification codes: after the submit step, an employer may ask for an emailed code. The
+attempt moves to `awaiting_code`, the application to `needs_user_action`, and a checkpoint
+bound to user, application, attempt and round is opened. The code is stored only until the
+worker reads it, then erased. Wrong codes open a new round (max 3); old rounds are replays.
+The worker keeps its browser open while waiting, bounded by `NOEFFORTS_CHECKPOINT_TTL_SECONDS`.
+
+Evidence policy: receipt id, final origin/path, page title, HTTP status; a readback summary
+(which keys mismatched, never values); disclosures (field, upload id, digest); blocked egress
+origins. No screenshots, traces, cookies, storage state, codes or answer values. Evidence has
+a retention date (`NOEFFORTS_EVIDENCE_RETENTION_DAYS`); purging is not implemented yet.
+
+Browser isolation: see `browser.py`. In-process layers only; a network-namespace egress
+firewall for browser workers is a deployment requirement before any untrusted live browsing.
+
+Test oracle: `fixtures/ats_receiver/` (never deployed) with its own ledger and failure modes.
+
 ## Planned components (not built)
 
+- Live ATS adapters (each needs its own capability entry and receiver-style tests)
+- Network-level egress isolation for browser workers
+- Evidence purging, account export/deletion
 - Execution-provider contract, local fixture ATS, first real adapter, evidence store (Phase C).
 - Manual verification-code entry, optional Gmail OAuth, spend tracking (Phase D).
 

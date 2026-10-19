@@ -87,3 +87,32 @@ Removed the direct `submitted_unconfirmed → queued` transition. Reconciliation
 written statement of what was checked and explicit confirmation, and re-queueing then requires a
 fresh approval. System actors may not re-queue `failed_retryable` until Phase C defines
 provider-specific retry policies for failures known to have sent nothing.
+
+## D16 — Transactional outbox + claim CAS instead of trusting queue semantics
+The attempt and its outbox row are written in the queue transaction. A relay publishes ids;
+a crash between publish and marking dispatched yields a duplicate delivery, which the claim
+compare-and-swap ignores. Celery's `acks_late` / `reject_on_worker_lost=False` only decide
+whether Celery repeats a *task*; they never make an external submission idempotent.
+
+## D17 — Two gates; the send gate is the linearization point
+Gate 1 authorizes disclosure, gate 2 authorizes the click. Both run in REPEATABLE READ under
+the application row lock and recheck approval, expiry, package hash and freshly rebuilt
+content. Revocation, cancellation or edits that commit before gate 2 stop the send; after
+gate 2, cancellation is refused because data may already be in flight.
+
+## D18 — No automatic retry after disclosure or send
+Crashes before disclosure are re-pended (max 2). After disclosure: `abandoned`, the user
+decides. After the send gate: `unknown` → `submitted_unconfirmed` → reconciliation.
+
+## D19 — Minimal evidence, no traces
+Playwright tracing and screenshots are off. Evidence stores receipt ids and summaries only.
+
+## D20 — Destination policy: fixtures only
+Every real employer destination is refused at queue time until a live adapter has its own
+tested capability entry. Fixture origins are ignored in production.
+
+## D21 — Migration history
+Phase A's downgrade was edited earlier to drop enum types. That migration was never deployed,
+so editing it harmed nothing, but from now on fixes go into new migrations. Migration tests run
+on a disposable `*_migration_test` database; the main test suite refuses any database not
+named `*_test`.
