@@ -14,6 +14,9 @@ interface Meta {
 }
 interface Profile extends Partial<Meta> {
   full_name: string | null;
+  given_name: string | null;
+  family_name: string | null;
+  preferred_name: string | null;
   contact_email: string | null;
   phone: string | null;
   residence_country: string | null;
@@ -47,7 +50,7 @@ interface Education extends Meta {
 }
 
 const EMPTY: Profile = {
-  full_name: "", contact_email: "", phone: "", residence_country: "", residence_region: "", residence_city: "",
+  full_name: "", given_name: "", family_name: "", preferred_name: "", contact_email: "", phone: "", residence_country: "", residence_region: "", residence_city: "",
   links: [], skills: [], summary: "",
 };
 
@@ -105,7 +108,9 @@ function ContactCard() {
       const r = await api<Profile>("/profile", {
         method: "PUT",
         json: {
-          full_name: nullify(p.full_name), contact_email: nullify(p.contact_email), phone: nullify(p.phone),
+          full_name: nullify(p.full_name), given_name: nullify(p.given_name),
+          family_name: nullify(p.family_name), preferred_name: nullify(p.preferred_name),
+          contact_email: nullify(p.contact_email), phone: nullify(p.phone),
           residence_country: nullify(p.residence_country), residence_region: nullify(p.residence_region),
           residence_city: nullify(p.residence_city), summary: nullify(p.summary),
           skills: splitList(skills), links: splitList(links),
@@ -125,6 +130,9 @@ function ContactCard() {
       <MetaLine m={p} />
       <form onSubmit={save} className="mt-3 grid gap-3 sm:grid-cols-2">
         <Field label="Full name"><input className={inputCls} value={p.full_name ?? ""} onChange={set("full_name")} autoComplete="name" /></Field>
+        <Field label="First (given) name" hint="Kept separate: NoEfforts never splits your full name."><input className={inputCls} value={p.given_name ?? ""} onChange={set("given_name")} autoComplete="given-name" /></Field>
+        <Field label="Last (family) name"><input className={inputCls} value={p.family_name ?? ""} onChange={set("family_name")} autoComplete="family-name" /></Field>
+        <Field label="Preferred name (optional)"><input className={inputCls} value={p.preferred_name ?? ""} onChange={set("preferred_name")} /></Field>
         <Field label="Contact email"><input className={inputCls} type="email" value={p.contact_email ?? ""} onChange={set("contact_email")} autoComplete="email" /></Field>
         <Field label="Phone"><input className={inputCls} type="tel" value={p.phone ?? ""} onChange={set("phone")} autoComplete="tel" /></Field>
         <Field label="Country you currently live in" hint="Two-letter code, e.g. US, GB, IN. Leave blank if you prefer not to say.">

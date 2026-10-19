@@ -173,7 +173,19 @@ def build_content(db: Session, app: Application) -> dict:
 
 
 def content_hash(content: dict) -> str:
-    return hashlib.sha256(json.dumps(content, sort_keys=True, default=str).encode()).hexdigest()
+    material = content_material(content)
+    return hashlib.sha256(json.dumps(material, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _material(refs: list) -> list:
+    return [{k: v for k, v in r.items() if k != "version"} for r in refs]
+
+
+def content_material(content: dict) -> dict:
+    """Content minus record version counters: what an approval actually depends on."""
+    out = dict(content)
+    out["answers"] = [a | {"fact_refs": _material(a["fact_refs"])} for a in content["answers"]]
+    return out
 
 
 def _summarize(old: dict | None, new: dict) -> list[str]:
@@ -182,8 +194,10 @@ def _summarize(old: dict | None, new: dict) -> list[str]:
     out = []
     for s in SECTIONS:
         if s == "answers":
-            before = {a["key"]: (a["value"], a["source"], a["fact_refs"]) for a in old[s]}
-            after = {a["key"]: (a["value"], a["source"], a["fact_refs"]) for a in new[s]}
+            before = {a["key"]: (a["value"], a["source"], _material(a["fact_refs"]))
+                      for a in old[s]}
+            after = {a["key"]: (a["value"], a["source"], _material(a["fact_refs"]))
+                     for a in new[s]}
             changed = sorted(
                 k for k in before.keys() | after.keys() if before.get(k) != after.get(k)
             )

@@ -159,6 +159,7 @@ def test_protected_fact_change_invalidates_approval(api):
     assert answers(v)["sponsorship_us"]["display"] == "Yes"
     assert v["approval"]["status"] == "invalidated"
     assert "sponsorship_us" in v["approval"]["reason"]
+    assert "work_auth_us" not in v["approval"]["reason"]  # its fact value did not change
     assert v["state"] == "awaiting_approval"  # pulled back out of the queue
     # The old hash can no longer be approved.
     r = api.post(
@@ -210,6 +211,11 @@ def test_unrelated_fact_change_keeps_approval(api):
         json={"version": pkg["version"], "content_hash": pkg["content_hash"]},
     )
     api.post("/profile/education", json={"institution": "Synthetic College"})
+    # Editing an unrelated field on the same profile record does not invalidate either.
+    prof = api.get("/profile").json()
+    keep = {k: prof[k] for k in ("full_name", "given_name", "family_name", "contact_email",
+                                 "phone", "residence_country", "residence_city", "links")}
+    api.put("/profile", json=keep | {"summary": "Updated summary text."})
     v = api.get(f"/applications/{aid}/package").json()
     assert v["approval"]["status"] == "approved"
     assert v["package"]["version"] == pkg["version"]

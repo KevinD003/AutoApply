@@ -110,3 +110,79 @@ export interface Doc {
   origin: string;
   created_at: string;
 }
+
+export interface FormOption {
+  value: string;
+  label: string;
+}
+
+export interface PackageAnswer {
+  key: string;
+  label: string;
+  help_text: string | null;
+  type: string;
+  required: boolean;
+  step: string | null;
+  max_length: number | null;
+  options: FormOption[];
+  status: "resolved" | "needs_user" | "needs_consent" | "blank_optional";
+  source: string;
+  value: Record<string, unknown> | null;
+  display: string | null;
+  explanation: string;
+  fact_refs: { type: string; id: string; version: number | string | null; field: string }[];
+  intent: string;
+  sensitive: boolean;
+  acknowledgment: boolean;
+  protected: boolean;
+  bankable: boolean;
+  user_input_allowed: boolean;
+  draftable: boolean;
+}
+
+export interface PackageView {
+  application_id: string;
+  state: string;
+  package: {
+    id: string;
+    version: number;
+    content_hash: string;
+    created_at: string;
+    change_summary: string[];
+    content: {
+      destination: {
+        job_id: string;
+        employer: string | null;
+        title: string | null;
+        url: string | null;
+        ats_provider: string;
+        form_version: number;
+        form_source: string;
+        form_title: string | null;
+      };
+      documents: { field: string; document_id: string; version: number; display: string }[];
+      answers: PackageAnswer[];
+      consents: Record<string, string>;
+      unresolved: string[];
+      validation_errors: { key: string; message: string }[];
+    };
+  };
+  approval:
+    | { status: "approved"; approved_at: string; version: number }
+    | { status: "invalidated"; approved_at: string; invalidated_at: string; reason: string }
+    | { status: "not_approved" };
+  history: { version: number; created_at: string; change_summary: string[]; was_approved: boolean }[];
+  drafting_available: boolean;
+  drafts: { id: string; field_key: string; text: string; evidence: string[]; provider: string }[];
+}
+
+export interface BankEntry {
+  id: string;
+  question_text: string;
+  answer_shape: string;
+  value: Record<string, unknown>;
+  options_snapshot: string[];
+  sensitive: boolean;
+  version: number;
+  updated_at: string;
+}

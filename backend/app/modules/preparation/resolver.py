@@ -105,7 +105,12 @@ def _approved(obj) -> bool:
 
 
 def _ref(obj, kind: str, attr: str) -> dict:
-    return {"type": kind, "id": str(obj.id), "version": obj.version, "field": attr}
+    """Reference the exact fact value used, so only a change to *that* value alters the package
+    (editing an unrelated field on the same record does not invalidate an approval)."""
+    v = getattr(obj, attr)
+    v = v.value if hasattr(v, "value") else v
+    return {"type": kind, "id": str(obj.id), "version": obj.version, "field": attr,
+            "value": v if isinstance(v, (str, int, float, bool, list, type(None))) else str(v)}
 
 
 def _choice(o: Option) -> dict:

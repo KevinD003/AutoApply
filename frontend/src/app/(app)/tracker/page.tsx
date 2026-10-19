@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 
@@ -31,10 +32,6 @@ const ACTIONS: Record<string, { to: string; label: string; reason?: string }[]> 
   ],
   awaiting_approval: [{ to: "cancelled", label: "Cancel" }],
   needs_user_action: [{ to: "cancelled", label: "Cancel" }],
-  submitted_unconfirmed: [
-    { to: "submitted_confirmed", label: "Mark confirmed", reason: "User confirmed receipt" },
-    { to: "failed_terminal", label: "It never arrived" },
-  ],
 };
 
 const OUTCOMES = ["none", "interviewing", "offer", "rejected", "withdrawn", "no_response"];
@@ -103,6 +100,14 @@ function Tracker() {
           <p className="mb-3 text-sm">
             Status: <Badge tone={tone(open.state)}>{LABEL[open.state] ?? open.state}</Badge>
           </p>
+          {!["draft", "submitted_confirmed", "submitted_unconfirmed", "cancelled"].includes(open.state) && (
+            <p className="mb-3 text-sm">
+              <Link className="text-indigo-700 underline" href={`/applications/${open.id}`}>
+                Open the application review
+              </Link>
+            </p>
+          )}
+          {open.state === "submitted_unconfirmed" && <Reconcile appId={open.id} onDone={setOpen} />}
           <div className="mb-3 flex flex-wrap gap-2">
             {(ACTIONS[open.state] ?? []).map((a) => (
               <Button key={a.to} variant={a.to === "cancelled" ? "danger" : "secondary"} onClick={() => act(open.id, a.to, a.reason)}>
@@ -156,6 +161,55 @@ function Tracker() {
         )}
       </Card>
     </>
+  );
+}
+
+function Reconcile({ appId, onDone }: { appId: string; onDone: (a: Application) => void }) {
+  const [evidence, setEvidence] = useState("");
+  const [confirm, setConfirm] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+
+  async function send(finding: "received" | "not_received") {
+    setError(null);
+    try {
+      onDone(
+        await api<Application>(`/applications/${appId}/reconcile`, {
+          json: { finding, evidence, confirm_not_received: confirm },
+        }),
+      );
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  return (
+    <div className="mb-4 space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+      <p className="font-medium text-amber-900">
+        We do not know whether the employer received this. Check before doing anything else — there is no one-click resubmit.
+      </p>
+      <label className="block">
+        <span className="mb-1 block">What did you check?</span>
+        <textarea
+          className={inputCls}
+          rows={2}
+          value={evidence}
+          onChange={(e) => setEvidence(e.target.value)}
+          placeholder="e.g. Found confirmation email ref 1234 / Called HR on 3 May, nothing on file"
+        />
+      </label>
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} />I checked and the employer did not receive it
+      </label>
+      <ErrorBox error={error} />
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" disabled={evidence.trim().length < 15} onClick={() => send("received")}>
+          It was received
+        </Button>
+        <Button variant="secondary" disabled={evidence.trim().length < 15 || !confirm} onClick={() => send("not_received")}>
+          It was not received
+        </Button>
+      </div>
+    </div>
   );
 }
 

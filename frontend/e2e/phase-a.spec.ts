@@ -59,7 +59,10 @@ test("phase A slice", async ({ page }, info) => {
   await expect(page.getByRole("heading", { name: "Application tracker" })).toBeVisible();
   await page.getByRole("button", { name: "I applied myself" }).click();
   await expect(page.getByText("Submitted (not confirmed)", { exact: true }).first()).toBeVisible();
-  await page.getByRole("button", { name: "Mark confirmed" }).click();
+  // Uncertain outcome: reconciliation requires saying what was checked; no one-click resubmit.
+  await page.getByLabel("What did you check?").fill("Confirmation email received, ref SYN-123");
+  await page.getByRole("button", { name: "It was received" }).click();
+  await expect(page.getByText("Submitted (confirmed)", { exact: true }).first()).toBeVisible();
   await page.getByLabel("Outcome").selectOption("interviewing");
   await expect(page.getByText("outcome: none → interviewing")).toBeVisible();
 
