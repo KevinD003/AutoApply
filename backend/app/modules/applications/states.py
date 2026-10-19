@@ -69,7 +69,7 @@ TRANSITIONS: dict[AppState, dict[AppState, set[Actor]]] = {
     },
     S.needs_user_action: {
         S.running: {U, W},
-        S.preparing: {U},
+        S.preparing: {U, SY},
         S.cancelled: {U},
         S.expired: {SY},
         S.submitted_unconfirmed: {U},
@@ -82,11 +82,14 @@ TRANSITIONS: dict[AppState, dict[AppState, set[Actor]]] = {
     },
     S.submitted_unconfirmed: {
         S.submitted_confirmed: {U, SY},
-        # A user who has checked with the employer that nothing arrived may re-queue.
-        S.queued: {U},
+        # Only the reconciliation service (after the user states what they checked) may make
+        # an uncertain submission retryable. There is no direct path back to `queued`.
+        S.failed_retryable: {SY},
         S.failed_terminal: {U},
     },
-    S.failed_retryable: {S.queued: {SY, U}, S.failed_terminal: {SY, U}, S.cancelled: {U}},
+    # Re-queueing is a user decision (and requires a valid approval). Automatic retry policies
+    # for failures known to have sent nothing are added with the Phase C workers.
+    S.failed_retryable: {S.queued: {U}, S.failed_terminal: {SY, U}, S.cancelled: {U}},
     S.submitted_confirmed: {},
     S.failed_terminal: {},
     S.cancelled: {},

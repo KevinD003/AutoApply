@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>LOCAL TEST FIXTURE — Apply: Clinic Assistant at Example Health Clinic (fictional)</title></head>
+<body>
+<p role="note"><strong>LOCAL TEST FIXTURE.</strong> Example Health Clinic is fictional. This form imitates the
+structure of a typical applicant-tracking-system form for testing NoEfforts. Submissions go nowhere.</p>
+<h1>Clinic Assistant — Example Health Clinic (fictional)</h1>
+<form id="application" method="post" action="#">
+  <section data-step="Personal information">
+    <label for="first_name">First Name</label>
+    <input id="first_name" name="first_name" type="text" required>
+    <label for="last_name">Last Name</label>
+    <input id="last_name" name="last_name" type="text" required>
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" required>
+    <label for="phone">Phone</label>
+    <input id="phone" name="phone" type="tel" required>
+    <label for="country">Country</label>
+    <select id="country" name="country" required>
+      <option value="">Select...</option>
+      <option value="US">United States</option>
+      <option value="CA">Canada</option>
+      <option value="IN">India</option>
+      <option value="GB">United Kingdom</option>
+      <option value="other">Other</option>
+    </select>
+    <label for="city">Location (City)</label>
+    <input id="city" name="city" type="text" required>
+    <label for="linkedin">LinkedIn Profile</label>
+    <input id="linkedin" name="linkedin" type="url">
+  </section>
+  <section data-step="Eligibility">
+    <fieldset name="work_auth_us_group" required>
+      <legend>Are you legally authorized to work in the United States?</legend>
+      <label><input type="radio" name="work_auth_us" value="1"> Yes</label>
+      <label><input type="radio" name="work_auth_us" value="0"> No</label>
+    </fieldset>
+    <fieldset required aria-describedby="sponsor_help">
+      <legend>Will you now or in the future require sponsorship for employment visa status (e.g. H-1B visa status)?</legend>
+      <p id="sponsor_help">Answer for the United States.</p>
+      <label><input type="radio" name="sponsorship_us" value="yes"> Yes</label>
+      <label><input type="radio" name="sponsorship_us" value="no"> No</label>
+    </fieldset>
+    <fieldset>
+      <legend>Are you willing to relocate?</legend>
+      <label><input type="radio" name="relocate" value="yes"> Yes</label>
+      <label><input type="radio" name="relocate" value="no"> No</label>
+    </fieldset>
+  </section>
+  <section data-step="Documents">
+    <label for="resume">Resume/CV</label>
+    <input id="resume" name="resume" type="file" accept=".pdf,.docx" required>
+  </section>
+  <section data-step="Questions">
+    <label for="hear_about">How did you hear about this job?</label>
+    <select id="hear_about" name="hear_about" required>
+      <option value="">Select...</option>
+      <option value="board">Job board</option>
+      <option value="referral">Referral</option>
+      <option value="site">Company website</option>
+      <option value="other">Other</option>
+    </select>
+    <label for="why_us">Why do you want to work at Example Health Clinic?</label>
+    <textarea id="why_us" name="why_us" maxlength="1000"></textarea>
+  </section>
+  <section data-step="Voluntary self-identification">
+    <label for="gender">Gender</label>
+    <select id="gender" name="gender" aria-describedby="eeo_help">
+      <option value="">Select...</option>
+      <option value="w">Woman</option>
+      <option value="m">Man</option>
+      <option value="nb">Non-binary</option>
+      <option value="decline">Decline to self-identify</option>
+    </select>
+    <p id="eeo_help">Completion is voluntary and will not affect your application.</p>
+  </section>
+  <section data-step="Review">
+    <label><input type="checkbox" name="privacy_ack" required> I have read and agree to the privacy notice.</label>
+  </section>
+  <button type="submit">Submit application</button>
+</form>
+</body>
+</html>

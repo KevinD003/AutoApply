@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,7 +13,13 @@ from app.core.db import get_db, utcnow
 from app.core.errors import bad_request, conflict, not_found
 from app.modules.applications.models import Application, ApplicationEvent
 from app.modules.applications.service import transition
-from app.modules.applications.states import Actor, AppState, IllegalTransition, Outcome
+from app.modules.applications.states import (
+    Actor,
+    AppState,
+    IllegalTransition,
+    Outcome,
+    check,
+)
 from app.modules.audit.service import record
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
@@ -28,6 +35,13 @@ class AppCreate(BaseModel):
 class TransitionIn(BaseModel):
     to: AppState
     reason: str | None = Field(default=None, max_length=1000)
+
+
+class ReconcileIn(BaseModel):
+    finding: Literal["received", "not_received"]
+    # What the user actually checked, e.g. "Called the employer's HR on 3 May; no application".
+    evidence: str = Field(min_length=15, max_length=2000)
+    confirm_not_received: bool = False
 
 
 class AppPatch(BaseModel):
@@ -177,6 +191,20 @@ def transition_application(
 ):
     app = _owned(db, user, app_id)
     try:
+        check(app.state, body.to, Actor.user)
+        if body.to == AppState.queued:
+            # Queueing needs a live approval of the *current* package content.
+            from app.modules.preparation.package import (
+                ApprovalError,
+                NoForm,
+                require_valid_approval,
+            )
+
+            try:
+                require_valid_approval(db, app)
+            except (ApprovalError, NoForm) as e:
+                db.commit()
+                raise conflict(str(e)) from None
         transition(db, app, body.to, Actor.user, body.reason)
         record(db, user.id, "application.transition", "application", app.id, to=body.to.value)
         db.commit()
@@ -186,6 +214,44 @@ def transition_application(
     except StaleDataError:
         db.rollback()
         raise conflict("Application changed concurrently; reload and try again") from None
+    return _out(db, app, detail=True)
+
+
+@router.post("/{app_id}/reconcile", response_model=AppDetail)
+def reconcile_application(
+    app_id: uuid.UUID,
+    body: ReconcileIn,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Resolve an uncertain submission. There is no one-click resubmit.
+
+    `received` confirms it. `not_received` requires the user to say what they checked and to
+    confirm explicitly; it then becomes retryable, and re-queueing still needs a fresh approval.
+    """
+    app = _owned(db, user, app_id)
+    if app.state != AppState.submitted_unconfirmed:
+        raise bad_request("Only submissions with an unknown outcome can be reconciled")
+    if body.finding == "received":
+        transition(
+            db,
+            app,
+            AppState.submitted_confirmed,
+            Actor.user,
+            f"Reconciled as received: {body.evidence}",
+        )
+    else:
+        if not body.confirm_not_received:
+            raise bad_request("Confirm that you checked and the employer did not receive it")
+        transition(
+            db,
+            app,
+            AppState.failed_retryable,
+            Actor.system,
+            f"User reconciled as not received: {body.evidence}",
+        )
+    record(db, user.id, "application.reconcile", "application", app.id, finding=body.finding)
+    db.commit()
     return _out(db, app, detail=True)
 
 

@@ -53,12 +53,16 @@ def test_unknown_submission_outcome_never_auto_retries():
         for target in (AppState.queued, AppState.running, AppState.failed_retryable):
             with pytest.raises(IllegalTransition):
                 check(AppState.submitting, target, actor)
-    # From quarantine only an explicit user reconciliation may re-queue.
+    # Quarantine has no path back to queued for anyone; only reconciliation (system, after an
+    # explicit user statement) can make it retryable, and re-queueing then needs approval.
+    for actor in Actor:
+        with pytest.raises(IllegalTransition):
+            check(AppState.submitted_unconfirmed, AppState.queued, actor)
     with pytest.raises(IllegalTransition):
-        check(AppState.submitted_unconfirmed, AppState.queued, Actor.system)
+        check(AppState.submitted_unconfirmed, AppState.failed_retryable, Actor.user)
+    check(AppState.submitted_unconfirmed, AppState.failed_retryable, Actor.system)
     with pytest.raises(IllegalTransition):
-        check(AppState.submitted_unconfirmed, AppState.queued, Actor.worker)
-    check(AppState.submitted_unconfirmed, AppState.queued, Actor.user)
+        check(AppState.failed_retryable, AppState.queued, Actor.system)
 
 
 def test_terminal_states_have_no_exits():

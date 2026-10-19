@@ -483,3 +483,16 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_users_email"), table_name="users")
     op.drop_table("users")
     # ### end Alembic commands ###
+    for name in (
+        "app_actor",
+        "app_outcome",
+        "app_state",
+        "approval_status",
+        "document_kind",
+        "job_source",
+        "job_status",
+        "provenance",
+        "salary_period",
+        "tri_state",
+    ):
+        op.execute(f"DROP TYPE IF EXISTS {name}")

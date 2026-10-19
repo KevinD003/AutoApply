@@ -83,6 +83,10 @@ class CandidateProfile(Base, FactMixin):
         ForeignKey("users.id", ondelete="CASCADE"), unique=True
     )
     full_name: Mapped[str | None] = mapped_column(String(200))
+    # Stored separately because splitting a full name is a guess that fails across cultures.
+    given_name: Mapped[str | None] = mapped_column(String(100))
+    family_name: Mapped[str | None] = mapped_column(String(100))
+    preferred_name: Mapped[str | None] = mapped_column(String(100))
     contact_email: Mapped[str | None] = mapped_column(String(320))
     phone: Mapped[str | None] = mapped_column(String(50))
     # Actual residence. None means unknown; never filled from a target location.

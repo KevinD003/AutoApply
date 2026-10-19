@@ -8,6 +8,7 @@ from app.modules.applications.router import router as applications_router
 from app.modules.documents.router import router as documents_router
 from app.modules.identity.router import router as auth_router
 from app.modules.jobs.router import router as jobs_router
+from app.modules.preparation.router import router as preparation_router
 from app.modules.profiles.router import router as profile_router
 
 
@@ -35,7 +36,14 @@ def create_app() -> FastAPI:
         response.headers.setdefault("Referrer-Policy", "same-origin")
         return response
 
-    for r in (auth_router, profile_router, jobs_router, documents_router, applications_router):
+    for r in (
+        auth_router,
+        profile_router,
+        jobs_router,
+        documents_router,
+        applications_router,
+        preparation_router,
+    ):
         app.include_router(r, prefix="/api")
 
     @app.get("/api/health", tags=["ops"])

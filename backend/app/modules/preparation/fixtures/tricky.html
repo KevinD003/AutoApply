@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>LOCAL TEST FIXTURE — Apply: Dispatcher at Northwind Logistics (fictional)</title></head>
+<body>
+<p role="note"><strong>LOCAL TEST FIXTURE.</strong> Northwind Logistics is fictional. This form contains
+deliberately tricky questions (negation, tense, mismatched options) to test NoEfforts. Submissions go nowhere.</p>
+<h1>Dispatcher — Northwind Logistics (fictional)</h1>
+<form id="application" method="post" action="#">
+  <section data-step="About you">
+    <label for="legal_first">Legal first name</label>
+    <input id="legal_first" name="legal_first" type="text" required>
+    <label for="legal_last">Legal last name</label>
+    <input id="legal_last" name="legal_last" type="text" required>
+    <label for="residence_country">Country of residence</label>
+    <select id="residence_country" name="residence_country" required>
+      <option value="">Select...</option>
+      <option value="ca">Canada</option>
+      <option value="us">United States of America</option>
+      <option value="mx">Mexico</option>
+    </select>
+    <label for="preferred_location">Preferred work location</label>
+    <select id="preferred_location" name="preferred_location" required>
+      <option value="">Select...</option>
+      <option value="tor">Toronto</option>
+      <option value="van">Vancouver</option>
+      <option value="mtl">Montreal</option>
+    </select>
+  </section>
+  <section data-step="Work eligibility">
+    <fieldset required>
+      <legend>Are you authorized to work in Canada without sponsorship?</legend>
+      <label><input type="radio" name="ca_auth_without" value="y"> Yes</label>
+      <label><input type="radio" name="ca_auth_without" value="n"> No</label>
+    </fieldset>
+    <fieldset required>
+      <legend>Do you not require sponsorship to work in Canada?</legend>
+      <label><input type="radio" name="ca_sponsor_negated" value="y"> Yes</label>
+      <label><input type="radio" name="ca_sponsor_negated" value="n"> No</label>
+    </fieldset>
+    <fieldset required>
+      <legend>Will you require visa sponsorship in Canada in the future?</legend>
+      <label><input type="radio" name="ca_sponsor_future" value="y"> Yes</label>
+      <label><input type="radio" name="ca_sponsor_future" value="n"> No</label>
+    </fieldset>
+    <fieldset required>
+      <legend>Will you require sponsorship?</legend>
+      <label><input type="radio" name="sponsor_vague" value="y"> Yes</label>
+      <label><input type="radio" name="sponsor_vague" value="n"> No</label>
+    </fieldset>
+    <fieldset required>
+      <legend>Are you legally eligible to work in the country where this job is located?</legend>
+      <label><input type="radio" name="eligible_here" value="y"> Yes</label>
+      <label><input type="radio" name="eligible_here" value="n"> No</label>
+    </fieldset>
+    <fieldset required>
+      <legend>What is your work authorization status in the United States?</legend>
+      <label><input type="radio" name="us_status" value="citizen"> U.S. citizen or permanent resident</label>
+      <label><input type="radio" name="us_status" value="visa"> Visa holder</label>
+      <label><input type="radio" name="us_status" value="other"> Other</label>
+    </fieldset>
+  </section>
+  <section data-step="Experience">
+    <label for="years">Years of relevant experience</label>
+    <input id="years" name="years" type="number" required>
+    <label for="start_date">Earliest start date</label>
+    <input id="start_date" name="start_date" type="date">
+    <label for="salary">Desired annual salary (USD)</label>
+    <input id="salary" name="salary" type="number">
+    <fieldset>
+      <legend>Which shifts can you work?</legend>
+      <label><input type="checkbox" name="shifts" value="day"> Day</label>
+      <label><input type="checkbox" name="shifts" value="evening"> Evening</label>
+      <label><input type="checkbox" name="shifts" value="night"> Night</label>
+    </fieldset>
+  </section>
+  <section data-step="Consents and self-identification">
+    <fieldset required>
+      <legend>Do you consent to a background check?</legend>
+      <label><input type="radio" name="background_check" value="y"> Yes</label>
+      <label><input type="radio" name="background_check" value="n"> No</label>
+    </fieldset>
+    <label for="veteran">Veteran status</label>
+    <select id="veteran" name="veteran">
+      <option value="">Select...</option>
+      <option value="no">I am not a protected veteran</option>
+      <option value="yes">I identify as a protected veteran</option>
+      <option value="decline">I don't wish to answer</option>
+    </select>
+  </section>
+  <button type="submit">Submit application</button>
+</form>
+</body>
+</html>

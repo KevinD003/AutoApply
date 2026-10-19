@@ -30,6 +30,9 @@ class FactMeta(BaseModel):
 
 class ProfileIn(BaseModel):
     full_name: str | None = Field(default=None, max_length=200)
+    given_name: str | None = Field(default=None, max_length=100)
+    family_name: str | None = Field(default=None, max_length=100)
+    preferred_name: str | None = Field(default=None, max_length=100)
     contact_email: str | None = Field(default=None, max_length=320)
     phone: str | None = Field(default=None, max_length=50)
     residence_country: str | None = None

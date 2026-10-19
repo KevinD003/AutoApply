@@ -7,8 +7,10 @@ added in Phase C behind the execution-provider contract.
 from celery import Celery
 from sqlalchemy import delete
 
+import app.models  # noqa: F401  (register every table before any task runs)
 from app.core.config import get_settings
 from app.core.db import SessionLocal, utcnow
+from app.modules.identity.models import UserSession
 
 settings = get_settings()
 celery_app = Celery("noefforts", broker=settings.redis_url, backend=None)
@@ -24,8 +26,6 @@ celery_app.conf.update(
 
 @celery_app.task(name="noefforts.purge_expired_sessions")
 def purge_expired_sessions() -> int:
-    from app.modules.identity.models import UserSession
-
     with SessionLocal() as db:
         n = db.execute(delete(UserSession).where(UserSession.expires_at < utcnow())).rowcount
         db.commit()
