@@ -15,7 +15,7 @@ implemented in this repository.
 import os
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from playwright.sync_api import sync_playwright
 
@@ -54,11 +54,20 @@ def browser_session(allowed_origin: str, nav_timeout_ms: int):
 
             def route(r):
                 url = r.request.url
-                if url.startswith(("http://", "https://")) and _origin(url) == allowed:
-                    log.allowed += 1
-                    return r.continue_()
-                log.blocked.append(url[:200])
-                return r.abort("blockedbyclient")
+                if not (url.startswith(("http://", "https://")) and _origin(url) == allowed):
+                    log.blocked.append(url[:200])
+                    return r.abort("blockedbyclient")
+                # Redirects followed by the browser are not re-intercepted, so fetch without
+                # following them and refuse any hop that leaves the allowed origin.
+                resp = r.fetch(max_redirects=0)
+                loc = resp.headers.get("location")
+                if 300 <= resp.status < 400 and loc:
+                    target = urljoin(url, loc)
+                    if _origin(target) != allowed:
+                        log.blocked.append(target[:200])
+                        return r.abort("blockedbyclient")
+                log.allowed += 1
+                return r.fulfill(response=resp)
 
             ctx.route("**/*", route)
 

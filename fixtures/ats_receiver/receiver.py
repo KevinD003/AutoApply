@@ -176,6 +176,10 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
         ledger.run("update challenges set done=1 where id=?", (cid,))
         return HTMLResponse(page_receipt(_accept(slug, token, json.loads(fields))))
 
+    @app.get("/redirect-chain")
+    def redirect_chain():
+        return RedirectResponse("/redirect-to-canary", status_code=302)
+
     @app.get("/redirect-to-canary")
     def redirect_to_canary():
         return RedirectResponse(f"{cfg['canary']}/via-redirect", status_code=302)
@@ -220,7 +224,8 @@ def page_form(slug, token, cfg):
             f"<img src='{c}/img' alt=''><iframe src='{c}/iframe' title='x'></iframe>"
             "<img src='http://169.254.169.254/latest/meta-data/' alt=''>"
             "<img src='http://10.0.0.1/' alt=''><img src='http://[::1]/' alt=''>"
-            "<img src='/redirect-to-canary' alt=''>"
+            "<img src='/redirect-to-canary' alt=''><img src='/redirect-chain' alt=''>"
+            "<iframe src='/redirect-chain' title='y'></iframe>"
             f"<script>fetch('{c}/fetch').catch(()=>{{}});"
             f"navigator.sendBeacon && navigator.sendBeacon('{c}/beacon','x');</script>"
         )

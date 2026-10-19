@@ -10,6 +10,7 @@ import hashlib
 import logging
 import time
 import uuid
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 
@@ -107,6 +108,15 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             if reason:
                 svc.abandon(aid, worker, gen, reason)
                 return "abandoned"
+            if eg.blocked:
+                origins = sorted({_origin_of(u) for u in eg.blocked})
+                svc.record_evidence(
+                    aid,
+                    worker,
+                    gen,
+                    "egress",
+                    {"blocked_requests": len(eg.blocked), "origins": origins},
+                )
             beat()
             fault("before_send_gate")
             try:
@@ -120,8 +130,6 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             fault("after_click")
             if out.kind == "otp":
                 return _verification_loop(aid, worker, gen, adapter, page, s)
-            if eg.blocked:
-                log.info("attempt %s: blocked %d off-origin requests", aid, len(eg.blocked))
             return _conclude(aid, worker, gen, adapter, page, out)
     except svc.LostAuthority:
         # Browser is already closed by the context manager. If we had passed the send gate the
@@ -138,6 +146,11 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         else:
             svc.unknown(aid, worker, gen, reason)
         return "error"
+
+
+def _origin_of(url: str) -> str:
+    p = urlsplit(url)
+    return f"{p.scheme}://{p.netloc}" if p.netloc else p.scheme
 
 
 def _conclude(aid, worker, gen, adapter, page, out) -> str:

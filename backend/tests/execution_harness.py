@@ -69,7 +69,11 @@ class Receiver:
 
     def stop(self):
         self.proc.terminate()
-        self.proc.wait(timeout=10)
+        try:
+            self.proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:  # a dropped-response request may still be sleeping
+            self.proc.kill()
+            self.proc.wait(timeout=5)
 
 
 def prepared_application(api, receiver, *, slug="clinic", why_text=None) -> str:
