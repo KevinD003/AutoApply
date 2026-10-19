@@ -1,0 +1,43 @@
+[project]
+name = "noefforts-backend"
+version = "0.1.0"
+description = "NoEfforts API, worker and domain logic"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.32,<1",
+    "sqlalchemy>=2.0.36,<2.1",
+    "psycopg[binary]>=3.2,<4",
+    "alembic>=1.14,<2",
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.6,<3",
+    "email-validator>=2.2,<3",
+    "argon2-cffi>=23.1,<26",
+    "python-multipart>=0.0.18",
+    "openpyxl>=3.1,<4",
+    "celery[redis]>=5.4,<6",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-cov>=6,<8",
+    "httpx>=0.28,<1",
+    "ruff>=0.8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008"]  # FastAPI's Depends()/File()/Query() defaults are the intended idiom
+
+[tool.ruff.lint.per-file-ignores]
+"migrations/*" = ["E501"]

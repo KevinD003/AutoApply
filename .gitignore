@@ -1,0 +1,27 @@
+# Secrets and local data — never commit
+.env
+.env.*
+!.env.example
+backend/var/
+var/
+*.sqlite3
+*.har
+captures/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+.DS_Store
