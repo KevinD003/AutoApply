@@ -269,6 +269,24 @@ def active_approval(db: Session, pkg: ApplicationPackage | None) -> PackageAppro
     )
 
 
+def execution_owns_state(db: Session, app: Application) -> bool:
+    """True while a worker holds an attempt (claimed, sending, or waiting for a verification
+    code). Only the execution service may then change the application's state: during a code
+    wait the state is `needs_user_action`, which preparation would otherwise re-settle to
+    `awaiting_approval` and so re-open submission after the data was already sent."""
+    from app.modules.execution.models import AttemptState, ExecutionAttempt
+
+    held = (AttemptState.claimed, AttemptState.sending, AttemptState.awaiting_code)
+    return (
+        db.scalar(
+            select(ExecutionAttempt.id)
+            .where(ExecutionAttempt.application_id == app.id, ExecutionAttempt.state.in_(held))
+            .limit(1)
+        )
+        is not None
+    )
+
+
 def ensure_current(db: Session, app: Application) -> ApplicationPackage:
     """Return the current package version, writing a new one if inputs changed.
 
@@ -276,7 +294,7 @@ def ensure_current(db: Session, app: Application) -> ApplicationPackage:
     lock_application(db, app.id)
     db.refresh(app)
     latest = latest_package(db, app.id)
-    if app.state not in REBUILDABLE:
+    if app.state not in REBUILDABLE or execution_owns_state(db, app):
         if latest is None:
             raise NoForm("This application has no prepared package.")
         return latest

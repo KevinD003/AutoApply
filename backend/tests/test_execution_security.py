@@ -129,6 +129,35 @@ def test_code_checkpoint_wrong_then_right_code_and_replay(api, receiver, other_a
     assert real not in out + err and FAKE_SECRET not in out + err
 
 
+def test_reads_and_user_actions_during_code_wait_cannot_reopen_submission(api, receiver):
+    """Found by the browser test: the review page's package read used to re-settle the
+    application from the code wait back to awaiting_approval while the approval was still
+    valid, re-enabling Submit after the data had already been sent."""
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    receiver.config(mode="otp")
+    w = start_worker(aid)
+    cp = open_checkpoint(api, app_id, 1)
+    for _ in range(3):  # what the page does on load and on every poll
+        assert api.get(f"/applications/{app_id}/package").status_code == 200
+        assert api.get(f"/applications/{app_id}").json()["state"] == "needs_user_action"
+    for to in ("preparing", "running", "queued"):
+        r = api.post(f"/applications/{app_id}/transition", json={"to": to})
+        assert r.status_code == 409, (to, r.text)
+    assert api.get(f"/applications/{app_id}").json()["state"] == "needs_user_action"
+    real = wait_for(lambda: receiver.ledger()["challenges"])[-1]["code"]
+    assert (
+        api.post(
+            f"/applications/{app_id}/checkpoints/{cp['id']}/code", json={"round": 1, "code": real}
+        ).status_code
+        == 202
+    )
+    out, err = w.communicate(timeout=60)
+    assert out.strip() == "confirmed", err[-800:]
+    assert receiver.ledger()["accepted"] == 1
+    assert api.get(f"/applications/{app_id}").json()["state"] == "submitted_confirmed"
+
+
 def test_code_checkpoint_expiry_stops_without_acceptance(api, receiver):
     app_id = prepared_application(api, receiver)
     aid = queue(api, app_id)

@@ -205,6 +205,10 @@ def transition_application(
             raise bad_request(str(e)) from None
         db.commit()
         return _out(db, app, detail=True)
+    from app.modules.preparation.package import execution_owns_state
+
+    if execution_owns_state(db, app):
+        raise conflict("A submission is in progress; wait for it to finish or cancel it.")
     try:
         check(app.state, body.to, Actor.user)
         if body.to == AppState.queued:
