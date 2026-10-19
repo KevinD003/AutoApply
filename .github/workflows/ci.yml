@@ -19,9 +19,6 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
-      redis:
-        image: redis:7
-        ports: ["6379:6379"]
     defaults:
       run:
         working-directory: backend
@@ -34,6 +31,8 @@ jobs:
           version: "0.11.32"
       - name: Install dependencies
         run: uv sync --frozen --python 3.12
+      - name: Redis (service on 6379; the broker-failure tests also start their own disposable one)
+        run: sudo apt-get update -q && sudo apt-get install -y -q redis-server && redis-cli ping
       - name: Allow unprivileged user namespaces (browser network isolation)
         # Ubuntu 24.04 restricts them via AppArmor; the browser sandbox needs `unshare -rn`.
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
@@ -56,6 +55,9 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -66,9 +68,11 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Backend dependencies (the e2e run starts the API)
+      - name: Backend dependencies (the e2e run starts the API, a worker and the receiver)
         working-directory: backend
-        run: uv sync --frozen --python 3.12
+        run: uv sync --frozen --python 3.12 && uv run playwright install chromium
+      - name: Allow unprivileged user namespaces (the worker's browser runs in its own netns)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Create e2e database
         run: psql -h 127.0.0.1 -U postgres -c "create database noefforts_e2e"
       - name: Install

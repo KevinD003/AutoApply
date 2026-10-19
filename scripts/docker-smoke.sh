@@ -3,7 +3,14 @@
 # Uses its own compose project name and removes its volumes at the end (disposable data only).
 set -euo pipefail
 export COMPOSE_PROJECT_NAME=noefforts_smoke
-cleanup() { docker compose down -v --remove-orphans >/dev/null 2>&1 || true; }
+cleanup() {
+  rc=$?
+  if [ "$rc" != 0 ]; then
+    docker compose ps -a || true
+    docker compose logs --no-color --tail 80 || true
+  fi
+  docker compose down -v --remove-orphans >/dev/null 2>&1 || true
+}
 trap cleanup EXIT
 
 docker compose up -d --build
