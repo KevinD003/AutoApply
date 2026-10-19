@@ -1,13 +1,24 @@
 import { defineConfig } from "@playwright/test";
 
-// End-to-end tests drive the real Next.js app against the real FastAPI backend and a dedicated
-// PostgreSQL database (NOEFFORTS_E2E_DATABASE_URL). All data is synthetic.
+// End-to-end tests drive the real Next.js app against the real FastAPI backend, a real Celery
+// worker (with beat) and the synthetic ATS receiver, on a dedicated PostgreSQL database
+// (NOEFFORTS_E2E_DATABASE_URL). All data is synthetic; nothing leaves this machine.
 const db = process.env.NOEFFORTS_E2E_DATABASE_URL ?? "postgresql+psycopg://postgres@127.0.0.1:5432/noefforts_e2e";
-const backendEnv = { NOEFFORTS_DATABASE_URL: db, NOEFFORTS_STORAGE_DIR: "/tmp/noefforts-e2e-storage" };
+export const RECEIVER = "http://127.0.0.1:8799";
+export const RECEIVER_TOKEN = "e2e-receiver-admin-token"; // test-only receiver admin token
+const backendEnv = {
+  NOEFFORTS_DATABASE_URL: db,
+  NOEFFORTS_STORAGE_DIR: "/tmp/noefforts-e2e-storage",
+  NOEFFORTS_FIXTURE_ORIGINS: JSON.stringify([RECEIVER]),
+  NOEFFORTS_SUBMIT_TIMEOUT_SECONDS: "20",
+  NOEFFORTS_CHECKPOINT_TTL_SECONDS: "90",
+  NOEFFORTS_OUTBOX_RELAY_INTERVAL_SECONDS: "1",
+  NOEFFORTS_REDIS_URL: process.env.NOEFFORTS_E2E_REDIS_URL ?? "redis://127.0.0.1:6379/5",
+};
 
 export default defineConfig({
   testDir: "./e2e",
-  timeout: 60_000,
+  timeout: 120_000,
   retries: 0,
   workers: 1,
   use: {
@@ -21,9 +32,25 @@ export default defineConfig({
   ],
   webServer: [
     {
+      // Fresh ledger per run: the receiver is the oracle, so stale rows must not carry over.
+      command: `rm -f /tmp/noefforts-e2e-ledger.db && uv run python ../fixtures/ats_receiver/receiver.py --port 8799 --ledger /tmp/noefforts-e2e-ledger.db --admin-token ${RECEIVER_TOKEN}`,
+      cwd: "../backend",
+      url: `${RECEIVER}/apply/health-check`,
+      reuseExistingServer: false,
+      timeout: 60_000,
+    },
+    {
       command: "uv run alembic upgrade head && uv run uvicorn app.main:app --port 8100",
       cwd: "../backend",
       url: "http://127.0.0.1:8100/api/health",
+      env: backendEnv,
+      reuseExistingServer: false,
+      timeout: 60_000,
+    },
+    {
+      command: "uv run python scripts/e2e_worker.py 8797",
+      cwd: "../backend",
+      url: "http://127.0.0.1:8797/",
       env: backendEnv,
       reuseExistingServer: false,
       timeout: 60_000,

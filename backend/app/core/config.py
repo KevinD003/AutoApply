@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # Redis redelivers an unacknowledged message after this long. Production keeps 3600s; only
     # the redelivery test shortens it, for a disposable broker.
     broker_visibility_timeout_seconds: int = 3600
+    outbox_relay_interval_seconds: float = 5.0
     # Browser network isolation: "netns" (default; required in production) runs Chromium in
     # its own network namespace whose only way out is the allow-listing egress proxy. "off" is
     # accepted only outside production, for machines without namespace support.

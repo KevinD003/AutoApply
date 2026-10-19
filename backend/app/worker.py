@@ -50,7 +50,10 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     beat_schedule={
         "purge-expired-sessions": {"task": "noefforts.purge_expired_sessions", "schedule": 3600.0},
-        "relay-outbox": {"task": "noefforts.relay_outbox", "schedule": 5.0},
+        "relay-outbox": {
+            "task": "noefforts.relay_outbox",
+            "schedule": settings.outbox_relay_interval_seconds,
+        },
         "sweep-attempts": {"task": "noefforts.sweep_attempts", "schedule": 15.0},
         "purge-expired-evidence": {"task": "noefforts.purge_expired_evidence", "schedule": 86400.0},
     },

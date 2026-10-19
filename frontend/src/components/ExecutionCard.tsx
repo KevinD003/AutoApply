@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, AttemptView } from "@/lib/api";
 import { Badge, Button, Card, ErrorBox, inputCls, Notice } from "./ui";
@@ -28,16 +28,25 @@ export default function ExecutionCard({ appId, appState, approved, onChange }: {
     api<AttemptView[]>(`/applications/${appId}/attempts`).then(setAttempts).catch(setError);
   }, [appId]);
 
+  const active = attempts.some((a) => ["pending", "claimed", "sending", "awaiting_code"].includes(a.state));
+  const wasActive = useRef(false);
+
   useEffect(() => {
     load();
-    const active = attempts.some((a) => ["pending", "claimed", "sending", "awaiting_code"].includes(a.state));
+  }, [load]);
+
+  useEffect(() => {
+    // When an attempt reaches its final state, refresh the application once more so its status
+    // and actions match the attempt (polling stops here).
+    if (wasActive.current && !active) onChange();
+    wasActive.current = active;
     if (!active) return;
     const t = setInterval(() => {
       load();
       onChange();
     }, 3000);
     return () => clearInterval(t);
-  }, [load, onChange, attempts]);
+  }, [active, load, onChange]);
 
   async function act(fn: () => Promise<unknown>, ok: string) {
     setError(null);
