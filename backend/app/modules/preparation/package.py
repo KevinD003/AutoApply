@@ -194,10 +194,10 @@ def _summarize(old: dict | None, new: dict) -> list[str]:
     out = []
     for s in SECTIONS:
         if s == "answers":
-            before = {a["key"]: (a["value"], a["source"], _material(a["fact_refs"]))
-                      for a in old[s]}
-            after = {a["key"]: (a["value"], a["source"], _material(a["fact_refs"]))
-                     for a in new[s]}
+            before = {
+                a["key"]: (a["value"], a["source"], _material(a["fact_refs"])) for a in old[s]
+            }
+            after = {a["key"]: (a["value"], a["source"], _material(a["fact_refs"])) for a in new[s]}
             changed = sorted(
                 k for k in before.keys() | after.keys() if before.get(k) != after.get(k)
             )

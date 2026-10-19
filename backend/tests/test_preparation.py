@@ -213,8 +213,19 @@ def test_unrelated_fact_change_keeps_approval(api):
     api.post("/profile/education", json={"institution": "Synthetic College"})
     # Editing an unrelated field on the same profile record does not invalidate either.
     prof = api.get("/profile").json()
-    keep = {k: prof[k] for k in ("full_name", "given_name", "family_name", "contact_email",
-                                 "phone", "residence_country", "residence_city", "links")}
+    keep = {
+        k: prof[k]
+        for k in (
+            "full_name",
+            "given_name",
+            "family_name",
+            "contact_email",
+            "phone",
+            "residence_country",
+            "residence_city",
+            "links",
+        )
+    }
     api.put("/profile", json=keep | {"summary": "Updated summary text."})
     v = api.get(f"/applications/{aid}/package").json()
     assert v["approval"]["status"] == "approved"
