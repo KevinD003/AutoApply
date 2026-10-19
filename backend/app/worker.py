@@ -8,7 +8,10 @@ Delivery settings (Celery 5.6.3, kombu 5.6.2, Redis transport, prefork pool):
                                    database leases, so a killed worker never causes Celery to
                                    re-run a task that may have reached the submit click;
   worker_prefetch_multiplier=1     one reserved task per process;
-  visibility_timeout=3600          Redis redelivers unacknowledged messages after an hour;
+  visibility_timeout=3600          Redis redelivers unacknowledged messages after an hour
+                                   (NOEFFORTS_BROKER_VISIBILITY_TIMEOUT_SECONDS; tests only
+                                   shorten it on a disposable broker);
+  publish retry: 2 quick retries   then the relay leaves the outbox row for the next tick;
   soft/hard time limits            240s / 300s per task.
 None of these settings makes an external submission idempotent. Duplicate deliveries are made
 harmless by the claim compare-and-swap; sends are never repeated by the queue (see
@@ -34,7 +37,16 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     task_soft_time_limit=240,
     task_time_limit=300,
-    broker_transport_options={"visibility_timeout": 3600},
+    broker_transport_options={"visibility_timeout": settings.broker_visibility_timeout_seconds},
+    # Publishing gives up quickly when the broker is down; the outbox row stays undispatched
+    # and the next relay tick tries again. Nothing is lost, nothing blocks.
+    task_publish_retry=True,
+    task_publish_retry_policy={
+        "max_retries": 2,
+        "interval_start": 0,
+        "interval_step": 0.5,
+        "interval_max": 1,
+    },
     broker_connection_retry_on_startup=True,
     beat_schedule={
         "purge-expired-sessions": {"task": "noefforts.purge_expired_sessions", "schedule": 3600.0},

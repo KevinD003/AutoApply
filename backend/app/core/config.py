@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     submit_timeout_seconds: int = 30
     navigation_timeout_seconds: int = 20
     evidence_retention_days: int = 365
+    # Redis redelivers an unacknowledged message after this long. Production keeps 3600s; only
+    # the redelivery test shortens it, for a disposable broker.
+    broker_visibility_timeout_seconds: int = 3600
 
     # Optional integrations. Absent credentials disable the feature rather than failing.
     anthropic_api_key: str | None = None
