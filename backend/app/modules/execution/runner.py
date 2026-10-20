@@ -22,13 +22,18 @@ from app.modules.documents.storage import get_storage
 from app.modules.execution import service as svc
 from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, UploadFailed
 from app.modules.execution.adapters.greenhouse import GreenhouseHostedAdapter
+from app.modules.execution.adapters.greenhouse_dom import GreenhouseDomAdapter
 from app.modules.execution.browser import IsolationUnavailable, browser_session
 from app.modules.execution.faults import fault
 from app.modules.execution.models import ExecutionAttempt
 from app.modules.preparation.models import ApplicationPackage
 
 # Keyed by the adapter recorded on the attempt when it was queued (policy.adapter_for).
-ADAPTERS = {"fixture_ats": FixtureAtsAdapter, "greenhouse_hosted": GreenhouseHostedAdapter}
+ADAPTERS = {
+    "fixture_ats": FixtureAtsAdapter,
+    "greenhouse_hosted": GreenhouseHostedAdapter,
+    "greenhouse_dom": GreenhouseDomAdapter,
+}
 
 log = logging.getLogger("noefforts.execution")
 

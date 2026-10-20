@@ -122,6 +122,11 @@ export default function ReviewPage() {
             <Badge tone="amber">Greenhouse-style form — local test approximation, fictional employer</Badge>
           </p>
         )}
+        {c.destination.form_source === "greenhouse_api_dom" && (
+          <p className="mt-2">
+            <Badge tone="amber">Greenhouse-style form (id-mapped) — second local test approximation, fictional employer</Badge>
+          </p>
+        )}
       </Card>
 
       <Card title="Status">

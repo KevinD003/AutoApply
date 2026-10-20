@@ -1,6 +1,6 @@
 """Which destinations may be executed, and by which adapter.
 
-Two adapters exist, both for local synthetic fixtures only and only outside production. Every
+Three adapters exist, all for local synthetic fixtures only and only outside production. Every
 real employer destination is refused: no adapter has been verified against a real employer.
 """
 
@@ -51,6 +51,39 @@ CAPABILITIES: dict[str, dict] = {
         ],
         "tested_against": ["fixtures/ats_receiver/greenhouse_like.py"],
     },
+    "greenhouse_dom": {
+        "description": (
+            "Greenhouse-style hosted form whose controls have ids but no names, with ARIA "
+            "comboboxes (structure observed at load on one real posting). Verified only against "
+            "a second labelled local approximation, not against any real employer's form."
+        ),
+        "environments": ["development", "test"],
+        "inspect": True,  # job post JSON mapped to page controls by id + accessible name
+        "extract": True,
+        "fill": True,  # text, email, phone, textarea, single-choice combobox
+        "upload": True,  # attachments uploaded when chosen (counted as disclosures)
+        "checkpoint": True,  # unsupported controls and unknown conditions stop at preparation
+        "submit": True,
+        "confirm": True,  # confirmation message (no application id is shown)
+        "real_destinations": False,
+        # Each is a fixture assumption; none has been seen working on a real form.
+        "unverified": {
+            "combobox": "synthetic: opened by click, options in the DOM, value read back",
+            "attachments": "synthetic: upload endpoint, status element and attachment ids",
+            "submission": "synthetic: JSON POST to the form's submit path",
+            "confirmation": "synthetic: a status message replacing the form",
+            "conditions": "synthetic: hidden-at-load questions with no visible trigger",
+        },
+        "unsupported": [
+            "CAPTCHA or bot checks (stop, never bypassed)",
+            "location search pickers and hidden coordinates",
+            "multi-choice comboboxes",
+            "questions shown by page logic NoEfforts cannot see",
+            "security-code steps",
+            "pasting text instead of attaching a document",
+        ],
+        "tested_against": ["fixtures/ats_receiver/greenhouse_v2.py"],
+    },
 }
 
 
@@ -77,4 +110,6 @@ def adapter_for(destination: dict) -> str:
         raise UnsupportedDestination("The form submits to a different site than the job page.")
     if destination.get("form_source") == "greenhouse_api":
         return "greenhouse_hosted"
+    if destination.get("form_source") == "greenhouse_api_dom":
+        return "greenhouse_dom"
     return "fixture_ats"

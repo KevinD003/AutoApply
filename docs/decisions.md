@@ -150,3 +150,19 @@ package answers (`condition`, `unsupported_reason`) only when present, so the co
 every existing package are unchanged and `SCHEMA_VERSION` stays 2. A condition that is not met
 makes the question "not asked" (nothing entered or sent); an unsupported required control blocks
 approval; neither is ever guessed.
+
+## D27 — Id-only Greenhouse pages: map by evidence, refuse anything ambiguous
+A real posting (read-only run #3) rendered controls with ids but no `name` attributes, and ARIA
+comboboxes instead of native selects. When the original extractor finds no named fields, the
+job post JSON is mapped to the page instead (`greenhouse_dom`). A field counts only if exactly
+one control has its name as `id`, the element or role suits the type, and the accessible name
+equals the label. Absent, ambiguous or mismatched fields refuse the form. Execution re-proves
+every mapping, the combobox options and the submit path before disclosing anything.
+Unobservable behaviour is never guessed:
+- a question hidden at load has an unknown trigger (`Condition(key="unknown-trigger")`), so it
+  is never filled, and a checkpoint if required;
+- a text question rendered as a search picker is unsupported;
+- multi-choice comboboxes are unsupported.
+The package shape is unchanged: only a new `form_source` value and existing condition fields
+are used, so `SCHEMA_VERSION` stays 2 and no approval is invalidated. Fixture-only, with
+`real_destinations: false`.

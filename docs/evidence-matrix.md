@@ -9,6 +9,32 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Id-only page mapping, v2 fixture and adapter, output privacy (2026-10-20)
+
+Everything here is **local fixture evidence**. Nothing in this section touched Greenhouse or
+any real employer, and none of it shows that a real page can be filled or submitted.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Unique, labelled, type-suited control per API field | `test_every_api_field_maps_to_exactly_one_labelled_control` | 12/12 mapped on v2 job 5020001 |
+| Ambiguous / mislabelled / missing controls refused | `test_ambiguous_or_mismatched_mappings_are_rejected` (3 modes); capture 409 | refused, never guessed |
+| Search picker and hidden coordinates not filled | `test_text_question_rendered_as_search_picker_is_unsupported_not_typed`, `test_location_job_is_a_checkpoint` | unsupported → checkpoint |
+| Preferred name, unknown conditions not guessed | `test_preferred_name_and_unknown_condition_are_not_guessed` | `needs_user`; conditional value `None` |
+| Notice is not consent | `test_notice_is_not_a_field_and_no_consent_is_invented` | no checkbox invented |
+| Full run, values verified at the receiver | `test_full_run_sends_exactly_the_approved_values` | combobox values `1`/`913`/`0`, preferred name as typed, upload digest = approved, readback 0 mismatches |
+| Combobox value readback | `test_combobox_that_does_not_keep_its_choice_is_caught_by_readback` | abandoned, 0 acceptances |
+| Drift after approval stops before disclosure | `test_drift_after_approval_stops_before_anything_is_disclosed` (5 modes: duplicate id, label, missing, new question, swapped options) | failed_safe, 0 disclosures |
+| Outcomes, no retry | `test_outcome_classification` (6 modes) | rejected / unknown / abandoned as listed; second delivery ignored |
+| Original fixture and routing unchanged | `test_greenhouse_adapter.py`, `test_original_fixture_still_routes_to_the_original_adapter` | passed |
+| Output privacy (allowlist, aliases, guard) | `test_success_output_has_aliases_and_no_markers`, `test_failure_paths_print_types_only`, `test_guard_rejects_unknown_strings_and_derived_values` | no marker on success or failure paths; suppressed output on a guard failure |
+| Mapping evidence collector (B2 code) | `test_mapping_evidence_on_the_v2_fixture`, `..._reports_ambiguous_and_absent_explicitly`, `test_blocked_dependency_marks_rendering_possibly_incomplete` | per-field ids, labels, roles, visibility; denied script → "may be incomplete" |
+| Same collector in the isolated container | Compose `s_readonly_mapping_in_container` | runs in CI (see the status doc) |
+| UI, desktop + mobile | e2e "Greenhouse-style v2 form …" | see the status doc |
+
+Fixture assumptions (not observed on any real page): how comboboxes open and select, option
+values, the upload endpoint and status element, JSON submission, the confirmation message and
+condition triggers.
+
 ## Read-only Greenhouse check: code and fixture evidence (2026-10-20)
 
 - **Approval.** The user approved permissions A and B for one posting, on condition that no

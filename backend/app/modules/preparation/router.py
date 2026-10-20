@@ -192,15 +192,24 @@ def capture_greenhouse_form(
             "Reading real Greenhouse job posts is not enabled in this version; it needs separate "
             "approval. Apply on the employer's site and record it in the tracker."
         )
+    from app.modules.preparation import greenhouse_dom
+
+    source, extraction = "greenhouse_api", gh.EXTRACTION_VERSION
     try:
         api = json.loads(_fetch_fixture(gh.api_url(posting, origin)))
         page = _fetch_fixture(url).decode("utf-8", "replace")
-        schema = gh.build_schema(api, page)
+        try:
+            schema = gh.build_schema(api, page)
+        except ExtractionError:
+            # No named controls (the structure seen on a real hosted page): map by id, label
+            # and role instead, refusing anything absent or ambiguous.
+            schema, _ = greenhouse_dom.build_schema(api, page)
+            source, extraction = "greenhouse_api_dom", greenhouse_dom.EXTRACTION_VERSION
     except gh.SchemaMismatch as e:
         raise conflict(f"Could not capture the form: {e}") from None
     except (OSError, ValueError, ExtractionError, ValidationError) as e:
         raise bad_request(f"Could not read the job post ({type(e).__name__})") from None
-    return _store_form(db, user, job, schema, "greenhouse_api", posting.ref, gh.EXTRACTION_VERSION)
+    return _store_form(db, user, job, schema, source, posting.ref, extraction)
 
 
 def _form_out(form) -> dict:

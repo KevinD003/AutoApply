@@ -1,0 +1,341 @@
+"""SECOND APPROXIMATION of a Greenhouse-hosted form ("v2"): test-only; never deploy.
+
+Original local HTML/JS. It models the STRUCTURE observed on one real hosted posting in a
+read-only run (docs/greenhouse-compatibility-report.md). It is not Greenhouse code or markup
+and makes no claim that its behaviour reproduces the real implementation.
+
+Observed on the real page (one posting, at load):
+  * one <form>; controls carry an `id` but NO `name` attribute;
+  * no native <select>; choice questions are ARIA comboboxes (`role=combobox`);
+  * a file input per attachment question; textarea alternatives not visible at load;
+  * job data: `preferred_name` required, `data_compliance` with `requires_consent: false`, an
+    AI-use disclaimer, and a location question with required hidden latitude/longitude.
+
+FIXTURE ASSUMPTIONS (not observed; invented for local tests and labelled as such):
+  * control ids equal the API field names and labels use <label for> / aria-labelledby;
+  * combobox = editable <input role=combobox> + <ul role=listbox> of <li role=option>, opened
+    by click, selection shown as the input's value with aria-selected on the option;
+  * a conditional question's wrapper is `hidden` until its trigger has a given answer, and the
+    page exposes nothing that says which answer (so tools cannot know the trigger);
+  * attachments upload on change via fetch to /attachments; submission is a JSON POST to the
+    path in the form's `data-submit-path`; success replaces the form with role=status text;
+  * the location picker searches as you type and fills hidden coordinates.
+
+Routes (on the synthetic receiver; same ledger):
+  GET  /gh2-api/robots.txt, /gh2-api/v1/boards/{board}, /gh2-api/v1/boards/{board}/jobs/{id}
+  GET  /gh2/{board}/jobs/{id}              hosted form (v2 structure)
+  POST /gh2/{board}/jobs/{id}/attachments  upload (a disclosure)
+  POST /gh2/{board}/jobs/{id}/submit       application (an acceptance)
+Modes (cfg["mode"]): gh2_duplicate_id, gh2_label_mismatch, gh2_missing_control,
+gh2_validation_fail, gh2_new_question, gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, plus the
+receiver-wide upload_fail, error_before_accept, error_after_accept, drop_after_accept.
+All employers, jobs and people are fictional.
+"""
+
+import asyncio
+import hashlib
+import html
+import json
+import secrets
+import time
+
+from fastapi import HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+
+YES_NO = [{"value": 1, "label": "Yes"}, {"value": 0, "label": "No"}]
+COUNTRIES = [{"value": 900 + i, "label": c} for i, c in enumerate(
+    ["Argentina", "Australia", "Brazil", "Canada", "France", "Germany", "India", "Japan",
+     "Kenya", "Mexico", "Nigeria", "Spain", "United Kingdom", "United States"])]
+AI_NOTICE = ("This employer may use automated tools to help review applications. "
+             "You can ask for a human review instead.")
+
+
+def _q(label, name, ftype, required=False, values=None, description=None):
+    return {"label": label, "required": required, "description": description,
+            "fields": [{"name": name, "type": ftype, "values": values or []}]}
+
+
+def _standard():
+    return [
+        _q("First Name", "first_name", "input_text", True),
+        _q("Last Name", "last_name", "input_text", True),
+        _q("Preferred First Name", "preferred_name", "input_text", True),
+        _q("Email", "email", "input_text", True),
+        _q("Phone", "phone", "input_text", True),
+        {"label": "Resume/CV", "required": True, "description": None, "fields": [
+            {"name": "resume", "type": "input_file", "values": []},
+            {"name": "resume_text", "type": "textarea", "values": []}]},
+        {"label": "Cover Letter", "required": False, "description": None, "fields": [
+            {"name": "cover_letter", "type": "input_file", "values": []},
+            {"name": "cover_letter_text", "type": "textarea", "values": []}]},
+        _q("Are you legally authorized to work in the country where this role is based?",
+           "question_8101", "multi_value_single_select", True, YES_NO),
+        _q("Country of residence", "question_8102", "multi_value_single_select", True,
+           COUNTRIES),
+        _q("LinkedIn Profile", "question_8103", "input_text"),
+        _q("Have you worked for Northwind Example before?", "question_8104",
+           "multi_value_single_select", True, YES_NO),
+        # Conditional (shown when question_8104 is "Yes"); the page does not say so.
+        _q("Which team did you work in?", "question_8105", "input_text", False),
+    ]
+
+
+def _jobs():
+    gdpr = [{"type": "gdpr", "requires_consent": False, "requires_processing_consent": False,
+             "requires_retention_consent": False, "retention_period": None}]
+    base = {"company_name": "Northwind Example (fictional)", "data_compliance": gdpr,
+            "location": "Riverton"}
+    return {
+        ("northwind", "5020001"): {**base, "title": "Support Specialist",
+                                   "questions": _standard(), "location_questions": []},
+        ("northwind", "5020002"): {**base, "title": "Field Technician",
+                                   "questions": _standard()[:7], "location_questions": [
+                                       _q("Location (City)", "location", "input_text", True),
+                                       _q("Latitude", "latitude", "input_hidden", True),
+                                       _q("Longitude", "longitude", "input_hidden", True)]},
+    }
+
+
+JOBS = _jobs()
+CONDITIONS = {"question_8105": ("question_8104", "1")}
+
+
+def _api_json(board, job_id, base):
+    j = JOBS[(board, job_id)]
+    return {
+        "id": int(job_id), "title": j["title"], "company_name": j["company_name"],
+        "location": {"name": j["location"]}, "requisition_id": f"REQ-{job_id}",
+        "internal_job_id": 7000 + int(job_id) % 1000,
+        "absolute_url": f"{base}/gh2/{board}/jobs/{job_id}",
+        "content": "&lt;p&gt;Synthetic job description (fictional employer).&lt;/p&gt;",
+        "questions": j["questions"], "location_questions": j["location_questions"],
+        "data_compliance": j["data_compliance"], "compliance": [], "demographic_questions": {},
+        "include_ai_disclaimer": True, "ai_disclaimer": AI_NOTICE,
+        "ai_opt_out_request_url": f"{base}/gh2/{board}/ai-opt-out",
+        "application_deadline": None, "departments": [], "offices": [], "metadata": [],
+        "language": "en", "first_published": "2026-10-01T00:00:00Z",
+        "updated_at": "2026-10-01T00:00:00Z",
+    }
+
+
+def _label(qid, text, required, for_id=True):
+    star = '<span aria-hidden="true">*</span>' if required else ""
+    attr = f' for="{qid}"' if for_id else ""
+    return f'<label id="{qid}-label"{attr}>{html.escape(text)}{star}</label>'
+
+
+def _render(q, mode) -> str:
+    f = q["fields"][0]
+    qid, t, req = f["name"], f["type"], q["required"]
+    label_text = q["label"]
+    if mode == "gh2_label_mismatch" and qid == "question_8101":
+        label_text = "Do you need a visa?"
+    if mode == "gh2_missing_control" and qid == "question_8103":
+        return ""
+    areq = ' aria-required="true"' if req else ""
+    if t == "input_hidden":
+        return f'<input type="hidden" id="{qid}">'
+    if t == "input_file":
+        alt = q["fields"][1]["name"] if len(q["fields"]) > 1 else None
+        alt_html = (f'<button type="button" class="manual-toggle" data-for="{alt}">'
+                    f'Enter manually</button><textarea id="{alt}" hidden '
+                    f'aria-labelledby="{qid}-label"></textarea>') if alt else ""
+        return (f'<div class="field" role="group" aria-labelledby="{qid}-label">'
+                f'{_label(qid, label_text, req, for_id=False)}'
+                f'<input type="file" id="{qid}" aria-labelledby="{qid}-label"{areq} '
+                f'accept=".pdf,.doc,.docx,.txt,.rtf"><span id="{qid}-status" '
+                f'class="attachment-status"></span>{alt_html}</div>')
+    if t == "multi_value_single_select":
+        values = f["values"]
+        if mode == "gh2_options_changed" and qid == "question_8101":
+            values = [{"value": 0, "label": "Yes"}, {"value": 1, "label": "No"}]  # swapped
+        opts = "".join(f'<li role="option" id="{qid}-opt-{v["value"]}" data-value="{v["value"]}"'
+                       f' aria-selected="false">{html.escape(v["label"])}</li>'
+                       for v in values)
+        dup = (f'<input type="text" id="{qid}" aria-label="duplicate">'
+               if mode == "gh2_duplicate_id" and qid == "question_8101" else "")
+        return (f'<div class="field select">{_label(qid, label_text, req)}'
+                f'<input type="text" id="{qid}" role="combobox" aria-autocomplete="list" '
+                f'aria-expanded="false" aria-controls="{qid}-listbox" autocomplete="off"{areq}>'
+                f'<ul id="{qid}-listbox" role="listbox" aria-labelledby="{qid}-label" hidden>'
+                f'{opts}</ul>{dup}</div>')
+    if qid == "location":
+        return (f'<div class="field location">{_label(qid, label_text, req)}'
+                f'<input type="text" id="{qid}" role="combobox" aria-autocomplete="list" '
+                f'aria-expanded="false" aria-controls="{qid}-listbox"{areq}>'
+                f'<ul id="{qid}-listbox" role="listbox" hidden></ul></div>')
+    itype = {"email": "email", "phone": "tel"}.get(qid, "text")
+    body = f'{_label(qid, label_text, req)}<input type="{itype}" id="{qid}"{areq}>'
+    cond = CONDITIONS.get(qid)
+    if cond:
+        return f'<div class="field" id="{qid}-wrapper" hidden>{body}</div>'
+    return f'<div class="field">{body}</div>'
+
+
+_SCRIPT = """
+const form = document.getElementById('application-form');
+const uploads = {};
+for (const cb of document.querySelectorAll('input[role=combobox]')) {
+  const lb = document.getElementById(cb.getAttribute('aria-controls'));
+  cb.addEventListener('click', () => { lb.hidden = false; cb.setAttribute('aria-expanded', 'true'); });
+  for (const opt of lb.querySelectorAll('[role=option]')) {
+    opt.addEventListener('click', () => {
+      if (form.dataset.mode === 'gh2_combobox_ignores' && cb.id === 'question_8102') return;
+      for (const o of lb.querySelectorAll('[role=option]')) o.setAttribute('aria-selected', 'false');
+      opt.setAttribute('aria-selected', 'true');
+      cb.value = opt.textContent; cb.dataset.value = opt.dataset.value;
+      lb.hidden = true; cb.setAttribute('aria-expanded', 'false');
+      cb.dispatchEvent(new Event('change'));
+    });
+  }
+}
+const COND = %CONDITIONS%;
+for (const [qid, [trig, want]] of Object.entries(COND)) {
+  const t = document.getElementById(trig), w = document.getElementById(qid + '-wrapper');
+  if (t && w) t.addEventListener('change', () => { w.hidden = t.dataset.value !== want; });
+}
+for (const b of document.querySelectorAll('.manual-toggle')) {
+  b.addEventListener('click', () => { document.getElementById(b.dataset.for).hidden = false; });
+}
+for (const inp of document.querySelectorAll('input[type=file]')) {
+  inp.addEventListener('change', async (e) => {
+    const st = document.getElementById(inp.id + '-status');
+    const fd = new FormData(); fd.append('file', e.target.files[0]); fd.append('field', inp.id);
+    try {
+      const r = await fetch(form.dataset.base + '/attachments', {method: 'POST', body: fd});
+      if (!r.ok) throw new Error('upload');
+      const j = await r.json(); uploads[inp.id] = j.id;
+      st.dataset.attachmentId = j.id; st.textContent = 'Attached: ' + j.filename;
+    } catch (err) { st.dataset.attachmentError = '1'; st.textContent = 'Upload failed'; }
+  });
+}
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fields = {};
+  for (const el of form.querySelectorAll('input[id], textarea[id]')) {
+    if (el.type === 'file' || el.closest('[hidden]') || el.hidden) continue;
+    const v = el.getAttribute('role') === 'combobox' ? (el.dataset.value || '') : el.value;
+    if (v) fields[el.id] = v;
+  }
+  const r = await fetch(form.dataset.submitPath, {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({token: form.dataset.token, fields, attachments: uploads})});
+  const body = await r.json().catch(() => ({}));
+  if (r.ok && r.headers.get('X-Fixture-No-Confirm')) return;
+  if (r.ok) {
+    form.replaceWith(Object.assign(document.createElement('div'), {
+      id: 'application-confirmation', role: 'status',
+      textContent: 'Thank you for applying. Your application has been received.'}));
+  } else {
+    const box = document.getElementById('form-errors'); box.hidden = false;
+    box.textContent = (body.errors || ['There were errors']).join('; ');
+  }
+});
+"""
+
+
+def _form_page(board, job_id, token, cfg) -> HTMLResponse:
+    j = JOBS[(board, job_id)]
+    mode = cfg["mode"]
+    base = f"/gh2/{board}/jobs/{job_id}"
+    qs = "".join(_render(q, mode) for q in j["questions"] + j["location_questions"])
+    if mode == "gh2_new_question":  # a visible question the job data does not list
+        qs += ('<div class="field"><label for="question_8199">Years of experience</label>'
+               '<input type="text" id="question_8199"></div>')
+    script = _SCRIPT.replace("%CONDITIONS%", json.dumps(CONDITIONS))
+    body = (f'<main><h1>{html.escape(j["title"])}</h1>'
+            f'<div role="note" id="ai-disclaimer">{html.escape(AI_NOTICE)} '
+            f'<a href="{base.rsplit("/jobs", 1)[0]}/ai-opt-out">Request human review</a></div>'
+            f'<form id="application-form" novalidate data-base="{base}" '
+            f'data-submit-path="{base}/submit" data-token="{token}" data-mode="{html.escape(mode)}">'
+            f'<div id="form-errors" role="alert" hidden></div>{qs}'
+            f'<button type="submit" id="submit_app">Submit application</button></form>'
+            f'</main><script>{script}</script>'
+            + ('<script src="https://assets.fixture-cdn.invalid/widget.js"></script>'
+               if mode == "gh2_external_asset" else ""))
+    return HTMLResponse(
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        f"<title>{html.escape(j['title'])}</title></head><body data-gh2='form'>"
+        "<p class='fixture-banner'>SYNTHETIC FIXTURE v2: approximation of a hosted form "
+        f"structure; fictional employer.</p>{body}</body></html>")
+
+
+def mount(app, ledger, cfg, accept) -> None:
+    def job_or_404(board, job_id):
+        if (board, job_id) not in JOBS:
+            raise HTTPException(404)
+
+    @app.get("/gh2-api/robots.txt")
+    def robots():
+        return HTMLResponse("User-agent: *\nAllow: /\n", media_type="text/plain")
+
+    @app.get("/gh2-api/v1/boards/{board}")
+    def board_json(board: str):
+        names = {j["company_name"] for (b, _), j in JOBS.items() if b == board}
+        if not names:
+            raise HTTPException(404)
+        return {"name": sorted(names)[0]}
+
+    @app.get("/gh2-api/v1/boards/{board}/jobs/{job_id}")
+    def api_job(board: str, job_id: str, request: Request, questions: bool = False):
+        job_or_404(board, job_id)
+        data = _api_json(board, job_id, str(request.base_url).rstrip("/"))
+        if not questions:
+            data.pop("questions"), data.pop("location_questions")
+        return JSONResponse(data)
+
+    @app.get("/gh2/{board}/jobs/{job_id}", response_class=HTMLResponse)
+    def hosted_form(board: str, job_id: str):
+        job_or_404(board, job_id)
+        token = secrets.token_hex(8)
+        ledger.run("insert into tokens (token, issued_at) values (?,?)", (token, time.time()))
+        return _form_page(board, job_id, token, cfg)
+
+    @app.post("/gh2/{board}/jobs/{job_id}/attachments")
+    async def attachment(board: str, job_id: str, request: Request):
+        job_or_404(board, job_id)
+        if cfg["mode"] == "upload_fail":
+            return JSONResponse({"error": "storage unavailable"}, status_code=500)
+        form = await request.form()
+        f = form.get("file")
+        data = await f.read()
+        aid = "B-" + hashlib.sha256(data).hexdigest()[:12]
+        ledger.run("insert into disclosures (kind,slug,detail,created_at) values (?,?,?,?)",
+                   ("upload", f"gh2-{board}-{job_id}",
+                    json.dumps({"field": str(form.get("field")), "filename": f.filename,
+                                "attachment_id": aid,
+                                "sha256": hashlib.sha256(data).hexdigest()}), time.time()))
+        return {"id": aid, "filename": f.filename}
+
+    @app.post("/gh2/{board}/jobs/{job_id}/submit")
+    async def submit(board: str, job_id: str, request: Request):
+        job_or_404(board, job_id)
+        body = await request.json()
+        token = str(body.get("token", ""))
+        if not ledger.run("select 1 from tokens where token=?", (token,)):
+            return JSONResponse({"errors": ["Session expired"]}, status_code=419)
+        fields = {str(k): str(v) for k, v in (body.get("fields") or {}).items()}
+        attachments = {str(k): str(v) for k, v in (body.get("attachments") or {}).items()}
+        j = JOBS[(board, job_id)]
+        missing = []
+        for q in j["questions"] + j["location_questions"]:
+            name = q["fields"][0]["name"]
+            if not q["required"] or name in CONDITIONS:
+                continue
+            got = attachments.get(name) if q["fields"][0]["type"] == "input_file" \
+                else fields.get(name)
+            if not got:
+                missing.append(q["label"])
+        if cfg["mode"] == "gh2_validation_fail" or missing:
+            return JSONResponse({"errors": missing or ["Phone"]}, status_code=422)
+        if cfg["mode"] == "error_before_accept":
+            return JSONResponse({"error": "server error"}, status_code=500)
+        accept(f"gh2-{board}-{job_id}", token, {**fields, **{f"{k}_attachment_id": v
+                                                             for k, v in attachments.items()}})
+        if cfg["mode"] == "error_after_accept":
+            return JSONResponse({"error": "server error"}, status_code=500)
+        if cfg["mode"] == "drop_after_accept":
+            await asyncio.sleep(3600)
+        if cfg["mode"] == "gh2_no_confirmation":
+            return JSONResponse({"status": "received"}, headers={"X-Fixture-No-Confirm": "1"})
+        return {"status": "received"}

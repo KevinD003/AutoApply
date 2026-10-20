@@ -512,6 +512,48 @@ def s_readonly_observation_in_container():
           {"disclosures": len(after["disclosures"]) - len(before["disclosures"])})  # fmt: skip
 
 
+_OBSERVE_MAPPING = """
+import json, os
+from app.modules.preparation import gh_readonly as ro
+api = json.loads(os.environ["API_JSON"])
+obs = ro.observe_page("northwind", "5020001", base="http://receiver:8799", prefix="gh2",
+                      api_json=api)
+m = obs["mapping"]
+pub = ro.publishable(api, {"name": api["company_name"]}, "5020001", obs)
+try:
+    ro.guard(pub, ro.sensitive_values("northwind", "5020001", api, None))
+    guard = "passed"
+except ro.Leak:
+    guard = "refused"
+print(json.dumps({"status": obs["status"], "by_status": {k: len(v) for k, v in m["by_status"].items()},
+                  "unique": all(f["id_candidates"] == 1 for f in m["fields"]),
+                  "visible": [f["control"]["visible"] for f in m["fields"] if f["control"]],
+                  "blocked": obs["blocked_non_get"], "guard": guard,
+                  "incomplete": obs["rendering"]["may_be_incomplete"]}))
+"""
+
+
+def s_readonly_mapping_in_container():
+    """The follow-up observation's code path (B2: per-field mapping evidence, DOM reads only)
+    through the real runner and session proxy, on the second (v2) fixture."""
+    slug = "gh2-northwind-5020001"
+    api = receiver_raw("/gh2-api/v1/boards/northwind/jobs/5020001?questions=true")
+    before = ledger_for(slug)
+    obs = worker_py(_OBSERVE_MAPPING, API_JSON=api,
+                    NOEFFORTS_READONLY_GREENHOUSE_APPROVED="northwind/5020001")  # fmt: skip
+    after = ledger_for(slug)
+    check("read-only mapping: every API field has one id-matched, labelled control",
+          obs.get("status") == 200 and obs.get("by_status") == {"mapped": 12} and obs.get("unique"),
+          obs)  # fmt: skip
+    check("read-only mapping: visibility read in the isolated browser (hidden question seen)",
+          False in obs.get("visible", []) and True in obs.get("visible", []), obs.get("visible"))  # fmt: skip
+    check("read-only mapping: the published summary passes the privacy guard",
+          obs.get("guard") == "passed" and obs.get("incomplete") is False, obs)  # fmt: skip
+    check("read-only mapping: nothing disclosed or accepted at the receiver",
+          after["disclosures"] == before["disclosures"] and after["accepted"] == before["accepted"],
+          {"disclosures": len(after["disclosures"]) - len(before["disclosures"])})  # fmt: skip
+
+
 def s_greenhouse_security_code_flow():
     receiver("config", {"mode": "gh_security_code"})
     slug = "gh-examplehealth-4012001"
@@ -774,6 +816,7 @@ SCENARIOS = [
     s_probe_detects_an_insecure_configuration,
     s_control_plane_separation,
     s_readonly_observation_in_container,
+    s_readonly_mapping_in_container,
     s_greenhouse_security_code_flow,
     s_hostile_page,
     s_infrastructure_only_egress,

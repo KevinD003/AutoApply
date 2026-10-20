@@ -6,7 +6,9 @@ name: Greenhouse read-only check (manual)
 #
 # The posting is the repository secret GH_READONLY_POSTING ("<board>/<job_id>"). Secrets are
 # masked in logs, so the board token (often the employer's name) never appears in this public
-# repository's logs. Output is the anonymous summary only; no artifacts are uploaded.
+# repository's logs. Masking is not relied on alone: the CLI prints only an allowlisted summary
+# (custom question ids aliased) and suppresses it entirely if any string fails its privacy
+# check (exit 4). No artifacts are uploaded.
 
 on:
   workflow_dispatch:
@@ -15,6 +17,10 @@ on:
         description: "Also permission B: one page load in the isolated browser"
         type: boolean
         default: true
+      mapping:
+        description: "With observe: per-field mapping evidence (needs its own recorded approval)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -38,4 +44,5 @@ jobs:
         env:
           NOEFFORTS_READONLY_GREENHOUSE_APPROVED: ${{ secrets.GH_READONLY_POSTING }}
           OBSERVE: ${{ inputs.observe && '--observe' || '' }}
-        run: ./scripts/greenhouse-readonly-check.sh $OBSERVE
+          MAPPING: ${{ inputs.observe && inputs.mapping && '--mapping' || '' }}
+        run: ./scripts/greenhouse-readonly-check.sh $OBSERVE $MAPPING

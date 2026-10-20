@@ -200,6 +200,7 @@ function FormCard({ jobId, onPrepare }: { jobId: string; onPrepare: () => void }
             Form v{form.version} · {form.schema.fields.length} questions · source: {form.source}
             {form.source === "fixture" && <> <Badge tone="amber">Local test fixture</Badge></>}
             {form.source === "greenhouse_api" && <> <Badge tone="amber">Greenhouse-style form (local test approximation)</Badge></>}
+            {form.source === "greenhouse_api_dom" && <> <Badge tone="amber">Greenhouse-style form, mapped by id and label (second local test approximation)</Badge></>}
           </p>
           <Button onClick={onPrepare}>Prepare application</Button>
         </div>

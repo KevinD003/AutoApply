@@ -153,3 +153,163 @@ def test_unextractable_page_reports_anonymous_diagnostics(receiver):
     assert obs["dom"]["forms"] == 0
     pub = ro.publishable(greenhouse_like._api_json(BOARD, JOB, BASE), {"name": "x"}, JOB, obs)
     assert pub["page"]["extracted"] is False and "compare" not in pub
+
+
+# ------------------------------------------------------------------ privacy of the output
+
+MARK = "ZQXMARKER"
+MARK_ID = "88776655"
+
+
+def marked_api() -> dict:
+    """Fixture job data with synthetic sensitive markers wherever posting text can appear."""
+    a = json.loads(json.dumps(greenhouse_like._api_json(BOARD, JOB, BASE)))
+    a["company_name"] = f"{MARK} Company"
+    a["title"] = f"{MARK} Title"
+    a["absolute_url"] = f"https://job-boards.example/{MARK}/jobs/{MARK_ID}"
+    a["location"] = {"name": f"{MARK} City"}
+    a["questions"][-1]["label"] = f"{MARK} question wording"
+    field = {
+        "name": f"question_{MARK_ID}",
+        "type": "multi_value_single_select",
+        "values": [{"value": 1, "label": f"{MARK} option"}],
+    }
+    a["questions"].append(
+        {"label": f"{MARK} choose", "required": False, "description": f"{MARK} help",
+         "fields": [field]}
+    )  # fmt: skip
+    a[f"{MARK}_extra_key"] = 1
+    return a
+
+
+def run_main(monkeypatch, tmp_path, capsys, *, api=None, fetch_error=None, observe=None):
+    monkeypatch.setenv("NOEFFORTS_READONLY_GREENHOUSE_APPROVED", f"{MARK.lower()}/{MARK_ID}")
+    api = api or marked_api()
+
+    def fake_fetch(board, job_id, out):
+        if fetch_error:
+            raise fetch_error
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "job.json").write_text(json.dumps(api))
+        (out / "board.json").write_text(json.dumps({"name": api["company_name"]}))
+        return {"requests": [{"path": "/x", "status": 200}] * 3, "used": 3, "limit": 3}
+
+    monkeypatch.setattr(ro, "fetch", fake_fetch)
+    if observe is not None:
+        monkeypatch.setattr(ro, "observe_page", observe)
+    code = ro.main(["--out", str(tmp_path / "raw")] + (["--observe"] if observe else []))
+    return code, capsys.readouterr().out
+
+
+def assert_clean(out: str):
+    low = out.lower()
+    assert MARK.lower() not in low and MARK_ID not in out
+    assert "question_" not in out  # raw custom question ids never printed
+
+
+def test_success_output_has_aliases_and_no_markers(monkeypatch, tmp_path, capsys):
+    code, out = run_main(monkeypatch, tmp_path, capsys)
+    assert code == 0, out
+    assert_clean(out)
+    pub = json.loads(out)
+    names = [f["name"] for q in pub["api"]["questions"] for f in q["fields"]]
+    assert "first_name" in names and "q01" in names and names[-1].startswith("q")
+    assert pub["api"]["other_top_level_keys"] == 1  # the marker key is counted, not named
+
+
+def test_failure_paths_print_types_only(monkeypatch, tmp_path, capsys):
+    def boom(*a, **k):
+        raise RuntimeError(f"failed at https://job-boards.example/{MARK}/jobs/{MARK_ID}")
+
+    code, out = run_main(monkeypatch, tmp_path, capsys, observe=boom)
+    assert code == 0 and json.loads(out)["page_stopped"] == "error (RuntimeError)"
+    assert_clean(out)
+
+    class Weird(Exception):
+        pass
+
+    code, out = run_main(monkeypatch, tmp_path, capsys, fetch_error=Weird(f"{MARK} {MARK_ID}"))
+    assert code == 3 and json.loads(out) == {"stopped": "error (OtherError)"}
+    # A stop whose text is not one of ours is suppressed, not printed.
+    code, out = run_main(monkeypatch, tmp_path, capsys, fetch_error=ro.Stop(f"{MARK} gone"))
+    assert code == 2 and "suppressed" in out
+    assert_clean(out)
+
+
+def test_guard_rejects_unknown_strings_and_derived_values():
+    with pytest.raises(ro.Leak):
+        ro.guard({"api": {"note": "Northwind"}}, set())  # not in the allowlist
+    with pytest.raises(ro.Leak):
+        ro.guard({"requests": [int(MARK_ID)]}, {MARK_ID})  # a number derived from the posting
+    assert ro.guard({"stopped": "Stop: HTTP 404"}, set())
+    sens = ro.sensitive_values("acme", "1234567", marked_api(), {"name": "Acme Board"})
+    assert {f"{MARK} Company", f"question_{MARK_ID}", MARK_ID, "Acme Board"} <= sens
+    assert "Email" not in sens  # vocabulary words are not treated as secrets
+    printed = []
+    assert ro.emit({"x": f"{MARK}"}, sens, printed.append) is False
+    assert printed == ['{"stopped": "output suppressed: it failed the privacy check"}']
+
+
+# ------------------------------------------------------------------ mapping evidence (B2 code)
+
+V2_BOARD, V2_JOB = "northwind", "5020001"
+
+
+@pytest.fixture
+def v2_approved(monkeypatch):
+    import greenhouse_v2
+
+    monkeypatch.setenv("NOEFFORTS_READONLY_GREENHOUSE_APPROVED", f"{V2_BOARD}/{V2_JOB}")
+    return greenhouse_v2._api_json(V2_BOARD, V2_JOB, BASE)
+
+
+def observe_v2(api_json):
+    return ro.observe_page(V2_BOARD, V2_JOB, base=BASE, prefix="gh2", api_json=api_json)
+
+
+def test_mapping_evidence_on_the_v2_fixture(receiver, v2_approved):
+    obs = observe_v2(v2_approved)
+    m = obs["mapping"]
+    by = {f["key"]: f for f in m["fields"]}
+    assert set(m["by_status"]) == {"mapped"}, m["by_status"]
+    assert all(f["id_candidates"] == 1 and f["label_matches"] for f in m["fields"])
+    cb = by["question_8101"]["control"]
+    assert cb["role"] == "combobox" and cb["controls_listbox"] and cb["options_match_api"]
+    assert cb["listbox_options"] == 2 and cb["has_name_attr"] is False
+    assert by["resume"]["control"]["in_group"] and by["resume"]["control"]["input_type"] == "file"
+    hidden = by["question_8105"]["control"]
+    assert hidden["hidden_attr"] is True and hidden["visible"] is False
+    assert by["first_name"]["control"]["visible"] is True
+    assert [u["alternative_of_api_field"] for u in m["unmatched_controls"]] == [True, True]
+    assert obs["rendering"]["may_be_incomplete"] is False
+    assert receiver.ledger()["disclosures"] == [] and receiver.ledger()["accepted"] == 0
+    pub = ro.publishable(v2_approved, {"name": v2_approved["company_name"]}, V2_JOB, obs)
+    text = ro.guard(pub, ro.sensitive_values(V2_BOARD, V2_JOB, v2_approved, None))
+    assert "question_81" not in text and '"q01"' in text
+
+
+def test_mapping_evidence_reports_ambiguous_and_absent_explicitly(receiver, v2_approved):
+    receiver.config(mode="gh2_duplicate_id")
+    m = observe_v2(v2_approved)["mapping"]
+    amb = next(f for f in m["fields"] if f["key"] == "question_8101")
+    assert amb["status"] == "ambiguous" and amb["id_candidates"] == 2 and amb["control"] is None
+    receiver.config(mode="gh2_missing_control")
+    m = observe_v2(v2_approved)["mapping"]
+    assert m["by_status"]["absent"] == ["question_8103"]
+    receiver.config(mode="gh2_label_mismatch")
+    m = observe_v2(v2_approved)["mapping"]
+    lm = next(f for f in m["fields"] if f["key"] == "question_8101")
+    assert lm["status"] == "label_mismatch" and lm["label_matches"] is False
+    assert lm["label_candidates"] == 0  # the API wording labels no control at all
+
+
+def test_blocked_dependency_marks_rendering_possibly_incomplete(receiver, v2_approved):
+    receiver.config(mode="gh2_external_asset")
+    obs = observe_v2(v2_approved)
+    r = obs["rendering"]
+    assert r["may_be_incomplete"] is True
+    assert {"resource_type": "script", "kind": "other", "same_origin": False,
+            "failure": "net::ERR_BLOCKED_BY_CLIENT"} in r["failed_requests"]  # fmt: skip
+    pub = ro.publishable(v2_approved, {"name": "x"}, V2_JOB, obs)
+    text = ro.guard(pub, ro.sensitive_values(V2_BOARD, V2_JOB, v2_approved, None))
+    assert "fixture-cdn" not in text

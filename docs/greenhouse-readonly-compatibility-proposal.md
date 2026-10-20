@@ -1,7 +1,8 @@
 # Read-only Greenhouse compatibility check — approval request
 
-**Status: A and B approved by the user (2026-10-20); C and D not approved. Run on 2026-10-20
-(read-only run #3); results in `docs/greenhouse-compatibility-report.md`.**
+**Status: A and B approved by the user (2026-10-20) and used (read-only run #3; results in
+`docs/greenhouse-compatibility-report.md`). C and D not approved. A follow-up read-only run
+("Follow-up observation B2", below) is requested and not approved; it has not been run.**
 
 The user wrote: "You can do everything that you want to do about the greenhouse but make sure
 that no employee name is found in Rep. I can approve for both of them."
@@ -141,8 +142,107 @@ To run it:
 |---|---|---|
 | sandbox, 2026-10-20 | `86fa55e` | A not sent: the environment proxy denied `boards-api.greenhouse.io` (403). One attempt, not retried |
 | CI read-only #1 | `fd9b03d` | stopped before any request: the secret was not set yet |
-| CI read-only #3 | `e2a8d97` | **completed.** A: 3×200. B: page 200, 9 requests, no bot check, nothing sent; form not extractable (id-only controls, ARIA comboboxes). Report: `docs/greenhouse-compatibility-report.md` |
-| CI read-only #2 | `fd9b03d` | A completed (3 GETs). B loaded the page but found **no extractable form fields**, and the run stopped. The code dropped A's summary on that stop; fixed so A is always reported and B reports anonymous DOM counts. Rerun under the same approval (user: "You can do anything that you wanna do about the greenhouse") |
+| CI read-only #2 | `fd9b03d` | A completed (3 GETs). B loaded the page but found **no extractable form fields**, and the run stopped. The code dropped A's summary on that stop; fixed so A is always reported and B reports anonymous DOM counts. Rerun under the user's broad statement ("You can do anything that you wanna do about the greenhouse"); see the note below |
+| CI read-only #3 | `e2a8d97` | **completed.** A: 3×200. B: page 200, 9 GET requests, no non-GET request, no bot check; form not extractable (id-only controls, ARIA comboboxes). Report: `docs/greenhouse-compatibility-report.md` |
+
+**Note on the budget.** A was written as "at most 3 requests in total" and B as "exactly one"
+navigation. Runs #2 and #3 each used that budget once more, relying on the user's general
+statement. From now on, every further read of the posting needs its own explicit approval
+(below). Nothing further has been run.
+
+## Follow-up observation B2 — approval request (not run)
+
+**Status: requested, not approved, not run.** The approval of A and B covered one navigation,
+so another page load needs a new approval. It covers **only** a read-only observation.
+
+**Purpose:** find out how this posting's page controls correspond to the job post's fields:
+whether each API field has exactly one control, with the same id, a matching label and a
+suitable role. Counts alone (run #3) do not show that.
+
+**Requests (same posting, the `GH_READONLY_POSTING` secret unchanged):**
+
+| Step | What | Budget |
+|---|---|---|
+| A again | robots.txt, job post, board: GETs to `boards-api.greenhouse.io` | 3 GETs (the mapping needs the job data; raw data is not kept between runs) |
+| B2 | one page load of the posting in the isolated browser | 1 navigation; at most 150 requests (enforced: further requests are aborted and the run stops); 60 s navigation timeout plus at most 17 s of waiting for the page to settle; the job's 20-minute limit |
+
+**Correction:** B's text promised a 20 MB limit and a 60 s wall clock. The code enforces the
+request count and per-operation timeouts, not a byte total or a single wall clock. That applied
+to runs #2 and #3 too. B2 is described as the code actually behaves.
+
+**Limits (unchanged from B):**
+- allow-list `job-boards.greenhouse.io:443` only, with no expanded domains;
+- no clicks, typing, focus, scrolling, uploads or form submission;
+- every non-GET request blocked before sending;
+- a fresh browser context, with no candidate session or cookies;
+- stop at a bot check or an off-origin redirect;
+- **no automatic retry**. If the run fails, it is reported, not rerun.
+
+**What is read, after load, without interacting:**
+- the serialized DOM;
+- computed visibility of each candidate control;
+- the text of options already present in each combobox's listbox (compared in the worker; never
+  printed).
+
+**Collected, per API field** (printed with custom ids as aliases `q01`…):
+- the number of controls whose `id` equals the field name: unique, absent or ambiguous;
+- whether the accessible name matches the label (via `aria-labelledby`, `<label for>`,
+  wrapping label or `aria-label`), and how many controls carry that label;
+- the element and type (`input`/`select`/`textarea`, input type) and the role (e.g.
+  `combobox`);
+- grouping and ARIA relations: inside a group or fieldset, `aria-controls` → listbox,
+  `aria-describedby`;
+- hidden (an attribute on the control or an ancestor) vs computed-visible; required attribute
+  vs API required;
+- for comboboxes: options present at load, and whether they equal the API options;
+- a status per field (mapped / absent / ambiguous / type mismatch / label mismatch / search
+  picker / page-managed hidden value), listed by status, so absent and ambiguous fields are
+  explicit.
+
+**Also collected:**
+- page controls that no API field names: element, type, role, labelled, hidden/visible,
+  whether it is an API field's text alternative, and the id's shape (never the id itself);
+- requests that failed or were denied: resource type, destination kind, same-origin flag and
+  the browser's error code, so a missing script or data request shows that rendering may be
+  incomplete;
+- whether the page reached network idle, and its ready state.
+
+**Not collected:** labels, wording, option text, ids of custom questions, URLs, page text,
+screenshots, traces, HTML, response bodies or exception messages.
+
+**What the run sends:**
+- ordinary page-loading GET requests to the allowed host, with normal network metadata (runner
+  IP address, browser User-Agent, standard headers);
+- nothing to denied hosts: the proxy refuses them before resolving them;
+- no candidate data and no form submission.
+
+**Output:**
+- printed only after the CLI's privacy guard passes it: allowlisted vocabulary, aliases, and a
+  scan for values derived from the posting;
+- otherwise a refusal is printed (exit 4) and nothing else.
+
+**How it would run, once approved:** Actions → "Greenhouse read-only check (manual)" → Run
+workflow with `observe` and `mapping` both checked. The code is in place
+(`gh_readonly.mapping_evidence`) and tested against the local v2 fixture. `mapping` defaults
+to off.
+
+**What it cannot show:**
+- whether filling, combobox selection, uploads or submission work;
+- conditional questions that appear only after an answer;
+- anything a denied host would have provided.
+
+Successful mapping would still not be evidence of submission compatibility.
+
+**Approval text (send it back edited, or say no):**
+
+```
+I approve one more read-only run (A again + B2) for the same posting
+(the GH_READONLY_POSTING secret), under the limits in
+docs/greenhouse-readonly-compatibility-proposal.md "Follow-up observation B2".
+One run only; no automatic retry.
+This does not approve disclosing candidate data (C), filling a real page, uploads,
+location searches, security-code requests, or submitting an application (D).
+```
 
 ## Deliverable: the comparison (once A/B are separately approved and run)
 

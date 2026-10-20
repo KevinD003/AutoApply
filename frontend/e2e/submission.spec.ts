@@ -282,3 +282,66 @@ test("Greenhouse-style form: read from job data and page, prepare, approve, subm
   expect(attempts.length).toBe(1);
 });
 
+
+test("Greenhouse-style v2 form (id-only controls, comboboxes): user answers, approve, submit once", async ({ page, request }) => {
+  // Second labelled approximation: the resolver must leave preferred name and the two choice
+  // questions to the user; the adapter selects combobox options and reads them back.
+  const email = `sub.gh2.${RUN}.${Date.now()}@example.com`;
+  const reg = await page.request.post("/api/auth/register", { data: { email, password: "synthetic-password-1" } });
+  const csrf = (await reg.json()).csrf_token as string;
+  const h = { "X-CSRF-Token": csrf };
+  await page.request.put("/api/profile", {
+    headers: h,
+    data: {
+      full_name: "Sam Synthetic", given_name: "Sam", family_name: "Synthetic",
+      contact_email: "sam.synthetic@example.com", phone: "+1 555 0100",
+      residence_country: "US", residence_city: "Springfield", links: [],
+    },
+  });
+  await page.request.post("/api/profile/work-authorizations", {
+    headers: h, data: { country_code: "US", authorized: "yes", sponsorship_needed_now: "no", sponsorship_needed_future: "no" },
+  });
+  await page.request.post("/api/documents", {
+    headers: h, multipart: { file: { name: "resume.pdf", mimeType: "application/pdf", buffer: PDF }, kind: "resume" },
+  });
+  const job = await (
+    await page.request.post("/api/jobs", {
+      headers: h,
+      data: { url: `${RECEIVER}/gh2/northwind/jobs/5020001`, title: "Support Specialist", employer: "Northwind Example (fictional)" },
+    })
+  ).json();
+  const slug = "gh2-northwind-5020001";
+  const before = (await ledger(request, slug)).accepted;
+
+  await page.goto(`/jobs/${job.job.id}`);
+  await page.getByRole("button", { name: "Read Greenhouse form" }).click();
+  await expect(page.getByText("Greenhouse-style form, mapped by id and label (second local test approximation)")).toBeVisible();
+  await page.getByRole("button", { name: "Prepare application" }).click();
+  await expect(page).toHaveURL(/\/applications\//);
+  const appId = page.url().split("/applications/")[1];
+  await expect(page.getByText("Greenhouse-style form (id-mapped) — second local test approximation, fictional employer")).toBeVisible();
+
+  const answer = async (label: string, fill: (c: ReturnType<Page["getByLabel"]>) => Promise<void>) => {
+    const item = page.getByRole("listitem").filter({ has: page.getByLabel(label, { exact: true }) });
+    await fill(item.getByLabel(label, { exact: true }));
+    await item.getByRole("button", { name: "Save answer" }).click();
+    await expect(page.getByLabel(label, { exact: true })).toHaveCount(0); // left "Needs your answer"
+  };
+  // Not copied from the given name: the user types it.
+  await answer("Preferred First Name", (c) => c.fill("Sammy"));
+  await answer("Are you legally authorized to work in the country where this role is based?", (c) => c.selectOption({ label: "Yes" }).then(() => undefined));
+  await answer("Have you worked for Northwind Example before?", (c) => c.selectOption({ label: "No" }).then(() => undefined));
+
+  await approveAndSubmit(page, appId);
+  await expect(badge(page, "Employer receipt received")).toBeVisible({ timeout: 60_000 });
+  const l = await admin(request, "ledger");
+  const mine = l.acceptances.filter((a: { slug: string }) => a.slug === slug);
+  expect(mine.length).toBe(before + 1);
+  const sent = mine[mine.length - 1].fields;
+  expect(sent.preferred_name).toBe("Sammy");
+  expect(sent.question_8101).toBe("1");
+  expect(sent.question_8104).toBe("0");
+  expect(sent.question_8105).toBeUndefined();
+  const attempts = await (await page.request.get(`/api/applications/${appId}/attempts`)).json();
+  expect(attempts.length).toBe(1);
+});

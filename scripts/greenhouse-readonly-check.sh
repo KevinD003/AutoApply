@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Read-only Greenhouse compatibility check for ONE approved posting (permissions A and B only).
-#   NOEFFORTS_READONLY_GREENHOUSE_APPROVED="<board>/<job_id>" ./scripts/greenhouse-readonly-check.sh [--observe]
+#   NOEFFORTS_READONLY_GREENHOUSE_APPROVED="<board>/<job_id>" ./scripts/greenhouse-readonly-check.sh [--observe [--mapping]]
 # A: three GETs to the public Job Board API (from the worker container).
 # B (--observe): one page load in the sandboxed browser container, observe only, non-GET blocked.
 # Raw responses stay inside the worker container and are destroyed with the stack at the end.
-# Only the anonymous summary (structure, flags, counts; no names, wording or URLs) is printed.
+# --mapping: per-field mapping evidence from the same single page load (DOM reads only).
+# Only the anonymous summary (structure, flags, counts; no names, wording, URLs or raw question
+# ids) is printed, and only after the CLI's privacy guard has passed it.
 # No container logs are printed, even on failure: they could contain hostnames.
 set -euo pipefail
 cd "$(dirname "$0")/.."

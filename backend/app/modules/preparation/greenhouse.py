@@ -37,6 +37,7 @@ class Posting:
     board: str
     job_id: str
     fixture: bool
+    fixture_prefix: str = "gh"  # local fixtures: "gh" (v1 structure) or "gh2" (v2 structure)
 
     @property
     def ref(self) -> str:
@@ -48,8 +49,8 @@ def parse_posting(url: str, *, fixture_origin: bool) -> Posting | None:
     p = urlsplit(url)
     host = (p.hostname or "").lower()
     if fixture_origin:
-        m = re.fullmatch(r"/gh/([A-Za-z0-9_-]{1,100})/jobs/(\d{1,20})/?", p.path)
-        return Posting(m.group(1), m.group(2), True) if m else None
+        m = re.fullmatch(r"/(gh2?)/([A-Za-z0-9_-]{1,100})/jobs/(\d{1,20})/?", p.path)
+        return Posting(m.group(2), m.group(3), True, m.group(1)) if m else None
     if host in REAL_HOSTS:
         m = re.fullmatch(r"/([A-Za-z0-9_-]{1,100})/jobs/(\d{1,20})/?", p.path)
         if m:
@@ -62,7 +63,8 @@ def parse_posting(url: str, *, fixture_origin: bool) -> Posting | None:
 
 def api_url(posting: Posting, origin: str) -> str:
     if posting.fixture:
-        return f"{origin}/gh-api/v1/boards/{posting.board}/jobs/{posting.job_id}?questions=true"
+        pre = f"{origin}/{posting.fixture_prefix}-api"
+        return f"{pre}/v1/boards/{posting.board}/jobs/{posting.job_id}?questions=true"
     return f"https://boards-api.greenhouse.io/v1/boards/{posting.board}/jobs/{posting.job_id}?questions=true"
 
 

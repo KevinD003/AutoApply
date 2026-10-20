@@ -28,6 +28,7 @@ USER_AGENT = "NoEfforts-compatibility-check/1 (read-only; one approved posting)"
 MAX_BYTES = 2_000_000
 TIMEOUT_S = 10
 _BOARD = re.compile(r"[A-Za-z0-9_-]{1,100}")
+_SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,100}")
 _JOB = re.compile(r"\d{1,20}")
 # Field types the synthetic fixture (fixtures/ats_receiver/greenhouse_like.py) exercises.
 FIXTURE_TYPES = {
@@ -250,19 +251,28 @@ PAGE_REQUEST_LIMIT = 150
 PAGE_SECONDS = 60
 
 
-def page_url(board: str, job_id: str, base: str | None = None) -> str:
+def page_url(board: str, job_id: str, base: str | None = None, prefix: str = "gh") -> str:
     return f"{base or 'https://' + PAGE_HOST}" + (
-        f"/gh/{board}/jobs/{job_id}" if base else f"/{board}/jobs/{job_id}"
+        f"/{prefix}/{board}/jobs/{job_id}" if base else f"/{board}/jobs/{job_id}"
     )
 
 
-def observe_page(board: str, job_id: str, *, base: str | None = None) -> dict:
+def observe_page(
+    board: str,
+    job_id: str,
+    *,
+    base: str | None = None,
+    prefix: str = "gh",
+    api_json: dict | None = None,
+) -> dict:
     """Permission B: ONE page load in the isolated browser, observe only.
 
     The egress allow-list is the posting's origin only. Every request other than GET/HEAD
     is aborted before it leaves the browser and recorded (method and path only). There is no
     typing, clicking, focusing, uploading or submitting: the page is read once after it has
     loaded. Stops on a bot check, a redirect to another origin, or the request budget.
+    With `api_json`, also collects per-field mapping evidence (`mapping_evidence`) by reading
+    the loaded DOM; still nothing is clicked, typed or focused.
     `base` is for tests against the local fixture (a fixture origin)."""
     from app.core.config import get_settings
     from app.core.urlsafety import is_fixture_origin
@@ -271,7 +281,7 @@ def observe_page(board: str, job_id: str, *, base: str | None = None) -> dict:
 
     require_approval(board, job_id)
     s = get_settings()
-    url = page_url(board, job_id, base)
+    url = page_url(board, job_id, base, prefix)
     origin = base or f"https://{PAGE_HOST}"
     fixture = base is not None
     if fixture and not (s.env in ("development", "test") and is_fixture_origin(origin)):
@@ -279,6 +289,9 @@ def observe_page(board: str, job_id: str, *, base: str | None = None) -> dict:
     if not fixture and s.browser_isolation != "container":
         raise NotApproved("a real page is opened only in the isolated browser container")
     blocked, seen = [], {"requests": 0, "other_origins": set(), "main_frame": []}
+    failed: list[dict] = []
+    idle = False
+    evidence = None
 
     with browser_session(
         origin,
@@ -297,6 +310,7 @@ def observe_page(board: str, job_id: str, *, base: str | None = None) -> dict:
             return route.fallback()
 
         page.route("**/*", guard)
+        page.on("requestfailed", lambda r: failed.append(_failure(r, origin)))
         page.on(
             "framenavigated",
             lambda f: f == page.main_frame and seen["main_frame"].append(urlsplit(f.url).netloc),
@@ -304,6 +318,7 @@ def observe_page(board: str, job_id: str, *, base: str | None = None) -> dict:
         resp = page.goto(url, wait_until="load")
         try:  # client-side rendering may still be fetching; bounded, nothing is touched
             page.wait_for_load_state("networkidle", timeout=15_000)
+            idle = True
         except Exception:  # noqa: BLE001 - a page that never goes idle is still observed
             pass
         page.wait_for_timeout(2000)
@@ -315,6 +330,9 @@ def observe_page(board: str, job_id: str, *, base: str | None = None) -> dict:
         bot_check = page.locator(CHALLENGE_SELECTORS).count() > 0
         html = page.content()
         dom = page.evaluate(DOM_STATS_JS)
+        ready = page.evaluate("() => document.readyState")
+        if api_json is not None and not bot_check:
+            evidence = mapping_evidence(page, html, api_json)
         frames = []
         for f in page.frames[1:]:
             fo = urlsplit(f.url)
@@ -344,6 +362,114 @@ def observe_page(board: str, job_id: str, *, base: str | None = None) -> dict:
         "blocked_non_get": blocked,
         "denied_destinations": sorted(denied),
         "rendered": rendered,
+        "rendering": {
+            "networkidle_reached": idle,
+            "ready_state": ready,
+            "failed_requests": failed,
+            # A denied or failed script/data request may have left parts of the page unbuilt.
+            "may_be_incomplete": not idle
+            or any(f["resource_type"] in _RENDER_TYPES for f in failed),
+        },
+        "mapping": evidence,
+    }
+
+
+_RENDER_TYPES = {"script", "xhr", "fetch", "stylesheet", "document", "other"}
+
+
+def _failure(request, origin: str) -> dict:
+    """A request that did not complete: resource type, destination kind and the browser's error
+    code only (never the URL)."""
+    u = urlsplit(request.url)
+    err = request.failure or ""
+    code = re.match(r"net::ERR_[A-Z_]{1,60}", err)
+    return {
+        "resource_type": request.resource_type,
+        "kind": _category(u.netloc) if u.netloc else "no-host",
+        "same_origin": f"{u.scheme}://{u.netloc}" == origin,
+        "failure": code.group(0) if code else "other",
+    }
+
+
+_OPTION_TEXT_JS = """id => { const lb = document.getElementById(id);
+  return lb ? Array.from(lb.querySelectorAll('[role=option]')).map(o => o.textContent) : null; }"""
+
+
+def mapping_evidence(page, html: str, api_json: dict) -> dict:
+    """Per API field: is there exactly one control with that id, does its accessible name match
+    the label, what element/role is it, how is it grouped and related, is it hidden or visible.
+    Plus the page controls no API field names. Read-only: DOM reads and visibility checks."""
+    from app.modules.preparation import greenhouse_dom as gdom
+
+    fields = gh.schema_from_api(api_json).fields
+    controls = gdom.snapshot(html)
+
+    def visible(cid: str) -> bool | None:
+        if not _SAFE_ID.fullmatch(cid):
+            return None
+        loc = page.locator(f'[id="{cid}"]')
+        return loc.is_visible() if loc.count() == 1 else None
+
+    per_field = []
+    for f, m in zip(fields, gdom.map_fields(fields, controls), strict=True):
+        label = gdom._norm(f.label)
+        entry = {
+            "key": f.key,
+            "field_type": f.type.value,
+            "required": f.required,
+            "status": m.status,
+            "id_candidates": m.candidates,
+            "label_candidates": sum(1 for c in controls if gdom._norm(c.accessible_name) == label),
+            "label_matches": None,
+            "control": None,
+        }
+        c = m.control
+        if c is not None and m.candidates == 1:
+            entry["label_matches"] = gdom._norm(c.accessible_name) == label
+            entry["control"] = _control_evidence(c, visible(c.id))
+            if c.controls_listbox and c.controls and _SAFE_ID.fullmatch(c.controls):
+                texts = page.evaluate(_OPTION_TEXT_JS, c.controls) or []
+                entry["control"]["listbox_options"] = len(texts)
+                entry["control"]["options_match_api"] = [gdom._norm(t) for t in texts] == [
+                    gdom._norm(o.label) for o in f.options
+                ]
+        per_field.append(entry)
+    keys = {f.key.removesuffix("[]") for f in fields}
+    unmatched = []
+    for c in gdom.unmatched_controls(fields, controls):
+        e = _control_evidence(c, visible(c.id))
+        e["alternative_of_api_field"] = c.id.endswith("_text") and c.id[:-5] in keys
+        e["id_shape"] = (
+            "question_n" if re.fullmatch(r"question_\d+", c.id)
+            else "standard" if c.id in STANDARD_NAMES else "other"
+        )  # fmt: skip
+        unmatched.append(e)
+    by_status: dict[str, list[str]] = {}
+    for e in per_field:
+        by_status.setdefault(e["status"], []).append(e["key"])
+    return {
+        "fields": per_field,
+        "by_status": by_status,
+        "unmatched_controls": unmatched,
+        "controls_total": len(controls),
+    }
+
+
+def _control_evidence(c, is_visible: bool | None) -> dict:
+    return {
+        "tag": c.tag if c.tag in ("input", "select", "textarea") else "other",
+        "input_type": None if c.type is None else c.type if c.type in INPUT_TYPES else "other",
+        "role": None if c.role is None else c.role if c.role in ROLES else "other",
+        "has_name_attr": c.name_attr,
+        "name_source": c.name_source,
+        "labelled": c.accessible_name is not None,
+        "required_attr": c.required,
+        "hidden_attr": c.hidden,
+        "visible": is_visible,
+        "in_form": c.in_form,
+        "in_group": c.group is not None,
+        "controls_listbox": c.controls_listbox,
+        "describedby": c.describedby,
     }
 
 
@@ -372,27 +498,279 @@ def _category(hostport: str) -> str:
 
 def publishable(api_json: dict, board_json: dict, job_id: str, observed: dict | None) -> dict:
     """What may be printed in a public CI log or committed: structure, flags and counts. No
-    labels, wording, titles, employer or person names, URLs or board token."""
-    out = {"api": summary(api_json), "identity": identity(api_json, board_json, job_id)}
+    labels, wording, titles, employer or person names, URLs, board token or raw question ids
+    (non-standard field names become q01, q02, ... in job-data order). Built from known
+    vocabulary only; `guard` re-checks the result before anything is printed."""
+    s = summary(api_json)
+    s["types"] = _vocab_counts(s["types"], GH_TYPES)
+    s["unknown_types"] = sorted({t if t in GH_TYPES else "other" for t in s["unknown_types"]})
+    for c in s["compliance"]:
+        c["type"] = c["type"] if c["type"] in COMPLIANCE_TYPES else "other"
+        rd = c["retention_days"]
+        c["retention_days"] = rd if isinstance(rd, int) and not isinstance(rd, bool) else None
+    for group in ("questions", "location_questions"):
+        for q in s[group]:
+            for f in q["fields"]:
+                f["type"] = f["type"] if f["type"] in GH_TYPES else "other"
+    keys = s.pop("top_level_keys")
+    s["top_level_keys"] = sorted(k for k in keys if k in API_KEYS)
+    s["other_top_level_keys"] = sum(1 for k in keys if k not in API_KEYS)
+    out = {"api": s, "identity": identity(api_json, board_json, job_id)}
     if observed is not None:
         cats: dict[str, int] = {}
         for d in observed["denied_destinations"]:
             c = _category(d)
             cats[c] = cats.get(c, 0) + 1
+        dom = dict(observed.get("dom") or {})
+        if dom:
+            dom["inputs_by_type"] = _vocab_counts(dom.get("inputs_by_type") or {}, INPUT_TYPES)
+        frames = []
+        for f in observed.get("frames") or []:
+            fd = dict(f.get("dom") or {})
+            if fd:
+                fd["inputs_by_type"] = _vocab_counts(fd.get("inputs_by_type") or {}, INPUT_TYPES)
+            frames.append({"same_origin": f["same_origin"],
+                           "kind": f["kind"] if f["kind"] in FRAME_KINDS else "other",
+                           "dom": fd or None})  # fmt: skip
         out["page"] = {
             "status": observed["status"],
             "bot_check": observed["bot_check"],
             "requests": observed["requests"],
-            "blocked_non_get": [{"method": b["method"]} for b in observed["blocked_non_get"]],
+            "blocked_non_get": [
+                {"method": b["method"] if b["method"] in METHODS else "OTHER"}
+                for b in observed["blocked_non_get"]
+            ],
             "denied_destinations_by_kind": cats,
             "extracted": observed["rendered"] is not None,
-            "extraction_error": observed.get("extraction_error"),
-            "dom": observed.get("dom"),
-            "frames": observed.get("frames"),
+            "extraction_error": _error_name(observed.get("extraction_error")),
+            "dom": dom or None,
+            "frames": frames,
         }
+        r = observed.get("rendering")
+        if r is not None:
+            out["page"]["rendering"] = {
+                "networkidle_reached": r["networkidle_reached"],
+                "ready_state": r["ready_state"] if r["ready_state"] in READY_STATES else "other",
+                "may_be_incomplete": r["may_be_incomplete"],
+                "failed_requests": [
+                    {
+                        "resource_type": f["resource_type"]
+                        if f["resource_type"] in RESOURCE_TYPES
+                        else "other",
+                        "kind": f["kind"],
+                        "same_origin": f["same_origin"],
+                        "failure": f["failure"],
+                    }  # fmt: skip
+                    for f in r["failed_requests"]
+                ],
+            }
+        if observed.get("mapping") is not None:
+            out["mapping"] = observed["mapping"]
         if observed["rendered"] is not None:
             out["compare"] = compare(api_json, observed["rendered"])
+    return _anon(out, aliases(api_json))
+
+
+# ---- allowlist, aliases and the leak guard ---------------------------------------------------
+
+# Greenhouse's standard application fields: printed by name. Every other field name (e.g. a
+# numbered custom question) is printed only as an alias.
+STANDARD_NAMES = frozenset({
+    "first_name", "last_name", "preferred_name", "email", "phone", "resume", "resume_text",
+    "cover_letter", "cover_letter_text", "location", "latitude", "longitude", gh.CONSENT_KEY,
+})  # fmt: skip
+GH_TYPES = frozenset(FIXTURE_TYPES | {"other"})
+COMPLIANCE_TYPES = frozenset({"gdpr", "eeoc", "other"})
+API_KEYS = frozenset({
+    "absolute_url", "ai_disclaimer", "ai_opt_out_request_url", "application_deadline",
+    "company_name", "compliance", "content", "data_compliance", "demographic_questions",
+    "departments", "first_published", "id", "include_ai_disclaimer", "internal_job_id",
+    "language", "location", "location_questions", "metadata", "offices", "pay_input_ranges",
+    "questions", "requisition_id", "title", "updated_at",
+})  # fmt: skip
+INPUT_TYPES = frozenset({
+    "text", "email", "tel", "url", "number", "search", "password", "file", "hidden", "checkbox",
+    "radio", "date", "datetime-local", "month", "week", "time", "color", "range", "submit",
+    "button", "reset", "image", "other",
+})  # fmt: skip
+ROLES = frozenset({"combobox", "listbox", "textbox", "searchbox", "option", "button", "group"})
+METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "OTHER"})
+READY_STATES = frozenset({"loading", "interactive", "complete", "other"})
+RESOURCE_TYPES = frozenset({
+    "document", "stylesheet", "image", "media", "font", "script", "texttrack", "xhr", "fetch",
+    "eventsource", "websocket", "manifest", "ping", "cspviolationreport", "preflight", "other",
+})  # fmt: skip
+FRAME_KINDS = frozenset({*KNOWN_SUFFIXES, "other", "about", "blank", "data", "blob"})
+ERROR_NAMES = frozenset({
+    "ExtractionError", "SchemaMismatch", "TimeoutError", "Error", "Stop", "NotApproved",
+    "ValueError", "KeyError", "TypeError", "RuntimeError", "OSError", "ConnectionError",
+    "JSONDecodeError", "URLError", "HTTPError", "IsolationUnavailable", "OtherError",
+})  # fmt: skip
+_STATUSES = {"mapped", "search_picker", "protocol", "absent", "ambiguous", "type_mismatch",
+             "label_mismatch"}  # fmt: skip
+_OUTPUT_WORDS = {
+    # keys this module emits
+    "requests", "api", "questions", "location_questions", "required", "fields", "name", "type",
+    "options", "has_help", "types", "unknown_types", "compliance", "requires_consent",
+    "retention_days", "top_level_keys", "other_top_level_keys", "has_demographic_questions",
+    "mapped", "unsupported", "identity", "job_id_matches", "company_matches_board",
+    "has_absolute_url", "page", "status", "bot_check", "blocked_non_get", "method",
+    "denied_destinations_by_kind", "extracted", "extraction_error", "dom", "forms",
+    "inputs_by_type", "selects", "textareas", "controls_with_name", "controls_with_id_only",
+    "controls_outside_form", "labels", "comboboxes", "file_inputs", "buttons", "iframes",
+    "shadow_hosts", "scripts", "frames", "same_origin", "kind", "compare", "in_both",
+    "api_only", "page_only", "differences", "key", "label_differs", "conditional_on_page",
+    "page_stopped", "stopped", "rendering", "networkidle_reached", "ready_state",
+    "may_be_incomplete", "failed_requests", "resource_type", "failure", "mapping",
+    "field_type", "id_candidates", "label_candidates", "label_matches", "control", "tag",
+    "input_type", "role", "has_name_attr", "name_source", "labelled", "required_attr",
+    "hidden_attr", "visible", "in_form", "in_group", "controls_listbox", "describedby",
+    "listbox_options", "options_match_api", "by_status", "unmatched_controls",
+    "controls_total", "alternative_of_api_field", "id_shape",
+    # values
+    "input", "select", "textarea", "other", "combobox", "listbox", "textbox", "searchbox",
+    "group", "option", "button", "labelledby", "label_for", "label_wrap", "aria_label",
+    "question_n", "standard", "no-host", *_STATUSES,
+}  # fmt: skip
+VOCAB = frozenset(
+    _OUTPUT_WORDS | STANDARD_NAMES | {f"{n}[]" for n in STANDARD_NAMES} | GH_TYPES
+    | COMPLIANCE_TYPES | API_KEYS | INPUT_TYPES | METHODS | READY_STATES | RESOURCE_TYPES
+    | FRAME_KINDS | ERROR_NAMES | {t.value for t in gh.FieldType}
+)  # fmt: skip
+_ALIAS = re.compile(r"q\d{2,3}(\[\])?")
+# Our own stop messages: the constants raised in this module, HTTP status codes only.
+_STOPS = (
+    r"redirect \(\d{3}\) - not followed", "only the documented API host is allowed",
+    "request budget reached", r"HTTP \d{3}", "response larger than the limit",
+    r"robots\.txt disallows the job path", "redirected to another origin",
+    "page request budget reached",
+)  # fmt: skip
+_NOT_APPROVED = (
+    "board token or job id has an unexpected shape",
+    r"this posting is not the approved one \(NOEFFORTS_READONLY_GREENHOUSE_APPROVED\)",
+    "a non-default page origin is allowed only for test fixtures",
+    "a real page is opened only in the isolated browser container",
+)
+_STOP_TEXT = re.compile(
+    rf"Stop: ({'|'.join(_STOPS)})|NotApproved: ({'|'.join(_NOT_APPROVED)})"
+    rf"|error \(({'|'.join(sorted(ERROR_NAMES))})\)"
+    r"|output suppressed: it failed the privacy check|net::ERR_[A-Z_]{1,60}"
+)
+
+
+class Leak(RuntimeError):
+    pass
+
+
+def aliases(api_json: dict) -> dict[str, str]:
+    """Raw field name -> printable name: standard names as they are, others q01, q02, ..."""
+    out: dict[str, str] = {}
+    n = 0
+    for group in ("questions", "location_questions"):
+        for q in api_json.get(group) or []:
+            for f in q.get("fields") or []:
+                name = f.get("name")
+                if not isinstance(name, str) or name in out:
+                    continue
+                if name in STANDARD_NAMES:
+                    out[name] = name
+                else:
+                    n += 1
+                    out[name] = f"q{n:02d}"
+    out |= {f"{k}[]": f"{v}[]" for k, v in out.items()}
     return out
+
+
+def _anon(obj, amap: dict[str, str]):
+    """Replace raw field names in values (keys are this module's own words)."""
+    if isinstance(obj, dict):
+        return {k: _anon(v, amap) for k, v in obj.items()}
+    if isinstance(obj, list | tuple):
+        return [_anon(v, amap) for v in obj]
+    if isinstance(obj, str):
+        return amap.get(obj, obj)
+    return obj
+
+
+def _vocab_counts(counts: dict, vocab: frozenset) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for k, v in counts.items():
+        k = k if k in vocab else "other"
+        out[k] = out.get(k, 0) + int(v)
+    return out
+
+
+def _error_name(name: str | None) -> str | None:
+    if name is None:
+        return None
+    return name if name in ERROR_NAMES else "OtherError"
+
+
+def _allowed(s: str) -> bool:
+    return s in VOCAB or bool(_ALIAS.fullmatch(s)) or bool(_STOP_TEXT.fullmatch(s))
+
+
+def sensitive_values(board: str, job_id: str, api_json: dict | None, board_json: dict | None):
+    """Strings derived from the posting that must never be printed (case-insensitive)."""
+    vals = {board, job_id}
+    a, b = api_json or {}, board_json or {}
+    for k in ("company_name", "title", "absolute_url", "requisition_id", "internal_job_id",
+              "id", "ai_disclaimer", "ai_opt_out_request_url", "content"):  # fmt: skip
+        if a.get(k) is not None:
+            vals.add(str(a[k]))
+    if isinstance(a.get("location"), dict) and a["location"].get("name"):
+        vals.add(str(a["location"]["name"]))
+    for k in ("departments", "offices"):
+        vals |= {str(x.get("name")) for x in a.get(k) or [] if isinstance(x, dict)}
+    if b.get("name"):
+        vals.add(str(b["name"]))
+    for group in ("questions", "location_questions"):
+        for q in a.get(group) or []:
+            vals |= {str(q.get("label") or ""), str(q.get("description") or "")}
+            for f in q.get("fields") or []:
+                name = str(f.get("name") or "")
+                if name not in STANDARD_NAMES:
+                    vals.add(name)
+                    vals |= set(re.findall(r"\d{4,}", name))
+                vals |= {str(v.get("label") or "") for v in f.get("values") or []}
+    vocab = {w.lower() for w in VOCAB}
+    return {v.strip() for v in vals if len(v.strip()) >= 4 and v.strip().lower() not in vocab}
+
+
+def guard(obj, sensitive: set[str]) -> str:
+    """The JSON to print, or Leak if any string is outside the allowlist or contains a value
+    derived from the posting. Fails closed: the caller prints nothing but the refusal."""
+
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                walk(k)
+                walk(v)
+        elif isinstance(o, list | tuple):
+            for v in o:
+                walk(v)
+        elif isinstance(o, str):
+            if not _allowed(o):
+                raise Leak("a string outside the allowlist")
+        elif not (o is None or isinstance(o, bool | int | float)):
+            raise Leak("a value of an unexpected type")
+
+    walk(obj)
+    text = json.dumps(obj, indent=2, sort_keys=True, ensure_ascii=False)
+    low = text.lower()
+    if any(v.lower() in low for v in sensitive):
+        raise Leak("a value derived from the posting")
+    return text
+
+
+def emit(obj, sensitive: set[str], printer=print) -> bool:
+    try:
+        printer(guard(obj, sensitive))
+        return True
+    except Leak:
+        # Not even the reason's details: which string leaked would itself be the leak.
+        printer(json.dumps({"stopped": "output suppressed: it failed the privacy check"}))
+        return False
 
 
 def write_json(path: Path, data) -> None:
@@ -400,28 +778,37 @@ def write_json(path: Path, data) -> None:
 
 
 def main(argv=None) -> int:
-    """python -m app.modules.preparation.gh_readonly --out DIR [--observe]
+    """python -m app.modules.preparation.gh_readonly --out DIR [--observe [--mapping]]
     The posting comes from NOEFFORTS_READONLY_GREENHOUSE_APPROVED ("<board>/<job_id>"), so it
     never appears on a command line or in a log. Raw data goes to DIR; stdout gets only the
-    publishable summary."""
+    publishable summary, and only after `guard` has passed it (exit 4 otherwise)."""
     import argparse
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--observe", action="store_true", help="also permission B (page load)")
+    ap.add_argument(
+        "--mapping", action="store_true", help="with --observe: per-field mapping evidence"
+    )
     a = ap.parse_args(argv)
     board, _, job_id = os.environ.get("NOEFFORTS_READONLY_GREENHOUSE_APPROVED", "").partition("/")
+    sensitive = sensitive_values(board, job_id, None, None)
     try:
         log = fetch(board, job_id, a.out)
         api_json = json.loads((a.out / "job.json").read_text())
         board_json = json.loads((a.out / "board.json").read_text())
+        sensitive = sensitive_values(board, job_id, api_json, board_json)
         page_stop = None
         try:
-            observed = observe_page(board, job_id) if a.observe else None
+            observed = (
+                observe_page(board, job_id, api_json=api_json if a.mapping else None)
+                if a.observe
+                else None
+            )
         except Stop as e:  # A's result is still reported
-            observed, page_stop = None, str(e)
+            observed, page_stop = None, f"Stop: {e}"
         except Exception as e:  # noqa: BLE001 - messages can carry URLs; type only
-            observed, page_stop = None, f"error ({type(e).__name__})"
+            observed, page_stop = None, f"error ({_error_name(type(e).__name__)})"
         if observed is not None and observed["rendered"] is not None:
             write_json(a.out / "rendered.json", observed["rendered"].model_dump())
         result = {"requests": [r["status"] for r in log["requests"]],
@@ -429,13 +816,12 @@ def main(argv=None) -> int:
         if page_stop:
             result["page_stopped"] = page_stop
     except (NotApproved, Stop) as e:
-        print(json.dumps({"stopped": f"{type(e).__name__}: {e}"}))
+        emit({"stopped": f"{type(e).__name__}: {e}"}, sensitive)
         return 2
     except Exception as e:  # noqa: BLE001 - messages can carry URLs; print the type only
-        print(json.dumps({"stopped": f"error ({type(e).__name__})"}))
+        emit({"stopped": f"error ({_error_name(type(e).__name__)})"}, sensitive)
         return 3
-    print(json.dumps(result, indent=2, sort_keys=True))
-    return 0
+    return 0 if emit(result, sensitive) else 4
 
 
 if __name__ == "__main__":
