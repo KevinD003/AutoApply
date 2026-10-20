@@ -27,18 +27,23 @@ code=$(curl -s -o /tmp/smoke-reg.json -w '%{http_code}' -c /tmp/smoke-cookies \
   -d "{\"email\":\"$email\",\"password\":\"synthetic-password-1\"}" \
   http://127.0.0.1:8000/api/auth/register)
 test "$code" = "201" || { echo "register returned $code"; cat /tmp/smoke-reg.json; exit 1; }
-curl -fsS -b /tmp/smoke-cookies http://127.0.0.1:8000/api/auth/me | grep -q "$email"
+me=$(curl -fsS -b /tmp/smoke-cookies http://127.0.0.1:8000/api/auth/me)
+echo "$me" | grep -q "$email"
 echo "Register + session OK"
 
 for i in $(seq 1 60); do
   if curl -fsS http://127.0.0.1:3000/login >/dev/null 2>&1; then break; fi
   sleep 2
 done
-curl -fsS http://127.0.0.1:3000/login | grep -q "NoEfforts"
-curl -fsS -b /tmp/smoke-cookies http://127.0.0.1:3000/api/auth/me | grep -q "$email"
+page=$(curl -fsS http://127.0.0.1:3000/login)
+echo "$page" | grep -q "NoEfforts"
+me=$(curl -fsS -b /tmp/smoke-cookies http://127.0.0.1:3000/api/auth/me)
+echo "$me" | grep -q "$email"
 echo "Web app serves pages and proxies the API"
 
-docker compose exec -T worker celery -A app.worker inspect ping --timeout 10 | grep -q pong
+# Capture first: `| grep -q` would close the pipe early and fail the step under pipefail.
+ping=$(docker compose exec -T worker celery -A app.worker inspect ping --timeout 10 2>&1) || true
+echo "$ping" | grep -q pong || { echo "worker ping failed: $ping"; exit 1; }
 echo "Worker registered with the broker"
 
 docker compose restart backend
@@ -46,6 +51,7 @@ for i in $(seq 1 60); do
   if curl -fsS http://127.0.0.1:8000/api/health >/dev/null 2>&1; then break; fi
   sleep 2
 done
-curl -fsS -b /tmp/smoke-cookies http://127.0.0.1:8000/api/auth/me | grep -q "$email"
+me=$(curl -fsS -b /tmp/smoke-cookies http://127.0.0.1:8000/api/auth/me)
+echo "$me" | grep -q "$email"
 echo "Data persisted across a backend restart"
 echo "DOCKER SMOKE PASSED"
