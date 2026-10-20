@@ -146,6 +146,7 @@ To run it:
 | CI read-only #3 | `e2a8d97` | **completed.** A: 3×200. B: page 200, 9 GET requests, no non-GET request, no bot check; form not extractable (id-only controls, ARIA comboboxes). Report: `docs/greenhouse-compatibility-report.md` |
 | CI read-only #4 (B2) | `151e7a0` | **completed**, authorized once. A: 3×200. B: 1 navigation, 9 requests (8 to other greenhouse.io hosts, blocked), 0 non-GET, 43,185 bytes. Mapping: 17 unique, 2 incompatible, 1 absent, 2 not observable |
 | CI read-only #5 (identification) | `90a12ab` | **completed**, authorized once, `--identify-only`: 0 API requests; 1 navigation, 9 GET requests; blocked hosts: `job-boards.cdn.greenhouse.io:443` (5 script, 2 stylesheet), `recruiting.cdn.greenhouse.io:443` (1 image) |
+| CI read-only #6 (B3) | `bf6642b` | **completed**, authorized once, after CI #42 passed on that revision. A: 3×200. B: 1 navigation, 19 GET requests; CDN scripts/stylesheets loaded; refused: 4 data requests + 6 fonts to the CDN, 1 image to the other host. Mapping unchanged from B2; attachments sit in groups named by the question |
 
 **Note on the budget.** A was written as "at most 3 requests in total" and B as "exactly one"
 navigation. Runs #2 and #3 each used that budget once more, relying on the user's general
@@ -229,7 +230,7 @@ C (candidate data disclosure) and D (submission) remain unapproved.
 Run once authorized: Actions → "Greenhouse read-only check (manual)" → `observe` and `mapping`
 checked, once.
 
-## B3 — approved scope (approved 2026-10-20 for one run after CI passes on the final code)
+## B3 — approved scope (approved 2026-10-20 for one run; run once as manual run #6 on `bf6642b` after CI #42 passed; authorization used)
 
 **Purpose:** find out whether loading the page's own blocked dependencies changes the form,
 and whether it resolves B2's specific gaps. Those gaps are:

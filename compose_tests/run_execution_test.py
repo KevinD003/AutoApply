@@ -598,8 +598,8 @@ def s_readonly_b3_dependency_policy_in_container():
           and not any(m != "GET" for m, _ in paths), paths)  # fmt: skip
     check("B3 policy: HEAD to the page and POST anywhere refused and recorded",
           {"HEAD", "POST"} <= set(obs.get("blocked_non_get", [])), obs.get("blocked_non_get"))  # fmt: skip
-    check("B3 policy: the mapping rule is not relaxed (attachment still incompatible)",
-          obs.get("resume") == "incompatible", obs.get("resume"))  # fmt: skip
+    check("B3 policy: the attachment maps only through its validated group (own label differs)",
+          obs.get("resume") == "unique" and obs.get("group_label") is True, obs)  # fmt: skip
     canary_hits = [ln for ln in compose("logs", "canary").splitlines() if "CANARY-HIT" in ln]
     check("B3 policy: the redirect off the approved origins reached nothing (canary silent)",
           not canary_hits, canary_hits[:3])  # fmt: skip

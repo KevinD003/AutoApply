@@ -285,3 +285,41 @@ def test_original_fixture_still_routes_to_the_original_adapter():
             "submit_url": "https://job-boards.greenhouse.io/x/jobs/1/submit"}  # fmt: skip
     with pytest.raises(ValueError):
         adapter_for({**real, "form_source": "greenhouse_api_dom"})
+
+
+# ------------------------------------------------------------------ attachment groups (B3 evidence)
+
+
+def test_attachment_named_by_its_group_is_mapped_via_the_group():
+    from app.modules.preparation import greenhouse as gh
+
+    fields = gh.schema_from_api(api()).fields
+    maps = {
+        m.key: m for m in dom.map_fields(fields, dom.snapshot(page_html(mode="gh2_attach_group")))
+    }
+    assert maps["resume"].status == maps["cover_letter"].status == "mapped_via_group"
+    assert {m.status for k, m in maps.items() if k not in ("resume", "cover_letter")} == {"mapped"}
+
+
+@pytest.mark.parametrize("mode", ["gh2_attach_group_wrong", "gh2_attach_group_shared"])
+def test_attachment_group_must_be_named_exactly_and_hold_one_file_input(mode):
+    from app.modules.preparation import greenhouse as gh
+
+    maps = {m.key: m for m in dom.map_fields(gh.schema_from_api(api()).fields,
+                                             dom.snapshot(page_html(mode=mode)))}  # fmt: skip
+    assert maps["resume"].status == "label_mismatch"
+    with pytest.raises(gh.SchemaMismatch, match="resume: label_mismatch"):
+        dom.build_schema(api(), page_html(mode=mode))
+
+
+def test_full_run_with_group_named_attachments(api, receiver):
+    receiver.config(mode="gh2_attach_group")  # before capture: the page structure is read then
+    app_id = v2_application(api)
+    aid = queue(api, app_id)
+    receiver.config(mode="gh2_attach_group")  # reset() between steps would not apply here
+    assert runner.run_attempt(aid, "w1") == "confirmed"
+    led = receiver.ledger()
+    up = json.loads(led["disclosures"][0]["detail"])
+    approved = api.get(f"/applications/{app_id}/package").json()["package"]["content"]
+    assert up["field"] == "resume" and up["sha256"] == approved["documents"][0]["sha256"]
+    assert led["acceptances"][0]["fields"]["resume_attachment_id"] == up["attachment_id"]

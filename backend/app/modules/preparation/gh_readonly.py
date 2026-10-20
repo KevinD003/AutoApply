@@ -620,6 +620,8 @@ def _observation(m, f) -> tuple[str, list[str]]:
         return "incompatible", ["element_or_role_does_not_suit_the_type"]
     if m.status == "label_mismatch":
         return "incompatible", ["accessible_name_differs_from_the_label"]
+    if m.status == "mapped_via_group":
+        return "unique", ["matched_via_attachment_group"]
     return "unique", []
 
 
@@ -650,7 +652,7 @@ def mapping_evidence(page, html: str, api_json: dict) -> dict:
             "label": "not_applicable" if f.type.value == "unsupported" or c is None
             else gdom._norm(c.accessible_name) == label,
             "element": "not_applicable" if c is None or f.type.value == "unsupported"
-            else m.status in ("mapped", "search_picker", "label_mismatch"),
+            else m.status in ("mapped", "mapped_via_group", "search_picker", "label_mismatch"),
             "options": "not_applicable",
             "visible": visible(c.id) if c is not None else "not_applicable",
             # A labelled attachment group: the control's enclosing group is named exactly as
@@ -891,8 +893,8 @@ ERROR_NAMES = frozenset({
     "ValueError", "KeyError", "TypeError", "RuntimeError", "OSError", "ConnectionError",
     "JSONDecodeError", "URLError", "HTTPError", "IsolationUnavailable", "OtherError",
 })  # fmt: skip
-_STATUSES = {"mapped", "search_picker", "protocol", "absent", "ambiguous", "type_mismatch",
-             "label_mismatch"}  # fmt: skip
+_STATUSES = {"mapped", "mapped_via_group", "matched_via_attachment_group", "search_picker",
+             "protocol", "absent", "ambiguous", "type_mismatch", "label_mismatch"}  # fmt: skip
 _OUTPUT_WORDS = {
     # keys this module emits
     "requests", "api", "questions", "location_questions", "required", "fields", "name", "type",

@@ -77,6 +77,31 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   The local Playwright run above was the targeted `submission.spec.ts` only (20 passed); it is
   not the full frontend suite.
 
+## B3 observation with approved dependencies (2026-10-20)
+
+- **Policy:** `SubresourceRule`, enforced by:
+  - the browser's resolver rules;
+  - the in-browser filter, including redirect targets;
+  - the egress-proxy session allow-list;
+  - the runner's resolver exemptions;
+  - WebSockets routed and never connected.
+  - Method policy: GET only for the page; GET/HEAD only for the CDN's scripts and
+    stylesheets.
+  - The rule is fixed in code.
+- **Tests:**
+  - `tests/test_b3_policy.py` (7, netns browser path, mutation-checked);
+  - Compose `s_readonly_b3_dependency_policy_in_container` (container path; canary silent).
+- **CI #42** on `bf6642b`: all four jobs passed, with execution-compose at 85 checks,
+  0 failed. Local full backend suite on `bf6642b`: 314 passed.
+- **Run:** manual run #6 (39490684255) on `bf6642b`, once.
+  - Requests: A 3×200; 1 navigation; 19 GET requests.
+  - CDN scripts and stylesheets loaded; refused: 4 data requests, 6 fonts, 1 image.
+  - **Mapping unchanged from B2.** New evidence: attachment inputs sit in groups named by
+    their question.
+- **Local change from that evidence:** the `mapped_via_group` rule for attachments (exact
+  group name, one file input per group), with tests. The posting stays refused for its other
+  gaps.
+
 ## B2 real-page mapping observation (2026-10-20)
 
 - **Run:** authorized once by the user and run once: manual run #4

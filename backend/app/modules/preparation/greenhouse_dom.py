@@ -6,7 +6,8 @@ A field is mapped only when ALL of these hold:
   * exactly one control has `id` equal to the field name;
   * its element/role suits the field type (text input, textarea, file input, combobox, ...);
   * its accessible name equals the field's label (whitespace, case and a trailing required
-    marker ignored).
+    marker ignored), or, for an attachment only, its enclosing group's accessible name does
+    and that group contains no other file input ("mapped_via_group").
 Anything else is reported as absent / ambiguous / type mismatch / label mismatch and the form
 is refused; nothing is guessed. Hidden-at-load questions are flagged; this structure exposes
 no trigger, so their condition is recorded as unknown (never filled; a checkpoint if
@@ -57,7 +58,8 @@ class FieldMapping:
     key: str
     type: str
     required: bool
-    # mapped | search_picker | protocol | absent | ambiguous | type_mismatch | label_mismatch
+    # mapped | mapped_via_group | search_picker | protocol | absent | ambiguous |
+    # type_mismatch | label_mismatch
     status: str
     candidates: int
     control: Control | None = None
@@ -178,8 +180,11 @@ def _suits(f: FormField, c: Control) -> bool:
 
 def map_fields(fields: list[FormField], controls: list[Control]) -> list[FieldMapping]:
     by_id: dict[str, list[Control]] = {}
+    file_groups: dict[int, int] = {}
     for c in controls:
         by_id.setdefault(c.id, []).append(c)
+        if c.tag == "input" and c.type == "file" and c.group_key is not None:
+            file_groups[c.group_key] = file_groups.get(c.group_key, 0) + 1
     out = []
     for f in fields:
         key = f.key.removesuffix("[]")
@@ -205,7 +210,17 @@ def map_fields(fields: list[FormField], controls: list[Control]) -> list[FieldMa
             elif not _suits(f, c):
                 m.status = "type_mismatch"
             elif _norm(c.accessible_name) != _norm(f.label):
-                m.status = "label_mismatch"
+                # One validated exception (observed on a real page in B3): an attachment input
+                # whose own label differs but whose enclosing group is named exactly as the
+                # question, and that group holds no other file input.
+                m.status = (
+                    "mapped_via_group"
+                    if f.type == FieldType.file
+                    and c.group_key is not None
+                    and _norm(c.group_name) == _norm(f.label)
+                    and file_groups.get(c.group_key, 0) == 1
+                    else "label_mismatch"
+                )
             else:
                 m.status = "mapped"
         out.append(m)
@@ -218,7 +233,7 @@ def unmatched_controls(fields: list[FormField], controls: list[Control]) -> list
     return [c for c in controls if c.id not in keys]
 
 
-ACCEPTED = ("mapped", "protocol", "search_picker")
+ACCEPTED = ("mapped", "mapped_via_group", "protocol", "search_picker")
 
 
 def build_schema(api: dict, page_html: str) -> tuple[FormSchema, list[FieldMapping]]:

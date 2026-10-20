@@ -74,7 +74,10 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         for f, m in zip(fields, dom.map_fields(fields, controls), strict=True):
             if f.type == FieldType.unsupported:
                 continue  # never filled; a required one could not have been approved
-            if m.status != "mapped" or m.control.required != f.required:
+            ok = m.status == "mapped" or (
+                m.status == "mapped_via_group" and f.type == FieldType.file
+            )
+            if not ok or m.control.required != f.required:
                 changed.append(f"{f.key}: {m.status if m.status != 'mapped' else 'required'}")
             elif f.type == FieldType.select:
                 if m.control.role != "combobox" or not m.control.controls_listbox:

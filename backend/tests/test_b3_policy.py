@@ -93,11 +93,15 @@ def test_without_the_rule_nothing_from_the_dependency_origin_is_sent(receiver):
     assert by["question_8101"]["checks"]["options"] == "not_observable_at_load"
 
 
-def test_attachment_group_is_observed_but_the_mapping_rule_is_not_relaxed(receiver):
+def test_attachment_group_is_observed_and_mapped_only_through_the_validated_rule(receiver):
     by = {f["key"]: f for f in observe()["mapping"]["fields"]}
     resume = by["resume"]
-    assert resume["observation"] == "incompatible"  # its own label still differs
     assert resume["checks"]["label"] is False and resume["checks"]["group_label"] is True
+    assert resume["observation"] == "unique"
+    assert resume["reasons"] == ["matched_via_attachment_group"]
+    # Without the dependency script the container is not a named group: still incompatible.
+    by2 = {f["key"]: f for f in observe(rules=())["mapping"]["fields"]}
+    assert by2["resume"]["observation"] == "incompatible"
 
 
 def test_rules_for_a_real_page_are_fixed():
@@ -129,7 +133,8 @@ def test_comparison_reports_changes_and_never_assumes_unrecorded_checks(receiver
     cmp = ro.compare_runs(b2, b3)
     rows = {r["key"]: r for r in cmp["fields"]}
     assert "options" in rows["q01"]["checks_changed"] and rows["q01"]["options_b3"] is True
-    assert rows["resume"]["b2"] == rows["resume"]["b3"] == "incompatible"
+    assert (rows["resume"]["b2"], rows["resume"]["b3"]) == ("incompatible", "unique")
+    assert "resume" in cmp["changed"]
     assert "group_label" in rows["resume"]["checks_changed"]  # not_recorded -> True
     assert cmp["options"]["b2"].get("not_observable_at_load") and cmp["options"]["b3"]["match"]
     assert ro.guard(b3, ro.sensitive_values(BOARD, JOB, api(), None))

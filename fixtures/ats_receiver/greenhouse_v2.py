@@ -21,6 +21,12 @@ FIXTURE ASSUMPTIONS (not observed; invented for local tests and labelled as such
     path in the form's `data-submit-path`; success replaces the form with role=status text;
   * the location picker searches as you type and fills hidden coordinates.
 
+Observed later with the page's own scripts and stylesheets loaded (B3, one posting): an
+attachment input's own label differs from its question while its enclosing group is named
+exactly as the question (modes gh2_attach_group*); dropdown option lists still absent without
+interaction; no location control; four labelled comboboxes not in the job data and one inside
+another field's group.
+
 Routes (on the synthetic receiver; same ledger):
   GET  /gh2-api/robots.txt, /gh2-api/v1/boards/{board}, /gh2-api/v1/boards/{board}/jobs/{id}
   GET  /gh2/{board}/jobs/{id}              hosted form (v2 structure)
@@ -28,7 +34,7 @@ Routes (on the synthetic receiver; same ledger):
   POST /gh2/{board}/jobs/{id}/submit       application (an acceptance)
 Modes (cfg["mode"]): gh2_duplicate_id, gh2_label_mismatch, gh2_missing_control,
 gh2_validation_fail, gh2_new_question, gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, gh2_many_assets,
-gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, gh2_cdn_app (cfg cdn,
+gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, gh2_attach_group(_wrong|_shared), gh2_cdn_app (cfg cdn,
 redirect_away), plus the
 receiver-wide upload_fail, error_before_accept, error_after_accept, drop_after_accept.
 All employers, jobs and people are fictional.
@@ -137,6 +143,15 @@ def _render(q, mode) -> str:
     areq = ' aria-required="true"' if req else ""
     if t == "input_hidden":
         return f'<input type="hidden" id="{qid}">'
+    if t == "input_file" and mode in ("gh2_attach_group", "gh2_attach_group_wrong"):
+        # Observed in B3 on a real page: the input's own label differs from the question, and
+        # its enclosing group is named exactly as the question (here via aria-labelledby).
+        gl = "Supporting document" if mode == "gh2_attach_group_wrong" else label_text
+        return (f'<div class="field" role="group" aria-labelledby="{qid}-label">'
+                f'<div id="{qid}-label">{html.escape(gl)}</div>'
+                f'<label for="{qid}">Attach</label>'
+                f'<input type="file" id="{qid}"{areq} accept=".pdf,.doc,.docx,.txt,.rtf">'
+                f'<span id="{qid}-status" class="attachment-status"></span></div>')
     if t == "input_file" and mode == "gh2_cdn_app":
         # The input's own label differs from the question; the question names a container that
         # the dependency script turns into a labelled group (FIXTURE ASSUMPTION).
@@ -256,6 +271,15 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
     mode = cfg["mode"]
     base = f"/gh2/{board}/jobs/{job_id}"
     qs = "".join(_render(q, mode) for q in j["questions"] + j["location_questions"])
+    if mode == "gh2_attach_group_shared":  # both attachments inside one group: not unique
+        files = [q for q in j["questions"] if q["fields"][0]["type"] == "input_file"]
+        qs = "".join(_render(q, "normal") for q in j["questions"] + j["location_questions"]
+                     if q not in files)
+        lab = html.escape(files[0]["label"])
+        qs += (f'<div role="group" aria-labelledby="att-label"><div id="att-label">{lab}</div>'
+               + "".join(f'<label for="{q["fields"][0]["name"]}">Attach</label>'
+                         f'<input type="file" id="{q["fields"][0]["name"]}">' for q in files)
+               + "</div>")
     if mode == "gh2_many_assets":  # same-origin requests beyond a small budget
         qs += "".join(f'<img alt="" src="/gh2-api/robots.txt?i={i}">' for i in range(10))
     if mode == "gh2_cdn_app":

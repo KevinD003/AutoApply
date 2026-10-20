@@ -169,6 +169,70 @@ Both names passed the publication rules: plain `*.greenhouse.io` names containin
 board token, nor the job id, nor any other value derived from the posting. Their purpose is not
 inferred beyond the request types observed.
 
+## B3 — page loaded with its approved dependencies (manual run #6, authorized once)
+
+- **Run:** manual run #6 ([39490684255](https://github.com/KevinD003/AutoApply/actions/runs/39490684255)),
+  revision `bf6642b`.
+  - CI #42 passed all four jobs on that exact revision first, including the container-mode B3
+    policy scenario.
+  - Conclusion: success. No stop; run once, not retried.
+- **Requests:**
+  - API: 3 GETs, all 200.
+  - Page: 1 navigation (200); 19 browser requests, all GET; 0 non-GET attempted;
+    391,888 bytes received.
+  - No limit reached, no bot challenge, network idle reached.
+- **Allowed and loaded:** scripts and stylesheets from `job-boards.cdn.greenhouse.io:443`.
+- **Refused before sending, by the approved policy:**
+  - 10 requests to `job-boards.cdn.greenhouse.io`: 4 data requests (fetch) and 6 fonts;
+  - 1 image request to `recruiting.cdn.greenhouse.io`, which stayed blocked.
+  What those would have provided is unknown. Rendering is still reported as possibly
+  incomplete.
+- **Privacy:** the printed summary passed the guard. The whole log contains no raw question id
+  and no posting URL. Raw data was destroyed with the stack.
+
+**Comparison with B2** (field by field, via `compare_runs` over both published summaries):
+
+| Question | B2 | B3 |
+|---|---|---|
+| Field observations | 17 unique, 2 incompatible, 1 absent, 2 not observable | **unchanged**: no field changed observation |
+| Attachment controls (`resume`, `cover_letter`) | incompatible (own label differs) | still incompatible under B3's rules. **New evidence:** each file input sits in a group whose accessible name equals the question exactly, and the input's own label differs |
+| Location control | absent | absent |
+| Hidden coordinates | not observable (page-managed) | not observable (no such controls at load) |
+| Dropdown options | 7 × not observable at load | 7 × still not observable without interaction (no listbox in the DOM) |
+| The 5 unmatched comboboxes | not classified | 1 inside the same group as an API field's control (`phone`); 4 standalone and labelled, none labelled like an API question; 2 of the 5 carry a required attribute. Purpose not inferred |
+| Required flags | — | unchanged for every field |
+| DOM counts | 24 id-only controls, 12 comboboxes, 2 file inputs | identical |
+| Bot challenge | none | none |
+
+**What this means:**
+- Loading the approved scripts and stylesheets did **not** change the form at load.
+- The remaining gaps need interaction (dropdown options, the location search) or the refused
+  data requests, and neither is authorized. They are reported as not observable without
+  interaction; no further no-interaction run is proposed.
+- **Attachments: one evidence-backed local change** (below). The rest of the posting stays
+  refused by the adapter, for several reasons:
+  - the absent location control;
+  - the required hidden coordinates (a checkpoint);
+  - 4 visible comboboxes the job data does not list, one of them required;
+  - the attachment inputs carry no required attribute although the job data requires the
+    resume (a "changed" field to the adapter).
+
+**Local change justified by B3:**
+- **New mapping status `mapped_via_group`, for attachments only.** It applies when all of
+  these hold:
+  - exactly one control has the field's id;
+  - it is a file input;
+  - its enclosing group is named exactly as the question;
+  - that group contains no other file input.
+- **What does not qualify:** a group named differently, or a group holding two file inputs.
+  Both stay `label_mismatch` and are refused.
+- **Tests and fixture:** fixture modes `gh2_attach_group(_wrong|_shared)`; tests in
+  `tests/test_greenhouse_dom.py`, including a full fixture run with receiver-verified upload
+  digests.
+- **Effect on this posting:** none. It remains refused.
+- **Interpretation:** B3's printed result predates this rule (it reports `incompatible`). Under
+  the new rule these two fields would map, with every other gap unchanged.
+
 ## Log cleanup (run #3's logs deleted with authorization; runs #1 and #2 untouched)
 
 Manual "Greenhouse read-only check" runs. None has artifacts: the workflow uploads none and
