@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-20 (proxy control-plane separation; read-only Greenhouse request prepared, awaiting a posting). For requirement-by-requirement evidence see
+Last updated: 2026-10-20 (id-only Greenhouse mapping against a second local fixture; read-only run #3 reported; follow-up read-only run requested, not approved). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -37,6 +37,42 @@ Last updated: 2026-10-20 (proxy control-plane separation; read-only Greenhouse r
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## Id-only Greenhouse mapping and output privacy (2026-10-20)
+
+- **Real posting (read-only run #3, `e2a8d97`):**
+  - API retrieval succeeded; page observation succeeded;
+  - DOM extraction failed (id-only controls, ARIA comboboxes);
+  - filling and submission untested.
+  Posting-specific. Details: `docs/greenhouse-compatibility-report.md`.
+- **Built, local only** (commit `835c34a`):
+  - the evidence-based mapper `preparation/greenhouse_dom.py`;
+  - the second fixture `fixtures/ats_receiver/greenhouse_v2.py`, whose widget behaviour is a
+    labelled assumption;
+  - the adapter `greenhouse_dom` (fixture-only, `real_destinations: false`);
+  - the read-only CLI's allowlisted, aliased, guarded output;
+  - the mapping-evidence collector (off by default);
+  - the Compose scenario `s_readonly_mapping_in_container`;
+  - v2 badges in the UI and a v2 e2e test.
+- **Not done:** no new real-page load. The follow-up observation needs a new approval
+  (`docs/greenhouse-readonly-compatibility-proposal.md`, "Follow-up observation B2").
+- **Commands actually run (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `uv run pytest tests/test_greenhouse_dom.py`: 26 passed;
+  - `uv run pytest tests/test_gh_readonly.py`: 17 passed;
+  - `uv run pytest` (full backend): 278 collected, 278 passed;
+  - `uv run ruff check .` and `uv run ruff format --check .`: clean;
+  - `npx tsc --noEmit` and `npm run lint`: clean;
+  - `npx playwright test e2e/submission.spec.ts` (desktop + mobile): result recorded in the next commit.
+  - One earlier full run was invalid and is not counted: it ran at the same time as a focused
+    run and both used the shared test database and receiver port 8799.
+- **Compose / CI:** not yet run for `835c34a` (the push was delayed by a GitHub credential outage).
+- **Still unsupported:**
+  - location search pickers (the hidden coordinates come from a search NoEfforts does not
+    perform);
+  - multi-choice comboboxes;
+  - questions shown by page logic NoEfforts cannot see;
+  - security-code steps on this page type;
+  - pasted text instead of an attachment.
+
 ## Proxy control-plane separation (2026-10-20)
 
 - **Code-tested revision:** `d62bea7`. CI #28
@@ -51,9 +87,8 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   - `d62bea7`: request body read before refusing (CI #26 race).
 - **Proxy management:** no longer on any network. From the browser container, only port 3128
   of the proxy accepts a connection.
-- **Read-only Greenhouse check:** the approval request is ready in
-  `docs/greenhouse-readonly-compatibility-proposal.md`. It is **pending** the user's posting:
-  no posting was chosen or accessed.
+- **Read-only Greenhouse check:** at this revision the approval request was ready and no
+  posting had been chosen; it has since run (see the section above).
 
 Release blockers for any real use (updated):
 - no real-page verification of the Greenhouse mapping (needs permissions A/B);
