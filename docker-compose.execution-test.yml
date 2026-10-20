@@ -11,7 +11,11 @@ services:
               "--ledger", "/tmp/ledger.db",
               "--admin-token", "${RECEIVER_ADMIN_TOKEN:?set RECEIVER_ADMIN_TOKEN}"]
     volumes: ["./fixtures/ats_receiver:/fixture:ro"]
-    networks: [fixtures]
+    networks:
+      fixtures:
+        # A second name for the same receiver: the "dependency origin" of the read-only B3
+        # policy scenario (another origin, so the policy and the proxy treat it separately).
+        aliases: [cdn-fixture]
 
   canary:
     # Logs every request it receives; the test asserts there are none.

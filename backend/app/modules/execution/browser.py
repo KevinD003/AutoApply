@@ -57,6 +57,27 @@ class IsolationUnavailable(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class SubresourceRule:
+    """One extra origin a read-only observation may load page dependencies from: exact origin,
+    and only these methods and resource types. Never used by execution (adapters pass none).
+    `allow_private` exists for local test fixtures only."""
+
+    origin: str  # scheme://host[:port], exact
+    methods: frozenset
+    resource_types: frozenset
+    allow_private: bool = False
+
+    @property
+    def host_port(self) -> tuple[str, int]:
+        u = urlsplit(self.origin)
+        return (u.hostname or "").lower(), u.port or (443 if u.scheme == "https" else 80)
+
+
+def _rules_by_origin(rules) -> dict:
+    return {_origin(r.origin): r for r in rules}
+
+
 def _free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -167,11 +188,12 @@ class RemoteBrowser:
     that allows exactly this attempt's destination. Fails closed: any refusal or error raises
     IsolationUnavailable, and nothing falls back to a local browser."""
 
-    def __init__(self, host: str, port: int, allow_private: bool):
+    def __init__(self, host: str, port: int, allow_private: bool, subresources=()):
         from app.core.config import get_settings
 
         self.s = get_settings()
         self.host, self.port, self.allow_private = host, port, allow_private
+        self.subresources = tuple(subresources)
         self.proxy_session = self.runner_session = None
 
     @staticmethod
@@ -242,16 +264,19 @@ class RemoteBrowser:
     def open(self) -> str:
         self._check_runner()
         dest = [[self.host, self.port]]
+        extra = [list(r.host_port) for r in self.subresources]
+        private = (dest if self.allow_private else []) + [
+            list(r.host_port) for r in self.subresources if r.allow_private
+        ]
         self.proxy_session = self._proxy(
-            "POST",
-            "/sessions",
-            {"allow": dest, "allow_private": dest if self.allow_private else []},
+            "POST", "/sessions", {"allow": dest + extra, "allow_private": private}
         )
         self.runner_session = self._runner_session(
             {
                 "proxy_username": self.proxy_session["id"],
                 "proxy_password": self.proxy_session["token"],
                 "allowed_host": self.host,
+                "extra_allowed_hosts": [h for h, _ in extra],
             },
         )
         return self.runner_session["ws_endpoint"]
@@ -323,9 +348,12 @@ def browser_session(
     isolation: str = "netns",
     intercept: bool = True,
     allow_private_destination: bool = False,
+    subresources: tuple = (),
 ):
     """`intercept=False` disables the in-process layers; used only by isolation tests to show
-    that the namespace + egress proxy alone enforce the policy."""
+    that the namespace + egress proxy alone enforce the policy. `subresources`: extra origins
+    for page dependencies (SubresourceRule), read-only observation only; every layer (resolver
+    rules, interception, egress proxy, runner) is widened by exactly these and nothing else."""
     from app.modules.execution.sandbox.egress_proxy import EgressProxy
 
     allowed = allowed_origin.lower().rstrip("/")
@@ -333,8 +361,11 @@ def browser_session(
     host, port = u.hostname or "", u.port or (443 if u.scheme == "https" else 80)
     log = EgressLog()
     args = ["--disable-background-networking", "--no-first-run", "--disable-sync"]
+    rules = tuple(subresources)
+    extra_hp = [r.host_port for r in rules]
     if intercept:
-        args.insert(0, f"--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE {host}")
+        keep = " , ".join(f"EXCLUDE {h}" for h in [host, *(h for h, _ in extra_hp)])
+        args.insert(0, f"--host-resolver-rules=MAP * ~NOTFOUND , {keep}")
     with ExitStack() as stack, sync_playwright() as p:
         launch: dict = {"headless": True, "args": args}
         chrome = os.environ.get("PW_CHROMIUM_PATH") or p.chromium.executable_path
@@ -345,8 +376,9 @@ def browser_session(
             sock = os.path.join(workdir, "egress.sock")
             proxy = EgressProxy(
                 sock,
-                allow={(host, port)},
-                allow_private={(host, port)} if allow_private_destination else set(),
+                allow={(host, port), *extra_hp},
+                allow_private=({(host, port)} if allow_private_destination else set())
+                | {r.host_port for r in rules if r.allow_private},
             ).start()
             stack.callback(proxy.stop)
             log.proxy = proxy
@@ -358,7 +390,7 @@ def browser_session(
             raise IsolationUnavailable(f"unknown isolation mode {isolation!r}")
         try:
             if isolation == "container":
-                remote = RemoteBrowser(host, port, allow_private_destination)
+                remote = RemoteBrowser(host, port, allow_private_destination, rules)
                 stack.callback(remote.close)
                 log.proxy = remote
                 browser = p.chromium.connect(
@@ -381,7 +413,9 @@ def browser_session(
             ctx.set_default_navigation_timeout(nav_timeout_ms)
             ctx.set_default_timeout(nav_timeout_ms)
             if intercept:
-                _install_interception(ctx, allowed, log, driver_fetch=isolation != "container")
+                _install_interception(
+                    ctx, allowed, log, driver_fetch=isolation != "container", subresources=rules
+                )
             pages = []
             ctx.on("page", lambda pg: pg.close() if pages else pages.append(pg))
             page = ctx.new_page()
@@ -390,16 +424,53 @@ def browser_session(
             browser.close()  # always: a worker that loses authority closes its browser
 
 
-def _install_interception(ctx, allowed: str, log: "EgressLog", *, driver_fetch=True) -> None:
+def _install_interception(
+    ctx, allowed: str, log: "EgressLog", *, driver_fetch=True, subresources=()
+) -> None:
     """`driver_fetch=False` (container mode): never fetch or connect from the Playwright
     driver, which runs in the browser container but outside the browser's proxy settings;
-    every allowed request is left to the browser, so it can only leave through the proxy."""
+    every allowed request is left to the browser, so it can only leave through the proxy.
+    `subresources`: a request to one of those origins passes only with one of its methods and
+    resource types; so must every redirect target."""
+    rules = _rules_by_origin(subresources)
+
+    def permitted(url: str, method: str, rtype: str) -> bool:
+        if not url.startswith(("http://", "https://")):
+            return False
+        o = _origin(url)
+        if o == allowed:
+            return True
+        rule = rules.get(o)
+        return rule is not None and method in rule.methods and rtype in rule.resource_types
 
     def route(r):
-        url = r.request.url
-        if not (url.startswith(("http://", "https://")) and _origin(url) == allowed):
+        url, method, rtype = r.request.url, r.request.method, r.request.resource_type
+        if not permitted(url, method, rtype):
             log.blocked.append(url[:200])
             return r.abort("blockedbyclient")
+        if _origin(url) != allowed:
+            # An approved dependency origin (GET/HEAD only, by its rule). In container mode
+            # the browser fetches it through the proxy; otherwise fetch without following
+            # redirects and require the target to satisfy the same policy.
+            if not driver_fetch:
+                log.allowed += 1
+                return r.continue_()
+            try:
+                resp = r.fetch(max_redirects=0)
+            except Exception:
+                try:
+                    r.abort("failed")
+                except Exception:
+                    pass
+                return None
+            loc = resp.headers.get("location")
+            if 300 <= resp.status < 400 and loc:
+                target = urljoin(url, loc)
+                if not permitted(target, method, rtype):
+                    log.blocked.append(target[:200])
+                    return r.abort("blockedbyclient")
+            log.allowed += 1
+            return r.fulfill(response=resp)
         if r.request.method not in ("GET", "HEAD") or not driver_fetch:
             # Never fetch-and-fulfill a non-idempotent request: if that fetch is still pending
             # (or timed out) when the browser closes, Playwright resumes the paused original
@@ -422,7 +493,7 @@ def _install_interception(ctx, allowed: str, log: "EgressLog", *, driver_fetch=T
         loc = resp.headers.get("location")
         if 300 <= resp.status < 400 and loc:
             target = urljoin(url, loc)
-            if _origin(target) != allowed:
+            if _origin(target) != allowed and not permitted(target, method, rtype):
                 log.blocked.append(target[:200])
                 return r.abort("blockedbyclient")
         log.allowed += 1

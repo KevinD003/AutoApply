@@ -28,7 +28,8 @@ Routes (on the synthetic receiver; same ledger):
   POST /gh2/{board}/jobs/{id}/submit       application (an acceptance)
 Modes (cfg["mode"]): gh2_duplicate_id, gh2_label_mismatch, gh2_missing_control,
 gh2_validation_fail, gh2_new_question, gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, gh2_many_assets,
-gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, plus the
+gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, gh2_cdn_app (cfg cdn,
+redirect_away), plus the
 receiver-wide upload_fail, error_before_accept, error_after_accept, drop_after_accept.
 All employers, jobs and people are fictional.
 """
@@ -136,6 +137,13 @@ def _render(q, mode) -> str:
     areq = ' aria-required="true"' if req else ""
     if t == "input_hidden":
         return f'<input type="hidden" id="{qid}">'
+    if t == "input_file" and mode == "gh2_cdn_app":
+        # The input's own label differs from the question; the question names a container that
+        # the dependency script turns into a labelled group (FIXTURE ASSUMPTION).
+        return (f'<div class="field" data-attach-for="{qid}">'
+                f'<div id="{qid}-label">{html.escape(label_text)}</div>'
+                f'<label for="{qid}">Attach</label>'
+                f'<input type="file" id="{qid}"{areq}><span id="{qid}-status"></span></div>')
     if t == "input_file":
         alt = q["fields"][1]["name"] if len(q["fields"]) > 1 else None
         alt_html = (f'<button type="button" class="manual-toggle" data-for="{alt}">'
@@ -157,6 +165,12 @@ def _render(q, mode) -> str:
             opts = ""
         dup = (f'<input type="text" id="{qid}" aria-label="duplicate">'
                if mode == "gh2_duplicate_id" and qid == "question_8101" else "")
+        if mode == "gh2_cdn_app":  # no list in the page: the dependency script builds it
+            data = html.escape(json.dumps([[str(v["value"]), v["label"]] for v in values]))
+            return (f'<div class="field select">{_label(qid, label_text, req)}'
+                    f'<input type="text" id="{qid}" role="combobox" aria-autocomplete="list" '
+                    f'aria-expanded="false" data-options="{data}" autocomplete="off"{areq}>'
+                    f'</div>')
         return (f'<div class="field select">{_label(qid, label_text, req)}'
                 f'<input type="text" id="{qid}" role="combobox" aria-autocomplete="list" '
                 f'aria-expanded="false" aria-controls="{qid}-listbox" autocomplete="off"{areq}>'
@@ -244,6 +258,10 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
     qs = "".join(_render(q, mode) for q in j["questions"] + j["location_questions"])
     if mode == "gh2_many_assets":  # same-origin requests beyond a small budget
         qs += "".join(f'<img alt="" src="/gh2-api/robots.txt?i={i}">' for i in range(10))
+    if mode == "gh2_cdn_app":
+        cdn = html.escape(cfg.get("cdn") or "http://localhost:8799")
+        qs += (f'<link rel="stylesheet" href="{cdn}/gh2-cdn/app.css">'
+               f'<script src="{cdn}/gh2-cdn/app.js"></script>')
     if mode == "gh2_gh_assets":  # cross-origin assets on Greenhouse-named hosts (never reached:
         # the observation's allow-list blocks them before sending, as on the real page)
         qs += ('<link rel="stylesheet" href="https://assets.fixture.greenhouse.io/app.css">'
@@ -277,6 +295,64 @@ def mount(app, ledger, cfg, accept) -> None:
     def job_or_404(board, job_id):
         if (board, job_id) not in JOBS:
             raise HTTPException(404)
+
+    # ---- a second origin for dependency tests (reached as another host name) -------------
+    # FIXTURE ASSUMPTION: a dependency script that builds dropdown lists and labels attachment
+    # groups. It also makes every request an observe-only policy must refuse.
+    cdn_js = """(() => {
+  const CDN = new URL(document.currentScript.src).origin;
+  for (const cb of document.querySelectorAll('input[role=combobox][data-options]')) {
+    const ul = document.createElement('ul');
+    ul.id = cb.id + '-listbox'; ul.setAttribute('role', 'listbox'); ul.hidden = true;
+    for (const [v, l] of JSON.parse(cb.dataset.options)) {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option'); li.dataset.value = v; li.textContent = l;
+      li.setAttribute('aria-selected', 'false'); ul.append(li);
+    }
+    cb.after(ul); cb.setAttribute('aria-controls', ul.id);
+  }
+  for (const g of document.querySelectorAll('[data-attach-for]')) {
+    g.setAttribute('role', 'group'); g.setAttribute('aria-labelledby', g.dataset.attachFor + '-label');
+  }
+  const quiet = (p) => p.catch(() => {});
+  quiet(fetch(CDN + '/gh2-cdn/data.json'));                         // data request: refused
+  quiet(fetch(CDN + '/gh2-cdn/app.css', {method: 'HEAD'}));         // HEAD, but a data request
+  quiet(fetch(location.origin + '/gh2-api/robots.txt', {method: 'HEAD'}));  // HEAD to the page
+  quiet(fetch(location.origin + '/gh2/telemetry', {method: 'POST', body: 'x'}));  // mutation
+  quiet(new FontFace('f', 'url(' + CDN + '/gh2-cdn/font.woff2)').load());  // font: refused
+  const img = new Image(); img.src = CDN + '/gh2-cdn/logo.png';      // image: refused
+  for (const src of ['/gh2-cdn/redirect.js', '/gh2-cdn/redirect-away.js']) {
+    const sc = document.createElement('script'); sc.src = CDN + src; document.head.append(sc);
+  }
+  try { new WebSocket(CDN.replace(/^http/, 'ws') + '/gh2-cdn/ws'); } catch (e) {}
+  document.documentElement.dataset.cdnApp = 'ran';
+})();"""
+
+    @app.get("/gh2-cdn/app.js")
+    def cdn_app():
+        return HTMLResponse(cdn_js, media_type="text/javascript")
+
+    @app.get("/gh2-cdn/app.css")
+    def cdn_css():
+        return HTMLResponse(".field { margin: 4px }", media_type="text/css")
+
+    @app.get("/gh2-cdn/redirect.js")
+    def cdn_redirect():
+        return RedirectResponse("/gh2-cdn/second.js", 302)
+
+    @app.get("/gh2-cdn/second.js")
+    def cdn_second():
+        return HTMLResponse("document.documentElement.dataset.second = 'ran';",
+                            media_type="text/javascript")
+
+    @app.get("/gh2-cdn/redirect-away.js")
+    def cdn_redirect_away():
+        return RedirectResponse(cfg.get("redirect_away") or "http://127.0.0.2:8799/gh2-cdn/x.js",
+                                302)
+
+    @app.get("/gh2-cdn/{name}")
+    def cdn_other(name: str):  # data.json, font.woff2, logo.png: must never be requested
+        return HTMLResponse("", media_type="application/octet-stream")
 
     @app.get("/gh2-api/robots.txt")
     def robots():

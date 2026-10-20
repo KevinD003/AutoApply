@@ -11,7 +11,7 @@ BROWSER_RUNNER_TOKEN="runner-$(openssl rand -hex 16)"
 EGRESS_CONTROL_TOKEN="control-$(openssl rand -hex 16)"
 export RECEIVER_ADMIN_TOKEN BROWSER_RUNNER_TOKEN EGRESS_CONTROL_TOKEN
 export BROWSER_MAX_SESSION_SECONDS=45
-export NOEFFORTS_FIXTURE_ORIGINS='["http://receiver:8799"]'
+export NOEFFORTS_FIXTURE_ORIGINS='["http://receiver:8799"]'  # cdn-fixture: a SubresourceRule, not a page origin
 # shellcheck source=scripts/smoke_lib.sh
 source scripts/smoke_lib.sh
 

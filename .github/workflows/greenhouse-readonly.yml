@@ -21,6 +21,10 @@ on:
         description: "With observe: per-field mapping evidence (needs its own recorded approval)"
         type: boolean
         default: false
+      b3:
+        description: "Only: the approved B3 observation (A + one page load that may also load job-boards.cdn.greenhouse.io scripts/stylesheets; mapping evidence). Needs its own recorded approval"
+        type: boolean
+        default: false
       identify_only:
         description: "Only: one page load with the same allow-list, no API requests; prints the exact blocked hosts (needs its own recorded approval)"
         type: boolean
@@ -50,8 +54,11 @@ jobs:
           OBSERVE: ${{ inputs.observe && '--observe' || '' }}
           MAPPING: ${{ inputs.observe && inputs.mapping && '--mapping' || '' }}
           IDENTIFY: ${{ inputs.identify_only && '--identify-only' || '' }}
+          B3: ${{ inputs.b3 && '--b3' || '' }}
         run: |
-          if [ -n "$IDENTIFY" ]; then
+          if [ -n "$B3" ]; then
+            ./scripts/greenhouse-readonly-check.sh $B3
+          elif [ -n "$IDENTIFY" ]; then
             ./scripts/greenhouse-readonly-check.sh $IDENTIFY
           else
             ./scripts/greenhouse-readonly-check.sh $OBSERVE $MAPPING

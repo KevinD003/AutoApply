@@ -229,7 +229,7 @@ C (candidate data disclosure) and D (submission) remain unapproved.
 Run once authorized: Actions → "Greenhouse read-only check (manual)" → `observe` and `mapping`
 checked, once.
 
-## B3 — proposed scope (not approved, not run, not yet implemented)
+## B3 — approved scope (approved 2026-10-20 for one run after CI passes on the final code)
 
 **Purpose:** find out whether loading the page's own blocked dependencies changes the form,
 and whether it resolves B2's specific gaps. Those gaps are:
@@ -277,9 +277,34 @@ and whether it resolves B2's specific gaps. Those gaps are:
   - B2's allowlisted structural summary (aliases, guard, 256 KiB cap) plus a field-by-field
     comparison with B2;
   - raw data destroyed with the stack; nothing uploaded.
-- **Not built yet:** allowing a second host per resource type in the session proxy and the
-  browser filter, and the comparison output. Both would be built and tested locally against
-  fixtures before B3 runs.
+- **Method policy, as approved:**
+  - API host: GET only.
+  - Page origin: GET only. HEAD to the page origin is now refused too; B2 allowed it, but no
+    HEAD was observed in B2.
+  - `job-boards.cdn.greenhouse.io`: GET and HEAD, only for scripts and stylesheets.
+  - Everything else is refused before sending and recorded (method and path only).
+- **How it is enforced** (`execution.browser.SubresourceRule`; the read-only observation
+  only, never execution):
+  - the browser's resolver rules;
+  - the in-browser request filter: origin, method and resource type, and every redirect
+    target in the driver-fetch mode;
+  - the egress-proxy session allow-list: exact host:port;
+  - the browser runner's resolver exemptions;
+  - WebSockets to the dependency origin are routed and never connected.
+  The rule is a fixed constant in code (`gh_readonly._b3_rules`). Any other rule on a real
+  page is refused.
+- **In container mode the browser follows redirects itself.** The proxy then refuses any hop
+  to a host outside the allow-list. The resource type cannot change across a redirect.
+- **Tested locally** (`tests/test_b3_policy.py`: 7 tests, through Chromium in its network
+  namespace behind the egress proxy), against a fixture dependency origin:
+  - approved scripts and stylesheets load, including a same-origin script redirect;
+  - data requests, fonts, images, WebSockets, HEAD to the page, POST, and a redirect off the
+    approved origins are never sent (receiver request log);
+  - a mutation check confirmed that the test catches a missing resource-type restriction.
+- **Container mode:** Compose `s_readonly_b3_dependency_policy_in_container` runs the same
+  scenario through the real runner and session proxy; the canary must stay silent.
+- **Comparison:** `gh_readonly.compare_runs(b2, b3)` runs locally over the two published
+  summaries.
 
 ## Deliverable: the comparison (once A/B are separately approved and run)
 

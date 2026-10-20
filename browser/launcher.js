@@ -42,13 +42,16 @@ function log(msg, extra) {
   console.log(JSON.stringify({ t: new Date().toISOString(), msg, ...(extra || {}) }));
 }
 
-function launchOptions({ proxyUser, proxyPass, allowedHost }) {
+function launchOptions({ proxyUser, proxyPass, allowedHost, extraHosts }) {
   const args = ["--disable-background-networking", "--no-first-run", "--disable-sync"];
   if (allowedHost && HOSTNAME_RE.test(allowedHost)) {
-    // Defence in depth: resolve nothing but the destination and the proxy itself (the
-    // proxy decides anyway; the browser has no other route).
+    // Defence in depth: resolve nothing but the destination, the read-only observation's
+    // explicitly approved dependency hosts (if any) and the proxy itself (the proxy decides
+    // anyway; the browser has no other route).
     const proxyHost = PROXY ? new URL(PROXY).hostname : "";
-    const keep = [allowedHost, proxyHost].filter((h) => h && HOSTNAME_RE.test(h));
+    const keep = [allowedHost, ...(extraHosts || []), proxyHost].filter(
+      (h) => h && HOSTNAME_RE.test(h),
+    );
     args.push(`--host-resolver-rules=MAP * ~NOTFOUND , ${keep.map((h) => `EXCLUDE ${h}`).join(" , ")}`);
   }
   const opts = {
@@ -170,6 +173,9 @@ async function createSession(body) {
     proxyUser: String(body.proxy_username || ""),
     proxyPass: String(body.proxy_password || ""),
     allowedHost: String(body.allowed_host || ""),
+    extraHosts: Array.isArray(body.extra_allowed_hosts)
+      ? body.extra_allowed_hosts.slice(0, 4).map(String)
+      : [],
   });
   const server = await chromium.launchServer({
     ...opts,

@@ -46,6 +46,10 @@ class Control:
     controls: str | None  # aria-controls target id
     controls_listbox: bool  # aria-controls points at role=listbox
     describedby: bool
+    # Internal: identity of the enclosing group (document order) and the group's own
+    # accessible name (aria-labelledby / aria-label / legend). Never printed as text.
+    group_key: int | None = None
+    group_name: str | None = None
 
 
 @dataclass
@@ -77,6 +81,7 @@ def snapshot(html: str) -> list[Control]:
     b = _TreeBuilder()
     b.feed(html)
     nodes = [n for n in b.root.walk() if isinstance(n, _Node)]
+    order = {id(n): i for i, n in enumerate(nodes)}
     by_id: dict[str, list[_Node]] = {}
     for n in nodes:
         if n.attrs.get("id"):
@@ -118,6 +123,17 @@ def snapshot(html: str) -> list[Control]:
             (a for a in n.ancestors() if a.tag == "fieldset" or a.attrs.get("role") == "group"),
             None,
         )
+        gname = None
+        if grp is not None:
+            if grp.attrs.get("aria-labelledby"):
+                gname = text_of(grp.attrs["aria-labelledby"]) or None
+            if not gname and grp.attrs.get("aria-label"):
+                gname = grp.attrs["aria-label"]
+            if not gname:
+                legend = next(
+                    (c for c in grp.children if isinstance(c, _Node) and c.tag == "legend"), None
+                )
+                gname = legend.all_text() if legend is not None else None
         target = n.attrs.get("aria-controls")
         tnodes = by_id.get(target or "", [])
         out.append(
@@ -136,6 +152,8 @@ def snapshot(html: str) -> list[Control]:
                 controls=target,
                 controls_listbox=len(tnodes) == 1 and tnodes[0].attrs.get("role") == "listbox",
                 describedby=bool(n.attrs.get("aria-describedby")),
+                group_key=order[id(grp)] if grp is not None else None,
+                group_name=gname,
             )
         )
     return out

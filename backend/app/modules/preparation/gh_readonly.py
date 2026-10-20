@@ -287,6 +287,23 @@ class Limits:
 
 
 LIMITS = Limits()
+
+
+def _b3_rules() -> tuple:
+    from app.modules.execution.browser import SubresourceRule
+
+    # The one dependency origin approved for B3 (user approval, 2026-10-20): scripts and
+    # stylesheets only, GET/HEAD only. recruiting.cdn.greenhouse.io stays blocked. Fixed in
+    # code; no input or environment variable can widen it.
+    return (
+        SubresourceRule(
+            "https://job-boards.cdn.greenhouse.io",
+            frozenset({"GET", "HEAD"}),
+            frozenset({"script", "stylesheet"}),
+        ),
+    )
+
+
 PAGE_REQUEST_LIMIT = LIMITS.page_requests  # kept for existing callers
 PAGE_SECONDS = 60  # one navigation's own timeout, also clamped to the deadline
 
@@ -305,6 +322,7 @@ def observe_page(
     prefix: str = "gh",
     api_json: dict | None = None,
     limits: Limits = LIMITS,
+    subresources: tuple = (),
 ) -> dict:
     """Permission B: ONE page load in the isolated browser, observe only.
 
@@ -315,6 +333,10 @@ def observe_page(
     redirects, the request, received-bytes, DOM-size or time limits (`Limits`).
     With `api_json`, also collects per-field mapping evidence (`mapping_evidence`) by reading
     the loaded DOM; still nothing is clicked, typed or focused.
+    `subresources` (B3 only): exact dependency origins, each limited to its methods and
+    resource types (SubresourceRule); still observe-only, and the same rules hold for requests
+    the page's scripts start. Methods: GET only for the page origin; GET/HEAD only where a
+    rule allows them; everything else is blocked before sending and recorded.
     `base` is for tests against the local fixture (a fixture origin)."""
     from app.core.config import get_settings
     from app.core.urlsafety import is_fixture_origin
@@ -327,6 +349,10 @@ def observe_page(
     origin = base or f"https://{PAGE_HOST}"
     fixture = base is not None
     if fixture and not (s.env in ("development", "test") and is_fixture_origin(origin)):
+        raise NotApproved("a non-default page origin is allowed only for test fixtures")
+    if subresources and not fixture and tuple(subresources) != _b3_rules():
+        raise NotApproved("only the approved dependency origin may be added to a real page")
+    if any(r.allow_private for r in subresources) and not fixture:
         raise NotApproved("a non-default page origin is allowed only for test fixtures")
     if not fixture and s.browser_isolation != "container":
         raise NotApproved("a real page is opened only in the isolated browser container")
@@ -345,16 +371,24 @@ def observe_page(
     idle = False
     evidence = None
 
+    rules = {_origin_of(r.origin).lower(): r for r in subresources}
     with browser_session(
         origin,
         left_ms(PAGE_SECONDS * 1000),
         isolation=s.browser_isolation,
         allow_private_destination=fixture,
+        subresources=tuple(subresources),
     ) as (page, log):
+
+        def method_ok(request) -> bool:
+            rule = rules.get(_origin_of(request.url).lower())
+            if rule is not None:
+                return request.method in rule.methods
+            return request.method == "GET"  # page origin and everything else: GET only
 
         def guard(route, request):
             seen["requests"] += 1
-            if request.method not in ("GET", "HEAD"):
+            if not method_ok(request):
                 blocked.append({"method": request.method, "path": urlsplit(request.url).path})
                 return route.abort()
             if request.is_navigation_request() and request.frame == page.main_frame:
@@ -392,6 +426,13 @@ def observe_page(
                 seen["sizes_unknown"] = seen.get("sizes_unknown", 0) + 1
 
         page.route("**/*", guard)
+        for o in rules:
+            # WebSockets bypass request routing (and in container mode reach the proxy, which
+            # allows the host). A routed socket whose handler never calls connect_to_server()
+            # never reaches the network (Playwright mocks it); record it and do nothing else.
+            # (Calling ws.close() from this sync handler deadlocks.)
+            pat = re.compile("^wss?://" + re.escape(urlsplit(o).netloc) + "(/|$)")
+            page.route_web_socket(pat, lambda ws: failed.append(_ws_failure(ws.url)))
         page.on("request", on_request)
         page.on("requestfinished", on_finished)
         page.on("requestfailed", lambda r: failed.append(_failure(r, origin)))
@@ -476,6 +517,14 @@ def observe_page(
         },
         "mapping": evidence,
     }
+
+
+def _ws_failure(url: str) -> dict:
+    u = urlsplit(url)
+    return {"resource_type": "websocket", "kind": _category(u.netloc), "same_origin": False,
+            "failure": "other", "host": (u.hostname or "").lower(),
+            "port": u.port or (443 if u.scheme == "wss" else 80),
+            "scheme": "https" if u.scheme == "wss" else "http", "method": "GET"}  # fmt: skip
 
 
 def _origin_of(url: str) -> str:
@@ -604,6 +653,10 @@ def mapping_evidence(page, html: str, api_json: dict) -> dict:
             else m.status in ("mapped", "search_picker", "label_mismatch"),
             "options": "not_applicable",
             "visible": visible(c.id) if c is not None else "not_applicable",
+            # A labelled attachment group: the control's enclosing group is named exactly as
+            # the question (validated relationship); never inferred from proximity.
+            "group_label": "not_applicable" if c is None or c.group_key is None
+            else gdom._norm(c.group_name) == label,
         }  # fmt: skip
         options_at_load = None
         if c is not None and is_choice and _SAFE_ID.fullmatch(c.id):
@@ -634,10 +687,28 @@ def mapping_evidence(page, html: str, api_json: dict) -> dict:
         }  # fmt: skip
         per_field.append(entry)
     keys = {f.key.removesuffix("[]") for f in fields}
+    labels = {gdom._norm(f.label) for f in fields}
+    by_id = {}
+    for c in controls:
+        by_id.setdefault(c.id, []).append(c)
+    api_groups = {
+        cs[0].group_key
+        for k in keys
+        if len(cs := by_id.get(k, [])) == 1 and cs[0].group_key is not None
+    }
     unmatched = []
     for c in gdom.unmatched_controls(fields, controls):
         e = _control_evidence(c, visible(c.id))
         e["alternative_of_api_field"] = c.id.endswith("_text") and c.id[:-5] in keys
+        # Structure only (purpose is never inferred): inside the same group as an API field's
+        # control; labelled like an API question; labelled on its own; or unlabelled.
+        e["attached_to_api_field"] = c.group_key is not None and c.group_key in api_groups
+        e["label_matches_api_question"] = gdom._norm(c.accessible_name) in labels
+        e["structural_class"] = (
+            "attached_to_api_field" if e["attached_to_api_field"]
+            else "labelled_like_api_question" if e["label_matches_api_question"]
+            else "standalone_labelled" if c.accessible_name else "unlabelled"
+        )  # fmt: skip
         e["id_shape"] = (
             "question_n" if re.fullmatch(r"question_\d+", c.id)
             else "standard" if c.id in STANDARD_NAMES else "other"
@@ -842,6 +913,8 @@ _OUTPUT_WORDS = {
     "listbox_options", "options_match_api", "by_status", "unmatched_controls",
     "controls_total", "alternative_of_api_field", "id_shape",
     "mode", "identify_only", "api_requests",
+    "group_label", "attached_to_api_field", "label_matches_api_question", "structural_class",
+    "labelled_like_api_question", "standalone_labelled", "unlabelled", "subresources",
     "denied_hosts", "host", "port", "scheme", "methods", "resource_types", "failures",
     "withheld", "https", "http",
     "observation", "reasons", "checks", "label", "element", "options_at_load", "fill_support",
@@ -875,6 +948,7 @@ _NOT_APPROVED = (
     r"this posting is not the approved one \(NOEFFORTS_READONLY_GREENHOUSE_APPROVED\)",
     "a non-default page origin is allowed only for test fixtures",
     "a real page is opened only in the isolated browser container",
+    "only the approved dependency origin may be added to a real page",
 )
 _STOP_TEXT = re.compile(
     rf"Stop: ({'|'.join(_STOPS)})|NotApproved: ({'|'.join(_NOT_APPROVED)})"
@@ -1021,6 +1095,12 @@ def main(argv=None) -> int:
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--observe", action="store_true", help="also permission B (page load)")
     ap.add_argument(
+        "--b3",
+        action="store_true",
+        help="A + one page load that may also load the approved dependency origin's scripts "
+        "and stylesheets; per-field mapping evidence",
+    )
+    ap.add_argument(
         "--identify-only",
         action="store_true",
         help="one page load with B's allow-list and limits, no API requests: page structure "
@@ -1087,10 +1167,16 @@ def _run(a) -> int:
         board_json = json.loads((a.out / "board.json").read_text())
         sensitive = sensitive_values(board, job_id, api_json, board_json)
         page_stop = None
+        rules = _b3_rules() if a.b3 else ()
         try:
             observed = (
-                observe_page(board, job_id, api_json=api_json if a.mapping else None)
-                if a.observe
+                observe_page(
+                    board,
+                    job_id,
+                    api_json=api_json if (a.mapping or a.b3) else None,
+                    subresources=rules,
+                )
+                if (a.observe or a.b3)
                 else None
             )
         except Stop as e:  # A's result is still reported
@@ -1103,6 +1189,12 @@ def _run(a) -> int:
                   **publishable(api_json, board_json, job_id, observed)}  # fmt: skip
         if page_stop:
             result["page_stopped"] = page_stop
+        if rules:
+            result["subresources"] = [
+                {"host": r.host_port[0], "port": r.host_port[1],
+                 "methods": sorted(r.methods), "resource_types": sorted(r.resource_types)}
+                for r in rules
+            ]  # fmt: skip
     except (NotApproved, Stop) as e:
         emit({"stopped": f"{type(e).__name__}: {e}"}, sensitive)
         return 2
@@ -1115,3 +1207,83 @@ def _run(a) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# ---- B2 → B3 comparison (local, over two published summaries) -------------------------------
+
+
+def compare_runs(b2: dict, b3: dict) -> dict:
+    """Field-by-field difference between two published summaries of the same posting (aliases
+    are stable: job-data order). Inputs are already sanitized; so is the result. Checks that
+    the older run did not record are "not_recorded", never assumed."""
+
+    def fields(pub):
+        return {f["key"]: f for f in (pub.get("mapping") or {}).get("fields", [])}
+
+    f2, f3 = fields(b2), fields(b3)
+    rows = []
+    for key in list(f2) + [k for k in f3 if k not in f2]:
+        a, b = f2.get(key), f3.get(key)
+        ca = (a or {}).get("checks", {})
+        cb = (b or {}).get("checks", {})
+        names = sorted(set(ca) | set(cb))
+        rows.append({
+            "key": key,
+            "b2": a["observation"] if a else "not_recorded",
+            "b3": b["observation"] if b else "not_recorded",
+            "changed": (a or {}).get("observation") != (b or {}).get("observation"),
+            "checks_changed": [n for n in names
+                               if ca.get(n, "not_recorded") != cb.get(n, "not_recorded")],
+            "required_attr": [((a or {}).get("control") or {}).get("required_attr"),
+                              ((b or {}).get("control") or {}).get("required_attr")],
+            "group_label_b3": cb.get("group_label", "not_recorded"),
+            "options_b3": cb.get("options", "not_recorded"),
+        })  # fmt: skip
+
+    def counts(pub, key):
+        return {k: len(v) for k, v in ((pub.get("mapping") or {}).get(key) or {}).items()}
+
+    def unmatched(pub):
+        um = (pub.get("mapping") or {}).get("unmatched_controls") or []
+        classes: dict[str, int] = {}
+        for u in um:
+            c = u.get("structural_class", "not_recorded")
+            classes[c] = classes.get(c, 0) + 1
+        return {"count": len(um), "classes": classes}
+
+    def opts(pub):
+        out: dict[str, int] = {}
+        for f in fields(pub).values():
+            o = f.get("checks", {}).get("options")
+            if o is not None and o != "not_applicable":
+                k = {True: "match", False: "differ"}.get(o, o) if isinstance(o, bool) else o
+                out[k] = out.get(k, 0) + 1
+        return out
+
+    page2, page3 = b2.get("page") or {}, b3.get("page") or {}
+    return {
+        "fields": rows,
+        "changed": [r["key"] for r in rows if r["changed"]],
+        "by_observation": {"b2": counts(b2, "by_observation"), "b3": counts(b3, "by_observation")},
+        "unmatched_controls": {"b2": unmatched(b2), "b3": unmatched(b3)},
+        "options": {"b2": opts(b2), "b3": opts(b3)},
+        "bot_check": {"b2": page2.get("bot_check"), "b3": page3.get("bot_check")},
+        "requests": {"b2": page2.get("requests"), "b3": page3.get("requests")},
+        "may_be_incomplete": {
+            "b2": (page2.get("rendering") or {}).get("may_be_incomplete"),
+            "b3": (page3.get("rendering") or {}).get("may_be_incomplete"),
+        },
+        "dom": {
+            k: [(page2.get("dom") or {}).get(k), (page3.get("dom") or {}).get(k)]
+            for k in (
+                "comboboxes",
+                "controls_with_id_only",
+                "file_inputs",
+                "textareas",
+                "selects",
+                "labels",
+                "iframes",
+            )
+        },  # fmt: skip
+        "denied_hosts_b3": page3.get("denied_hosts", []),
+    }

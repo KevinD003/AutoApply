@@ -554,6 +554,57 @@ def s_readonly_mapping_in_container():
           {"disclosures": len(after["disclosures"]) - len(before["disclosures"])})  # fmt: skip
 
 
+_OBSERVE_B3 = """
+import json, os
+from app.modules.execution.browser import SubresourceRule
+from app.modules.preparation import gh_readonly as ro
+api = json.loads(os.environ["API_JSON"])
+rule = SubresourceRule("http://cdn-fixture:8799", frozenset({"GET", "HEAD"}),
+                       frozenset({"script", "stylesheet"}), allow_private=True)
+obs = ro.observe_page("northwind", "5020001", base="http://receiver:8799", prefix="gh2",
+                      api_json=api, subresources=(rule,))
+by = {f["key"]: f for f in obs["mapping"]["fields"]}
+print(json.dumps({"status": obs["status"],
+                  "options": by["question_8101"]["checks"]["options"],
+                  "group_label": by["resume"]["checks"]["group_label"],
+                  "resume": by["resume"]["observation"],
+                  "blocked_non_get": sorted({b["method"] for b in obs["blocked_non_get"]}),
+                  "failed": sorted({(f["resource_type"], f["host"])
+                                    for f in obs["rendering"]["failed_requests"]}),
+                  "denied": obs["denied_destinations"]}))
+"""
+
+
+def s_readonly_b3_dependency_policy_in_container():
+    """The B3 dependency policy through the real runner and session proxy: the approved second
+    origin may serve scripts and stylesheets only (GET/HEAD); everything else, and a redirect
+    off the approved origins, is refused before it is sent."""
+    api = receiver_raw("/gh2-api/v1/boards/northwind/jobs/5020001?questions=true")
+    receiver("reset")  # resets the mode; the ledger then holds only this observation's requests
+    receiver("config", {"mode": "gh2_cdn_app", "cdn": "http://cdn-fixture:8799",
+                        "redirect_away": "http://canary:8798/x.js"})  # fmt: skip
+    obs = worker_py(_OBSERVE_B3, API_JSON=api,
+                    NOEFFORTS_READONLY_GREENHOUSE_APPROVED="northwind/5020001")  # fmt: skip
+    led = receiver("ledger")
+    receiver("config", {"mode": "normal"})
+    paths = [(r["method"], r["path"]) for r in led.get("requests", [])]
+    check("B3 policy: approved scripts and stylesheets loaded through the proxy",
+          all(("GET", p) in paths for p in ("/gh2-cdn/app.js", "/gh2-cdn/app.css",
+                                             "/gh2-cdn/second.js"))
+          and obs.get("options") is True and obs.get("group_label") is True, obs)  # fmt: skip
+    check("B3 policy: data, font, image, WebSocket and mutation requests never sent",
+          not any(p in ("/gh2-cdn/data.json", "/gh2-cdn/font.woff2", "/gh2-cdn/logo.png",
+                        "/gh2-cdn/ws", "/gh2/telemetry") for _, p in paths)
+          and not any(m != "GET" for m, _ in paths), paths)  # fmt: skip
+    check("B3 policy: HEAD to the page and POST anywhere refused and recorded",
+          {"HEAD", "POST"} <= set(obs.get("blocked_non_get", [])), obs.get("blocked_non_get"))  # fmt: skip
+    check("B3 policy: the mapping rule is not relaxed (attachment still incompatible)",
+          obs.get("resume") == "incompatible", obs.get("resume"))  # fmt: skip
+    canary_hits = [ln for ln in compose("logs", "canary").splitlines() if "CANARY-HIT" in ln]
+    check("B3 policy: the redirect off the approved origins reached nothing (canary silent)",
+          not canary_hits, canary_hits[:3])  # fmt: skip
+
+
 def s_greenhouse_security_code_flow():
     receiver("config", {"mode": "gh_security_code"})
     slug = "gh-examplehealth-4012001"
@@ -817,6 +868,7 @@ SCENARIOS = [
     s_control_plane_separation,
     s_readonly_observation_in_container,
     s_readonly_mapping_in_container,
+    s_readonly_b3_dependency_policy_in_container,
     s_greenhouse_security_code_flow,
     s_hostile_page,
     s_infrastructure_only_egress,
