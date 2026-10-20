@@ -14,7 +14,7 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
 COPY --from=build /app/package.json /app/package-lock.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/.next ./.next
-COPY --from=build /app/next.config.ts ./
+COPY --from=build /app/next.config.mjs ./
 USER node
 EXPOSE 3000
 CMD ["npx", "next", "start", "-p", "3000"]
