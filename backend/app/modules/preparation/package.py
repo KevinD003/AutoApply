@@ -429,12 +429,17 @@ def approve(db: Session, app: Application, version: int, expected_hash: str) -> 
         raise ApprovalError("Resolve every required question before approving.")
     if active_approval(db, pkg) is not None:
         return active_approval(db, pkg)
+    from app.modules.execution.policy import execution_binding
+
     now = utcnow()
+    binding = execution_binding(pkg.content["destination"]) or {}
     appr = PackageApproval(
         package_id=pkg.id,
         application_id=app.id,
         user_id=app.user_id,
         content_hash=pkg.content_hash,
+        adapter=binding.get("adapter"),
+        adapter_version=binding.get("adapter_version"),
         approved_at=now,
         expires_at=now + timedelta(hours=get_settings().approval_ttl_hours),
     )
@@ -447,6 +452,8 @@ def approve(db: Session, app: Application, version: int, expected_hash: str) -> 
         app.id,
         version=pkg.version,
         content_hash=pkg.content_hash,
+        adapter=binding.get("adapter"),
+        adapter_version=binding.get("adapter_version"),
     )
     return appr
 

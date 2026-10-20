@@ -34,8 +34,14 @@ from app.modules.execution.models import (
     ExecutionAttempt,
     OutboxMessage,
 )
-from app.modules.execution.policy import adapter_for
+from app.modules.execution.policy import (
+    BindingChanged,
+    UnsupportedDestination,
+    adapter_for,
+    check_binding,
+)
 from app.modules.preparation import package as pk
+from app.modules.preparation.models import PackageApproval
 
 S = AttemptState
 TOPIC_EXECUTE = "execute_attempt"
@@ -67,7 +73,12 @@ def enqueue(db: Session, app: Application) -> ExecutionAttempt:
     appr = pk.active_approval(db, pkg)
     if appr is None:
         raise pk.ApprovalError("Approve the current package version before queueing.")
-    adapter = adapter_for(pkg.content["destination"])  # raises if unsupported
+    adapter_for(pkg.content["destination"])  # raises if unsupported
+    try:
+        adapter = check_binding(appr, pkg.content["destination"])["adapter"]
+    except BindingChanged as e:
+        e.approval_id = appr.id  # the caller retires it after rolling back the queue
+        raise
     att = ExecutionAttempt(
         application_id=app.id,
         user_id=app.user_id,
@@ -81,6 +92,14 @@ def enqueue(db: Session, app: Application) -> ExecutionAttempt:
     db.add(OutboxMessage(topic=TOPIC_EXECUTE, attempt_id=att.id))
     event(db, att, "enqueued", package_version=pkg.version)
     return att
+
+
+def retire_approval(db: Session, approval_id, reason: str) -> None:
+    """Invalidate one approval whose execution meaning changed, so the user can approve the same
+    content again under the method that would now run."""
+    appr = db.get(PackageApproval, approval_id)
+    if appr is not None and appr.invalidated_at is None:
+        appr.invalidated_at, appr.invalidation_reason = utcnow(), reason
 
 
 def relay_outbox(publish, limit: int = 50) -> int:
@@ -220,9 +239,14 @@ def _gate_checks(db: Session, att: ExecutionAttempt) -> Application:
         raise GateRefused(f"application is {app.state.value}")
     if not _approval_still_valid(db, app, att):
         raise GateRefused("approval revoked, expired or superseded")
-    fresh = pk.content_hash(pk.build_content(db, app))
-    if fresh != att.package_hash:
+    content = pk.build_content(db, app)
+    if pk.content_hash(content) != att.package_hash:
         raise GateRefused("profile, documents or answers changed after approval")
+    appr = db.get(PackageApproval, att.approval_id)
+    try:
+        check_binding(appr, content["destination"], att.adapter)
+    except (BindingChanged, UnsupportedDestination):
+        raise GateRefused("the execution method changed after approval") from None
     return app
 
 

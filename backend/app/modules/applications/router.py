@@ -227,11 +227,18 @@ def transition_application(
         transition(db, app, body.to, Actor.user, body.reason)
         if body.to == AppState.queued:
             # Same transaction: the attempt and its outbox message exist iff the queue happened.
-            from app.modules.execution.policy import UnsupportedDestination
-            from app.modules.execution.service import enqueue
+            from app.modules.execution.policy import BindingChanged, UnsupportedDestination
+            from app.modules.execution.service import enqueue, retire_approval
 
             try:
                 enqueue(db, app)
+            except BindingChanged as e:
+                db.rollback()  # not queued; only the outdated approval is retired
+                retire_approval(db, e.approval_id, "execution method changed after approval")
+                record(db, user.id, "package.approval_retired", "application", app.id,
+                       reason="execution method changed")  # fmt: skip
+                db.commit()
+                raise conflict(str(e)) from None
             except UnsupportedDestination as e:
                 db.rollback()
                 raise conflict(str(e)) from None

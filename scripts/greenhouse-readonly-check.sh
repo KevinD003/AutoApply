@@ -27,5 +27,6 @@ for _ in $(seq 1 60); do
   fi
   sleep 3
 done
-docker compose exec -T -e NOEFFORTS_READONLY_GREENHOUSE_APPROVED worker \
+# The CLI ends itself at 150 s (watchdog, exit 5); this outer bound kills the exec if it cannot.
+timeout --kill-after=10 200 docker compose exec -T -e NOEFFORTS_READONLY_GREENHOUSE_APPROVED worker \
   python -m app.modules.preparation.gh_readonly --out /tmp/ghcheck "$@"

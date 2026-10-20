@@ -19,6 +19,7 @@ from app.core.db import SessionLocal
 from app.core.urlsafety import is_fixture_origin
 from app.modules.documents.models import Document
 from app.modules.documents.storage import get_storage
+from app.modules.execution import policy
 from app.modules.execution import service as svc
 from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, UploadFailed
 from app.modules.execution.adapters.greenhouse import GreenhouseHostedAdapter
@@ -26,7 +27,7 @@ from app.modules.execution.adapters.greenhouse_dom import GreenhouseDomAdapter
 from app.modules.execution.browser import IsolationUnavailable, browser_session
 from app.modules.execution.faults import fault
 from app.modules.execution.models import ExecutionAttempt
-from app.modules.preparation.models import ApplicationPackage
+from app.modules.preparation.models import ApplicationPackage, PackageApproval
 
 # Keyed by the adapter recorded on the attempt when it was queued (policy.adapter_for).
 ADAPTERS = {
@@ -56,7 +57,16 @@ def _snapshot(attempt_id):
             if hashlib.sha256(data).hexdigest() != d["sha256"]:
                 raise RuntimeError("stored document does not match the approved digest")
             docs[d["field"]] = (doc.original_filename, doc.content_type, data)
+        appr = db.get(PackageApproval, att.approval_id)
+        try:  # before any adapter code touches a page (the gates re-check it under lock)
+            policy.check_binding(appr, content["destination"], att.adapter)
+        except (policy.BindingChanged, policy.UnsupportedDestination):
+            raise BindingMismatch from None
         return content, docs, att.adapter
+
+
+class BindingMismatch(RuntimeError):
+    pass
 
 
 def run_attempt(attempt_id: str, worker: str) -> str:
@@ -73,7 +83,11 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         svc.heartbeat(aid, worker, gen)
 
     try:
-        content, docs, adapter_name = _snapshot(aid)
+        try:
+            content, docs, adapter_name = _snapshot(aid)
+        except BindingMismatch:
+            svc.fail_safe(aid, worker, gen, "the execution method changed after approval")
+            return "failed_safe"
         adapter = ADAPTERS[adapter_name](content, docs)
         dest = content["destination"]
         if s.browser_isolation not in ("netns", "container") and s.env == "production":

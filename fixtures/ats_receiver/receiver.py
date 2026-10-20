@@ -75,7 +75,9 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
         acc = ledger.run("select receipt, slug, form_token, fields from acceptances order by id")
         dis = ledger.run("select kind, slug, detail from disclosures order by id")
         ch = ledger.run("select id, code, attempts, done from challenges order by created_at")
+        req = ledger.run("select method, path from requests order by id")
         return {
+            "requests": [{"method": m, "path": p} for m, p in req],
             "accepted": len(acc),
             "acceptances": [{"receipt": r, "slug": s, "form_token": t, "fields": json.loads(f)}
                             for r, s, t, f in acc],

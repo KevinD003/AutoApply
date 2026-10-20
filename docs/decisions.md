@@ -164,5 +164,23 @@ Unobservable behaviour is never guessed:
 - a text question rendered as a search picker is unsupported;
 - multi-choice comboboxes are unsupported.
 The package shape is unchanged: only a new `form_source` value and existing condition fields
-are used, so `SCHEMA_VERSION` stays 2 and no approval is invalidated. Fixture-only, with
-`real_destinations: false`.
+are used, so `SCHEMA_VERSION` stays 2. That alone does not make approvals safe across adapter
+changes; see D28. Fixture-only, with `real_destinations: false`.
+
+## D28 — Approvals are bound to the execution method, not only to the content
+- **Not enough on its own:** the package hash covers the destination (origin, submit URL and
+  method, form id, version, fingerprint and source), the document digests and the answers. It
+  does not cover *how* an adapter locates, fills, verifies and submits. A routing change or a
+  change in an adapter's semantics would otherwise run an old approval with a new meaning.
+- **What is recorded:** each approval stores `adapter` and `adapter_version`
+  (`execution.policy.ADAPTER_VERSIONS`). The version embeds the extraction or mapping rules the
+  adapter's live checks rely on.
+- **Where it is checked:**
+  - at queueing: a mismatch is refused, and that one approval is retired so the same content
+    can be approved again under the method that would now run;
+  - when the runner loads the attempt, before any adapter code touches a page;
+  - inside both gates, under lock.
+- **Approvals given before bindings existed:** they mean the route and versions the code had
+  then (`LEGACY_VERSIONS`). They stay valid exactly while that is still what would run, so this
+  change invalidates none of them. A later version bump retires only the approvals bound to
+  that adapter. Migration `5d2e7a91c4b0` adds the two nullable columns.

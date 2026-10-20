@@ -50,6 +50,7 @@ def test_refused_unless_this_exact_posting_is_approved(tmp_path, monkeypatch):
 def test_permission_a_three_gets_raw_data_kept_out_of_the_summary(tmp_path, receiver):
     log = ro.fetch(BOARD, JOB, tmp_path, base=API)
     assert log["used"] == 3 and [r["status"] for r in log["requests"]] == [200, 200, 200]
+    assert log["limit"] == ro.LIMITS.api_requests == 3  # a 4th GET would be refused unsent
     assert [r["path"] for r in log["requests"]] == [
         "/gh-api/robots.txt",
         f"/gh-api/v1/boards/{BOARD}/jobs/{JOB}",
@@ -271,36 +272,68 @@ def test_mapping_evidence_on_the_v2_fixture(receiver, v2_approved):
     obs = observe_v2(v2_approved)
     m = obs["mapping"]
     by = {f["key"]: f for f in m["fields"]}
-    assert set(m["by_status"]) == {"mapped"}, m["by_status"]
-    assert all(f["id_candidates"] == 1 and f["label_matches"] for f in m["fields"])
-    cb = by["question_8101"]["control"]
-    assert cb["role"] == "combobox" and cb["controls_listbox"] and cb["options_match_api"]
-    assert cb["listbox_options"] == 2 and cb["has_name_attr"] is False
+    assert m["basis"] == ro.BASIS
+    assert set(m["by_observation"]) == {"unique"}, m["by_observation"]
+    assert all(f["id_candidates"] == 1 and f["checks"]["label"] is True for f in m["fields"])
+    cb = by["question_8101"]
+    assert cb["control"]["role"] == "combobox" and cb["control"]["controls_listbox"]
+    assert cb["checks"]["options"] is True and cb["options_at_load"] == 2
+    assert cb["control"]["has_name_attr"] is False
     assert by["resume"]["control"]["in_group"] and by["resume"]["control"]["input_type"] == "file"
-    hidden = by["question_8105"]["control"]
-    assert hidden["hidden_attr"] is True and hidden["visible"] is False
-    assert by["first_name"]["control"]["visible"] is True
+    assert by["first_name"]["checks"]["options"] == "not_applicable"
+    hidden = by["question_8105"]
+    assert hidden["control"]["hidden_attr"] is True and hidden["checks"]["visible"] is False
+    assert by["first_name"]["checks"]["visible"] is True
     assert [u["alternative_of_api_field"] for u in m["unmatched_controls"]] == [True, True]
     assert obs["rendering"]["may_be_incomplete"] is False
+    assert obs["navigations"] == 1 and obs["received_bytes"] > 0
     assert receiver.ledger()["disclosures"] == [] and receiver.ledger()["accepted"] == 0
     pub = ro.publishable(v2_approved, {"name": v2_approved["company_name"]}, V2_JOB, obs)
     text = ro.guard(pub, ro.sensitive_values(V2_BOARD, V2_JOB, v2_approved, None))
     assert "question_81" not in text and '"q01"' in text
 
 
-def test_mapping_evidence_reports_ambiguous_and_absent_explicitly(receiver, v2_approved):
-    receiver.config(mode="gh2_duplicate_id")
+@pytest.mark.parametrize(
+    "mode,key,observation,reason",
+    [
+        ("gh2_duplicate_id", "question_8101", "ambiguous", "several_controls_with_this_id"),
+        ("gh2_missing_control", "question_8103", "absent", "no_control_with_this_id_at_load"),
+        ("gh2_label_mismatch", "question_8101", "incompatible",
+         "accessible_name_differs_from_the_label"),
+    ],
+)  # fmt: skip
+def test_absent_ambiguous_and_incompatible_are_explicit(receiver, v2_approved, mode, key,
+                                                        observation, reason):  # fmt: skip
+    receiver.config(mode=mode)
     m = observe_v2(v2_approved)["mapping"]
-    amb = next(f for f in m["fields"] if f["key"] == "question_8101")
-    assert amb["status"] == "ambiguous" and amb["id_candidates"] == 2 and amb["control"] is None
-    receiver.config(mode="gh2_missing_control")
+    f = next(x for x in m["fields"] if x["key"] == key)
+    assert f["observation"] == observation and f["reasons"] == [reason]
+    assert m["by_observation"][observation] == [key]
+    if observation == "ambiguous":
+        assert f["id_candidates"] == 2 and f["control"] is None
+    if observation == "incompatible":
+        assert f["checks"]["label"] is False and f["label_candidates"] == 0
+
+
+def test_options_rendered_only_on_open_are_not_observable_not_a_mismatch(receiver, v2_approved):
+    receiver.config(mode="gh2_lazy_options")
     m = observe_v2(v2_approved)["mapping"]
-    assert m["by_status"]["absent"] == ["question_8103"]
-    receiver.config(mode="gh2_label_mismatch")
-    m = observe_v2(v2_approved)["mapping"]
-    lm = next(f for f in m["fields"] if f["key"] == "question_8101")
-    assert lm["status"] == "label_mismatch" and lm["label_matches"] is False
-    assert lm["label_candidates"] == 0  # the API wording labels no control at all
+    f = next(x for x in m["fields"] if x["key"] == "question_8101")
+    assert f["observation"] == "unique"  # the control itself was observed
+    assert f["checks"]["options"] == "not_observable_at_load" and f["options_at_load"] is None
+
+
+def test_page_managed_values_are_not_observable(receiver, monkeypatch):
+    import greenhouse_v2
+
+    monkeypatch.setenv("NOEFFORTS_READONLY_GREENHOUSE_APPROVED", f"{V2_BOARD}/5020002")
+    api = greenhouse_v2._api_json(V2_BOARD, "5020002", BASE)
+    obs = ro.observe_page(V2_BOARD, "5020002", base=BASE, prefix="gh2", api_json=api)
+    by = {f["key"]: f for f in obs["mapping"]["fields"]}
+    assert by["latitude"]["observation"] == "not_observable"
+    assert by["latitude"]["reasons"] == ["page_managed_value"]
+    assert by["location"]["observation"] == "unique"
+    assert by["location"]["fill_support"] == "unsupported_search_picker"
 
 
 def test_blocked_dependency_marks_rendering_possibly_incomplete(receiver, v2_approved):
@@ -313,3 +346,106 @@ def test_blocked_dependency_marks_rendering_possibly_incomplete(receiver, v2_app
     pub = ro.publishable(v2_approved, {"name": "x"}, V2_JOB, obs)
     text = ro.guard(pub, ro.sensitive_values(V2_BOARD, V2_JOB, v2_approved, None))
     assert "fixture-cdn" not in text
+
+
+# ------------------------------------------------------------------ enforced limits (local only)
+
+
+def page_gets(receiver) -> list[str]:
+    return [r["path"] for r in receiver.ledger()["requests"]
+            if r["method"] == "GET" and r["path"].startswith(f"/gh2/{V2_BOARD}/jobs/")]  # fmt: skip
+
+
+def test_default_limits_are_the_documented_ones():
+    lim = ro.LIMITS
+    assert (lim.api_requests, lim.page_navigations, lim.page_redirect_hops) == (3, 1, 3)
+    assert (lim.page_requests, lim.observe_seconds, lim.run_seconds) == (150, 90.0, 150.0)
+    assert lim.page_received_bytes == 20_000_000 and lim.retained_dom_chars == 2_000_000
+    assert lim.api_response_bytes == ro.MAX_BYTES == 2_000_000
+
+
+def test_api_response_size_limit_stops(tmp_path, receiver, monkeypatch):
+    monkeypatch.setattr(ro, "MAX_BYTES", 10)
+    with pytest.raises(ro.Stop, match="larger than the limit"):
+        ro.fetch(BOARD, JOB, tmp_path, base=API)
+
+
+def test_second_top_level_navigation_is_aborted_and_stops(receiver, v2_approved):
+    receiver.config(mode="gh2_navigate_away")
+    with pytest.raises(ro.Stop, match="second top-level navigation"):
+        observe_v2(v2_approved)
+    assert len(page_gets(receiver)) == 1  # the page's own navigation never reached the server
+
+
+def test_redirect_hops_are_limited(receiver, v2_approved):
+    receiver.config(mode="gh2_redirect_loop")  # five same-origin hops
+    with pytest.raises(ro.Stop, match="too many redirects"):
+        observe_v2(v2_approved)
+    receiver.reset()
+    receiver.config(mode="gh2_redirect_loop")
+    obs = ro.observe_page(V2_BOARD, V2_JOB, base=BASE, prefix="gh2", api_json=v2_approved,
+                          limits=ro.Limits(page_redirect_hops=5))  # fmt: skip
+    assert obs["status"] == 200 and obs["navigations"] == 1
+
+
+def test_redirect_to_another_origin_stops(receiver, v2_approved):
+    receiver.config(mode="gh2_redirect_off_origin")
+    with pytest.raises(ro.Stop, match="another origin"):
+        observe_v2(v2_approved)
+
+
+def test_total_request_budget_stops(receiver, v2_approved):
+    receiver.config(mode="gh2_many_assets")
+    with pytest.raises(ro.Stop, match="request budget"):
+        ro.observe_page(V2_BOARD, V2_JOB, base=BASE, prefix="gh2", api_json=v2_approved,
+                        limits=ro.Limits(page_requests=5))  # fmt: skip
+    gets = [r for r in receiver.ledger()["requests"] if r["path"] == "/gh2-api/robots.txt"]
+    assert len(gets) <= 4  # requests beyond the budget were aborted before they were sent
+
+
+def test_received_bytes_stop(receiver, v2_approved):
+    with pytest.raises(ro.Stop, match="received data limit"):
+        ro.observe_page(V2_BOARD, V2_JOB, base=BASE, prefix="gh2", api_json=v2_approved,
+                        limits=ro.Limits(page_received_bytes=1000))  # fmt: skip
+
+
+def test_retained_dom_limit_stops(receiver, v2_approved):
+    with pytest.raises(ro.Stop, match="retained-data limit"):
+        ro.observe_page(V2_BOARD, V2_JOB, base=BASE, prefix="gh2", api_json=v2_approved,
+                        limits=ro.Limits(retained_dom_chars=1000))  # fmt: skip
+
+
+def test_overall_deadline_stops_a_slow_page(receiver, v2_approved):
+    import time
+
+    receiver.config(mode="gh2_slow")  # the page takes 3 s to answer
+    t0 = time.monotonic()
+    with pytest.raises(ro.Stop, match="overall time limit"):
+        ro.observe_page(V2_BOARD, V2_JOB, base=BASE, prefix="gh2", api_json=v2_approved,
+                        limits=ro.Limits(observe_seconds=1.0))  # fmt: skip
+    assert time.monotonic() - t0 < 2.9
+
+
+def test_watchdog_ends_the_whole_run_with_a_fixed_line(tmp_path):
+    """Hard bound on A + B together: a run stuck in any call is ended by the watchdog."""
+    import subprocess
+
+    code = (
+        "import time\n"
+        "from app.modules.preparation import gh_readonly as ro\n"
+        "ro.LIMITS = ro.Limits(run_seconds=1.0)\n"
+        "ro.fetch = lambda *a, **k: time.sleep(30)\n"
+        f"ro.main(['--out', {str(tmp_path)!r}])\n"
+    )
+    env = {**__import__("os").environ, "NOEFFORTS_READONLY_GREENHOUSE_APPROVED": "acme/1"}
+    p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=20,
+                       env=env, cwd=ROOT / "backend")  # fmt: skip
+    assert p.returncode == 5
+    assert p.stdout.strip() == ro.TIME_STOP_LINE
+    assert ro.guard(json.loads(ro.TIME_STOP_LINE), set())  # the line itself passes the guard
+
+
+def test_output_size_limit_suppresses():
+    printed = []
+    assert ro.emit({"requests": [200] * 50}, set(), printed.append, limit=20) is False
+    assert "suppressed" in printed[0]

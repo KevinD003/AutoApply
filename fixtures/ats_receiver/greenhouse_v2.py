@@ -27,7 +27,8 @@ Routes (on the synthetic receiver; same ledger):
   POST /gh2/{board}/jobs/{id}/attachments  upload (a disclosure)
   POST /gh2/{board}/jobs/{id}/submit       application (an acceptance)
 Modes (cfg["mode"]): gh2_duplicate_id, gh2_label_mismatch, gh2_missing_control,
-gh2_validation_fail, gh2_new_question, gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, plus the
+gh2_validation_fail, gh2_new_question, gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, gh2_many_assets,
+gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, plus the
 receiver-wide upload_fail, error_before_accept, error_after_accept, drop_after_accept.
 All employers, jobs and people are fictional.
 """
@@ -40,7 +41,7 @@ import secrets
 import time
 
 from fastapi import HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 YES_NO = [{"value": 1, "label": "Yes"}, {"value": 0, "label": "No"}]
 COUNTRIES = [{"value": 900 + i, "label": c} for i, c in enumerate(
@@ -152,6 +153,8 @@ def _render(q, mode) -> str:
         opts = "".join(f'<li role="option" id="{qid}-opt-{v["value"]}" data-value="{v["value"]}"'
                        f' aria-selected="false">{html.escape(v["label"])}</li>'
                        for v in values)
+        if mode == "gh2_lazy_options":  # options exist only after the dropdown opens
+            opts = ""
         dup = (f'<input type="text" id="{qid}" aria-label="duplicate">'
                if mode == "gh2_duplicate_id" and qid == "question_8101" else "")
         return (f'<div class="field select">{_label(qid, label_text, req)}'
@@ -239,6 +242,10 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
     mode = cfg["mode"]
     base = f"/gh2/{board}/jobs/{job_id}"
     qs = "".join(_render(q, mode) for q in j["questions"] + j["location_questions"])
+    if mode == "gh2_many_assets":  # same-origin requests beyond a small budget
+        qs += "".join(f'<img alt="" src="/gh2-api/robots.txt?i={i}">' for i in range(10))
+    if mode == "gh2_navigate_away":  # the page navigates itself after load
+        qs += f'<script>setTimeout(() => {{ location.href = "{base}?again=1"; }}, 200)</script>'
     if mode == "gh2_new_question":  # a visible question the job data does not list
         qs += ('<div class="field"><label for="question_8199">Years of experience</label>'
                '<input type="text" id="question_8199"></div>')
@@ -285,8 +292,15 @@ def mount(app, ledger, cfg, accept) -> None:
         return JSONResponse(data)
 
     @app.get("/gh2/{board}/jobs/{job_id}", response_class=HTMLResponse)
-    def hosted_form(board: str, job_id: str):
+    async def hosted_form(board: str, job_id: str, hop: int = 0):
         job_or_404(board, job_id)
+        mode = cfg["mode"]
+        if mode == "gh2_redirect_loop" and hop < 5:  # five same-origin hops, then the page
+            return RedirectResponse(f"/gh2/{board}/jobs/{job_id}?hop={hop + 1}", 302)
+        if mode == "gh2_redirect_off_origin":
+            return RedirectResponse("http://elsewhere.fixture.invalid/careers", 302)
+        if mode == "gh2_slow":
+            await asyncio.sleep(3)
         token = secrets.token_hex(8)
         ledger.run("insert into tokens (token, issued_at) values (?,?)", (token, time.time()))
         return _form_page(board, job_id, token, cfg)

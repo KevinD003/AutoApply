@@ -117,6 +117,10 @@ class PackageApproval(Base):
     )
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     content_hash: Mapped[str] = mapped_column(String(64))
+    # Execution method approved (execution.policy.execution_binding); NULL = given before
+    # bindings were recorded (see policy.approved_binding).
+    adapter: Mapped[str | None] = mapped_column(String(50))
+    adapter_version: Mapped[str | None] = mapped_column(String(100))
     approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

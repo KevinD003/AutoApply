@@ -15,8 +15,12 @@ be published.
 import json
 import os
 import re
+import sys
+import threading
+import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -123,7 +127,7 @@ def fetch(board: str, job_id: str, out_dir: Path, *, base: str | None = None) ->
     returns the request log. `base` exists for tests against the local fixture."""
     require_approval(board, job_id)
     out_dir.mkdir(parents=True, exist_ok=True)
-    budget = Budget(3, base or f"https://{API_HOST}")
+    budget = Budget(LIMITS.api_requests, base or f"https://{API_HOST}")
     job_path = f"/v1/boards/{board}/jobs/{job_id}"
     robots = budget.get(f"{budget.base}/robots.txt").decode("utf-8", "replace")
     (out_dir / "robots.txt").write_text(robots)
@@ -247,8 +251,44 @@ DOM_STATS_JS = """() => {
     scripts: q('script[src]').length,
   };
 }"""
-PAGE_REQUEST_LIMIT = 150
-PAGE_SECONDS = 60
+
+
+@dataclass(frozen=True)
+class Limits:
+    """Every limit of one read-only run, as the code enforces it (docs/greenhouse-readonly-
+    compatibility-proposal.md quotes these). Tests pass smaller values; the CLI never does."""
+
+    # A: GETs to the API host; each response read up to this many bytes, larger ones stop A.
+    api_requests: int = 3
+    api_response_bytes: int = MAX_BYTES
+    # B: top-level navigations of the page (the initial one). Any further main-frame navigation
+    # is aborted before it is sent and stops the run.
+    page_navigations: int = 1
+    # B: redirect hops followed for that navigation, same origin only; another origin stops.
+    page_redirect_hops: int = 3
+    # B: requests the page may start (redirect hops included). Beyond it every request is
+    # aborted before it is sent and the run stops.
+    page_requests: int = 150
+    # B: response bytes received, as the browser reports them per finished request. A STOP
+    # condition, not a transfer cap: once the total passes it, further requests are aborted
+    # and the run stops, but a response already in flight still completes.
+    page_received_bytes: int = 20_000_000
+    # B: largest serialized DOM kept in memory for extraction (characters); larger stops.
+    retained_dom_chars: int = 2_000_000
+    # B: wall clock from the start of observe_page; every browser wait is clamped to what is
+    # left, and the run stops when nothing is left. In-process, so a call that ignores its
+    # timeout could overrun it: `run_seconds` is the hard bound.
+    observe_seconds: float = 90.0
+    # Whole CLI run (A + B): a watchdog thread prints a fixed stop line and ends the process
+    # with exit code 5 when this passes, whatever is running.
+    run_seconds: float = 150.0
+    # Largest summary that may be printed (bytes); larger is suppressed like a privacy failure.
+    output_bytes: int = 262_144
+
+
+LIMITS = Limits()
+PAGE_REQUEST_LIMIT = LIMITS.page_requests  # kept for existing callers
+PAGE_SECONDS = 60  # one navigation's own timeout, also clamped to the deadline
 
 
 def page_url(board: str, job_id: str, base: str | None = None, prefix: str = "gh") -> str:
@@ -264,13 +304,15 @@ def observe_page(
     base: str | None = None,
     prefix: str = "gh",
     api_json: dict | None = None,
+    limits: Limits = LIMITS,
 ) -> dict:
     """Permission B: ONE page load in the isolated browser, observe only.
 
     The egress allow-list is the posting's origin only. Every request other than GET/HEAD
     is aborted before it leaves the browser and recorded (method and path only). There is no
     typing, clicking, focusing, uploading or submitting: the page is read once after it has
-    loaded. Stops on a bot check, a redirect to another origin, or the request budget.
+    loaded. Stops (Stop) at a bot check, a second navigation, too many or cross-origin
+    redirects, the request, received-bytes, DOM-size or time limits (`Limits`).
     With `api_json`, also collects per-field mapping evidence (`mapping_evidence`) by reading
     the loaded DOM; still nothing is clicked, typed or focused.
     `base` is for tests against the local fixture (a fixture origin)."""
@@ -288,14 +330,24 @@ def observe_page(
         raise NotApproved("a non-default page origin is allowed only for test fixtures")
     if not fixture and s.browser_isolation != "container":
         raise NotApproved("a real page is opened only in the isolated browser container")
-    blocked, seen = [], {"requests": 0, "other_origins": set(), "main_frame": []}
+    deadline = time.monotonic() + limits.observe_seconds
+
+    def left_ms(cap_ms: float) -> int:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise Stop("overall time limit reached")
+        return max(1, int(min(cap_ms, left * 1000)))
+
+    blocked: list[dict] = []
+    seen = {"requests": 0, "navigations": 0, "received": 0}
+    stops: list[str] = []
     failed: list[dict] = []
     idle = False
     evidence = None
 
     with browser_session(
         origin,
-        PAGE_SECONDS * 1000,
+        left_ms(PAGE_SECONDS * 1000),
         isolation=s.browser_isolation,
         allow_private_destination=fixture,
     ) as (page, log):
@@ -305,30 +357,76 @@ def observe_page(
             if request.method not in ("GET", "HEAD"):
                 blocked.append({"method": request.method, "path": urlsplit(request.url).path})
                 return route.abort()
-            if seen["requests"] > PAGE_REQUEST_LIMIT:
+            if request.is_navigation_request() and request.frame == page.main_frame:
+                if request.redirected_from is None:
+                    seen["navigations"] += 1
+                    if seen["navigations"] > limits.page_navigations:
+                        stops.append("a second top-level navigation was attempted")
+                        return route.abort()
+            if seen["requests"] > limits.page_requests:
+                stops.append("page request budget reached")
+                return route.abort()
+            if seen["received"] > limits.page_received_bytes:
+                stops.append("received data limit reached")
                 return route.abort()
             return route.fallback()
 
+        def on_request(request):
+            # Redirect hops (seen here even when the browser follows them without a route).
+            if not (request.is_navigation_request() and request.frame == page.main_frame):
+                return
+            hops, r = 0, request
+            while r.redirected_from is not None:
+                hops, r = hops + 1, r.redirected_from
+            u = urlsplit(request.url)
+            if hops and f"{u.scheme}://{u.netloc}" != origin:
+                stops.append("redirected to another origin")
+            elif hops > limits.page_redirect_hops:
+                stops.append("too many redirects")
+
+        def on_finished(request):
+            try:
+                sz = request.sizes()
+                seen["received"] += sz["responseBodySize"] + sz["responseHeadersSize"]
+            except Exception:  # noqa: BLE001 - size unknown: counted as nothing, noted below
+                seen["sizes_unknown"] = seen.get("sizes_unknown", 0) + 1
+
         page.route("**/*", guard)
+        page.on("request", on_request)
+        page.on("requestfinished", on_finished)
         page.on("requestfailed", lambda r: failed.append(_failure(r, origin)))
-        page.on(
-            "framenavigated",
-            lambda f: f == page.main_frame and seen["main_frame"].append(urlsplit(f.url).netloc),
-        )
-        resp = page.goto(url, wait_until="load")
+        try:
+            resp = page.goto(url, wait_until="load", timeout=left_ms(PAGE_SECONDS * 1000))
+        except Exception:  # noqa: BLE001 - an aborted or stopped navigation; say which
+            if stops:
+                raise Stop(stops[0]) from None
+            # The interception layer refuses a redirect target on another origin before the
+            # browser follows it (the proxy does the same in container mode).
+            if any(_origin_of(b) != origin for b in log.blocked):
+                raise Stop("redirected to another origin") from None
+            if deadline - time.monotonic() <= 0:
+                raise Stop("overall time limit reached") from None
+            raise
         try:  # client-side rendering may still be fetching; bounded, nothing is touched
-            page.wait_for_load_state("networkidle", timeout=15_000)
+            page.wait_for_load_state("networkidle", timeout=left_ms(15_000))
             idle = True
+        except Stop:
+            raise
         except Exception:  # noqa: BLE001 - a page that never goes idle is still observed
             pass
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(left_ms(2000))
+        if stops:
+            raise Stop(stops[0])
         final = urlsplit(page.url)
         if f"{final.scheme}://{final.netloc}" != origin:
             raise Stop("redirected to another origin")
-        if seen["requests"] > PAGE_REQUEST_LIMIT:
-            raise Stop("page request budget reached")
+        if seen["received"] > limits.page_received_bytes:
+            raise Stop("received data limit reached")
+        left_ms(1)  # time left to read the page?
         bot_check = page.locator(CHALLENGE_SELECTORS).count() > 0
         html = page.content()
+        if len(html) > limits.retained_dom_chars:
+            raise Stop("page larger than the retained-data limit")
         dom = page.evaluate(DOM_STATS_JS)
         ready = page.evaluate("() => document.readyState")
         if api_json is not None and not bot_check:
@@ -343,6 +441,9 @@ def observe_page(
             except Exception:  # noqa: BLE001 - detached or blocked frame
                 entry["dom"] = None
             frames.append(entry)
+        if stops:  # e.g. a navigation the page attempted while it was being read
+            raise Stop(stops[0])
+        left_ms(1)
         denied = set(log.proxy_denied()) | {
             urlsplit(b).netloc for b in log.blocked if urlsplit(b).netloc
         }
@@ -359,6 +460,9 @@ def observe_page(
         "status": resp.status if resp else None,
         "bot_check": bot_check,
         "requests": seen["requests"],
+        "navigations": seen["navigations"],
+        "received_bytes": seen["received"],
+        "sizes_unknown": seen.get("sizes_unknown", 0),
         "blocked_non_get": blocked,
         "denied_destinations": sorted(denied),
         "rendered": rendered,
@@ -372,6 +476,11 @@ def observe_page(
         },
         "mapping": evidence,
     }
+
+
+def _origin_of(url: str) -> str:
+    u = urlsplit(url)
+    return f"{u.scheme}://{u.netloc}"
 
 
 _RENDER_TYPES = {"script", "xhr", "fetch", "stylesheet", "document", "other"}
@@ -391,48 +500,96 @@ def _failure(request, origin: str) -> dict:
     }
 
 
-_OPTION_TEXT_JS = """id => { const lb = document.getElementById(id);
+# Option texts present in the DOM at load: a native <select>'s options, or the role=option
+# children of the listbox a combobox controls. null = no such list in the DOM.
+_OPTION_TEXT_JS = """id => { const el = document.getElementById(id);
+  if (!el) return null;
+  if (el.tagName === 'SELECT') return Array.from(el.options).map(o => o.textContent);
+  const lb = document.getElementById(el.getAttribute('aria-controls') || '');
   return lb ? Array.from(lb.querySelectorAll('[role=option]')).map(o => o.textContent) : null; }"""
+
+BASIS = "observed at load, no interaction"
+_FILL_SUPPORT = {
+    "search_picker": "unsupported_search_picker",
+    "protocol": "page_managed",
+}
+
+
+def _observation(m, f) -> tuple[str, list[str]]:
+    """absent | unique | ambiguous | incompatible | not_observable, with reasons."""
+    if f.type.value == "unsupported":
+        # Page-managed values (e.g. hidden coordinates): which script writes them, and from
+        # what, cannot be seen without interacting.
+        return "not_observable", ["page_managed_value"]
+    if m.status == "absent":
+        return "absent", ["no_control_with_this_id_at_load"]
+    if m.status == "ambiguous":
+        return "ambiguous", ["several_controls_with_this_id"]
+    if m.status == "type_mismatch":
+        return "incompatible", ["element_or_role_does_not_suit_the_type"]
+    if m.status == "label_mismatch":
+        return "incompatible", ["accessible_name_differs_from_the_label"]
+    return "unique", []
 
 
 def mapping_evidence(page, html: str, api_json: dict) -> dict:
-    """Per API field: is there exactly one control with that id, does its accessible name match
-    the label, what element/role is it, how is it grouped and related, is it hidden or visible.
-    Plus the page controls no API field names. Read-only: DOM reads and visibility checks."""
+    """Per API field, from the loaded DOM only (reads and visibility checks; nothing is clicked,
+    typed or focused): one observation (absent / unique / ambiguous / incompatible /
+    not_observable) and the checks behind it, each true, false, "not_observable_at_load" or
+    "not_applicable". Plus the page controls no API field names. The mapping rules are the
+    adapter's own (greenhouse_dom.map_fields); nothing is relaxed here."""
     from app.modules.preparation import greenhouse_dom as gdom
 
     fields = gh.schema_from_api(api_json).fields
     controls = gdom.snapshot(html)
 
-    def visible(cid: str) -> bool | None:
+    def visible(cid: str):
         if not _SAFE_ID.fullmatch(cid):
-            return None
+            return "not_observable"
         loc = page.locator(f'[id="{cid}"]')
-        return loc.is_visible() if loc.count() == 1 else None
+        return loc.is_visible() if loc.count() == 1 else "not_observable"
 
     per_field = []
     for f, m in zip(fields, gdom.map_fields(fields, controls), strict=True):
         label = gdom._norm(f.label)
+        observation, reasons = _observation(m, f)
+        c = m.control if m.candidates == 1 else None
+        is_choice = f.type.value in ("select", "multiselect", "checkbox_group")
+        checks = {
+            "label": "not_applicable" if f.type.value == "unsupported" or c is None
+            else gdom._norm(c.accessible_name) == label,
+            "element": "not_applicable" if c is None or f.type.value == "unsupported"
+            else m.status in ("mapped", "search_picker", "label_mismatch"),
+            "options": "not_applicable",
+            "visible": visible(c.id) if c is not None else "not_applicable",
+        }  # fmt: skip
+        options_at_load = None
+        if c is not None and is_choice and _SAFE_ID.fullmatch(c.id):
+            texts = page.evaluate(_OPTION_TEXT_JS, c.id)
+            if not texts:
+                # e.g. options rendered only when the dropdown opens: never assumed equal,
+                # never counted as a mismatch
+                checks["options"] = "not_observable_at_load"
+            else:
+                options_at_load = len(texts)
+                checks["options"] = [gdom._norm(t) for t in texts] == [
+                    gdom._norm(o.label) for o in f.options
+                ]
         entry = {
             "key": f.key,
             "field_type": f.type.value,
             "required": f.required,
+            "observation": observation,
+            "reasons": reasons,
             "status": m.status,
             "id_candidates": m.candidates,
-            "label_candidates": sum(1 for c in controls if gdom._norm(c.accessible_name) == label),
-            "label_matches": None,
-            "control": None,
-        }
-        c = m.control
-        if c is not None and m.candidates == 1:
-            entry["label_matches"] = gdom._norm(c.accessible_name) == label
-            entry["control"] = _control_evidence(c, visible(c.id))
-            if c.controls_listbox and c.controls and _SAFE_ID.fullmatch(c.controls):
-                texts = page.evaluate(_OPTION_TEXT_JS, c.controls) or []
-                entry["control"]["listbox_options"] = len(texts)
-                entry["control"]["options_match_api"] = [gdom._norm(t) for t in texts] == [
-                    gdom._norm(o.label) for o in f.options
-                ]
+            "label_candidates": sum(1 for x in controls if gdom._norm(x.accessible_name) == label),
+            "checks": checks,
+            "options_at_load": options_at_load,
+            "fill_support": _FILL_SUPPORT.get(m.status, "supported")
+            if observation == "unique" or m.status == "protocol" else "not_applicable",
+            "control": _control_evidence(c, checks["visible"]) if c is not None else None,
+        }  # fmt: skip
         per_field.append(entry)
     keys = {f.key.removesuffix("[]") for f in fields}
     unmatched = []
@@ -445,10 +602,14 @@ def mapping_evidence(page, html: str, api_json: dict) -> dict:
         )  # fmt: skip
         unmatched.append(e)
     by_status: dict[str, list[str]] = {}
+    by_observation: dict[str, list[str]] = {}
     for e in per_field:
         by_status.setdefault(e["status"], []).append(e["key"])
+        by_observation.setdefault(e["observation"], []).append(e["key"])
     return {
+        "basis": BASIS,
         "fields": per_field,
+        "by_observation": by_observation,
         "by_status": by_status,
         "unmatched_controls": unmatched,
         "controls_total": len(controls),
@@ -536,6 +697,9 @@ def publishable(api_json: dict, board_json: dict, job_id: str, observed: dict | 
             "status": observed["status"],
             "bot_check": observed["bot_check"],
             "requests": observed["requests"],
+            "navigations": observed.get("navigations"),
+            "received_bytes": observed.get("received_bytes"),
+            "sizes_unknown": observed.get("sizes_unknown"),
             "blocked_non_get": [
                 {"method": b["method"] if b["method"] in METHODS else "OTHER"}
                 for b in observed["blocked_non_get"]
@@ -627,6 +791,12 @@ _OUTPUT_WORDS = {
     "hidden_attr", "visible", "in_form", "in_group", "controls_listbox", "describedby",
     "listbox_options", "options_match_api", "by_status", "unmatched_controls",
     "controls_total", "alternative_of_api_field", "id_shape",
+    "observation", "reasons", "checks", "label", "element", "options_at_load", "fill_support",
+    "by_observation", "basis", "navigations", "received_bytes", "sizes_unknown",
+    "unique", "incompatible", "not_observable", "not_observable_at_load", "not_applicable",
+    "supported", "unsupported_search_picker", "page_managed", BASIS, "page_managed_value",
+    "no_control_with_this_id_at_load", "several_controls_with_this_id",
+    "element_or_role_does_not_suit_the_type", "accessible_name_differs_from_the_label",
     # values
     "input", "select", "textarea", "other", "combobox", "listbox", "textbox", "searchbox",
     "group", "option", "button", "labelledby", "label_for", "label_wrap", "aria_label",
@@ -643,7 +813,9 @@ _STOPS = (
     r"redirect \(\d{3}\) - not followed", "only the documented API host is allowed",
     "request budget reached", r"HTTP \d{3}", "response larger than the limit",
     r"robots\.txt disallows the job path", "redirected to another origin",
-    "page request budget reached",
+    "page request budget reached", "overall time limit reached",
+    "a second top-level navigation was attempted", "too many redirects",
+    "received data limit reached", "page larger than the retained-data limit",
 )  # fmt: skip
 _NOT_APPROVED = (
     "board token or job id has an unexpected shape",
@@ -763,9 +935,12 @@ def guard(obj, sensitive: set[str]) -> str:
     return text
 
 
-def emit(obj, sensitive: set[str], printer=print) -> bool:
+def emit(obj, sensitive: set[str], printer=print, limit: int = LIMITS.output_bytes) -> bool:
     try:
-        printer(guard(obj, sensitive))
+        text = guard(obj, sensitive)
+        if len(text.encode()) > limit:
+            raise Leak("summary larger than the output limit")
+        printer(text)
         return True
     except Leak:
         # Not even the reason's details: which string leaked would itself be the leak.
@@ -791,6 +966,32 @@ def main(argv=None) -> int:
         "--mapping", action="store_true", help="with --observe: per-field mapping evidence"
     )
     a = ap.parse_args(argv)
+    watchdog = start_watchdog(LIMITS.run_seconds)
+    try:
+        return _run(a)
+    finally:
+        watchdog.cancel()
+
+
+TIME_STOP_LINE = json.dumps({"stopped": "Stop: overall time limit reached"})
+
+
+def start_watchdog(seconds: float, exit=os._exit) -> threading.Timer:
+    """Hard bound on the whole run: at `seconds`, print one fixed line and end the process
+    (exit code 5) whatever it is doing. Raw data stays where it is (destroyed with the stack)."""
+
+    def fire():
+        sys.stdout.write(TIME_STOP_LINE + "\n")
+        sys.stdout.flush()
+        exit(5)
+
+    t = threading.Timer(seconds, fire)
+    t.daemon = True
+    t.start()
+    return t
+
+
+def _run(a) -> int:
     board, _, job_id = os.environ.get("NOEFFORTS_READONLY_GREENHOUSE_APPROVED", "").partition("/")
     sensitive = sensitive_values(board, job_id, None, None)
     try:

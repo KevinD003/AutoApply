@@ -28,8 +28,11 @@ any real employer, and none of it shows that a real page can be filled or submit
 | Original fixture and routing unchanged | `test_greenhouse_adapter.py`, `test_original_fixture_still_routes_to_the_original_adapter` | passed |
 | Output privacy (allowlist, aliases, guard) | `test_success_output_has_aliases_and_no_markers`, `test_failure_paths_print_types_only`, `test_guard_rejects_unknown_strings_and_derived_values` | no marker on success or failure paths; suppressed output on a guard failure |
 | Mapping evidence collector (B2 code) | `test_mapping_evidence_on_the_v2_fixture`, `..._reports_ambiguous_and_absent_explicitly`, `test_blocked_dependency_marks_rendering_possibly_incomplete` | per-field ids, labels, roles, visibility; denied script → "may be incomplete" |
-| Same collector in the isolated container | Compose `s_readonly_mapping_in_container` | runs in CI (see the status doc) |
-| UI, desktop + mobile | e2e "Greenhouse-style v2 form …" | see the status doc |
+| Same collector in the isolated container | Compose `s_readonly_mapping_in_container` | CI #34 (`6d0a437`): passed; execution-compose 80 checks, 0 failed |
+| UI, desktop + mobile | e2e "Greenhouse-style v2 form …" | local `submission.spec.ts`: 20 passed; CI #34 full Playwright suite: 26 passed |
+| Approval bound to the execution method | `tests/test_approval_binding.py` (9) | new route or version → queue refused and approval retired; change after loading → stopped at the gate; tampered attempt adapter → failed_safe; pre-binding approvals kept while unchanged; 0 disclosures in every refusal |
+| B2 limits enforced | `tests/test_gh_readonly.py` limit tests | navigation, redirects, request budget, received-bytes stop, retained DOM, deadline, watchdog, output size; fixtures only |
+| Options only on open | `test_options_rendered_only_on_open_are_not_observable_not_a_mismatch` | `not_observable_at_load` |
 
 Fixture assumptions (not observed on any real page): how comboboxes open and select, option
 values, the upload endpoint and status element, JSON submission, the confirmation message and

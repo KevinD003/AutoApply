@@ -152,97 +152,78 @@ statement. From now on, every further read of the posting needs its own explicit
 
 ## Follow-up observation B2 — approval request (not run)
 
-**Status: requested, not approved, not run.** The approval of A and B covered one navigation,
-so another page load needs a new approval. It covers **only** a read-only observation.
+**Status: requested, not approved, not run.** The A/B approval was single-use and is exhausted;
+it is not reused. B2 is one new, bounded, read-only run of the same posting.
 
-**Purpose:** find out how this posting's page controls correspond to the job post's fields:
-whether each API field has exactly one control, with the same id, a matching label and a
-suitable role. Counts alone (run #3) do not show that.
+### Enforced limits (`gh_readonly.Limits`, tested locally against fixtures)
 
-**Requests (same posting, the `GH_READONLY_POSTING` secret unchanged):**
+| Limit | Value | Exact meaning | Test |
+|---|---|---|---|
+| API requests | 3 | GETs to `boards-api.greenhouse.io` only (robots.txt, job post, board); a 4th is refused before sending | `test_permission_a_three_gets_raw_data_kept_out_of_the_summary`, `test_budget_and_host_are_fixed` |
+| API response size | 2,000,000 bytes each | read up to the limit; a larger body stops A | `test_api_response_size_limit_stops` |
+| Top-level navigations | 1 | the page load itself; any later main-frame navigation is aborted **before it is sent** and stops the run | `test_second_top_level_navigation_is_aborted_and_stops` |
+| Redirects | ≤ 3 hops, same origin | more hops stop; a hop to another origin is refused and stops; API redirects are never followed | `test_redirect_hops_are_limited`, `test_redirect_to_another_origin_stops`, `test_redirect_is_not_followed` |
+| Browser requests | 150 | every request the page starts, redirect hops included; beyond it requests are aborted before sending and the run stops | `test_total_request_budget_stops` |
+| Received bytes | 20,000,000 | **a stop condition, not a transfer cap**: summed from what the browser reports per finished request; once passed, further requests are aborted and the run stops, but a response already in flight still completes | `test_received_bytes_stop` |
+| Retained page data | 2,000,000 characters | the serialized DOM kept in memory for reading; larger stops | `test_retained_dom_limit_stops` |
+| Observation deadline | 90 s from the start of B | every browser wait is clamped to the time left; the run stops when none is left (in-process) | `test_overall_deadline_stops_a_slow_page` |
+| Whole-run deadline | 150 s (A + B) | a watchdog thread prints one fixed line and ends the process (exit 5) whatever it is doing; the script also kills the command at 200 s; the job at 20 min | `test_watchdog_ends_the_whole_run_with_a_fixed_line` |
+| Printed output | 262,144 bytes | larger, or failing the privacy guard: nothing but a refusal is printed (exit 4) | `test_output_size_limit_suppresses`, guard tests |
 
-| Step | What | Budget |
-|---|---|---|
-| A again | robots.txt, job post, board: GETs to `boards-api.greenhouse.io` | 3 GETs (the mapping needs the job data; raw data is not kept between runs) |
-| B2 | one page load of the posting in the isolated browser | 1 navigation; at most 150 requests (enforced: further requests are aborted and the run stops); 60 s navigation timeout plus at most 17 s of waiting for the page to settle; the job's 20-minute limit |
+No byte cap on network transfer is claimed beyond the stop condition above.
 
-**Correction:** B's text promised a 20 MB limit and a 60 s wall clock. The code enforces the
-request count and per-operation timeouts, not a byte total or a single wall clock. That applied
-to runs #2 and #3 too. B2 is described as the code actually behaves.
+### What is read, per API field (no interaction)
 
-**Limits (unchanged from B):**
-- allow-list `job-boards.greenhouse.io:443` only, with no expanded domains;
-- no clicks, typing, focus, scrolling, uploads or form submission;
-- every non-GET request blocked before sending;
-- a fresh browser context, with no candidate session or cookies;
-- stop at a bot check or an off-origin redirect;
-- **no automatic retry**. If the run fails, it is reported, not rerun.
+- **One observation:** `unique`, `absent` (no control with that id at load), `ambiguous`
+  (several), `incompatible` (wrong element or role, or a label mismatch), or `not_observable`
+  (page-managed values such as hidden coordinates).
+- **The checks behind it**, each `true`, `false`, `not_observable_at_load` or
+  `not_applicable`:
+  - `label`;
+  - `element`;
+  - `options`: options that exist only after a dropdown opens are `not_observable_at_load`,
+    never assumed equal and never counted as a mismatch;
+  - `visible`.
+- Grouping and ARIA relations, the required attribute, and how the label was found.
+- Page controls that no API field names, described without their ids.
+- Failed or denied requests by resource type, destination kind and error code; network-idle and
+  ready state.
 
-**What is read, after load, without interacting:**
-- the serialized DOM;
-- computed visibility of each candidate control;
-- the text of options already present in each combobox's listbox (compared in the worker; never
-  printed).
+The mapping rules are the adapter's own; nothing is relaxed for B2. Every result is a live
+observation at load. The fixture's widget behaviour is a separate, labelled assumption and is
+not reported as observed.
 
-**Collected, per API field** (printed with custom ids as aliases `q01`…):
-- the number of controls whose `id` equals the field name: unique, absent or ambiguous;
-- whether the accessible name matches the label (via `aria-labelledby`, `<label for>`,
-  wrapping label or `aria-label`), and how many controls carry that label;
-- the element and type (`input`/`select`/`textarea`, input type) and the role (e.g.
-  `combobox`);
-- grouping and ARIA relations: inside a group or fieldset, `aria-controls` → listbox,
-  `aria-describedby`;
-- hidden (an attribute on the control or an ancestor) vs computed-visible; required attribute
-  vs API required;
-- for comboboxes: options present at load, and whether they equal the API options;
-- a status per field (mapped / absent / ambiguous / type mismatch / label mismatch / search
-  picker / page-managed hidden value), listed by status, so absent and ambiguous fields are
-  explicit.
+### Output and retention
 
-**Also collected:**
-- page controls that no API field names: element, type, role, labelled, hidden/visible,
-  whether it is an API field's text alternative, and the id's shape (never the id itself);
-- requests that failed or were denied: resource type, destination kind, same-origin flag and
-  the browser's error code, so a missing script or data request shows that rendering may be
-  incomplete;
-- whether the page reached network idle, and its ready state.
+- **Printed:** the structural summary only.
+  - Allowlisted vocabulary; custom question ids as `q01`…; counts and flags.
+  - No labels, wording, option text, URLs, page text, screenshots, traces, HTML, response bodies
+    or exception messages.
+- **Where it is kept:**
+  - in the run's log, under the repository's log retention or until deleted;
+  - in a committed report that paraphrases it.
+- **Raw data** (API JSON, DOM): only inside the worker container, destroyed when the stack is
+  removed at the end of the run. No artifacts are uploaded.
 
-**Not collected:** labels, wording, option text, ids of custom questions, URLs, page text,
-screenshots, traces, HTML, response bodies or exception messages.
-
-**What the run sends:**
-- ordinary page-loading GET requests to the allowed host, with normal network metadata (runner
-  IP address, browser User-Agent, standard headers);
-- nothing to denied hosts: the proxy refuses them before resolving them;
-- no candidate data and no form submission.
-
-**Output:**
-- printed only after the CLI's privacy guard passes it: allowlisted vocabulary, aliases, and a
-  scan for values derived from the posting;
-- otherwise a refusal is printed (exit 4) and nothing else.
-
-**How it would run, once approved:** Actions → "Greenhouse read-only check (manual)" → Run
-workflow with `observe` and `mapping` both checked. The code is in place
-(`gh_readonly.mapping_evidence`) and tested against the local v2 fixture. `mapping` defaults
-to off.
-
-**What it cannot show:**
-- whether filling, combobox selection, uploads or submission work;
-- conditional questions that appear only after an answer;
-- anything a denied host would have provided.
-
-Successful mapping would still not be evidence of submission compatibility.
-
-**Approval text (send it back edited, or say no):**
+### The request (send back, or say no)
 
 ```
-I approve one more read-only run (A again + B2) for the same posting
-(the GH_READONLY_POSTING secret), under the limits in
-docs/greenhouse-readonly-compatibility-proposal.md "Follow-up observation B2".
-One run only; no automatic retry.
-This does not approve disclosing candidate data (C), filling a real page, uploads,
-location searches, security-code requests, or submitting an application (D).
+I authorize one read-only observation B2 of the posting stored in the GH_READONLY_POSTING
+secret (not echoed here):
+- 3 API requests and 1 application-page navigation;
+- enforced limits: 150 browser requests, 3 same-origin redirect hops, a 20 MB received-data
+  stop, a 90 s observation deadline and a 150 s whole-run deadline;
+- existing allowed destinations only (boards-api.greenhouse.io for A,
+  job-boards.greenhouse.io:443 for the page);
+- no clicks, typing, uploads, location searches, candidate sessions, OTP requests,
+  submissions or automatic retries;
+- output: the structural summary above, kept in the run log and a committed report; raw data
+  destroyed at the end of the run.
+C (candidate data disclosure) and D (submission) remain unapproved.
 ```
+
+Run once authorized: Actions → "Greenhouse read-only check (manual)" → `observe` and `mapping`
+checked, once.
 
 ## Deliverable: the comparison (once A/B are separately approved and run)
 

@@ -8,6 +8,9 @@ from urllib.parse import urlsplit
 
 from app.core.config import get_settings
 from app.core.urlsafety import is_fixture_origin
+from app.modules.preparation import forms
+from app.modules.preparation import greenhouse as gh
+from app.modules.preparation import greenhouse_dom as gdom
 
 # Capability flags per adapter. A job *source* (e.g. a discovery feed) implies none of these.
 CAPABILITIES: dict[str, dict] = {
@@ -87,8 +90,66 @@ CAPABILITIES: dict[str, dict] = {
 }
 
 
+# What each adapter does with an approved package (how it locates, fills, verifies and submits),
+# including the extraction/mapping rules its live checks rely on. An approval is bound to the
+# adapter and version current when it was given; bump a version whenever that meaning changes,
+# and only the approvals bound to that adapter stop matching.
+ADAPTER_VERSIONS: dict[str, str] = {
+    "fixture_ats": f"fixture-ats-1+{forms.EXTRACTION_VERSION}",
+    "greenhouse_hosted": f"greenhouse-hosted-1+{gh.EXTRACTION_VERSION}",
+    "greenhouse_dom": f"greenhouse-dom-1+{gdom.EXTRACTION_VERSION}",
+}
+# Approvals given before bindings were recorded meant what the code then did: these routes and
+# these versions. They stay valid exactly as long as that is still what would run.
+LEGACY_VERSIONS: dict[str, str] = {
+    "fixture_ats": "fixture-ats-1+html-v1",
+    "greenhouse_hosted": "greenhouse-hosted-1+greenhouse-v1",
+}
+
+
 class UnsupportedDestination(ValueError):
     pass
+
+
+class BindingChanged(ValueError):
+    """The way NoEfforts would execute this package differs from what was approved."""
+
+
+def execution_binding(destination: dict) -> dict | None:
+    """{"adapter", "adapter_version"} that would execute this destination now, or None if no
+    adapter may execute it (then nothing can be queued anyway)."""
+    try:
+        name = adapter_for(destination)
+    except UnsupportedDestination:
+        return None
+    return {"adapter": name, "adapter_version": ADAPTER_VERSIONS[name]}
+
+
+def approved_binding(approval, destination: dict) -> dict | None:
+    """What an approval was given for. Approvals without a recorded binding predate it: they
+    meant the route the code had then (greenhouse_api -> greenhouse_hosted, else fixture_ats)."""
+    if approval.adapter is not None:
+        return {"adapter": approval.adapter, "adapter_version": approval.adapter_version}
+    name = "greenhouse_hosted" if destination.get("form_source") == "greenhouse_api" else (
+        "fixture_ats" if destination.get("form_source") != "greenhouse_api_dom" else None
+    )  # fmt: skip
+    if name is None:
+        return None  # that source did not exist before bindings: nothing was approved for it
+    return {"adapter": name, "adapter_version": LEGACY_VERSIONS[name]}
+
+
+def check_binding(approval, destination: dict, adapter: str | None = None) -> dict:
+    """The current binding, if it is what the user approved; otherwise BindingChanged.
+    `adapter`: the one recorded on a queued attempt, which must also still match."""
+    now = execution_binding(destination)
+    if now is None:
+        raise UnsupportedDestination("No adapter may execute this destination.")
+    if approved_binding(approval, destination) != now or (adapter and adapter != now["adapter"]):
+        raise BindingChanged(
+            "The way NoEfforts would fill and submit this form changed after you approved it. "
+            "Review the package and approve it again."
+        )
+    return now
 
 
 def adapter_for(destination: dict) -> str:

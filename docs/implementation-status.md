@@ -64,7 +64,44 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   - `npx playwright test e2e/submission.spec.ts` (desktop + mobile): 20 passed, including the new v2 test on both projects.
   - One earlier full run was invalid and is not counted: it ran at the same time as a focused
     run and both used the shared test database and receiver port 8799.
-- **Compose / CI:** not yet run for `835c34a` (the push was delayed by a GitHub credential outage).
+- **CI #34** ([39444820135](https://github.com/KevinD003/AutoApply/actions/runs/39444820135)),
+  tested SHA `6d0a43796b96613e5651c29dd623327d2e4447a0`, all four jobs passed:
+
+  | Job | What it ran | Result |
+  |---|---|---|
+  | backend | full backend suite (`pytest`) | 277 passed, 1 skipped (a `test_container_runner.py` test that skips on CI's runner; it ran locally, which is why the local count is 278 passed) |
+  | frontend | `tsc`, lint, **full** Playwright suite (`npx playwright test`, desktop + mobile) | 26 passed |
+  | execution-compose | container-mode scenarios, including `s_readonly_observation_in_container` and `s_readonly_mapping_in_container` | 80 checks, 0 failed |
+  | docker-smoke | Compose smoke test | passed |
+
+  The local Playwright run above was the targeted `submission.spec.ts` only (20 passed); it is
+  not the full frontend suite.
+
+## Approval binding, enforced read-only limits, precise observations (2026-10-20)
+
+- **Approval binding (D28):**
+  - approvals record the adapter and adapter version they were given for;
+  - a mismatch is refused at queueing (and that approval retired), at runner load and in both
+    gates;
+  - approvals given before bindings existed stay valid while their meaning is unchanged.
+  - Migration `5d2e7a91c4b0`. Tests: `tests/test_approval_binding.py`.
+- **Enforced limits for B2** (`gh_readonly.Limits`):
+  - 3 API requests;
+  - 1 top-level navigation (later ones aborted before sending);
+  - ≤ 3 same-origin redirect hops;
+  - 150 browser requests;
+  - a 20 MB received-bytes **stop condition** (not a transfer cap);
+  - 2 M-character retained DOM;
+  - a 90 s in-process observation deadline;
+  - a 150 s whole-run watchdog (exit 5) plus a 200 s outer kill;
+  - 256 KiB printed output.
+  Each is tested locally against fixtures. No external request was made.
+- **Observations:**
+  - one per API field: `unique` / `absent` / `ambiguous` / `incompatible` / `not_observable`;
+  - each check true, false, `not_observable_at_load` or `not_applicable`;
+  - options rendered only on open are `not_observable_at_load`, not a mismatch.
+- **Log cleanup:** prepared in `docs/greenhouse-compatibility-report.md`; nothing deleted.
+- **B2:** request text in the proposal; not authorized, not run.
 - **Still unsupported:**
   - location search pickers (the hidden coordinates come from a search NoEfforts does not
     perform);

@@ -97,23 +97,27 @@
   - what the 2 denied requests were for, and whether the page rendered completely;
   - how the AI notice is shown.
 
-## Privacy note on run #3 (and #2)
+## Log cleanup (prepared; nothing deleted, awaiting the user's decision)
 
-- The public log of run #3 contains the summary as printed then: **raw custom question ids**
-  (numeric field names) in addition to standard field names, types and counts.
-  - Run #2 stopped before printing a summary (its A summary was dropped; see above), so its log
-    should hold only a stop message. Deleting it too is the cautious choice.
-  - No employer or person name, label, wording, title or URL was printed.
-  - The ids still identify questions of this posting, so they are posting-specific.
-  - Recommended: delete the logs of runs #3 and #2 (Actions → the run → "Delete all logs").
-- Since this change the CLI:
-  - prints custom question ids only as aliases (`q01`, `q02`, ... in job-data order);
-  - builds the summary from known vocabulary only;
-  - checks every string against an allowlist and against values derived from the posting
-    (board, job id, names, title, URLs, labels, option labels, raw ids);
-  - prints nothing but a refusal (exit 4) if a check fails.
-- Tests use synthetic markers on the success path and on every failure path
-  (`tests/test_gh_readonly.py`).
+Manual "Greenhouse read-only check" runs. None has artifacts: the workflow uploads none and
+the API lists 0 for each.
+
+| Run | Id | Revision | Result | Posting-related identifiers in the log |
+|---|---|---|---|---|
+| #1 | 39430360802 | `fd9b03d` | stopped: secret not set; no request sent | none expected (nothing fetched) |
+| #2 | 39430833585 | `fd9b03d` | A completed; B stopped with an extraction error; only a fixed stop line was printed | none found in its printed output. The rest is build and container start-up output. Not scanned line by line |
+| #3 | 39432345404 | `e2a8d97` | completed | **yes:** job `check` (118660349161), step 4 "Read-only check (anonymous summary only)". The printed summary lists the posting's custom question field names, which carry the posting's numeric question ids. No names, labels, wording or URLs |
+
+- **Proposed:**
+  - delete the **logs** of run #3 (Actions → run → "Delete all logs"); keep the run record
+    itself;
+  - optionally do the same for run #2, as a precaution.
+- **Afterwards:** the runs keep their metadata (number, revision, date, conclusion).
+- **The sanitized outcome** (this report) is kept in the repository with the tested revision
+  (`e2a8d97`) and run number.
+- Nothing is deleted until the user authorizes these specific logs.
+- **Since `835c34a`** the CLI prints custom question ids only as aliases, and suppresses any
+  output that fails its privacy check.
 
 ## What was built from this result (local only)
 
@@ -137,6 +141,6 @@
 ## Follow-up (needs a new approval; not run)
 
 - One more read-only observation, collecting per-field mapping evidence, is described with its
-  approval text in `docs/greenhouse-readonly-compatibility-proposal.md` ("Follow-up
-  observation B2").
-- The original approval covered exactly one navigation, so it does **not** cover this run.
+  enforced limits and approval text in `docs/greenhouse-readonly-compatibility-proposal.md`
+  ("Follow-up observation B2").
+- The original approval was single-use and is exhausted; it does **not** cover this run.
