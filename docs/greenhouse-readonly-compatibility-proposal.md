@@ -1,6 +1,7 @@
 # Read-only Greenhouse compatibility check — approval request
 
-**Status: A and B approved by the user (2026-10-20); C and D not approved. Not yet run.**
+**Status: A and B approved by the user (2026-10-20); C and D not approved. Run on 2026-10-20
+(read-only run #3); results in `docs/greenhouse-compatibility-report.md`.**
 
 The user wrote: "You can do everything that you want to do about the greenhouse but make sure
 that no employee name is found in Rep. I can approve for both of them."
@@ -140,6 +141,7 @@ To run it:
 |---|---|---|
 | sandbox, 2026-10-20 | `86fa55e` | A not sent: the environment proxy denied `boards-api.greenhouse.io` (403). One attempt, not retried |
 | CI read-only #1 | `fd9b03d` | stopped before any request: the secret was not set yet |
+| CI read-only #3 | `e2a8d97` | **completed.** A: 3×200. B: page 200, 9 requests, no bot check, nothing sent; form not extractable (id-only controls, ARIA comboboxes). Report: `docs/greenhouse-compatibility-report.md` |
 | CI read-only #2 | `fd9b03d` | A completed (3 GETs). B loaded the page but found **no extractable form fields**, and the run stopped. The code dropped A's summary on that stop; fixed so A is always reported and B reports anonymous DOM counts. Rerun under the same approval (user: "You can do anything that you wanna do about the greenhouse") |
 
 ## Deliverable: the comparison (once A/B are separately approved and run)
