@@ -57,16 +57,23 @@ def _snapshot(attempt_id):
             if hashlib.sha256(data).hexdigest() != d["sha256"]:
                 raise RuntimeError("stored document does not match the approved digest")
             docs[d["field"]] = (doc.original_filename, doc.content_type, data)
-        appr = db.get(PackageApproval, att.approval_id)
-        try:  # before any adapter code touches a page (the gates re-check it under lock)
-            policy.check_binding(appr, content["destination"], att.adapter)
-        except (policy.BindingChanged, policy.UnsupportedDestination):
-            raise BindingMismatch from None
         return content, docs, att.adapter
 
 
-class BindingMismatch(RuntimeError):
-    pass
+def _binding_refusal(attempt_id) -> str | None:
+    """Why this attempt may not run with its recorded adapter now, or None. Checked before any
+    adapter code touches a page; the gates re-check it under lock."""
+    with SessionLocal() as db:
+        att = db.get(ExecutionAttempt, attempt_id)
+        appr = db.get(PackageApproval, att.approval_id)
+        dest = db.get(ApplicationPackage, att.package_id).content["destination"]
+        try:
+            policy.check_binding(appr, dest, att.adapter)
+        except policy.BindingChanged:
+            return "the execution method changed after approval"
+        except policy.UnsupportedDestination as e:
+            return str(e)
+        return None
 
 
 def run_attempt(attempt_id: str, worker: str) -> str:
@@ -83,11 +90,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         svc.heartbeat(aid, worker, gen)
 
     try:
-        try:
-            content, docs, adapter_name = _snapshot(aid)
-        except BindingMismatch:
-            svc.fail_safe(aid, worker, gen, "the execution method changed after approval")
-            return "failed_safe"
+        content, docs, adapter_name = _snapshot(aid)
         adapter = ADAPTERS[adapter_name](content, docs)
         dest = content["destination"]
         if s.browser_isolation not in ("netns", "container") and s.env == "production":
@@ -96,6 +99,10 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         intercept = not s.execution_test_disable_interception
         if not intercept and s.env not in ("development", "test"):
             svc.fail_safe(aid, worker, gen, "request interception cannot be disabled here")
+            return "failed_safe"
+        refusal = _binding_refusal(aid)
+        if refusal:
+            svc.fail_safe(aid, worker, gen, refusal)
             return "failed_safe"
         try:
             session = browser_session(
