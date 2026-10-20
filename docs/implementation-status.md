@@ -77,6 +77,24 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   The local Playwright run above was the targeted `submission.spec.ts` only (20 passed); it is
   not the full frontend suite.
 
+## B2 real-page mapping observation (2026-10-20)
+
+- **Run:** authorized once by the user and run once: manual run #4
+  ([39455167671](https://github.com/KevinD003/AutoApply/actions/runs/39455167671)) on
+  `151e7a0` (the `a11c71d` code plus docs). Success.
+- **Requests:** A: 3 GETs, all 200. B: 1 navigation, 9 browser requests, 0 non-GET, 43,185
+  bytes. No limit reached.
+- **Blocked dependencies:** 8 of the 9 requests went to 2 other greenhouse.io hosts and were
+  blocked (5 scripts, 2 stylesheets, 1 image). Observed: the page as served, without those
+  scripts.
+- **Mapping:** 17 of 22 fields unique. `resume` and `cover_letter` incompatible (label
+  mismatch); `location` absent; `latitude` and `longitude` not observable (page-managed).
+  7 dropdowns: options not observable at load. 5 comboboxes are named by no API field.
+- **Execution:** none. The adapter would refuse this posting before disclosure, and it stays
+  refused for real destinations. Filling and submission remain unauthorized and untested.
+- **Log cleanup:** run #3's logs were deleted with authorization; the run record was kept.
+- Details: `docs/greenhouse-compatibility-report.md` ("B2").
+
 ## Approval binding, enforced read-only limits, precise observations (2026-10-20)
 
 - **Approval binding (D28):**

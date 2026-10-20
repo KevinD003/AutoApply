@@ -144,6 +144,7 @@ To run it:
 | CI read-only #1 | `fd9b03d` | stopped before any request: the secret was not set yet |
 | CI read-only #2 | `fd9b03d` | A completed (3 GETs). B loaded the page but found **no extractable form fields**, and the run stopped. The code dropped A's summary on that stop; fixed so A is always reported and B reports anonymous DOM counts. Rerun under the user's broad statement ("You can do anything that you wanna do about the greenhouse"); see the note below |
 | CI read-only #3 | `e2a8d97` | **completed.** A: 3×200. B: page 200, 9 GET requests, no non-GET request, no bot check; form not extractable (id-only controls, ARIA comboboxes). Report: `docs/greenhouse-compatibility-report.md` |
+| CI read-only #4 (B2) | `151e7a0` | **completed**, authorized once. A: 3×200. B: 1 navigation, 9 requests (8 to other greenhouse.io hosts, blocked), 0 non-GET, 43,185 bytes. Mapping: 17 unique, 2 incompatible, 1 absent, 2 not observable |
 
 **Note on the budget.** A was written as "at most 3 requests in total" and B as "exactly one"
 navigation. Runs #2 and #3 each used that budget once more, relying on the user's general
@@ -152,8 +153,10 @@ statement. From now on, every further read of the posting needs its own explicit
 
 ## Follow-up observation B2 — approval request (not run)
 
-**Status: requested, not approved, not run.** The A/B approval was single-use and is exhausted;
-it is not reused. B2 is one new, bounded, read-only run of the same posting.
+**Status: authorized by the user for one run on 2026-10-20 and used (manual run #4,
+39455167671, revision `151e7a0` = `a11c71d` code). Results: `docs/greenhouse-compatibility-report.md`
+("B2"). The authorization is exhausted; any further run needs a new one.** The A/B approval
+was single-use and was not reused.
 
 ### Enforced limits (`gh_readonly.Limits`, tested locally against fixtures)
 

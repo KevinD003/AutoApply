@@ -97,7 +97,61 @@
   - what the 2 denied requests were for, and whether the page rendered completely;
   - how the AI notice is shown.
 
-## Log cleanup (prepared; nothing deleted, awaiting the user's decision)
+## B2 — per-field mapping observation (manual run #4, authorized once)
+
+- **Run:** manual run #4 ([39455167671](https://github.com/KevinD003/AutoApply/actions/runs/39455167671)),
+  2026-10-20.
+  - Revision `151e7a0`: the `a11c71d` code plus docs-only commits.
+  - Workflow conclusion: success. Run once, not retried.
+- **Requests:**
+  - A: 3 GETs, all HTTP 200; identity checks passed.
+  - B: 1 navigation (HTTP 200) and 9 browser requests in total; 0 non-GET; 43,185 bytes
+    received.
+  - No limit was reached, no bot check, network idle reached, ready state `complete`.
+- **Blocked dependencies:** 8 of the 9 requests went to other `greenhouse.io` hosts (2 hosts)
+  and were refused by the allow-list: 5 scripts, 2 stylesheets, 1 image.
+  - Only the page document itself loaded. What was observed is the page as served, **without**
+    those scripts and styles.
+  - Their purpose is not inferred. Anything they would add or change (for example dropdown
+    option lists or other widgets) was not observable. The run reports
+    `may_be_incomplete: true`.
+- **Output privacy:** the printed summary passed the guard. The run log contains no raw custom
+  question id and no posting URL (checked over the whole log). Raw data stayed in the worker
+  container, which the script's exit trap removes (`compose down -v`).
+
+All results below were observed at load, with no interaction, and apply to this posting only.
+
+| Observation | Fields | Detail |
+|---|---|---|
+| **unique** | 17 of 22 | `first_name`, `last_name`, `preferred_name`, `email`, `phone`, plus 12 custom questions (`q01`–`q12`). Each has exactly one control with that id, a suitable element and an accessible name equal to the label (via `<label for>` for text inputs, `aria-labelledby` for comboboxes), and is visible. Required attributes match the job data |
+| **incompatible** | 2: `resume`, `cover_letter` | one file input each, with a matching id and visible, but the accessible name differs from the job-data label, and no control carries that label. Refused, not guessed |
+| **absent** | 1: `location` | no control with that id at load, and no control labelled with its wording |
+| **not_observable** | 2: `latitude`, `longitude` | page-managed values: no control with those ids at load; what writes them cannot be seen without interaction |
+| ambiguous | 0 | — |
+
+- **Dropdowns (7 single-choice custom questions):** each is a unique `role=combobox` input. It
+  controls **no listbox at load**, so its options are `not_observable_at_load`. They were not
+  assumed to equal the job data and are not counted as a mismatch.
+- **Controls no API field names:** 5, all visible, labelled `role=combobox` inputs in the
+  form. 2 carry a required attribute, and 1 sits in a group with another control. None is a
+  text alternative of an API field. Their purpose is not inferred.
+- **Totals:** 24 controls = 17 unique + 2 file inputs + 5 unnamed comboboxes.
+
+**What this means:**
+- **Shown:** 17 of 22 job-data fields correspond one-to-one, by id and label, to controls on
+  this page as served.
+- **Not shown:**
+  - that any of them can be filled, or that dropdown values can be chosen;
+  - how the attachments or the location picker behave;
+  - what the blocked scripts would have changed.
+- **Today's adapter would refuse this posting** before disclosing anything, because of the
+  attachment label mismatch and the absent location control. It would be a checkpoint anyway,
+  because of the required hidden coordinates.
+- **Fixture assumptions** (combobox opening, option lists, uploads, submission) remain
+  assumptions; B2 neither confirms nor refutes them, since the scripts that implement them were
+  blocked.
+
+## Log cleanup (run #3's logs deleted with authorization; runs #1 and #2 untouched)
 
 Manual "Greenhouse read-only check" runs. None has artifacts: the workflow uploads none and
 the API lists 0 for each.
@@ -115,7 +169,10 @@ the API lists 0 for each.
 - **Afterwards:** the runs keep their metadata (number, revision, date, conclusion).
 - **The sanitized outcome** (this report) is kept in the repository with the tested revision
   (`e2a8d97`) and run number.
-- Nothing is deleted until the user authorizes these specific logs.
+- **Done 2026-10-20, with the user's authorization:**
+  - the logs of run #3 (39432345404) were deleted (API: 204);
+  - its run record remains;
+  - runs #1 and #2, other runs and commits were not touched.
 - **Since `835c34a`** the CLI prints custom question ids only as aliases, and suppresses any
   output that fails its privacy check.
 
@@ -138,7 +195,7 @@ the API lists 0 for each.
 - None of this was run against the real page. **Mapping on the real page is unproven** until
   the follow-up observation (below) is approved and run.
 
-## Follow-up (needs a new approval; not run)
+## Follow-up (B2 has now run; see above)
 
 - One more read-only observation, collecting per-field mapping evidence, is described with its
   enforced limits and approval text in `docs/greenhouse-readonly-compatibility-proposal.md`
