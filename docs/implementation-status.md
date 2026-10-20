@@ -78,6 +78,14 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     change.
   - Not run here: the Compose scenarios (no Docker daemon in this sandbox) and Playwright
     (frontend unchanged). CI runs both.
+- **CI #45** ([39506321962](https://github.com/KevinD003/AutoApply/actions/runs/39506321962))
+  on `1fc58b2`, all four jobs passed:
+  - backend 335 passed, 1 skipped, including the 18 widget-inspection tests;
+  - frontend: full Playwright suite passed;
+  - execution-compose 89 checks, 0 failed, including the 4 checks of
+    `s_readonly_widget_inspection_in_container`;
+  - docker-smoke passed.
+  This is the revision the approval request refers to.
 
 ## Id-only Greenhouse mapping and output privacy (2026-10-20)
 
