@@ -87,7 +87,11 @@ async function selfCheck() {
     const ours = (pid) => {
       // Only this runner's own descendants (on a host without a PID namespace, other users'
       // browsers are visible too and say nothing about ours).
-      for (let p = Number(pid), n = 0; p > 1 && n < 64; p = ppid(p), n++) if (p === process.pid) return true;
+      // (In the container this runner is PID 1, so compare before stopping at the root.)
+      for (let p = Number(pid), n = 0; p > 0 && n < 64; p = ppid(p), n++) {
+        if (p === process.pid) return true;
+        if (p === 1) break;
+      }
       return false;
     };
     for (const pid of fs.readdirSync("/proc").filter((p) => /^\d+$/.test(p))) {

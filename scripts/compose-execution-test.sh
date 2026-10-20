@@ -15,11 +15,15 @@ export NOEFFORTS_FIXTURE_ORIGINS='["http://receiver:8799"]'
 # shellcheck source=scripts/smoke_lib.sh
 source scripts/smoke_lib.sh
 
+RESULTS=""
 cleanup() {
   rc=$?
   if [ "$rc" != 0 ]; then
     docker compose ps -a || true
     docker compose logs --no-color --tail 150 worker browser-runner egress-proxy receiver || true
+    docker compose logs --no-color --tail 60 backend postgres || true
+    # Repeat the scenario results last, so they are easy to find below the logs.
+    [ -f "$RESULTS" ] && grep -E '^(PASS|FAIL|---) |"checks"' "$RESULTS" || true
   fi
   docker compose down -v --remove-orphans >/dev/null 2>&1 || true
 }
@@ -34,5 +38,6 @@ for _ in $(seq 1 60); do # the receiver is internal-only; probe it from its own 
   sleep 2
 done
 expect_running_services
-python3 compose_tests/run_execution_test.py
+RESULTS="$(mktemp)"
+python3 compose_tests/run_execution_test.py | tee "$RESULTS"
 echo "COMPOSE EXECUTION TEST PASSED"

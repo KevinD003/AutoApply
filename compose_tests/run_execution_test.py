@@ -31,6 +31,14 @@ NODE = "/usr/local/lib/python3.12/site-packages/playwright/driver/node"  # in th
 PROBE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "browser_probe.js")
 
 
+def _api_reachable() -> bool:
+    try:
+        urllib.request.build_opener(NO_PROXY).open(API + "/health", timeout=5).close()
+        return True
+    except OSError:
+        return False
+
+
 def check(name: str, ok: bool, detail="") -> bool:
     RESULTS.append({"check": name, "ok": bool(ok), "detail": detail})
     print(("PASS " if ok else "FAIL ") + name + (f" — {detail}" if detail else ""), flush=True)
@@ -472,7 +480,7 @@ def s_runner_lost_during_submission():
     att = final_state(a, app_id, timeout=90)
     check("process loss: browser container killed mid-submit -> 'unknown', never resent",
           att and att["state"] == "unknown", att and att["state"])  # fmt: skip
-    compose("up", "-d", "browser-runner")
+    compose("up", "-d", "--no-deps", "browser-runner")
     healthy = wait_for(lambda: worker_check()["runner_health"][0] == 200, 120, 3)
     check("process loss: runner restarts healthy", bool(healthy))
     time.sleep(25)  # past the receiver's delay
@@ -495,7 +503,7 @@ def s_worker_killed_mid_submit():
     compose("kill", "worker")
     closed = wait_for(lambda: runner_health()[1].get("sessions") == 0, 20, 0.5)
     check("worker loss: runner closed the orphaned browser within 20 s", bool(closed), runner_health())
-    compose("up", "-d", "worker")
+    compose("up", "-d", "--no-deps", "worker")
     att = final_state(a, app_id, timeout=180)
     check("worker loss: swept to 'unknown' after the lease, not retried",
           att and att["state"] == "unknown" and att["retry_count"] == 0,
@@ -515,7 +523,7 @@ def s_runner_unavailable():
     app_id = generic_app(a, slug)
     queue(a, app_id)
     att = final_state(a, app_id, timeout=120)
-    compose("up", "-d", "browser-runner")
+    compose("up", "-d", "--no-deps", "browser-runner")
     check("isolation startup failure: runner down -> failed_safe, nothing disclosed",
           att and att["state"] == "failed_safe" and ledger_for(slug)["disclosures"] == [],
           att and (att["state"], att["outcome"]))  # fmt: skip
@@ -524,7 +532,7 @@ def s_runner_unavailable():
 
 def s_sandbox_unavailable():
     env = dict(os.environ, BROWSER_SECCOMP_PROFILE="./compose_tests/seccomp-docker-default.json")
-    subprocess.run(["docker", "compose", "up", "-d", "--force-recreate", "browser-runner"],
+    subprocess.run(["docker", "compose", "up", "-d", "--no-deps", "--force-recreate", "browser-runner"],
                    env=env, check=True, capture_output=True, timeout=300)  # fmt: skip
     rep = wait_for(
         lambda: (c := worker_check()["runner_health"]) and c[0] in (200, 503) and c, 120, 3
@@ -539,7 +547,7 @@ def s_sandbox_unavailable():
     check("sandbox unavailable: attempt refused (failed_safe), no --no-sandbox fallback",
           att and att["state"] == "failed_safe" and ledger_for(slug)["disclosures"] == [],
           att and att["outcome"])  # fmt: skip
-    compose("up", "-d", "--force-recreate", "browser-runner")
+    compose("up", "-d", "--no-deps", "--force-recreate", "browser-runner")
     wait_for(lambda: worker_check()["runner_health"][0] == 200, 120, 3)
 
 
@@ -600,6 +608,8 @@ def main():
             s()
         except Exception as e:  # noqa: BLE001 - report and continue with the next scenario
             check(f"{s.__name__} raised", False, repr(e)[:500])
+        if not wait_for(_api_reachable, 60, 2):
+            check(f"API reachable after {s.__name__}", False, compose("ps", "-a")[-1500:])
     failed = [r for r in RESULTS if not r["ok"]]
     print(json.dumps({"checks": len(RESULTS), "failed": len(failed)}))
     sys.exit(1 if failed else 0)
