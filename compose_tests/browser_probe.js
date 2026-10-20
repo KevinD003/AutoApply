@@ -21,13 +21,21 @@ function tcp(host, port) {
   });
 }
 
-function controlWithoutToken() {
-  return new Promise((resolve) => {
-    const req = http.request({ host: "egress-proxy", port: 3129, path: "/sessions", method: "POST", timeout: 3000 },
-      (res) => { res.resume(); resolve(res.statusCode); });
-    req.on("error", (e) => resolve(e.code || "error"));
-    req.end('{"allow":[["receiver",8799]]}');
-  });
+async function openPorts(host) {
+  // Every TCP port of `host`, from here. Reachability, not an HTTP status: a port counts as
+  // open only if a TCP connection is accepted.
+  const ip = await new Promise((r) => dns.lookup(host, (e, a) => r(e ? null : a)));
+  if (!ip) return { error: "unresolvable" };
+  const open = [];
+  let next = 1;
+  async function worker() {
+    while (next <= 65535) {
+      const port = next++;
+      if ((await tcp(ip, port)) === "open") open.push(port);
+    }
+  }
+  await Promise.all(Array.from({ length: 400 }, worker));
+  return open.sort((a, b) => a - b);
 }
 
 (async () => {
@@ -47,9 +55,10 @@ function controlWithoutToken() {
     no_new_privs: field("NoNewPrivs"), seccomp: field("Seccomp"),
     env_keys: envKeys,
     credential_like_env: envKeys.filter((k) => /DATABASE|REDIS|POSTGRES|CONTROL_TOKEN|ANTHROPIC|AWS|GOOGLE|GMAIL|SECRET|PASSWORD/i.test(k)),
-    paths_present: ["/data", "/data/storage", "/app", "/.env", "/var/run/docker.sock", "/run/secrets", "/fixture"].filter(exists),
+    paths_present: ["/data", "/data/storage", "/app", "/.env", "/var/run/docker.sock", "/run/secrets", "/fixture",
+      "/run/egress-control", "/run/egress-control/control.sock"].filter(exists),
     root_writable: writable("/probe-write-test"), etc_writable: writable("/etc/probe-write-test"),
     tmp_writable: writable("/tmp/probe-write-test"),
-    reach, external_dns, proxy_control_without_token: await controlWithoutToken(),
+    reach, external_dns, proxy_open_ports: process.env.SCAN === "0" ? null : await openPorts("egress-proxy"),
   }));
 })();

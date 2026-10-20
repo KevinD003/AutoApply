@@ -1,19 +1,20 @@
 """Egress proxy as its own service, for browsers running in a separate container.
 
 Two listeners:
-  * the proxy port (browser-facing): every connection must authenticate as one session
+  * the proxy port (TCP, browser-facing): every connection must authenticate as one session
     (`Proxy-Authorization: Basic <session-id>:<session-token>`). Its destination is then
     checked against THAT session's allow-list by the same code as the in-process proxy
     (`EgressProxy.check`: exact host:port, every resolved address public unless the exact
     host:port is a fixture origin, connect to the checked address). Unauthenticated → 407.
-  * the control port (worker-facing): create / inspect / delete sessions. Requires the
-    control token, which only the orchestration worker holds; the browser container has no
-    copy, so a browser cannot widen its own allow-list.
+  * the control socket (worker-facing): create / inspect / delete sessions. It is a UNIX
+    socket, not a network listener: in Compose it lives on a volume mounted only into this
+    service and the worker, so the browser container has neither a route nor a path to it.
+    It still requires the control token, which only the worker holds.
 Sessions expire on their own. Decisions are logged as host:port only.
 
 Run: python -m app.modules.execution.sandbox.proxy_service
 Env: EGRESS_CONTROL_TOKEN (required, >= 16 chars), EGRESS_PROXY_PORT (3128),
-     EGRESS_CONTROL_PORT (3129), EGRESS_SESSION_TTL_SECONDS (900).
+     EGRESS_CONTROL_SOCKET (/run/egress-control/control.sock), EGRESS_SESSION_TTL_SECONDS (900).
 """
 
 import asyncio
@@ -23,10 +24,11 @@ import json
 import logging
 import os
 import secrets
+import socketserver
 import threading
 import time
 from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 
 from app.modules.execution.sandbox.egress_proxy import Decision, check_destination, serve_connection
 
@@ -161,22 +163,41 @@ def control_handler(registry: Registry, control_token: str):
                 return self._send(200 if registry.delete(parts[1]) else 404, {})
             return self._send(404, {})
 
+        def address_string(self):
+            return "control-socket"  # UNIX peers have no address
+
         def log_message(self, *a):
             pass
 
     return Handler
 
 
-async def serve(proxy_port: int, control_port: int, control_token: str, ttl: float):
+class _UnixHTTPServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+    daemon_threads = True
+
+
+def control_server(path: str, registry: Registry, control_token: str) -> _UnixHTTPServer:
+    """The control API on a UNIX socket (owner-only permissions). A stale socket left by a
+    previous run is replaced, so a restart never falls back to a network listener."""
+    if os.path.exists(path):
+        os.unlink(path)
+    old = os.umask(0o177)
+    try:
+        return _UnixHTTPServer(path, control_handler(registry, control_token))
+    finally:
+        os.umask(old)
+
+
+async def serve(proxy_port: int, control_socket: str, control_token: str, ttl: float):
     registry = Registry(ttl)
-    httpd = ThreadingHTTPServer(("0.0.0.0", control_port), control_handler(registry, control_token))
+    httpd = control_server(control_socket, registry, control_token)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
 
     async def handle(reader, writer):
         await serve_connection(reader, writer, registry.authenticate)
 
     server = await asyncio.start_server(handle, "0.0.0.0", proxy_port)
-    log.info("egress proxy on :%d, control on :%d", proxy_port, control_port)
+    log.info("egress proxy on :%d; control on UNIX socket %s", proxy_port, control_socket)
     async with server:
         await server.serve_forever()
 
@@ -189,7 +210,7 @@ def main():
     asyncio.run(
         serve(
             int(os.environ.get("EGRESS_PROXY_PORT", "3128")),
-            int(os.environ.get("EGRESS_CONTROL_PORT", "3129")),
+            os.environ.get("EGRESS_CONTROL_SOCKET", "/run/egress-control/control.sock"),
             token,
             float(os.environ.get("EGRESS_SESSION_TTL_SECONDS", "900")),
         )

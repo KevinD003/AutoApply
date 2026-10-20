@@ -2,11 +2,12 @@
 # docs/execution-service.md (browser execution).
 #
 # Networks: `default` carries the application (database, broker, API, worker, web). Browser
-# execution uses three internal networks so the browser container can reach only the egress
+# execution uses two internal networks so the browser container can reach only the egress
 # proxy (and is reachable by the worker), never the database, broker, API or the internet:
 #   exec_control   worker <-> browser-runner (Playwright protocol)
-#   exec_proxyctl  worker <-> egress-proxy control port
-#   exec_egress    browser-runner -> egress-proxy (the browser's only way out)
+#   exec_egress    browser-runner -> egress-proxy port 3128 (the browser's only way out)
+# The proxy's management API is not on any network: it is a UNIX socket on the
+# `egress_control` volume, mounted only into egress-proxy and the worker.
 # In this file the proxy has no outbound network at all: no real destination is reachable.
 services:
   postgres:
@@ -46,10 +47,10 @@ services:
       <<: *backend-env
       NOEFFORTS_BROWSER_RUNNER_URL: http://browser-runner:9330
       NOEFFORTS_BROWSER_RUNNER_TOKEN: ${BROWSER_RUNNER_TOKEN:?set BROWSER_RUNNER_TOKEN in .env}
-      NOEFFORTS_EGRESS_CONTROL_URL: http://egress-proxy:3129
+      NOEFFORTS_EGRESS_CONTROL_SOCKET: /run/egress-control/control.sock
       NOEFFORTS_EGRESS_CONTROL_TOKEN: ${EGRESS_CONTROL_TOKEN:?set EGRESS_CONTROL_TOKEN in .env}
-    volumes: [storage:/data/storage]
-    networks: [default, exec_control, exec_proxyctl]
+    volumes: [storage:/data/storage, egress_control:/run/egress-control:ro]
+    networks: [default, exec_control]
     depends_on: [backend]
 
   browser-runner:
@@ -83,7 +84,9 @@ services:
     command: ["python", "-m", "app.modules.execution.sandbox.proxy_service"]
     environment:
       EGRESS_CONTROL_TOKEN: ${EGRESS_CONTROL_TOKEN:?set EGRESS_CONTROL_TOKEN in .env}
-    networks: [exec_proxyctl, exec_egress]
+      EGRESS_CONTROL_SOCKET: /run/egress-control/control.sock
+    volumes: [egress_control:/run/egress-control]
+    networks: [exec_egress]
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -102,9 +105,9 @@ services:
 networks:
   default: {}
   exec_control: { internal: true }
-  exec_proxyctl: { internal: true }
   exec_egress: { internal: true }
 
 volumes:
   pgdata:
   storage:
+  egress_control:

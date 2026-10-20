@@ -29,6 +29,7 @@ RESULTS: list[dict] = []
 NO_PROXY = urllib.request.ProxyHandler({})
 NODE = "/usr/local/lib/python3.12/site-packages/playwright/driver/node"  # in the runner image
 PROBE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "browser_probe.js")
+PROXY_PROBE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "proxy_probe.js")
 
 
 def _api_reachable() -> bool:
@@ -167,6 +168,47 @@ def recreate_worker(**env_overrides) -> None:
     subprocess.run(["docker", "compose", "up", "-d", "--force-recreate", "--no-deps", "worker"],
                    env=env, check=True, capture_output=True, timeout=300)  # fmt: skip
     wait_for(lambda: worker_check()["runner_health"][0] == 200, 120, 2)
+
+
+def worker_py(code: str, **env) -> dict:
+    """Run Python inside the worker container (it holds the control token and socket); the
+    snippet prints one JSON line."""
+    args = ["exec", "-T"] + [x for k, v in env.items() for x in ("-e", f"{k}={v}")]
+    out = compose(*args, "worker", "python", "-c", code)
+    return json.loads(out.strip().splitlines()[-1])
+
+
+def runner_node(script_path: str, **env) -> dict:
+    args = ["exec", "-T"] + [x for k, v in env.items() for x in ("-e", f"{k}={v}")]
+    with open(script_path, "rb") as f:
+        out = compose(*args, "browser-runner", NODE, "-", stdin=f.read())
+    return json.loads(out.strip().splitlines()[-1])
+
+
+def proxy_open_ports() -> list:
+    return runner_node(PROBE)["proxy_open_ports"]
+
+
+_OWN_SESSION = """
+import json
+from app.modules.execution.browser import RemoteBrowser
+r = RemoteBrowser("receiver", 8799, True)
+made = r._proxy("POST", "/sessions", {"allow": [["receiver", 8799]], "allow_private": [["receiver", 8799]]})
+seen = r._proxy("GET", f"/sessions/{made['id']}/decisions")
+print(json.dumps({"id": made["id"], "token": made["token"], "decisions": seen}))
+"""
+
+_DELETE_SESSION = """
+import json, os
+from app.core.config import get_settings
+from app.modules.execution.browser import control_request
+s = get_settings()
+sid = os.environ["SID"]
+d = control_request(s.egress_control_socket, s.egress_control_token, "DELETE", f"/sessions/{sid}")
+g = control_request(s.egress_control_socket, s.egress_control_token, "GET", f"/sessions/{sid}/decisions")
+no_token = control_request(s.egress_control_socket, "", "POST", "/sessions", {"allow": [["x", 1]]})
+print(json.dumps({"delete": d[0], "after": g[0], "without_token": no_token[0]}))
+"""
 
 
 def canary_hits() -> int:
@@ -312,9 +354,11 @@ def s_browser_container_probe():
           not p["external_dns"].startswith("resolved"), p["external_dns"])  # fmt: skip
     check("probe: database, broker, API, web, worker, receiver, canary, metadata, internet unreachable",
           all(v != "open" for v in closed.values()), closed)  # fmt: skip
-    check("probe: only the proxy port is reachable; its control API refuses without the token",
-          p["reach"]["egress-proxy:3128"] == "open" and p["proxy_control_without_token"] == 401,
-          {"proxy": p["reach"]["egress-proxy:3128"], "control": p["proxy_control_without_token"]})  # fmt: skip
+    check("probe: of all 65535 TCP ports on the egress proxy, only 3128 accepts a connection",
+          p["reach"]["egress-proxy:3128"] == "open" and p["proxy_open_ports"] == [3128],
+          p["proxy_open_ports"])  # fmt: skip
+    check("probe: the proxy's control socket is not visible in the browser container",
+          not any(x.startswith("/run/egress-control") for x in p["paths_present"]), p["paths_present"])  # fmt: skip
 
 
 def s_probe_detects_an_insecure_configuration():
@@ -326,7 +370,7 @@ def s_probe_detects_an_insecure_configuration():
     with tempfile.TemporaryDirectory() as d, open(PROBE, "rb") as f:
         with open(os.path.join(d, "fake-secret"), "w") as fs:
             fs.write("synthetic-not-a-secret")
-        out = sh("docker", "run", "--rm", "-i", "--network", net,
+        out = sh("docker", "run", "--rm", "-i", "--network", net, "-e", "SCAN=0",
                  "-e", "NOEFFORTS_DATABASE_URL=postgresql://fake:fake@postgres/fake",
                  "-e", "EGRESS_CONTROL_TOKEN=synthetic-control-token",
                  "-v", f"{d}:/run/secrets:ro", "--entrypoint", NODE, image, "-", stdin=f.read())  # fmt: skip
@@ -339,6 +383,106 @@ def s_probe_detects_an_insecure_configuration():
     check("probe control: flags a reachable database and broker",
           p["reach"]["postgres:5432"] == "open" and p["reach"]["redis:6379"] == "open",
           {k: p["reach"][k] for k in ("postgres:5432", "redis:6379")})  # fmt: skip
+
+
+def s_control_plane_separation():
+    """The proxy's management API is a UNIX socket on a volume only the proxy and the worker
+    mount. Checked as reachability (TCP connects), not by HTTP status."""
+    # 1. The worker manages its own session over the socket (token still required).
+    sess = worker_py(_OWN_SESSION)
+    check("control plane: worker created and inspected its session over the socket",
+          bool(sess.get("id")) and sess["decisions"] == {"allowed": 0, "denied": []}, sess.get("decisions"))  # fmt: skip
+    # 2. With those real credentials, the browser cannot use the proxy to reach management or
+    #    the proxy itself; the session's own destination works (positive control).
+    via = runner_node(PROXY_PROBE, SESSION_ID=sess["id"], SESSION_TOKEN=sess["token"])
+    others = {k: v for k, v in via.items() if k != "CONNECT receiver:8799"}
+    check("control plane: valid session credentials reach the allowed destination",
+          via["CONNECT receiver:8799"].startswith("HTTP/1.1 200"), via["CONNECT receiver:8799"])  # fmt: skip
+    check("control plane: management and the proxy itself are refused through the proxy (403)",
+          all(" 403 " in v for v in others.values()), others)  # fmt: skip
+    gone = worker_py(_DELETE_SESSION, SID=sess["id"])
+    check("control plane: session deleted; control API still refuses without the token",
+          gone == {"delete": 200, "after": 404, "without_token": 401}, gone)  # fmt: skip
+    # 3. Sensitivity: the scan finds a listener bound to all interfaces on the proxy container.
+    compose("exec", "-d", "egress-proxy", "python", "-c",
+            "import socket,time; s=socket.socket(); s.bind(('0.0.0.0', 3199)); s.listen(); time.sleep(60)")  # fmt: skip
+    seen = wait_for(lambda: 3199 in (p := proxy_open_ports()) and p, 20, 1)
+    check("control plane: the scan detects a deliberately exposed listener (sensitivity control)",
+          bool(seen) and 3199 in seen and 3129 not in seen, seen)  # fmt: skip
+    # 4. Restarting the proxy does not bring a network listener back; the worker reconnects.
+    compose("restart", "egress-proxy")
+    healthy = wait_for(lambda: worker_check()["proxy_health"][0] == 200, 60, 2)
+    after = proxy_open_ports()
+    check("control plane: after a proxy restart only 3128 is open; worker reaches control again",
+          bool(healthy) and after == [3128], {"open": after, "proxy_health": bool(healthy)})  # fmt: skip
+    # 5. Normal approved execution still works after the restart.
+    a = candidate()
+    slug = f"ctl-{uuid.uuid4().hex[:6]}"
+    app_id = generic_app(a, slug)
+    queue(a, app_id)
+    att = final_state(a, app_id)
+    check("control plane: approved fixture run still confirmed (1 acceptance)",
+          att and att["state"] == "confirmed" and ledger_for(slug)["accepted"] == 1, att and att["state"])  # fmt: skip
+
+
+_OPEN_RUNNER_SESSION = """
+import json
+from app.modules.execution.browser import RemoteBrowser
+r = RemoteBrowser("receiver", 8799, True)
+ws = r.open()
+print(json.dumps({"ws": ws, "runner": r.runner_session["id"], "proxy": r.proxy_session["id"]}))
+"""
+
+_RECONNECT_OLD = """
+import json, os
+from playwright.sync_api import sync_playwright
+from app.core.config import get_settings
+from app.modules.execution.browser import RemoteBrowser, control_request
+s = get_settings()
+out = {}
+with sync_playwright() as p:
+    try:
+        p.chromium.connect(os.environ["WS"], timeout=10000, headers={"X-Runner-Token": s.browser_runner_token})
+        out["reconnect"] = "connected"
+    except Exception as e:
+        out["reconnect"] = "refused: " + str(e).splitlines()[0][:120]
+r = RemoteBrowser("receiver", 8799, True)
+try:
+    r._runner("DELETE", "/sessions/" + os.environ["RID"])
+    out["old_runner_session"] = "still known"
+except Exception as e:
+    out["old_runner_session"] = "unknown: " + str(e)[:80]
+pid = os.environ["PID_"]
+out["proxy_delete"] = control_request(s.egress_control_socket, s.egress_control_token, "DELETE", "/sessions/" + pid)[0]
+print(json.dumps(out))
+"""
+
+
+def s_runner_restart_recovery():
+    """A runner restart (the same path as an OOM kill and restart) invalidates its sessions:
+    the old endpoint and secret cannot attach to anything, temporary files are gone, and a new
+    attempt runs normally."""
+    old = worker_py(_OPEN_RUNNER_SESSION)
+    check("recovery: a runner session was open before the restart",
+          runner_health()[1].get("sessions") == 1, old.get("runner"))  # fmt: skip
+    compose("restart", "browser-runner")
+    wait_for(lambda: runner_health()[0] == 200, 120, 2)
+    h = runner_health()
+    check("recovery: restarted runner is healthy with no sessions", h[0] == 200 and h[1].get("sessions") == 0, h)
+    r = worker_py(_RECONNECT_OLD, WS=old["ws"], RID=old["runner"], PID_=old["proxy"])
+    check("recovery: the old endpoint and secret cannot attach to the restarted runner",
+          r["reconnect"].startswith("refused") and r["old_runner_session"].startswith("unknown"), r)  # fmt: skip
+    check("recovery: the old proxy session is removed by the worker's cleanup", r["proxy_delete"] == 200, r)
+    tmp = compose("exec", "-T", "browser-runner", "sh", "-c", "ls -A /tmp").split()
+    check("recovery: no browser profile or temp dir survived the restart",
+          not [t for t in tmp if t.startswith("playwright")], tmp)  # fmt: skip
+    a = candidate()
+    slug = f"recover-{uuid.uuid4().hex[:6]}"
+    app_id = generic_app(a, slug)
+    queue(a, app_id)
+    att = final_state(a, app_id)
+    check("recovery: a new attempt after the restart is confirmed (1 acceptance)",
+          att and att["state"] == "confirmed" and ledger_for(slug)["accepted"] == 1, att and att["state"])  # fmt: skip
 
 
 def s_greenhouse_security_code_flow():
@@ -566,6 +710,20 @@ def s_memory_exhaustion():
     up = wait_for(lambda: worker_check()["runner_health"][0] == 200, 120, 3)
     check("memory exhaustion: contained by the container limit; runner serving again",
           bool(up), {"oom_killed": i.get("OOMKilled"), "restarts": i.get("RestartCount")})  # fmt: skip
+    tmp = compose("exec", "-T", "browser-runner", "sh", "-c", "ls -A /tmp").split()
+    check("memory exhaustion: no browser profile left after recovery",
+          not [t for t in tmp if t.startswith("playwright")], tmp)  # fmt: skip
+    b = candidate()
+    slug2 = f"after-hog-{uuid.uuid4().hex[:6]}"
+    app2 = generic_app(b, slug2)
+    queue(b, app2)
+    att2 = final_state(b, app2)
+    check("memory exhaustion: a new attempt after recovery is confirmed (1 acceptance)",
+          att2 and att2["state"] == "confirmed" and ledger_for(slug2)["accepted"] == 1, att2 and att2["state"])  # fmt: skip
+    atts = a.ok("GET", f"/applications/{app_id}/attempts")
+    check("memory exhaustion: the interrupted attempt was not replayed (one attempt, retry 0, 0 accepted)",
+          len(atts) == 1 and atts[0]["retry_count"] == 0 and ledger_for(slug)["accepted"] == 0,
+          [(x["state"], x["retry_count"]) for x in atts])  # fmt: skip
 
 
 def s_session_time_limit():
@@ -587,6 +745,7 @@ SCENARIOS = [
     s_sandbox_selfcheck,
     s_browser_container_probe,
     s_probe_detects_an_insecure_configuration,
+    s_control_plane_separation,
     s_greenhouse_security_code_flow,
     s_hostile_page,
     s_infrastructure_only_egress,
@@ -596,6 +755,7 @@ SCENARIOS = [
     s_runner_unavailable,
     s_sandbox_unavailable,
     s_memory_exhaustion,
+    s_runner_restart_recovery,
     s_session_time_limit,
 ]
 

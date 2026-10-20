@@ -49,7 +49,8 @@ class Settings(BaseSettings):
     browser_isolation: str = "netns"
     browser_runner_url: str = "http://browser-runner:9330"
     browser_runner_token: str = ""
-    egress_control_url: str = "http://egress-proxy:3129"
+    # The egress proxy's control API is a UNIX socket (a volume shared only with the proxy).
+    egress_control_socket: str = "/run/egress-control/control.sock"
     egress_control_token: str = ""
     # How long an attempt waits for a free browser-runner slot before refusing (before any
     # disclosure; must stay well under lease_seconds).

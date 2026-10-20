@@ -5,7 +5,10 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY . .
-RUN useradd --create-home --uid 10001 app && mkdir -p /data/storage && chown -R app /data /app
+# /run/egress-control: mount point of the egress proxy's control-socket volume (owned by app,
+# so a fresh named volume inherits that owner).
+RUN useradd --create-home --uid 10001 app && mkdir -p /data/storage /run/egress-control \
+ && chown -R app /data /app && chown app /run/egress-control && chmod 0700 /run/egress-control
 USER app
 ENV PATH="/app/.venv/bin:$PATH" NOEFFORTS_STORAGE_DIR=/data/storage
 EXPOSE 8000

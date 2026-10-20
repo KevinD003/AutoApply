@@ -20,7 +20,7 @@ services:
     networks: [fixtures]
 
   egress-proxy:
-    networks: [exec_proxyctl, exec_egress, fixtures]
+    networks: [exec_egress, fixtures]
 
   backend:
     networks: [default, fixtures]

@@ -23,7 +23,12 @@ import pytest
 from app.core.config import get_settings
 from app.modules.execution import browser as browser_mod
 from app.modules.execution import runner
-from app.modules.execution.browser import IsolationUnavailable, RemoteBrowser, browser_session
+from app.modules.execution.browser import (
+    IsolationUnavailable,
+    RemoteBrowser,
+    browser_session,
+    control_request,
+)
 from app.modules.execution.sandbox import proxy_service
 from tests.execution_harness import (
     BASE,
@@ -59,12 +64,14 @@ def _reset(receiver):
 
 @pytest.fixture(scope="module")
 def stack():
-    proxy_port, control_port, runner_port = free_port(), free_port(), free_port()
+    proxy_port, runner_port = free_port(), free_port()
+    control_dir = tempfile.mkdtemp(prefix="egress-control-")
+    control_socket = os.path.join(control_dir, "control.sock")
     loop = asyncio.new_event_loop()
 
     def run_proxy():
         asyncio.set_event_loop(loop)
-        loop.create_task(proxy_service.serve(proxy_port, control_port, CONTROL_TOKEN, 300))
+        loop.create_task(proxy_service.serve(proxy_port, control_socket, CONTROL_TOKEN, 300))
         loop.run_forever()
 
     t = threading.Thread(target=run_proxy, daemon=True)
@@ -103,7 +110,7 @@ def stack():
             time.sleep(0.25)
     yield {
         "runner": url,
-        "control": f"http://127.0.0.1:{control_port}",
+        "control_socket": control_socket,
         "proxy_port": proxy_port,
     }
     proc.terminate()
@@ -121,9 +128,13 @@ def container_mode(stack, monkeypatch):
     monkeypatch.setattr(s, "browser_isolation", "container")
     monkeypatch.setattr(s, "browser_runner_url", stack["runner"])
     monkeypatch.setattr(s, "browser_runner_token", RUNNER_TOKEN)
-    monkeypatch.setattr(s, "egress_control_url", stack["control"])
+    monkeypatch.setattr(s, "egress_control_socket", stack["control_socket"])
     monkeypatch.setattr(s, "egress_control_token", CONTROL_TOKEN)
     return stack
+
+
+def ctl(stack, method, path, body=None, token=CONTROL_TOKEN):
+    return control_request(stack["control_socket"], token, method, path, body)
 
 
 def test_runner_verified_its_own_sandbox(stack):
@@ -140,7 +151,8 @@ def test_runner_and_proxy_control_need_their_tokens(stack):
     assert httpx.post(f"{stack['runner']}/sessions", json={}).status_code == 401
     bad = {"X-Runner-Token": "x" * len(RUNNER_TOKEN)}
     assert httpx.post(f"{stack['runner']}/sessions", json={}, headers=bad).status_code == 401
-    assert httpx.post(f"{stack['control']}/sessions", json={"allow": [["a", 1]]}).status_code == 401
+    assert ctl(stack, "POST", "/sessions", {"allow": [["a", 1]]}, token="")[0] == 401
+    assert ctl(stack, "POST", "/sessions", {"allow": [["a", 1]]}, token="x" * 28)[0] == 401
 
 
 def test_proxy_requires_a_session_and_keeps_sessions_apart(stack, receiver):
@@ -149,17 +161,18 @@ def test_proxy_requires_a_session_and_keeps_sessions_apart(stack, receiver):
             c.sendall(req)
             return c.recv(200)
 
-    h = {"X-Control-Token": CONTROL_TOKEN}
-    a = httpx.post(
-        f"{stack['control']}/sessions",
-        headers=h,
-        json={"allow": [["127.0.0.1", 8799]], "allow_private": [["127.0.0.1", 8799]]},
-    ).json()
-    b = httpx.post(
-        f"{stack['control']}/sessions",
-        headers=h,
-        json={"allow": [["127.0.0.1", 8798]], "allow_private": [["127.0.0.1", 8798]]},
-    ).json()
+    a = ctl(
+        stack,
+        "POST",
+        "/sessions",
+        {"allow": [["127.0.0.1", 8799]], "allow_private": [["127.0.0.1", 8799]]},
+    )[1]
+    b = ctl(
+        stack,
+        "POST",
+        "/sessions",
+        {"allow": [["127.0.0.1", 8798]], "allow_private": [["127.0.0.1", 8798]]},
+    )[1]
     assert raw(b"CONNECT 127.0.0.1:8799 HTTP/1.1\r\n\r\n").startswith(b"HTTP/1.1 407")
     auth_a = base64.b64encode(f"{a['id']}:{a['token']}".encode())
     auth_b = base64.b64encode(f"{b['id']}:{b['token']}".encode())
@@ -176,12 +189,8 @@ def test_proxy_requires_a_session_and_keeps_sessions_apart(stack, receiver):
         b"CONNECT 127.0.0.1:8799 HTTP/1.1\r\nProxy-Authorization: Basic " + forged + b"\r\n\r\n"
     ).startswith(b"HTTP/1.1 407")
     # An allow-list can only name a few destinations, and private ones only if also allowed.
-    r = httpx.post(
-        f"{stack['control']}/sessions",
-        headers=h,
-        json={"allow": [["a", 1]], "allow_private": [["10.0.0.1", 80]]},
-    )
-    assert r.status_code == 400
+    r = ctl(stack, "POST", "/sessions", {"allow": [["a", 1]], "allow_private": [["10.0.0.1", 80]]})
+    assert r[0] == 400
 
 
 def test_container_mode_full_run(container_mode, api, receiver):
@@ -467,3 +476,81 @@ def test_self_check_finds_its_browsers_when_the_runner_is_pid_1():
             proc.wait(timeout=15)
         except subprocess.TimeoutExpired:
             proc.kill()
+
+
+def test_control_api_is_an_owner_only_unix_socket_not_a_network_listener(stack):
+    """The worker manages its own sessions over the socket; the token is still required; the
+    proxy opens no TCP listener for control (its only TCP port is the browser-facing proxy)."""
+    import stat
+
+    st = os.stat(stack["control_socket"])
+    assert stat.S_ISSOCK(st.st_mode) and stat.S_IMODE(st.st_mode) == 0o600
+    code, made = ctl(stack, "POST", "/sessions", {"allow": [["127.0.0.1", 8799]]})
+    assert code == 201
+    assert ctl(stack, "GET", f"/sessions/{made['id']}/decisions")[0] == 200
+    assert ctl(stack, "GET", f"/sessions/{made['id']}/decisions", token="")[0] == 401
+    assert ctl(stack, "DELETE", f"/sessions/{made['id']}")[0] == 200
+    assert ctl(stack, "GET", f"/sessions/{made['id']}/decisions")[0] == 404
+    # No TCP socket of this process listens anywhere except the proxy port (and test servers
+    # that are not part of the proxy service).
+    from app.modules.execution.sandbox import proxy_service as ps
+
+    assert "ThreadingHTTPServer" not in vars(ps), "control must not be a TCP HTTP server"
+
+
+def test_restart_replaces_a_stale_control_socket(tmp_path):
+    from app.modules.execution.sandbox.proxy_service import Registry, control_server
+
+    path = str(tmp_path / "control.sock")
+    first = control_server(path, Registry(60), CONTROL_TOKEN)
+    first.server_close()  # simulates a killed proxy: the socket file is left behind
+    assert os.path.exists(path)
+    second = control_server(path, Registry(60), CONTROL_TOKEN)  # a restart must not fail
+    threading.Thread(target=second.serve_forever, daemon=True).start()
+    try:
+        assert control_request(path, CONTROL_TOKEN, "GET", "/health")[0] == 200
+        # the new registry knows no sessions from before the restart
+        assert (
+            control_request(path, CONTROL_TOKEN, "GET", "/sessions/0123456789abcdef/decisions")[0]
+            == 404
+        )
+    finally:
+        second.shutdown()
+        second.server_close()
+
+
+def test_browser_lost_after_disclosure_is_abandoned_not_retried(
+    container_mode, api, receiver, monkeypatch
+):
+    """The runner (or its browser) goes away after the form was filled: the attempt is
+    classified by its disclosure evidence - abandoned, needs the user - never failed_safe
+    (which would claim nothing was sent) and never re-run automatically."""
+    from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter
+
+    opened, original_open, original_readback = [], RemoteBrowser.open, FixtureAtsAdapter.readback
+
+    def remember(self):
+        opened.append(self)
+        return original_open(self)
+
+    def runner_dies_then_readback(self, page):
+        for r in opened:  # the runner ends the browser, as on an OOM kill or restart
+            httpx.delete(
+                f"{container_mode['runner']}/sessions/{r.runner_session['id']}",
+                headers={"X-Runner-Token": RUNNER_TOKEN},
+            )
+        return original_readback(self, page)
+
+    monkeypatch.setattr(RemoteBrowser, "open", remember)
+    monkeypatch.setattr(FixtureAtsAdapter, "readback", runner_dies_then_readback)
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    result = runner.run_attempt(aid, "w1")
+    att = attempt(aid)
+    led = receiver.ledger()
+    assert result in ("error", "abandoned") and att.state == "abandoned", (result, att.state)
+    assert att.disclosure_started_at is not None and att.retry_count == 0
+    assert led["accepted"] == 0
+    assert api.get(f"/applications/{app_id}").json()["state"] == "needs_user_action"
+    assert runner.run_attempt(aid, "w2") == "ignored"  # a redelivery does not resend
+    assert receiver.ledger()["accepted"] == 0

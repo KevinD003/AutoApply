@@ -125,6 +125,33 @@ def _netns_wrapper(
     return path
 
 
+def control_request(
+    socket_path: str, token: str, method: str, path: str, body=None, timeout: float = 30
+) -> tuple[int, dict]:
+    """HTTP over the egress proxy's UNIX control socket."""
+    import http.client
+    import json
+
+    class _Conn(http.client.HTTPConnection):
+        def connect(self):
+            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.sock.settimeout(timeout)
+            self.sock.connect(socket_path)
+
+    conn = _Conn("egress-control", timeout=timeout)
+    try:
+        conn.request(
+            method,
+            path,
+            body=json.dumps(body).encode() if body is not None else None,
+            headers={"X-Control-Token": token, "Content-Type": "application/json"},
+        )
+        r = conn.getresponse()
+        return r.status, json.loads(r.read() or b"{}")
+    finally:
+        conn.close()
+
+
 def local_driver_version() -> str:
     import json
     from pathlib import Path
@@ -171,9 +198,17 @@ class RemoteBrowser:
 
     def _proxy(self, method: str, path: str, body=None) -> dict:
         s = self.s
-        return self._call(
-            s.egress_control_url, "X-Control-Token", s.egress_control_token, method, path, body
-        )
+        try:
+            code, out = control_request(
+                s.egress_control_socket, s.egress_control_token, method, path, body
+            )
+        except OSError as e:
+            raise IsolationUnavailable(
+                f"egress proxy control unreachable ({type(e).__name__})"
+            ) from e
+        if code >= 300:
+            raise IsolationUnavailable(f"egress proxy control refused ({code}): {out}")
+        return out
 
     def _runner(self, method: str, path: str, body=None) -> dict:
         s = self.s

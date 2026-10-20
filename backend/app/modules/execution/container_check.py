@@ -1,8 +1,8 @@
 """Report the state of the browser-execution services, from inside the worker container.
 
 Prints JSON: the runner's health and sandbox self-check (renderer seccomp, user, no
---no-sandbox) and the egress proxy's health. Uses the worker's own tokens; nothing here is
-reachable from outside the execution networks. Run:
+--no-sandbox) and the egress proxy's health (over its UNIX control socket). Uses the worker's
+own tokens; nothing here is reachable from outside the execution networks. Run:
     python -m app.modules.execution.container_check
 """
 
@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 
 from app.core.config import get_settings
+from app.modules.execution.browser import control_request
 
 
 def _get(url: str, headers: dict | None = None) -> tuple[int, dict]:
@@ -32,7 +33,10 @@ def main() -> None:
     out["runner_selfcheck"] = _get(
         f"{s.browser_runner_url}/selfcheck", {"X-Runner-Token": s.browser_runner_token}
     )
-    out["proxy_health"] = _get(f"{s.egress_control_url}/health")
+    try:
+        out["proxy_health"] = control_request(s.egress_control_socket, "", "GET", "/health")
+    except OSError as e:
+        out["proxy_health"] = (0, {"error": type(e).__name__})
     print(json.dumps(out, default=str))
 
 
