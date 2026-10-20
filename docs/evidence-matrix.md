@@ -9,6 +9,23 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Read-only Greenhouse check: code and fixture evidence (2026-10-20)
+
+- **Approval.** The user approved permissions A and B for one posting, on condition that no
+  employer or person name goes into the repository. C and D are not approved.
+- **Code-tested revision:** `86fa55e`. CI #30
+  [39428565520](https://github.com/KevinD003/AutoApply/actions/runs/39428565520) passed all four
+  jobs. execution-compose: **76/76**, including `s_readonly_observation_in_container`:
+  - the fixture form was read in the isolated browser (15 fields);
+  - the page's on-load POST was blocked;
+  - 0 disclosures at the receiver.
+- **Local:** `tests/test_gh_readonly.py` 10 passed; with `test_greenhouse_adapter.py`, 34
+  passed.
+- **Not run against Greenhouse yet.** The development sandbox's network policy denied
+  `boards-api.greenhouse.io` (403 at the environment proxy, one attempt, not retried). The real
+  run is the manual workflow `greenhouse-readonly.yml`, which waits for the repository secret
+  `GH_READONLY_POSTING`.
+
 ## Proxy control-plane separation and recovery (2026-10-20)
 
 Scope: local implementation and synthetic tests only. No external posting was retrieved, no
