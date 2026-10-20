@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-19 (Phase C validation). For requirement-by-requirement evidence see
+Last updated: 2026-10-20 (Phase C validation milestone 2). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -24,7 +24,34 @@ Last updated: 2026-10-19 (Phase C validation). For requirement-by-requirement ev
 | `64a560a` | Submission card in the review UI; CI workflow |
 | `289e0b0` | Formatting fix caught by CI |
 
-Phase A/B tests below were run against `29a1960`. Phase C results are in the next section.
+| `c6fa7ce` | Readback tampering, disclosure counting, real lease expiry, every mutation path |
+| `ffe00f7` | Real broker outage and real Redis redelivery |
+| `b4c3023` | Browser in its own network namespace behind an egress proxy |
+| `f5bd82f` | Evidence retention purge and deletion; secret scan of real worker logs |
+| `7ce41ff` | CI run #2 root cause (navigation race in the Phase A test) + regression spec |
+| `e11484d` | Docker Compose smoke test in CI |
+{{COMMITS}}
+
+Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Phase C validation milestone 2 (2026-10-19/20)
+
+Full evidence, real vs simulated, and the five defects this round found:
+`docs/evidence-matrix.md` (top section).
+
+| Command (final code, `{{FINAL}}`) | Result |
+|---|---|
+{{RESULTS}}
+
+Not done or not proven:
+- **Docker:** {{DOCKER}}.
+- **Browser sandbox:** hiding is a deny-list under the same OS user. There is no seccomp
+  profile, cgroup limit or dedicated user, and those are required before untrusted live
+  browsing.
+- **Simulated expiries:** approval and checkpoint expiry in the browser tests, and the dead
+  worker's lease in the redelivery tests, are set in the database rather than waited out.
+- **No real ATS** (first adapter proposed in `docs/first-adapter-proposal.md`), no live
+  application, no real candidate data.
 
 ## Phase C validation run (2026-10-19)
 
@@ -35,7 +62,7 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
 | `uv run ruff check . && uv run ruff format --check .` at `289e0b0` | clean (`64a560a` failed CI's format check; fixed in `289e0b0`) |
 | `cd frontend && npx tsc --noEmit && npm run lint` | clean |
 | `cd frontend && npx playwright test` | 4 passed (Phase A + B, desktop + mobile); execution UI not covered |
-| GitHub Actions CI | run #1 (`64a560a`): failed, backend formatting. Run #2 (`289e0b0`): backend **passed** (lint + full pytest); frontend e2e **failed** — Phase A desktop and mobile timed out waiting for the profile page after registration, Phase B passed. Run #3 (`400f3c0`, same code + docs) and run #4 (`ad57210`): **all jobs passed**. The Phase A failure is an unexplained intermittent failure; traces were not kept, so CI now uploads Playwright results on failure. Not fixed, not hidden. |
+| GitHub Actions CI | run #1 (`64a560a`): failed, backend formatting. Run #2 (`289e0b0`): backend **passed** (lint + full pytest); frontend e2e **failed** — Phase A desktop and mobile timed out waiting for the profile page after registration, Phase B passed. Run #3 (`400f3c0`, same code + docs) and run #4 (`ad57210`): **all jobs passed**. Root cause later found and fixed in `7ce41ff`: the test typed into the login form's identically labelled fields while a slow client-side navigation to /register was still in progress (reproduced deterministically with a 1.5 s route delay; regression spec `navigation-race.spec.ts`). |
 | Docker Compose | **untested** — no Docker daemon in the sandbox |
 
 Receiver-counted outcomes (independent ledger), all from `tests/test_execution_failures.py`,
@@ -140,11 +167,11 @@ employer.
 | Durable attempts, outbox, leases, fencing, gates, sweeper | complete for the fixture adapter |
 | Fixture adapter (inspect, extract, fill, upload, readback, checkpoint, submit, confirm) | complete, fixture-only |
 | Verification-code checkpoints | complete (worker holds a slot while waiting, bounded) |
-| Minimal evidence | complete; retention date stored, purge job not built |
-| Browser egress (in-process layers) | complete; **network-level isolation not implemented** |
+| Minimal evidence | complete; daily retention purge; user deletion (refused while running) |
+| Browser isolation | network + PID + mount namespaces, egress proxy, locked hiding mounts; production refuses to run without it. Limit: same OS user, deny-list |
 | Real employer adapter | **not started** — all real destinations are refused |
-| Execution UI | implemented; not browser-tested |
-| Playwright readback-mismatch path | implemented; not forced by a test |
+| Execution UI | browser-tested, desktop and mobile, receiver as oracle |
+| Readback mismatch | forced for text, select, checkbox, file |
 
 ## Phase D — Verification and integrations: not started
 Manual code entry, optional Gmail OAuth (personal/testing first; see `docs/research/gmail-oauth.md`),

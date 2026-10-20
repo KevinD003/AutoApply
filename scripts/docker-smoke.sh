@@ -28,7 +28,7 @@ code=$(curl -s -o /tmp/smoke-reg.json -w '%{http_code}' -c /tmp/smoke-cookies \
   http://127.0.0.1:8000/api/auth/register)
 test "$code" = "201" || { echo "register returned $code"; cat /tmp/smoke-reg.json; exit 1; }
 me=$(curl -fsS -b /tmp/smoke-cookies http://127.0.0.1:8000/api/auth/me)
-echo "$me" | grep -q "$email"
+grep -q "$email" <<<"$me"
 echo "Register + session OK"
 
 for i in $(seq 1 60); do
@@ -36,14 +36,14 @@ for i in $(seq 1 60); do
   sleep 2
 done
 page=$(curl -fsS http://127.0.0.1:3000/login)
-echo "$page" | grep -q "NoEfforts"
+grep -q "NoEfforts" <<<"$page"
 me=$(curl -fsS -b /tmp/smoke-cookies http://127.0.0.1:3000/api/auth/me)
-echo "$me" | grep -q "$email"
+grep -q "$email" <<<"$me"
 echo "Web app serves pages and proxies the API"
 
 # Capture first: `| grep -q` would close the pipe early and fail the step under pipefail.
 ping=$(docker compose exec -T worker celery -A app.worker inspect ping --timeout 10 2>&1) || true
-echo "$ping" | grep -q pong || { echo "worker ping failed: $ping"; exit 1; }
+grep -q pong <<<"$ping" || { echo "worker ping failed: $ping"; exit 1; }
 echo "Worker registered with the broker"
 
 docker compose restart backend
@@ -52,6 +52,6 @@ for i in $(seq 1 60); do
   sleep 2
 done
 me=$(curl -fsS -b /tmp/smoke-cookies http://127.0.0.1:8000/api/auth/me)
-echo "$me" | grep -q "$email"
+grep -q "$email" <<<"$me"
 echo "Data persisted across a backend restart"
 echo "DOCKER SMOKE PASSED"

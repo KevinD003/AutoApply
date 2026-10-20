@@ -116,3 +116,23 @@ Phase A's downgrade was edited earlier to drop enum types. That migration was ne
 so editing it harmed nothing, but from now on fixes go into new migrations. Migration tests run
 on a disposable `*_migration_test` database; the main test suite refuses any database not
 named `*_test`.
+
+## D22 — Browser isolation outside the browser
+Chromium runs in its own network, PID and mount namespaces (plus a nested user namespace that
+locks the hiding mounts); its only way out is a relay to an egress proxy that allows exactly
+the destination host:port and refuses non-public addresses. Playwright interception, origin
+allow-lists or ordinary Docker networking alone were not accepted as sufficient. The localhost
+fixture exception exists only for fixture origins, which production ignores; production refuses
+`browser_isolation != netns`. No user-facing switch exists.
+
+## D23 — Non-idempotent requests are never fetched and fulfilled
+`route.fetch` + `fulfill` sent a submit twice when the browser closed with the fetch pending
+(Playwright resumed the paused original). POST/PUT/… now go out once, from the browser; their
+redirect hops are checked by the egress proxy. GET/HEAD keep the fetch-based redirect check
+and abort on any fetch error.
+
+## D24 — Execution owns the application state while an attempt is held
+While an attempt is claimed, sending or awaiting a code, preparation may not re-settle the
+application and users may not transition it (409). The code wait reuses `needs_user_action`,
+which preparation treats as rebuildable; the guard keeps the two meanings apart without a
+schema change.

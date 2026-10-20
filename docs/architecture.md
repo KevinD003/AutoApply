@@ -13,7 +13,7 @@ Next.js frontend ──rewrite──▶ FastAPI backend ──▶ PostgreSQL (du
 ```
 
 - **Frontend** (`frontend/`): Next.js App Router, client components, Tailwind. It never calls the
-  API cross-origin: `next.config.ts` rewrites `/api/*` to the backend, so cookies are first-party.
+  API cross-origin: `next.config.mjs` rewrites `/api/*` to the backend, so cookies are first-party.
   The rewrite target (`NOEFFORTS_BACKEND_URL`) is fixed **at build time**.
 - **Backend** (`backend/app`): FastAPI with Pydantic validation. One module per domain under
   `app/modules/` (identity, profiles, jobs, documents, applications, audit). Each module owns its
@@ -157,22 +157,51 @@ attempt moves to `awaiting_code`, the application to `needs_user_action`, and a 
 bound to user, application, attempt and round is opened. The code is stored only until the
 worker reads it, then erased. Wrong codes open a new round (max 3); old rounds are replays.
 The worker keeps its browser open while waiting, bounded by `NOEFFORTS_CHECKPOINT_TTL_SECONDS`.
+While a worker holds an attempt (claimed, sending, awaiting a code) only the execution service
+may change the application's state: package reads do not re-settle it and user transitions
+return 409 (`package.execution_owns_state`). Without this, the review page's package read
+moved a code-waiting application back to `awaiting_approval` with a valid approval, which
+re-enabled Submit after the data had been sent (found by the browser test, now covered).
 
 Evidence policy: receipt id, final origin/path, page title, HTTP status; a readback summary
 (which keys mismatched, never values); disclosures (field, upload id, digest); blocked egress
 origins. No screenshots, traces, cookies, storage state, codes or answer values. Evidence has
-a retention date (`NOEFFORTS_EVIDENCE_RETENTION_DAYS`); purging is not implemented yet.
+a retention date (`NOEFFORTS_EVIDENCE_RETENTION_DAYS`); a daily beat task purges expired
+evidence, and users can delete an application's evidence (`DELETE
+/api/applications/{id}/evidence`, refused while an attempt is active).
 
-Browser isolation: see `browser.py`. In-process layers only; a network-namespace egress
-firewall for browser workers is a deployment requirement before any untrusted live browsing.
+Browser isolation (`browser.py`, `sandbox/`), enforced outside the browser:
+
+```
+worker ──launch──> unshare -n -p -f --mount-proc [-r] ──> netns_boot.py ──exec──> Chromium
+                   (own netns: loopback only;            1. lo up
+                    own PID ns + /proc)                  2. fork relay 127.0.0.1:P → unix sock
+                                                         3. new mount ns: hide code, .env,
+                                                            storage, $HOME credential files;
+                                                            /tmp = this workdir only
+                                                         4. nested user+mount ns (mounts locked)
+Chromium --proxy-server=127.0.0.1:P ─> relay ─> EgressProxy (outside): exact host:port of the
+destination only; resolves, refuses non-public IPs (fixture exception is test/dev only)
+```
+
+The browser gets PATH/HOME/TMPDIR only. Production refuses to run without this isolation
+(`NOEFFORTS_BROWSER_ISOLATION=netns`, no user-facing switch). In-process layers (route
+allow-list, redirect checks, resolver rules, service workers blocked, pop-ups closed) remain as
+defence in depth; non-idempotent requests are passed to the browser (`continue_`), never
+fetched and fulfilled, because Playwright resumes a paused request whose fetch is still
+pending when the browser closes, and the employer then receives it twice (reproduced; covered
+by `test_closing_the_browser_mid_submit_never_resends`).
+Limits: hiding is a deny-list on a shared filesystem under the same OS user; there is no
+seccomp profile or cgroup limit. Before untrusted live browsing, run browser workers as a
+dedicated user in a container that mounts no secrets.
 
 Test oracle: `fixtures/ats_receiver/` (never deployed) with its own ledger and failure modes.
 
 ## Planned components (not built)
 
 - Live ATS adapters (each needs its own capability entry and receiver-style tests)
-- Network-level egress isolation for browser workers
-- Evidence purging, account export/deletion
+- Dedicated-user / container sandbox for browser workers (see limits above)
+- Account export/deletion
 - Execution-provider contract, local fixture ATS, first real adapter, evidence store (Phase C).
 - Manual verification-code entry, optional Gmail OAuth, spend tracking (Phase D).
 
