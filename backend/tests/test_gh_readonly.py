@@ -341,8 +341,10 @@ def test_blocked_dependency_marks_rendering_possibly_incomplete(receiver, v2_app
     obs = observe_v2(v2_approved)
     r = obs["rendering"]
     assert r["may_be_incomplete"] is True
+    keys = ("resource_type", "kind", "same_origin", "failure")
     assert {"resource_type": "script", "kind": "other", "same_origin": False,
-            "failure": "net::ERR_BLOCKED_BY_CLIENT"} in r["failed_requests"]  # fmt: skip
+            "failure": "net::ERR_BLOCKED_BY_CLIENT"} in [
+        {k: f[k] for k in keys} for f in r["failed_requests"]]  # fmt: skip
     pub = ro.publishable(v2_approved, {"name": "x"}, V2_JOB, obs)
     text = ro.guard(pub, ro.sensitive_values(V2_BOARD, V2_JOB, v2_approved, None))
     assert "fixture-cdn" not in text
@@ -449,3 +451,39 @@ def test_output_size_limit_suppresses():
     printed = []
     assert ro.emit({"requests": [200] * 50}, set(), printed.append, limit=20) is False
     assert "suppressed" in printed[0]
+
+
+# ------------------------------------------------------------------ exact denied hosts
+
+
+def test_denied_hosts_are_reported_exactly_or_withheld(receiver, v2_approved):
+    """Blocked cross-origin dependencies, grouped by exact host:port with per-host methods and
+    resource types. A host that is not a plain *.greenhouse.io name, or that contains a value
+    derived from the posting (here: the board token), is withheld."""
+    receiver.config(mode="gh2_gh_assets")
+    obs = observe_v2(v2_approved)
+    pub = ro.publishable(v2_approved, {"name": v2_approved["company_name"]}, V2_JOB, obs)
+    sens = ro.sensitive_values(V2_BOARD, V2_JOB, v2_approved, None)
+    ro.withhold_sensitive_hosts(pub, sens)
+    hosts = {g["host"]: g for g in pub["page"]["denied_hosts"]}
+    a = hosts["assets.fixture.greenhouse.io"]
+    assert (a["port"], a["scheme"], a["requests"]) == (443, "https", 3)
+    assert a["resource_types"] == {"stylesheet": 1, "image": 1, "script": 1}
+    assert a["methods"] == {"GET": 3} and a["failures"] == {"net::ERR_BLOCKED_BY_CLIENT": 3}
+    assert hosts["withheld"]["requests"] == 1 and hosts["withheld"]["port"] is None
+    text = ro.guard(pub, sens)
+    assert "northwind" not in text.lower()
+    # nothing reached any of them: blocked before sending, no disclosure at the receiver
+    assert receiver.ledger()["disclosures"] == []
+
+
+def test_only_plain_greenhouse_hosts_are_printable():
+    fail = {"same_origin": False, "port": 443, "scheme": "https", "method": "GET",
+            "resource_type": "script", "failure": "net::ERR_BLOCKED_BY_CLIENT"}  # fmt: skip
+    got = ro.denied_hosts([
+        {**fail, "host": "cdn.example.com"},
+        {**fail, "host": "x.greenhouse.io.evil.example"},
+        {**fail, "host": "boards.greenhouse.io"},
+    ])  # fmt: skip
+    assert [g["host"] for g in got] == ["boards.greenhouse.io", "withheld"]
+    assert got[1]["requests"] == 2

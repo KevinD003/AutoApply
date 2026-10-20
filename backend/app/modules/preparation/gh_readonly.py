@@ -497,7 +497,48 @@ def _failure(request, origin: str) -> dict:
         "kind": _category(u.netloc) if u.netloc else "no-host",
         "same_origin": f"{u.scheme}://{u.netloc}" == origin,
         "failure": code.group(0) if code else "other",
+        # internal only: publishable() keeps a host only if it is a plain *.greenhouse.io name
+        "host": (u.hostname or "").lower(),
+        "port": u.port or {"https": 443, "http": 80}.get(u.scheme),
+        "scheme": u.scheme,
+        "method": request.method,
     }
+
+
+# A host may be printed only if it is a plain name under greenhouse.io (Greenhouse's own
+# infrastructure); anything else is reported by kind only. _run() also withholds a printable
+# host that contains any value derived from the posting.
+_PRINTABLE_HOST = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.){1,4}greenhouse\.io")
+
+
+def denied_hosts(failed: list[dict]) -> list[dict]:
+    """Cross-origin requests that did not complete, grouped by exact host:port, with per-host
+    methods and resource types. Hosts that are not plain *.greenhouse.io names: "withheld"."""
+    groups: dict[tuple, dict] = {}
+    for f in failed:
+        if f.get("same_origin") or not f.get("host"):
+            continue
+        host = f["host"] if _PRINTABLE_HOST.fullmatch(f["host"]) else "withheld"
+        key = (host, f["port"], f["scheme"]) if host != "withheld" else ("withheld", None, None)
+        g = groups.setdefault(
+            key,
+            {"host": key[0], "port": key[1], "scheme": key[2], "requests": 0, "methods": {},
+             "resource_types": {}, "failures": {}},
+        )  # fmt: skip
+        g["requests"] += 1
+        m = f["method"] if f["method"] in METHODS else "OTHER"
+        rt = f["resource_type"] if f["resource_type"] in RESOURCE_TYPES else "other"
+        for d, k in ((g["methods"], m), (g["resource_types"], rt), (g["failures"], f["failure"])):
+            d[k] = d.get(k, 0) + 1
+    return sorted(groups.values(), key=lambda g: (g["host"], g["port"] or 0))
+
+
+def withhold_sensitive_hosts(result: dict, sensitive: set[str]) -> None:
+    """A printable host that still contains a value derived from the posting is withheld."""
+    low = [v.lower() for v in sensitive]
+    for g in result.get("page", {}).get("denied_hosts", []):
+        if g["host"] != "withheld" and any(v in g["host"] for v in low):
+            g["host"], g["port"], g["scheme"] = "withheld", None, None
 
 
 # Option texts present in the DOM at load: a native <select>'s options, or the role=option
@@ -728,6 +769,7 @@ def publishable(api_json: dict, board_json: dict, job_id: str, observed: dict | 
                     for f in r["failed_requests"]
                 ],
             }
+            out["page"]["denied_hosts"] = denied_hosts(r["failed_requests"])
         if observed.get("mapping") is not None:
             out["mapping"] = observed["mapping"]
         if observed["rendered"] is not None:
@@ -791,6 +833,8 @@ _OUTPUT_WORDS = {
     "hidden_attr", "visible", "in_form", "in_group", "controls_listbox", "describedby",
     "listbox_options", "options_match_api", "by_status", "unmatched_controls",
     "controls_total", "alternative_of_api_field", "id_shape",
+    "denied_hosts", "host", "port", "scheme", "methods", "resource_types", "failures",
+    "withheld", "https", "http",
     "observation", "reasons", "checks", "label", "element", "options_at_load", "fill_support",
     "by_observation", "basis", "navigations", "received_bytes", "sizes_unknown",
     "unique", "incompatible", "not_observable", "not_observable_at_load", "not_applicable",
@@ -879,7 +923,12 @@ def _error_name(name: str | None) -> str | None:
 
 
 def _allowed(s: str) -> bool:
-    return s in VOCAB or bool(_ALIAS.fullmatch(s)) or bool(_STOP_TEXT.fullmatch(s))
+    return (
+        s in VOCAB
+        or bool(_ALIAS.fullmatch(s))
+        or bool(_STOP_TEXT.fullmatch(s))
+        or bool(_PRINTABLE_HOST.fullmatch(s))
+    )
 
 
 def sensitive_values(board: str, job_id: str, api_json: dict | None, board_json: dict | None):
@@ -1022,6 +1071,7 @@ def _run(a) -> int:
     except Exception as e:  # noqa: BLE001 - messages can carry URLs; print the type only
         emit({"stopped": f"error ({_error_name(type(e).__name__)})"}, sensitive)
         return 3
+    withhold_sensitive_hosts(result, sensitive)
     return 0 if emit(result, sensitive) else 4
 
 

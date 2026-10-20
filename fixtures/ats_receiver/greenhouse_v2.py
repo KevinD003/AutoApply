@@ -28,7 +28,7 @@ Routes (on the synthetic receiver; same ledger):
   POST /gh2/{board}/jobs/{id}/submit       application (an acceptance)
 Modes (cfg["mode"]): gh2_duplicate_id, gh2_label_mismatch, gh2_missing_control,
 gh2_validation_fail, gh2_new_question, gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, gh2_many_assets,
-gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, plus the
+gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, plus the
 receiver-wide upload_fail, error_before_accept, error_after_accept, drop_after_accept.
 All employers, jobs and people are fictional.
 """
@@ -244,6 +244,12 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
     qs = "".join(_render(q, mode) for q in j["questions"] + j["location_questions"])
     if mode == "gh2_many_assets":  # same-origin requests beyond a small budget
         qs += "".join(f'<img alt="" src="/gh2-api/robots.txt?i={i}">' for i in range(10))
+    if mode == "gh2_gh_assets":  # cross-origin assets on Greenhouse-named hosts (never reached:
+        # the observation's allow-list blocks them before sending, as on the real page)
+        qs += ('<link rel="stylesheet" href="https://assets.fixture.greenhouse.io/app.css">'
+               '<img alt="" src="https://assets.fixture.greenhouse.io/logo.png">'
+               '<script src="https://assets.fixture.greenhouse.io/app.js"></script>'
+               '<script src="https://northwind.fixture.greenhouse.io/board.js"></script>')
     if mode == "gh2_navigate_away":  # the page navigates itself after load
         qs += f'<script>setTimeout(() => {{ location.href = "{base}?again=1"; }}, 200)</script>'
     if mode == "gh2_new_question":  # a visible question the job data does not list
