@@ -138,13 +138,21 @@ def control_handler(registry: Registry, control_token: str):
             return self._send(404, {})
 
         def do_POST(self):  # noqa: N802
+            # Read the (bounded) body before answering, even a refusal: replying and closing
+            # first makes the client fail mid-send instead of seeing the 401.
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                return self._send(400, {"error": "bad request"})
+            if n > 16384:
+                return self._send(413, {"error": "body too large"})
+            raw = self.rfile.read(n) if n > 0 else b""
             if not self._auth():
                 return self._send(401, {"error": "unauthorised"})
             if self.path != "/sessions":
                 return self._send(404, {})
             try:
-                n = min(int(self.headers.get("Content-Length", "0")), 16384)
-                body = json.loads(self.rfile.read(n) or b"{}")
+                body = json.loads(raw or b"{}")
                 allow = [(str(h), int(p)) for h, p in body["allow"]]
                 private = [(str(h), int(p)) for h, p in body.get("allow_private", [])]
             except (ValueError, KeyError, TypeError):

@@ -554,3 +554,21 @@ def test_browser_lost_after_disclosure_is_abandoned_not_retried(
     assert api.get(f"/applications/{app_id}").json()["state"] == "needs_user_action"
     assert runner.run_attempt(aid, "w2") == "ignored"  # a redelivery does not resend
     assert receiver.ledger()["accepted"] == 0
+
+
+def test_refusals_are_delivered_not_broken_pipes(tmp_path):
+    """Regression (CI #26): the control API answered 401 before reading the request body and
+    closed, so a client still sending its body got EPIPE instead of the refusal (10 of 500 in
+    a local loop before the fix)."""
+    from app.modules.execution.sandbox.proxy_service import Registry, control_server
+
+    path = str(tmp_path / "control.sock")
+    srv = control_server(path, Registry(60), CONTROL_TOKEN)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        body = {"allow": [["a", 1]] * 200}  # a body big enough to be sent after the headers
+        codes = [control_request(path, "x" * 28, "POST", "/sessions", body)[0] for _ in range(300)]
+        assert codes == [401] * 300
+    finally:
+        srv.shutdown()
+        srv.server_close()
