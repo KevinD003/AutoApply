@@ -1,0 +1,37 @@
+# TEST ONLY: adds the synthetic receiver (the oracle) and a canary for the browser-execution
+# test (scripts/compose-execution-test.sh). Never use for real data or real destinations.
+#
+# `fixtures` is internal: only the egress proxy (the browser's only way out) and the API (which
+# reads fixture forms when preparing) can reach the receiver and the canary. The receiver's
+# admin port is published on 127.0.0.1 through a separate network for the host-side test.
+services:
+  receiver:
+    build: ./backend
+    command: ["python", "/fixture/receiver.py", "--port", "8799", "--ledger", "/tmp/ledger.db",
+              "--admin-token", "${RECEIVER_ADMIN_TOKEN:?set RECEIVER_ADMIN_TOKEN}"]
+    volumes: ["./fixtures/ats_receiver:/fixture:ro"]
+    networks: [fixtures, receiver_admin]
+    ports: ["127.0.0.1:8799:8799"]
+
+  canary:
+    # Logs every request it receives; the test asserts there are none.
+    build: ./backend
+    command: ["python", "-u", "-c", "import http.server as h\nclass H(h.BaseHTTPRequestHandler):\n def do_GET(s):\n  print('CANARY-HIT', s.command, s.path, flush=True); s.send_response(200); s.end_headers()\n do_POST = do_GET\n def log_message(s, *a): pass\nh.ThreadingHTTPServer(('0.0.0.0', 8798), H).serve_forever()"]
+    networks: [fixtures]
+
+  egress-proxy:
+    networks: [exec_proxyctl, exec_egress, fixtures]
+
+  backend:
+    networks: [default, fixtures]
+
+  worker:
+    environment:
+      NOEFFORTS_SUBMIT_TIMEOUT_SECONDS: "10"
+      NOEFFORTS_CHECKPOINT_TTL_SECONDS: "120"
+      NOEFFORTS_OUTBOX_RELAY_INTERVAL_SECONDS: "1"
+      NOEFFORTS_NAVIGATION_TIMEOUT_SECONDS: "60"
+
+networks:
+  fixtures: { internal: true }
+  receiver_admin: {}

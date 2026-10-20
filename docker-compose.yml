@@ -1,4 +1,13 @@
-# Local development stack. Not hardened for production; see docs/architecture.md.
+# Local stack. Not hardened for production; see docs/architecture.md and
+# docs/execution-service.md (browser execution).
+#
+# Networks: `default` carries the application (database, broker, API, worker, web). Browser
+# execution uses three internal networks so the browser container can reach only the egress
+# proxy (and is reachable by the worker), never the database, broker, API or the internet:
+#   exec_control   worker <-> browser-runner (Playwright protocol)
+#   exec_proxyctl  worker <-> egress-proxy control port
+#   exec_egress    browser-runner -> egress-proxy (the browser's only way out)
+# In this file the proxy has no outbound network at all: no real destination is reachable.
 services:
   postgres:
     image: postgres:16
@@ -22,6 +31,8 @@ services:
       NOEFFORTS_DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/noefforts
       NOEFFORTS_REDIS_URL: redis://redis:6379/0
       NOEFFORTS_CORS_ORIGINS: '["http://localhost:3000"]'
+      NOEFFORTS_BROWSER_ISOLATION: container
+      NOEFFORTS_FIXTURE_ORIGINS: ${NOEFFORTS_FIXTURE_ORIGINS:-[]}
     volumes: [storage:/data/storage]
     ports: ["127.0.0.1:8000:8000"]
     depends_on:
@@ -31,9 +42,55 @@ services:
   worker:
     build: ./backend
     command: ["celery", "-A", "app.worker", "worker", "--beat", "--loglevel=info", "--concurrency=2"]
-    environment: *backend-env
+    environment:
+      <<: *backend-env
+      NOEFFORTS_BROWSER_RUNNER_URL: http://browser-runner:9330
+      NOEFFORTS_BROWSER_RUNNER_TOKEN: ${BROWSER_RUNNER_TOKEN:?set BROWSER_RUNNER_TOKEN in .env}
+      NOEFFORTS_EGRESS_CONTROL_URL: http://egress-proxy:3129
+      NOEFFORTS_EGRESS_CONTROL_TOKEN: ${EGRESS_CONTROL_TOKEN:?set EGRESS_CONTROL_TOKEN in .env}
     volumes: [storage:/data/storage]
+    networks: [default, exec_control, exec_proxyctl]
     depends_on: [backend]
+
+  browser-runner:
+    build: ./browser
+    environment:
+      RUNNER_TOKEN: ${BROWSER_RUNNER_TOKEN:?set BROWSER_RUNNER_TOKEN in .env}
+      EGRESS_PROXY: http://egress-proxy:3128
+      RUNNER_PUBLIC_HOST: browser-runner
+      MAX_SESSIONS: "2"
+      MAX_SESSION_SECONDS: ${BROWSER_MAX_SESSION_SECONDS:-600}
+    networks: [exec_control, exec_egress]
+    user: "10002:10002"
+    read_only: true
+    tmpfs: ["/tmp:size=512m,mode=1777"]
+    shm_size: 256m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      # Docker's default profile plus the four calls Chromium's sandbox needs (browser/README.md).
+      - seccomp=${BROWSER_SECCOMP_PROFILE:-./browser/seccomp.json}
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    cpus: 1.5
+    pids_limit: 512
+    ulimits:
+      nofile: { soft: 4096, hard: 4096 }
+    restart: unless-stopped
+
+  egress-proxy:
+    build: ./backend
+    command: ["python", "-m", "app.modules.execution.sandbox.proxy_service"]
+    environment:
+      EGRESS_CONTROL_TOKEN: ${EGRESS_CONTROL_TOKEN:?set EGRESS_CONTROL_TOKEN in .env}
+    networks: [exec_proxyctl, exec_egress]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    restart: unless-stopped
 
   frontend:
     build:
@@ -41,6 +98,12 @@ services:
       args: { NOEFFORTS_BACKEND_URL: "http://backend:8000" }
     ports: ["127.0.0.1:3000:3000"]
     depends_on: [backend]
+
+networks:
+  default: {}
+  exec_control: { internal: true }
+  exec_proxyctl: { internal: true }
+  exec_egress: { internal: true }
 
 volumes:
   pgdata:

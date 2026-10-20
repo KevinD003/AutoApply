@@ -90,7 +90,13 @@ def list_attempts(
                     for c in cps
                 ],
                 "evidence": [
-                    {"kind": e.kind, "strength": e.strength, "data": e.data, "at": e.created_at}
+                    {
+                        "kind": e.kind,
+                        "strength": e.strength,
+                        "data": e.data,
+                        "at": e.created_at,
+                        "retain_until": e.retain_until,
+                    }
                     for e in ev
                 ],
             }

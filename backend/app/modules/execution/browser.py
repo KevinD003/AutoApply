@@ -124,6 +124,92 @@ def _netns_wrapper(
     return path
 
 
+class RemoteBrowser:
+    """A browser in the browser-runner service, reachable only through an egress-proxy session
+    that allows exactly this attempt's destination. Fails closed: any refusal or error raises
+    IsolationUnavailable, and nothing falls back to a local browser."""
+
+    def __init__(self, host: str, port: int, allow_private: bool):
+        from app.core.config import get_settings
+
+        self.s = get_settings()
+        self.host, self.port, self.allow_private = host, port, allow_private
+        self.proxy_session = self.runner_session = None
+
+    @staticmethod
+    def _call(base: str, header: str, token: str, method: str, path: str, body=None) -> dict:
+        import json as _json
+        import urllib.error
+        import urllib.request
+
+        req = urllib.request.Request(
+            base.rstrip("/") + path,
+            data=_json.dumps(body).encode() if body is not None else None,
+            method=method,
+            headers={header: token, "Content-Type": "application/json"},
+        )
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        try:
+            with opener.open(req, timeout=60) as r:
+                return _json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            detail = e.read()[:300].decode("utf-8", "replace")
+            raise IsolationUnavailable(f"{base} refused ({e.code}): {detail}") from e
+        except OSError as e:
+            raise IsolationUnavailable(f"{base} unreachable ({type(e).__name__})") from e
+
+    def _proxy(self, method: str, path: str, body=None) -> dict:
+        s = self.s
+        return self._call(
+            s.egress_control_url, "X-Control-Token", s.egress_control_token, method, path, body
+        )
+
+    def _runner(self, method: str, path: str, body=None) -> dict:
+        s = self.s
+        return self._call(
+            s.browser_runner_url, "X-Runner-Token", s.browser_runner_token, method, path, body
+        )
+
+    def open(self) -> str:
+        dest = [[self.host, self.port]]
+        self.proxy_session = self._proxy(
+            "POST",
+            "/sessions",
+            {"allow": dest, "allow_private": dest if self.allow_private else []},
+        )
+        self.runner_session = self._runner(
+            "POST",
+            "/sessions",
+            {
+                "proxy_username": self.proxy_session["id"],
+                "proxy_password": self.proxy_session["token"],
+                "allowed_host": self.host,
+            },
+        )
+        return self.runner_session["ws_endpoint"]
+
+    @property
+    def decisions(self) -> list:
+        """Denied destinations of this session, in the shape EgressLog expects."""
+        from app.modules.execution.sandbox.egress_proxy import Decision
+
+        if not self.proxy_session:
+            return []
+        out = []
+        for hp in self._proxy("GET", f"/sessions/{self.proxy_session['id']}/decisions")["denied"]:
+            h, _, p = hp.rpartition(":")
+            out.append(Decision(h, int(p), False, "denied"))
+        return out
+
+    def close(self) -> None:
+        for fn, sess in ((self._runner, self.runner_session), (self._proxy, self.proxy_session)):
+            if sess:
+                try:
+                    fn("DELETE", f"/sessions/{sess['id']}")
+                except IsolationUnavailable:
+                    pass  # the runner's time limit and the proxy's TTL end it anyway
+
+
 WORKDIR_PREFIX = "ne-browser-"
 
 
@@ -200,10 +286,18 @@ def browser_session(
             launch["env"] = {"PATH": "/usr/bin:/bin", "HOME": workdir, "TMPDIR": workdir}
         elif isolation == "off":
             launch["executable_path"] = chrome
-        else:
+        elif isolation != "container":
             raise IsolationUnavailable(f"unknown isolation mode {isolation!r}")
         try:
-            browser = p.chromium.launch(**launch)
+            if isolation == "container":
+                remote = RemoteBrowser(host, port, allow_private_destination)
+                stack.callback(remote.close)
+                log.proxy = remote
+                browser = p.chromium.connect(remote.open(), timeout=30_000)
+            else:
+                browser = p.chromium.launch(**launch)
+        except IsolationUnavailable:
+            raise
         except Exception as e:  # noqa: BLE001 - never retry without isolation
             raise IsolationUnavailable(
                 f"isolated browser did not start ({type(e).__name__})"
@@ -215,7 +309,7 @@ def browser_session(
             ctx.set_default_navigation_timeout(nav_timeout_ms)
             ctx.set_default_timeout(nav_timeout_ms)
             if intercept:
-                _install_interception(ctx, allowed, log)
+                _install_interception(ctx, allowed, log, driver_fetch=isolation != "container")
             pages = []
             ctx.on("page", lambda pg: pg.close() if pages else pages.append(pg))
             page = ctx.new_page()
@@ -224,13 +318,17 @@ def browser_session(
             browser.close()  # always: a worker that loses authority closes its browser
 
 
-def _install_interception(ctx, allowed: str, log: "EgressLog") -> None:
+def _install_interception(ctx, allowed: str, log: "EgressLog", *, driver_fetch=True) -> None:
+    """`driver_fetch=False` (container mode): never fetch or connect from the Playwright
+    driver, which runs in the browser container but outside the browser's proxy settings;
+    every allowed request is left to the browser, so it can only leave through the proxy."""
+
     def route(r):
         url = r.request.url
         if not (url.startswith(("http://", "https://")) and _origin(url) == allowed):
             log.blocked.append(url[:200])
             return r.abort("blockedbyclient")
-        if r.request.method not in ("GET", "HEAD"):
+        if r.request.method not in ("GET", "HEAD") or not driver_fetch:
             # Never fetch-and-fulfill a non-idempotent request: if that fetch is still pending
             # (or timed out) when the browser closes, Playwright resumes the paused original
             # and the employer receives it twice (reproduced). The browser sends it, once.
@@ -259,6 +357,8 @@ def _install_interception(ctx, allowed: str, log: "EgressLog") -> None:
         return r.fulfill(response=resp)
 
     ctx.route("**/*", route)
+    if not driver_fetch:
+        return  # WebSockets stay in the browser and reach the proxy like everything else
 
     def ws(w):
         if _origin(w.url.replace("ws", "http", 1)) != allowed:

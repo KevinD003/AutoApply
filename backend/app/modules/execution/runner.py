@@ -71,7 +71,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         content, docs, adapter_name = _snapshot(aid)
         adapter = ADAPTERS[adapter_name](content, docs)
         dest = content["destination"]
-        if s.browser_isolation != "netns" and s.env == "production":
+        if s.browser_isolation not in ("netns", "container") and s.env == "production":
             svc.fail_safe(aid, worker, gen, "browser network isolation is required")
             return "failed_safe"
         try:

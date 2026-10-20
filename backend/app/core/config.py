@@ -44,7 +44,13 @@ class Settings(BaseSettings):
     # Browser network isolation: "netns" (default; required in production) runs Chromium in
     # its own network namespace whose only way out is the allow-listing egress proxy. "off" is
     # accepted only outside production, for machines without namespace support.
+    # netns: browser in namespaces inside the worker; container: browser in the separate
+    # browser-runner service behind the egress-proxy service; off: development only.
     browser_isolation: str = "netns"
+    browser_runner_url: str = "http://browser-runner:9330"
+    browser_runner_token: str = ""
+    egress_control_url: str = "http://egress-proxy:3129"
+    egress_control_token: str = ""
 
     # Optional integrations. Absent credentials disable the feature rather than failing.
     anthropic_api_key: str | None = None

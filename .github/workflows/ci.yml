@@ -105,3 +105,15 @@ jobs:
         run: ./scripts/test_smoke_lib.sh
       - name: Docker Compose smoke test
         run: ./scripts/docker-smoke.sh
+
+  execution-compose:
+    # Browser execution in Compose against the synthetic receiver only: sandboxed browser
+    # container, egress proxy, internal networks, negative tests. No real destinations exist.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Docker and kernel facts (recorded with the result)
+        run: docker version --format '{{.Server.Version}}'; uname -r; cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns || true
+      - name: Browser execution in Compose (synthetic receiver only)
+        run: ./scripts/compose-execution-test.sh
+

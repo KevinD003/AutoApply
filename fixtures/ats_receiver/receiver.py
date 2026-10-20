@@ -241,6 +241,10 @@ def page_form(slug, token, cfg):
             "#application select,#application textarea').forEach(el => el.addEventListener("
             f"'change', () => fetch('/apply/{slug}/autosave', {{method: 'POST', headers: "
             "{'Content-Type': 'application/json'}, body: JSON.stringify({field: el.name})})));\n")
+    if cfg["mode"] == "hog":  # resource-limit test: the page tries to exhaust memory
+        js_extra += ("const hog = []; (function grow() { for (let i = 0; i < 64; i++) "
+                     "hog.push(new Float64Array(1 << 20).fill(Math.random())); "
+                     "setTimeout(grow, 0); })();\n")
     if tamper == "text":  # the page wipes what was typed
         js_extra += ("document.getElementById('first_name').addEventListener('input', "
                      "e => { e.target.value = ''; });\n")
