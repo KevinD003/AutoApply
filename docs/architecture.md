@@ -184,18 +184,56 @@ Chromium --proxy-server=127.0.0.1:P ─> relay ─> EgressProxy (outside): exact
 destination only; resolves, refuses non-public IPs (fixture exception is test/dev only)
 ```
 
-The browser gets PATH/HOME/TMPDIR only. Production refuses to run without this isolation
-(`NOEFFORTS_BROWSER_ISOLATION=netns`, no user-facing switch). In-process layers (route
-allow-list, redirect checks, resolver rules, service workers blocked, pop-ups closed) remain as
-defence in depth; non-idempotent requests are passed to the browser (`continue_`), never
-fetched and fulfilled, because Playwright resumes a paused request whose fetch is still
-pending when the browser closes, and the employer then receives it twice (reproduced; covered
-by `test_closing_the_browser_mid_submit_never_resends`).
-Limits: hiding is a deny-list on a shared filesystem under the same OS user; there is no
-seccomp profile or cgroup limit. Before untrusted live browsing, run browser workers as a
-dedicated user in a container that mounts no secrets.
+The browser gets PATH/HOME/TMPDIR only, starts in its own work directory (not the worker's),
+and inherits no descriptors beyond stdio and the DevTools pipes. Production refuses to run
+without this isolation (`NOEFFORTS_BROWSER_ISOLATION=netns`, no user-facing switch); if the
+namespaces or the browser cannot be started, the attempt stops before disclosure (no fallback
+to an unisolated browser). Work directories are named after the worker PID; the sweep task
+removes those whose worker is gone (a hard-killed worker cannot clean up).
 
-Test oracle: `fixtures/ats_receiver/` (never deployed) with its own ledger and failure modes.
+Proxy policy: HTTPS arrives as CONNECT, plain HTTP as absolute-form requests; both are checked
+against the exact destination host:port, every resolved address must be public (unless that
+exact host:port is a fixture origin, which production ignores), and the proxy connects to the
+address it checked, so a later DNS answer cannot redirect it. Redirect hops, subresources and
+WebSockets reach the proxy as new requests and get the same check.
+
+In-process layers (route allow-list, redirect checks, resolver rules, service workers blocked,
+pop-ups closed) remain as defence in depth. GET/HEAD are fetched by the route handler with
+redirects checked hop by hop and aborted on any fetch error; other methods are passed to the
+browser (`continue_`) and sent once by Chromium. Reason: with Playwright Python 1.56.0 and
+Chromium 141 (the pinned versions), a POST answered through `route.fetch` + `fulfill` was sent
+a second time when the browser closed while that fetch was pending or had timed out (paused
+original resumed). This is observed behaviour of that version and workflow, not a claim about
+Playwright in general; `test_closing_the_browser_mid_submit_never_resends` pins it. None of
+this guarantees exactly-once delivery: a response lost after the employer accepted, or an
+employer-side duplicate, stays possible, which is why an unanswered submit becomes `unknown`
+and is reconciled, never resent (broker redelivery is refused by the claim CAS).
+
+Platform requirements: Linux with `unshare` (util-linux) and user, network, PID and mount
+namespaces. Unprivileged workers need unprivileged user namespaces; Ubuntu 24.04 restricts
+them through AppArmor, which CI lifts with `sysctl kernel.apparmor_restrict_unprivileged_userns=0`
+on its throwaway runner. That is a CI host setting, not the supported deployment configuration:
+a deployment should give browser workers a host or container profile that permits these
+namespaces for that service only (Docker's default seccomp profile does not). The Compose stack
+does not support execution yet: the image has no browser, so attempts fail safe. On macOS there
+are no Linux namespaces; development there can run everything except execution, or execution
+against fixtures with `NOEFFORTS_BROWSER_ISOLATION=off`, which only non-production accepts.
+
+Limits:
+- Hiding is a deny-list on a shared filesystem under the same OS user, not a minimal root
+  filesystem: other files readable by that user stay readable.
+- Chromium runs with Playwright's default `--no-sandbox` as uid 0 of a nested user namespace
+  (full capabilities inside it, none outside); there is no seccomp profile or cgroup limit.
+- Before untrusted live browsing, run browser workers as a dedicated user in a container that
+  mounts no secrets, and evaluate enabling Chromium's own sandbox.
+
+Adapters (`execution/adapters/`, chosen at queue time by `policy.adapter_for`, recorded on the
+attempt): `fixture_ats` for the generic synthetic form and `greenhouse_hosted` for forms captured
+from a Greenhouse-style job post (`docs/greenhouse-adapter.md`). Both run only against fixture
+origins; capability flags are served at `GET /api/execution/capabilities`.
+
+Test oracle: `fixtures/ats_receiver/` (never deployed) with its own ledger and failure modes,
+including the labelled Greenhouse approximation `greenhouse_like.py`.
 
 ## Planned components (not built)
 

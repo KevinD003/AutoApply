@@ -9,6 +9,80 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Milestone 2 closeout and first ATS adapter (2026-10-20)
+
+**Revisions and CI** (links: `https://github.com/KevinD003/AutoApply/actions/runs/<id>`)
+
+| Revision | What | CI run (all jobs) | Backend tests | e2e | Docker smoke |
+|---|---|---|---|---|---|
+| `c7c4109` | milestone 2 as handed over | #13 [39359765119](https://github.com/KevinD003/AutoApply/actions/runs/39359765119): backend, frontend, docker-smoke passed | 188 passed, 0 skipped (CI log) | step passed | passed |
+| `0fca81b` | closeout fixes (below) | #14 [39363852006](https://github.com/KevinD003/AutoApply/actions/runs/39363852006): all passed | 193 passed locally; CI step passed | 22 passed locally (see caveat) | passed in CI |
+| `cc6c1da` | Greenhouse adapter + docs | #15 [39365659479](https://github.com/KevinD003/AutoApply/actions/runs/39365659479): backend, frontend (e2e), docker-smoke all passed | 212 passed, 0 skipped (local, `pytest -rs`) | 24 passed locally (desktop + mobile) | passed in CI |
+
+Job links for #13: [backend](https://github.com/KevinD003/AutoApply/actions/runs/39359765119/job/118422934216),
+[frontend](https://github.com/KevinD003/AutoApply/actions/runs/39359765119/job/118422933900),
+[docker-smoke](https://github.com/KevinD003/AutoApply/actions/runs/39359765119/job/118422934152).
+
+Local vs CI:
+- **Sandbox (local):** runs as root, so the browser namespaces are created without a user
+  namespace for the outer layer. PostgreSQL 16 is a disposable `initdb` cluster. Chromium is
+  /opt/pw-browsers build 1194. No Docker daemon.
+- **CI:** a non-root runner, using unprivileged user namespaces after the AppArmor sysctl
+  (a CI host setting). PostgreSQL and Redis run as service containers (backend Redis from
+  apt). Chromium is installed by Playwright. The real Docker daemon is used for the smoke
+  test.
+- **Caveat:** the local e2e run for `0fca81b` overlapped edits to backend files; its servers
+  had loaded most code at start. CI #14 is the authoritative e2e result for that revision.
+- **Docker:** Smoke-tested in GitHub CI; not yet verified on the user's Mac.
+
+**Closeout findings (each with a test that failed first or that pins existing behaviour)**
+
+| # | Finding | Kind | Fix | Test |
+|---|---|---|---|---|
+| C1 | Chromium inherited the worker's working directory (still the hidden backend tree, because a mount does not move a process already inside it) and descriptors above 3/4 | real gap, reproduced (`CWD_LEAK`, `FD_LEAK` before the fix) | chdir to the work dir; close fds ≥ 5 before exec | `test_browser_cannot_see_worker_process_secrets_or_other_attempts` |
+| C2 | A browser that fails to start inside the namespaces surfaced as a generic error | behaviour was already a safe stop; made explicit | launch failure → `IsolationUnavailable` → failed_safe, never an unisolated retry | `test_isolation_failure_refuses_instead_of_browsing_unrestricted[unshare_rejects, unshare_missing]` |
+| C3 | Work directories of hard-killed workers were left behind | real (observed) | PID-tagged work dirs; the sweep task removes those whose PID is gone | `test_stale_workdirs_of_dead_workers_are_removed` |
+| C4 | Proxy DNS and CONNECT had no direct tests | evidence gap | none needed | `test_proxy_checks_every_resolved_address_and_connects_to_the_checked_one`, `test_proxy_connect_and_absolute_http_follow_the_same_policy` |
+| C5 | Cancel during a code wait was not tested | evidence gap | none needed (already refused) | code-wait regression: cancel 409, one attempt |
+| C6 | Smoke checks had no test of their failure paths | evidence gap | `scripts/smoke_lib.sh` | `scripts/test_smoke_lib.sh` (CI): request failure, HTTP error, wrong content, exited container, docker failing |
+
+**Regression evidence re-verified (implementation · test · result)**
+
+| Area | Implementation | Tests | Limitation |
+|---|---|---|---|
+| Checkpoint state frozen | `package.execution_owns_state` in `ensure_current` and the user transition route | `test_reads_and_user_actions_during_code_wait_cannot_reopen_submission` (package reads, user transitions incl. cancel → 409, one attempt); e2e reload during the code wait | the code wait reuses `needs_user_action`; the guard, not a separate state, keeps the meanings apart |
+| Duplicate POST at teardown | non-GET/HEAD → `route.continue_()`; failed GET fetch → abort | `test_closing_the_browser_mid_submit_never_resends[netns,off]` (fails on the old code; local server counts POSTs) + the receiver-ledger e2e that first showed 2 acceptances | observed with Playwright Python 1.56.0 / Chromium 141, not claimed for Playwright in general. Not exactly-once: an accepted-but-unanswered submit is `unknown` and reconciled; broker redelivery is refused by the claim CAS (`test_redelivery_after_*`) |
+| HTTP methods and redirects | GET/HEAD fetched with hops checked; other methods sent by the browser, hops checked by the proxy (host:port); no retries after the send gate; ambiguous responses → unknown | isolation and failure-mode tests | a POST redirect to another path on the same host:port is followed |
+| UI state | `ExecutionCard` polls only while active, then refreshes once | e2e: no attempt requests for 4 s after the final state; no Cancel after `unknown`; desktop + mobile for queueing, verification, cancel, unknown, reconciliation | — |
+| Protected mutations | send gate rebuilds content under the app row lock in REPEATABLE READ and compares hashes, so every mutation path is checked by the same validated-versioning step whether or not the path locks | `test_every_protected_mutation_stops_a_running_attempt[10 paths]`, approve-vs-edit interleavings, `test_restoring_a_fact_does_not_resurrect_a_revoked_approval` | a mutation committed after the gate does not change what is sent (`test_mutations_after_send_gate_do_not_change_what_was_sent`) |
+| Filled values and bytes | readback of every control; disclosure digest = approved digest = receiver digest | tamper tests (4); `test_autosave_and_upload_are_counted_separately_from_acceptance`; Greenhouse full-run test | — |
+| Material form change | fingerprint check before disclosure and after fill | `conditional_field` mode; Greenhouse `gh_drift` | — |
+| Tenancy of evidence and checkpoints | owner checks | `test_execution_resources_are_tenant_bound`, cross-user code 404, evidence deletion 404 | — |
+| Retention and leaks | daily purge; user deletion; leak scans of DB rows and real worker logs | `test_retention_purge`, `test_no_secrets_in_real_worker_logs`, code-checkpoint leak scan | CI debug artifacts (Playwright traces of the *test* browser, uploaded only on failure, 7-day retention) contain what the test typed, including synthetic codes; they are not scanned. Never run e2e with real data |
+
+**First adapter: Greenhouse-hosted (fixture approximation)** — `backend/tests/test_greenhouse_adapter.py`
+(19 tests, all real processes against the receiver; nothing simulated except the fixture itself)
+
+| Requirement | Test | Receiver ledger |
+|---|---|---|
+| Posting identity (real hosts, embed, fixture path; fixture path on a real host is not a fixture) | `test_posting_identity_from_real_and_fixture_urls` | — |
+| Exact wording, help, options, required, types | `test_schema_keeps_exact_wording_help_options_and_required` | — |
+| Hidden and unknown controls → unsupported | `test_hidden_and_unknown_controls_become_unsupported` | — |
+| JSON vs page cross-check (extra field, reworded question) | `test_job_data_and_page_must_agree`, `test_capture_refused_when_page_disagrees_with_job_data` | — |
+| Real posts not read | `test_real_greenhouse_posts_are_not_read` | — |
+| Unsupported required control is a checkpoint (no input, no approval) | `test_required_unsupported_control_is_a_checkpoint` | — |
+| Conditional question not asked / asked and required | `test_conditional_question_follows_its_trigger`, `test_conditional_question_is_filled_when_it_applies` | 1 acceptance with the conditional answer |
+| Full run: exact values, withheld sensitive answer blank, attachment disclosed once with the approved digest, confirmation-page evidence | `test_full_run_is_confirmed_and_sends_exactly_the_approved_values` | 1 acceptance, 1 upload |
+| Security code: wrong then right; not accepted before the code | `test_security_code_wrong_then_right` (real worker process) | 0 before, 1 after |
+| CAPTCHA → stop before disclosure | `test_captcha_stops_before_anything_is_disclosed` | 0 disclosures, 0 accepted |
+| Form changed after approval → stop before disclosure | `test_form_changed_after_approval_stops_before_disclosure` | 0, 0 |
+| Rejected / unknown / dropped / upload failure; never resent | `test_outcome_classification[5 modes]` | 0 / 0 / 1 / 1 / 0, unchanged after a second delivery |
+| Capability flags | `test_capability_flags` | — |
+| UI: read form, review exact wording, conditional "not asked", approve, submit | e2e "Greenhouse-style form: …" (desktop + mobile) | +1 acceptance, 1 attempt |
+
+Fixture compatibility only: the fixture is an approximation built from public documentation,
+not Greenhouse markup; no real employer form has been tested.
+
 ## Validation milestone 2 (submission UI, real failures, isolation)
 
 Each row names the test, whether the failure is **real** (a real process, broker, browser or
@@ -34,7 +108,7 @@ the outcome counted by the receiver's ledger.
 | B3 | Submission card re-fetched attempts in a tight loop (the effect depended on its own result) and left the status stale after the final state (Cancel button still shown) | browser test | poll only while an attempt is active; refresh the application once at the end | e2e: no attempt requests in 4 s after the final state; no Cancel button after `unknown` |
 | B4 | e2e worker supervisor started Celery in its own session, so Playwright's teardown left the worker running | stale processes after a run | worker stays in the supervisor's process group | — (harness) |
 | B6 | Docker web container exited at start: `next.config.ts` needs TypeScript, absent from the production image; the auto-install failed as the non-root user. A global TypeScript in this sandbox had masked it locally | CI docker-smoke logs | `next.config.mjs` | CI `docker-smoke` |
-| B5 | CI run #2 Phase A failure: the test filled the login form's identically labelled fields during a slow client-side navigation to /register | reproduced deterministically with a 1.5 s route delay | wait for the URL and the register button before filling | `navigation-race.spec.ts` |
+| B5 | CI run #2 Phase A failure (likely cause; traces of that run were not kept): the test filled the login form's identically labelled fields during a slow client-side navigation to /register | reproduced deterministically with a 1.5 s route delay | wait for the URL and the register button before filling | `navigation-race.spec.ts` |
 
 **Matrix**
 
@@ -63,7 +137,7 @@ the outcome counted by the receiver's ledger.
 | Full run through the proxy | `test_full_run_goes_through_the_proxy` + every e2e submission | real | confirmed; 1 accepted |
 | Evidence retention and deletion | `test_retention_purge`, `test_user_can_delete_evidence_and_others_cannot`, `test_cannot_delete_evidence_while_running` | real (retention date set in the past) | purged; other users get 404; 409 while running |
 | Fake secrets not in logs | `test_no_secrets_in_real_worker_logs` (real Celery worker at DEBUG), leak scan in the code-checkpoint test | real | 0 hits |
-| CI #2 investigation | `navigation-race.spec.ts` | real slow navigation (route delay) | root cause B5; no retries or sleeps added |
+| CI #2 investigation | `navigation-race.spec.ts` | real slow navigation (route delay) | B5 reproduced deterministically and fixed; run #2's traces were not kept, so it is the likely, not the proven, cause of that run; no retries or sleeps added |
 | Docker smoke | CI job `docker-smoke` (`scripts/docker-smoke.sh`) | real Docker on GitHub's runner | **passed** in CI run #12: build, migrations on start, register/session, web pages and API proxy, worker answers a broker ping, data survives a backend restart. Two defects found on the way: the web image could not load `next.config.ts` without TypeScript (fixed with `.mjs`), and a `| grep -q` pipeline failed the step under pipefail. Never run in this sandbox (no Docker daemon) |
 
 ## Earlier Phase C rows (commit `ebb3e3b`; superseded cells marked)
@@ -105,7 +179,7 @@ the outcome counted by the receiver's ledger.
 | Migrations | Alembic | `test_migrations.py`: empty→head, populated Phase A→head with data preserved, downgrade/re-upgrade (disposable DB) | pass | Phase A's downgrade was edited after the fact (not deployed anywhere); future fixes use new migrations |
 | Test DB safety | conftest refuses non-`*_test` DBs | — | implemented | — |
 | CI | `.github/workflows/ci.yml` | see implementation-status for the run result | — | — |
-| Docker | `docker-compose.yml` | CI `docker-smoke` | see the milestone table above | no Docker daemon in this sandbox |
+| Docker | `docker-compose.yml` | CI `docker-smoke` | Smoke-tested in GitHub CI; not yet verified on the user's Mac. | no Docker daemon in this sandbox |
 
 ## Not credited
 

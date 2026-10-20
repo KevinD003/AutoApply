@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-20 (Phase C validation milestone 2). For requirement-by-requirement evidence see
+Last updated: 2026-10-20 (milestone 2 closeout + first ATS adapter, fixture-only). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -28,7 +28,7 @@ Last updated: 2026-10-20 (Phase C validation milestone 2). For requirement-by-re
 | `ffe00f7` | Real broker outage and real Redis redelivery |
 | `b4c3023` | Browser in its own network namespace behind an egress proxy |
 | `f5bd82f` | Evidence retention purge and deletion; secret scan of real worker logs |
-| `7ce41ff` | CI run #2 root cause (navigation race in the Phase A test) + regression spec |
+| `7ce41ff` | Reproduced likely cause of CI run #2 (navigation race in the Phase A test) + regression spec |
 | `e11484d` | Docker Compose smoke test in CI |
 | `d87ef12` | Application state frozen while a worker holds an attempt (B1) |
 | `e066c1a` | No re-send on browser close (B2); PID/mount namespaces hide orchestrator files and processes |
@@ -36,6 +36,34 @@ Last updated: 2026-10-20 (Phase C validation milestone 2). For requirement-by-re
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Milestone 2 closeout and first ATS adapter (2026-10-20)
+
+Evidence, revisions and CI links: `docs/evidence-matrix.md` (top section). Adapter:
+`docs/greenhouse-adapter.md`. Live pilot gate (not executed): `docs/live-pilot-gate.md`.
+
+| Commit | Content |
+|---|---|
+| `0fca81b` | Closeout: browser cwd/fd isolation fix (C1), explicit launch-failure refusal (C2), crash work-dir cleanup (C3), proxy DNS/CONNECT tests (C4), cancel during the code wait (C5), smoke-check failure tests (C6) |
+| `cc6c1da` | Greenhouse-hosted adapter + labelled fixture, 19 backend tests, desktop + mobile e2e |
+
+| Command (on `cc6c1da` code) | Result |
+|---|---|
+| `cd backend && uv run ruff check . && uv run ruff format --check .` | clean |
+| `cd backend && uv run pytest -rs` | **212 passed, 0 skipped** (399 s) |
+| `cd frontend && npx tsc --noEmit && npm run lint` | clean |
+| `cd frontend && npx playwright test` | **24 passed** (desktop + mobile) |
+| `./scripts/test_smoke_lib.sh` | 7/7 checks behave as expected (locally and in CI) |
+| GitHub Actions | #14 on `0fca81b`: all jobs passed; #15 [39365659479](https://github.com/KevinD003/AutoApply/actions/runs/39365659479): backend, frontend (e2e), docker-smoke all passed |
+
+Docker: Smoke-tested in GitHub CI; not yet verified on the user's Mac.
+
+Release blockers for any real use:
+- the browser sandbox limits (deny-list hiding under the same OS user, Chromium's own sandbox
+  off, no seccomp or cgroup limits);
+- no real-page verification of the Greenhouse mapping;
+- legal review of automated submission;
+- the separate pilot permissions in `docs/live-pilot-gate.md`.
 
 ## Phase C validation milestone 2 (2026-10-19/20)
 
@@ -51,7 +79,7 @@ Full evidence, real vs simulated, and the six defects this round found:
 | GitHub Actions run #12 on `bae5120` | **backend, frontend, docker-smoke all passed** |
 
 Not done or not proven:
-- **Docker:** passes in CI only; never run in this sandbox (no daemon).
+- **Docker:** Smoke-tested in GitHub CI; not yet verified on the user's Mac. Never run in this sandbox (no daemon).
 - **Browser sandbox:** hiding is a deny-list under the same OS user. There is no seccomp
   profile, cgroup limit or dedicated user, and those are required before untrusted live
   browsing.
@@ -69,8 +97,8 @@ Not done or not proven:
 | `uv run ruff check . && uv run ruff format --check .` at `289e0b0` | clean (`64a560a` failed CI's format check; fixed in `289e0b0`) |
 | `cd frontend && npx tsc --noEmit && npm run lint` | clean |
 | `cd frontend && npx playwright test` | 4 passed (Phase A + B, desktop + mobile); execution UI not covered |
-| GitHub Actions CI | run #1 (`64a560a`): failed, backend formatting. Run #2 (`289e0b0`): backend **passed** (lint + full pytest); frontend e2e **failed** — Phase A desktop and mobile timed out waiting for the profile page after registration, Phase B passed. Run #3 (`400f3c0`, same code + docs) and run #4 (`ad57210`): **all jobs passed**. Root cause later found and fixed in `7ce41ff`: the test typed into the login form's identically labelled fields while a slow client-side navigation to /register was still in progress (reproduced deterministically with a 1.5 s route delay; regression spec `navigation-race.spec.ts`). |
-| Docker Compose | **untested** — no Docker daemon in the sandbox |
+| GitHub Actions CI | run #1 (`64a560a`): failed, backend formatting. Run #2 (`289e0b0`): backend **passed** (lint + full pytest); frontend e2e **failed** — Phase A desktop and mobile timed out waiting for the profile page after registration, Phase B passed. Run #3 (`400f3c0`, same code + docs) and run #4 (`ad57210`): **all jobs passed**. Most likely cause later reproduced and fixed in `7ce41ff` (the run's traces were not kept, so this is strong supporting evidence, not a forensic certainty about that run): the test typed into the login form's identically labelled fields while a slow client-side navigation to /register was still in progress (reproduced deterministically with a 1.5 s route delay; regression spec `navigation-race.spec.ts`). |
+| Docker Compose | at the time untested here (no Docker daemon). Now: Smoke-tested in GitHub CI; not yet verified on the user's Mac. |
 
 Receiver-counted outcomes (independent ledger), all from `tests/test_execution_failures.py`,
 `tests/test_execution_security.py`, `tests/test_celery_execution.py`:
@@ -125,7 +153,7 @@ employer.
 | Uncertain submissions cannot be blindly re-queued | **was failing**: the API allowed `submitted_unconfirmed → queued` by the user in one call. **Fixed**: transition removed; reconciliation endpoint requires a written check and explicit confirmation; re-queueing then requires a fresh approval | `test_uncertain_submission_cannot_be_requeued_directly`, `test_unknown_submission_outcome_never_auto_retries` |
 | Worker restarts do not lose durable state | pass for what exists: a separate process writes a transition and exits; a fresh process reads it back. Concurrent writers conflict (version column) instead of overwriting. **Limitation:** Phase A/B have no long-running application tasks, so killing a worker mid-task is not yet testable; Phase C must add that test. | `test_application_state_survives_process_restart`, `test_concurrent_writers_conflict_instead_of_overwriting` |
 | Worker loads all models | **was a latent bug** (only `UserSession` imported; any task touching applications would fail). Fixed. | covered by the restart test's subprocess |
-| Docker | **untested** — no Docker daemon in this sandbox | — |
+| Docker | Smoke-tested in GitHub CI; not yet verified on the user's Mac. | CI job `docker-smoke` |
 
 ## Phase A — Local foundation
 
@@ -141,7 +169,7 @@ employer.
 | Match explanations | partial (preference checks, no scoring) |
 | Documents: upload, immutable versions, protected download | complete (no preview) |
 | Tracker with durable states, timeline, reconciliation | complete for manual tracking |
-| Docker Compose | untested |
+| Docker Compose | Smoke-tested in GitHub CI; not yet verified on the user's Mac. Execution inside Compose is not supported (no browser in the image; attempts fail safe) |
 | Account deletion / data export | not started |
 
 ## Phase B — Preparation (this milestone)
@@ -176,7 +204,8 @@ employer.
 | Verification-code checkpoints | complete (worker holds a slot while waiting, bounded) |
 | Minimal evidence | complete; daily retention purge; user deletion (refused while running) |
 | Browser isolation | network + PID + mount namespaces, egress proxy, locked hiding mounts; production refuses to run without it. Limit: same OS user, deny-list |
-| Real employer adapter | **not started** — all real destinations are refused |
+| ATS adapter | Greenhouse-hosted, **fixture-verified only** (`docs/greenhouse-adapter.md`); real destinations refused |
+| Real employer execution | **not started** — all real destinations are refused; pilot gate proposed, not approved |
 | Execution UI | browser-tested, desktop and mobile, receiver as oracle |
 | Readback mismatch | forced for text, select, checkbox, file |
 
@@ -195,7 +224,7 @@ spend reporting.
 | Freehire API | read in code and public docs | network-blocked here | no | no |
 | Gmail API | requirements documented | none | no | no |
 | LLM provider | — | no key configured | interface only | fake provider in tests only |
-| Real ATS (Greenhouse, Lever, …) | — | — | no adapter; refused at queue | — |
+| Real ATS (Greenhouse, Lever, …) | Greenhouse public Job Board API docs read | none | Greenhouse-hosted adapter against a local approximation only; real posts not read, real destinations refused | fixture only |
 | REA | README/docs read | `--help` ran once | not used for any analysis | — |
 
 ## Known limitations

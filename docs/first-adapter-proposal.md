@@ -1,7 +1,8 @@
 # Proposal: first ATS adapter (not started)
 
-Status: **proposal only.** Nothing here is implemented, and no real employer or ATS was
-contacted. Real destinations stay refused (`execution/policy.py`) until this adapter has its own
+Status: **implemented against the local fixture only** (see `docs/greenhouse-adapter.md`).
+Nothing has been run against Greenhouse or any real employer, and no real employer or ATS was
+contacted. The live pilot gate is `docs/live-pilot-gate.md`. Real destinations stay refused (`execution/policy.py`) until this adapter has its own
 capability entry and receiver-style tests. A real pilot additionally needs separate approval of
 the employer, the job, the exact data, the disclosure scope and the final submission.
 

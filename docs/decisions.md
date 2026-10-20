@@ -136,3 +136,17 @@ While an attempt is claimed, sending or awaiting a code, preparation may not re-
 application and users may not transition it (409). The code wait reuses `needs_user_action`,
 which preparation treats as rebuildable; the guard keeps the two meanings apart without a
 schema change.
+
+## D25 — First ATS adapter: Greenhouse-hosted forms, two views cross-checked
+Greenhouse's public job post JSON documents each question's wording, description, required flag,
+types and options; the rendered page gives the submit target and show-if conditions. A form is
+captured only if both agree, and execution re-checks the page against the approved package.
+Verified against a labelled local approximation only; real posts are neither read nor submitted.
+Public read access is not treated as permission to submit.
+
+## D26 — Conditional and unsupported fields without a package schema bump
+`FormField.condition` and `FieldType.unsupported` are new. They enter field fingerprints and
+package answers (`condition`, `unsupported_reason`) only when present, so the content and hash of
+every existing package are unchanged and `SCHEMA_VERSION` stays 2. A condition that is not met
+makes the question "not asked" (nothing entered or sent); an unsupported required control blocks
+approval; neither is ever guessed.
