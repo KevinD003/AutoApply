@@ -61,7 +61,7 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   - `uv run pytest` (full backend): 278 collected, 278 passed;
   - `uv run ruff check .` and `uv run ruff format --check .`: clean;
   - `npx tsc --noEmit` and `npm run lint`: clean;
-  - `npx playwright test e2e/submission.spec.ts` (desktop + mobile): result recorded in the next commit.
+  - `npx playwright test e2e/submission.spec.ts` (desktop + mobile): 20 passed, including the new v2 test on both projects.
   - One earlier full run was invalid and is not counted: it ran at the same time as a focused
     run and both used the shared test database and receiver port 8799.
 - **Compose / CI:** not yet run for `835c34a` (the push was delayed by a GitHub credential outage).
