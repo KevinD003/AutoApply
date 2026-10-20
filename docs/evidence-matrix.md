@@ -9,6 +9,95 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Isolated Compose execution milestone (2026-10-20)
+
+Scope: the browser runs in its own sandboxed container behind a per-session egress proxy, and
+the Compose stack is tested **only against the synthetic receiver**. No real employer pages,
+candidate data, external accounts or paid services were used. Architecture and limits:
+`docs/execution-service.md`.
+
+**Four statuses, kept separate**
+
+| Status | Result | Evidence |
+|---|---|---|
+| App-stack Docker smoke (`docker-smoke`) | passed | CI #24 [job](https://github.com/KevinD003/AutoApply/actions/runs/39376203647/job/118474795589) |
+| Containerized browser execution (`execution-compose`) | passed, 56/56 checks, synthetic receiver only | CI #24 [job](https://github.com/KevinD003/AutoApply/actions/runs/39376203647/job/118474795553) |
+| Fixture adapter compatibility (Greenhouse-shaped fixture) | passed (pytest + Compose security-code flow) | `test_greenhouse_adapter.py` (CI #24 backend), `s_greenhouse_security_code_flow` |
+| Actual Greenhouse compatibility | **not tested** (no real page read) | proposal only: `docs/greenhouse-readonly-compatibility-proposal.md` |
+
+**Phase 0 reconciliation**
+- **Start state.** HEAD `4683d35` was docs-only on code `cc6c1da`. Its CI run #16 completed
+  green, so the documentation follow-up's CI did finish.
+- **Final code-tested revision of this milestone:** `9d6bd7e`. CI #24
+  [39376203647](https://github.com/KevinD003/AutoApply/actions/runs/39376203647) passed every
+  job:
+  - backend: 230 passed, 1 skipped (`test_self_check_finds_its_browsers_when_the_runner_is_pid_1`
+    needs root; the skip reason is printed, and the Compose job covers the same case);
+  - frontend: e2e, desktop and mobile; the step passed (the log tail does not show a count);
+  - docker-smoke: passed;
+  - execution-compose: 56/56 checks.
+- **CI host:** ubuntu-24.04, Docker 28.0.4, kernel 6.17.0-1022-azure. The value of
+  `kernel.apparmor_restrict_unprivileged_userns` was 1, i.e. the restriction stayed on and was
+  not relaxed for this job.
+
+| Revision | Change | CI | Outcome / cause of failure |
+|---|---|---|---|
+| `6d1c790` | browser-runner, session proxy, Compose topology, harness | #17 | exec ✗: the host-side test could not reach the receiver on an internal network |
+| `0e684e5` | receiver reached via `compose exec`; read-only proposal | #18 | exec ✗: admin reset sent as GET |
+| `e29a6b2` | tri-state conditions, attempt-bound confirmation, harness fixes | #19 | backend ✗ (a test race, below); exec ✗ (receiver bound to loopback) |
+| `617ec12` | docs only (same code as `e29a6b2`) | #20 | same as #19 |
+| `dcc4500` | relay control channel, version check, interception switch, unplaceable conditions, new scenarios | #21 | backend ✗ (canary port reused in the test); exec ✗ (self-check failed with the runner as PID 1; a dependency recreate took the API down) |
+| `a073a95` | canary port fix | #22 | backend ✓ frontend ✓ smoke ✓; exec cancelled (still had the PID 1 bug) |
+| `992d6b2` | PID 1 self-check fix; `--no-deps`; API check per scenario | #23 | all ✓ |
+| `9d6bd7e` | PID 1 regression test (reproduced first: old launcher → "no browser processes found") | #24 | all ✓ |
+
+**Defects found and fixed in this milestone (each now has a test that would fail)**
+
+| Defect | Test |
+|---|---|
+| A conditional question was marked "not asked" when its trigger was merely unanswered | `test_unanswered_trigger_keeps_its_conditional_question_pending` |
+| A condition on a missing, later or circular question was evaluated as false | `test_unplaceable_condition_is_a_checkpoint_not_a_guess` |
+| Any confirmation page counted, even one for a different posting | `test_outcome_classification[gh_confirm_other_job]` (→ unknown), `[gh_confirm_redirect]` (→ confirmed) |
+| A stale or killed controller could leave a running browser; anyone with the endpoint could attach | `test_control_channel_is_single_use_and_authenticated`, `test_hard_killed_controller_leaves_no_browser`, `test_unused_session_expires`; Compose `s_worker_killed_mid_submit` |
+| A runner/worker Playwright mismatch would surface as a confusing protocol error | `test_driver_version_mismatch_is_refused_with_reason` |
+| The self-check inspected every Chromium on the host, and found none of its own when it was PID 1 | `test_self_check_finds_its_browsers_when_the_runner_is_pid_1` (local, root); Compose `s_sandbox_selfcheck` |
+| A test race: the lease was expired while the worker still held the row lock | `test_no_takeover_while_old_worker_may_have_disclosed` (waits for the fault point's marker) |
+
+**Requirement → implementation → test → result (all on `9d6bd7e`, CI #24 unless noted)**
+
+| Requirement | Implementation | Test(s) | Result | Limitation |
+|---|---|---|---|---|
+| Unprivileged browser user; Chromium sandbox enabled and verified | uid 10002; `chromiumSandbox: true`; self-check of its own renderers (`Seccomp: 2`, no `--no-sandbox`, no uid 0) | `s_container_configuration`, `s_sandbox_selfcheck`, `test_runner_verified_its_own_sandbox` | pass (renderer uid 10002, seccomp 2, NoNewPrivs 1) | verified on GitHub ubuntu-24.04 only |
+| Seccomp + capabilities; no privileged mode, socket, host network or mounts | Docker default seccomp + clone/unshare/setns/chroot; `cap_drop: ALL`; no-new-privileges | `s_container_configuration` (docker inspect), probe (CapEff/CapBnd 0) | pass | seccomp rule provenance in `browser/README.md` |
+| Fail closed if isolation cannot start | 503 from runner → `IsolationUnavailable` → failed_safe | `s_sandbox_unavailable` (unmodified Docker seccomp), `s_runner_unavailable`, `test_container_mode_fails_closed_when_the_runner_is_unavailable` | pass, 0 disclosures | — |
+| No credentials or app files in the browser environment | minimal env; no volumes | `s_browser_container_probe` + insecure control `s_probe_detects_an_insecure_configuration` | pass; the control flagged fake env, mounted secret, reachable DB/Redis | the runner's own token is present (authenticates the worker only) |
+| Default-deny egress at the infrastructure boundary | internal networks; session proxy (exact host:port, public IPs unless fixture, connect to the checked IP, 407 without a session) | probe (DNS EAI_AGAIN; DB/Redis/API/web/receiver/canary unresolvable; metadata/internet ENETUNREACH; worker refused); `s_infrastructure_only_egress`; `test_container_boundary_alone_blocks_egress_without_interception` | pass; with interception off: 0 blocked in-process, canary 0 hits, proxy denied `10.0.0.1:80`, `169.254.169.254:80`, `::1:80`, `canary:8798` | proxy control port reachable from the browser network (token-gated, 401) |
+| Narrow control channel; stale authority revoked | loopback browser server; relay needs runner token + session secret; single connection; close on disconnect | runner tests above; `s_worker_killed_mid_submit` | pass: sessions 0 within 20 s after the worker kill | liveness is TCP-based |
+| CPU, memory, process and time limits | 1536 MiB / 1.5 CPU / 512 pids / per-session 45 s (test) or 600 s | `s_memory_exhaustion`, `s_session_time_limit` | pass: hog page → failed_safe, 0 accepted, container OOM-killed and restarted; slow page → failed_safe, 0 disclosures | the memory limit is per container, so a hog ends the whole runner (one session at a time) |
+| No resend after ambiguous outcomes; duplicate delivery ignored | unchanged state machine | `s_unknown_then_duplicate_delivery`, `s_runner_lost_during_submission`, `s_worker_killed_mid_submit` | pass; receiver acceptances 1 each, attempt `unknown`, `retry_count` 0 | not exactly-once: an uncertain outcome is quarantined, not proven |
+| Full approved path | prepare → approve → queue → isolated browser → upload → code checkpoint → submit | `s_greenhouse_security_code_flow` | confirmed; acceptances 0 → 1 (none before the code); 1 upload with the approved digest | synthetic code step (unverified for real Greenhouse) |
+| No secrets in logs | logging of ids only | `s_greenhouse_security_code_flow` log scan (code, runner, control, admin tokens across all services) | pass | — |
+| Cleanup and evidence retention | session close on exit; `retain_until` on evidence; deletion API | same scenario; `test_evidence_lifecycle.py` | pass: sessions 0, no profile in `/tmp`, evidence deleted (200) | — |
+
+**Receiver counts (Compose, CI #24, receiver ledger)**
+
+| Scenario | Accepted | Other |
+|---|---|---|
+| Greenhouse security-code flow | 0 before the code, 1 after | 1 upload disclosure, digest = approved document |
+| Hostile page | 1 | canary 0 hits; 7 requests blocked in-process |
+| Interception off | 1 | canary 0 hits; 4 destinations denied by the proxy |
+| Accepted, response dropped, then a duplicate delivery | 1 | attempt `unknown`, delivery ignored |
+| Runner killed mid-submit | 1 | attempt `unknown`, never resent |
+| Worker killed mid-submit | 1 | swept to `unknown`, `retry_count` 0 |
+| Runner down / sandbox unavailable / memory hog / session limit | 0 | 0 disclosures, failed_safe |
+
+Local runs (cloud sandbox, no Docker daemon):
+- `uv run pytest` on `dcc4500`: 229 passed, 1 failed. The failure was the canary port reuse,
+  fixed in `a073a95`.
+- `tests/test_container_runner.py` on `9d6bd7e`: 14 passed (includes the PID 1 test, which runs
+  here as root).
+- ruff check and format: clean.
+
 ## Milestone 2 closeout and first ATS adapter (2026-10-20)
 
 **Revisions and CI** (links: `https://github.com/KevinD003/AutoApply/actions/runs/<id>`)

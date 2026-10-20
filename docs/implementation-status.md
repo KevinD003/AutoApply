@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-20 (milestone 2 closeout + first ATS adapter, fixture-only). For requirement-by-requirement evidence see
+Last updated: 2026-10-20 (isolated Compose execution milestone, synthetic receiver only). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,43 @@ Last updated: 2026-10-20 (milestone 2 closeout + first ATS adapter, fixture-only
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Isolated Compose execution milestone (2026-10-20)
+
+Final code-tested revision `9d6bd7e`. CI #24
+[39376203647](https://github.com/KevinD003/AutoApply/actions/runs/39376203647) passed all four
+jobs. Evidence, the requirement mapping and receiver counts are in `docs/evidence-matrix.md`
+(top section). Architecture, the Compose command and limits are in
+`docs/execution-service.md`.
+
+| Commit | Content |
+|---|---|
+| `6d1c790` | browser-runner container (Playwright 1.56.0 / Chromium 141, uid 10002, sandbox on, seccomp, limits), per-session egress proxy service, Compose topology on internal networks, worker container mode, Compose execution test |
+| `0e684e5`, `e29a6b2` | harness fixes; tri-state conditional triggers; confirmation tied to this attempt's POST and job path; hidden-field regression; unverified labels on the Greenhouse capability |
+| `617ec12` | `docs/execution-service.md`, `browser/README.md` (seccomp provenance) |
+| `dcc4500` | single-use authenticated control channel (browser closed when its controller disconnects), one session per runner, driver-version check, bounded slot wait, test-only interception switch, unplaceable conditions → checkpoint, receiver host binding, new Compose scenarios |
+| `a073a95`, `992d6b2`, `9d6bd7e` | canary port fix; self-check as PID 1; `--no-deps` in the harness; PID 1 regression test |
+
+| Command (actually run) | Where | Result |
+|---|---|---|
+| `uv run pytest -p no:warnings -v` | CI #24 on `9d6bd7e` | 230 passed, 1 skipped (root-only PID 1 test; the Compose job covers the same case) |
+| `npx playwright test` (desktop + mobile) | CI #24 | step passed |
+| `scripts/docker-smoke.sh` (app stack) | CI #24 | passed |
+| `./scripts/compose-execution-test.sh` | CI #24 (Docker 28.0.4, kernel 6.17.0-1022-azure, AppArmor userns restriction left at 1) | 56/56 checks |
+| `uv run pytest tests/test_container_runner.py` | local, `9d6bd7e` | 14 passed |
+| `uv run pytest` (full) | local, `dcc4500` | 229 passed, 1 failed (canary port reuse; fixed in `a073a95`, green in CI #22 and #24) |
+| `uv run ruff check . && uv run ruff format --check .` | local and CI | clean |
+
+Not run here: the Compose test locally (this sandbox has no Docker daemon), and anything on
+macOS or Docker Desktop.
+
+Release blockers that remain for any real use:
+- no real-page verification of the Greenhouse mapping;
+- legal review of automated submission;
+- the separate pilot permissions in `docs/live-pilot-gate.md`;
+- the proxy control port is reachable (token-gated) from the browser network;
+- one browser at a time per runner, with no scheduler for more;
+- not verified outside GitHub's ubuntu-24.04 runners.
 
 ## Milestone 2 closeout and first ATS adapter (2026-10-20)
 
@@ -203,7 +240,8 @@ employer.
 | Fixture adapter (inspect, extract, fill, upload, readback, checkpoint, submit, confirm) | complete, fixture-only |
 | Verification-code checkpoints | complete (worker holds a slot while waiting, bounded) |
 | Minimal evidence | complete; daily retention purge; user deletion (refused while running) |
-| Browser isolation | network + PID + mount namespaces, egress proxy, locked hiding mounts; production refuses to run without it. Limit: same OS user, deny-list |
+| Browser isolation (container, `NOEFFORTS_BROWSER_ISOLATION=container`, used by Compose) | separate browser-runner container: uid 10002, Chromium sandbox on and self-checked, seccomp, no capabilities, read-only root, CPU/memory/pids/time limits, internal networks only, per-session egress proxy, single-use authenticated control channel. Compose-tested in CI against the synthetic receiver only |
+| Browser isolation (netns, local development) | network + PID + mount namespaces, egress proxy, locked hiding mounts; Chromium's own sandbox off in this mode. Limit: same OS user, deny-list |
 | ATS adapter | Greenhouse-hosted, **fixture-verified only** (`docs/greenhouse-adapter.md`); real destinations refused |
 | Real employer execution | **not started** — all real destinations are refused; pilot gate proposed, not approved |
 | Execution UI | browser-tested, desktop and mobile, receiver as oracle |

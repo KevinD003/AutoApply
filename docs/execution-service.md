@@ -133,8 +133,22 @@ published ports. The host reaches the receiver's admin API only through `docker 
 
 ## Verification
 
-See the "Browser execution service" section of `docs/evidence-matrix.md` for the revision, CI
-job link and the PASS lines with receiver counts.
+Revision `9d6bd7e` passed `execution-compose` with **56/56 checks** in CI #24
+([job](https://github.com/KevinD003/AutoApply/actions/runs/39376203647/job/118474795553)).
+Host: GitHub ubuntu-24.04, Docker 28.0.4, kernel 6.17.0-1022-azure; the AppArmor userns
+restriction stayed at 1 and no host setting was changed. Highlights from that run:
+
+- runner renderer: uid 10002, `Seccomp: 2`, `NoNewPrivs: 1`, no `--no-sandbox`; inspected
+  memory 1610612736 bytes, 1.5 CPUs, 512 pids;
+- probe inside the runner:
+  - capability sets 0, no credential-like environment, no app/storage/secret paths, root
+    read-only;
+  - external DNS fails (`EAI_AGAIN`), stack hosts are unresolvable, and metadata and the
+    internet are unreachable (`ENETUNREACH`);
+  - the worker refuses connections; the proxy port is open and its control API answers 401;
+- the same probe on a deliberately insecure container flags the fake DB URL and control token,
+  the mounted `/run/secrets`, and the open Postgres/Redis;
+- receiver counts per scenario: `docs/evidence-matrix.md` (top section).
 
 ## Limits and what is not covered
 
@@ -157,6 +171,10 @@ job link and the PASS lines with receiver counts.
   and concurrent tenants in one container are not claimed to be isolated. The runner
   container is long-lived: sessions get fresh browser processes and profiles, but the
   container itself is not recreated per attempt.
+- **Memory exhaustion ends the runner, not just the page.** The memory limit is per
+  container. In CI the hog page got the runner container OOM-killed; it restarted, the attempt
+  ended `failed_safe` and nothing was accepted. With one session per runner, no other attempt
+  is affected.
 - **TCP-level liveness.** The runner notices a dead worker when the TCP connection closes
   (immediately for a killed process or container; via keep-alive probes otherwise). The
   per-session time limit bounds the rest.
