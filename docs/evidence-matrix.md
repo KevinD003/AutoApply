@@ -20,10 +20,10 @@ the outcome counted by the receiver's ledger.
 | Item | Value |
 |---|---|
 | Baseline | `ad57210` (CI run #4: all jobs green) |
-| Final code commit | `{{FINAL}}` |
-| CI on that commit | {{CI}} |
-| Diff since baseline | `git diff --stat ad57210 {{FINAL}}`: {{DIFFSTAT}} |
-| Local checks on final code | {{LOCAL}} |
+| Final code commit | `bae5120` |
+| CI on that commit | run #12 (`bae5120`): backend, frontend (all e2e), docker-smoke **all passed**. Earlier runs on this work: #6 (`e11484d`) backend failed (no `redis-server` binary), #9 (`292ecb9`) backend and frontend passed but docker-smoke failed (web container exited), #10 (`6c850d7`) docker-smoke failed at the worker-ping step (shell pipeline bug), #11 (`416cf70`) all passed |
+| Diff since baseline | `git diff --stat ad57210 bae5120`: 35 files changed, 2405 insertions, 134 deletions |
+| Local checks on final code | `ruff check` + `ruff format --check` clean; `pytest`: 188 passed; `tsc --noEmit` + `npm run lint` clean; `npx playwright test`: 22 passed (desktop + mobile). Local runs on `292ecb9`; later commits changed only the Next config file type and the smoke script, and CI ran everything on `bae5120` |
 
 **Defects found by this round (all fixed, each with a test that failed first)**
 
@@ -33,6 +33,7 @@ the outcome counted by the receiver's ledger.
 | B2 | A submit POST was sent **twice**. The in-process route used `route.fetch` + `fulfill`; when the worker gave up and closed the browser, Playwright resumed the paused original request. The receiver counted 2 acceptances for 1 attempt. | browser test (unknown outcome); reproduced with a stand-alone script | non-idempotent requests go out once via `continue_()` (hops checked by the egress proxy); a failed GET fetch aborts | `test_closing_the_browser_mid_submit_never_resends[netns,off]` |
 | B3 | Submission card re-fetched attempts in a tight loop (the effect depended on its own result) and left the status stale after the final state (Cancel button still shown) | browser test | poll only while an attempt is active; refresh the application once at the end | e2e: no attempt requests in 4 s after the final state; no Cancel button after `unknown` |
 | B4 | e2e worker supervisor started Celery in its own session, so Playwright's teardown left the worker running | stale processes after a run | worker stays in the supervisor's process group | — (harness) |
+| B6 | Docker web container exited at start: `next.config.ts` needs TypeScript, absent from the production image; the auto-install failed as the non-root user. A global TypeScript in this sandbox had masked it locally | CI docker-smoke logs | `next.config.mjs` | CI `docker-smoke` |
 | B5 | CI run #2 Phase A failure: the test filled the login form's identically labelled fields during a slow client-side navigation to /register | reproduced deterministically with a 1.5 s route delay | wait for the URL and the register button before filling | `navigation-race.spec.ts` |
 
 **Matrix**
@@ -63,7 +64,7 @@ the outcome counted by the receiver's ledger.
 | Evidence retention and deletion | `test_retention_purge`, `test_user_can_delete_evidence_and_others_cannot`, `test_cannot_delete_evidence_while_running` | real (retention date set in the past) | purged; other users get 404; 409 while running |
 | Fake secrets not in logs | `test_no_secrets_in_real_worker_logs` (real Celery worker at DEBUG), leak scan in the code-checkpoint test | real | 0 hits |
 | CI #2 investigation | `navigation-race.spec.ts` | real slow navigation (route delay) | root cause B5; no retries or sleeps added |
-| Docker smoke | CI job `docker-smoke` (`scripts/docker-smoke.sh`) | real Docker on GitHub's runner | {{DOCKER}} |
+| Docker smoke | CI job `docker-smoke` (`scripts/docker-smoke.sh`) | real Docker on GitHub's runner | **passed** in CI run #12: build, migrations on start, register/session, web pages and API proxy, worker answers a broker ping, data survives a backend restart. Two defects found on the way: the web image could not load `next.config.ts` without TypeScript (fixed with `.mjs`), and a `| grep -q` pipeline failed the step under pipefail. Never run in this sandbox (no Docker daemon) |
 
 ## Earlier Phase C rows (commit `ebb3e3b`; superseded cells marked)
 

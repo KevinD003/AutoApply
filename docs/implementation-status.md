@@ -30,21 +30,28 @@ Last updated: 2026-10-20 (Phase C validation milestone 2). For requirement-by-re
 | `f5bd82f` | Evidence retention purge and deletion; secret scan of real worker logs |
 | `7ce41ff` | CI run #2 root cause (navigation race in the Phase A test) + regression spec |
 | `e11484d` | Docker Compose smoke test in CI |
-{{COMMITS}}
+| `d87ef12` | Application state frozen while a worker holds an attempt (B1) |
+| `e066c1a` | No re-send on browser close (B2); PID/mount namespaces hide orchestrator files and processes |
+| `7da9a29`, `292ecb9` | Submission UI browser tests; card polling fix (B3); e2e worker supervisor (B4) |
+| `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
 ## Phase C validation milestone 2 (2026-10-19/20)
 
-Full evidence, real vs simulated, and the five defects this round found:
+Full evidence, real vs simulated, and the six defects this round found:
 `docs/evidence-matrix.md` (top section).
 
-| Command (final code, `{{FINAL}}`) | Result |
+| Command (final code, `bae5120`) | Result |
 |---|---|
-{{RESULTS}}
+| `cd backend && uv run ruff check . && uv run ruff format --check .` | clean |
+| `cd backend && uv run pytest` | **188 passed** (includes 4 real-broker, 13 isolation, 19 validation, 4 evidence tests) |
+| `cd frontend && npx tsc --noEmit && npm run lint` | clean |
+| `cd frontend && npx playwright test` | **22 passed**: Phase A, Phase B, navigation race, 8 submission tests; desktop and mobile |
+| GitHub Actions run #12 on `bae5120` | **backend, frontend, docker-smoke all passed** |
 
 Not done or not proven:
-- **Docker:** {{DOCKER}}.
+- **Docker:** passes in CI only; never run in this sandbox (no daemon).
 - **Browser sandbox:** hiding is a deny-list under the same OS user. There is no seccomp
   profile, cgroup limit or dedicated user, and those are required before untrusted live
   browsing.
