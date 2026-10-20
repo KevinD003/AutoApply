@@ -7,6 +7,7 @@ by the Compose execution test (scripts/compose-execution-test.sh)."""
 import asyncio
 import base64
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -410,3 +411,59 @@ def test_interception_cannot_be_disabled_outside_test_environments(
     assert runner.run_attempt(aid, "w1") == "failed_safe"
     assert "cannot be disabled" in attempt(aid).outcome_detail
     assert receiver.ledger()["disclosures"] == []
+
+
+@pytest.mark.skipif(
+    os.geteuid() != 0 or not shutil.which("unshare") or not shutil.which("setpriv"),
+    reason="needs root to start the runner as PID 1 of its own PID namespace; the Compose "
+    "execution test covers the same case in CI (the runner is PID 1 in its container)",
+)
+def test_self_check_finds_its_browsers_when_the_runner_is_pid_1():
+    """Regression (CI #21): as PID 1 the self-check's ancestry walk never matched, found no
+    browser processes, and the runner refused every session."""
+    port = free_port()
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": "/tmp",
+        "TMPDIR": "/tmp",
+        "DRIVER_PACKAGE": str(DRIVER / "package"),
+        "RUNNER_TOKEN": RUNNER_TOKEN,
+        "EGRESS_PROXY": "http://127.0.0.1:9",
+        "RUNNER_PORT": str(port),
+        "RUNNER_PUBLIC_HOST": "127.0.0.1",
+    }
+    if os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
+        env["PLAYWRIGHT_BROWSERS_PATH"] = os.environ["PLAYWRIGHT_BROWSERS_PATH"]
+    cmd = [
+        "unshare",
+        "-p",
+        "-f",
+        "--mount-proc",
+        "setpriv",
+        "--reuid=65534",
+        "--regid=65534",
+    ]
+    cmd += ["--clear-groups", str(DRIVER / "node"), str(ROOT / "browser" / "launcher.js")]
+    proc = subprocess.Popen(
+        cmd, env=env, cwd="/tmp", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    try:
+        health = None
+        for _ in range(120):
+            try:
+                health = httpx.get(f"http://127.0.0.1:{port}/health", timeout=1).json()
+                break
+            except httpx.HTTPError:
+                time.sleep(0.25)
+        assert health and health["sandbox_ok"] is True, health
+    finally:
+        # Stop the namespace's PID 1 (the runner; its exit ends everything inside), then
+        # unshare exits. (unshare --kill-child cannot do it: the parent-death signal is
+        # cleared when setpriv changes the user.)
+        task = f"/proc/{proc.pid}/task/{proc.pid}/children"
+        for child in open(task).read().split() if os.path.exists(task) else []:
+            os.kill(int(child), 15)
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
