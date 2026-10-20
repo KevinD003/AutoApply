@@ -145,6 +145,11 @@ published ports. The host reaches the receiver's admin API only through `docker 
 
 ## Verification
 
+Latest: `d62bea7`, CI #28: **73/73**
+([job](https://github.com/KevinD003/AutoApply/actions/runs/39421195994/job/118622270249)),
+including the control-plane separation and recovery scenarios. The results below are the
+earlier `9d6bd7e` run, kept as recorded.
+
 Revision `9d6bd7e` passed `execution-compose` with **56/56 checks** in CI #24
 ([job](https://github.com/KevinD003/AutoApply/actions/runs/39376203647/job/118474795553)).
 Host: GitHub ubuntu-24.04, Docker 28.0.4, kernel 6.17.0-1022-azure; the AppArmor userns

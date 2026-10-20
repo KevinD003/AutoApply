@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-20 (isolated Compose execution milestone, synthetic receiver only). For requirement-by-requirement evidence see
+Last updated: 2026-10-20 (proxy control-plane separation; read-only Greenhouse request prepared, awaiting a posting). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,31 @@ Last updated: 2026-10-20 (isolated Compose execution milestone, synthetic receiv
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Proxy control-plane separation (2026-10-20)
+
+- **Code-tested revision:** `d62bea7`. CI #28
+  [39421195994](https://github.com/KevinD003/AutoApply/actions/runs/39421195994) passed:
+  - backend: 234 passed, 1 skipped;
+  - e2e, docker-smoke: passed;
+  - execution-compose: 73/73.
+  Details are in `docs/evidence-matrix.md` (top section).
+- **Commits:**
+  - `4a0bd5a`: control API on a UNIX socket; control-plane and recovery tests;
+  - `3fb3a9f`: docs and the approval request;
+  - `d62bea7`: request body read before refusing (CI #26 race).
+- **Proxy management:** no longer on any network. From the browser container, only port 3128
+  of the proxy accepts a connection.
+- **Read-only Greenhouse check:** the approval request is ready in
+  `docs/greenhouse-readonly-compatibility-proposal.md`. It is **pending** the user's posting:
+  no posting was chosen or accessed.
+
+Release blockers for any real use (updated):
+- no real-page verification of the Greenhouse mapping (needs permissions A/B);
+- legal review of automated submission;
+- the pilot permissions in `docs/live-pilot-gate.md`;
+- one browser at a time per runner, with no scheduler;
+- not verified outside GitHub's ubuntu-24.04 runners.
 
 ## Isolated Compose execution milestone (2026-10-20)
 

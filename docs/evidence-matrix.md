@@ -9,6 +9,82 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Proxy control-plane separation and recovery (2026-10-20)
+
+Scope: local implementation and synthetic tests only. No external posting was retrieved, no
+page was opened, and no candidate data was used.
+
+- **Baseline.** Before this work HEAD was `a595795`, docs-only after code `9d6bd7e` (CI #24,
+  above; CI #25 on `a595795` passed).
+- **Code-tested revision:** `d62bea7`. CI #28
+  [39421195994](https://github.com/KevinD003/AutoApply/actions/runs/39421195994) passed all four
+  jobs:
+  - backend: 234 passed, 1 skipped (the same root-only PID 1 test as before);
+  - frontend e2e: passed;
+  - docker-smoke: passed;
+  - execution-compose: **73/73 checks**
+    ([job](https://github.com/KevinD003/AutoApply/actions/runs/39421195994/job/118622270249)).
+
+| Revision | Change | CI | Outcome |
+|---|---|---|---|
+| `4a0bd5a` | control API moved to a UNIX socket on the `egress_control` volume (proxy rw, worker ro); `exec_proxyctl` removed; new control-plane, recovery and post-OOM checks | #26 | execution-compose 73/73 ✓, frontend ✓, smoke ✓; backend ✗: `test_runner_and_proxy_control_need_their_tokens` got BrokenPipeError instead of 401 |
+| `3fb3a9f` | docs (approval request) on the same code | #27 | all ✓ (the race did not trigger) |
+| `d62bea7` | control API reads the request body before refusing (reproduced: 10/500 refused requests broke before, 0/500 after) | #28 | all ✓ |
+
+**Proxy management reachability (Compose, CI #28, from inside the browser container)**
+
+| Check | Result |
+|---|---|
+| TCP connect to every port 1–65535 of `egress-proxy` | only **3128** accepts |
+| Control socket path in the browser container | absent |
+| Sensitivity control: a listener on `0.0.0.0:3199` started inside the proxy container | found by the same scan (`[3128, 3199]`) |
+| Through the proxy with a real session's credentials: `CONNECT egress-proxy:3129`, `egress-proxy:3128`, `127.0.0.1:3128`, `localhost:3129`, `worker:8000`; absolute GET `http://egress-proxy:3129/health`, `http://127.0.0.1:3128/` | all **403** |
+| Positive control: `CONNECT receiver:8799` with the same credentials | 200 |
+| Worker over the socket: create, inspect, delete own session; no token | 201/200/200, then 404 after delete; 401 without token |
+| After `docker compose restart egress-proxy` | only 3128 open; worker reaches control again; approved run confirmed |
+
+**Recovery (Compose, CI #28)**
+
+| Scenario | Result |
+|---|---|
+| Runner restart with an open session | old endpoint and secret refused; old runner session unknown (404); old proxy session deleted (200); `/tmp` clean; new attempt confirmed |
+| Memory hog → OOM kill → restart | hog attempt `failed_safe`, 0 accepted, still one attempt with `retry_count` 0 (not replayed); `/tmp` clean; next attempt confirmed |
+| Browser lost after disclosure (local pytest) | `abandoned`, `needs_user_action`, retry 0, 0 accepted; a redelivery is ignored |
+
+**Receiver acceptance counts (CI #28):** 1 each for:
+- the approved run after the proxy restart;
+- the Greenhouse security-code flow (0 before the code);
+- the hostile page;
+- the run with interception off;
+- the attempt after OOM recovery;
+- the attempt after the runner restart.
+
+Interrupted runs:
+- unknown with a duplicate delivery: 1;
+- runner killed mid-submit: ≤ 1;
+- worker killed mid-submit: ≤ 1, never resent.
+
+Stop-safely cases: 0.
+
+**New tests**
+
+| Test | What it checks |
+|---|---|
+| `test_control_api_is_an_owner_only_unix_socket_not_a_network_listener` | the control API is an owner-only UNIX socket, not a network listener |
+| `test_restart_replaces_a_stale_control_socket` | a restart replaces a stale socket |
+| `test_refusals_are_delivered_not_broken_pipes` | regression for the CI #26 race |
+| `test_browser_lost_after_disclosure_is_abandoned_not_retried` | browser lost after disclosure is abandoned, not retried |
+| Compose `s_control_plane_separation` | the reachability checks above |
+| Compose `s_runner_restart_recovery` | the restart recovery checks above |
+| Compose `s_memory_exhaustion` | extended with the post-OOM checks |
+
+Local runs (`d62bea7` code):
+- `tests/test_container_runner.py`: 18 passed;
+- `tests/test_browser_isolation.py`: 18 passed (on `4a0bd5a`);
+- ruff: clean.
+
+The full local suite was not rerun; CI #28 ran it.
+
 ## Isolated Compose execution milestone (2026-10-20)
 
 Scope: the browser runs in its own sandboxed container behind a per-session egress proxy, and
