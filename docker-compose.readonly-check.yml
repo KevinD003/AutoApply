@@ -1,0 +1,13 @@
+# READ-ONLY Greenhouse compatibility check (permissions A and B only; see
+# docs/greenhouse-readonly-compatibility-proposal.md). Used by scripts/greenhouse-readonly-check.sh.
+#
+# The only change from docker-compose.yml: the egress proxy gets an outbound network, so the
+# isolated browser can reach exactly the one allow-listed origin of its session
+# (job-boards.greenhouse.io:443, public addresses only). The browser container stays on its
+# internal networks; nothing else is opened. No candidate data exists in this stack.
+services:
+  egress-proxy:
+    networks: [exec_egress, egress_out]
+
+networks:
+  egress_out: {}

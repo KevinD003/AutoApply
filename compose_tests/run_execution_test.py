@@ -485,6 +485,33 @@ def s_runner_restart_recovery():
           att and att["state"] == "confirmed" and ledger_for(slug)["accepted"] == 1, att and att["state"])  # fmt: skip
 
 
+_OBSERVE = """
+import json
+from app.modules.preparation import gh_readonly as ro
+obs = ro.observe_page("examplehealth", "4012001", base="http://receiver:8799")
+r = obs["rendered"]
+print(json.dumps({"status": obs["status"], "bot_check": obs["bot_check"],
+                  "blocked": obs["blocked_non_get"], "fields": len(r.fields) if r else None}))
+"""
+
+
+def s_readonly_observation_in_container():
+    """Permission B's code path (observe only) through the real runner and session proxy, on
+    the fixture: a page that POSTs on load is blocked, nothing is disclosed."""
+    receiver("config", {"mode": "gh_post_on_load"})
+    before = ledger_for("gh-examplehealth-4012001")
+    obs = worker_py(_OBSERVE, NOEFFORTS_READONLY_GREENHOUSE_APPROVED="examplehealth/4012001")
+    after = ledger_for("gh-examplehealth-4012001")
+    receiver("config", {"mode": "normal"})
+    check("read-only observation: form read in the isolated browser",
+          obs.get("status") == 200 and obs.get("fields", 0) >= 8 and obs.get("bot_check") is False, obs)  # fmt: skip
+    check("read-only observation: the page's own POST was blocked before leaving the browser",
+          any(b["method"] == "POST" for b in obs.get("blocked", [])), obs.get("blocked"))  # fmt: skip
+    check("read-only observation: nothing disclosed or accepted at the receiver",
+          after["disclosures"] == before["disclosures"] and after["accepted"] == before["accepted"],
+          {"disclosures": len(after["disclosures"]) - len(before["disclosures"])})  # fmt: skip
+
+
 def s_greenhouse_security_code_flow():
     receiver("config", {"mode": "gh_security_code"})
     slug = "gh-examplehealth-4012001"
@@ -746,6 +773,7 @@ SCENARIOS = [
     s_browser_container_probe,
     s_probe_detects_an_insecure_configuration,
     s_control_plane_separation,
+    s_readonly_observation_in_container,
     s_greenhouse_security_code_flow,
     s_hostile_page,
     s_infrastructure_only_egress,

@@ -1,8 +1,19 @@
 # Read-only Greenhouse compatibility check — approval request
 
-**Status: pending.** It waits for the user to name one public posting. Nothing here has been
-run. No posting was chosen on the user's behalf, and no Greenhouse or employer URL has been
-requested.
+**Status: A and B approved by the user (2026-10-20); C and D not approved. Not yet run.**
+
+The user wrote: "You can do everything that you want to do about the greenhouse but make sure
+that no employee name is found in Rep. I can approve for both of them."
+- Permissions A and B are granted for **one** public posting, which the user left to the
+  developer to choose.
+- Condition: no employer name, and no person's name, may appear in the repository. That
+  includes committed docs and reports, CI logs and CI artifacts (the repository is public).
+- Disclosing candidate data (C) and submitting an application (D) remain **not approved**.
+  The general "do anything" does not cover them.
+- **Execution is blocked in the development sandbox.** Its permission policy refused the first
+  outbound request to Greenhouse. The sandbox's own TLS-re-terminating proxy would also make B
+  require trusting a broad CA in the browser, which this plan rules out. See "How it will
+  run" below.
 
 This request covers **reading** one public posting. It is not a request to disclose candidate
 data or to submit an application. Reviewing the documentation mentioned here is not legal
@@ -97,6 +108,31 @@ All artifacts stay in the developer's workspace and are not committed.
 | Committed report | the comparison below, using field keys, types and flags. Question wording is paraphrased, and the employer is named only if the user agrees | kept in the repository |
 
 Not produced: screenshots, traces, HAR files, DOM dumps, cookies, or any candidate data.
+
+## How it will run (implemented; not yet run against Greenhouse)
+
+| Piece | What it does |
+|---|---|
+| `backend/app/modules/preparation/gh_readonly.py` | **A:** `fetch` sends three GETs to `https://boards-api.greenhouse.io` only, within a budget of 3, with no redirects, a 10 s timeout, a 2 MB limit, a robots.txt check and an identifying User-Agent. **B:** `observe_page` makes one page load in the isolated browser container; every non-GET/HEAD request is blocked before it leaves the browser; nothing is typed, clicked or uploaded; it stops at a bot check or an off-origin redirect. **Gating:** both refuse unless `NOEFFORTS_READONLY_GREENHOUSE_APPROVED` equals that posting's `<board>/<job_id>`. There is no code path to fill, upload or submit |
+| `publishable()` | the only output: structure, types, flags and counts, plus third-party hosts reduced to known kinds or "other". No labels, wording, titles, employer or person names, URLs or board token |
+| `scripts/greenhouse-readonly-check.sh` + `docker-compose.readonly-check.yml` | the deployment stack, with the egress proxy given an outbound network. The browser stays on internal networks, and its session allow-list is `job-boards.greenhouse.io:443` (public addresses only). Raw responses stay inside the worker container and are **destroyed when the stack is removed at the end of the run** (stricter than the 30 days above). No container logs are printed |
+| `.github/workflows/greenhouse-readonly.yml` | **manual only** (`workflow_dispatch`). The posting comes from the repository secret `GH_READONLY_POSTING`, which GitHub masks in logs; no artifacts are uploaded |
+| Tests | `backend/tests/test_gh_readonly.py` (10, against the local fixture): approval gating, budget and host, robots.txt, redirects, page POST blocked with 0 disclosures, bot check, container-only for real pages, no fixture names in the published summary. Compose `s_readonly_observation_in_container` runs the same B path through the real runner and proxy |
+
+Why it runs in GitHub Actions and not in the development sandbox:
+- the sandbox's permission policy refused the outbound request;
+- its egress re-terminates TLS, which would require the browser to trust a broad CA, and this
+  plan rules that out.
+
+To run it:
+1. **Choose the posting:** any public `https://job-boards.greenhouse.io/<BOARD>/jobs/<JOB_ID>`.
+2. **Store it** as the repository secret `GH_READONLY_POSTING` with the value
+   `<BOARD>/<JOB_ID>`: GitHub → Settings → Secrets and variables → Actions → New repository
+   secret.
+3. **Start it:** Actions → "Greenhouse read-only check (manual)" → Run workflow (B on by
+   default).
+4. **Commit:** the run prints only the anonymous summary. That summary, plus the comparison
+   against the fixture, is what gets committed as `docs/greenhouse-compatibility-report.md`.
 
 ## Deliverable: the comparison (once A/B are separately approved and run)
 

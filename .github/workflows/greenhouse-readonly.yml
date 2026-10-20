@@ -1,0 +1,41 @@
+name: Greenhouse read-only check (manual)
+
+# Permissions A and B only (docs/greenhouse-readonly-compatibility-proposal.md): read one
+# public posting's job data and load its page once in the isolated browser. No candidate data,
+# no filling, no uploads, no submission. Runs ONLY when started by hand.
+#
+# The posting is the repository secret GH_READONLY_POSTING ("<board>/<job_id>"). Secrets are
+# masked in logs, so the board token (often the employer's name) never appears in this public
+# repository's logs. Output is the anonymous summary only; no artifacts are uploaded.
+
+on:
+  workflow_dispatch:
+    inputs:
+      observe:
+        description: "Also permission B: one page load in the isolated browser"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require the approved posting
+        env:
+          POSTING: ${{ secrets.GH_READONLY_POSTING }}
+        run: |
+          if ! printf '%s' "$POSTING" | grep -Eq '^[A-Za-z0-9_-]{1,100}/[0-9]{1,20}$'; then
+            echo "Set the repository secret GH_READONLY_POSTING to <board>/<job_id>."; exit 1
+          fi
+          echo "::add-mask::${POSTING%%/*}"
+          echo "::add-mask::${POSTING##*/}"
+      - name: Read-only check (anonymous summary only)
+        env:
+          NOEFFORTS_READONLY_GREENHOUSE_APPROVED: ${{ secrets.GH_READONLY_POSTING }}
+          OBSERVE: ${{ inputs.observe && '--observe' || '' }}
+        run: ./scripts/greenhouse-readonly-check.sh $OBSERVE

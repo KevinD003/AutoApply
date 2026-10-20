@@ -8,7 +8,10 @@ application is accepted). It is NOT Greenhouse code or markup and makes no claim
 real employer's form: passing tests against it shows fixture compatibility only.
 
 Routes (mounted on the synthetic receiver, whose ledger is the oracle):
+  GET  /gh-api/robots.txt                                        robots.txt (read-only check)
+  GET  /gh-api/v1/boards/{board}                                 board (read-only check)
   GET  /gh-api/v1/boards/{board}/jobs/{job_id}?questions=true   job post JSON
+  POST /gh/{board}/jobs/{job_id}/telemetry                       page-script POST (mode gh_post_on_load)
   GET  /gh/{board}/jobs/{job_id}                                 hosted application form
   POST /gh/{board}/jobs/{job_id}/attachments                     attachment upload (disclosure)
   POST /gh/{board}/jobs/{job_id}/apply                           submit / security code
@@ -208,6 +211,9 @@ for (const wrap of document.querySelectorAll('[data-show-if]')) {{
   trigger.addEventListener('change', sync); sync();
 }}
 </script>"""
+    if cfg["mode"] == "gh_post_on_load":  # a page that sends data on its own as soon as it loads
+        body += (f"<script>fetch('{base}/telemetry', {{method: 'POST', body: 'loaded'}})"
+                 ".catch(() => {});</script>")
     return _page(f"Job Application for {j['title']} at {j['company_name']}", body, "form")
 
 
@@ -219,9 +225,29 @@ def mount(app, ledger, cfg, accept) -> None:
         if (board, job_id) not in JOBS:
             raise HTTPException(404)
 
+    @app.get("/gh-api/robots.txt")
+    def api_robots():
+        rules = "Disallow: /v1/" if cfg["mode"] == "gh_robots_disallow" else "Allow: /"
+        return HTMLResponse(f"User-agent: *\n{rules}\n", media_type="text/plain")
+
+    @app.get("/gh-api/v1/boards/{board}")
+    def api_board(board: str):
+        names = {j["company_name"] for (b, _), j in JOBS.items() if b == board}
+        if not names:
+            raise HTTPException(404)
+        return {"name": sorted(names)[0], "content": "<p>Synthetic board (fictional).</p>"}
+
+    @app.post("/gh/{board}/jobs/{job_id}/telemetry")
+    async def telemetry(board: str, job_id: str, request: Request):
+        ledger.run("insert into disclosures (kind,slug,detail,created_at) values (?,?,?,?)",
+                   ("page_post", f"gh-{board}-{job_id}", "", time.time()))
+        return {"ok": True}
+
     @app.get("/gh-api/v1/boards/{board}/jobs/{job_id}")
     def api_job(board: str, job_id: str, request: Request, questions: bool = False):
         job_or_404(board, job_id)
+        if cfg["mode"] == "gh_api_redirect":
+            return RedirectResponse(f"/gh-api/v1/boards/{board}/jobs/{job_id}?moved=1", 302)
         data = _api_json(board, job_id, str(request.base_url).rstrip("/"))
         if not questions:
             data.pop("questions"), data.pop("location_questions")
