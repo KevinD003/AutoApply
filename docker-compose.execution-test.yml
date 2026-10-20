@@ -2,16 +2,15 @@
 # test (scripts/compose-execution-test.sh). Never use for real data or real destinations.
 #
 # `fixtures` is internal: only the egress proxy (the browser's only way out) and the API (which
-# reads fixture forms when preparing) can reach the receiver and the canary. The receiver's
-# admin port is published on 127.0.0.1 through a separate network for the host-side test.
+# reads fixture forms when preparing) can reach the receiver and the canary. Nothing is
+# published; the host-side test reaches the receiver's admin API with `docker compose exec`.
 services:
   receiver:
     build: ./backend
     command: ["python", "/fixture/receiver.py", "--port", "8799", "--ledger", "/tmp/ledger.db",
               "--admin-token", "${RECEIVER_ADMIN_TOKEN:?set RECEIVER_ADMIN_TOKEN}"]
     volumes: ["./fixtures/ats_receiver:/fixture:ro"]
-    networks: [fixtures, receiver_admin]
-    ports: ["127.0.0.1:8799:8799"]
+    networks: [fixtures]
 
   canary:
     # Logs every request it receives; the test asserts there are none.
@@ -34,4 +33,3 @@ services:
 
 networks:
   fixtures: { internal: true }
-  receiver_admin: {}

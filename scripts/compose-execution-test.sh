@@ -29,7 +29,10 @@ docker compose down -v --remove-orphans >/dev/null 2>&1 || true # start clean
 docker compose up -d --build
 wait_http http://127.0.0.1:8000/api/health 90
 expect_contains "API health" '"status":"ok"' http://127.0.0.1:8000/api/health
-wait_http http://127.0.0.1:8799/apply/health-check 60
+for _ in $(seq 1 60); do # the receiver is internal-only; probe it from its own container
+  docker compose exec -T receiver python -c "import urllib.request as u; u.build_opener(u.ProxyHandler({})).open('http://127.0.0.1:8799/apply/health-check', timeout=5)" 2>/dev/null && break
+  sleep 2
+done
 expect_running_services
 python3 compose_tests/run_execution_test.py
 echo "COMPOSE EXECUTION TEST PASSED"

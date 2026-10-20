@@ -21,7 +21,6 @@ import urllib.request
 import uuid
 
 API = "http://127.0.0.1:8000/api"
-RECEIVER = "http://127.0.0.1:8799"  # host view (admin + fetching fixture HTML)
 RECEIVER_IN_STACK = "http://receiver:8799"  # what jobs point at; reachable only via the proxy
 ADMIN = os.environ["RECEIVER_ADMIN_TOKEN"]
 PDF = b"%PDF-1.4\n% synthetic resume for the compose execution test\n"
@@ -94,15 +93,24 @@ class Api:
                        ctype=f"multipart/form-data; boundary={b}")  # fmt: skip
 
 
+# The receiver has no published port (it lives on an internal network); the test reaches it
+# from inside its own container.
+_RECEIVER_CALL = """
+import sys, urllib.request
+path, body, token = sys.argv[1], sys.argv[2], sys.argv[3]
+req = urllib.request.Request("http://127.0.0.1:8799" + path, data=body.encode() or None,
+    method="POST" if body else "GET",
+    headers={"X-Admin-Token": token, "Content-Type": "application/json"})
+sys.stdout.write(urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=30).read().decode())
+"""
+
+
+def receiver_raw(path: str, body: str = "") -> str:
+    return compose("exec", "-T", "receiver", "python", "-c", _RECEIVER_CALL, path, body, ADMIN)
+
+
 def receiver(path, body=None):
-    req = urllib.request.Request(
-        f"{RECEIVER}/_admin/{path}",
-        data=json.dumps(body).encode() if body is not None else None,
-        method="POST" if body is not None else "GET",
-        headers={"X-Admin-Token": ADMIN, "Content-Type": "application/json"},
-    )
-    with urllib.request.build_opener(NO_PROXY).open(req, timeout=30) as r:
-        return json.loads(r.read())
+    return json.loads(receiver_raw(f"/_admin/{path}", json.dumps(body) if body is not None else ""))
 
 
 def ledger_for(slug):
@@ -165,8 +173,7 @@ def approve(a: Api, app_id: str, pkg: dict):
 def generic_app(a: Api, slug: str) -> str:
     job = a.ok("POST", "/jobs", {"url": f"{RECEIVER_IN_STACK}/apply/{slug}",
                                  "title": "Clinic Assistant", "employer": "Example (fictional)"})  # fmt: skip
-    with urllib.request.build_opener(NO_PROXY).open(f"{RECEIVER}/apply/{slug}", timeout=30) as r:
-        html = r.read().decode()
+    html = receiver_raw(f"/apply/{slug}")
     a.ok("POST", f"/jobs/{job['job']['id']}/form", {"html": html})
     app_id = a.ok("POST", "/applications", {"job_id": job["job"]["id"]})["id"]
     a.ok("PUT", f"/applications/{app_id}/answers/hear_about", {"value": {"label": "Referral"}})
