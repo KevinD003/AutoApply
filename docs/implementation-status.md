@@ -101,6 +101,17 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
 - **Local change from that evidence:** the `mapped_via_group` rule for attachments (exact
   group name, one file input per group), with tests. The posting stays refused for its other
   gaps.
+- **Final code revision `ee35b49`:**
+  - local full backend suite: 318 passed;
+  - focused mapper/adapter, B3-policy and read-only suites: 74 passed;
+  - **CI #43** ([39492067001](https://github.com/KevinD003/AutoApply/actions/runs/39492067001)):
+    - backend 317 passed, 1 skipped;
+    - full Playwright suite 26 passed;
+    - execution-compose 85 checks, 0 failed, including the B3 policy scenario and its
+      attachment-group check;
+    - docker-smoke passed.
+- **External activity:** stopped after run #6. No further run is proposed without a new
+  request.
 
 ## B2 real-page mapping observation (2026-10-20)
 
