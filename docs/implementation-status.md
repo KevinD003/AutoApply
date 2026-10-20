@@ -102,6 +102,23 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   - options rendered only on open are `not_observable_at_load`, not a mismatch.
 - **Log cleanup:** prepared in `docs/greenhouse-compatibility-report.md`; nothing deleted.
 - **B2:** request text in the proposal; not authorized, not run.
+- **Results:**
+  - **CI #35** on `b6f9eec`: **failed**, in the `backend` job only. The new load-time
+    binding check replaced the production isolation and interception refusal reasons in 2
+    tests. The local full run showed the same: 2 failed, 300 passed.
+  - **Fixed in `a11c71d`:** the binding check now runs after those refusals, still before any
+    browser work. The assertions were not changed.
+  - **Local, on `a11c71d`** (sandbox, run one at a time):
+    - full backend `uv run pytest`: 302 passed, none skipped;
+    - targeted `npx playwright test e2e/submission.spec.ts` (desktop + mobile): 20 passed.
+      This is not the full frontend suite.
+  - **CI #36** ([39450274605](https://github.com/KevinD003/AutoApply/actions/runs/39450274605)),
+    tested SHA `a11c71d53a083a4b3a998a2916c7a981e2fece25`, all four jobs passed:
+    - backend, full suite: 301 passed, 1 skipped;
+    - frontend: `tsc`, lint and the **full** Playwright suite, 26 passed;
+    - execution-compose (container-mode scenarios, including both read-only observation
+      scenarios): 80 checks, 0 failed;
+    - docker-smoke: passed.
 - **Still unsupported:**
   - location search pickers (the hidden coordinates come from a search NoEfforts does not
     perform);
