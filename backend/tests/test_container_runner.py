@@ -226,6 +226,7 @@ def test_container_mode_hostile_page_reaches_nothing_else(container_mode, api, r
         assert eg["blocked_requests"] >= 1
     finally:
         c.srv.shutdown()
+        c.srv.server_close()  # release port 8798 for the next canary
     assert receiver.ledger()["accepted"] == 1
 
 
@@ -391,6 +392,7 @@ def test_container_boundary_alone_blocks_egress_without_interception(container_m
             denied = log.proxy_denied()
     finally:
         srv.shutdown()
+        srv.server_close()
     assert hits == [], hits
     assert {"127.0.0.1:8798", "127.0.0.1:5432", "127.0.0.1:6379", "169.254.169.254:80"} <= set(
         denied
