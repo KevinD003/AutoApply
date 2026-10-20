@@ -124,6 +124,34 @@ def _netns_wrapper(
     return path
 
 
+WORKDIR_PREFIX = "ne-browser-"
+
+
+def cleanup_stale_workdirs() -> int:
+    """Remove work directories whose owning worker process no longer exists (a hard-killed
+    worker cannot clean up). Directories of live processes, other users or unknown shape are
+    left alone; PID reuse can only make us keep a directory, never remove a live one."""
+    removed = 0
+    base = tempfile.gettempdir()
+    for name in os.listdir(base):
+        if not name.startswith(WORKDIR_PREFIX):
+            continue
+        pid = name[len(WORKDIR_PREFIX) :].split("-", 1)[0]
+        path = os.path.join(base, name)
+        if not pid.isdigit() or not os.path.isdir(path) or os.stat(path).st_uid != os.getuid():
+            continue
+        try:
+            os.kill(int(pid), 0)
+            continue  # owner alive
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            continue
+        shutil.rmtree(path, ignore_errors=True)
+        removed += 1
+    return removed
+
+
 def isolation_self_check() -> None:
     """Fail fast if the namespaces cannot be created here."""
     import subprocess
@@ -157,7 +185,7 @@ def browser_session(
         launch: dict = {"headless": True, "args": args}
         chrome = os.environ.get("PW_CHROMIUM_PATH") or p.chromium.executable_path
         if isolation == "netns":
-            workdir = tempfile.mkdtemp(prefix="ne-browser-")
+            workdir = tempfile.mkdtemp(prefix=f"{WORKDIR_PREFIX}{os.getpid()}-")
             stack.callback(shutil.rmtree, workdir, True)
             os.chmod(workdir, 0o700)
             sock = os.path.join(workdir, "egress.sock")
@@ -174,7 +202,12 @@ def browser_session(
             launch["executable_path"] = chrome
         else:
             raise IsolationUnavailable(f"unknown isolation mode {isolation!r}")
-        browser = p.chromium.launch(**launch)
+        try:
+            browser = p.chromium.launch(**launch)
+        except Exception as e:  # noqa: BLE001 - never retry without isolation
+            raise IsolationUnavailable(
+                f"isolated browser did not start ({type(e).__name__})"
+            ) from e
         try:
             ctx = browser.new_context(
                 service_workers="block" if intercept else "allow", accept_downloads=False

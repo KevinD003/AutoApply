@@ -11,7 +11,9 @@ Stdlib only.
    this browser's own work directory, so other attempts' egress sockets are out of reach.
 4. Enters a nested user + mount namespace. Mounts inherited from a more privileged namespace
    are locked: the browser, although uid 0 inside, cannot unmount them to look underneath.
-5. Execs Chromium with --proxy-server pointing at the relay and loopback no longer bypassed.
+5. Changes to its own work directory, closes every inherited descriptor except stdio and
+   the DevTools pipes, and execs Chromium with --proxy-server pointing at the relay and
+   loopback no longer bypassed.
 
 The PID namespace (with its own /proc, mounted by unshare) means no process outside the
 browser's own tree is visible, so the worker's environment cannot be read via /proc.
@@ -135,8 +137,13 @@ def main():
         os.unshare(os.CLONE_NEWNS)  # the relay keeps the unhidden view
         hide_paths([p for p in hide.split(os.pathsep) if p], workdir)
         enter_locked_namespace()
+        # The inherited working directory still points into the (now hidden) worker tree,
+        # because a mount does not move processes already inside it. Leave it.
+        os.chdir(workdir)
     except OSError as e:
         sys.exit(f"netns_boot: cannot isolate the filesystem: {e}")  # fail closed
+    # Only stdio and Chromium's DevTools pipes (3, 4) may cross into the browser.
+    os.closerange(5, os.sysconf("SC_OPEN_MAX"))
     proxy = [f"--proxy-server=http://127.0.0.1:{port}", "--proxy-bypass-list=<-loopback>"]
     os.execv(chrome, [chrome, *args, *proxy])
 

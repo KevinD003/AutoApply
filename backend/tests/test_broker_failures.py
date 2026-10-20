@@ -227,9 +227,10 @@ def _killed_mid_send_then_redelivered(api, receiver, broker, *, mode, fault=""):
     w1.kill_hard()
     # The message was reserved with acks_late and never acknowledged.
     assert broker.client().hlen("unacked") == 1
-    # kombu 5.6.2 restores unacked messages older than the visibility timeout when a worker
-    # starts (on_poll_init) and then on every 10th 10-second tick (~100s). Let the 5s timeout
-    # lapse so the replacement worker's startup restore redelivers it.
+    # Observed with kombu 5.6.2 and this configuration (not a general timing guarantee): unacked
+    # messages older than the visibility timeout are restored when a worker starts
+    # (on_poll_init) and then roughly every 100 s. Let the 5 s timeout lapse so the
+    # replacement worker's startup restore redelivers it.
     time.sleep(6)
     w2 = Worker(NOEFFORTS_BROKER_VISIBILITY_TIMEOUT_SECONDS="5")
     try:

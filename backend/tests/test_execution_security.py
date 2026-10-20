@@ -141,10 +141,14 @@ def test_reads_and_user_actions_during_code_wait_cannot_reopen_submission(api, r
     for _ in range(3):  # what the page does on load and on every poll
         assert api.get(f"/applications/{app_id}/package").status_code == 200
         assert api.get(f"/applications/{app_id}").json()["state"] == "needs_user_action"
-    for to in ("preparing", "running", "queued"):
+    for to in ("preparing", "running", "queued", "cancelled"):
         r = api.post(f"/applications/{app_id}/transition", json={"to": to})
         assert r.status_code == 409, (to, r.text)
+    # Cancel is subject to the send boundary: the data is already with the employer.
+    r = api.post(f"/applications/{app_id}/cancel")
+    assert r.status_code == 409 and "may already be in flight" in r.text, r.text
     assert api.get(f"/applications/{app_id}").json()["state"] == "needs_user_action"
+    assert len(api.get(f"/applications/{app_id}/attempts").json()) == 1
     real = wait_for(lambda: receiver.ledger()["challenges"])[-1]["code"]
     assert (
         api.post(

@@ -2,6 +2,7 @@
 Real namespaces, real Chromium, real egress proxy; the canary server counts anything that
 gets through."""
 
+import fcntl
 import http.server
 import os
 import shutil
@@ -183,6 +184,97 @@ def test_production_refuses_to_run_without_isolation(api, receiver, monkeypatch)
     assert receiver.ledger()["disclosures"] == [] and receiver.ledger()["accepted"] == 0
 
 
+@pytest.mark.parametrize("breakage", ["unshare_rejects", "unshare_missing"])
+def test_isolation_failure_refuses_instead_of_browsing_unrestricted(
+    api, receiver, monkeypatch, breakage
+):
+    """If the namespaces cannot be created, the attempt stops before disclosure; there is no
+    fallback to an unisolated browser."""
+    from app.modules.execution import browser
+
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    if breakage == "unshare_rejects":
+        monkeypatch.setattr(browser, "_unshare_flags", lambda: ["--no-such-namespace-flag"])
+    else:
+        monkeypatch.setattr(browser.shutil, "which", lambda name: None)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert "isolation unavailable" in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+def test_stale_workdirs_of_dead_workers_are_removed():
+    from app.modules.execution.browser import WORKDIR_PREFIX, cleanup_stale_workdirs
+
+    dead = subprocess.Popen(["true"])
+    dead.wait()
+    gone = tempfile.mkdtemp(prefix=f"{WORKDIR_PREFIX}{dead.pid}-")
+    live = tempfile.mkdtemp(prefix=f"{WORKDIR_PREFIX}{os.getpid()}-")
+    odd = tempfile.mkdtemp(prefix=f"{WORKDIR_PREFIX}sibling-")
+    try:
+        assert cleanup_stale_workdirs() >= 1
+        assert not os.path.exists(gone)
+        assert os.path.exists(live) and os.path.exists(odd)
+    finally:
+        for d in (gone, live, odd):
+            shutil.rmtree(d, ignore_errors=True)
+
+
+def test_proxy_checks_every_resolved_address_and_connects_to_the_checked_one(monkeypatch):
+    """A name that resolves to public and private addresses is refused; an allowed name is
+    connected by the exact address that was checked (no second lookup can redirect it)."""
+    from app.modules.execution.sandbox import egress_proxy
+
+    answers = {
+        "mixed.example": ["93.184.216.34", "10.0.0.5"],
+        "public.example": ["93.184.216.34"],
+        "meta.example": ["169.254.169.254"],
+    }
+
+    def fake_getaddrinfo(host, port, type=0):  # noqa: A002
+        return [(2, 1, 6, "", (ip, port)) for ip in answers[host]]
+
+    monkeypatch.setattr(egress_proxy.socket, "getaddrinfo", fake_getaddrinfo)
+    p = EgressProxy("/unused", allow={(h, 443) for h in answers})
+    assert p.check("mixed.example", 443)[0] is None
+    assert p.check("meta.example", 443)[0] is None
+    assert p.check("public.example", 443) == ("93.184.216.34", "allowed")
+    assert p.check("public.example", 80)[0] is None  # port is part of the allow-list
+
+
+def test_proxy_connect_and_absolute_http_follow_the_same_policy(receiver):
+    """HTTPS goes through CONNECT, plain HTTP as absolute-form requests; both are checked."""
+    work = tempfile.mkdtemp(prefix="ne-proxytest-")
+    sock_path = os.path.join(work, "p.sock")
+    proxy = EgressProxy(
+        sock_path, allow={("127.0.0.1", 8799)}, allow_private={("127.0.0.1", 8799)}
+    ).start()
+
+    def ask(raw: bytes) -> bytes:
+        c = socket.socket(socket.AF_UNIX)
+        c.settimeout(10)
+        c.connect(sock_path)
+        c.sendall(raw)
+        data = c.recv(200)
+        c.close()
+        return data
+
+    try:
+        assert ask(b"CONNECT 127.0.0.1:8799 HTTP/1.1\r\nHost: x\r\n\r\n").startswith(
+            b"HTTP/1.1 200"
+        )
+        assert b" 403 " in ask(b"CONNECT 127.0.0.1:8798 HTTP/1.1\r\n\r\n")
+        assert b" 403 " in ask(b"CONNECT 127.0.0.1:5432 HTTP/1.1\r\n\r\n")
+        ok = ask(b"GET http://127.0.0.1:8799/apply/health-check HTTP/1.1\r\nHost: x\r\n\r\n")
+        assert ok.startswith(b"HTTP/1.1 200"), ok
+        assert b" 403 " in ask(b"GET http://127.0.0.1:6379/ HTTP/1.1\r\n\r\n")
+        assert b" 403 " in ask(b"GET ftp://127.0.0.1:8799/ HTTP/1.1\r\n\r\n")
+    finally:
+        proxy.stop()
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def test_full_run_goes_through_the_proxy(api, receiver):
     app_id = prepared_application(api, receiver)
     aid = queue(api, app_id)
@@ -274,6 +366,8 @@ umount "$2" 2>/dev/null && echo UMOUNT_OK || echo umount_refused
 cat "$2/marker" 2>/dev/null | grep -q SYNTHETIC && echo DIR_LEAK_AFTER_UMOUNT
 [ -x "$0" ] && echo own_workdir_visible
 echo "procs=$(ls /proc | grep -cE '^[0-9]+$')"
+[ -e ./pyproject.toml ] && echo CWD_LEAK || echo cwd_clean
+[ -e "/proc/$$/fd/$5" ] && echo FD_LEAK || echo fd_closed
 """
 
 
@@ -296,13 +390,24 @@ def test_browser_cannot_see_worker_process_secrets_or_other_attempts():
         wrapper = _netns_wrapper(
             work, os.path.join(work, "unused.sock"), 9, probe, hide=[secret_dir, secret_file]
         )
-        out = subprocess.run(
-            [wrapper, str(os.getpid()), secret_dir, secret_file, sibling],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            env={"PATH": "/usr/bin:/bin"},
-        )
+        # Started from the worker's own directory with an extra open descriptor, as a
+        # careless parent might leave them.
+        # (fds 3 and 4 are Chromium's DevTools pipes and pass on purpose; use a higher one.)
+        low = os.open(os.path.join(secret_dir, "marker"), os.O_RDONLY)
+        leaked = fcntl.fcntl(low, fcntl.F_DUPFD, 20)
+        os.close(low)
+        try:
+            out = subprocess.run(
+                [wrapper, str(os.getpid()), secret_dir, secret_file, sibling, str(leaked)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env={"PATH": "/usr/bin:/bin"},
+                cwd=BACKEND,
+                pass_fds=(leaked,),
+            )
+        finally:
+            os.close(leaked)
         lines = out.stdout.split()
         assert {
             "worker_hidden",
@@ -311,8 +416,17 @@ def test_browser_cannot_see_worker_process_secrets_or_other_attempts():
             "sibling_hidden",
             "umount_refused",
             "own_workdir_visible",
+            "cwd_clean",
+            "fd_closed",
         } <= set(lines), (out.stdout, out.stderr)
-        assert not {"WORKER_VISIBLE", "DIR_LEAK", "FILE_LEAK", "SIBLING_VISIBLE"} & set(lines)
+        assert not {
+            "WORKER_VISIBLE",
+            "DIR_LEAK",
+            "FILE_LEAK",
+            "SIBLING_VISIBLE",
+            "CWD_LEAK",
+            "FD_LEAK",
+        } & set(lines)
         assert "DIR_LEAK_AFTER_UMOUNT" not in lines and "UMOUNT_OK" not in lines
         procs = int(next(x for x in lines if x.startswith("procs=")).split("=")[1])
         assert procs <= 5, out.stdout  # only the namespace's own processes

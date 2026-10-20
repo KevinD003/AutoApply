@@ -84,9 +84,12 @@ def relay_outbox() -> int:
 
 @celery_app.task(name="noefforts.sweep_attempts")
 def sweep_attempts() -> dict:
+    from app.modules.execution.browser import cleanup_stale_workdirs
     from app.modules.execution.service import sweep
 
-    return sweep()
+    out = sweep()
+    out["stale_workdirs_removed"] = cleanup_stale_workdirs()  # this host's crashed workers
+    return out
 
 
 @celery_app.task(name="noefforts.purge_expired_sessions")

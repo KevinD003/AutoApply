@@ -3,6 +3,8 @@
 # Uses its own compose project name and removes its volumes at the end (disposable data only).
 set -euo pipefail
 export COMPOSE_PROJECT_NAME=noefforts_smoke
+# shellcheck source=scripts/smoke_lib.sh
+source "$(dirname "$0")/smoke_lib.sh"
 cleanup() {
   rc=$?
   if [ "$rc" != 0 ]; then
@@ -14,11 +16,8 @@ cleanup() {
 trap cleanup EXIT
 
 docker compose up -d --build
-for i in $(seq 1 90); do
-  if curl -fsS http://127.0.0.1:8000/api/health >/dev/null 2>&1; then break; fi
-  sleep 2
-done
-curl -fsS http://127.0.0.1:8000/api/health
+wait_http http://127.0.0.1:8000/api/health 90
+expect_contains "API health" '"status":"ok"' http://127.0.0.1:8000/api/health
 echo "API healthy (migrations ran on start)"
 
 email="smoke.$(date +%s)@example.com"
@@ -27,18 +26,14 @@ code=$(curl -s -o /tmp/smoke-reg.json -w '%{http_code}' -c /tmp/smoke-cookies \
   -d "{\"email\":\"$email\",\"password\":\"synthetic-password-1\"}" \
   http://127.0.0.1:8000/api/auth/register)
 test "$code" = "201" || { echo "register returned $code"; cat /tmp/smoke-reg.json; exit 1; }
-me=$(curl -fsS -b /tmp/smoke-cookies http://127.0.0.1:8000/api/auth/me)
-grep -q "$email" <<<"$me"
+expect_contains "session" "$email" -b /tmp/smoke-cookies http://127.0.0.1:8000/api/auth/me
 echo "Register + session OK"
 
-for i in $(seq 1 60); do
-  if curl -fsS http://127.0.0.1:3000/login >/dev/null 2>&1; then break; fi
-  sleep 2
-done
-page=$(curl -fsS http://127.0.0.1:3000/login)
-grep -q "NoEfforts" <<<"$page"
-me=$(curl -fsS -b /tmp/smoke-cookies http://127.0.0.1:3000/api/auth/me)
-grep -q "$email" <<<"$me"
+wait_http http://127.0.0.1:3000/login 60
+expect_running_services
+expect_contains "web login page" "NoEfforts" http://127.0.0.1:3000/login
+expect_contains "API through the web app" "$email" -b /tmp/smoke-cookies \
+  http://127.0.0.1:3000/api/auth/me
 echo "Web app serves pages and proxies the API"
 
 # Capture first: `| grep -q` would close the pipe early and fail the step under pipefail.
@@ -47,11 +42,9 @@ grep -q pong <<<"$ping" || { echo "worker ping failed: $ping"; exit 1; }
 echo "Worker registered with the broker"
 
 docker compose restart backend
-for i in $(seq 1 60); do
-  if curl -fsS http://127.0.0.1:8000/api/health >/dev/null 2>&1; then break; fi
-  sleep 2
-done
-me=$(curl -fsS -b /tmp/smoke-cookies http://127.0.0.1:8000/api/auth/me)
-grep -q "$email" <<<"$me"
+wait_http http://127.0.0.1:8000/api/health 60
+expect_contains "session after restart" "$email" -b /tmp/smoke-cookies \
+  http://127.0.0.1:8000/api/auth/me
+expect_running_services
 echo "Data persisted across a backend restart"
 echo "DOCKER SMOKE PASSED"
