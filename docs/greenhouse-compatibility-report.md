@@ -151,6 +151,24 @@ All results below were observed at load, with no interaction, and apply to this 
   assumptions; B2 neither confirms nor refutes them, since the scripts that implement them were
   blocked.
 
+## Host identification (manual run #5, authorized once)
+
+- **Run:** manual run #5 ([39475562252](https://github.com/KevinD003/AutoApply/actions/runs/39475562252)),
+  revision `90a12ab`, `--identify-only`. Success.
+- **Requests:** 0 API requests; 1 page navigation (HTTP 200); 9 browser requests, all GET;
+  43,050 bytes received. B2's allow-list was unchanged, so both hosts below stayed blocked
+  (refused before sending).
+- **Page:** the same structure as B2 (24 id-only controls, 12 comboboxes, 2 file inputs).
+
+| Blocked host | Port | Scheme | Requests (all GET) | Resource types |
+|---|---|---|---|---|
+| `job-boards.cdn.greenhouse.io` | 443 | https | 7 | script 5, stylesheet 2 |
+| `recruiting.cdn.greenhouse.io` | 443 | https | 1 | image 1 |
+
+Both names passed the publication rules: plain `*.greenhouse.io` names containing neither the
+board token, nor the job id, nor any other value derived from the posting. Their purpose is not
+inferred beyond the request types observed.
+
 ## Log cleanup (run #3's logs deleted with authorization; runs #1 and #2 untouched)
 
 Manual "Greenhouse read-only check" runs. None has artifacts: the workflow uploads none and

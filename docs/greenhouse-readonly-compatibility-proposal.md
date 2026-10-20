@@ -145,6 +145,7 @@ To run it:
 | CI read-only #2 | `fd9b03d` | A completed (3 GETs). B loaded the page but found **no extractable form fields**, and the run stopped. The code dropped A's summary on that stop; fixed so A is always reported and B reports anonymous DOM counts. Rerun under the user's broad statement ("You can do anything that you wanna do about the greenhouse"); see the note below |
 | CI read-only #3 | `e2a8d97` | **completed.** A: 3×200. B: page 200, 9 GET requests, no non-GET request, no bot check; form not extractable (id-only controls, ARIA comboboxes). Report: `docs/greenhouse-compatibility-report.md` |
 | CI read-only #4 (B2) | `151e7a0` | **completed**, authorized once. A: 3×200. B: 1 navigation, 9 requests (8 to other greenhouse.io hosts, blocked), 0 non-GET, 43,185 bytes. Mapping: 17 unique, 2 incompatible, 1 absent, 2 not observable |
+| CI read-only #5 (identification) | `90a12ab` | **completed**, authorized once, `--identify-only`: 0 API requests; 1 navigation, 9 GET requests; blocked hosts: `job-boards.cdn.greenhouse.io:443` (5 script, 2 stylesheet), `recruiting.cdn.greenhouse.io:443` (1 image) |
 
 **Note on the budget.** A was written as "at most 3 requests in total" and B as "exactly one"
 navigation. Runs #2 and #3 each used that budget once more, relying on the user's general
@@ -227,6 +228,58 @@ C (candidate data disclosure) and D (submission) remain unapproved.
 
 Run once authorized: Actions → "Greenhouse read-only check (manual)" → `observe` and `mapping`
 checked, once.
+
+## B3 — proposed scope (not approved, not run, not yet implemented)
+
+**Purpose:** find out whether loading the page's own blocked dependencies changes the form,
+and whether it resolves B2's specific gaps. Those gaps are:
+- the attachment label mismatch;
+- the absent location control;
+- the page-managed coordinates;
+- the 5 unmatched comboboxes;
+- dropdown options not observable at load;
+- required flags and visible questions;
+- any bot challenge.
+
+**Allow-list (exact; no wildcards, no automatic expansion):**
+
+| Host | Port | Methods | Resource types | Basis (observed in run #5) |
+|---|---|---|---|---|
+| `job-boards.greenhouse.io` (unchanged) | 443 | GET, HEAD | as in B2 | the page itself |
+| `job-boards.cdn.greenhouse.io` (new) | 443 | GET, HEAD | script, stylesheet only | the page requested 5 scripts and 2 stylesheets from it |
+| `recruiting.cdn.greenhouse.io` | — | — | — | **not proposed:** its only observed request was 1 image. It stays blocked and is reported |
+
+- **Anything else stays blocked before sending:**
+  - any other host;
+  - any other resource type or method to the new host (font, xhr, fetch, media and so on);
+  - every non-GET to any host.
+- **After scripts run:**
+  - the same rules still apply;
+  - each blocked request is recorded by structural category;
+  - rendering is reported as incomplete when one is refused.
+  No host is added during the run.
+- **Redirects:**
+  - the page: at most 3 same-origin hops, as in B2;
+  - a subresource redirect to any host or resource type outside the table is refused and
+    recorded.
+- **Stop conditions:**
+  - all of B2's: a second navigation, a redirect to another origin, the 150-request budget,
+    the 20 MB received-data stop (a stop condition, **not** a strict transfer cap), the
+    retained-DOM limit, the 90 s and 150 s deadlines, the output limit;
+  - plus any bot challenge, which is never solved or bypassed.
+  A stop is reported and never retried.
+- **Observe-only:**
+  - the same posting and a fresh browser context, with no candidate data;
+  - no clicks, typing, uploads, location searches, OTP requests or submission.
+- **API requests:** the comparison needs the job data, so B3 would make B2's 3 API requests
+  once. This needs the same explicit approval as the page load.
+- **Output and retention:**
+  - B2's allowlisted structural summary (aliases, guard, 256 KiB cap) plus a field-by-field
+    comparison with B2;
+  - raw data destroyed with the stack; nothing uploaded.
+- **Not built yet:** allowing a second host per resource type in the session proxy and the
+  browser filter, and the comparison output. Both would be built and tested locally against
+  fixtures before B3 runs.
 
 ## Deliverable: the comparison (once A/B are separately approved and run)
 
