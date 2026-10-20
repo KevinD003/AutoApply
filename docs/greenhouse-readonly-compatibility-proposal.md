@@ -134,6 +134,14 @@ To run it:
 4. **Commit:** the run prints only the anonymous summary. That summary, plus the comparison
    against the fixture, is what gets committed as `docs/greenhouse-compatibility-report.md`.
 
+## Runs
+
+| Run | Revision | Result |
+|---|---|---|
+| sandbox, 2026-10-20 | `86fa55e` | A not sent: the environment proxy denied `boards-api.greenhouse.io` (403). One attempt, not retried |
+| CI read-only #1 | `fd9b03d` | stopped before any request: the secret was not set yet |
+| CI read-only #2 | `fd9b03d` | A completed (3 GETs). B loaded the page but found **no extractable form fields**, and the run stopped. The code dropped A's summary on that stop; fixed so A is always reported and B reports anonymous DOM counts. Rerun under the same approval (user: "You can do anything that you wanna do about the greenhouse") |
+
 ## Deliverable: the comparison (once A/B are separately approved and run)
 
 | Area | Compared |

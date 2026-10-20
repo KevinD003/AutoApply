@@ -219,6 +219,33 @@ def compare(api_json: dict, rendered) -> dict:
     }
 
 
+# Anonymous DOM statistics (counts only; no text, names or values leave the page).
+DOM_STATS_JS = """() => {
+  const q = (s) => Array.from(document.querySelectorAll(s));
+  const inputs = q('input');
+  const byType = {};
+  for (const i of inputs) {
+    const t = (i.getAttribute('type') || 'text').toLowerCase();
+    byType[t] = (byType[t] || 0) + 1;
+  }
+  const controls = q('input, select, textarea');
+  return {
+    forms: q('form').length,
+    inputs_by_type: byType,
+    selects: q('select').length,
+    textareas: q('textarea').length,
+    controls_with_name: controls.filter(c => c.getAttribute('name')).length,
+    controls_with_id_only: controls.filter(c => !c.getAttribute('name') && c.id).length,
+    controls_outside_form: controls.filter(c => !c.closest('form')).length,
+    labels: q('label').length,
+    comboboxes: q('[role=combobox]').length,
+    file_inputs: q('input[type=file]').length,
+    buttons: q('button, [role=button], input[type=submit]').length,
+    iframes: q('iframe').length,
+    shadow_hosts: q('*').filter(e => e.shadowRoot).length,
+    scripts: q('script[src]').length,
+  };
+}"""
 PAGE_REQUEST_LIMIT = 150
 PAGE_SECONDS = 60
 
@@ -275,7 +302,11 @@ def observe_page(board: str, job_id: str, *, base: str | None = None) -> dict:
             lambda f: f == page.main_frame and seen["main_frame"].append(urlsplit(f.url).netloc),
         )
         resp = page.goto(url, wait_until="load")
-        page.wait_for_timeout(2000)  # let client-side rendering settle; nothing is touched
+        try:  # client-side rendering may still be fetching; bounded, nothing is touched
+            page.wait_for_load_state("networkidle", timeout=15_000)
+        except Exception:  # noqa: BLE001 - a page that never goes idle is still observed
+            pass
+        page.wait_for_timeout(2000)
         final = urlsplit(page.url)
         if f"{final.scheme}://{final.netloc}" != origin:
             raise Stop("redirected to another origin")
@@ -283,16 +314,30 @@ def observe_page(board: str, job_id: str, *, base: str | None = None) -> dict:
             raise Stop("page request budget reached")
         bot_check = page.locator(CHALLENGE_SELECTORS).count() > 0
         html = page.content()
+        dom = page.evaluate(DOM_STATS_JS)
+        frames = []
+        for f in page.frames[1:]:
+            fo = urlsplit(f.url)
+            kind = _category(fo.netloc) if fo.netloc else (fo.scheme or "blank")
+            entry = {"same_origin": f"{fo.scheme}://{fo.netloc}" == origin, "kind": kind}
+            try:
+                entry["dom"] = f.evaluate(DOM_STATS_JS)
+            except Exception:  # noqa: BLE001 - detached or blocked frame
+                entry["dom"] = None
+            frames.append(entry)
         denied = set(log.proxy_denied()) | {
             urlsplit(b).netloc for b in log.blocked if urlsplit(b).netloc
         }
-    rendered = None
+    rendered, extraction_error = None, None
     if not bot_check:
         try:
             rendered = gh.rendered_schema(html)
         except Exception as e:  # noqa: BLE001 - record why, do not guess
-            raise Stop(f"form could not be extracted ({type(e).__name__})") from None
+            extraction_error = type(e).__name__
     return {
+        "extraction_error": extraction_error,
+        "dom": dom,
+        "frames": frames,
         "status": resp.status if resp else None,
         "bot_check": bot_check,
         "requests": seen["requests"],
@@ -341,6 +386,9 @@ def publishable(api_json: dict, board_json: dict, job_id: str, observed: dict | 
             "blocked_non_get": [{"method": b["method"]} for b in observed["blocked_non_get"]],
             "denied_destinations_by_kind": cats,
             "extracted": observed["rendered"] is not None,
+            "extraction_error": observed.get("extraction_error"),
+            "dom": observed.get("dom"),
+            "frames": observed.get("frames"),
         }
         if observed["rendered"] is not None:
             out["compare"] = compare(api_json, observed["rendered"])
@@ -367,11 +415,19 @@ def main(argv=None) -> int:
         log = fetch(board, job_id, a.out)
         api_json = json.loads((a.out / "job.json").read_text())
         board_json = json.loads((a.out / "board.json").read_text())
-        observed = observe_page(board, job_id) if a.observe else None
+        page_stop = None
+        try:
+            observed = observe_page(board, job_id) if a.observe else None
+        except Stop as e:  # A's result is still reported
+            observed, page_stop = None, str(e)
+        except Exception as e:  # noqa: BLE001 - messages can carry URLs; type only
+            observed, page_stop = None, f"error ({type(e).__name__})"
         if observed is not None and observed["rendered"] is not None:
             write_json(a.out / "rendered.json", observed["rendered"].model_dump())
         result = {"requests": [r["status"] for r in log["requests"]],
                   **publishable(api_json, board_json, job_id, observed)}  # fmt: skip
+        if page_stop:
+            result["page_stopped"] = page_stop
     except (NotApproved, Stop) as e:
         print(json.dumps({"stopped": f"{type(e).__name__}: {e}"}))
         return 2

@@ -141,3 +141,15 @@ def test_anonymous_destination_categories():
     assert ro._category("www.google.com:443") == "google.com"
     assert ro._category("assets.employer-name.example:443") == "other"
     assert ro._category("job-boards.greenhouse.io:443") == "greenhouse.io"
+
+
+def test_unextractable_page_reports_anonymous_diagnostics(receiver):
+    """A client-rendered page whose controls have ids but no names: no guessing, a typed
+    extraction error and counts that explain it."""
+    receiver.config(mode="gh_client_rendered")
+    obs = ro.observe_page(BOARD, JOB, base=BASE)
+    assert obs["rendered"] is None and obs["extraction_error"] == "ExtractionError"
+    assert obs["dom"]["controls_with_id_only"] == 3 and obs["dom"]["controls_with_name"] == 0
+    assert obs["dom"]["forms"] == 0
+    pub = ro.publishable(greenhouse_like._api_json(BOARD, JOB, BASE), {"name": "x"}, JOB, obs)
+    assert pub["page"]["extracted"] is False and "compare" not in pub

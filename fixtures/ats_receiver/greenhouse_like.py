@@ -211,6 +211,11 @@ for (const wrap of document.querySelectorAll('[data-show-if]')) {{
   trigger.addEventListener('change', sync); sync();
 }}
 </script>"""
+    if cfg["mode"] == "gh_client_rendered":  # controls drawn by script, id-only, no form/name
+        body = ("<div id='app'></div><script>const a = document.getElementById('app');"
+                "for (const k of ['first_name', 'last_name', 'email']) {"
+                " const i = document.createElement('input'); i.id = k; a.appendChild(i); }"
+                "</script>")
     if cfg["mode"] == "gh_post_on_load":  # a page that sends data on its own as soon as it loads
         body += (f"<script>fetch('{base}/telemetry', {{method: 'POST', body: 'loaded'}})"
                  ".catch(() => {});</script>")
