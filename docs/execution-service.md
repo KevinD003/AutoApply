@@ -25,10 +25,16 @@ production refuses execution entirely. Results by revision are in "Verification"
 - **worker** (Celery): unchanged gates (approval, `disclosure_started_at`, `sending`, fencing by
   `generation`, no retry after an unknown final click). It has
   `NOEFFORTS_BROWSER_ISOLATION=container`. For each attempt it:
-  1. opens a proxy session (allow-list = the approved destination's host:port);
-  2. opens a runner session (passes the proxy credentials and the destination host);
-  3. connects with `chromium.connect(ws)`; in this mode the worker-side route layer only
-     allows or aborts requests, and never fetches or opens sockets on the worker.
+  1. checks the runner's `/health`: the sandbox self-check must have passed, and the runner's
+     Playwright driver version must equal its own (otherwise it refuses with a message to
+     rebuild the image);
+  2. opens a proxy session (allow-list = the approved destination's host:port);
+  3. opens a runner session (passes the proxy credentials and the destination host). The
+     runner has one browser slot; while it is busy the worker waits up to
+     `NOEFFORTS_BROWSER_SLOT_WAIT_SECONDS` (40, under the 60 s lease) before refusing;
+  4. connects with `chromium.connect(ws, headers={X-Runner-Token})`; in this mode the
+     worker-side route layer only allows or aborts requests, and never fetches or opens
+     sockets on the worker.
   Any runner or proxy failure raises `IsolationUnavailable`, which ends as `failed_safe`. The
   worker never falls back to a local or unsandboxed browser.
 - **browser-runner** (`browser/`): Playwright 1.56.0 driver + Chromium 141 headless shell. It
@@ -37,9 +43,19 @@ production refuses execution entirely. Results by revision are in "Verification"
   - the proxy, with per-session credentials;
   - `--host-resolver-rules`, which leaves only the destination and the proxy resolvable;
   - a minimal environment.
-  At startup it checks that renderers run under seccomp-bpf (`Seccomp: 2`), not as root, and
-  without `--no-sandbox`. If the check fails, `/health` returns 503 and every session is
-  refused. Limits: 2 concurrent sessions, and a per-session time limit
+  At startup it checks that its own browser processes' renderers run under seccomp-bpf
+  (`Seccomp: 2`), not as root, and without `--no-sandbox`. If the check fails, `/health`
+  returns 503 and every session is refused.
+
+  Control channel. The browser's protocol server listens on the runner's loopback only. The
+  worker reaches it through the runner's relay at `/sessions/<id>/ws/<secret>`, which needs
+  the runner token and the session's 48-hex secret. Each session accepts exactly one
+  connection (a second one gets 409). When that connection ends — the worker finished,
+  crashed, or was killed — the runner closes the browser at once. A session that is never
+  connected is closed after 30 s.
+
+  Limits: one session per runner (`MAX_SESSIONS=1`), because sessions in one container share a
+  user and are not isolated from each other. There is also a per-session time limit
   (`BROWSER_MAX_SESSION_SECONDS`, default 600).
 - **egress-proxy** (`app.modules.execution.sandbox.proxy_service`): the existing destination
   policy, applied per session:
@@ -102,11 +118,14 @@ published ports. The host reaches the receiver's admin API only through `docker 
 |---|---|
 | `s_container_configuration` | `docker inspect`: user, privileged, capabilities, read-only root, tmpfs, no-new-privileges, seccomp, memory/CPU/pids, mounts, networks |
 | `s_sandbox_selfcheck` | runner `/health` + `/selfcheck` through the worker: renderers `Seccomp: 2`, no `--no-sandbox`, no uid 0 |
-| `s_browser_container_probe` | inside the runner, as its user: uid, capability sets, `NoNewPrivs`, seccomp, credential-like env names, app/storage/.env/docker socket/secrets paths, writability, TCP reach to postgres/redis/API/web/receiver/canary/metadata/internet/proxy; proxy control without token |
-| `s_greenhouse_security_code_flow` | preparation + approval → queue → isolated browser → approved upload (digest = approved document) → security-code checkpoint (code read from the receiver's ledger) → final submit → `confirmed`; receiver acceptances +1; evidence with retention dates; evidence deletion; no open sessions; no leftover browser profile |
-| `s_hostile_page` | page tries other hosts, the canary, WebSockets: still confirmed; canary 0 hits; blocked requests recorded |
+| `s_browser_container_probe` | inside the runner, as its user: uid, capability sets, `NoNewPrivs`, seccomp, credential-like env names, app/storage/.env/docker socket/secrets paths, writability, external DNS, TCP reach to postgres/redis/API/web/worker/receiver/canary/metadata/internet/proxy; proxy control without token |
+| `s_probe_detects_an_insecure_configuration` | control for the probe: the same image run deliberately insecure (fake DB URL and control token in env, a mounted fake secret, on the app network) — the probe must flag all three |
+| `s_greenhouse_security_code_flow` | preparation + approval → queue → isolated browser → approved upload (digest = approved document) → security-code checkpoint (code read from the receiver's ledger) → final submit → `confirmed`; receiver acceptances +1; evidence with retention dates; the code and the three service tokens absent from every service's logs; evidence deletion; no open sessions; no leftover browser profile |
+| `s_hostile_page` | page tries other hosts, the canary, metadata, redirects to the canary: still confirmed; canary 0 hits; blocked requests recorded |
+| `s_infrastructure_only_egress` | worker recreated with in-process interception off (`NOEFFORTS_EXECUTION_TEST_DISABLE_INTERCEPTION`, refused outside development/test): hostile page still confirmed, 0 requests blocked in-process, canary 0 hits, proxy denied the canary |
 | `s_unknown_then_duplicate_delivery` | accepted but unanswered → `unknown` / `submitted_unconfirmed`; a second `execute_attempt` delivery is ignored; still exactly 1 acceptance |
 | `s_runner_lost_during_submission` | runner container killed during `sending` → `unknown`, never resent; at most 1 acceptance; runner restarts healthy |
+| `s_worker_killed_mid_submit` | worker container killed during `sending` → runner closes the orphaned browser within 20 s; attempt swept to `unknown` after the lease, `retry_count` 0; `submitted_unconfirmed`; at most 1 acceptance |
 | `s_runner_unavailable` | runner stopped → `failed_safe`, 0 disclosures |
 | `s_sandbox_unavailable` | runner recreated with Docker's unmodified default seccomp → `/health` 503 `sandbox_ok: false`; attempt `failed_safe`, 0 disclosures (no `--no-sandbox` fallback) |
 | `s_memory_exhaustion` | page allocates memory without bound → attempt stops safely, 0 acceptances; runner serving again |
@@ -133,9 +152,14 @@ job link and the PASS lines with receiver counts.
   remove this exposure, but it is not done.
 - **Runner token.** The worker authenticates to the runner with a shared token. A compromised
   runner could read its own token, but not the worker's database or broker credentials.
-- **One runner, two sessions.** Sessions share the container's process and memory limits.
-  One hostile page can slow or end the other session; a session's own work directory and
-  proxy credentials are not shared. For full separation, run one runner per attempt.
+- **One browser at a time.** One runner has one slot, so attempts run one after another.
+  Running more runners needs a scheduler that assigns a runner per attempt; that is not built,
+  and concurrent tenants in one container are not claimed to be isolated. The runner
+  container is long-lived: sessions get fresh browser processes and profiles, but the
+  container itself is not recreated per attempt.
+- **TCP-level liveness.** The runner notices a dead worker when the TCP connection closes
+  (immediately for a killed process or container; via keep-alive probes otherwise). The
+  per-session time limit bounds the rest.
 - **Exactly-once delivery is not claimed.** The guarantees are the same as before: no retry
   after `disclosure_started_at`/`sending`, unknown outcomes are quarantined, and duplicate
   deliveries are ignored. The receiver ledger is the count.

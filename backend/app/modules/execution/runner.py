@@ -74,11 +74,16 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         if s.browser_isolation not in ("netns", "container") and s.env == "production":
             svc.fail_safe(aid, worker, gen, "browser network isolation is required")
             return "failed_safe"
+        intercept = not s.execution_test_disable_interception
+        if not intercept and s.env not in ("development", "test"):
+            svc.fail_safe(aid, worker, gen, "request interception cannot be disabled here")
+            return "failed_safe"
         try:
             session = browser_session(
                 dest["origin"],
                 s.navigation_timeout_seconds * 1000,
                 isolation=s.browser_isolation,
+                intercept=intercept,
                 # Local fixture receivers live on loopback; only they get this exception.
                 allow_private_destination=is_fixture_origin(dest["origin"]),
             )

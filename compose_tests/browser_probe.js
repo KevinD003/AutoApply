@@ -4,6 +4,7 @@
 const fs = require("fs");
 const net = require("net");
 const http = require("http");
+const dns = require("dns");
 
 const status = fs.readFileSync("/proc/self/status", "utf8");
 const field = (k) => ((status.match(new RegExp(`^${k}:\\s*(.*)$`, "m")) || [])[1] || "").trim();
@@ -32,9 +33,13 @@ function controlWithoutToken() {
 (async () => {
   const targets = [["postgres", 5432], ["redis", 6379], ["backend", 8000], ["frontend", 3000],
     ["receiver", 8799], ["canary", 8798], ["169.254.169.254", 80], ["1.1.1.1", 443],
-    ["egress-proxy", 3128]];
+    ["worker", 8000], ["egress-proxy", 3128]];
   const reach = {};
   for (const [h, p] of targets) reach[`${h}:${p}`] = await tcp(h, p);
+  // A name lookup outside the stack would be a side channel (DNS exfiltration) even without
+  // any TCP route.
+  const external_dns = await new Promise((resolve) =>
+    dns.lookup("example.com", (err, addr) => resolve(err ? (err.code || "error") : `resolved ${addr}`)));
   const envKeys = Object.keys(process.env).sort();
   console.log(JSON.stringify({
     uid: process.getuid(), gid: process.getgid(),
@@ -45,6 +50,6 @@ function controlWithoutToken() {
     paths_present: ["/data", "/data/storage", "/app", "/.env", "/var/run/docker.sock", "/run/secrets", "/fixture"].filter(exists),
     root_writable: writable("/probe-write-test"), etc_writable: writable("/etc/probe-write-test"),
     tmp_writable: writable("/tmp/probe-write-test"),
-    reach, proxy_control_without_token: await controlWithoutToken(),
+    reach, external_dns, proxy_control_without_token: await controlWithoutToken(),
   }));
 })();

@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     browser_runner_token: str = ""
     egress_control_url: str = "http://egress-proxy:3129"
     egress_control_token: str = ""
+    # How long an attempt waits for a free browser-runner slot before refusing (before any
+    # disclosure; must stay well under lease_seconds).
+    browser_slot_wait_seconds: int = 40
+    # TEST ONLY: turn off the worker's in-process request interception so a test can show
+    # that the container boundary (runner launch settings + session proxy) alone holds.
+    # Refused outside development/test.
+    execution_test_disable_interception: bool = False
 
     # Optional integrations. Absent credentials disable the feature rather than failing.
     anthropic_api_key: str | None = None

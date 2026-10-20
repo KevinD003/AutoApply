@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -26,6 +27,8 @@ ADMIN = os.environ["RECEIVER_ADMIN_TOKEN"]
 PDF = b"%PDF-1.4\n% synthetic resume for the compose execution test\n"
 RESULTS: list[dict] = []
 NO_PROXY = urllib.request.ProxyHandler({})
+NODE = "/usr/local/lib/python3.12/site-packages/playwright/driver/node"  # in the runner image
+PROBE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "browser_probe.js")
 
 
 def check(name: str, ok: bool, detail="") -> bool:
@@ -140,6 +143,26 @@ def wait_for(pred, timeout=120, every=1.0):
             return v
         time.sleep(every)
     return None
+
+
+def runner_health() -> list:
+    """[status, body] of the runner's /health, read inside the runner (works while the worker
+    is down)."""
+    js = ("require('http').get('http://127.0.0.1:9330/health', r => { let b = '';"
+          " r.on('data', c => b += c); r.on('end', () => console.log(JSON.stringify([r.statusCode,"
+          " JSON.parse(b)]))); }).on('error', e => console.log(JSON.stringify([0, {error: e.code}])))")  # fmt: skip
+    return json.loads(compose("exec", "-T", "browser-runner", NODE, "-e", js).strip().splitlines()[-1])
+
+
+def recreate_worker(**env_overrides) -> None:
+    env = dict(os.environ, **env_overrides)
+    subprocess.run(["docker", "compose", "up", "-d", "--force-recreate", "--no-deps", "worker"],
+                   env=env, check=True, capture_output=True, timeout=300)  # fmt: skip
+    wait_for(lambda: worker_check()["runner_health"][0] == 200, 120, 2)
+
+
+def canary_hits() -> int:
+    return compose("logs", "--no-color", "canary").count("CANARY-HIT")
 
 
 def worker_check() -> dict:
@@ -263,9 +286,8 @@ def s_sandbox_selfcheck():
 
 
 def s_browser_container_probe():
-    node = "/usr/local/lib/python3.12/site-packages/playwright/driver/node"
-    with open(os.path.join(os.path.dirname(__file__), "browser_probe.js"), "rb") as f:
-        out = compose("exec", "-T", "browser-runner", node, "-", stdin=f.read())
+    with open(PROBE, "rb") as f:
+        out = compose("exec", "-T", "browser-runner", NODE, "-", stdin=f.read())
     p = json.loads(out.strip().splitlines()[-1])
     check("probe: uid 10002, no capabilities, no-new-privs, seccomp filter",
           p["uid"] == 10002 and set(p["cap_eff"]) <= {"0"} and set(p["cap_bnd"]) <= {"0"}
@@ -278,11 +300,37 @@ def s_browser_container_probe():
     check("probe: root filesystem read-only, /tmp writable",
           not p["root_writable"] and not p["etc_writable"] and p["tmp_writable"])  # fmt: skip
     closed = {k: v for k, v in p["reach"].items() if k != "egress-proxy:3128"}
-    check("probe: database, broker, API, web, receiver, canary, metadata, internet unreachable",
+    check("probe: no external name resolution (no DNS side channel)",
+          not p["external_dns"].startswith("resolved"), p["external_dns"])  # fmt: skip
+    check("probe: database, broker, API, web, worker, receiver, canary, metadata, internet unreachable",
           all(v != "open" for v in closed.values()), closed)  # fmt: skip
     check("probe: only the proxy port is reachable; its control API refuses without the token",
           p["reach"]["egress-proxy:3128"] == "open" and p["proxy_control_without_token"] == 401,
           {"proxy": p["reach"]["egress-proxy:3128"], "control": p["proxy_control_without_token"]})  # fmt: skip
+
+
+def s_probe_detects_an_insecure_configuration():
+    """Control for the probe above: the same probe and image, deliberately misconfigured (fake
+    credentials in the environment, a mounted fake secret, attached to the application
+    network), must report each problem. No real secret is used."""
+    image = json.loads(sh("docker", "inspect", container_id("browser-runner")))[0]["Config"]["Image"]
+    net = os.environ["COMPOSE_PROJECT_NAME"] + "_default"
+    with tempfile.TemporaryDirectory() as d, open(PROBE, "rb") as f:
+        with open(os.path.join(d, "fake-secret"), "w") as fs:
+            fs.write("synthetic-not-a-secret")
+        out = sh("docker", "run", "--rm", "-i", "--network", net,
+                 "-e", "NOEFFORTS_DATABASE_URL=postgresql://fake:fake@postgres/fake",
+                 "-e", "EGRESS_CONTROL_TOKEN=synthetic-control-token",
+                 "-v", f"{d}:/run/secrets:ro", "--entrypoint", NODE, image, "-", stdin=f.read())  # fmt: skip
+    p = json.loads(out.strip().splitlines()[-1])
+    check("probe control: flags credential-like environment variables",
+          {"NOEFFORTS_DATABASE_URL", "EGRESS_CONTROL_TOKEN"} <= set(p["credential_like_env"]),
+          p["credential_like_env"])  # fmt: skip
+    check("probe control: flags a mounted secrets directory", "/run/secrets" in p["paths_present"],
+          p["paths_present"])  # fmt: skip
+    check("probe control: flags a reachable database and broker",
+          p["reach"]["postgres:5432"] == "open" and p["reach"]["redis:6379"] == "open",
+          {k: p["reach"][k] for k in ("postgres:5432", "redis:6379")})  # fmt: skip
 
 
 def s_greenhouse_security_code_flow():
@@ -327,6 +375,12 @@ def s_greenhouse_security_code_flow():
         "greenhouse: code not stored after use",
         all(c["status"] != "open" for c in attempt(a, app_id)["checkpoints"]),
     )
+    logs = compose("logs", "--no-color")
+    leaked = [name for name, v in (("security code", code),
+                                   ("runner token", os.environ["BROWSER_RUNNER_TOKEN"]),
+                                   ("proxy control token", os.environ["EGRESS_CONTROL_TOKEN"]),
+                                   ("receiver admin token", ADMIN)) if v in logs]  # fmt: skip
+    check("logs: no security code or service token in any service's logs", leaked == [], leaked)
     code_del, _ = a.call("DELETE", f"/applications/{app_id}/evidence")
     check("cleanup: evidence can be deleted after the attempt",
           code_del == 200 and attempt(a, app_id)["evidence"] == [], code_del)  # fmt: skip
@@ -338,6 +392,7 @@ def s_greenhouse_security_code_flow():
 
 
 def s_hostile_page():
+    before = canary_hits()
     receiver("config", {"mode": "hostile", "canary": "http://canary:8798"})
     a = candidate()
     app_id = generic_app(a, f"hostile-{uuid.uuid4().hex[:6]}")
@@ -345,11 +400,38 @@ def s_hostile_page():
     att = final_state(a, app_id)
     receiver("config", {"mode": "normal"})
     eg = next((e["data"] for e in (att or {}).get("evidence", []) if e["kind"] == "egress"), {})
-    hits = compose("logs", "--no-color", "canary").count("CANARY-HIT")
+    hits = canary_hits() - before
     check("hostile page: still submitted to the approved destination",
           att and att["state"] == "confirmed", att and att["state"])  # fmt: skip
     check("hostile page: canary on an internal network received nothing", hits == 0, hits)
     check("hostile page: blocked requests recorded", eg.get("blocked_requests", 0) >= 1, eg)
+
+
+def s_infrastructure_only_egress():
+    """The worker's in-process interception switched off (test-only setting): only the runner's
+    launch settings and the per-session proxy stand between the hostile page and the canary."""
+    recreate_worker(EXEC_TEST_DISABLE_INTERCEPTION="true")
+    try:
+        before = canary_hits()
+        receiver("config", {"mode": "hostile", "canary": "http://canary:8798"})
+        a = candidate()
+        slug = f"nointercept-{uuid.uuid4().hex[:6]}"
+        app_id = generic_app(a, slug)
+        queue(a, app_id)
+        att = final_state(a, app_id)
+        receiver("config", {"mode": "normal"})
+        eg = next((e["data"] for e in (att or {}).get("evidence", []) if e["kind"] == "egress"), {})
+        hits = canary_hits() - before
+        check("no interception: approved destination still works (confirmed, 1 acceptance)",
+              att and att["state"] == "confirmed" and ledger_for(slug)["accepted"] == 1,
+              att and att["state"])  # fmt: skip
+        check("no interception: the in-process layer really was off (0 requests blocked by it)",
+              eg.get("blocked_requests", 0) == 0, eg)  # fmt: skip
+        check("no interception: canary received nothing", hits == 0, hits)
+        check("no interception: the session proxy denied the off-destination requests",
+              any(d.startswith("canary:") for d in eg.get("proxy_denied", [])), eg.get("proxy_denied"))  # fmt: skip
+    finally:
+        recreate_worker(EXEC_TEST_DISABLE_INTERCEPTION="false")
 
 
 def s_unknown_then_duplicate_delivery():
@@ -397,6 +479,33 @@ def s_runner_lost_during_submission():
     n = ledger_for(slug)["accepted"]
     check("process loss: at most one acceptance at the receiver", n <= 1, n)
     receiver("config", {"mode": "normal", "delay_s": 0})
+
+
+def s_worker_killed_mid_submit():
+    """The orchestrating worker dies while the final POST is in flight: the runner must close
+    the orphaned browser, the attempt must end 'unknown' (swept after the lease), and nothing
+    may be sent again."""
+    receiver("config", {"mode": "delay", "delay_s": 20})
+    a = candidate()
+    slug = f"wkill-{uuid.uuid4().hex[:6]}"
+    app_id = generic_app(a, slug)
+    queue(a, app_id)
+    sending = wait_for(lambda: (x := attempt(a, app_id)) and x["state"] == "sending", 120, 0.3)
+    check("worker loss: attempt reached the submit step", bool(sending))
+    compose("kill", "worker")
+    closed = wait_for(lambda: runner_health()[1].get("sessions") == 0, 20, 0.5)
+    check("worker loss: runner closed the orphaned browser within 20 s", bool(closed), runner_health())
+    compose("up", "-d", "worker")
+    att = final_state(a, app_id, timeout=180)
+    check("worker loss: swept to 'unknown' after the lease, not retried",
+          att and att["state"] == "unknown" and att["retry_count"] == 0,
+          att and (att["state"], att["outcome"]))  # fmt: skip
+    check("worker loss: application quarantined as submitted_unconfirmed",
+          a.ok("GET", f"/applications/{app_id}")["state"] == "submitted_unconfirmed")
+    n = ledger_for(slug)["accepted"]
+    check("worker loss: at most one acceptance at the receiver (no resend)", n <= 1, n)
+    receiver("config", {"mode": "normal", "delay_s": 0})
+    wait_for(lambda: worker_check()["runner_health"][0] == 200, 120, 2)
 
 
 def s_runner_unavailable():
@@ -469,10 +578,13 @@ SCENARIOS = [
     s_container_configuration,
     s_sandbox_selfcheck,
     s_browser_container_probe,
+    s_probe_detects_an_insecure_configuration,
     s_greenhouse_security_code_flow,
     s_hostile_page,
+    s_infrastructure_only_egress,
     s_unknown_then_duplicate_delivery,
     s_runner_lost_during_submission,
+    s_worker_killed_mid_submit,
     s_runner_unavailable,
     s_sandbox_unavailable,
     s_memory_exhaustion,

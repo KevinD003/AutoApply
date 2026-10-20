@@ -148,9 +148,24 @@ def build_content(db: Session, app: Application) -> dict:
     for f in schema.fields:
         r = resolve_field(f, ctx)
         trigger = statuses.get(f.condition.key) if f.condition else None
-        if f.condition and trigger in (None, "needs_user", "needs_consent"):
-            # The trigger is unanswered (or not an earlier question), so whether this question
-            # is shown is unknown: it keeps its own resolution and is never "not asked".
+        if f.condition and f.condition.key not in statuses:
+            # Depends on a question that is missing, later in the form, or circular: when it
+            # is asked cannot be known, so it is never filled; if required, apply manually.
+            r.value = r.display = None
+            r.user_input_allowed = r.draftable = r.bankable = False
+            r.status = "needs_user" if f.required else "blank_optional"
+            r.explanation = (
+                "NoEfforts cannot tell when this question is asked (it depends on a question "
+                "that is missing, later in the form, or circular). "
+                + (
+                    "It is required, so apply on the employer's site."
+                    if f.required
+                    else "Left blank."
+                )
+            )
+        elif f.condition and trigger in ("needs_user", "needs_consent"):
+            # The trigger is unanswered, so whether this question is shown is unknown: it keeps
+            # its own resolution and is never "not asked".
             r.explanation = (
                 f"{r.explanation} Whether this question is asked depends on an unanswered "
                 "question above."

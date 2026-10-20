@@ -6,12 +6,17 @@
 //   * Chromium's own sandbox is on (never --no-sandbox); a self-check at startup verifies that
 //     renderers really run under seccomp-bpf, and the runner refuses all sessions if not;
 //   * all traffic goes to the configured egress proxy, with per-session credentials;
-//   * each session has a hard time limit and the number of sessions is capped.
+//   * each session has a hard time limit and the number of sessions is capped (one by default:
+//     sessions in one container share a user, so concurrent tenants are not isolated);
+//   * the browser's own protocol server listens on loopback only. The worker reaches it through
+//     this service: one authenticated connection per session, and when that connection ends
+//     the browser is closed, so a lost or stale worker leaves no browser behind to drive.
 // The only secret here is the runner token, which authorises use of this runner and nothing
 // else (no database, broker, mailbox or cloud credentials exist in this container).
 
 "use strict";
 const http = require("http");
+const net = require("net");
 const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
@@ -23,11 +28,13 @@ const PORT = Number(process.env.RUNNER_PORT || 9330);
 const TOKEN = process.env.RUNNER_TOKEN || "";
 const PROXY = process.env.EGRESS_PROXY || ""; // e.g. http://egress-proxy:3128
 const PUBLIC_HOST = process.env.RUNNER_PUBLIC_HOST || os.hostname();
-const MAX_SESSIONS = Number(process.env.MAX_SESSIONS || 2);
+const MAX_SESSIONS = Number(process.env.MAX_SESSIONS || 1);
+const CONNECT_SECONDS = Number(process.env.CONNECT_SECONDS || 30);
+const DRIVER_VERSION = require(`${DRIVER}/package.json`).version;
 const MAX_SESSION_SECONDS = Number(process.env.MAX_SESSION_SECONDS || 600);
 const HOSTNAME_RE = /^[A-Za-z0-9.-]{1,253}$/;
 
-const sessions = new Map(); // id -> {server, timer, started}
+const sessions = new Map(); // id -> {server, timer, started, secret, connected, sockets}
 let sandbox = { ok: false, report: "self-check not run yet" };
 
 function log(msg, extra) {
@@ -76,10 +83,17 @@ async function selfCheck() {
     const page = await browser.newPage();
     await page.setContent("<p>self-check</p>");
     const procs = [];
+    const ppid = (pid) => Number(((readProc(pid, "status") || "").match(/^PPid:\s*(\d+)$/m) || [])[1] || 0);
+    const ours = (pid) => {
+      // Only this runner's own descendants (on a host without a PID namespace, other users'
+      // browsers are visible too and say nothing about ours).
+      for (let p = Number(pid), n = 0; p > 1 && n < 64; p = ppid(p), n++) if (p === process.pid) return true;
+      return false;
+    };
     for (const pid of fs.readdirSync("/proc").filter((p) => /^\d+$/.test(p))) {
       const status = readProc(pid, "status");
       const cmd = (readProc(pid, "cmdline") || "").split("\0").join(" ");
-      if (!status || !/chrom|headless_shell/.test(cmd)) continue;
+      if (!status || !/chrom|headless_shell/.test(cmd) || !ours(pid)) continue;
       const field = (k) => ((status.match(new RegExp(`^${k}:\\s*(.*)$`, "m")) || [])[1] || "").trim();
       procs.push({
         pid: Number(pid),
@@ -139,6 +153,8 @@ async function closeSession(id, reason) {
   if (!s) return false;
   sessions.delete(id);
   clearTimeout(s.timer);
+  clearTimeout(s.connectTimer);
+  for (const sock of s.sockets) sock.destroy();
   await s.server.close().catch(() => {});
   log("session closed", { id, reason, seconds: Math.round((Date.now() - s.started) / 1000) });
   return true;
@@ -153,24 +169,77 @@ async function createSession(body) {
   });
   const server = await chromium.launchServer({
     ...opts,
-    host: "0.0.0.0",
+    host: "127.0.0.1", // reachable only through the authenticated relay below
     port: 0,
     wsPath: "/" + crypto.randomBytes(16).toString("hex"),
   });
-  const timer = setTimeout(() => closeSession(id, "time limit"), MAX_SESSION_SECONDS * 1000);
-  sessions.set(id, { server, timer, started: Date.now() });
+  const secret = crypto.randomBytes(24).toString("hex");
+  const s = { server, secret, started: Date.now(), connected: false, sockets: new Set() };
+  s.timer = setTimeout(() => closeSession(id, "time limit"), MAX_SESSION_SECONDS * 1000);
+  s.connectTimer = setTimeout(() => s.connected || closeSession(id, "never connected"), CONNECT_SECONDS * 1000);
+  sessions.set(id, s);
   server.process().on("exit", () => closeSession(id, "browser exited"));
-  const ws = new URL(server.wsEndpoint());
-  ws.hostname = PUBLIC_HOST;
   log("session started", { id, sessions: sessions.size });
-  return { id, ws_endpoint: ws.toString(), max_seconds: MAX_SESSION_SECONDS };
+  return {
+    id,
+    ws_endpoint: `ws://${PUBLIC_HOST}:${PORT}/sessions/${id}/ws/${secret}`,
+    max_seconds: MAX_SESSION_SECONDS,
+  };
+}
+
+function secretMatches(got, want) {
+  const a = Buffer.from(String(got));
+  const b = Buffer.from(want);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function refuseUpgrade(socket, code, text) {
+  socket.end(`HTTP/1.1 ${code} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+}
+
+function relay(req, socket, head) {
+  // One connection per session, authenticated by the runner token AND the session's secret.
+  const m = new URL(req.url, "http://runner").pathname.match(/^\/sessions\/([0-9a-f]{16})\/ws\/([0-9a-f]{48})$/);
+  const s = m && sessions.get(m[1]);
+  if (!m || !s || !authorised(req) || !secretMatches(m[2], s.secret)) return refuseUpgrade(socket, 401, "Unauthorized");
+  if (s.connected) return refuseUpgrade(socket, 409, "Conflict"); // single use: no second controller
+  s.connected = true;
+  clearTimeout(s.connectTimer);
+  const id = m[1];
+  const inner = new URL(s.server.wsEndpoint());
+  const upstream = net.connect(Number(inner.port), "127.0.0.1");
+  s.sockets.add(socket).add(upstream);
+  socket.setKeepAlive(true, 10000);
+  socket.setNoDelay(true);
+  const lines = [`GET ${inner.pathname} HTTP/1.1`, `Host: 127.0.0.1:${inner.port}`];
+  for (let i = 0; i < req.rawHeaders.length; i += 2) {
+    const k = req.rawHeaders[i].toLowerCase();
+    if (k === "host" || k === "x-runner-token") continue;
+    lines.push(`${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}`);
+  }
+  upstream.on("connect", () => {
+    upstream.write(lines.join("\r\n") + "\r\n\r\n");
+    if (head && head.length) upstream.write(head);
+    socket.pipe(upstream).pipe(socket);
+  });
+  // The controller is gone (or the browser is): end the browser too, so nothing keeps a page
+  // that a later or stale worker could drive.
+  const end = (why) => closeSession(id, why);
+  socket.on("close", () => end("controller disconnected"));
+  upstream.on("close", () => end("browser connection closed"));
+  socket.on("error", () => {});
+  upstream.on("error", () => {});
+  log("controller connected", { id });
 }
 
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://runner");
     if (req.method === "GET" && url.pathname === "/health") {
-      return send(res, sandbox.ok ? 200 : 503, { sandbox_ok: sandbox.ok, sandbox: sandbox.report, sessions: sessions.size });
+      return send(res, sandbox.ok ? 200 : 503, {
+        sandbox_ok: sandbox.ok, sandbox: sandbox.report, sessions: sessions.size,
+        max_sessions: MAX_SESSIONS, driver_version: DRIVER_VERSION,
+      });
     }
     if (!authorised(req)) return send(res, 401, { error: "unauthorised" });
     if (req.method === "GET" && url.pathname === "/selfcheck") {
@@ -190,6 +259,15 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     log("request failed", { error: String(e.message || e).split("\n")[0] });
     return send(res, 500, { error: "internal error" });
+  }
+});
+
+server.on("upgrade", (req, socket, head) => {
+  try {
+    relay(req, socket, head);
+  } catch (e) {
+    log("upgrade failed", { error: String(e.message || e).split("\n")[0] });
+    socket.destroy();
   }
 });
 

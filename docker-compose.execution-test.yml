@@ -7,7 +7,8 @@
 services:
   receiver:
     build: ./backend
-    command: ["python", "/fixture/receiver.py", "--port", "8799", "--ledger", "/tmp/ledger.db",
+    command: ["python", "/fixture/receiver.py", "--host", "0.0.0.0", "--port", "8799",
+              "--ledger", "/tmp/ledger.db",
               "--admin-token", "${RECEIVER_ADMIN_TOKEN:?set RECEIVER_ADMIN_TOKEN}"]
     volumes: ["./fixtures/ats_receiver:/fixture:ro"]
     networks: [fixtures]
@@ -30,6 +31,8 @@ services:
       NOEFFORTS_CHECKPOINT_TTL_SECONDS: "120"
       NOEFFORTS_OUTBOX_RELAY_INTERVAL_SECONDS: "1"
       NOEFFORTS_NAVIGATION_TIMEOUT_SECONDS: "60"
+      # Off unless a scenario recreates the worker with it on (infrastructure-only egress test).
+      NOEFFORTS_EXECUTION_TEST_DISABLE_INTERCEPTION: ${EXEC_TEST_DISABLE_INTERCEPTION:-false}
 
 networks:
   fixtures: { internal: true }

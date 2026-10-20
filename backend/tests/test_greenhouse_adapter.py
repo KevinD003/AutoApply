@@ -237,6 +237,41 @@ def test_unanswered_trigger_keeps_its_conditional_question_pending(api, receiver
     assert {"question_7005", "question_7006"} <= set(c["unresolved"])
 
 
+def test_unplaceable_condition_is_a_checkpoint_not_a_guess(api, receiver):
+    """A condition on a question that does not exist, or comes later in the form (a forward or
+    circular dependency), cannot be evaluated: never filled; required -> apply manually."""
+    from sqlalchemy import select
+
+    from app.modules.applications.models import Application
+    from app.modules.preparation.models import JobForm
+
+    app_id = gh_application(api, employed="Yes", site="Riverside Clinic", approve=False)
+    with SessionLocal() as db:
+        job_id = db.get(Application, uuid.UUID(app_id)).job_id
+        form = db.scalars(
+            select(JobForm).where(JobForm.job_id == job_id).order_by(JobForm.version.desc())
+        ).first()
+        schema = json.loads(json.dumps(form.schema))
+        for f in schema["fields"]:
+            if f["key"] == "question_7006":  # required when shown; now depends on nothing real
+                f["condition"] = {"key": "question_9999", "any_of": ["1"]}
+                f["required"] = True
+            if f["key"] == "question_7004":  # optional; depends on a LATER question
+                f["condition"] = {"key": "question_7008[]", "any_of": ["21"]}
+                f["required"] = False
+        form.schema = schema
+        db.commit()
+    c = api.get(f"/applications/{app_id}/package").json()["package"]["content"]
+    by_key = {a["key"]: a for a in c["answers"]}
+    q = by_key["question_7006"]
+    assert q["status"] == "needs_user" and q["value"] is None
+    assert q["user_input_allowed"] is False and "cannot tell when" in q["explanation"]
+    assert "question_7006" in c["unresolved"]
+    opt = by_key["question_7004"]
+    assert opt["status"] == "blank_optional" and opt["value"] is None
+    assert "cannot tell when" in opt["explanation"]
+
+
 # ------------------------------------------------------------------ execution
 
 

@@ -346,10 +346,12 @@ document.getElementById('resume').addEventListener('change', async (e) => {{
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, required=True)
+    # Loopback by default; the Compose test binds all interfaces of its internal network.
+    ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--ledger", required=True)
     ap.add_argument("--admin-token", required=True)
     a = ap.parse_args()
-    uvicorn.run(build_app(Ledger(a.ledger), a.admin_token), host="127.0.0.1", port=a.port,
+    uvicorn.run(build_app(Ledger(a.ledger), a.admin_token), host=a.host, port=a.port,
                 log_level="warning")
 
 

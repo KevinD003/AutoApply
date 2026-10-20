@@ -28,6 +28,7 @@ import shutil
 import socket
 import sys
 import tempfile
+import time
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlsplit
@@ -124,6 +125,16 @@ def _netns_wrapper(
     return path
 
 
+def local_driver_version() -> str:
+    import json
+    from pathlib import Path
+
+    import playwright
+
+    pkg = Path(playwright.__file__).parent / "driver" / "package" / "package.json"
+    return json.loads(pkg.read_text())["version"]
+
+
 class RemoteBrowser:
     """A browser in the browser-runner service, reachable only through an egress-proxy session
     that allows exactly this attempt's destination. Fails closed: any refusal or error raises
@@ -170,16 +181,38 @@ class RemoteBrowser:
             s.browser_runner_url, "X-Runner-Token", s.browser_runner_token, method, path, body
         )
 
+    def _check_runner(self) -> None:
+        """The runner must have verified its sandbox and run the same Playwright driver as this
+        worker (the protocol is version-specific); otherwise refuse with the reason."""
+        h = self._call(self.s.browser_runner_url, "X-Runner-Token", "", "GET", "/health")
+        mine = local_driver_version()
+        if h.get("driver_version") != mine:
+            raise IsolationUnavailable(
+                f"browser runner driver {h.get('driver_version')!r} does not match this "
+                f"worker's {mine!r}; rebuild the browser-runner image from this revision"
+            )
+
+    def _runner_session(self, body: dict) -> dict:
+        """One browser per runner slot. While the slot is busy, wait a bounded time (nothing has
+        been disclosed yet and the claim's lease outlasts the wait), then refuse."""
+        deadline = time.monotonic() + self.s.browser_slot_wait_seconds
+        while True:
+            try:
+                return self._runner("POST", "/sessions", body)
+            except IsolationUnavailable as e:
+                if "(429)" not in str(e) or time.monotonic() >= deadline:
+                    raise
+            time.sleep(1)
+
     def open(self) -> str:
+        self._check_runner()
         dest = [[self.host, self.port]]
         self.proxy_session = self._proxy(
             "POST",
             "/sessions",
             {"allow": dest, "allow_private": dest if self.allow_private else []},
         )
-        self.runner_session = self._runner(
-            "POST",
-            "/sessions",
+        self.runner_session = self._runner_session(
             {
                 "proxy_username": self.proxy_session["id"],
                 "proxy_password": self.proxy_session["token"],
@@ -293,7 +326,11 @@ def browser_session(
                 remote = RemoteBrowser(host, port, allow_private_destination)
                 stack.callback(remote.close)
                 log.proxy = remote
-                browser = p.chromium.connect(remote.open(), timeout=30_000)
+                browser = p.chromium.connect(
+                    remote.open(),
+                    timeout=30_000,
+                    headers={"X-Runner-Token": remote.s.browser_runner_token},
+                )
             else:
                 browser = p.chromium.launch(**launch)
         except IsolationUnavailable:

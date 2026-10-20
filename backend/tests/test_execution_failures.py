@@ -61,6 +61,11 @@ def start_blocked_worker(aid: str, worker: str, point: str) -> tuple[subprocess.
     return p, gate
 
 
+def reached(gate: str) -> bool:
+    """The blocked worker is waiting at its fault point (not merely past an earlier step)."""
+    return os.path.exists(gate + ".waiting")
+
+
 def wait_for(pred, timeout=30.0):
     end = time.monotonic() + timeout
     while time.monotonic() < end:
@@ -254,12 +259,11 @@ def test_old_worker_cannot_continue_after_lease_loss(api, receiver):
 def test_no_takeover_while_old_worker_may_have_disclosed(api, receiver):
     _, aid = ready(api, receiver)
     old, gate = start_blocked_worker(aid, "old", "before_send_gate")
-    wait_for(
-        lambda: (
-            attempt(aid).disclosure_started_at is not None
-            and len(receiver.ledger()["disclosures"]) == 1
-        )
-    )
+    # Wait for the worker to sit at the gate: earlier, it may still hold the attempt's row lock
+    # while recording evidence, and the sweeper skips locked rows.
+    assert wait_for(lambda: reached(gate))
+    assert attempt(aid).disclosure_started_at is not None
+    assert len(receiver.ledger()["disclosures"]) == 1
     expire_lease(aid)
     assert svc.sweep()["abandoned"] == 1  # not re-pended: no replacement worker
     assert release(old, gate) == "lost_authority"
