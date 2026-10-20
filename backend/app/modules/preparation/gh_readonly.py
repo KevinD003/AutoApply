@@ -533,9 +533,10 @@ def denied_hosts(failed: list[dict]) -> list[dict]:
     return sorted(groups.values(), key=lambda g: (g["host"], g["port"] or 0))
 
 
-def withhold_sensitive_hosts(result: dict, sensitive: set[str]) -> None:
-    """A printable host that still contains a value derived from the posting is withheld."""
-    low = [v.lower() for v in sensitive]
+def withhold_sensitive_hosts(result: dict, sensitive: set[str], extra: tuple = ()) -> None:
+    """A printable host that still contains a value derived from the posting is withheld.
+    `extra`: values checked at any length (the board token and job id)."""
+    low = [v.lower() for v in sensitive] + [v.lower() for v in extra if v and len(v) >= 2]
     for g in result.get("page", {}).get("denied_hosts", []):
         if g["host"] != "withheld" and any(v in g["host"] for v in low):
             g["host"], g["port"], g["scheme"] = "withheld", None, None
@@ -698,6 +699,63 @@ def _category(hostport: str) -> str:
     return "other"
 
 
+def _page_summary(observed: dict) -> dict:
+    """The page part of the publishable output (structure, counts, kinds; exact hosts only
+    via denied_hosts' rules)."""
+    cats: dict[str, int] = {}
+    for d in observed["denied_destinations"]:
+        c = _category(d)
+        cats[c] = cats.get(c, 0) + 1
+    dom = dict(observed.get("dom") or {})
+    if dom:
+        dom["inputs_by_type"] = _vocab_counts(dom.get("inputs_by_type") or {}, INPUT_TYPES)
+    frames = []
+    for f in observed.get("frames") or []:
+        fd = dict(f.get("dom") or {})
+        if fd:
+            fd["inputs_by_type"] = _vocab_counts(fd.get("inputs_by_type") or {}, INPUT_TYPES)
+        frames.append({"same_origin": f["same_origin"],
+                       "kind": f["kind"] if f["kind"] in FRAME_KINDS else "other",
+                       "dom": fd or None})  # fmt: skip
+    page = {
+        "status": observed["status"],
+        "bot_check": observed["bot_check"],
+        "requests": observed["requests"],
+        "navigations": observed.get("navigations"),
+        "received_bytes": observed.get("received_bytes"),
+        "sizes_unknown": observed.get("sizes_unknown"),
+        "blocked_non_get": [
+            {"method": b["method"] if b["method"] in METHODS else "OTHER"}
+            for b in observed["blocked_non_get"]
+        ],
+        "denied_destinations_by_kind": cats,
+        "extracted": observed["rendered"] is not None,
+        "extraction_error": _error_name(observed.get("extraction_error")),
+        "dom": dom or None,
+        "frames": frames,
+    }
+    r = observed.get("rendering")
+    if r is not None:
+        page["rendering"] = {
+            "networkidle_reached": r["networkidle_reached"],
+            "ready_state": r["ready_state"] if r["ready_state"] in READY_STATES else "other",
+            "may_be_incomplete": r["may_be_incomplete"],
+            "failed_requests": [
+                {
+                    "resource_type": f["resource_type"]
+                    if f["resource_type"] in RESOURCE_TYPES
+                    else "other",
+                    "kind": f["kind"],
+                    "same_origin": f["same_origin"],
+                    "failure": f["failure"],
+                }  # fmt: skip
+                for f in r["failed_requests"]
+            ],
+        }
+        page["denied_hosts"] = denied_hosts(r["failed_requests"])
+    return page
+
+
 def publishable(api_json: dict, board_json: dict, job_id: str, observed: dict | None) -> dict:
     """What may be printed in a public CI log or committed: structure, flags and counts. No
     labels, wording, titles, employer or person names, URLs, board token or raw question ids
@@ -719,57 +777,7 @@ def publishable(api_json: dict, board_json: dict, job_id: str, observed: dict | 
     s["other_top_level_keys"] = sum(1 for k in keys if k not in API_KEYS)
     out = {"api": s, "identity": identity(api_json, board_json, job_id)}
     if observed is not None:
-        cats: dict[str, int] = {}
-        for d in observed["denied_destinations"]:
-            c = _category(d)
-            cats[c] = cats.get(c, 0) + 1
-        dom = dict(observed.get("dom") or {})
-        if dom:
-            dom["inputs_by_type"] = _vocab_counts(dom.get("inputs_by_type") or {}, INPUT_TYPES)
-        frames = []
-        for f in observed.get("frames") or []:
-            fd = dict(f.get("dom") or {})
-            if fd:
-                fd["inputs_by_type"] = _vocab_counts(fd.get("inputs_by_type") or {}, INPUT_TYPES)
-            frames.append({"same_origin": f["same_origin"],
-                           "kind": f["kind"] if f["kind"] in FRAME_KINDS else "other",
-                           "dom": fd or None})  # fmt: skip
-        out["page"] = {
-            "status": observed["status"],
-            "bot_check": observed["bot_check"],
-            "requests": observed["requests"],
-            "navigations": observed.get("navigations"),
-            "received_bytes": observed.get("received_bytes"),
-            "sizes_unknown": observed.get("sizes_unknown"),
-            "blocked_non_get": [
-                {"method": b["method"] if b["method"] in METHODS else "OTHER"}
-                for b in observed["blocked_non_get"]
-            ],
-            "denied_destinations_by_kind": cats,
-            "extracted": observed["rendered"] is not None,
-            "extraction_error": _error_name(observed.get("extraction_error")),
-            "dom": dom or None,
-            "frames": frames,
-        }
-        r = observed.get("rendering")
-        if r is not None:
-            out["page"]["rendering"] = {
-                "networkidle_reached": r["networkidle_reached"],
-                "ready_state": r["ready_state"] if r["ready_state"] in READY_STATES else "other",
-                "may_be_incomplete": r["may_be_incomplete"],
-                "failed_requests": [
-                    {
-                        "resource_type": f["resource_type"]
-                        if f["resource_type"] in RESOURCE_TYPES
-                        else "other",
-                        "kind": f["kind"],
-                        "same_origin": f["same_origin"],
-                        "failure": f["failure"],
-                    }  # fmt: skip
-                    for f in r["failed_requests"]
-                ],
-            }
-            out["page"]["denied_hosts"] = denied_hosts(r["failed_requests"])
+        out["page"] = _page_summary(observed)
         if observed.get("mapping") is not None:
             out["mapping"] = observed["mapping"]
         if observed["rendered"] is not None:
@@ -833,6 +841,7 @@ _OUTPUT_WORDS = {
     "hidden_attr", "visible", "in_form", "in_group", "controls_listbox", "describedby",
     "listbox_options", "options_match_api", "by_status", "unmatched_controls",
     "controls_total", "alternative_of_api_field", "id_shape",
+    "mode", "identify_only", "api_requests",
     "denied_hosts", "host", "port", "scheme", "methods", "resource_types", "failures",
     "withheld", "https", "http",
     "observation", "reasons", "checks", "label", "element", "options_at_load", "fill_support",
@@ -1012,6 +1021,12 @@ def main(argv=None) -> int:
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--observe", action="store_true", help="also permission B (page load)")
     ap.add_argument(
+        "--identify-only",
+        action="store_true",
+        help="one page load with B's allow-list and limits, no API requests: page structure "
+        "and the exact blocked hosts only",
+    )
+    ap.add_argument(
         "--mapping", action="store_true", help="with --observe: per-field mapping evidence"
     )
     a = ap.parse_args(argv)
@@ -1020,6 +1035,27 @@ def main(argv=None) -> int:
         return _run(a)
     finally:
         watchdog.cancel()
+
+
+def _identify(board: str, job_id: str, sensitive: set[str]) -> int:
+    """Identification only: no API request, one page load under B's allow-list and limits, no
+    mapping. Prints page structure and the blocked hosts (exact only when printable)."""
+    try:
+        try:
+            observed = observe_page(board, job_id)
+            result = {"mode": "identify_only", "api_requests": 0, "page": _page_summary(observed)}
+        except Stop as e:
+            result = {"mode": "identify_only", "api_requests": 0, "page_stopped": f"Stop: {e}"}
+        except NotApproved:
+            raise
+        except Exception as e:  # noqa: BLE001 - messages can carry URLs; type only
+            result = {"mode": "identify_only", "api_requests": 0,
+                      "page_stopped": f"error ({_error_name(type(e).__name__)})"}  # fmt: skip
+    except NotApproved as e:
+        emit({"stopped": f"NotApproved: {e}"}, sensitive)
+        return 2
+    withhold_sensitive_hosts(result, sensitive, (board, job_id))
+    return 0 if emit(result, sensitive) else 4
 
 
 TIME_STOP_LINE = json.dumps({"stopped": "Stop: overall time limit reached"})
@@ -1043,6 +1079,8 @@ def start_watchdog(seconds: float, exit=os._exit) -> threading.Timer:
 def _run(a) -> int:
     board, _, job_id = os.environ.get("NOEFFORTS_READONLY_GREENHOUSE_APPROVED", "").partition("/")
     sensitive = sensitive_values(board, job_id, None, None)
+    if a.identify_only:
+        return _identify(board, job_id, sensitive)
     try:
         log = fetch(board, job_id, a.out)
         api_json = json.loads((a.out / "job.json").read_text())
@@ -1071,7 +1109,7 @@ def _run(a) -> int:
     except Exception as e:  # noqa: BLE001 - messages can carry URLs; print the type only
         emit({"stopped": f"error ({_error_name(type(e).__name__)})"}, sensitive)
         return 3
-    withhold_sensitive_hosts(result, sensitive)
+    withhold_sensitive_hosts(result, sensitive, (board, job_id))
     return 0 if emit(result, sensitive) else 4
 
 

@@ -487,3 +487,54 @@ def test_only_plain_greenhouse_hosts_are_printable():
     ])  # fmt: skip
     assert [g["host"] for g in got] == ["boards.greenhouse.io", "withheld"]
     assert got[1]["requests"] == 2
+
+
+def test_identify_only_makes_no_api_request_and_prints_exact_safe_hosts(
+    receiver, v2_approved, monkeypatch, tmp_path, capsys
+):
+    receiver.config(mode="gh2_gh_assets")
+    real = ro.observe_page
+    monkeypatch.setattr(
+        ro, "observe_page", lambda b, j: real(b, j, base=BASE, prefix="gh2")
+    )  # the fixture page instead of the real one; same code path otherwise
+
+    def no_api(*a, **k):
+        raise AssertionError("identification must not make API requests")
+
+    monkeypatch.setattr(ro, "fetch", no_api)
+    code = ro.main(["--out", str(tmp_path), "--identify-only"])
+    out = capsys.readouterr().out
+    assert code == 0, out
+    res = json.loads(out)
+    assert res["mode"] == "identify_only" and res["api_requests"] == 0
+    assert "mapping" not in res and "api" not in res
+    hosts = {g["host"]: g for g in res["page"]["denied_hosts"]}
+    assert hosts["assets.fixture.greenhouse.io"]["resource_types"] == {
+        "stylesheet": 1, "image": 1, "script": 1}  # fmt: skip
+    assert "withheld" in hosts and "northwind" not in out.lower()  # board token in a host
+    api_hits = [r for r in receiver.ledger()["requests"] if r["path"].startswith("/gh2-api")]
+    assert api_hits == []
+
+
+def test_identify_only_stop_is_reported_not_retried(receiver, v2_approved, monkeypatch,
+                                                    tmp_path, capsys):  # fmt: skip
+    receiver.config(mode="gh2_navigate_away")
+    real = ro.observe_page
+    calls = []
+
+    def once(b, j):
+        calls.append(1)
+        return real(b, j, base=BASE, prefix="gh2")
+
+    monkeypatch.setattr(ro, "observe_page", once)
+    assert ro.main(["--out", str(tmp_path), "--identify-only"]) == 0
+    res = json.loads(capsys.readouterr().out)
+    assert res["page_stopped"] == "Stop: a second top-level navigation was attempted"
+    assert calls == [1]
+
+
+def test_short_board_token_in_a_host_is_withheld():
+    res = {"page": {"denied_hosts": [{"host": "ab.greenhouse.io", "port": 443,
+                                      "scheme": "https"}]}}  # fmt: skip
+    ro.withhold_sensitive_hosts(res, set(), ("ab", "1234567"))
+    assert res["page"]["denied_hosts"][0]["host"] == "withheld"

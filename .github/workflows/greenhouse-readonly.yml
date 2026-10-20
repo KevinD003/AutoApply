@@ -21,6 +21,10 @@ on:
         description: "With observe: per-field mapping evidence (needs its own recorded approval)"
         type: boolean
         default: false
+      identify_only:
+        description: "Only: one page load with the same allow-list, no API requests; prints the exact blocked hosts (needs its own recorded approval)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -45,4 +49,10 @@ jobs:
           NOEFFORTS_READONLY_GREENHOUSE_APPROVED: ${{ secrets.GH_READONLY_POSTING }}
           OBSERVE: ${{ inputs.observe && '--observe' || '' }}
           MAPPING: ${{ inputs.observe && inputs.mapping && '--mapping' || '' }}
-        run: ./scripts/greenhouse-readonly-check.sh $OBSERVE $MAPPING
+          IDENTIFY: ${{ inputs.identify_only && '--identify-only' || '' }}
+        run: |
+          if [ -n "$IDENTIFY" ]; then
+            ./scripts/greenhouse-readonly-check.sh $IDENTIFY
+          else
+            ./scripts/greenhouse-readonly-check.sh $OBSERVE $MAPPING
+          fi
