@@ -34,7 +34,9 @@ Routes (on the synthetic receiver; same ledger):
   POST /gh2/{board}/jobs/{id}/submit       application (an acceptance)
 Modes (cfg["mode"]): gh2_duplicate_id, gh2_label_mismatch, gh2_missing_control,
 gh2_validation_fail, gh2_new_question, gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, gh2_many_assets,
-gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, gh2_attach_group(_wrong|_shared), gh2_cdn_app (cfg cdn,
+gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, gh2_attach_group(_wrong|_shared), gh2_widgets (cfg widget_bad: submit, fetch, nav, captcha,
+filechooser, required, select, dialog, upload, hash, images, covered),
+gh2_cdn_app (cfg cdn,
 redirect_away), plus the
 receiver-wide upload_fail, error_before_accept, error_after_accept, drop_after_accept.
 All employers, jobs and people are fictional.
@@ -180,7 +182,7 @@ def _render(q, mode) -> str:
             opts = ""
         dup = (f'<input type="text" id="{qid}" aria-label="duplicate">'
                if mode == "gh2_duplicate_id" and qid == "question_8101" else "")
-        if mode == "gh2_cdn_app":  # no list in the page: the dependency script builds it
+        if mode in ("gh2_cdn_app", "gh2_widgets"):  # no list in the page until a script builds it
             data = html.escape(json.dumps([[str(v["value"]), v["label"]] for v in values]))
             return (f'<div class="field select">{_label(qid, label_text, req)}'
                     f'<input type="text" id="{qid}" role="combobox" aria-autocomplete="list" '
@@ -198,6 +200,16 @@ def _render(q, mode) -> str:
                 f'<ul id="{qid}-listbox" role="listbox" hidden></ul></div>')
     itype = {"email": "email", "phone": "tel"}.get(qid, "text")
     body = f'{_label(qid, label_text, req)}<input type="{itype}" id="{qid}"{areq}>'
+    if qid == "phone" and mode == "gh2_widgets":
+        # FIXTURE ASSUMPTION (structure observed in B3): a combobox inside the phone field's
+        # group, labelled differently from any question; here a dialling-country list equal to
+        # the country question's options.
+        data = html.escape(json.dumps([[str(v["value"]), v["label"]] for v in COUNTRIES]))
+        return (f'<div class="field" role="group" aria-labelledby="{qid}-label">{body}'
+                f'<span id="phone-country-label">Country code</span>'
+                f'<input type="text" id="phone-country" role="combobox" aria-expanded="false" '
+                f'aria-labelledby="phone-country-label" aria-required="true" '
+                f'data-options="{data}"></div>')
     cond = CONDITIONS.get(qid)
     if cond:
         return f'<div class="field" id="{qid}-wrapper" hidden>{body}</div>'
@@ -266,6 +278,65 @@ form.addEventListener('submit', async (e) => {
 """
 
 
+_WIDGETS_JS = """
+(() => {
+  const BAD = %BAD%, BASE = %BASE%;
+  const open = (cb) => {
+    if (document.getElementById(cb.id + '-listbox')) return;
+    const build = (pairs) => {
+      const ul = document.createElement('ul');
+      ul.id = cb.id + '-listbox'; ul.setAttribute('role', 'listbox');
+      for (const [v, l] of pairs) {
+        const li = document.createElement('li'); li.setAttribute('role', 'option');
+        li.dataset.value = v; li.textContent = l; li.setAttribute('aria-selected', 'false');
+        ul.append(li);
+      }
+      cb.after(ul); cb.setAttribute('aria-controls', ul.id); cb.setAttribute('aria-expanded', 'true');
+      return ul;
+    };
+    if (cb.id === 'extra-1' && BAD === 'fetch') {   // options from a data endpoint
+      fetch(BASE + '/options.json').then(r => r.json()).then(build).catch(() => {});
+      return;
+    }
+    const ul = build(JSON.parse(cb.dataset.options));
+    if (cb.id !== 'extra-1') return;
+    const form = document.getElementById('application-form');
+    if (BAD === 'submit') { form.requestSubmit(); form.submit(); }
+    if (BAD === 'nav') location.assign(BASE + '?step=2');
+    if (BAD === 'captcha') document.body.append(Object.assign(document.createElement('div'),
+                                                              {className: 'g-recaptcha'}));
+    if (BAD === 'filechooser') document.getElementById('resume').click();
+    if (BAD === 'required') document.getElementById('question_8103').setAttribute('aria-required', 'true');
+    if (BAD === 'select') { const o = ul.firstChild; o.setAttribute('aria-selected', 'true');
+                            cb.value = o.textContent; cb.dataset.value = o.dataset.value; }
+    if (BAD === 'dialog') alert('Are you sure?');
+    if (BAD === 'upload') fetch(BASE + '/attachments', {method: 'POST', body: 'x'}).catch(() => {});
+    if (BAD === 'hash') history.pushState({}, '', '#step-2');
+    if (BAD === 'images') for (let i = 0; i < 5; i++)
+      document.body.append(Object.assign(document.createElement('img'),
+                                         {src: '/gh2-api/robots.txt?w=' + i}));
+  };
+  const close = (cb) => {
+    const ul = document.getElementById(cb.id + '-listbox');
+    if (ul) ul.remove();
+    cb.removeAttribute('aria-controls'); cb.setAttribute('aria-expanded', 'false');
+  };
+  if (BAD === 'covered') {   // a transparent element drawn over the first standalone combobox
+    const cb = document.getElementById('extra-1'), r = cb.getBoundingClientRect();
+    const cover = Object.assign(document.createElement('div'), {id: 'cover'});
+    Object.assign(cover.style, {position: 'absolute', left: (r.left + scrollX) + 'px',
+      top: (r.top + scrollY) + 'px', width: r.width + 'px', height: r.height + 'px'});
+    cover.addEventListener('click', () => { document.body.dataset.coverClicked = '1'; });
+    document.body.append(cover);
+  }
+  for (const cb of document.querySelectorAll('input[role=combobox][data-options]')) {
+    cb.addEventListener('click', () => open(cb));
+    cb.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(cb); });
+  }
+})();
+"""
+
+
 def _form_page(board, job_id, token, cfg) -> HTMLResponse:
     j = JOBS[(board, job_id)]
     mode = cfg["mode"]
@@ -280,6 +351,21 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
                + "".join(f'<label for="{q["fields"][0]["name"]}">Attach</label>'
                          f'<input type="file" id="{q["fields"][0]["name"]}">' for q in files)
                + "</div>")
+    if mode == "gh2_widgets":
+        # FIXTURE ASSUMPTIONS: two standalone labelled comboboxes not in the job data (one
+        # required); lists are built when a combobox is opened (click) and removed on Escape.
+        def extra(cid, text, opts, required):
+            data = html.escape(json.dumps([[str(i), o] for i, o in enumerate(opts)]))
+            areq2 = ' aria-required="true"' if required else ""
+            return (f'<div class="field"><span id="{cid}-label">{html.escape(text)}</span>'
+                    f'<input type="text" id="{cid}" role="combobox" aria-expanded="false" '
+                    f'aria-labelledby="{cid}-label" data-options="{data}"{areq2}></div>')
+        qs += extra("extra-1", "How did you hear about this job?",
+                    ["Job board", "Referral", "Other"], True)
+        qs += extra("extra-2", "Preferred contact time", ["Morning", "Afternoon", "Evening",
+                                                          "Any time"], False)
+        qs += "<script>" + _WIDGETS_JS.replace("%BAD%", json.dumps(cfg.get("widget_bad") or ""))\
+            .replace("%BASE%", json.dumps(base)) + "</script>"
     if mode == "gh2_many_assets":  # same-origin requests beyond a small budget
         qs += "".join(f'<img alt="" src="/gh2-api/robots.txt?i={i}">' for i in range(10))
     if mode == "gh2_cdn_app":
@@ -351,6 +437,10 @@ def mount(app, ledger, cfg, accept) -> None:
   try { new WebSocket(CDN.replace(/^http/, 'ws') + '/gh2-cdn/ws'); } catch (e) {}
   document.documentElement.dataset.cdnApp = 'ran';
 })();"""
+
+    @app.get("/gh2/{board}/jobs/{job_id}/options.json")
+    def widget_options(board: str, job_id: str):  # must never be reached during inspection
+        return JSONResponse([["0", "Job board"]])
 
     @app.get("/gh2-cdn/app.js")
     def cdn_app():

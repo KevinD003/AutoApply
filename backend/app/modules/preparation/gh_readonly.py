@@ -284,6 +284,14 @@ class Limits:
     run_seconds: float = 150.0
     # Largest summary that may be printed (bytes); larger is suppressed like a privacy failure.
     output_bytes: int = 262_144
+    # Widget inspection (only when separately approved): open/close actions in total. Each
+    # targeted combobox costs two (open, close); nothing else is ever acted on.
+    widget_actions: int = 24
+    # Per action: how long to wait for the widget to react (clamped to the deadline).
+    widget_settle_ms: int = 600
+    # The whole inspection, inside observe_seconds: it stops (and reports) when this is spent,
+    # so the page summary is still read within the overall limit.
+    widget_seconds: float = 30.0
 
 
 LIMITS = Limits()
@@ -323,6 +331,7 @@ def observe_page(
     api_json: dict | None = None,
     limits: Limits = LIMITS,
     subresources: tuple = (),
+    inspect_widgets: bool = False,
 ) -> dict:
     """Permission B: ONE page load in the isolated browser, observe only.
 
@@ -352,6 +361,8 @@ def observe_page(
         raise NotApproved("a non-default page origin is allowed only for test fixtures")
     if subresources and not fixture and tuple(subresources) != _b3_rules():
         raise NotApproved("only the approved dependency origin may be added to a real page")
+    if inspect_widgets and not fixture and tuple(subresources) != _b3_rules():
+        raise NotApproved("widget inspection of a real page runs only with the B3 policy")
     if any(r.allow_private for r in subresources) and not fixture:
         raise NotApproved("a non-default page origin is allowed only for test fixtures")
     if not fixture and s.browser_isolation != "container":
@@ -366,6 +377,9 @@ def observe_page(
 
     blocked: list[dict] = []
     seen = {"requests": 0, "navigations": 0, "received": 0}
+    phase = ["load"]  # "load", or "action:<n>" while the widget inspection acts
+    data_refused: list[dict] = []
+    events: list[dict] = []
     stops: list[str] = []
     failed: list[dict] = []
     idle = False
@@ -390,6 +404,14 @@ def observe_page(
             seen["requests"] += 1
             if not method_ok(request):
                 blocked.append({"method": request.method, "path": urlsplit(request.url).path})
+                return route.abort()
+            if inspect_widgets and request.resource_type in DATA_REQUEST_TYPES:
+                # Widget inspection approves no data endpoint, GET included: a widget that
+                # needs one is reported as such, never given access.
+                u = urlsplit(request.url)
+                data_refused.append({"phase": phase[0], "resource_type": request.resource_type,
+                                     "kind": _category(u.netloc) if u.netloc else "no-host",
+                                     "same_origin": _origin_of(request.url) == origin})  # fmt: skip
                 return route.abort()
             if request.is_navigation_request() and request.frame == page.main_frame:
                 if request.redirected_from is None:
@@ -433,6 +455,23 @@ def observe_page(
             # (Calling ws.close() from this sync handler deadlocks.)
             pat = re.compile("^wss?://" + re.escape(urlsplit(o).netloc) + "(/|$)")
             page.route_web_socket(pat, lambda ws: failed.append(_ws_failure(ws.url)))
+        if inspect_widgets:
+            # WebSockets to any origin: routed, recorded, never connected (see above).
+            page.route_web_socket(
+                re.compile(".*"),
+                lambda ws: data_refused.append(
+                    {
+                        "phase": phase[0],
+                        "resource_type": "websocket",
+                        "kind": _category(urlsplit(ws.url).netloc),
+                        "same_origin": False,
+                    }
+                ),  # fmt: skip
+            )
+            page.on("dialog", lambda d: (events.append({"phase": phase[0], "event": "dialog"}),
+                                         d.dismiss()))  # fmt: skip
+            page.on("filechooser", lambda fc: events.append({"phase": phase[0],
+                                                             "event": "file_chooser"}))  # fmt: skip
         page.on("request", on_request)
         page.on("requestfinished", on_finished)
         page.on("requestfailed", lambda r: failed.append(_failure(r, origin)))
@@ -472,6 +511,12 @@ def observe_page(
         ready = page.evaluate("() => document.readyState")
         if api_json is not None and not bot_check:
             evidence = mapping_evidence(page, html, api_json)
+        inspection = None
+        if inspect_widgets and api_json is not None and not bot_check:
+            inspection = inspect_comboboxes(
+                page, html, api_json, limits, phase, stops, events, data_refused, left_ms,
+                CHALLENGE_SELECTORS, lambda: (seen["requests"], len(blocked)),
+            )  # fmt: skip
         frames = []
         for f in page.frames[1:]:
             fo = urlsplit(f.url)
@@ -516,6 +561,7 @@ def observe_page(
             or any(f["resource_type"] in _RENDER_TYPES for f in failed),
         },
         "mapping": evidence,
+        "inspection": inspection,
     }
 
 
@@ -853,6 +899,8 @@ def publishable(api_json: dict, board_json: dict, job_id: str, observed: dict | 
         out["page"] = _page_summary(observed)
         if observed.get("mapping") is not None:
             out["mapping"] = observed["mapping"]
+        if observed.get("inspection") is not None:
+            out["inspection"] = observed["inspection"]
         if observed["rendered"] is not None:
             out["compare"] = compare(api_json, observed["rendered"])
     return _anon(out, aliases(api_json))
@@ -893,6 +941,15 @@ ERROR_NAMES = frozenset({
     "ValueError", "KeyError", "TypeError", "RuntimeError", "OSError", "ConnectionError",
     "JSONDecodeError", "URLError", "HTTPError", "IsolationUnavailable", "OtherError",
 })  # fmt: skip
+# Why a widget inspection ended early (plain strings in its `stopped` field).
+INSPECTION_STOPS = frozenset({
+    "action budget reached", "inspection time budget reached",
+    "opening changed a value or selected an option", "a submission was attempted",
+    "a non-GET request was attempted",
+    "the page address changed", "challenge", "dialog", "file_chooser",
+    "a second top-level navigation was attempted", "page request budget reached",
+    "received data limit reached", "redirected to another origin", "too many redirects",
+})  # fmt: skip
 _STATUSES = {"mapped", "mapped_via_group", "matched_via_attachment_group", "search_picker",
              "protocol", "absent", "ambiguous", "type_mismatch", "label_mismatch"}  # fmt: skip
 _OUTPUT_WORDS = {
@@ -914,7 +971,7 @@ _OUTPUT_WORDS = {
     "hidden_attr", "visible", "in_form", "in_group", "controls_listbox", "describedby",
     "listbox_options", "options_match_api", "by_status", "unmatched_controls",
     "controls_total", "alternative_of_api_field", "id_shape",
-    "mode", "identify_only", "api_requests",
+    "mode", "identify_only", "api_requests", "inspect_widgets",
     "group_label", "attached_to_api_field", "label_matches_api_question", "structural_class",
     "labelled_like_api_question", "standalone_labelled", "unlabelled", "subresources",
     "denied_hosts", "host", "port", "scheme", "methods", "resource_types", "failures",
@@ -929,13 +986,26 @@ _OUTPUT_WORDS = {
     "input", "select", "textarea", "other", "combobox", "listbox", "textbox", "searchbox",
     "group", "option", "button", "labelledby", "label_for", "label_wrap", "aria_label",
     "question_n", "standard", "no-host", *_STATUSES,
+    # widget inspection
+    "inspection", "targets", "actions", "action_limit", "widgets", "target", "opened",
+    "options_via", "options_count", "options_equal_to_fields", "selected_after_open",
+    "value_changed", "closed", "required_signals", "html", "aria", "group_aria",
+    "label_marker", "changes", "controls", "hidden", "invalid", "alerts", "controls_added",
+    "submit_attempts", "data_requests_refused", "requests_during_actions", "url_changed",
+    "location_control_present", "controls_labelled_like_location", "controls_at_end",
+    "labelled_like_api_question_at_end", "data_requests_refused_total", "skipped",
+    "unsafe_id", "not_visible_or_not_unique", "error", "open_failed", "api_field",
+    "unmatched", "only_visible_listbox", "pointer_intercepted", "at_load", "during_actions",
+    "by_type",
+    "action_seconds", "events",
+    *INSPECTION_STOPS,
 }  # fmt: skip
 VOCAB = frozenset(
     _OUTPUT_WORDS | STANDARD_NAMES | {f"{n}[]" for n in STANDARD_NAMES} | GH_TYPES
     | COMPLIANCE_TYPES | API_KEYS | INPUT_TYPES | METHODS | READY_STATES | RESOURCE_TYPES
     | FRAME_KINDS | ERROR_NAMES | {t.value for t in gh.FieldType}
 )  # fmt: skip
-_ALIAS = re.compile(r"q\d{2,3}(\[\])?")
+_ALIAS = re.compile(r"q\d{2,3}(\[\])?|u\d{1,2}")
 # Our own stop messages: the constants raised in this module, HTTP status codes only.
 _STOPS = (
     r"redirect \(\d{3}\) - not followed", "only the documented API host is allowed",
@@ -951,6 +1021,7 @@ _NOT_APPROVED = (
     "a non-default page origin is allowed only for test fixtures",
     "a real page is opened only in the isolated browser container",
     "only the approved dependency origin may be added to a real page",
+    "widget inspection of a real page runs only with the B3 policy",
 )
 _STOP_TEXT = re.compile(
     rf"Stop: ({'|'.join(_STOPS)})|NotApproved: ({'|'.join(_NOT_APPROVED)})"
@@ -1111,6 +1182,12 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--mapping", action="store_true", help="with --observe: per-field mapping evidence"
     )
+    ap.add_argument(
+        "--inspect-widgets",
+        action="store_true",
+        help="--b3 plus, after load, opening and closing each combobox present at load "
+        "(at most Limits.widget_actions actions); data requests refused; nothing selected",
+    )
     a = ap.parse_args(argv)
     watchdog = start_watchdog(LIMITS.run_seconds)
     try:
@@ -1169,16 +1246,18 @@ def _run(a) -> int:
         board_json = json.loads((a.out / "board.json").read_text())
         sensitive = sensitive_values(board, job_id, api_json, board_json)
         page_stop = None
-        rules = _b3_rules() if a.b3 else ()
+        b3 = a.b3 or a.inspect_widgets
+        rules = _b3_rules() if b3 else ()
         try:
             observed = (
                 observe_page(
                     board,
                     job_id,
-                    api_json=api_json if (a.mapping or a.b3) else None,
+                    api_json=api_json if (a.mapping or b3) else None,
                     subresources=rules,
+                    inspect_widgets=a.inspect_widgets,
                 )
-                if (a.observe or a.b3)
+                if (a.observe or b3)
                 else None
             )
         except Stop as e:  # A's result is still reported
@@ -1191,6 +1270,8 @@ def _run(a) -> int:
                   **publishable(api_json, board_json, job_id, observed)}  # fmt: skip
         if page_stop:
             result["page_stopped"] = page_stop
+        if a.inspect_widgets:
+            result["mode"] = "inspect_widgets"
         if rules:
             result["subresources"] = [
                 {"host": r.host_port[0], "port": r.host_port[1],
@@ -1289,3 +1370,244 @@ def compare_runs(b2: dict, b3: dict) -> dict:
         },  # fmt: skip
         "denied_hosts_b3": page3.get("denied_hosts", []),
     }
+
+
+# ---- widget inspection (open and close targeted comboboxes; nothing else) --------------------
+
+# Request types refused during a widget inspection, at every origin and for every method:
+# no data endpoint is approved, so a widget that needs one is a reported boundary.
+DATA_REQUEST_TYPES = frozenset({"xhr", "fetch", "eventsource", "websocket", "ping"})
+
+# Installed after load, before any action: a form submission (event or direct call) is
+# cancelled and counted, never performed. Network policy blocks it independently.
+_SUBMIT_GUARD_JS = """() => {
+  window.__neSubmits = 0;
+  document.addEventListener('submit', e => { e.preventDefault(); e.stopImmediatePropagation();
+    window.__neSubmits++; }, true);
+  for (const k of ['submit', 'requestSubmit']) {
+    HTMLFormElement.prototype[k] = function () { window.__neSubmits++; };
+  }
+}"""
+
+# Structural state for before/after comparison. Values are compared for equality inside the
+# worker and never leave it.
+_STATE_JS = """() => {
+  const ctl = Array.from(document.querySelectorAll('input, select, textarea, [role=combobox]'));
+  const vis = (e) => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
+  return {
+    controls: ctl.length,
+    ids: ctl.map(c => c.id || ''),
+    required: ctl.filter(c => c.required || c.getAttribute('aria-required') === 'true').length,
+    hidden: ctl.filter(c => !vis(c)).length,
+    invalid: ctl.filter(c => c.getAttribute('aria-invalid') === 'true').length,
+    values: ctl.map(c => c.type === 'file' ? String(c.files ? c.files.length : 0)
+                                           : (c.value || '') + '|' + (c.dataset.value || '')),
+    selected: document.querySelectorAll('[role=option][aria-selected=true]').length,
+    listboxes: Array.from(document.querySelectorAll('[role=listbox]')).filter(vis).length,
+    alerts: document.querySelectorAll('[role=alert]').length,
+    submits: window.__neSubmits || 0,
+    href: location.href,
+  };
+}"""
+
+# The list a combobox shows: its aria-controls/aria-owns target, else the only visible listbox.
+_OPEN_LIST_JS = """(id) => {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const vis = (e) => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
+  const ref = el.getAttribute('aria-controls') || el.getAttribute('aria-owns');
+  let lb = ref ? document.getElementById(ref) : null, via = 'aria';
+  if (!lb || !vis(lb)) {
+    const shown = Array.from(document.querySelectorAll('[role=listbox]')).filter(vis);
+    lb = shown.length === 1 ? shown[0] : null; via = 'only_visible_listbox';
+  }
+  if (!lb) return null;
+  return {via, expanded: el.getAttribute('aria-expanded'),
+          options: Array.from(lb.querySelectorAll('[role=option]')).map(o => o.textContent),
+          selected: lb.querySelectorAll('[role=option][aria-selected=true]').length};
+}"""
+
+# Required signals kept apart (HTML attribute, ARIA attribute, enclosing group, label marker).
+_REQUIRED_JS = """(id) => {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const grp = el.closest('fieldset, [role=group]');
+  const ids = (el.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean);
+  const lab = ids.map(i => document.getElementById(i)).filter(Boolean)
+    .concat(Array.from(document.querySelectorAll('label')).filter(l => l.htmlFor === id));
+  return {html: el.required === true, aria: el.getAttribute('aria-required') === 'true',
+          group_aria: !!(grp && grp.getAttribute('aria-required') === 'true'),
+          label_marker: lab.some(l => /\\*\\s*$/.test(l.textContent.trim()))};
+}"""
+
+
+_CLICK_MS = 2000  # per action; an element that is not actionable by then is not acted on
+
+# Stops after which the page may have been replaced: the end-state counts are not measured.
+_LEFT_PAGE = frozenset({
+    "a second top-level navigation was attempted", "redirected to another origin",
+    "too many redirects", "the page address changed",
+})  # fmt: skip
+
+
+def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_refused,
+                       left_ms, challenge_selectors, counts) -> dict:  # fmt: skip
+    """Open, then close, each combobox present at load (API-mapped ones first, then unmatched
+    ones), within limits.widget_actions. Never clicks anything else, never types, never
+    selects an option. Records per widget what became observable and what changed; stops the
+    inspection at the first selection/value change, submission attempt, file chooser, dialog,
+    challenge, navigation attempt, address change or blocked non-GET request (e.g. an upload).
+    `counts()` returns (requests routed, non-GET requests blocked) so far."""
+    from app.modules.preparation import greenhouse_dom as gdom
+
+    fields = gh.schema_from_api(api_json).fields
+    controls = gdom.snapshot(html)
+    maps = gdom.map_fields(fields, controls)
+    option_lists = {f.key: [gdom._norm(o.label) for o in f.options] for f in fields if f.options}
+    targets = [(m.key, m.control, "api_field") for m in maps
+               if m.candidates == 1 and m.control.role == "combobox"]  # fmt: skip
+    unmatched = [c for c in gdom.unmatched_controls(fields, controls) if c.role == "combobox"]
+    targets += [(f"u{i}", c, "unmatched") for i, c in enumerate(unmatched, 1)]
+    page.evaluate(_SUBMIT_GUARD_JS)
+    results, actions, stopped = [], 0, None
+    n_load_refused, (n_requests, _) = len(data_refused), counts()
+    started = time.monotonic()
+    ends = started + limits.widget_seconds
+    per_widget_s = 2 * (_CLICK_MS + limits.widget_settle_ms) / 1000  # worst case: open + close
+
+    def check_stop(before_stops: int) -> str | None:
+        if len(stops) > before_stops:
+            reason = stops[before_stops]
+            del stops[before_stops:]  # owned by the inspection: reported, then it ends
+            return reason
+        if any(e["phase"] == phase[0] for e in events):
+            return next(e["event"] for e in events if e["phase"] == phase[0])
+        if page.locator(challenge_selectors).count():
+            return "challenge"
+        return None
+
+    for key, c, kind in targets:
+        if actions + 2 > limits.widget_actions:
+            stopped = "action budget reached"
+            break
+        if time.monotonic() + per_widget_s > ends:
+            stopped = "inspection time budget reached"
+            break
+        if not _SAFE_ID.fullmatch(c.id):
+            results.append({"target": key, "kind": kind, "skipped": "unsafe_id"})
+            continue
+        loc = page.locator(f'[id="{c.id}"]')
+        if loc.count() != 1 or not loc.is_visible():
+            results.append({"target": key, "kind": kind, "skipped": "not_visible_or_not_unique"})
+            continue
+        before = page.evaluate(_STATE_JS)
+        req = page.evaluate(_REQUIRED_JS, c.id)
+        n_stops, n_data, n_blocked = len(stops), len(data_refused), counts()[1]
+        actions += 1
+        phase[0] = f"action:{actions}"
+        try:
+            # Actionability checks: if another element would receive the click (an overlay or
+            # a wrapper drawn over the input), nothing is clicked at all.
+            loc.click(timeout=left_ms(_CLICK_MS))  # open
+            page.wait_for_timeout(left_ms(limits.widget_settle_ms))
+        except Stop:
+            raise
+        except Exception as e:  # noqa: BLE001 - a widget that cannot be opened is a finding
+            after = page.evaluate(_STATE_JS)
+            results.append({"target": key, "kind": kind, "opened": False,
+                            "error": "pointer_intercepted" if "intercepts pointer events"
+                            in str(e) else "open_failed",
+                            "value_changed": after["values"] != before["values"]})  # fmt: skip
+            reason = check_stop(n_stops)
+            if reason or after["values"] != before["values"]:
+                stopped = reason or "opening changed a value or selected an option"
+                break
+            continue
+        shown = page.evaluate(_OPEN_LIST_JS, c.id)
+        mid = page.evaluate(_STATE_JS)
+        reason = check_stop(n_stops)
+        actions += 1
+        phase[0] = f"action:{actions}"
+        if reason is None:
+            try:
+                loc.press("Escape", timeout=left_ms(_CLICK_MS))  # close
+                page.wait_for_timeout(left_ms(limits.widget_settle_ms))
+            except Stop:
+                raise
+            except Exception:  # noqa: BLE001
+                pass
+        after = page.evaluate(_STATE_JS)
+        reason = reason or check_stop(n_stops)
+        opts = [gdom._norm(t) for t in (shown or {}).get("options", [])]
+        same = sorted(k for k, v in option_lists.items() if opts and v == opts)
+        r = {
+            "target": key,
+            "kind": kind,
+            "opened": shown is not None,
+            "options_via": (shown or {}).get("via"),
+            "options_count": len(opts) if shown is not None else None,
+            # api_field: do the shown options equal this question's; any target: which API
+            # questions have exactly this option list (structure only, no text)
+            "options_match_api": (option_lists.get(key) == opts) if kind == "api_field"
+            and shown is not None else None,
+            "options_equal_to_fields": same,
+            "selected_after_open": mid["selected"] - before["selected"],
+            "value_changed": mid["values"] != before["values"]
+            or after["values"] != before["values"],
+            "url_changed": mid["href"] != before["href"] or after["href"] != before["href"],
+            "closed": after["listboxes"] <= before["listboxes"],
+            "required_signals": req,
+            "changes": {k: after[k] - before[k]
+                        for k in ("controls", "required", "hidden", "invalid", "alerts")},
+            "controls_added": len(set(after["ids"]) - set(before["ids"])),
+            "submit_attempts": after["submits"] - before["submits"],
+            "data_requests_refused": len(data_refused) - n_data,
+            "blocked_non_get": counts()[1] - n_blocked,
+        }  # fmt: skip
+        results.append(r)
+        # The cause first (a refused navigation also replaces the page, changing values).
+        if reason:
+            stopped = reason
+        elif r["submit_attempts"]:
+            stopped = "a submission was attempted"
+        elif r["blocked_non_get"]:
+            stopped = "a non-GET request was attempted"
+        elif r["url_changed"]:
+            stopped = "the page address changed"
+        elif r["value_changed"] or r["selected_after_open"] > 0:
+            stopped = "opening changed a value or selected an option"
+        if stopped:
+            break
+    phase[0] = "after"
+    during = data_refused[n_load_refused:]
+    by_type: dict[str, int] = {}
+    for d in during:
+        t = d["resource_type"] if d["resource_type"] in RESOURCE_TYPES else "other"
+        by_type[t] = by_type.get(t, 0) + 1
+    labels = {gdom._norm(f.label) for f in fields}
+    left_page = stopped in _LEFT_PAGE or any(w.get("url_changed") for w in results)
+    final = None if left_page else gdom.snapshot(page.content())
+    return {
+        "targets": len(targets),
+        "actions": actions,
+        "action_limit": limits.widget_actions,
+        "stopped": stopped,
+        "widgets": results,
+        # Not measured once the page may have been replaced (None: not observed).
+        "location_control_present": None if left_page
+        else any(x.id == "location" for x in final),
+        "controls_labelled_like_location": None if left_page else sum(
+            1 for x in final for f in fields
+            if f.key == "location" and gdom._norm(x.accessible_name) == gdom._norm(f.label)
+        ),
+        "controls_at_end": None if left_page else len(final),
+        "labelled_like_api_question_at_end": None if left_page else sum(
+            1 for x in final if gdom._norm(x.accessible_name) in labels),
+        "data_requests_refused_total": len(data_refused),
+        "data_requests_refused": {"at_load": n_load_refused, "during_actions": len(during),
+                                  "same_origin": sum(1 for d in during if d["same_origin"]),
+                                  "by_type": by_type},
+        "requests_during_actions": counts()[0] - n_requests,
+        "events": len(events),
+        "action_seconds": round(time.monotonic() - started, 1),
+    }  # fmt: skip

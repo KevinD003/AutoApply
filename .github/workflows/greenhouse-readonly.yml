@@ -25,6 +25,10 @@ on:
         description: "Only: the approved B3 observation (A + one page load that may also load job-boards.cdn.greenhouse.io scripts/stylesheets; mapping evidence). Needs its own recorded approval"
         type: boolean
         default: false
+      inspect_widgets:
+        description: "Only: B3 plus opening and closing each combobox present at load (no selection, typing or submission; data requests refused). NOT APPROVED: needs its own recorded approval"
+        type: boolean
+        default: false
       identify_only:
         description: "Only: one page load with the same allow-list, no API requests; prints the exact blocked hosts (needs its own recorded approval)"
         type: boolean
@@ -55,8 +59,11 @@ jobs:
           MAPPING: ${{ inputs.observe && inputs.mapping && '--mapping' || '' }}
           IDENTIFY: ${{ inputs.identify_only && '--identify-only' || '' }}
           B3: ${{ inputs.b3 && '--b3' || '' }}
+          INSPECT: ${{ inputs.inspect_widgets && '--inspect-widgets' || '' }}
         run: |
-          if [ -n "$B3" ]; then
+          if [ -n "$INSPECT" ]; then
+            ./scripts/greenhouse-readonly-check.sh $INSPECT
+          elif [ -n "$B3" ]; then
             ./scripts/greenhouse-readonly-check.sh $B3
           elif [ -n "$IDENTIFY" ]; then
             ./scripts/greenhouse-readonly-check.sh $IDENTIFY

@@ -307,6 +307,182 @@ and whether it resolves B2's specific gaps. Those gaps are:
 - **Comparison:** `gh_readonly.compare_runs(b2, b3)` runs locally over the two published
   summaries.
 
+## Widget inspection — approval request (implemented and tested locally; NOT approved, NOT run)
+
+**Purpose:** find out how the visible dropdowns relate to the application questions. Five
+questions, nothing else:
+- which controls correspond to API questions;
+- whether each unmatched control is an additional candidate question, a supporting control, or
+  unresolved;
+- whether options become observable when a dropdown is opened;
+- whether a location-related control appears;
+- whether opening a dropdown changes required fields or the form's structure.
+
+**Posting:** the existing approved one, referenced only through the repository secret
+`GH_READONLY_POSTING`. It is unchanged and not named anywhere.
+
+**Run:** once, as manual "Greenhouse read-only check" with only `inspect_widgets` = true
+(`--inspect-widgets`). It runs on the revision whose CI passed, and is not retried.
+
+**Widget actions (the only interaction):**
+- **Targets:** each combobox present in the DOM at load, in a fixed order:
+  - first the 7 that map to API dropdown questions (`q01 q02 q03 q04 q07 q09 q11`);
+  - then the 5 unmatched ones (`u1` = the one inside the phone field's group; `u2`–`u5` = the
+    4 standalone ones).
+  Controls that appear later are counted, never acted on.
+- **Per target, two actions:**
+  1. open: one click on the combobox itself;
+  2. close: one Escape key press on the same combobox.
+  It then waits at most 600 ms after each action.
+- **Maximum:** 24 actions (12 targets × 2). This is enforced: a widget is never half-done, so
+  it is either opened and closed or not touched. Elements without a safe id, or not visible
+  and unique, are skipped.
+- **Only the target receives the click.** If another element would receive it (an overlay,
+  for example), nothing is clicked. The widget is reported as `pointer_intercepted`.
+- **Never done:**
+  - option selection;
+  - typing or text entry;
+  - focusing other elements;
+  - any other button, link, checkbox or file input;
+  - uploads, location searches, form progression, submission;
+  - OTP requests or candidate sessions.
+  No answer is selected and no candidate data exists in the run.
+- **Defences besides "we do not click it":**
+  - before the first action a guard cancels and counts any form submission (the `submit`
+    event, `form.submit()` and `requestSubmit()`);
+  - a file chooser is intercepted and recorded, and no file is ever set;
+  - dialogs are dismissed and recorded.
+
+**Destinations and methods: B3's, unchanged, plus one restriction.**
+
+| Destination | Methods | Resource types |
+|---|---|---|
+| `boards-api.greenhouse.io` | GET | the 3 API requests (robots.txt, job, board) |
+| page origin | GET only, 1 navigation | as in B3, **minus every data request type** |
+| `job-boards.cdn.greenhouse.io:443` | GET, HEAD | script, stylesheet only |
+| `recruiting.cdn.greenhouse.io` and everything else | — | blocked |
+
+- **New restriction for this mode:** every data request (`xhr`, `fetch`, `eventsource`,
+  `websocket`, `ping`) is refused before sending. This holds at every origin, the page
+  origin included, and for GET too: GET is not assumed harmless.
+  - No data endpoint is approved.
+  - A widget that needs one stays closed or empty. That is reported as a boundary, never
+    unlocked.
+- **Already refused at load in B3:** the 4 data requests to the CDN. They stay refused here.
+  If dropdown options depend on them, the result will say so: a widget opens without options,
+  or a data request is refused during an action.
+- **Requests during actions:** counted separately (routed requests, refused data requests by
+  type, blocked non-GET). They share the page's 150-request budget.
+
+**Are the three API requests necessary? Yes, for two of the five questions.**
+- **What they are needed for:**
+  - mapping a control to an API question needs the question labels;
+  - "options match the API question" needs the option texts.
+  B3's raw API data was destroyed with the stack, as approved. Only anonymous counts were
+  retained.
+- **Without them:** the inspection could report only:
+  - option counts, compared against B3's retained counts (2, 2, 250, 26, 2, 2, 2);
+  - required and structure changes.
+  It could not say which control is which question.
+- **Recommendation:** include them. They are the same 3 GETs as in B2/B3.
+
+**Budgets (enforced, `gh_readonly.Limits`):**
+
+| Budget | Value | When reached |
+|---|---|---|
+| API requests | 3 | the run stops |
+| top-level navigations | 1 | a second one is refused before sending and stops the inspection |
+| redirect hops | 3 (same origin) | the run stops |
+| page requests (load + actions) | 150 | refused; the run stops |
+| received data | 20 MB | **a stop condition, not a transfer cap** |
+| retained DOM | 2M characters | the run stops |
+| widget actions | 24 | the inspection stops |
+| settle per action | 600 ms | — |
+| inspection time | 30 s | the inspection stops; the summary is still read |
+| observation | 90 s | the run stops |
+| whole run | 150 s watchdog (exit 5), plus an outer 200 s kill | the run stops |
+| printed output | 256 KiB | larger output is suppressed |
+
+**Stop conditions:** the inspection ends at the first of these. Each is reported with its
+reason, never retried, and no further widget is touched:
+- a bot challenge;
+- a navigation attempt;
+- a change of the page address (including history and hash changes);
+- a redirect to another origin;
+- an attempted submission;
+- an attempted non-GET request (e.g. an upload);
+- a file chooser;
+- a dialog;
+- opening a widget changes a value or selects an option;
+- the action, time or request budget runs out.
+Required-field, visibility, validity, alert and control-count changes are **recorded**, not
+stops. A refused data request is recorded, not a stop.
+
+**Output:** anonymous, through the existing allowlist and leak guard. There is:
+- no question wording, option text, label, id, URL, host beyond the printable
+  `*.greenhouse.io` names, or employer data;
+- for widgets, only aliases (`q01…`, `u1…`).
+
+Per widget:
+- opened or closed;
+- how the list was found (`aria` reference, or the only visible listbox);
+- option count;
+- whether the options equal the mapped question's (`options_match_api`);
+- which API questions have exactly this option list (aliases);
+- selections and value changes (must be 0 and false);
+- address change;
+- required signals kept apart: HTML attribute, ARIA attribute, enclosing group's ARIA
+  attribute, label marker;
+- structural changes: control, required, hidden, invalid and alert counts; controls added;
+- submit attempts, refused data requests, blocked non-GET.
+
+Totals:
+- targets, actions and the stop reason;
+- whether a location control exists at the end;
+- control counts at the end;
+- refused data requests at load and during actions, by type;
+- requests during actions;
+- recorded events.
+
+Option texts are compared inside the worker only. A virtualised list may show fewer options
+than it has: then the counts differ and the result says "not equal". Nothing is inferred
+from that.
+
+**Retention:** as B3.
+- Raw data stays inside the worker container and is destroyed with the stack.
+- No artifacts are uploaded.
+- Only the guarded summary appears in the run log.
+
+**Tested locally** (`tests/test_widget_inspection.py`, 18 tests, Chromium in its network
+namespace behind the egress proxy, fixture mode `gh2_widgets`; widget behaviour is a FIXTURE
+ASSUMPTION):
+- options become observable on opening with nothing selected;
+- the action, time and page-request budgets are enforced;
+- a widget-started submission is cancelled, an upload POST is blocked, and a file chooser
+  stops the inspection;
+- a same-origin GET data request is refused and reported;
+- a navigation is refused before sending; an address change, a challenge, a dialog and a
+  selection on open each stop the inspection;
+- a required-flag change is recorded;
+- a widget covered by another element is not clicked at all: it is reported as
+  `pointer_intercepted` and the inspection continues;
+- the output is anonymous and the guard rejects an unknown string;
+- a real page is inspected only under the B3 policy.
+The receiver's request log is the oracle in every test: only the page GET reached it.
+
+Compose `s_readonly_widget_inspection_in_container` repeats the normal, data-request, upload
+and submission cases through the real runner and session proxy.
+
+**The request (send back, or say no):**
+
+> I approve one widget-inspection run (`inspect_widgets` only) on the existing approved
+> posting (secret `GH_READONLY_POSTING`), on the revision whose CI passed. It may make B3's 3
+> API GETs and one page load under B3's destinations and methods, with every data request
+> refused. It may then open and close each combobox present at load, at most 24 actions in
+> total (one click and one Escape per combobox), within the limits above. No option
+> selection, typing, upload, location search, OTP, candidate data or submission. Stop
+> conditions and retention as listed. Run once; do not retry; report anonymously.
+
 ## Deliverable: the comparison (once A/B are separately approved and run)
 
 | Area | Compared |

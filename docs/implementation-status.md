@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-20 (id-only Greenhouse mapping against a second local fixture; read-only run #3 reported; follow-up read-only run requested, not approved). For requirement-by-requirement evidence see
+Last updated: 2026-10-20 (B3 closed; widget inspection mode built and tested locally, approval requested, not run). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,48 @@ Last updated: 2026-10-20 (id-only Greenhouse mapping against a second local fixt
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Widget inspection mode, local only (2026-10-20; not approved for a real page, not run)
+
+- **B3 closed:** the evidence record is in `docs/greenhouse-compatibility-report.md`, "B3
+  evidence record".
+  - Final tested revision: `ee35b49`, CI #43, all jobs passed.
+  - The attachment rule has not been validated by any later real run.
+- **Existing evidence analysed without new requests** (same report, "Dropdowns: what the
+  retained evidence shows"):
+  - 7 mapped dropdown questions, 1 combobox in the phone group, 4 standalone unmatched;
+  - the recorded required signal merges HTML and ARIA;
+  - group and label-marker signals were not recorded.
+- **Built** (`gh_readonly.inspect_comboboxes`, `--inspect-widgets`, workflow input
+  `inspect_widgets`, decision D29):
+  - opens and closes each combobox present at load (click, Escape), at most 24 actions;
+  - every data request type is refused at every origin, GET included;
+  - submissions are cancelled in the page, non-GET is blocked, file choosers are intercepted,
+    dialogs are dismissed;
+  - it stops at a navigation, address change, challenge, submission, non-GET, file chooser,
+    dialog, value change or selection, or when the action, time (30 s) or request budget runs
+    out;
+  - a covered widget is not clicked;
+  - anonymous output only: aliases `q01…` and `u1…`, counts and flags.
+  - A real page is accepted only under the fixed B3 policy.
+- **Fixture:** `gh2_widgets`. Widget behaviour is a FIXTURE ASSUMPTION; variants are selected
+  with `widget_bad`.
+- **Tests:**
+  - `tests/test_widget_inspection.py`, 18 tests through the netns browser path;
+  - Compose `s_readonly_widget_inspection_in_container` (container path; it runs only in CI
+    here, because this sandbox has no Docker daemon).
+- **Not done:** no external request of any kind. The approval request is in
+  `docs/greenhouse-readonly-compatibility-proposal.md`, "Widget inspection".
+- **Commands actually run (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `uv run ruff check .` and `uv run ruff format --check .`: clean;
+  - focused: `pytest tests/test_widget_inspection.py tests/test_b3_policy.py
+    tests/test_gh_readonly.py tests/test_greenhouse_dom.py tests/test_approval_binding.py`:
+    104 passed;
+  - `uv run pytest` (full backend): 336 passed.
+  - An earlier full run was stopped and is not counted: it had started before the last code
+    change.
+  - Not run here: the Compose scenarios (no Docker daemon in this sandbox) and Playwright
+    (frontend unchanged). CI runs both.
 
 ## Id-only Greenhouse mapping and output privacy (2026-10-20)
 

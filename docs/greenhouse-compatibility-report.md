@@ -233,6 +233,71 @@ inferred beyond the request types observed.
 - **Interpretation:** B3's printed result predates this rule (it reports `incompatible`). Under
   the new rule these two fields would map, with every other gap unchanged.
 
+## B3 evidence record (closed 2026-10-20; accepted as complete)
+
+These four things are kept apart.
+
+1. **B3 live observations:** manual run #6, revision `bf6642b`, once, after CI #42 passed on
+   that revision.
+   - Mapping unchanged from B2.
+   - Attachment inputs sit in groups named exactly as their questions.
+   - Recorded above. This is the only real-page evidence.
+2. **The attachment mapping change made afterwards:** `mapped_via_group`, attachments only.
+   It was written from that evidence, in `ee35b49`.
+3. **Its local tests:** fixture modes `gh2_attach_group(_wrong|_shared)` and
+   `tests/test_greenhouse_dom.py`.
+   - **Final tested revision `ee35b49`, CI #43** ([39492067001](https://github.com/KevinD003/AutoApply/actions/runs/39492067001)):
+     - backend 317 passed, 1 skipped;
+     - Playwright 26 passed;
+     - execution-compose 85 checks, 0 failed;
+     - docker-smoke passed.
+   - The existing execution regressions are unchanged and still pass.
+4. **Remaining live incompatibilities:**
+   - the absent location control;
+   - the required, page-managed coordinates;
+   - 4 standalone comboboxes not in the job data (1 required);
+   - a combobox inside the phone field's group;
+   - attachment inputs without a required attribute while the job data requires the resume;
+   - dropdown options not observable without interaction.
+
+**The attachment rule has not been validated against any later real run.** B3's printed
+result predates it, and no external run has happened since run #6.
+
+## Dropdowns: what the retained evidence shows (no new requests)
+
+Source: B3's published anonymous summary and local code only. No page was retrieved and no
+destroyed raw data was reconstructed.
+
+| Control | Count | At load |
+|---|---|---|
+| Mapped dropdown questions `q01 q02 q03 q04 q07 q09 q11` | 7 | <ul><li>Each is an `input` with `role=combobox`, unique id, named via `aria-labelledby`, `aria-describedby` present, not in a group.</li><li>The required attribute matches the job data for all 7 (required).</li><li>No listbox in the DOM (`controls_listbox: false`).</li><li>The job data lists 2, 2, 250, 26, 2, 2 and 2 options.</li></ul> |
+| Combobox in the phone field's group (`u1`) | 1 | <ul><li>Named via `aria-labelledby`, not like any API question.</li><li>Carries a required signal.</li><li>The phone text input itself maps uniquely, and its group is named as the phone question.</li></ul> |
+| Standalone unmatched comboboxes (`u2`–`u5`) | 4 | <ul><li>Labelled, visible, in the form, not in any group.</li><li>None labelled like an API question.</li><li>`u2` carries a required signal; `u3`–`u5` do not.</li></ul> |
+
+**How "required" is represented (what was recorded):**
+- **Input level:** `required_attr` was recorded, but it merges the HTML `required` attribute
+  and `aria-required="true"`. Which of the two the page uses was not recorded.
+- **Group level:**
+  - the phone and attachment groups were recorded as groups (`in_group`, `group_label`);
+  - no group-level required signal was recorded.
+- **Label marker (e.g. a trailing `*`):** not recorded.
+- **Attachments:** neither required signal is present, although the job data requires the
+  resume.
+
+**What the evidence cannot settle without interaction:**
+- the options of any dropdown, and whether they equal the job data's options;
+- whether `u1` is a supporting control (e.g. a dialling-country picker for the phone number)
+  or a question;
+- what `u2`–`u5` ask: their wording is not retained and must not be published;
+- whether they behave like questions (own options, not equal to any API question's);
+- whether opening any dropdown adds, removes or re-requires controls;
+- whether a location control appears only through interaction;
+- whether option lists depend on the 4 data requests to the CDN that were refused at load.
+
+**Proposed next step:** a bounded widget inspection, implemented and tested locally, **not
+approved and not run**. See `docs/greenhouse-readonly-compatibility-proposal.md`, "Widget
+inspection".
+
 ## Log cleanup (run #3's logs deleted with authorization; runs #1 and #2 untouched)
 
 Manual "Greenhouse read-only check" runs. None has artifacts: the workflow uploads none and

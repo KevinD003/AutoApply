@@ -184,3 +184,25 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   then (`LEGACY_VERSIONS`). They stay valid exactly while that is still what would run, so this
   change invalidates none of them. A later version bump retires only the approvals bound to
   that adapter. Migration `5d2e7a91c4b0` adds the two nullable columns.
+
+## D29 — Widget inspection: open and close only, no data endpoint, GET is not harmless
+- **Purpose:** observe how a page's dropdowns relate to its questions. Opening a widget is
+  interaction, so it is a separate mode (`--inspect-widgets`) that needs its own approval.
+  It is never part of B or B3.
+- **Actions allowed:** one click to open and one Escape to close, on comboboxes present at
+  load, within a fixed action budget. Nothing else is clicked, typed, focused, selected or
+  uploaded.
+- **Network:**
+  - every data request type (xhr, fetch, eventsource, websocket, ping) is refused at every
+    origin, GET and the page origin included;
+  - a widget that needs a data endpoint is reported as such, and the endpoint is never
+    approved automatically;
+  - destinations and methods are otherwise exactly B3's.
+- **Defence in depth:** form submission is cancelled in the page, non-GET is blocked in the
+  network layer, file choosers are intercepted, and dialogs are dismissed.
+- **Stops:** the first navigation attempt, address change, challenge, submission, non-GET,
+  file chooser, dialog, value change or selection ends the inspection. It is reported and not
+  retried. Structural and required changes are recorded, not acted on.
+- **Output:** aliases and counts through the existing allowlist and guard. Option texts are
+  compared inside the worker only.
+

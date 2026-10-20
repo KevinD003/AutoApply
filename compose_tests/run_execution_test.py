@@ -605,6 +605,57 @@ def s_readonly_b3_dependency_policy_in_container():
           not canary_hits, canary_hits[:3])  # fmt: skip
 
 
+_INSPECT = """
+import json, os
+from app.modules.preparation import gh_readonly as ro
+api = json.loads(os.environ["API_JSON"])
+obs = ro.observe_page("northwind", "5020001", base="http://receiver:8799", prefix="gh2",
+                      api_json=api, inspect_widgets=True)
+ins = obs["inspection"]
+print(json.dumps({"stopped": ins["stopped"], "actions": ins["actions"],
+                  "targets": ins["targets"],
+                  "opened": sorted(w["target"] for w in ins["widgets"] if w.get("opened")),
+                  "selected": sum(w.get("selected_after_open", 0) for w in ins["widgets"]),
+                  "changed": any(w.get("value_changed") for w in ins["widgets"]),
+                  "refused": ins["data_requests_refused"],
+                  "blocked_non_get": [b["method"] for b in obs["blocked_non_get"]]}))
+"""
+
+
+def s_readonly_widget_inspection_in_container():
+    """Widget inspection (local fixture only) through the real runner and session proxy: each
+    combobox is opened and closed, nothing is selected; a widget's data request, upload or
+    submission is refused before it is sent."""
+    api = receiver_raw("/gh2-api/v1/boards/northwind/jobs/5020001?questions=true")
+    runs = {}
+    for bad in ("", "fetch", "upload", "submit"):
+        receiver("reset")
+        receiver("config", {"mode": "gh2_widgets", "widget_bad": bad})
+        obs = worker_py(_INSPECT, API_JSON=api,
+                        NOEFFORTS_READONLY_GREENHOUSE_APPROVED="northwind/5020001")  # fmt: skip
+        led = receiver("ledger")
+        runs[bad] = (obs, [(r["method"], r["path"]) for r in led.get("requests", [])], led)
+    receiver("config", {"mode": "normal"})
+    obs, paths, led = runs[""]
+    check("inspection: every combobox opened and closed, nothing selected or changed",
+          obs.get("stopped") is None and obs.get("actions") == 2 * obs.get("targets", -1)
+          and len(obs.get("opened", [])) == obs.get("targets") and obs.get("selected") == 0
+          and obs.get("changed") is False, obs)  # fmt: skip
+    job = "/gh2/northwind/jobs/5020001"
+    check("inspection: one page GET, no widget endpoint, upload or submission reached; no "
+          "disclosure",
+          all(r[1].count(("GET", job)) == 1 and all(m == "GET" for m, _ in r[1])
+              and not any(p.startswith(job + "/") for _, p in r[1])
+              and r[2]["disclosures"] == [] and r[2]["accepted"] == 0
+              for r in runs.values()), {k: v[1] for k, v in runs.items()})  # fmt: skip
+    check("inspection: a widget's same-origin GET data request refused and reported",
+          runs["fetch"][0].get("refused", {}).get("during_actions") == 1, runs["fetch"][0])  # fmt: skip
+    check("inspection: an upload or submission started by a widget stops the inspection",
+          runs["upload"][0].get("stopped") == "a non-GET request was attempted"
+          and runs["submit"][0].get("stopped") == "a submission was attempted",
+          [runs["upload"][0], runs["submit"][0]])  # fmt: skip
+
+
 def s_greenhouse_security_code_flow():
     receiver("config", {"mode": "gh_security_code"})
     slug = "gh-examplehealth-4012001"
@@ -869,6 +920,7 @@ SCENARIOS = [
     s_readonly_observation_in_container,
     s_readonly_mapping_in_container,
     s_readonly_b3_dependency_policy_in_container,
+    s_readonly_widget_inspection_in_container,
     s_greenhouse_security_code_flow,
     s_hostile_page,
     s_infrastructure_only_egress,
