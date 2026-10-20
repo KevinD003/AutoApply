@@ -30,6 +30,9 @@ class FieldType(enum.StrEnum):
     select = "select"
     multiselect = "multiselect"
     file = "file"
+    # A control we cannot fill deterministically (e.g. a hidden value a page script sets).
+    # Never guessed: required ones block approval, optional ones stay blank.
+    unsupported = "unsupported"
 
 
 CHOICE_TYPES = {FieldType.radio, FieldType.select}
@@ -42,6 +45,13 @@ class Option(BaseModel):
     label: str = Field(max_length=500)
 
 
+class Condition(BaseModel):
+    """The field is shown (and applies) only when field `key` has one of these option values."""
+
+    key: str = Field(min_length=1, max_length=200)
+    any_of: list[str] = Field(min_length=1, max_length=50)
+
+
 class FormField(BaseModel):
     key: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9_.:\[\]-]+$")
     label: str = Field(min_length=1, max_length=2000)
@@ -52,6 +62,8 @@ class FormField(BaseModel):
     step: str | None = Field(default=None, max_length=200)
     max_length: int | None = Field(default=None, ge=1, le=100_000)
     accept: str | None = Field(default=None, max_length=200)
+    condition: Condition | None = None
+    unsupported_reason: str | None = Field(default=None, max_length=300)
 
     @model_validator(mode="after")
     def _options(self):
@@ -93,6 +105,11 @@ def field_fingerprint(f: FormField) -> str:
         f.required,
         [normalize(o.label) for o in f.options],
     ]
+    # Added only when present, so fingerprints of forms without them are unchanged.
+    if f.condition:
+        payload.append(["if", f.condition.key, sorted(f.condition.any_of)])
+    if f.type == FieldType.unsupported:
+        payload.append(["unsupported", f.unsupported_reason or ""])
     return hashlib.sha256(json.dumps(payload).encode()).hexdigest()[:24]
 
 

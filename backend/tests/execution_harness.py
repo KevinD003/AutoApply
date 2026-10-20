@@ -76,8 +76,8 @@ class Receiver:
             self.proc.wait(timeout=5)
 
 
-def prepared_application(api, receiver, *, slug="clinic", why_text=None, hear_about="input") -> str:
-    """Synthetic candidate + approved package for the receiver's form. Returns app id."""
+def synthetic_candidate(api) -> None:
+    """Fictional candidate: profile, US work authorization (no sponsorship), one resume."""
     api.put(
         "/profile",
         json={
@@ -103,6 +103,11 @@ def prepared_application(api, receiver, *, slug="clinic", why_text=None, hear_ab
         )
     if not api.get("/documents").json():
         api.post("/documents", files={"file": ("resume.pdf", PDF, "application/pdf")})
+
+
+def prepared_application(api, receiver, *, slug="clinic", why_text=None, hear_about="input") -> str:
+    """Synthetic candidate + approved package for the receiver's form. Returns app id."""
+    synthetic_candidate(api)
     job = api.post(
         "/jobs",
         json={

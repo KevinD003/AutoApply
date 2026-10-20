@@ -117,6 +117,11 @@ export default function ReviewPage() {
             <Badge tone="amber">Local test fixture — fictional employer</Badge>
           </p>
         )}
+        {c.destination.form_source === "greenhouse_api" && (
+          <p className="mt-2">
+            <Badge tone="amber">Greenhouse-style form — local test approximation, fictional employer</Badge>
+          </p>
+        )}
       </Card>
 
       <Card title="Status">

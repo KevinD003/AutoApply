@@ -145,6 +145,15 @@ function FormCard({ jobId, onPrepare }: { jobId: string; onPrepare: () => void }
       .catch(() => undefined);
   }, [load]);
 
+  async function readGreenhouse() {
+    setError(null);
+    try {
+      setForm(await api<FormInfo>(`/jobs/${jobId}/form/greenhouse`, { method: "POST" }));
+    } catch (e) {
+      setError(e);
+    }
+  }
+
   async function attach() {
     setError(null);
     try {
@@ -177,12 +186,20 @@ function FormCard({ jobId, onPrepare }: { jobId: string; onPrepare: () => void }
               Attach test form
             </Button>
           </div>
+          <p>
+            For a Greenhouse-style job post on the local test receiver, NoEfforts can read the questions from the job data and
+            the application page and check that they agree. Real Greenhouse posts are not read in this version.
+          </p>
+          <Button variant="secondary" onClick={readGreenhouse}>
+            Read Greenhouse form
+          </Button>
         </div>
       ) : (
         <div className="space-y-3 text-sm">
           <p>
             Form v{form.version} · {form.schema.fields.length} questions · source: {form.source}
             {form.source === "fixture" && <> <Badge tone="amber">Local test fixture</Badge></>}
+            {form.source === "greenhouse_api" && <> <Badge tone="amber">Greenhouse-style form (local test approximation)</Badge></>}
           </p>
           <Button onClick={onPrepare}>Prepare application</Button>
         </div>

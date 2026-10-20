@@ -1,7 +1,7 @@
 """Which destinations may be executed, and by which adapter.
 
-Phase C supports exactly one adapter, for local synthetic fixture receivers, and only outside
-production. Every real employer destination is refused: there is no tested live adapter.
+Two adapters exist, both for local synthetic fixtures only and only outside production. Every
+real employer destination is refused: no adapter has been verified against a real employer.
 """
 
 from urllib.parse import urlsplit
@@ -22,6 +22,28 @@ CAPABILITIES: dict[str, dict] = {
         "submit": True,
         "confirm": True,
         "tested_against": ["fixtures/ats_receiver"],
+    },
+    "greenhouse_hosted": {
+        "description": (
+            "Greenhouse-style hosted application form (single page). Verified only against a "
+            "labelled local approximation, not against any real employer's form."
+        ),
+        "environments": ["development", "test"],
+        "inspect": True,  # job post JSON + rendered page, cross-checked
+        "extract": True,
+        "fill": True,  # text, email, phone, textarea, select, multi-select, consent checkbox
+        "upload": True,  # attachments uploaded when chosen (counted as disclosures)
+        "checkpoint": True,  # emailed security code; unsupported controls stop at preparation
+        "submit": True,
+        "confirm": True,  # confirmation page (no application id is shown)
+        "real_destinations": False,
+        "unsupported": [
+            "CAPTCHA or bot checks (stop, never bypassed)",
+            "location pickers with hidden coordinates",
+            "multi-page or login-gated applications",
+            "pasting text instead of attaching a document",
+        ],
+        "tested_against": ["fixtures/ats_receiver/greenhouse_like.py"],
     },
 }
 
@@ -47,4 +69,6 @@ def adapter_for(destination: dict) -> str:
     sp = urlsplit(submit)
     if f"{sp.scheme}://{sp.netloc}".lower() != origin.lower():
         raise UnsupportedDestination("The form submits to a different site than the job page.")
+    if destination.get("form_source") == "greenhouse_api":
+        return "greenhouse_hosted"
     return "fixture_ats"

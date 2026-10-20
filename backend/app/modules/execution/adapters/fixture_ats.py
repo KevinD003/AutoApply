@@ -24,6 +24,7 @@ def _sel(key: str) -> str:
 
 class FixtureAtsAdapter:
     name = "fixture_ats"
+    confirmation_strength = "employer_receipt"
 
     def __init__(self, content: dict, documents: dict[str, tuple[str, str, bytes]]):
         self.content = content
@@ -32,6 +33,10 @@ class FixtureAtsAdapter:
     # -- inspect ----------------------------------------------------------------------------
     def extract(self, page: Page) -> FormSchema:
         return extract_form_schema(page.content())
+
+    def blocked_reason(self, page: Page) -> str | None:
+        """A reason to stop before disclosing anything (e.g. a bot check), or None."""
+        return None
 
     def schema_matches(self, page: Page) -> str | None:
         """None if the live form is the approved form; otherwise a reason."""

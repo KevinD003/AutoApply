@@ -13,6 +13,8 @@ import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
+import greenhouse_like  # labelled approximation of a Greenhouse-hosted form (same ledger)
+
 SCHEMA = """
 create table if not exists acceptances (id integer primary key, receipt text, slug text,
   form_token text, fields text, created_at real);
@@ -131,6 +133,8 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
         ledger.run("insert into acceptances (receipt,slug,form_token,fields,created_at) "
                    "values (?,?,?,?,?)", (receipt, slug, token, json.dumps(fields), time.time()))
         return receipt
+
+    greenhouse_like.mount(app, ledger, cfg, _accept)
 
     @app.post("/apply/{slug}/submit", response_class=HTMLResponse)
     async def submit(slug: str, request: Request):

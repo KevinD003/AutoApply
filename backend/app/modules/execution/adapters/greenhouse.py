@@ -1,0 +1,192 @@
+"""Greenhouse-hosted application form adapter. Fixture-only: verified against the labelled
+approximation in fixtures/ats_receiver/greenhouse_like.py, not against any real employer.
+
+Supported: one single-page hosted form; text, email, phone, textarea, single select,
+multi-select checkboxes, consent checkbox, attachments uploaded on selection, questions that
+appear conditionally, an emailed security code entered before acceptance. Anything else is
+refused before disclosure (schema mismatch, CAPTCHA) or was already a checkpoint at
+preparation (unsupported controls).
+"""
+
+from urllib.parse import urljoin, urlsplit
+
+from playwright.sync_api import Error as PWError
+from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as PWTimeout
+
+from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, Outcome, UploadFailed
+from app.modules.preparation.forms import Condition, FieldType, FormField, Option
+from app.modules.preparation.greenhouse import comparable, rendered_schema
+
+# Bot checks are a stop condition: never solved, bypassed or waited out.
+CHALLENGE_SELECTORS = (
+    ".g-recaptcha, .h-captcha, .cf-turnstile, iframe[src*='recaptcha'], iframe[src*='hcaptcha'],"
+    " iframe[title*='captcha' i], iframe[title*='challenge' i]"
+)
+
+
+def approved_fields(content: dict) -> list[FormField]:
+    out = []
+    for a in content["answers"]:
+        cond = a.get("condition")
+        out.append(
+            FormField(
+                key=a["key"],
+                label=a["label"],
+                help_text=a["help_text"],
+                type=FieldType(a["type"]),
+                required=a["required"],
+                options=[Option(**o) for o in a["options"]],
+                condition=Condition(**cond) if cond else None,
+                unsupported_reason=a.get("unsupported_reason"),
+            )
+        )
+    return out
+
+
+class GreenhouseHostedAdapter(FixtureAtsAdapter):
+    name = "greenhouse_hosted"
+    # The hosted confirmation page shows no application id; this is the evidence available.
+    confirmation_strength = "employer_confirmation_page"
+
+    # -- inspect ----------------------------------------------------------------------------
+    def extract(self, page: Page):
+        return rendered_schema(page.content())
+
+    def blocked_reason(self, page: Page) -> str | None:
+        if page.locator(CHALLENGE_SELECTORS).count():
+            return (
+                "the employer's page shows a CAPTCHA or bot check; NoEfforts does not solve or "
+                "bypass these. Apply on the employer's site."
+            )
+        return None
+
+    def schema_matches(self, page: Page) -> str | None:
+        live = self.extract(page)
+        want = comparable(approved_fields(self.content))
+        got = comparable(live.fields)
+        if got != want:
+            new = sorted(set(got) - set(want))
+            changed = sorted(k for k in set(got) & set(want) if got[k] != want[k])
+            gone = sorted(set(want) - set(got))
+            detail = "; ".join(
+                part
+                for part in (
+                    f"new fields: {', '.join(new)}" if new else "",
+                    f"changed: {', '.join(changed)}" if changed else "",
+                    f"missing: {', '.join(gone)}" if gone else "",
+                )
+                if part
+            )
+            return f"the form has changed since you approved it ({detail})"
+        dest = self.content["destination"]
+        if not live.action or urljoin(page.url, live.action) != dest["submit_url"]:
+            return "the form now submits to a different address"
+        return None
+
+    # -- fill -------------------------------------------------------------------------------
+    def fill(self, page: Page) -> list[dict]:
+        """In form order, so a conditional question is filled after the answer that shows it.
+        Unanswered and not-applicable questions are left untouched."""
+        disclosures = []
+        for a in self.content["answers"]:
+            if a["value"] is None or a["type"] == FieldType.unsupported.value:
+                continue
+            if a.get("condition"):
+                page.locator(f'[name="{a["key"]}"]').first.wait_for(state="visible")
+            if a["type"] == "file":
+                disclosures.append(self._attach(page, a))
+                continue
+            try:
+                self._fill_one(page, a)
+            except PWTimeout:
+                raise
+            except PWError:
+                continue  # readback reports it
+        return disclosures
+
+    def _attach(self, page: Page, a: dict) -> dict:
+        key = a["key"]
+        name, ctype, data = self.documents[key]
+        page.locator(f'input[type=file][name="{key}"]').set_input_files(
+            files=[{"name": name, "mimeType": ctype, "buffer": data}]
+        )
+        status = page.locator(f"#{key}-status")
+        page.wait_for_function(
+            "k => { const s = document.getElementById(k + '-status');"
+            " return s && (s.dataset.attachmentId || s.dataset.attachmentError); }",
+            arg=key,
+        )
+        if status.get_attribute("data-attachment-error"):
+            raise UploadFailed(f"attachment {key} was not accepted")
+        return {
+            "field": key,
+            "upload_id": status.get_attribute("data-attachment-id"),
+            "sha256": next(
+                (d["sha256"] for d in self.content["documents"] if d["field"] == key), None
+            ),
+        }
+
+    # -- verify -----------------------------------------------------------------------------
+    def readback(self, page: Page) -> list[str]:
+        bad = []
+        plain = []
+        for a in self.content["answers"]:
+            if a["type"] == FieldType.unsupported.value:
+                continue
+            if a["type"] == "file":
+                key = a["key"]
+                hidden = page.locator(f"#{key}_attachment_id")
+                got = hidden.input_value() if hidden.count() else ""
+                shown = page.locator(f"#{key}-status").get_attribute("data-attachment-id")
+                if (a["value"] is None) != (got == "") or (got and got != shown):
+                    bad.append(key)
+                continue
+            plain.append(a)
+        full = self.content
+        try:
+            self.content = {**full, "answers": plain}
+            bad += super().readback(page)
+        finally:
+            self.content = full
+        return bad
+
+    # -- submit -----------------------------------------------------------------------------
+    def submit(self, page: Page, timeout_ms: int) -> Outcome:
+        return self._click(page, page.locator("form#application_form #submit_app"), timeout_ms)
+
+    def enter_code(self, page: Page, code: str, timeout_ms: int) -> Outcome:
+        page.locator("form#application_form #security_code").fill(code)
+        out = self._click(page, page.locator("form#application_form #submit_app"), timeout_ms)
+        if out.kind == "otp":
+            return Outcome("wrong_code", "the employer rejected the security code", None,
+                           out.http_status)  # fmt: skip
+        return out
+
+    def _click(self, page: Page, button, timeout_ms: int) -> Outcome:
+        try:
+            with page.expect_navigation(timeout=timeout_ms) as nav:
+                button.click()
+            resp = nav.value
+        except PWTimeout:
+            return Outcome("unknown", "no response from the employer within the time limit")
+        status = resp.status if resp else None
+        kind = page.locator("body").get_attribute("data-gh")
+        if kind == "confirmation" and page.locator("#application_confirmation").count():
+            return Outcome("accepted", "confirmation page shown", None, status)
+        if kind == "security_code":
+            return Outcome("otp", "security code requested", None, status)
+        if kind == "errors":
+            return Outcome("rejected", "the employer's page listed errors", None, status)
+        return Outcome("unknown", f"unrecognised response (HTTP {status})", None, status)
+
+    def receipt_evidence(self, page: Page, out: Outcome) -> dict:
+        p = urlsplit(page.url)
+        return {
+            "receipt_id": None,
+            "confirmation": "confirmation page",
+            "final_origin": f"{p.scheme}://{p.netloc}",
+            "final_path": p.path,
+            "page_title": page.title()[:200],
+            "http_status": out.http_status,
+        }

@@ -28,8 +28,9 @@ def _owned_app(db: Session, user: User, app_id: uuid.UUID) -> Application:
 def capabilities(user: User = Depends(current_user)) -> dict:
     return {
         "adapters": CAPABILITIES,
-        "note": "Only the local synthetic fixture adapter exists. No live employer system "
-        "is supported for automatic submission.",
+        "note": "Adapters run only against local synthetic fixtures (the Greenhouse one against "
+        "a labelled approximation). No live employer system is supported for automatic "
+        "submission.",
     }
 
 

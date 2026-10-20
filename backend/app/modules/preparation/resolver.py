@@ -170,6 +170,16 @@ def resolve_field(f: FormField, ctx: Context) -> Resolution:
     intent = classify(f)
     r = _base(f, intent)
 
+    if f.type == FieldType.unsupported:
+        # Nothing to map and nothing to type: a required one is a checkpoint (apply manually).
+        r.user_input_allowed, r.draftable, r.bankable = False, False, False
+        return _unresolved(
+            r,
+            f,
+            f"NoEfforts cannot fill this control ({f.unsupported_reason or 'unsupported'}). "
+            + ("It is required, so apply on the employer's site." if f.required else "Left blank."),
+        )
+
     if intent.acknowledgment:
         return _resolve_ack(f, r, ctx)
 

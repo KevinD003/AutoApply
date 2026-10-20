@@ -28,7 +28,7 @@ from app.modules.audit.service import record
 from app.modules.documents.models import Document, DocumentKind
 from app.modules.jobs.models import Job
 from app.modules.preparation import drafting
-from app.modules.preparation.forms import FormSchema
+from app.modules.preparation.forms import FieldType, FormSchema
 from app.modules.preparation.models import (
     AnswerBankEntry,
     ApplicationInput,
@@ -128,6 +128,13 @@ def load_context(db: Session, app: Application) -> Context:
     )
 
 
+def _condition_met(cond, value: dict | None) -> bool:
+    if not value:
+        return False
+    chosen = {value.get("option")} | {o.get("option") for o in value.get("options") or []}
+    return bool(chosen & set(cond.any_of))
+
+
 def build_content(db: Session, app: Application) -> dict:
     job = db.get(Job, app.job_id)
     form = latest_form(db, job.id)
@@ -136,8 +143,14 @@ def build_content(db: Session, app: Application) -> dict:
     schema = FormSchema.model_validate(form.schema)
     ctx = load_context(db, app)
     answers, unresolved, errors = [], [], []
+    values: dict[str, dict | None] = {}
     for f in schema.fields:
         r = resolve_field(f, ctx)
+        if f.condition and not _condition_met(f.condition, values.get(f.condition.key)):
+            # Not shown for the answers given, so not asked: nothing is entered or sent.
+            r.status, r.value, r.display = "blank_optional", None, None
+            r.explanation = "Not asked: this question only appears for a different answer above."
+        values[f.key] = r.value
         answers.append(
             {
                 "key": f.key,
@@ -161,6 +174,13 @@ def build_content(db: Session, app: Application) -> dict:
                 "bankable": r.bankable,
                 "user_input_allowed": r.user_input_allowed,
                 "draftable": r.draftable,
+                # Only for forms that use them, so other packages keep their exact content.
+                **({"condition": f.condition.model_dump()} if f.condition else {}),
+                **(
+                    {"unsupported_reason": f.unsupported_reason}
+                    if f.type == FieldType.unsupported
+                    else {}
+                ),
             }
         )
         if r.status in ("needs_user", "needs_consent"):

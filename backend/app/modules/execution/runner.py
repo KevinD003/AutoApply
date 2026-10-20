@@ -21,10 +21,14 @@ from app.modules.documents.models import Document
 from app.modules.documents.storage import get_storage
 from app.modules.execution import service as svc
 from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, UploadFailed
+from app.modules.execution.adapters.greenhouse import GreenhouseHostedAdapter
 from app.modules.execution.browser import IsolationUnavailable, browser_session
 from app.modules.execution.faults import fault
 from app.modules.execution.models import ExecutionAttempt
 from app.modules.preparation.models import ApplicationPackage
+
+# Keyed by the adapter recorded on the attempt when it was queued (policy.adapter_for).
+ADAPTERS = {"fixture_ats": FixtureAtsAdapter, "greenhouse_hosted": GreenhouseHostedAdapter}
 
 log = logging.getLogger("noefforts.execution")
 
@@ -47,7 +51,7 @@ def _snapshot(attempt_id):
             if hashlib.sha256(data).hexdigest() != d["sha256"]:
                 raise RuntimeError("stored document does not match the approved digest")
             docs[d["field"]] = (doc.original_filename, doc.content_type, data)
-        return content, docs
+        return content, docs, att.adapter
 
 
 def run_attempt(attempt_id: str, worker: str) -> str:
@@ -64,8 +68,8 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         svc.heartbeat(aid, worker, gen)
 
     try:
-        content, docs = _snapshot(aid)
-        adapter = FixtureAtsAdapter(content, docs)
+        content, docs, adapter_name = _snapshot(aid)
+        adapter = ADAPTERS[adapter_name](content, docs)
         dest = content["destination"]
         if s.browser_isolation != "netns" and s.env == "production":
             svc.fail_safe(aid, worker, gen, "browser network isolation is required")
@@ -90,7 +94,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             except Exception as e:  # noqa: BLE001 - any navigation failure is a safe stop
                 svc.fail_safe(aid, worker, gen, f"could not open the form ({type(e).__name__})")
                 return "failed_safe"
-            reason = adapter.schema_matches(page)
+            reason = adapter.blocked_reason(page) or adapter.schema_matches(page)
             if reason:
                 svc.fail_safe(aid, worker, gen, reason)
                 return "failed_safe"
@@ -192,7 +196,10 @@ def _conclude(aid, worker, gen, adapter, page, out) -> str:
         ev = adapter.receipt_evidence(page, out)
         fault("after_receipt_before_commit")
         svc.confirmed(
-            aid, worker, gen, [{"kind": "receipt", "data": ev, "strength": "employer_receipt"}]
+            aid,
+            worker,
+            gen,
+            [{"kind": "receipt", "data": ev, "strength": adapter.confirmation_strength}],
         )
         return "confirmed"
     if out.kind == "rejected":

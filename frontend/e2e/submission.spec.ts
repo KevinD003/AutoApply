@@ -227,3 +227,58 @@ test("unknown outcome is reconciled in the tracker, never resubmitted", async ({
   const attempts = await (await page.request.get(`/api/applications/${appId}/attempts`)).json();
   expect(attempts.length).toBe(1);
 });
+
+test("Greenhouse-style form: read from job data and page, prepare, approve, submit once", async ({ page, request }) => {
+  // Same synthetic candidate as the other tests, on the receiver's labelled Greenhouse approximation.
+  const email = `sub.gh.${RUN}.${Date.now()}@example.com`;
+  const reg = await page.request.post("/api/auth/register", { data: { email, password: "synthetic-password-1" } });
+  const csrf = (await reg.json()).csrf_token as string;
+  const h = { "X-CSRF-Token": csrf };
+  await page.request.put("/api/profile", {
+    headers: h,
+    data: {
+      full_name: "Sam Synthetic", given_name: "Sam", family_name: "Synthetic",
+      contact_email: "sam.synthetic@example.com", phone: "+1 555 0100",
+      residence_country: "US", residence_city: "Springfield", links: [],
+    },
+  });
+  await page.request.post("/api/profile/work-authorizations", {
+    headers: h, data: { country_code: "US", authorized: "yes", sponsorship_needed_now: "no", sponsorship_needed_future: "no" },
+  });
+  await page.request.post("/api/documents", {
+    headers: h, multipart: { file: { name: "resume.pdf", mimeType: "application/pdf", buffer: PDF }, kind: "resume" },
+  });
+  const job = await (
+    await page.request.post("/api/jobs", {
+      headers: h,
+      data: { url: `${RECEIVER}/gh/examplehealth/jobs/4012001`, title: "Patient Services Coordinator", employer: "Example Health Network (fictional)" },
+    })
+  ).json();
+  const before = (await ledger(request, "gh-examplehealth-4012001")).accepted;
+
+  await page.goto(`/jobs/${job.job.id}`);
+  await page.getByRole("button", { name: "Read Greenhouse form" }).click();
+  await expect(page.getByText("Greenhouse-style form (local test approximation)")).toBeVisible();
+  await page.getByRole("button", { name: "Prepare application" }).click();
+  await expect(page).toHaveURL(/\/applications\//);
+  const appId = page.url().split("/applications/")[1];
+  await expect(page.getByText("Greenhouse-style form — local test approximation, fictional employer")).toBeVisible();
+  // Exact employer wording is shown for review.
+  await expect(page.getByText("Are you legally authorized to work in the United States?")).toBeVisible();
+
+  const put = (url: string, data: object) => page.request.put(`/api${url}`, { headers: h, data });
+  await put(`/applications/${appId}/answers/question_7004`, { value: { label: "Referral" } });
+  await put(`/applications/${appId}/answers/question_7005`, { value: { label: "No" } });
+  await put(`/applications/${appId}/consents/question_7009`, { choice: "withhold" });
+  await put(`/applications/${appId}/consents/gdpr_processing_consent_given`, { choice: "agree" });
+  await page.reload();
+  await expect(page.getByText("Not asked: this question only appears for a different answer above.")).toBeVisible();
+
+  await approveAndSubmit(page, appId);
+  await expect(badge(page, "Employer receipt received")).toBeVisible({ timeout: 60_000 });
+  const l = await ledger(request, "gh-examplehealth-4012001");
+  expect(l.accepted).toBe(before + 1);
+  const attempts = await (await page.request.get(`/api/applications/${appId}/attempts`)).json();
+  expect(attempts.length).toBe(1);
+});
+

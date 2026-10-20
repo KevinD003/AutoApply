@@ -17,6 +17,7 @@ from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
 from app.modules.jobs.models import Job
 from app.modules.preparation import drafting
+from app.modules.preparation import greenhouse as gh
 from app.modules.preparation import package as pk
 from app.modules.preparation.fixtures_registry import FIXTURES, fixture_html
 from app.modules.preparation.forms import (
@@ -128,6 +129,10 @@ def attach_form(
         raise bad_request("Unknown fixture") from None
     except (ExtractionError, ValidationError) as e:
         raise bad_request(f"Could not read the form: {e}") from None
+    return _store_form(db, user, job, schema, source, ref, EXTRACTION_VERSION)
+
+
+def _store_form(db, user, job, schema: FormSchema, source, ref, extraction) -> dict:
     latest = pk.latest_form(db, job.id)
     fp = form_fingerprint(schema)
     if latest is not None and latest.fingerprint == fp:
@@ -138,7 +143,7 @@ def attach_form(
         version=(latest.version + 1) if latest else 1,
         source=source,
         source_ref=ref,
-        extraction_version=EXTRACTION_VERSION,
+        extraction_version=extraction,
         fingerprint=fp,
         schema=schema.model_dump(mode="json"),
     )
@@ -147,6 +152,55 @@ def attach_form(
     record(db, user.id, "job.form_captured", "job", job.id, version=form.version, source=source)
     db.commit()
     return _form_out(form)
+
+
+def _fetch_fixture(url: str) -> bytes:
+    """Loopback fixture only (callers check is_fixture_origin); no proxies, no redirects."""
+    import urllib.request
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):
+            return None
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
+    with opener.open(url, timeout=10) as r:
+        return r.read(2_000_001)[:2_000_000]
+
+
+@router.post("/jobs/{job_id}/form/greenhouse", status_code=status.HTTP_201_CREATED)
+def capture_greenhouse_form(
+    job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    """Read a Greenhouse-style job post (JSON) and its hosted form (page), cross-check them and
+    store the schema. Only local fixtures are read: reading a real job post is not enabled, and
+    reading one would not be permission to submit an application."""
+    import json
+    from urllib.parse import urlsplit
+
+    from app.core.urlsafety import is_fixture_origin
+
+    job = _owned_job(db, user, job_id)
+    url = job.url or job.canonical_url or ""
+    p = urlsplit(url)
+    origin = f"{p.scheme}://{p.netloc}"
+    fixture = is_fixture_origin(origin)
+    posting = gh.parse_posting(url, fixture_origin=fixture)
+    if posting is None:
+        raise bad_request("This job's address is not a Greenhouse job post")
+    if not posting.fixture:
+        raise conflict(
+            "Reading real Greenhouse job posts is not enabled in this version; it needs separate "
+            "approval. Apply on the employer's site and record it in the tracker."
+        )
+    try:
+        api = json.loads(_fetch_fixture(gh.api_url(posting, origin)))
+        page = _fetch_fixture(url).decode("utf-8", "replace")
+        schema = gh.build_schema(api, page)
+    except gh.SchemaMismatch as e:
+        raise conflict(f"Could not capture the form: {e}") from None
+    except (OSError, ValueError, ExtractionError, ValidationError) as e:
+        raise bad_request(f"Could not read the job post ({type(e).__name__})") from None
+    return _store_form(db, user, job, schema, "greenhouse_api", posting.ref, gh.EXTRACTION_VERSION)
 
 
 def _form_out(form) -> dict:
