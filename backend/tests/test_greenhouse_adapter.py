@@ -141,6 +141,22 @@ def test_hidden_and_unknown_controls_become_unsupported():
     assert "time_slot_picker" in f["question_9"].unsupported_reason
 
 
+def test_protocol_hidden_fields_are_not_questions_and_declared_hidden_ones_block():
+    """Page-managed hidden inputs (session token, attachment ids) are protocol, not questions:
+    never in the schema, never answered by us. A hidden input the job data declares as a
+    question is unsupported: never guessed, and a checkpoint when required."""
+    api_json = greenhouse_like._api_json(BOARD, LOCATION_JOB, BASE)
+    page = greenhouse_like._form_page(BOARD, LOCATION_JOB, "t", {"mode": "normal"}).body.decode()
+    assert 'name="form_token"' in page and 'name="resume_attachment_id"' in page
+    f = {x.key: x for x in gh.build_schema(api_json, page).fields}
+    for protocol in ("form_token", "resume_attachment_id", "cover_letter_attachment_id"):
+        assert protocol not in f
+    assert f["resume"].type == FieldType.file  # the question is the attachment itself
+    lat = f["latitude"]
+    assert lat.type == FieldType.unsupported and lat.required
+    assert lat.unsupported_reason.startswith("hidden")
+
+
 def test_job_data_and_page_must_agree():
     api_json = greenhouse_like._api_json(BOARD, JOB, BASE)
     page = greenhouse_like._form_page(BOARD, JOB, "t", {"mode": "normal"}).body.decode()
@@ -203,6 +219,22 @@ def test_conditional_question_follows_its_trigger(api, receiver):
     api.put(f"/applications/{app_id}/answers/question_7005", json={"value": {"label": "Yes"}})
     c = api.get(f"/applications/{app_id}/package").json()["package"]["content"]
     assert "question_7006" in c["unresolved"]  # now asked, required, and not guessed
+
+
+def test_unanswered_trigger_keeps_its_conditional_question_pending(api, receiver):
+    """False, true and unresolved are distinct: an unanswered trigger never makes the question
+    'not asked'."""
+    synthetic_candidate(api)
+    job_id = gh_job(api)
+    assert api.post(f"/jobs/{job_id}/form/greenhouse").status_code == 201
+    app_id = api.post("/applications", json={"job_id": job_id}).json()["id"]
+    c = api.get(f"/applications/{app_id}/package").json()["package"]["content"]
+    by_key = {a["key"]: a for a in c["answers"]}
+    assert by_key["question_7005"]["status"] == "needs_user"
+    q = by_key["question_7006"]
+    assert q["status"] == "needs_user" and "Not asked" not in q["explanation"]
+    assert "depends on an unanswered question" in q["explanation"]
+    assert {"question_7005", "question_7006"} <= set(c["unresolved"])
 
 
 # ------------------------------------------------------------------ execution
@@ -298,6 +330,9 @@ def test_form_changed_after_approval_stops_before_disclosure(api, receiver):
         ("error_after_accept", "unknown", 1),
         ("drop_after_accept", "unknown", 1),
         ("upload_fail", "abandoned", 0),
+        ("gh_confirm_redirect", "confirmed", 1),
+        # A confirmation page for a different posting is not evidence for this attempt.
+        ("gh_confirm_other_job", "unknown", 1),
     ],
 )
 def test_outcome_classification(api, receiver, mode, expected, accepted):
@@ -317,3 +352,4 @@ def test_capability_flags(api):
     for flag in ("inspect", "extract", "fill", "upload", "checkpoint", "submit", "confirm"):
         assert g[flag] is True
     assert g["real_destinations"] is False
+    assert g["unverified"]["security_code"].startswith("synthetic")

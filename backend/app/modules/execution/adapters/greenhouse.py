@@ -173,12 +173,36 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
         status = resp.status if resp else None
         kind = page.locator("body").get_attribute("data-gh")
         if kind == "confirmation" and page.locator("#application_confirmation").count():
+            if not self._ours(resp, page.url):
+                return Outcome(
+                    "unknown",
+                    "a confirmation page was shown, but not for this submission and posting",
+                    None,
+                    status,
+                )
             return Outcome("accepted", "confirmation page shown", None, status)
         if kind == "security_code":
             return Outcome("otp", "security code requested", None, status)
         if kind == "errors":
             return Outcome("rejected", "the employer's page listed errors", None, status)
         return Outcome("unknown", f"unrecognised response (HTTP {status})", None, status)
+
+    def _ours(self, resp, final_url: str) -> bool:
+        """The confirmation counts only if it answers this attempt's own POST to the approved
+        submit address and is shown on that posting's pages (same origin, same job path)."""
+        if resp is None:
+            return False
+        first = resp.request
+        while first.redirected_from is not None:
+            first = first.redirected_from
+        submit = self.content["destination"]["submit_url"]
+        if first.method != "POST" or first.url != submit:
+            return False
+        s, f = urlsplit(submit), urlsplit(final_url)
+        job_path = s.path.rsplit("/", 1)[0]
+        return (f.scheme, f.netloc) == (s.scheme, s.netloc) and (
+            f.path == job_path or f.path.startswith(job_path + "/")
+        )
 
     def receipt_evidence(self, page: Page, out: Outcome) -> dict:
         p = urlsplit(page.url)

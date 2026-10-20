@@ -144,13 +144,23 @@ def build_content(db: Session, app: Application) -> dict:
     ctx = load_context(db, app)
     answers, unresolved, errors = [], [], []
     values: dict[str, dict | None] = {}
+    statuses: dict[str, str] = {}
     for f in schema.fields:
         r = resolve_field(f, ctx)
-        if f.condition and not _condition_met(f.condition, values.get(f.condition.key)):
+        trigger = statuses.get(f.condition.key) if f.condition else None
+        if f.condition and trigger in (None, "needs_user", "needs_consent"):
+            # The trigger is unanswered (or not an earlier question), so whether this question
+            # is shown is unknown: it keeps its own resolution and is never "not asked".
+            r.explanation = (
+                f"{r.explanation} Whether this question is asked depends on an unanswered "
+                "question above."
+            ).strip()
+        elif f.condition and not _condition_met(f.condition, values.get(f.condition.key)):
             # Not shown for the answers given, so not asked: nothing is entered or sent.
             r.status, r.value, r.display = "blank_optional", None, None
             r.explanation = "Not asked: this question only appears for a different answer above."
         values[f.key] = r.value
+        statuses[f.key] = r.status
         answers.append(
             {
                 "key": f.key,

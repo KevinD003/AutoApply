@@ -23,7 +23,7 @@ import secrets
 import time
 
 from fastapi import HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 YES_NO = [{"value": 1, "label": "Yes"}, {"value": 0, "label": "No"}]
 
@@ -291,6 +291,14 @@ def mount(app, ledger, cfg, accept) -> None:
             return _page("Error", "<h1>Something went wrong.</h1>", "error", 500)
         if cfg["mode"] == "drop_after_accept":
             await asyncio.sleep(3600)
+        if cfg["mode"] == "gh_confirm_redirect":  # post/redirect/get to this job's page
+            return RedirectResponse(f"/gh/{board}/jobs/{job_id}/confirmation", 303)
+        if cfg["mode"] == "gh_confirm_other_job":  # a confirmation, but for another posting
+            return RedirectResponse(f"/gh/{board}/jobs/4012999/confirmation", 303)
+        return _confirmation()
+
+    @app.get("/gh/{board}/jobs/{job_id}/confirmation", response_class=HTMLResponse)
+    async def confirmation(board: str, job_id: str):
         return _confirmation()
 
     def _security_code(slug, form):

@@ -45,6 +45,11 @@ def compose(*args: str, **kw) -> str:
     return sh("docker", "compose", *args, **kw)
 
 
+def net_names(networks: dict) -> list[str]:
+    prefix = os.environ.get("COMPOSE_PROJECT_NAME", "") + "_"
+    return sorted(k.removeprefix(prefix) for k in networks)
+
+
 def container_id(service: str) -> str:
     return compose("ps", "-q", service).strip()
 
@@ -97,20 +102,24 @@ class Api:
 # from inside its own container.
 _RECEIVER_CALL = """
 import sys, urllib.request
-path, body, token = sys.argv[1], sys.argv[2], sys.argv[3]
+method, path, body, token = sys.argv[1:5]
 req = urllib.request.Request("http://127.0.0.1:8799" + path, data=body.encode() or None,
-    method="POST" if body else "GET",
+    method=method,
     headers={"X-Admin-Token": token, "Content-Type": "application/json"})
 sys.stdout.write(urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=30).read().decode())
 """
 
 
-def receiver_raw(path: str, body: str = "") -> str:
-    return compose("exec", "-T", "receiver", "python", "-c", _RECEIVER_CALL, path, body, ADMIN)
+def receiver_raw(path: str, body: str = "", method: str = "GET") -> str:
+    return compose("exec", "-T", "receiver", "python", "-c", _RECEIVER_CALL, method, path, body,
+                   ADMIN)  # fmt: skip
 
 
 def receiver(path, body=None):
-    return json.loads(receiver_raw(f"/_admin/{path}", json.dumps(body) if body is not None else ""))
+    """GET /_admin/ledger; POST /_admin/config and /_admin/reset (as the receiver defines)."""
+    method = "GET" if path == "ledger" else "POST"
+    payload = json.dumps(body or {}) if method == "POST" else ""
+    return json.loads(receiver_raw(f"/_admin/{path}", payload, method))
 
 
 def ledger_for(slug):
@@ -216,7 +225,7 @@ def s_container_configuration():
     cid = container_id("browser-runner")
     i = json.loads(sh("docker", "inspect", cid))[0]
     hc = i["HostConfig"]
-    nets = sorted(k.split("_", 1)[-1] for k in i["NetworkSettings"]["Networks"])
+    nets = net_names(i["NetworkSettings"]["Networks"])
     check("runner: unprivileged user", i["Config"]["User"] == "10002:10002", i["Config"]["User"])
     check("runner: not privileged, all capabilities dropped",
           not hc["Privileged"] and hc["CapDrop"] == ["ALL"] and not hc["CapAdd"], hc["CapDrop"])  # fmt: skip
@@ -236,7 +245,7 @@ def s_container_configuration():
           hc["NetworkMode"] != "host" and nets == ["exec_control", "exec_egress"], nets)  # fmt: skip
     for svc in ("worker", "egress-proxy"):
         n = json.loads(sh("docker", "inspect", container_id(svc)))[0]["NetworkSettings"]["Networks"]
-        print(f"     {svc} networks: {sorted(k.split('_', 1)[-1] for k in n)}")
+        print(f"     {svc} networks: {net_names(n)}")
 
 
 def s_sandbox_selfcheck():
@@ -400,7 +409,7 @@ def s_runner_unavailable():
     compose("up", "-d", "browser-runner")
     check("isolation startup failure: runner down -> failed_safe, nothing disclosed",
           att and att["state"] == "failed_safe" and ledger_for(slug)["disclosures"] == [],
-          att and (att["state"], att["outcome_detail"]))  # fmt: skip
+          att and (att["state"], att["outcome"]))  # fmt: skip
     wait_for(lambda: worker_check()["runner_health"][0] == 200, 120, 3)
 
 
@@ -420,7 +429,7 @@ def s_sandbox_unavailable():
     att = final_state(a, app_id, timeout=120)
     check("sandbox unavailable: attempt refused (failed_safe), no --no-sandbox fallback",
           att and att["state"] == "failed_safe" and ledger_for(slug)["disclosures"] == [],
-          att and att["outcome_detail"])  # fmt: skip
+          att and att["outcome"])  # fmt: skip
     compose("up", "-d", "--force-recreate", "browser-runner")
     wait_for(lambda: worker_check()["runner_health"][0] == 200, 120, 3)
 
@@ -435,7 +444,7 @@ def s_memory_exhaustion():
     receiver("config", {"mode": "normal"})
     check("memory exhaustion: page that eats memory stops safely, nothing accepted",
           att and att["state"] in ("failed_safe", "abandoned") and ledger_for(slug)["accepted"] == 0,
-          att and (att["state"], att["outcome_detail"]))  # fmt: skip
+          att and (att["state"], att["outcome"]))  # fmt: skip
     i = json.loads(sh("docker", "inspect", container_id("browser-runner")))[0]["State"]
     up = wait_for(lambda: worker_check()["runner_health"][0] == 200, 120, 3)
     check("memory exhaustion: contained by the container limit; runner serving again",
@@ -453,7 +462,7 @@ def s_session_time_limit():
     receiver("config", {"form_delay_s": 0})
     check(f"execution-time limit: runner ends a session after {limit}s; attempt stops safely",
           att and att["state"] == "failed_safe" and ledger_for(slug)["disclosures"] == [],
-          att and (att["state"], att["outcome_detail"]))  # fmt: skip
+          att and (att["state"], att["outcome"]))  # fmt: skip
 
 
 SCENARIOS = [

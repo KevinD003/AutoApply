@@ -37,6 +37,12 @@ CAPABILITIES: dict[str, dict] = {
         "submit": True,
         "confirm": True,  # confirmation page (no application id is shown)
         "real_destinations": False,
+        # Each is modelled on public descriptions only; none has been seen on a real form.
+        "unverified": {
+            "security_code": "synthetic: the emailed-code step is the fixture's own design",
+            "confirmation": "synthetic: real confirmation pages and redirects are not observed",
+            "attachments": "synthetic: the upload endpoint and attachment ids are the fixture's",
+        },
         "unsupported": [
             "CAPTCHA or bot checks (stop, never bypassed)",
             "location pickers with hidden coordinates",
