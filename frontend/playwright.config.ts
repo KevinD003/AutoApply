@@ -18,7 +18,6 @@ const backendEnv = {
   NOEFFORTS_DISCOVERY_PROVIDERS: JSON.stringify(["freehire"]),
   NOEFFORTS_FREEHIRE_BASE_URL: `${RECEIVER}/freehire-fixture`,
   NOEFFORTS_FREEHIRE_PAGE_SIZE: "2",
-  NOEFFORTS_FREEHIRE_MIN_INTERVAL_MS: "0",
 };
 
 export default defineConfig({

@@ -20,7 +20,6 @@ import hashlib
 import html
 import json
 import re
-import time
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
@@ -60,6 +59,8 @@ class NormalizedJob:
     raw_keys: list[str] = field(default_factory=list)  # field names only, for debugging
     closed_at_source: bool = False
     missing: list[str] = field(default_factory=list)  # why it cannot be linked automatically
+    # Shown with every listing: {"text": ..., "url": a page on the source, or None}.
+    attribution: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         d = asdict(self)
@@ -84,6 +85,7 @@ class DiscoveryFilters:
 class Page:
     records: list
     next_cursor: str | None
+    stop: str | None = None  # why paging stopped early (e.g. the rate budget is used up)
 
 
 class DiscoveryError(RuntimeError):
@@ -248,6 +250,7 @@ class FreehireMockProvider(DiscoveryProvider):
             raw_keys=sorted(raw),
             closed_at_source=bool(raw.get("closed")),
             missing=_missing(job_url, apply_url, title, employer),
+            attribution={"text": "local mock data (not from freehire.me)", "url": None},
         )
 
 
@@ -258,21 +261,29 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 class FreehireApiProvider(DiscoveryProvider):
     """Client for Freehire's documented public read API (docs/research/freehire.md, reviewed
-    2026-10-19): GET {base}/api/v1/jobs/search?limit&offset[&q], GET {base}/api/v1/jobs/{slug},
-    GET {base}/api/v1/status. Public reads need no key; a personal key, if configured, is sent
-    as a bearer token from the server only.
+    against the public documentation on 2026-10-21): GET {base}/api/v1/jobs/search?limit&offset
+    [&q] and GET {base}/api/v1/jobs/{slug}. Public reads need no key; a personal key, if
+    configured, is sent as a bearer token from the server only.
 
     Live access is NOT enabled: the base URL must be a local fixture origin. Pointing it at
-    freehire.me is refused until the contract is re-verified and a live call is authorized.
+    freehire.me is refused until a live call is separately authorized.
 
-    Paging is bounded (page size, page count, the documented offset+limit <= 10000 window),
-    requests are spaced (min interval), nothing is retried (429 and outages end the run), and
-    redirects are never followed."""
+    Personal prototype only: Freehire's terms allow keyless use for personal, non-commercial
+    use; showing postings to others needs a plan (D34). Every listing carries the credit
+    "via freehire.me".
+
+    Pacing uses only the documented headers: when X-RateLimit-Remaining reaches 0, paging stops
+    (the import is marked truncated) and nothing waits or retries. No request rate is assumed:
+    none is documented for keyless use. A 429 ends the run and reports Retry-After. There is
+    no health request: /status reports Freehire's crawler (ingest) health, not whether the API
+    answers, so it is not used. Paging is bounded (page size, page count, the documented
+    offset + limit <= 10000 window); redirects are never followed."""
 
     name = "freehire"
     label = "Freehire"
     WINDOW = 10_000
     MAX_BYTES = 5_000_000
+    ATTRIBUTION = {"text": "via freehire.me", "url": None}  # no documented listing-page URL
 
     def __init__(self, base_url: str | None = None, api_key: str | None = None):
         s = get_settings()
@@ -280,8 +291,7 @@ class FreehireApiProvider(DiscoveryProvider):
         self.api_key = api_key if api_key is not None else s.freehire_api_key
         self.page_size = max(1, min(100, s.freehire_page_size))
         self.timeout = s.freehire_timeout_seconds
-        self.min_interval = s.freehire_min_interval_ms / 1000
-        self._last = 0.0
+        self.rate: dict[str, str] = {}  # the last X-RateLimit-* values, as sent (digits only)
         self._pages_seen: set[tuple] = set()
 
     def provider_capabilities(self) -> dict:
@@ -291,7 +301,10 @@ class FreehireApiProvider(DiscoveryProvider):
             "get_job": True,
             "pagination": "offset (limit <= 100, offset + limit <= 10000)",
             "auth": "none for public reads; optional server-side key",
-            "rate_limit": "documented 600 requests/minute per IP; spaced and never retried",
+            "rate_limit": "no keyless figure documented; stops when X-RateLimit-Remaining is 0; "
+            "a 429 is reported with Retry-After and never retried",
+            "health": "no request (Freehire documents no API health endpoint)",
+            "attribution": self.ATTRIBUTION["text"],
             "submits_applications": False,
             "live_access": "not enabled (fixture only)",
         }
@@ -302,34 +315,45 @@ class FreehireApiProvider(DiscoveryProvider):
         if not is_fixture_origin(self.base):
             raise DiscoveryError(
                 "disabled",
-                "Live Freehire access is not enabled: only a local fixture can be used until the "
-                "API contract is re-verified and a live call is authorized.",
+                "Live Freehire access is not enabled: only a local fixture can be used until a "
+                "live call is separately authorized.",
             )
+
+    def _read_rate(self, headers) -> None:
+        self.rate = {}
+        for name, key in (("X-RateLimit-Limit", "limit"), ("X-RateLimit-Remaining", "remaining"),
+                          ("X-RateLimit-Reset", "reset")):  # fmt: skip
+            value = headers.get(name) if headers else None
+            if value is not None and value.strip().isdigit():
+                self.rate[key] = value.strip()[:20]
 
     def _get(self, path: str, params: dict | None = None):
         self._check_base()
-        wait = self._last + self.min_interval - time.monotonic()
-        if wait > 0:
-            time.sleep(wait)
         url = f"{self.base}/api/v1{path}" + (f"?{urlencode(params)}" if params else "")
         headers = {"Accept": "application/json", "User-Agent": "NoEfforts-discovery/1"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         opener = urllib.request.build_opener(_NoRedirect)
-        self._last = time.monotonic()
         try:
             with opener.open(
                 urllib.request.Request(url, headers=headers), timeout=self.timeout
             ) as r:
                 body = r.read(self.MAX_BYTES + 1)
                 status = r.status
+                self._read_rate(r.headers)
         except urllib.error.HTTPError as e:
             status, body = e.code, b""
+            self._read_rate(e.headers)
             if status == 404:
                 return 404, None
             if status == 429:
-                after = e.headers.get("Retry-After") if e.headers else None
-                hint = f" (retry after {int(after)} s)" if after and after.isdigit() else ""
+                after = (e.headers.get("Retry-After") or "").strip() if e.headers else ""
+                if after.isdigit():
+                    hint = f" (Retry-After: {int(after)} s)"
+                elif after and re.fullmatch(r"[A-Za-z0-9 ,:+-]{1,40}", after):
+                    hint = f" (Retry-After: {after})"
+                else:
+                    hint = ""
                 raise DiscoveryError(
                     "rate_limited", f"Freehire is rate limiting requests{hint}; not retried."
                 ) from None
@@ -350,12 +374,14 @@ class FreehireApiProvider(DiscoveryProvider):
             raise DiscoveryError("bad_response", "Freehire's response was not JSON.") from None
 
     def healthcheck(self) -> dict:
+        """Configuration only. Freehire documents no API health endpoint (its /status reports
+        crawler health), so whether the API answers is known only from an import."""
         try:
-            status, body = self._get("/status")
+            self._check_base()
         except DiscoveryError as e:
             return {"ok": False, "detail": str(e)}
-        ok = status == 200 and isinstance(body, dict)
-        return {"ok": ok, "detail": "status endpoint answered" if ok else "unexpected answer"}
+        return {"ok": True, "detail": "configured for a local fixture; no request made "
+                "(Freehire documents no API health endpoint)"}  # fmt: skip
 
     def list_jobs(self, filters: DiscoveryFilters, cursor: str | None) -> Page:
         offset = int(cursor or 0)
@@ -381,6 +407,14 @@ class FreehireApiProvider(DiscoveryProvider):
         data = body["data"]
         total = meta.get("total") if isinstance(meta.get("total"), int) else None
         more = len(data) == self.page_size and (total is None or offset + len(data) < total)
+        if more and self.rate.get("remaining") == "0":
+            sent = "X-RateLimit-Remaining: 0"
+            if self.rate.get("reset"):
+                sent += f", X-RateLimit-Reset: {self.rate['reset']}"  # unit not documented
+            stop = (
+                f"Freehire's rate budget is used up ({sent}); stopped without waiting or retrying."
+            )
+            return Page(data, None, stop=stop)
         return Page(data, str(offset + len(data)) if more else None)
 
     def get_job(self, provider_job_id: str):
@@ -394,6 +428,9 @@ class FreehireApiProvider(DiscoveryProvider):
         return body["data"]
 
     def normalize_job(self, raw) -> NormalizedJob:
+        """Documented fields only (the API reference's job example). `work_mode` is a top-level
+        field; `employment_type` and `visa_sponsorship` are under `enrichment`. Undocumented
+        fields (for example `last_seen_at`) are not read."""
         if not isinstance(raw, dict):
             raise MalformedRecord("record is not an object")
         slug = raw.get("public_slug")
@@ -401,9 +438,8 @@ class FreehireApiProvider(DiscoveryProvider):
             raise MalformedRecord("record without a usable public_slug")
         url = raw.get("url") if isinstance(raw.get("url"), str) and raw.get("url") else None
         title, employer = _text(raw.get("title"), 300), _text(raw.get("company"), 200)
-        # FIXTURE ASSUMPTION: the enrichment sub-keys below are not verified against Freehire.
         enr = raw.get("enrichment") if isinstance(raw.get("enrichment"), dict) else {}
-        work_mode = enr.get("work_mode")
+        work_mode = raw.get("work_mode")
         cities = [c[:100] for c in raw.get("cities") or [] if isinstance(c, str)][:20]
         return NormalizedJob(
             source_provider=self.name,
@@ -413,8 +449,8 @@ class FreehireApiProvider(DiscoveryProvider):
             location=_text(raw.get("location"), 300),
             workplace=work_mode if work_mode in ("remote", "hybrid", "onsite") else "unknown",
             job_url=url,
-            # Freehire gives one URL: the original posting at its source, which is where one
-            # applies for the ATS it crawls. It is kept as the job URL, unchanged.
+            # Freehire's job object has one URL: the original posting at its source. It is kept
+            # as the job URL, unchanged (`apply_url` is documented only on /copies items).
             application_url=None,
             ats_provider=_ats(url),
             published_on=_date(raw.get("posted_at")),
@@ -423,10 +459,10 @@ class FreehireApiProvider(DiscoveryProvider):
             cities=cities,
             source_platform=_text(raw.get("source"), 50),
             source_updated_at=_text(raw.get("updated_at"), 40),
-            source_last_seen_at=_text(raw.get("last_seen_at"), 40),
+            source_last_seen_at=None,  # `last_seen_at` is not documented: not read
             source_facts={
-                # Freehire's enrichment may be machine-derived from the posting text, so it is
-                # recorded with that basis and never treated as the employer's statement.
+                # How Freehire produces enrichment is not documented, so the value is recorded
+                # with that basis and never treated as the employer's statement.
                 "sponsorship_offered": {
                     "value": tri(enr.get("visa_sponsorship")),
                     "stated_by": self.name,
@@ -437,6 +473,7 @@ class FreehireApiProvider(DiscoveryProvider):
             raw_keys=sorted(str(k) for k in raw)[:60],
             closed_at_source=bool(raw.get("closed_at")),
             missing=_missing(url, None, title, employer),
+            attribution=dict(self.ATTRIBUTION),
         )
 
 

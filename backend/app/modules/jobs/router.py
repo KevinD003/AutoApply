@@ -275,6 +275,11 @@ def get_job(job_id: uuid.UUID, user: User = Depends(current_user), db: Session =
                 "provider": d.provider,
                 "label": PROVIDERS[d.provider].label if d.provider in PROVIDERS else d.provider,
                 "source_url": (d.normalized or {}).get("job_url"),
+                "attribution": (d.normalized or {}).get("attribution")
+                or {
+                    "text": PROVIDERS[d.provider].label if d.provider in PROVIDERS else d.provider,
+                    "url": None,
+                },
                 "last_seen_at": d.last_seen_at.isoformat(),
                 "stale": d.stale,
                 "stale_reason": d.stale_reason,

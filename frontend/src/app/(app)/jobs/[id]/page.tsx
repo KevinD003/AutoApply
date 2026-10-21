@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import { Badge, Button, Card, ErrorBox, Field, inputCls, Loading } from "@/components/ui";
+import { Badge, Button, Card, Credit, ErrorBox, Field, inputCls, Loading } from "@/components/ui";
 import { api, ApiError, Application, JobDetail } from "@/lib/api";
 
 const KIND_TONE = { match: "green", mismatch: "amber", exclude: "red", info: "slate" } as const;
@@ -82,7 +82,7 @@ export default function JobPage() {
             <ul className="mt-1 space-y-1">
               {job.discovered_from.map((d, i) => (
                 <li key={i}>
-                  <Badge>{d.label}</Badge> last seen {new Date(d.last_seen_at).toLocaleString()}
+                  <Badge>{d.label}</Badge> <Credit a={d.attribution} /> last seen {new Date(d.last_seen_at).toLocaleString()}
                   {d.stale && <> · <span className="text-amber-800">{d.stale_reason}</span></>}
                   {d.changed_fields.length > 0 && <> · changed at the source: {d.changed_fields.join(", ")} (not applied here)</>}
                 </li>

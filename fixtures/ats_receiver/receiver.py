@@ -53,7 +53,7 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     cfg = {"mode": "normal", "delay_s": 0.0, "idempotent": True, "canary": None,
            "token_ttl_s": 3600, "autosave": False, "tamper": None, "form_delay_s": 0.0,
-           "fh_mode": "normal"}
+           "fh_mode": "normal", "fh_rate_limit": 1000}
 
     def admin(tok: str | None):
         if tok != admin_token:
@@ -98,7 +98,8 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
         for t in ("acceptances", "disclosures", "tokens", "challenges", "requests", "fh_requests"):
             ledger.run(f"delete from {t}")
         cfg.update({"mode": "normal", "delay_s": 0.0, "idempotent": True, "autosave": False,
-                    "tamper": None, "form_delay_s": 0.0, "fh_mode": "normal"})
+                    "tamper": None, "form_delay_s": 0.0, "fh_mode": "normal",
+                    "fh_rate_limit": 1000})
         return {"ok": True}
 
     @app.get("/apply/{slug}", response_class=HTMLResponse)

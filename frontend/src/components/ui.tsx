@@ -118,3 +118,14 @@ export function splitList(s: string): string[] {
     .map((x) => x.trim())
     .filter(Boolean);
 }
+
+/** A source's credit: a link to its own page for the listing when there is one, else the text. */
+export function Credit({ a }: { a: { text: string; url: string | null } }) {
+  return a.url ? (
+    <a className="text-xs text-slate-500 underline" href={a.url} target="_blank" rel="noopener noreferrer nofollow">
+      {a.text}
+    </a>
+  ) : (
+    <span className="text-xs text-slate-500">{a.text}</span>
+  );
+}

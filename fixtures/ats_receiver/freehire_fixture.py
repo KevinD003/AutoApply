@@ -1,16 +1,22 @@
 """A local stand-in for Freehire's public read API (fixture; never deploy).
 
-The routes and the record shape follow what docs/research/freehire.md recorded from Freehire's
-public documentation and source on 2026-10-19 (GET /api/v1/jobs/search with limit/offset,
-GET /api/v1/jobs/{public_slug}, GET /api/v1/status; {"data": [...], "meta": {...}}). The
-`enrichment` sub-keys used here (work_mode, employment_type, visa_sponsorship) are a FIXTURE
-ASSUMPTION: their real names were not verified. Every employer and job is fictional; nothing
-here is Freehire data, and nothing here contacts Freehire.
+Shapes follow Freehire's public API reference as reviewed on 2026-10-21 (docs/research/
+freehire.md): GET /api/v1/jobs/search with limit/offset (closed postings excluded), GET
+/api/v1/jobs/{public_slug} (closed postings served, with closed_at), {"data": ...} envelopes,
+`work_mode` as a top-level job field, `employment_type` and `visa_sponsorship` under
+`enrichment`, and X-RateLimit-Limit / -Remaining / -Reset on every response with 429 +
+Retry-After on refusal. GET /api/v1/status answers in its documented form, ingest-fleet health
+per provider; NoEfforts does not call it. The documentation does not say what unit
+X-RateLimit-Reset uses; the fixture sends an opaque number and NoEfforts only reports it.
+Every employer and job is fictional; nothing here is Freehire data or contacts Freehire.
 
 Mounted under /freehire-fixture. Modes (cfg["fh_mode"]): normal, fh_rate_limited, fh_outage,
 fh_bad_json, fh_loop (the server ignores offset and keeps returning the first page),
-fh_changed (one posting changed at the source), fh_malformed (two broken records), fh_slow,
-fh_gone (single-job lookups return 404).
+fh_changed (one posting changed at the source), fh_closed_now (one posting closed since: gone
+from search, served by the detail endpoint with closed_at), fh_malformed (two broken records),
+fh_legacy_shape (work mode only under `enrichment`, the old assumption), fh_no_rate_headers,
+fh_slow, fh_gone (single-job lookups return 404). cfg["fh_rate_limit"] sets the per-window
+request budget the headers report (default 1000; reset with the receiver).
 Each request is recorded in its own table (offset, limit, whether an Authorization header was
 present; never the header itself)."""
 
@@ -31,11 +37,15 @@ def _jobs(base: str) -> list[dict]:
             "manually_added": False, "external_id": slug.split("-")[-1], "url": url,
             "title": title, "company": company, "company_slug": company.split()[0].lower(),
             "location": kw.pop("location", None), "description": kw.pop("description", None),
-            "countries": [], "regions": [], "skills": [], "cities": kw.pop("cities", []),
-            "collections": [], "posted_at": kw.pop("posted_at", "2026-10-01T09:00:00Z"),
+            "countries": [], "regions": [], "work_mode": kw.pop("work_mode", None),
+            "skills": [], "cities": kw.pop("cities", []), "collections": [], "is_tech": "tech",
+            "posted_at": kw.pop("posted_at", "2026-10-01T00:00:00Z"),
             "created_at": "2026-10-01T09:05:00Z", "updated_at": "2026-10-02T10:00:00Z",
-            "last_seen_at": "2026-10-20T08:00:00Z", "closed_at": kw.pop("closed_at", None),
-            "enrichment": kw.pop("enrichment", {}), "view_count": 3, "applied_count": 0,
+            "closed_at": kw.pop("closed_at", None),
+            "enrichment": kw.pop("enrichment", {}), "enriched_at": "2026-10-01T09:20:00Z",
+            "enrichment_version": 7, "view_count": 3, "applied_count": 0,
+            "reality": {"class": "fresh", "age_days": 3, "repost_count": 0,
+                        "mass_posting_count": 0, "fake_freshness": False},
         }  # fmt: skip
         assert not kw, kw
         return rec
@@ -44,26 +54,27 @@ def _jobs(base: str) -> list[dict]:
     return [
         job("fx-northwind-support-5020001", "Support Specialist", "Northwind Example (fictional)",
             f"{gh2}/5020001?utm_source=freehire.me", location="Riverton", cities=["Riverton"],
+            work_mode="hybrid",
             description="<p>Help customers <b>by email</b> and chat.</p><script>x()</script>",
-            enrichment={"work_mode": "hybrid", "employment_type": "full_time",
+            enrichment={"summary": "Customer support.", "employment_type": "full_time",
                         "visa_sponsorship": True}),
         job("fx-northwind-tech-5020002", "Field Technician", "Northwind Example (fictional)",
-            f"{gh2}/5020002?utm_source=freehire.me", location="Riverton", cities=["Riverton"],
-            description="<p>Install and service equipment on site.</p>",
-            enrichment={"work_mode": "onsite"}),
+            f"{gh2}/5020002", location="Riverton", cities=["Riverton"], work_mode="onsite",
+            description="<p>Install and service equipment on site.</p>"),
         job("fx-contoso-analyst-77", "Data Analyst", "Contoso Example (fictional)",
-            "https://jobs.example.test/contoso/analyst-77?utm_source=freehire.me",
-            source="custom", description="<p>Build weekly reports.</p>",
-            enrichment={"work_mode": "remote", "visa_sponsorship": False}),
+            "https://jobs.example.test/contoso/analyst-77", source="custom", work_mode="remote",
+            description="<p>Build weekly reports.</p>",
+            enrichment={"visa_sponsorship": False}),
         job("fx-fabrikam-coordinator-12", "Office Coordinator", "Fabrikam Example (fictional)",
             None, source="telegram", location="Lakeside", cities=["Lakeside"]),
+        # Closed at the source: never in search results; the detail endpoint still serves it.
         job("fx-tailspin-courier-31", "Courier", "Tailspin Example (fictional)",
-            "https://jobs.example.test/tailspin/courier-31?utm_source=freehire.me",
-            source="custom", location="Riverton", closed_at="2026-10-15T00:00:00Z"),
+            "https://jobs.example.test/tailspin/courier-31", source="custom",
+            location="Riverton", closed_at="2026-10-15T00:00:00Z"),
         # The same posting as the first one, listed again by the source under another slug.
         job("fx-northwind-support-copy-9", "Support Specialist", "Northwind Example (fictional)",
-            f"{gh2}/5020001?utm_source=freehire.me&ref=copy", location="Riverton",
-            cities=["Riverton"]),
+            f"{gh2}/5020001?ref=copy", location="Riverton", cities=["Riverton"],
+            work_mode="hybrid"),
     ]  # fmt: skip
 
 
@@ -76,6 +87,18 @@ def mount(app, ledger, cfg) -> None:
                    "values (?,?,?,?,?,?)",
                    (route, offset, limit, q, int(bool(authorization)), time.time()))
 
+    def rate_headers() -> dict:
+        if cfg.get("fh_mode") == "fh_no_rate_headers":
+            return {}
+        limit = int(cfg.get("fh_rate_limit", 1000))
+        used = ledger.run("select count(*) from fh_requests")[0][0]
+        return {"X-RateLimit-Limit": str(limit),
+                "X-RateLimit-Remaining": str(max(0, limit - used)),
+                "X-RateLimit-Reset": "60"}  # fmt: skip
+
+    def ok(content) -> JSONResponse:
+        return JSONResponse(content, headers=rate_headers())
+
     def data(request: Request) -> list[dict]:
         base = str(request.base_url).rstrip("/")
         jobs = _jobs(base)
@@ -84,15 +107,22 @@ def mount(app, ledger, cfg) -> None:
             jobs[0] = copy.deepcopy(jobs[0])
             jobs[0].update(title="Senior Support Specialist", location="Riverton (hybrid)",
                            updated_at="2026-10-21T07:00:00Z")
+        if mode == "fh_closed_now":
+            jobs[1] = {**jobs[1], "closed_at": "2026-10-21T06:00:00Z"}
+        if mode == "fh_legacy_shape":
+            jobs[0] = {**jobs[0], "work_mode": None,
+                       "enrichment": {**jobs[0]["enrichment"], "work_mode": "hybrid"}}
         if mode == "fh_malformed":
             jobs = [jobs[0], "not-a-record", {"title": "No slug at all"}, *jobs[1:]]
         return jobs
 
     async def failure(mode):
         if mode == "fh_rate_limited":
-            return JSONResponse({"error": "rate limited"}, 429, {"Retry-After": "30"})
+            return JSONResponse({"error": "rate limited"}, 429,
+                                {**rate_headers(), "X-RateLimit-Remaining": "0",
+                                 "Retry-After": "30"})  # fmt: skip
         if mode == "fh_outage":
-            return JSONResponse({"error": "service unavailable"}, 503)
+            return JSONResponse({"error": "search temporarily unavailable"}, 503)
         if mode == "fh_bad_json":
             return PlainTextResponse("<html>upstream error</html>", 200)
         if mode == "fh_slow":
@@ -101,11 +131,10 @@ def mount(app, ledger, cfg) -> None:
 
     @app.get(f"{PREFIX}/status")
     async def status(authorization: str | None = Header(None)):
+        # Documented as ingest-fleet health per provider, not API availability.
         record("status", authorization=authorization)
-        mode = cfg.get("fh_mode", "normal")
-        if mode in ("fh_outage", "fh_rate_limited"):
-            return await failure(mode)
-        return {"status": "ok"}
+        return ok({"data": {"providers": [{"source": "greenhouse", "boards": 3, "failing": 0,
+                                           "last_run_at": "2026-10-21T06:00:00Z"}]}})
 
     @app.get(f"{PREFIX}/jobs/search")
     async def search(request: Request, limit: int = 20, offset: int = 0, q: str | None = None,
@@ -118,13 +147,13 @@ def mount(app, ledger, cfg) -> None:
             return JSONResponse({"error": "limit must be between 1 and 100"}, 400)
         if offset + limit > 10000:
             return JSONResponse({"error": "pagination too deep"}, 400)
-        jobs = data(request)
+        jobs = [j for j in data(request) if not (isinstance(j, dict) and j.get("closed_at"))]
         if q:
             jobs = [j for j in jobs if isinstance(j, dict) and q.lower() in (j.get("title") or "").lower()]
         if mode == "fh_loop":
-            return {"data": jobs[:limit], "meta": {"limit": limit, "offset": 0, "total": 1000}}
-        return {"data": jobs[offset:offset + limit],
-                "meta": {"limit": limit, "offset": offset, "total": len(jobs)}}
+            return ok({"data": jobs[:limit], "meta": {"limit": limit, "offset": 0, "total": 1000}})
+        return ok({"data": jobs[offset:offset + limit],
+                   "meta": {"limit": limit, "offset": offset, "total": len(jobs)}})
 
     @app.get(f"{PREFIX}/jobs/{{slug}}")
     async def one(slug: str, request: Request, authorization: str | None = Header(None)):
@@ -133,8 +162,8 @@ def mount(app, ledger, cfg) -> None:
         if (bad := await failure(mode)) is not None:
             return bad
         if mode == "fh_gone":
-            return JSONResponse({"error": "not found"}, 404)
+            return JSONResponse({"error": "job not found"}, 404)
         for j in data(request):
             if isinstance(j, dict) and j.get("public_slug") == slug:
-                return {"data": j}
-        return JSONResponse({"error": "not found"}, 404)
+                return ok({"data": j})
+        return JSONResponse({"error": "job not found"}, 404)

@@ -1,14 +1,16 @@
 """The Freehire discovery client (discovery/provider.FreehireApiProvider) against the local
-stand-in of Freehire's documented read API (fixtures/ats_receiver/freehire_fixture.py). Nothing
-here contacts Freehire; the fixture's own request table is the oracle for what was asked."""
+stand-in of Freehire's documented read API (fixtures/ats_receiver/freehire_fixture.py, shapes
+as in the API reference reviewed on 2026-10-21). Nothing here contacts Freehire; the fixture's
+own request table is the oracle for what was asked."""
 
+import dataclasses
 import logging
 import uuid
 
 import pytest
 from sqlalchemy import func, select
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.db import SessionLocal
 from app.modules.discovery import service
 from app.modules.discovery.models import DiscoveredJob
@@ -16,6 +18,7 @@ from app.modules.discovery.provider import (
     DiscoveryError,
     DiscoveryFilters,
     FreehireApiProvider,
+    NormalizedJob,
     Page,
     enabled,
     plain_summary,
@@ -27,7 +30,7 @@ FIXTURE = f"{BASE}/freehire-fixture"
 SUPPORT, TECH, ANALYST = (
     "fx-northwind-support-5020001",
     "fx-northwind-tech-5020002",
-    ("fx-contoso-analyst-77"),
+    "fx-contoso-analyst-77",
 )
 COORDINATOR, COURIER, COPY = (
     "fx-fabrikam-coordinator-12",
@@ -35,6 +38,7 @@ COORDINATOR, COURIER, COPY = (
     "fx-northwind-support-copy-9",
 )
 KEY = "fixture-freehire-key-do-not-use"
+CREDIT = {"text": "via freehire.me", "url": None}
 
 
 @pytest.fixture(scope="module")
@@ -53,16 +57,26 @@ def _settings(receiver, monkeypatch):
     monkeypatch.setattr(s, "freehire_api_key", "")
     monkeypatch.setattr(s, "freehire_page_size", 2)
     monkeypatch.setattr(s, "freehire_max_pages", 10)
-    monkeypatch.setattr(s, "freehire_min_interval_ms", 0)
     monkeypatch.setattr(s, "freehire_timeout_seconds", 2)
+
+
+@pytest.fixture
+def no_sleep(monkeypatch):
+    """Fails the test if the client waits: pacing never sleeps, and nothing is retried."""
+
+    def boom(*a, **k):
+        raise AssertionError("the client slept")
+
+    monkeypatch.setattr("time.sleep", boom)
 
 
 def run(api, **body):
     return api.post("/discovery/import", json={"provider": "freehire", **body})
 
 
-def searches(receiver):
-    return [r for r in receiver.ledger()["freehire_requests"] if r["route"] == "search"]
+def fh_requests(receiver, route=None):
+    reqs = receiver.ledger()["freehire_requests"]
+    return [r for r in reqs if route is None or r["route"] == route]
 
 
 def rows(user_id) -> dict[str, DiscoveredJob]:
@@ -82,7 +96,13 @@ def counts(user_id) -> tuple[int, int]:
         return d, j
 
 
-# -- feature flag and live access -------------------------------------------------------------
+# -- disabled by default, fixture only ---------------------------------------------------------
+
+
+def test_defaults_are_off_with_no_base_url_and_no_key():
+    s = Settings(_env_file=None)
+    assert (s.discovery_providers, s.freehire_base_url, s.freehire_api_key) == ([], "", "")
+    assert not hasattr(s, "freehire_min_interval_ms")  # no invented request rate
 
 
 def test_disabled_by_default_and_nothing_is_requested(api, receiver, monkeypatch):
@@ -92,7 +112,7 @@ def test_disabled_by_default_and_nothing_is_requested(api, receiver, monkeypatch
     r = run(api)
     assert r.status_code == 409 and "disabled" in r.json()["detail"]
     assert api.post("/discovery/providers/freehire/healthcheck").status_code == 409
-    assert receiver.ledger()["freehire_requests"] == []
+    assert fh_requests(receiver) == []
     assert api.post("/discovery/import", json={"provider": "nope"}).status_code == 404
 
 
@@ -116,7 +136,9 @@ def test_status_table_and_capabilities_never_claim_external_testing(api, monkeyp
     assert fh["status"]["implemented_locally"] is True
     assert not any(fh["status"][k] for k in ("external_api_configured", "external_api_tested",
                                              "production_ready"))  # fmt: skip
-    assert fh["capabilities"]["submits_applications"] is False
+    caps = fh["capabilities"]
+    assert caps["submits_applications"] is False and caps["attribution"] == "via freehire.me"
+    assert "600" not in str(caps)  # no undocumented rate is claimed
     assert fh["configured"] == {"base_url": True, "api_key": True}
     assert KEY not in str(body)
 
@@ -129,25 +151,31 @@ def test_mock_provider_is_never_enabled_in_production(monkeypatch):
     assert not enabled("freehire_mock")
 
 
-# -- import, normalization, deduplication ------------------------------------------------------
+# -- documented response shapes ----------------------------------------------------------------
 
 
 def test_import_pages_normalizes_and_deduplicates(api, receiver):
     r = run(api)
     assert r.status_code == 200, r.text
     res = r.json()
-    assert (res["fetched"], res["pages"], res["truncated"]) == (6, 3, False)
-    assert (res["created"], res["incomplete"], res["malformed"]) == (6, 1, 0)
+    assert (res["fetched"], res["pages"], res["truncated"], res["stop_reason"]) == (
+        5, 3, False, None)  # fmt: skip
+    assert (res["created"], res["incomplete"], res["malformed"]) == (5, 1, 0)
     assert (res["linked_new_jobs"], res["linked_existing_jobs"]) == (3, 1)
-    assert [(s["offset"], s["limit"]) for s in searches(receiver)] == [(0, 2), (2, 2), (4, 2)]
-    assert not any(s["auth_present"] for s in searches(receiver))  # public read, no key
+    got = [(s["offset"], s["limit"]) for s in fh_requests(receiver, "search")]
+    assert got == [(0, 2), (2, 2), (4, 2)]
+    assert not any(s["auth_present"] for s in fh_requests(receiver))  # public read, no key
 
     r = rows(me(api))
+    assert COURIER not in r  # closed at the source: never in search results
     support = r[SUPPORT].normalized
     assert support["job_url"].endswith("/gh2/northwind/jobs/5020001?utm_source=freehire.me")
     assert (support["workplace"], support["employment_type"]) == ("hybrid", "full_time")
+    assert r[TECH].normalized["workplace"] == "onsite"
+    assert r[ANALYST].normalized["workplace"] == "remote"
     assert support["description_summary"] == "Help customers by email and chat."
     assert support["published_on"] == "2026-10-01" and support["source_platform"] == "greenhouse"
+    assert support["source_updated_at"] == "2026-10-02T10:00:00Z"
     assert support["ats_provider"] == "unknown"  # a fixture origin is not claimed to be an ATS
     assert r[SUPPORT].source_facts["sponsorship_offered"] == {
         "value": "yes", "stated_by": "freehire", "basis": "provider enrichment"}  # fmt: skip
@@ -156,19 +184,44 @@ def test_import_pages_normalizes_and_deduplicates(api, receiver):
     assert r[ANALYST].normalized["location"] is None  # never guessed
     assert r[COPY].job_id == r[SUPPORT].job_id and r[COPY].link_basis == "job_url"
     assert r[COORDINATOR].status == "incomplete" and r[COORDINATOR].job_id is None
-    assert r[COURIER].status == "closed" and r[COURIER].stale_reason == "closed at source"
-    assert r[COURIER].job_id is None  # a closed posting never creates a tracker job
-    # The raw reference names fields, never their content.
-    assert "description" in r[SUPPORT].raw_ref["fields"]
-    assert "Help customers" not in str(r[SUPPORT].raw_ref)
-    assert counts(me(api)) == (6, 3)
+    assert counts(me(api)) == (5, 3)
+
+
+def test_work_mode_is_read_from_the_top_level_only(api, receiver):
+    receiver.config(fh_mode="fh_legacy_shape")  # work mode only under enrichment
+    run(api)
+    support = rows(me(api))[SUPPORT].normalized
+    assert support["workplace"] == "unknown"  # the old assumption is not read
+    assert support["employment_type"] == "full_time"  # documented under enrichment
+
+
+def test_undocumented_fields_are_not_read():
+    raw = {"public_slug": "a-1", "title": "T", "company": "C", "url": f"{BASE}/x",
+           "last_seen_at": "2026-10-20T08:00:00Z", "work_mode": "satellite",
+           "enrichment": {"work_mode": "remote", "visa_sponsorship": "maybe"}}  # fmt: skip
+    n = FreehireApiProvider(base_url=FIXTURE).normalize_job(raw)
+    assert n.source_last_seen_at is None
+    assert n.workplace == "unknown"  # not a documented value, and enrichment is not consulted
+    assert n.source_facts["sponsorship_offered"]["value"] == "unknown"  # not a boolean
+
+
+def test_no_raw_payload_is_kept(api):
+    run(api)
+    row = rows(me(api))[SUPPORT]
+    assert set(row.normalized) == {f.name for f in dataclasses.fields(NormalizedJob)}
+    assert set(row.raw_ref) == {"provider", "source_job_id", "fingerprint", "fields"}
+    stored = str(row.normalized) + str(row.raw_ref) + str(row.source_facts)
+    for raw_only in ("<script>", "<p>", "Customer support.", "fake_freshness", "'view_count': 3"):
+        assert raw_only not in stored, raw_only
+    with SessionLocal() as db:  # the tracker job gets the plain summary, not the source HTML
+        assert db.get(Job, row.job_id).description == "Help customers by email and chat."
 
 
 def test_reimport_is_unchanged(api):
     run(api)
     res = run(api).json()
-    assert (res["created"], res["updated"], res["unchanged"]) == (0, 0, 6)
-    assert counts(me(api)) == (6, 3)
+    assert (res["created"], res["updated"], res["unchanged"]) == (0, 0, 5)
+    assert counts(me(api)) == (5, 3)
 
 
 def test_existing_jobs_are_matched_by_url_then_conservatively_and_never_modified(api):
@@ -194,7 +247,7 @@ def test_a_changed_posting_is_recorded_and_the_users_job_is_left_alone(api, rece
     api.patch(f"/jobs/{job_id}", json={"title": "Edited by me"})
     receiver.config(fh_mode="fh_changed")
     res = run(api).json()
-    assert (res["updated"], res["unchanged"]) == (1, 5)
+    assert (res["updated"], res["unchanged"]) == (1, 4)
     changed = next(x for x in res["records"] if x["source_job_id"] == SUPPORT)
     assert changed["changed_fields"] == ["title", "location"]
     assert api.get(f"/jobs/{job_id}").json()["title"] == "Edited by me"
@@ -202,12 +255,94 @@ def test_a_changed_posting_is_recorded_and_the_users_job_is_left_alone(api, rece
     assert row.normalized["title"] == "Senior Support Specialist" and row.changed_at is not None
 
 
-def test_source_is_attributed_on_the_job(api):
+# -- attribution -------------------------------------------------------------------------------
+
+
+def test_every_listing_is_credited_via_freehire(api):
     run(api)
+    listed = api.get("/discovery/jobs").json()
+    assert listed and all(x["attribution"] == CREDIT for x in listed)
+    assert all(r.normalized["attribution"] == CREDIT for r in rows(me(api)).values())
     job_id = str(rows(me(api))[SUPPORT].job_id)
     sources = api.get(f"/jobs/{job_id}").json()["discovered_from"]
-    assert {s["label"] for s in sources} == {"Freehire"} and len(sources) == 2  # both records
-    assert all(s["source_url"] for s in sources)
+    assert len(sources) == 2 and {s["label"] for s in sources} == {"Freehire"}  # both records
+    assert all(s["attribution"] == CREDIT and s["source_url"] for s in sources)
+
+
+def test_the_mock_is_never_credited_to_freehire(api, monkeypatch):
+    monkeypatch.setattr(get_settings(), "discovery_providers", ["freehire_mock"])
+    r = api.post("/discovery/import", json={"provider": "freehire_mock"})
+    assert r.status_code == 200, r.text
+    texts = {x["attribution"]["text"] for x in api.get("/discovery/jobs").json()}
+    assert texts == {"local mock data (not from freehire.me)"}
+
+
+# -- pacing from documented headers, 429 -------------------------------------------------------
+
+
+def test_paging_stops_when_the_documented_budget_is_used_up(api, receiver, no_sleep):
+    receiver.config(fh_rate_limit=2)  # the fixture reports Remaining 1, then 0
+    res = run(api).json()
+    assert (res["fetched"], res["pages"], res["truncated"]) == (4, 2, True)
+    sent = "X-RateLimit-Remaining: 0, X-RateLimit-Reset: 60"
+    assert res["stop_reason"] == (
+        f"Freehire's rate budget is used up ({sent}); stopped without waiting or retrying."
+    )
+    assert len(fh_requests(receiver, "search")) == 2  # no request past the budget
+    assert res["created"] == 4  # what was read is kept, marked incomplete (truncated)
+
+
+def test_without_rate_headers_nothing_is_assumed_or_waited(api, receiver, no_sleep):
+    receiver.config(fh_mode="fh_no_rate_headers")
+    res = run(api).json()
+    assert (res["fetched"], res["pages"], res["truncated"]) == (5, 3, False)
+
+
+def test_a_429_is_reported_with_retry_after_and_never_retried(api, receiver, no_sleep):
+    receiver.config(fh_mode="fh_rate_limited")
+    r = run(api)
+    assert r.status_code == 503
+    assert ("Freehire is rate limiting requests (Retry-After: 30 s); not retried. "
+            "Nothing was changed.") == r.json()["detail"]  # fmt: skip
+    assert len(fh_requests(receiver)) == 1
+    assert counts(me(api)) == (0, 0)
+
+
+# -- stale and closed postings -----------------------------------------------------------------
+
+
+def test_a_posting_closed_since_is_absent_from_search_and_seen_closed_by_detail(api, receiver):
+    run(api)
+    tech = rows(me(api))[TECH]
+    receiver.config(fh_mode="fh_closed_now")
+    res = run(api).json()
+    assert res["fetched"] == 4 and TECH not in [x["source_job_id"] for x in res["records"]]
+    # A query-scoped listing is never complete: absence alone does not mark it stale.
+    assert rows(me(api))[TECH].stale is False
+    r = api.post(f"/discovery/jobs/{tech.id}/refresh").json()
+    assert r["outcome"] == "updated" and r["job"]["stale_reason"] == "closed at source"
+    assert r["job"]["job_id"] == str(tech.job_id)  # still linked; the tracker job is kept as is
+    assert api.get(f"/jobs/{tech.job_id}").json()["title"] == "Field Technician"
+
+
+def test_detail_serves_a_closed_posting_and_it_never_creates_a_job(api):
+    p = FreehireApiProvider(base_url=FIXTURE)
+    raw = p.get_job(COURIER)
+    assert raw["closed_at"] and p.normalize_job(raw).closed_at_source is True
+    assert p.get_job("fx-unknown-1") is None  # 404
+
+
+def test_refresh_marks_a_record_gone(api, receiver):
+    run(api)
+    row_id = str(rows(me(api))[SUPPORT].id)
+    receiver.config(fh_mode="fh_changed")
+    r = api.post(f"/discovery/jobs/{row_id}/refresh").json()
+    assert r["outcome"] == "updated" and r["job"]["changed_fields"] == ["title", "location"]
+    receiver.config(fh_mode="fh_gone")
+    r = api.post(f"/discovery/jobs/{row_id}/refresh").json()
+    assert r["outcome"] == "gone" and r["job"]["stale_reason"] == "no longer at the source"
+    receiver.config(fh_mode="fh_outage")
+    assert api.post(f"/discovery/jobs/{row_id}/refresh").status_code == 503
 
 
 # -- filters -----------------------------------------------------------------------------------
@@ -215,42 +350,41 @@ def test_source_is_attributed_on_the_job(api):
 
 def test_filters_use_only_what_the_source_supplied(api):
     res = run(api, titles=["support"]).json()
-    assert res["excluded_by_filters"] == 4 and res["created"] == 2  # support + its copy
+    assert res["excluded_by_filters"] == 3 and res["created"] == 2  # support + its copy
     res = run(api, cities=["Riverton"]).json()
     by = {x["source_job_id"]: x["filter"] for x in res["records"]}
     assert by[SUPPORT]["result"] == "match" and by[TECH]["result"] == "match"
     # The analyst has no location: not enough data, never "excluded" or "matched" by guess.
     assert by[ANALYST] == {"result": "insufficient", "fields": ["location"]}
     assert COORDINATOR not in by  # Lakeside: excluded by what the source says
-    res = run(api, cities=["Riverton"], workplaces=["hybrid", "onsite"]).json()
+    res = run(api, workplaces=["onsite"]).json()
     by = {x["source_job_id"]: x["filter"] for x in res["records"]}
-    assert ANALYST not in by  # remote: a stated mismatch excludes, whatever else is missing
-    assert by[COURIER] == {"result": "insufficient", "fields": ["workplace"]}
+    assert by[TECH]["result"] == "match" and ANALYST not in by and SUPPORT not in by
+    assert by[COORDINATOR] == {"result": "insufficient", "fields": ["workplace"]}
 
 
 def test_sponsorship_filter_matches_only_a_stated_yes(api):
     res = run(api, sponsorship="offered", include_insufficient=False).json()
     assert [x["source_job_id"] for x in res["records"]] == [SUPPORT]
-    assert res["insufficient_data"] == 4  # no statement: unknown, not "no"
+    assert res["insufficient_data"] == 3  # no statement: unknown, not "no"
     assert res["excluded_by_filters"] == 1  # the analyst: the source says no
 
 
 def test_preferences_are_used_only_when_asked(api):
     r = api.put("/profile/preferences", json={"titles": ["Technician"], "work_modes": ["onsite"]})
     assert r.status_code == 200, r.text
-    assert run(api).json()["created"] == 6  # not applied implicitly
+    assert run(api).json()["created"] == 5  # not applied implicitly
     res = run(api, use_preferences=True).json()
     matched = [x["source_job_id"] for x in res["records"] if x["filter"]["result"] == "match"]
     assert matched == [TECH]
 
 
-# -- errors: nothing is written ----------------------------------------------------------------
+# -- failures change nothing -------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
     "mode,message",
     [
-        ("fh_rate_limited", "rate limiting requests (retry after 30 s); not retried"),
         ("fh_outage", "Freehire is unavailable (HTTP 503)"),
         ("fh_bad_json", "response was not JSON"),
         ("fh_loop", "returned a different page than requested"),
@@ -263,8 +397,6 @@ def test_provider_failures_change_nothing(api, receiver, mode, message):
     assert r.status_code == 503 and message in r.json()["detail"], r.text
     assert "Nothing was changed" in r.json()["detail"]
     assert counts(me(api)) == (0, 0)
-    if mode == "fh_rate_limited":
-        assert len(searches(receiver)) == 1  # never retried
 
 
 def test_an_outage_never_blocks_manual_jobs_imports_or_tracking(api, receiver):
@@ -281,8 +413,8 @@ def test_an_outage_never_blocks_manual_jobs_imports_or_tracking(api, receiver):
 
 def test_malformed_records_are_skipped_and_counted(api, receiver):
     receiver.config(fh_mode="fh_malformed")
-    receiver_jobs = run(api).json()
-    assert receiver_jobs["malformed"] == 2 and receiver_jobs["created"] == 6
+    res = run(api).json()
+    assert res["malformed"] == 2 and res["created"] == 5
 
 
 def test_paging_is_bounded_and_loops_are_refused():
@@ -300,8 +432,8 @@ def test_paging_is_bounded_and_loops_are_refused():
         def list_jobs(self, filters, cursor):
             return Page([{}], str(int(cursor or 0) + 1))
 
-    records, pages, truncated = service.fetch_all(Endless(), DiscoveryFilters(), max_pages=3)
-    assert (len(records), pages, truncated) == (3, 3, True)
+    records, pages, stop = service.fetch_all(Endless(), DiscoveryFilters(), max_pages=3)
+    assert (len(records), pages, stop) == (3, 3, "page limit reached (3 pages)")
     # The documented window: no page beyond offset + limit = 10000 is requested.
     p = FreehireApiProvider(base_url=FIXTURE)
     assert p.list_jobs(DiscoveryFilters(), "9999").records == []
@@ -311,29 +443,19 @@ def test_truncated_listing_is_reported(api, monkeypatch):
     monkeypatch.setattr(get_settings(), "freehire_max_pages", 2)
     res = run(api).json()
     assert (res["fetched"], res["pages"], res["truncated"]) == (4, 2, True)
+    assert res["stop_reason"] == "page limit reached (2 pages)"
 
 
-# -- single records, health, isolation, secrets -----------------------------------------------
+# -- health, isolation, secrets ----------------------------------------------------------------
 
 
-def test_refresh_reads_one_record_and_marks_it_gone(api, receiver):
-    run(api)
-    row_id = str(rows(me(api))[SUPPORT].id)
-    receiver.config(fh_mode="fh_changed")
-    r = api.post(f"/discovery/jobs/{row_id}/refresh").json()
-    assert r["outcome"] == "updated" and r["job"]["changed_fields"] == ["title", "location"]
-    receiver.config(fh_mode="fh_gone")
-    r = api.post(f"/discovery/jobs/{row_id}/refresh").json()
-    assert r["outcome"] == "gone" and r["job"]["stale_reason"] == "no longer at the source"
-    receiver.config(fh_mode="fh_outage")
-    assert api.post(f"/discovery/jobs/{row_id}/refresh").status_code == 503
-
-
-def test_healthcheck(api, receiver):
-    assert api.post("/discovery/providers/freehire/healthcheck").json()["ok"] is True
+def test_healthcheck_makes_no_request_and_never_uses_status(api, receiver):
     receiver.config(fh_mode="fh_outage")
     h = api.post("/discovery/providers/freehire/healthcheck").json()
-    assert h == {"ok": False, "detail": "Freehire is unavailable (HTTP 503)."}
+    assert h["ok"] is True and "no request made" in h["detail"]
+    assert fh_requests(receiver) == []  # neither /status nor anything else
+    run(api)  # an import does not touch /status either
+    assert fh_requests(receiver, "status") == []
 
 
 def test_incomplete_records_wait_for_a_manual_import(api):
@@ -352,7 +474,7 @@ def test_discovered_jobs_are_user_scoped(api, other_api):
     assert other_api.get(f"/discovery/jobs/{row.id}").status_code == 404
     assert other_api.post(f"/discovery/jobs/{row.id}/refresh").status_code == 404
     assert other_api.get(f"/jobs/{row.job_id}").status_code == 404
-    assert len(api.get("/discovery/jobs").json()) == 6
+    assert len(api.get("/discovery/jobs").json()) == 5
 
 
 def test_the_key_is_sent_by_the_server_only_and_never_shown(api, receiver, monkeypatch, caplog):
@@ -360,7 +482,7 @@ def test_the_key_is_sent_by_the_server_only_and_never_shown(api, receiver, monke
     monkeypatch.setattr(get_settings(), "freehire_api_key", KEY)
     res = run(api)
     assert res.status_code == 200
-    assert all(s["auth_present"] for s in searches(receiver))
+    assert all(s["auth_present"] for s in fh_requests(receiver, "search"))
     text = res.text + api.get("/discovery/jobs").text + api.get("/discovery/providers").text
     text += caplog.text
     assert KEY not in text

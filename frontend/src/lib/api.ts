@@ -82,11 +82,17 @@ export interface JobDetail extends Job {
     provider: string;
     label: string;
     source_url: string | null;
+    attribution: Attribution;
     last_seen_at: string;
     stale: boolean;
     stale_reason: string | null;
     changed_fields: string[];
   }[];
+}
+
+export interface Attribution {
+  text: string;
+  url: string | null;
 }
 
 export interface DiscoveryProviderInfo {
@@ -122,7 +128,8 @@ export interface DiscoveredJob {
   job_url: string | null;
   application_url: string | null;
   published_on: string | null;
-  source_last_seen_at: string | null;
+  source_updated_at: string | null;
+  attribution: Attribution;
   status: "linked" | "incomplete" | "closed";
   job_id: string | null;
   link_basis: string | null;
@@ -140,6 +147,7 @@ export interface DiscoveryImportResult {
   fetched: number;
   pages: number;
   truncated: boolean;
+  stop_reason: string | null;
   created: number;
   updated: number;
   unchanged: number;

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
-import { Badge, Button, Card, Empty, ErrorBox, Field, inputCls, Loading, Notice, splitList } from "@/components/ui";
+import { Badge, Button, Card, Credit, Empty, ErrorBox, Field, inputCls, Loading, Notice, splitList } from "@/components/ui";
 import { api, DiscoveredJob, DiscoveryImportResult, DiscoveryProviderInfo } from "@/lib/api";
 
 const LINK_TEXT: Record<string, string> = {
@@ -161,7 +161,7 @@ function RunDiscovery({ providers, onDone }: { providers: DiscoveryProviderInfo[
         {result && (
           <Notice>
             {result.fetched} listings read ({result.pages} page{result.pages === 1 ? "" : "s"}
-            {result.truncated ? ", stopped at the page limit" : ""}): {result.created} new, {result.updated} changed,{" "}
+            {result.truncated ? `, stopped early: ${result.stop_reason}` : ""}): {result.created} new, {result.updated} changed,{" "}
             {result.unchanged} unchanged; {result.linked_new_jobs} added to your jobs, {result.linked_existing_jobs} already
             there; {result.incomplete} incomplete; {result.excluded_by_filters} filtered out; {result.insufficient_data} with
             not enough data; {result.malformed} unreadable.
@@ -180,6 +180,7 @@ function DiscoveredRow({ r }: { r: DiscoveredJob }) {
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-slate-900">{r.title ?? "Untitled listing"}</span>
         <Badge>Source: {r.provider_label}</Badge>
+        <Credit a={r.attribution} />
         {r.stale && <Badge tone="amber">{r.stale_reason}</Badge>}
         {r.status === "incomplete" && <Badge tone="red">incomplete</Badge>}
       </div>

@@ -61,7 +61,8 @@ COMPARED = (
 class ImportResult:
     fetched: int = 0
     pages: int = 0
-    truncated: bool = False  # page limit reached: the listing is not complete
+    truncated: bool = False  # paging stopped early: the listing is not complete
+    stop_reason: str | None = None  # why it stopped early (page limit, rate budget)
     created: int = 0
     updated: int = 0
     unchanged: int = 0
@@ -78,18 +79,19 @@ class ImportResult:
 
 
 def fetch_all(provider: DiscoveryProvider, filters: DiscoveryFilters, max_pages: int):
-    """All pages, bounded. Raises DiscoveryError (nothing has been written yet)."""
+    """All pages, bounded. Returns (records, pages, stop_reason); stop_reason is None when the
+    listing ended by itself. Raises DiscoveryError (nothing has been written yet)."""
     records, cursor, seen, pages = [], None, set(), 0
     while True:
         page = provider.list_jobs(filters, cursor)
         pages += 1
         records.extend(page.records)
         if page.next_cursor is None:
-            return records, pages, False
+            return records, pages, page.stop
         if page.next_cursor in seen or page.next_cursor == cursor:
             raise DiscoveryError("pagination_loop", "The provider's paging repeated; stopped.")
         if pages >= max_pages:
-            return records, pages, True
+            return records, pages, f"page limit reached ({max_pages} pages)"
         seen.add(page.next_cursor)
         cursor = page.next_cursor
 
@@ -288,7 +290,8 @@ def import_from(
 ) -> ImportResult:
     filters = filters or DiscoveryFilters()
     res = ImportResult()
-    raw_records, res.pages, res.truncated = fetch_all(provider, filters, max_pages)
+    raw_records, res.pages, res.stop_reason = fetch_all(provider, filters, max_pages)
+    res.truncated = res.stop_reason is not None
     res.fetched = len(raw_records)
     now = utcnow()
     seen: set[str] = set()

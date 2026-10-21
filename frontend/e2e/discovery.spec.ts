@@ -33,12 +33,13 @@ test("discover jobs: source, import result, duplicates, incomplete fields, outag
 
   await page.getByRole("button", { name: "Find jobs" }).click();
   await expect(
-    page.getByText(/6 listings read \(3 pages\): 6 new, 0 changed, 0 unchanged; 2 added to your jobs, 2 already there; 1 incomplete/),
+    page.getByText(/5 listings read \(3 pages\): 5 new, 0 changed, 0 unchanged; 2 added to your jobs, 2 already there; 1 incomplete/),
   ).toBeVisible();
-  await expect(page.getByText("Discovered (6)")).toBeVisible();
+  await expect(page.getByText("Discovered (5)")).toBeVisible();
   await expect(page.getByText("Source: Freehire").first()).toBeVisible();
   await expect(page.getByText(/Missing: no job or application URL/)).toBeVisible();
-  await expect(page.getByText("closed at source")).toBeVisible();
+  // Every listing carries the source's credit (no documented listing-page URL: text only).
+  await expect(page.getByText("via freehire.me", { exact: true })).toHaveCount(5);
   await expect(page.getByText(/sponsorship: source says yes \(provider enrichment\)/).first()).toBeVisible();
   await expect(page.getByText(/sponsorship: source not stated/).first()).toBeVisible();
 
@@ -46,6 +47,7 @@ test("discover jobs: source, import result, duplicates, incomplete fields, outag
   await expect(page.getByRole("link", { name: "already in your jobs (same job link)" }).first()).toBeVisible();
   await page.goto(`/jobs/${(await mine.json()).job.id}`);
   await expect(page.getByText("Found through a discovery source")).toBeVisible();
+  await expect(page.getByText("via freehire.me", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "My own title" })).toBeVisible();
 
   // A source outage changes nothing and says so; adding a job by hand still works.
@@ -53,7 +55,7 @@ test("discover jobs: source, import result, duplicates, incomplete fields, outag
   await page.goto("/discover");
   await page.getByRole("button", { name: "Find jobs" }).click();
   await expect(page.getByText("Freehire is unavailable (HTTP 503). Nothing was changed.")).toBeVisible();
-  await expect(page.getByText("Discovered (6)")).toBeVisible();
+  await expect(page.getByText("Discovered (5)")).toBeVisible();
   await fhMode(page.request, "normal");
   await page.goto("/jobs");
   await page.getByLabel("Title").fill("Hand-entered role");

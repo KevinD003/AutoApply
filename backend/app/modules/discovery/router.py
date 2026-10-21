@@ -31,9 +31,10 @@ STATUS = {
         "external_api_configured": False,
         "external_api_tested": False,
         "production_ready": False,
-        "note": "Potential future discovery provider; not yet connected or validated. Built to "
-        "Freehire's documented public API (reviewed 2026-10-19) and tested only against a local "
-        "fixture.",
+        "note": "Potential future discovery provider; not yet connected or validated. Personal "
+        "prototype only: built to Freehire's documented public API (documentation reviewed "
+        "2026-10-21) and tested only against a local fixture. Listings are credited "
+        '"via freehire.me".',
     },
     "freehire_mock": {
         "implemented_locally": True,
@@ -86,7 +87,8 @@ def _row(r: DiscoveredJob, detail: bool = False) -> dict:
         "application_url": n.get("application_url"),
         "ats_provider": n.get("ats_provider"),
         "published_on": n.get("published_on"),
-        "source_last_seen_at": n.get("source_last_seen_at"),
+        "source_updated_at": n.get("source_updated_at"),
+        "attribution": n.get("attribution") or _attribution(r.provider),
         "status": r.status,
         "job_id": str(r.job_id) if r.job_id else None,
         "link_basis": r.link_basis,
@@ -104,6 +106,14 @@ def _row(r: DiscoveredJob, detail: bool = False) -> dict:
         out["description_summary"] = n.get("description_summary")
         out["raw_ref"] = r.raw_ref
     return out
+
+
+def _attribution(provider: str) -> dict:
+    """For rows stored before attribution was recorded: the provider's own credit."""
+    cls = PROVIDERS.get(provider)
+    return dict(
+        getattr(cls, "ATTRIBUTION", None) or {"text": cls.label if cls else provider, "url": None}
+    )
 
 
 def _owned(db: Session, user: User, row_id: uuid.UUID) -> DiscoveredJob:
