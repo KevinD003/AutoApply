@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-21 (execution routing: ATS identity first, per-job route with checkpoints, workflow traits, Workday planned only; local only, no external request). For requirement-by-requirement evidence see
+Last updated: 2026-10-21 (routing/capability milestone: one route per application, API connector, then browser adapter, then a user stop; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -37,55 +37,120 @@ Last updated: 2026-10-21 (execution routing: ATS identity first, per-job route w
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
-## Execution routing (2026-10-21; local only, no external request)
+## Execution routing and capabilities (2026-10-21; local only, no external request)
 
-- **Built** (`6fc61df`, lint fix `93200b4`):
-  - **Execution interface** (`providers/model.INTERFACE`): `inspect_application`,
-    `extract_form_schema`, `prepare_application`, `validate_application`,
-    `request_user_action`, `upload_documents`, `submit_application`,
-    `collect_confirmation_evidence`, `reconcile_unknown_outcome`. Each maps to the existing
-    operations.
-  - **Routing vocabulary** (`ROUTING_CAPABILITIES`), 13 names as a view over the
-    evidence-levelled capabilities.
-  - **Workflow traits** (login, manual verification, CAPTCHA possible, multi-step), kept apart
-    from capabilities.
-  - **Workday** registered as `planned`, with no operations or capabilities.
-  - **Routing** identifies the ATS first: a planned-only ATS gives a manual handoff that says
-    so, and a form from another ATS is refused.
-  - **`route_for_job`:**
-    - no form gives a manual handoff;
-    - required controls NoEfforts cannot fill give a `checkpoint` before disclosure;
-    - otherwise the authorized API (grant + credentials + support), then the browser
-      adapter, then manual.
-  - `GET /api/jobs/{id}/route` and a "How NoEfforts could apply" card on the job page.
-- **Docs** (`1eae3d5`):
-  - `docs/provider-architecture.md` §2b (interface, matrix, order, roles), §6 (Freehire plan),
-    §7 (Workday specification), §8 (exact Greenhouse status) and §9 (safety rules with their
-    tests);
-  - the architecture roles table, D35, and evidence rows.
-- **Unchanged:**
-  - `real_destinations` false everywhere; real origins route to a manual handoff;
-  - C and D unapproved;
-  - no capability live; Greenhouse not generally supported;
-  - no Workday automation exists.
-- **Commands actually run (cloud sandbox):**
-  - `ruff format .`, then `ruff check .` and `ruff format --check .`: clean after the fix. The
-    first push (`6fc61df`) went out with two long lines because a pipe hid ruff's exit code.
-    CI #69 failed at its lint step; `93200b4` fixed it;
-  - `tests/test_execution_routing.py`: 11 passed;
-  - with the provider, discovery, Freehire, approval-binding and API suites: 84 passed;
-  - two mutations, each failing its tests and then reverted:
-    - no ATS-identity refusal (Workday and other-ATS tests fail);
-    - no unsupported-control checkpoint (checkpoint test fails);
-  - full backend suite: 485 passed, exit 0;
-  - frontend: `npx tsc --noEmit` and `npm run lint` clean;
-  - `e2e/routing.spec.ts`: 2 passed; full Playwright suite: 30 passed.
+- **Routing rule:** every application receives exactly one route, in this order:
+  1. an authorized API connector;
+  2. a supported browser adapter;
+  3. a stop for the user: a checkpoint or a manual handoff.
+
+  The ATS is identified from the job URL before any adapter is selected, and the route is
+  computed per job. The routing order is implemented, tested and documented.
+- **Fails closed:** unsupported or uncertain flows become a checkpoint or a manual handoff.
+  CAPTCHA, emailed-code verification and every other user-action requirement stay
+  user-controlled.
+- **Nothing changed outside the repository:** no external request, credential change,
+  permission change or live activation occurred.
+- **This milestone does not request or grant submission approval.** No real destination is
+  supported for live use. NoEfforts cannot submit applications to real employers.
+- **Commits on `main`:**
+  - `6fc61df` – implementation:
+    - a nine-operation provider interface, and the agreed capability names as views over the
+      existing evidence levels;
+    - workflow traits (login, manual verification, CAPTCHA possible, multi-step) recorded
+      separately from capabilities;
+    - Workday registered as planned only;
+    - routing that identifies the ATS from the job URL first, then selects a per-job route;
+    - `GET /api/jobs/{id}/route`;
+    - a "How NoEfforts could apply" card on the job page.
+
+    This commit initially had two over-long lines because a pipe hid Ruff's exit code, so
+    CI #69 failed at lint.
+  - `93200b4` – fixed the lint issue; CI #70 passed.
+  - `1eae3d5` – documentation:
+    - `docs/provider-architecture.md` §2b and §6–§9: the provider interface and evidence
+      matrix, the routing order and provider roles, the Freehire plan, the Workday
+      specification, the Greenhouse status, and the safety rules with their tests;
+    - the roles table in `docs/architecture.md`;
+    - decision D35;
+    - evidence-matrix rows.
+  - `7fead79` – status document.
+- **Code changed:**
+  - `providers/model.py`, `providers/registry.py`, `providers/routing.py`;
+  - `discovery/service.py`, `jobs/router.py`;
+  - the job page;
+  - new `tests/test_execution_routing.py` and `e2e/routing.spec.ts`.
+- **Tests run locally:**
+  - new routing tests: 11 passed;
+  - full backend suite: 485 passed;
+  - Playwright: 30 passed;
+  - frontend typecheck and lint: clean.
+- **The routing tests cover:**
+  - API versus browser versus manual routing;
+  - unsupported controls triggering a checkpoint before anything is sent;
+  - an adapter-version mismatch blocking queueing and execution;
+  - API connectors never selected without explicit authorization;
+  - Freehire imports never becoming form schemas;
+  - Workday jobs unsupported and never sent to the Greenhouse adapter;
+  - CAPTCHA producing `needs_user_action`, never automated solving.
+- **Mutation checks:**
+  - removing ATS-identity verification was caught;
+  - removing the unsupported-control checkpoint was caught.
 - **CI:**
-  - CI #69 on `6fc61df`: failed at backend lint, tests skipped;
-  - CI #70 on `93200b4`: success;
-  - CI #71 ([39656190937](https://github.com/KevinD003/AutoApply/actions/runs/39656190937)) on
-    `1eae3d5`: all four jobs passed. Backend 484 passed, 1 skipped (the same CI-only skip);
-    Playwright 30 passed; execution-compose and docker-smoke passed.
+  - CI #69 failed only at lint: two over-long lines slipped through after a pipe hid Ruff's
+    exit code;
+  - CI #70 passed after `93200b4`;
+  - CI #71 ([39656190937](https://github.com/KevinD003/AutoApply/actions/runs/39656190937))
+    passed:
+    - backend 484 passed, 1 skipped (the normal CI-only skip);
+    - Playwright 30 passed;
+    - Compose and Docker smoke jobs passed.
+
+**Evidence and capability matrix.** `fixture` = local fixture only; `observed` = seen
+read-only on one real page; `none` = not implemented. No capability cell is live.
+
+| Capability | fixture_ats | greenhouse_dom | fake_api | greenhouse_readonly | freehire | workday | manual |
+|---|---|---|---|---|---|---|---|
+| public_schema_read | fixture | observed | fixture | observed | none | none | none |
+| API_submission | none | none | fixture | none | none | none | none |
+| browser_inspection | fixture | observed | none | observed | none | none | none |
+| browser_fill / document_upload | fixture | fixture | none / fixture | none | none | none | none |
+| custom_dropdown / location_picker | none | fixture / none | none | observed (structure only) / none | none | none | none |
+| confirmation_detection | fixture | fixture | fixture | none | none | none | none |
+| login / verification / CAPTCHA / multi-step traits | no / yes / yes / no | no / unknown / unknown / no | no / no / no / no | no / n/a / unknown / no | n/a | expected ×4 | n/a |
+
+**Support states.** Fixture behaviour and read-only observations are not live operational
+support.
+
+- **Supported for real use:** nothing.
+- **Fixture-only:**
+  - `fixture_ats`;
+  - `greenhouse_hosted` and `greenhouse_dom`, including the fixture-only dropdown strategies;
+  - the fake authorized API;
+  - Freehire discovery;
+  - the CAPTCHA and emailed-code checkpoints.
+- **Read-only observed:** Greenhouse structure on one posting.
+  - 19 fields map consistently.
+  - The attachments map through their groups.
+  - The dropdowns exist but have never been observed opening.
+- **Planned:** Workday, a specification only. No automation.
+- **Unsupported:**
+  - location pickers and page-managed coordinates;
+  - SMS codes;
+  - login-gated and multi-page forms;
+  - CAPTCHA solving;
+  - every real destination.
+
+**Remaining blockers before one approved Greenhouse pilot:**
+
+1. For every required dropdown, evidence that it opens via one bounded strategy with a
+   complete option list, following either approved path A or path B.
+2. The required controls `u1` and `u2` understood and mapped. Otherwise that posting must
+   remain refused.
+3. A location answer set without writing the page-managed hidden coordinate fields.
+4. Real upload handling and real submission, each proven separately.
+5. `docs/live-pilot-gate.md` met, including separate permissions for disclosure (C) and
+   submission (D), plus a reviewed change that raises the relevant capability evidence.
 
 ## Freehire personal prototype (2026-10-21; no Freehire API request)
 
