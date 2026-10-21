@@ -9,6 +9,38 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Freehire discovery provider (2026-10-21; fixture only, no Freehire request)
+
+All of this is local fixture evidence. The oracle is the fixture's own request table
+(`freehire_requests`: route, offset, limit, whether an Authorization header was present). It
+runs against `fixtures/ats_receiver/freehire_fixture.py`, a stand-in built to Freehire's
+documented read API with synthetic data. **Nothing here shows compatibility with the live
+Freehire service.**
+
+| Requirement | Evidence (`tests/test_freehire_discovery.py` unless noted) | Result |
+|---|---|---|
+| Off by default; nothing requested | `test_disabled_by_default_and_nothing_is_requested` | providers disabled; import and healthcheck 409; 0 fixture requests; unknown provider 404 |
+| No live access | `test_a_live_base_url_is_refused_before_any_request` | `https://freehire.me` refused before any request (network call patched to fail the test); nothing written |
+| Status table honest; key never shown | `test_status_table_and_capabilities_never_claim_external_testing` | external configured/tested/production all false; `submits_applications` false; only "configured: yes/no" for the key |
+| Mock never in production | `test_mock_provider_is_never_enabled_in_production` | refused |
+| Pagination, normalization, dedup | `test_import_pages_normalizes_and_deduplicates` | 6 records in 3 pages (offsets 0/2/4, no key sent); plain-text summary (script removed); URL preserved with its tracking parameter; tri-state sponsorship with basis "provider enrichment"; location absent stays `None`; duplicate slug linked by job URL; no-URL record incomplete; closed posting creates no job; `raw_ref` holds field names, not content |
+| Unchanged re-import | `test_reimport_is_unchanged` | 0 created, 0 updated, 6 unchanged |
+| Matching and merge policy | `test_existing_jobs_are_matched_by_url_then_conservatively_and_never_modified` | matched by job URL and by employer/title/location (job without URL); the user's title, location and empty description untouched. Mutation-checked: merging into the existing job fails this test |
+| Changed posting | `test_a_changed_posting_is_recorded_and_the_users_job_is_left_alone` | `changed_fields` = title, location; the user's edited title kept |
+| Source attribution | `test_source_is_attributed_on_the_job` | job detail lists "Freehire" with source URL |
+| Filters on supplied data only | `test_filters_use_only_what_the_source_supplied`, `test_sponsorship_filter_matches_only_a_stated_yes`, `test_preferences_are_used_only_when_asked` | missing location or workplace = "not enough data"; stated mismatch excludes; sponsorship "offered" matches only a stated yes (unknown is not "no"); preferences only on request. Mutation-checked: treating unknown sponsorship as a match fails the test |
+| Failures change nothing | `test_provider_failures_change_nothing` (rate limit, outage, bad JSON, pagination loop, timeout) | 503 "Nothing was changed"; 0 rows, 0 jobs; rate limit: exactly 1 request (no retry) |
+| Outage never blocks the rest | `test_an_outage_never_blocks_manual_jobs_imports_or_tracking` | manual job 201, CSV import 1 created, application 201 during the outage |
+| Malformed records | `test_malformed_records_are_skipped_and_counted` | 2 skipped, 6 imported |
+| Bounded paging | `test_paging_is_bounded_and_loops_are_refused`, `test_truncated_listing_is_reported` | repeated cursor refused; page limit stops and reports `truncated`; nothing requested past the documented 10,000 window |
+| Single-record refresh | `test_refresh_reads_one_record_and_marks_it_gone` | updated (changed fields), gone (stale "no longer at the source"), outage 503 |
+| Healthcheck | `test_healthcheck` | ok; outage gives `ok: false` with the reason |
+| Incomplete → manual import | `test_incomplete_records_wait_for_a_manual_import` | missing fields listed; route "Import this job manually." |
+| Tenant isolation | `test_discovered_jobs_are_user_scoped` | other user: empty list, 404 detail, 404 refresh, 404 job |
+| Key server-side only | `test_the_key_is_sent_by_the_server_only_and_never_shown` | bearer sent to the fixture; key absent from responses and captured logs |
+| Untrusted markup | `test_untrusted_markup_becomes_short_plain_text` | scripts and styles dropped; entities decoded; 500-character cap |
+| UI, desktop + mobile | `frontend/e2e/discovery.spec.ts` | source status ("not tested against the live service"), import result, "Source: Freehire", missing fields, closed, sponsorship basis, existing job linked and unchanged, outage message, manual job still added |
+
 ## Submission providers, fake API and discovery (2026-10-21; local only)
 
 All of this is **local fixture evidence**. No external service was contacted. The fake API is

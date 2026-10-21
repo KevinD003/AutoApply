@@ -71,8 +71,8 @@ served at `GET /api/providers` and inside `GET /api/execution/capabilities` (`pr
 ### Capability matrix (registry as committed)
 
 Columns: FA = `fixture_ats`, GH = `greenhouse_hosted`, GD = `greenhouse_dom`, API =
-`fake_api`, RO = `greenhouse_readonly` (observation), FH = `freehire_mock` (discovery),
-MH = `manual_handoff`. A dash means none.
+`fake_api`, RO = `greenhouse_readonly` (observation), FH = `freehire_mock` and `freehire`
+(discovery; identical rows), MH = `manual_handoff`. A dash means none.
 
 | Capability | FA | GH | GD | API | RO | FH | MH |
 |---|---|---|---|---|---|---|---|
@@ -237,11 +237,19 @@ A static test fails if a known solver service or stealth library name appears in
 mailbox integration exists.** Any future one requires a separate compliance and technical
 decision. Mobile codes stay manual and are currently unsupported.
 
-## 6. Discovery: Freehire (mock only)
+## 6. Discovery: Freehire (fixture only)
 
 **Freehire: Potential future discovery provider; not yet connected or validated.** Nothing
-calls Freehire. `FreehireMockProvider` reads `fixtures/discovery/freehire_mock.json`, whose
-record shape is NoEfforts' own invention, not Freehire's.
+calls Freehire. There are two providers:
+
+- **`freehire`:** a client built to Freehire's documented public read API, tested only against
+  a local stand-in (`fixtures/ats_receiver/freehire_fixture.py`). It refuses any base URL that
+  is not a fixture origin.
+- **`freehire_mock`:** reads `fixtures/discovery/freehire_mock.json`, whose record shape is
+  NoEfforts' own invention.
+
+The interface, contract, filters, merge policy, API and status table are in
+`docs/discovery.md`. The rest of this section describes the shared rules.
 
 **Normalized record** (`discovery/provider.NormalizedJob`):
 

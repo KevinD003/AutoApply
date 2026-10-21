@@ -1,5 +1,8 @@
 # Freehire — research notes
 
+Integration status (2026-10-21): `docs/discovery.md`. Built to this contract and tested only
+against a local fixture; no live call is enabled.
+
 - Date: 2026-10-19
 - Sources: https://github.com/strelov1/freehire (shallow clone at `research/src/freehire`), https://freehire.me/docs/api, https://freehire.me/api/v1/jobs?limit=1 (both fetched via Firecrawl), `web/src/routes/terms/+page.svelte` in repo.
 - Labels: **observed** (read in code / live response), **documented** (freehire's docs/AGENTS.md say so), **inferred**, **unknown**.

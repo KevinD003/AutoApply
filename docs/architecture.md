@@ -270,7 +270,8 @@ Details: `docs/provider-architecture.md` (decision D32).
   - they deduplicate through `jobs.upsert_job` and mark stale records;
   - they never touch the profile;
   - `application_route` is a manual handoff until a form is captured.
-  - The only provider is the local Freehire mock.
+  - Providers: a Freehire client for its documented public read API (fixture base URLs only)
+    and a local mock file. Both are off by default (`docs/discovery.md`).
 - **Checkpoints** (`providers/checkpoints.py`):
   - CAPTCHA, bot checks, login/MFA, SMS codes and identity checks stop the attempt and send
     the user to the employer's site;
@@ -284,7 +285,7 @@ Details: `docs/provider-architecture.md` (decision D32).
 - Account export/deletion
 - A real API provider (needs an agreement, secret storage, its own adapter and capability entry).
 - Multi-page adapters with a disclosure boundary per step (Workday: see provider-architecture.md).
-- A live discovery provider (Freehire is mock-only).
+- A live discovery provider (Freehire is fixture-only; see `docs/discovery.md`).
 - Manual verification-code entry, optional Gmail OAuth, spend tracking (Phase D).
 
 ## Deployment, backup and recovery (current guidance)

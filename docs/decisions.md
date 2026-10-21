@@ -307,3 +307,28 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
     route already has;
   - a fixture pass must never read as live support.
 - **Status:** no provider has live support. C and D remain unapproved.
+
+## D33 — Freehire is an optional, replaceable discovery provider; fixture-only until authorized
+- **Approach:** a discovery interface:
+  - `provider_capabilities`, `healthcheck`, `list_jobs(filters, cursor)`, `get_job`,
+    `normalize_job`;
+  - a Freehire client built to the documented public read API (research of 2026-10-19);
+  - the feature flag `NOEFFORTS_DISCOVERY_PROVIDERS`, empty by default.
+- **Base URL:** the client refuses any base URL that is not a fixture origin. No live call
+  is made or possible without a reviewed code change.
+- **Import:**
+  - fetches every (bounded) page before writing, so failures change nothing;
+  - filters only on what the source supplied ("not enough data" is never a match or an
+    exclusion);
+  - deduplicates by application URL, then job URL, then one conservative
+    employer/title/location match;
+  - **never modifies an existing tracker job**: changes at the source are shown, not applied;
+  - never creates a job from a posting already closed at the source.
+- **Sponsorship:** from provider enrichment, it is a tri-state source fact with basis
+  "provider enrichment". It never touches the candidate's facts.
+- **Why:**
+  - discovery data is third-party and possibly machine-derived;
+  - the user's own records and facts must not be overwritten or inferred from it;
+  - a provider outage must never affect manual entry or tracking.
+- **Status:** implemented locally. External API not configured and not tested; not
+  production-ready. Details: `docs/discovery.md`.
