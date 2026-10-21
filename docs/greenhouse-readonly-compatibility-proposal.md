@@ -147,6 +147,7 @@ To run it:
 | CI read-only #4 (B2) | `151e7a0` | **completed**, authorized once. A: 3×200. B: 1 navigation, 9 requests (8 to other greenhouse.io hosts, blocked), 0 non-GET, 43,185 bytes. Mapping: 17 unique, 2 incompatible, 1 absent, 2 not observable |
 | CI read-only #5 (identification) | `90a12ab` | **completed**, authorized once, `--identify-only`: 0 API requests; 1 navigation, 9 GET requests; blocked hosts: `job-boards.cdn.greenhouse.io:443` (5 script, 2 stylesheet), `recruiting.cdn.greenhouse.io:443` (1 image) |
 | CI read-only #6 (B3) | `bf6642b` | **completed**, authorized once, after CI #42 passed on that revision. A: 3×200. B: 1 navigation, 19 GET requests; CDN scripts/stylesheets loaded; refused: 4 data requests + 6 fonts to the CDN, 1 image to the other host. Mapping unchanged from B2; attachments sit in groups named by the question |
+| CI read-only #7 (widget inspection) | `2b0bcbb` (= `1fc58b2` + docs) | authorized once; workflow **succeeded but the page observation failed**: A 3×200; the page navigation was held inside the browser by a failing request filter (a `NameError` in script mode) and timed out after 60 s; **0 widget actions, no page evidence**. Authorization used; not rerun. Fixed locally afterwards |
 
 **Note on the budget.** A was written as "at most 3 requests in total" and B as "exactly one"
 navigation. Runs #2 and #3 each used that budget once more, relying on the user's general
@@ -307,7 +308,7 @@ and whether it resolves B2's specific gaps. Those gaps are:
 - **Comparison:** `gh_readonly.compare_runs(b2, b3)` runs locally over the two published
   summaries.
 
-## Widget inspection — approval request (implemented and tested locally; NOT approved, NOT run)
+## Widget inspection — approved 2026-10-21 for one run; run once as manual run #7, which failed before any widget action (authorization used)
 
 **Purpose:** find out how the visible dropdowns relate to the application questions. Five
 questions, nothing else:

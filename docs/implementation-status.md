@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-20 (B3 closed; widget inspection mode built and tested locally, approval requested, not run). For requirement-by-requirement evidence see
+Last updated: 2026-10-21 (widget inspection run #7 failed before any widget action because of a script-mode defect; fixed locally; a new run needs a new authorization). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,28 @@ Last updated: 2026-10-20 (B3 closed; widget inspection mode built and tested loc
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Widget inspection run #7 (2026-10-21): authorized once, failed before any widget action
+
+- **Run:** manual run #7 (39535843106) on `2b0bcbb` (`1fc58b2` + docs; CI #45 and #46 passed).
+  - A: 3×200.
+  - The page navigation was held by a failing request filter and timed out (60 s).
+  - 0 widget actions; no page evidence.
+  - Authorization used; not rerun.
+  Details: `docs/greenhouse-compatibility-report.md`.
+- **Cause:** the script entry point stood before code that `main()` needs, so in
+  `python -m` mode `DATA_REQUEST_TYPES` was undefined. The tests import the module, which
+  hides this.
+- **Fix (local):**
+  - the entry point is last (test-enforced);
+  - the request filter fails closed;
+  - two regression tests, mutation-checked against `1fc58b2`.
+- **Commands actually run (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `uv run ruff check .` and `uv run ruff format --check .`: clean;
+  - `pytest tests/test_widget_inspection.py`: 20 passed;
+  - the two new tests against the run-#7 module (`1fc58b2`): both failed, as intended;
+  - `uv run pytest` (full backend): 338 passed.
+- **External activity:** stopped. Another run needs a new authorization.
 
 ## Widget inspection mode, local only (2026-10-20; not approved for a real page, not run)
 

@@ -205,4 +205,6 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   retried. Structural and required changes are recorded, not acted on.
 - **Output:** aliases and counts through the existing allowlist and guard. Option texts are
   compared inside the worker only.
-
+- **Run #7 lesson:** the request filter now fails closed (any internal error aborts the request
+  and stops the run). The CLI's script entry point must stay the module's last statement,
+  because the tests import the module and cannot see definitions that script mode skips.

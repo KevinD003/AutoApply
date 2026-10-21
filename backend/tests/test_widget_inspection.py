@@ -217,3 +217,36 @@ def test_published_inspection_is_anonymous(receiver):
 def test_a_real_page_is_inspected_only_under_the_b3_policy(monkeypatch):
     with pytest.raises(ro.NotApproved, match="B3 policy"):
         ro.observe_page(BOARD, JOB, inspect_widgets=True)
+
+
+def test_the_script_entry_point_is_the_last_statement():
+    """Run #7 regression: the CLI runs this module as a script (python -m), so main() ran
+    before the definitions below its `if __name__ == "__main__"` block existed, and the
+    request filter failed on the first request. Importing (as every other test does) hides
+    this; the entry point must therefore stay the module's last statement."""
+    import ast
+    import inspect as pyinspect
+
+    tree = ast.parse(pyinspect.getsource(ro))
+    last = tree.body[-1]
+    assert isinstance(last, ast.If) and "__main__" in ast.unparse(last.test)
+    mains = [n for n in tree.body if isinstance(n, ast.If) and "__main__" in ast.unparse(n.test)]
+    assert mains == [last]
+
+
+def test_a_failing_request_filter_refuses_the_request_and_stops(receiver, monkeypatch):
+    """Fail closed: an error inside the filter aborts the request (nothing is sent) and stops
+    the observation at once, instead of leaving the navigation pending until a timeout."""
+    import time
+
+    class Broken(frozenset):
+        def __contains__(self, item):
+            raise NameError("simulated")
+
+    monkeypatch.setattr(ro, "DATA_REQUEST_TYPES", Broken())
+    t0 = time.monotonic()
+    with pytest.raises(ro.Stop, match="the request filter failed"):
+        inspect(receiver)
+    assert time.monotonic() - t0 < 30
+    assert sent(receiver) == []
+    assert ro._STOP_TEXT.fullmatch("Stop: the request filter failed")

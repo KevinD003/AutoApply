@@ -298,6 +298,43 @@ destroyed raw data was reconstructed.
 approved and not run**. See `docs/greenhouse-readonly-compatibility-proposal.md`, "Widget
 inspection".
 
+## Widget inspection (manual run #7, authorized once): failed before any widget action
+
+- **Run:** [39535843106](https://github.com/KevinD003/AutoApply/actions/runs/39535843106),
+  revision `2b0bcbb`. That is `1fc58b2`, whose CI #45 passed, plus a status-doc change; CI #46
+  on `2b0bcbb` also passed.
+  - Workflow conclusion: success, because the CLI reports a stop and exits normally.
+  - Page observation: `error (TimeoutError)`. Run once, not retried.
+- **Requests:**
+  - **API:** 3 GETs, all 200. This is the authorized budget, now used.
+  - **Page:** the one navigation was intercepted by the in-browser request filter, which
+    raised `NameError` on it. The filter neither continued nor aborted it, so the request
+    stayed pending inside the browser, and the navigation timed out after 60 s.
+  - This is the only request the filter saw (one traceback in the log). Requests the filter
+    holds are not released to the network. There is no server-side request record for a
+    real site, so "not sent" rests on that mechanism, not on a ledger.
+- **Widget actions:** 0.
+- **Page evidence:** none. No options, required signals or structure were observed.
+- **Cause (code defect, mine):**
+  - the CLI runs the module as a script (`python -m`);
+  - its `if __name__ == "__main__"` block stood before the inspection code at the end of
+    the file, so in script mode `main()` ran before `DATA_REQUEST_TYPES` existed;
+  - the tests and the Compose scenario import the module, which defines everything first,
+    so none of them could see this.
+- **Privacy:**
+  - the guarded summary printed only `mode`, the 3 status codes, the stop and the approved
+    subresource rule;
+  - the one extra log output is that traceback: code lines and container file paths, no
+    URL, host, label or posting detail;
+  - secrets were masked; raw data was destroyed with the stack.
+- **Fixed afterwards, locally:**
+  - the entry point is now the module's last statement, and a test enforces it;
+  - the request filter fails closed: any error aborts the request and stops the run with
+    "the request filter failed", instead of leaving the request pending;
+  - both new tests fail on `1fc58b2` (mutation-checked) and pass with the fix.
+  The behaviour within the authorized scope is unchanged.
+- **Unknowns:** everything listed under "Dropdowns" above is still unknown.
+
 ## Log cleanup (run #3's logs deleted with authorization; runs #1 and #2 untouched)
 
 Manual "Greenhouse read-only check" runs. None has artifacts: the workflow uploads none and

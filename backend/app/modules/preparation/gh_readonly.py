@@ -401,6 +401,19 @@ def observe_page(
             return request.method == "GET"  # page origin and everything else: GET only
 
         def guard(route, request):
+            # Fail closed: if the filter itself fails, the request is refused and the run
+            # stops (a handler that raises would otherwise leave the request pending, and
+            # print a traceback).
+            try:
+                return decide(route, request)
+            except Exception:  # noqa: BLE001
+                stops.append("the request filter failed")
+                try:
+                    route.abort()
+                except Exception:  # noqa: BLE001 - already handled
+                    pass
+
+        def decide(route, request):
             seen["requests"] += 1
             if not method_ok(request):
                 blocked.append({"method": request.method, "path": urlsplit(request.url).path})
@@ -949,6 +962,7 @@ INSPECTION_STOPS = frozenset({
     "the page address changed", "challenge", "dialog", "file_chooser",
     "a second top-level navigation was attempted", "page request budget reached",
     "received data limit reached", "redirected to another origin", "too many redirects",
+    "the request filter failed",
 })  # fmt: skip
 _STATUSES = {"mapped", "mapped_via_group", "matched_via_attachment_group", "search_picker",
              "protocol", "absent", "ambiguous", "type_mismatch", "label_mismatch"}  # fmt: skip
@@ -1014,6 +1028,7 @@ _STOPS = (
     "page request budget reached", "overall time limit reached",
     "a second top-level navigation was attempted", "too many redirects",
     "received data limit reached", "page larger than the retained-data limit",
+    "the request filter failed",
 )  # fmt: skip
 _NOT_APPROVED = (
     "board token or job id has an unexpected shape",
@@ -1286,10 +1301,6 @@ def _run(a) -> int:
         return 3
     withhold_sensitive_hosts(result, sensitive, (board, job_id))
     return 0 if emit(result, sensitive) else 4
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
 
 
 # ---- B2 → B3 comparison (local, over two published summaries) -------------------------------
@@ -1611,3 +1622,9 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
         "events": len(events),
         "action_seconds": round(time.monotonic() - started, 1),
     }  # fmt: skip
+
+
+# Last statement of the module: everything above is defined before main() runs as a script
+# (python -m ...). A test checks that it stays last.
+if __name__ == "__main__":
+    raise SystemExit(main())
