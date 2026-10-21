@@ -1,5 +1,8 @@
 # Greenhouse read-only compatibility report (one real posting, anonymous)
 
+Short handoff (what is confirmed, assumed or unknown, and what a pilot needs):
+`docs/greenhouse-readiness-gap.md`.
+
 - **Scope:** one public posting on a Greenhouse-hosted board, chosen by the user.
   - Per the approval, the employer and posting are **not named** anywhere in the repository.
   - Everything below describes **this one posting at load time**. None of it is a claim about

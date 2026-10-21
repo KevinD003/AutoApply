@@ -323,6 +323,9 @@ Safe implementation sequence. Each step needs its own approval before the next:
 
 ## 8. Greenhouse status (no Greenhouse request was made in this task)
 
+The short, evidence-linked handoff is `docs/greenhouse-readiness-gap.md`.
+
+
 - **Observed:** the real page structure, in limited read-only runs, the last being run #9 on
   `e1bd9e7` (evidence only; see `docs/implementation-status.md`).
 - **Required state:** all 19 mapped fields have a consistent required-state interpretation.
