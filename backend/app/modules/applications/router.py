@@ -236,7 +236,7 @@ def transition_application(
                 db.rollback()  # not queued; only the outdated approval is retired
                 retire_approval(db, e.approval_id, "execution method changed after approval")
                 record(db, user.id, "package.approval_retired", "application", app.id,
-                       reason="execution method changed")  # fmt: skip
+                       reason_code="execution_method_changed")  # fmt: skip
                 db.commit()
                 raise conflict(str(e)) from None
             except UnsupportedDestination as e:

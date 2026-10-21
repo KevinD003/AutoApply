@@ -140,7 +140,8 @@ def test_an_unsupported_required_control_is_a_checkpoint_before_disclosure(api, 
     assert api.post(f"/jobs/{job_id}/form/greenhouse").status_code == 201
     r = job_route(api, job_id)
     assert (r["route"], r["provider"]) == ("checkpoint", "manual_handoff")
-    assert "map coordinates" in r["message"] and "Nothing is sent" in r["message"]
+    assert "required controls NoEfforts cannot fill" in r["message"]
+    assert "Nothing is sent" in r["message"] and r["reason"] == "unsupported_required_control"
     app_id = api.post("/applications", json={"job_id": job_id}).json()["id"]
     p = api.get(f"/applications/{app_id}/package").json()["package"]
     assert {"latitude", "longitude"} <= set(p["content"]["unresolved"])  # never guessed

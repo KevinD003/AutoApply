@@ -150,11 +150,13 @@ const ROUTE_LABEL: Record<string, string> = {
 };
 
 function RouteCard({ jobId }: { jobId: string }) {
-  const [route, setRoute] = useState<{ route: string; provider: string; message: string } | null>(null);
+  const [route, setRoute] = useState<{ route: string; provider: string; message: string; reason: string } | null>(null);
   const [error, setError] = useState<unknown>(null);
   const load = useCallback(() => {
     setError(null);
-    api<{ route: string; provider: string; message: string }>(`/jobs/${jobId}/route`).then(setRoute).catch(setError);
+    api<{ route: string; provider: string; message: string; reason: string }>(`/jobs/${jobId}/route`)
+      .then(setRoute)
+      .catch(setError);
   }, [jobId]);
   useEffect(() => {
     load();
@@ -177,6 +179,7 @@ function RouteCard({ jobId }: { jobId: string }) {
             </Badge>
           </p>
           {route.message && <p className="text-slate-700">{route.message}</p>}
+          <p className="text-xs text-slate-500">Reason code: {route.reason}</p>
         </div>
       )}
     </Card>

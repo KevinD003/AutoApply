@@ -217,6 +217,31 @@ Both views are served at `GET /api/providers` (`routing_capabilities`, `traits`,
    control, unknown question, CAPTCHA, login, verification code, page change, changed form,
    uncertain mapping, or unknown result.
 
+**Reason codes and audit** (`routing.REASONS`, `routing.audit_route`, `audit/service.py`):
+
+- Every decision carries a fixed reason code. Examples: `api_authorized`, `browser_supported`,
+  `no_form_captured`, `unsupported_required_control`, `planned_adapter_only`,
+  `form_ats_mismatch`, `real_destination_disabled`, `no_supported_provider`.
+- It also carries an API grant state: `granted`, `none` or `not_applicable`.
+- `GET /api/jobs/{id}/route` returns the code, and the job page shows it under the message.
+- Each route decision is recorded as a `route.decision` audit event with only these fields:
+  - the internal job id;
+  - the route (`api`, `browser`, `checkpoint` or `manual`);
+  - the provider key and adapter version;
+  - the reason code;
+  - the evidence level behind the route;
+  - the grant state.
+- User-facing route messages are generic. A checkpoint gives the number of controls NoEfforts
+  cannot fill, never their labels or keys, which are the employer's wording.
+- Audit `meta` is sanitized before it is stored, for every event:
+  - keys naming sensitive material (credentials, contact data, names, titles, URLs,
+    employers, files, answers, raw content) are redacted;
+  - non-identifier values are omitted: free text, URLs, e-mail addresses, exception text and
+    nested objects;
+  - external identifiers such as a posting's question keys are stored as one-way references.
+- The browser runner logs an unexpected exception by type only, and the egress proxy logs
+  destination counts, never hosts.
+
 **Provider roles:**
 
 | Component | Primary role | Not responsible for |
@@ -496,4 +521,5 @@ fill, upload or submit operation.
 | Any material change invalidates the approval | `test_an_adapter_version_mismatch_blocks_queueing_and_execution`, `test_original_adapter_approval_cannot_run_through_a_new_route`, `test_edit_committed_after_approval_invalidates_before_queue`, `test_drift_after_approval_stops_before_anything_is_disclosed`, `test_granting_the_api_retires_a_browser_approval_and_revoking_retires_it_again` |
 | A known API connector is never chosen without the user's explicit authorization | `test_a_known_api_connector_is_never_selected_without_explicit_authorization`, `test_without_authorization_the_api_is_never_contacted` |
 | A job source is never a form schema | `test_freehire_imports_are_never_treated_as_form_schemas` |
+| Audit events and logs carry safe metadata only (no applicant data, documents, credentials, employer or posting identifiers, raw exceptions or page content) | `tests/test_audit_privacy.py`: sanitizer tests per prohibited category, `test_record_sanitizes_before_anything_is_stored`, `test_route_decisions_are_audited_without_applicant_or_external_data`, `test_a_full_application_leaves_no_applicant_or_posting_data_in_audit_events`, `test_a_rejected_draft_records_a_reason_code_not_its_content`, `test_unexpected_runner_errors_are_logged_by_type_only`, `test_the_egress_proxy_never_logs_destination_hosts` |
 | An unsupported ATS is never routed to another ATS's adapter | `test_a_workday_job_is_shown_unsupported_never_routed_to_greenhouse`, `test_a_form_from_another_ats_is_refused` |

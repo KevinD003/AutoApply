@@ -62,7 +62,11 @@ class DraftingUnavailable(RuntimeError):
 
 
 class InvalidDraft(ValueError):
-    pass
+    """`code` is a fixed reason code, safe to record; the message is for the user only."""
+
+    def __init__(self, message: str, code: str):
+        super().__init__(message)
+        self.code = code
 
 
 def get_provider() -> DraftProvider | None:
@@ -77,19 +81,23 @@ _PLACEHOLDER = re.compile(r"\[[A-Z][^\]]{0,40}\]|\{\{|\}\}|<[A-Z_ ]+>")
 def validate_draft(req: DraftRequest, result: DraftResult) -> str:
     text = (result.text or "").strip()
     if not text:
-        raise InvalidDraft("empty draft")
+        raise InvalidDraft("empty draft", "empty")
     if len(text) > req.max_chars:
-        raise InvalidDraft(f"draft is {len(text)} characters; the limit is {req.max_chars}")
+        raise InvalidDraft(
+            f"draft is {len(text)} characters; the limit is {req.max_chars}", "too_long"
+        )
     if _PLACEHOLDER.search(text):
-        raise InvalidDraft("draft contains template placeholders")
+        raise InvalidDraft("draft contains template placeholders", "placeholders")
     ids = {f.id for f in req.facts}
     if not result.evidence or not set(result.evidence) <= ids:
-        raise InvalidDraft("draft must cite only the facts it was given")
+        raise InvalidDraft("draft must cite only the facts it was given", "uncited_facts")
     source = " ".join([f.text for f in req.facts] + [req.job_text or "", req.question])
     known = {n.replace(",", "") for n in _NUM.findall(source)}
     invented = [n for n in _NUM.findall(text) if n.replace(",", "") not in known]
     if invented:
-        raise InvalidDraft(f"draft contains numbers not found in your facts: {invented}")
+        raise InvalidDraft(
+            f"draft contains numbers not found in your facts: {invented}", "invented_numbers"
+        )
     return text
 
 

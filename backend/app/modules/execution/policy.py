@@ -117,7 +117,11 @@ LEGACY_VERSIONS: dict[str, str] = {
 
 
 class UnsupportedDestination(ValueError):
-    pass
+    """`code` is a fixed reason code (providers.routing.REASONS), safe to record."""
+
+    def __init__(self, message: str, code: str = "no_supported_provider"):
+        super().__init__(message)
+        self.code = code
 
 
 class BindingChanged(ValueError):
@@ -154,7 +158,7 @@ def check_binding(approval, destination: dict, adapter: str | None = None) -> di
     `adapter`: the one recorded on a queued attempt, which must also still match."""
     now = execution_binding(destination, getattr(approval, "user_id", None))
     if now is None:
-        raise UnsupportedDestination("No adapter may execute this destination.")
+        raise UnsupportedDestination("No adapter may execute this destination.", "no_adapter")
     if approved_binding(approval, destination) != now or (adapter and adapter != now["adapter"]):
         raise BindingChanged(
             "The way NoEfforts would fill and submit this form changed after you approved it. "
@@ -166,20 +170,26 @@ def check_binding(approval, destination: dict, adapter: str | None = None) -> di
 def adapter_for(destination: dict) -> str:
     origin, submit = destination.get("origin"), destination.get("submit_url")
     if get_settings().env == "production":
-        raise UnsupportedDestination("Automatic submission is not available in production yet.")
+        raise UnsupportedDestination(
+            "Automatic submission is not available in production yet.", "production_disabled"
+        )
     if not origin or not submit:
         raise UnsupportedDestination(
             "This job has no captured destination to submit to. Apply on the employer's site "
-            "and record it in the tracker."
+            "and record it in the tracker.",
+            "no_captured_destination",
         )
     if not is_fixture_origin(origin):
         raise UnsupportedDestination(
             "Automatic submission is only supported for local test fixtures in this version. "
-            "Apply on the employer's site and record it in the tracker."
+            "Apply on the employer's site and record it in the tracker.",
+            "real_destination_disabled",
         )
     sp = urlsplit(submit)
     if f"{sp.scheme}://{sp.netloc}".lower() != origin.lower():
-        raise UnsupportedDestination("The form submits to a different site than the job page.")
+        raise UnsupportedDestination(
+            "The form submits to a different site than the job page.", "submit_origin_mismatch"
+        )
     if destination.get("form_source") == "greenhouse_api":
         return "greenhouse_hosted"
     if destination.get("form_source") == "greenhouse_api_dom":

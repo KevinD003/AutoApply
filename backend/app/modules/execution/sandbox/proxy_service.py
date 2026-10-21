@@ -160,7 +160,8 @@ def control_handler(registry: Registry, control_token: str):
             if not allow or len(allow) > 4 or not set(private) <= set(allow):
                 return self._send(400, {"error": "allow-list must name 1-4 destinations"})
             s = registry.create(allow, private)
-            log.info("session %s: allow=%s private=%s", s.id, allow, private)
+            # Counts only: the allow-list names the employer's host, which never goes to logs.
+            log.info("session %s: %d destination(s), %d private", s.id, len(allow), len(private))
             return self._send(201, {"id": s.id, "token": s.token, "ttl": registry.ttl})
 
         def do_DELETE(self):  # noqa: N802

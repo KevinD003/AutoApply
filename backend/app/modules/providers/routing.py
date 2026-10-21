@@ -25,6 +25,24 @@ from app.modules.jobs.canonical import canonicalize_url, detect_ats
 from app.modules.providers import registry
 from app.modules.providers.model import Capability, Kind
 
+# Reason codes: fixed, safe to record (no content, no identifiers). Messages are for the user.
+REASONS = {
+    "api_authorized": "authorized API: the user's grant, credentials and declared support",
+    "browser_supported": "a browser adapter supports this form source and origin",
+    "planned_adapter_only": "the job's ATS has only a planned (specification-only) adapter",
+    "form_ats_mismatch": "the captured form belongs to a different ATS than the job",
+    "no_form_captured": "no application form has been captured from the employer's page",
+    "unsupported_required_control": "a required control NoEfforts cannot fill",
+    "real_destination_disabled": "real destinations are not enabled for any provider",
+    "production_disabled": "automatic submission is not available in production",
+    "no_captured_destination": "no destination to submit to",
+    "submit_origin_mismatch": "the form submits to a different site than the job page",
+    "no_adapter": "no adapter may execute this destination",
+    "no_supported_provider": "no provider supports this destination",
+    "source_record_incomplete": "the discovery record is incomplete",
+}
+AUTHORIZATION_STATES = ("granted", "none", "not_applicable")
+
 
 @dataclass
 class RouteDecision:
@@ -32,6 +50,8 @@ class RouteDecision:
     provider: str
     steps: list[str] = field(default_factory=list)  # why, in order (no content, no secrets)
     message: str = ""  # for the user when the route is a manual handoff
+    reason: str = "no_supported_provider"  # a REASONS code
+    authorization: str = "not_applicable"  # the API grant state, when an API provider applies
 
 
 # Which destinations an API provider can serve (identity only; authorization comes later).
@@ -101,12 +121,13 @@ def _identity_refusal(destination: dict, steps: list[str]) -> RouteDecision | No
         return RouteDecision("manual_handoff", "manual_handoff", steps,
                              f"{label} applications are not supported yet: NoEfforts has only a "
                              f"specification for a {label} adapter. Apply on the employer's site "
-                             "and record it in the tracker.")  # fmt: skip
+                             "and record it in the tracker.", "planned_adapter_only")  # fmt: skip
     if form_ats and ats != "unknown" and ats != form_ats:
         steps.append(f"identity: the form was captured as {form_ats} but the job is on {ats}")
         return RouteDecision("manual_handoff", "manual_handoff", steps,
                              "The captured form does not belong to this job's application "
-                             "system. Apply on the employer's site.")  # fmt: skip
+                             "system. Apply on the employer's site.",
+                             "form_ats_mismatch")  # fmt: skip
     return None
 
 
@@ -122,14 +143,16 @@ def decide(destination: dict, user_id=None) -> RouteDecision:
     try:
         browser = policy.adapter_for(destination)  # also: production / real origins refused
     except policy.UnsupportedDestination as e:
-        browser, refusal = None, str(e)
+        browser, refusal, refusal_code = None, str(e), e.code
     else:
-        refusal = ""
+        refusal, refusal_code = "", "no_supported_provider"
     real = not is_fixture_origin(origin) or s.env == "production"
     if real:
         steps.append("enabled: no provider is enabled for real destinations")
+        code = refusal_code if refusal else "real_destination_disabled"
         return RouteDecision("manual_handoff", "manual_handoff", steps,
-                             refusal or "Apply on the employer's site.")  # fmt: skip
+                             refusal or "Apply on the employer's site.", code)  # fmt: skip
+    authorization = "not_applicable"
     for spec in registry.of_kind(Kind.api):
         applies = API_IDENTITY.get(spec.name, lambda d: False)(destination)
         if not applies:
@@ -141,29 +164,29 @@ def decide(destination: dict, user_id=None) -> RouteDecision:
             steps.append(f"api {spec.name}: API submission not supported")
             continue
         if not active_authorization(user_id, spec.name, origin):
+            authorization = "none" if authorization != "granted" else authorization
             steps.append(f"api {spec.name}: no active authorization from the user")
             continue
+        authorization = "granted"
         if not api_credentials_configured(spec.name):
             steps.append(f"api {spec.name}: credentials not configured")
             continue
         steps.append(f"api {spec.name}: authorized, credentials configured, supported")
-        return RouteDecision("api", spec.name, steps)
+        return RouteDecision("api", spec.name, steps, "", "api_authorized", authorization)
     if browser is not None:
         steps.append(f"browser {browser}: supported for this destination")
-        return RouteDecision("browser", browser, steps)
+        return RouteDecision("browser", browser, steps, "", "browser_supported", authorization)
     steps.append("no provider supports this destination")
-    return RouteDecision("manual_handoff", "manual_handoff", steps, refusal)
+    return RouteDecision("manual_handoff", "manual_handoff", steps, refusal, refusal_code,
+                         authorization)  # fmt: skip
 
 
 def form_checkpoint(schema: dict | None) -> list[str]:
-    """Why a captured form needs the user before anything is disclosed: each required control
-    NoEfforts cannot fill deterministically (never turned into a guessed answer)."""
-    reasons = []
-    for f in (schema or {}).get("fields", []):
-        if f.get("type") == "unsupported" and f.get("required"):
-            why = f.get("unsupported_reason") or "unsupported control"
-            reasons.append(f"{f.get('label') or f.get('key')}: {why}")
-    return reasons
+    """The keys of the required controls NoEfforts cannot fill deterministically (never turned
+    into a guessed answer). Keys and labels come from the employer's form: they are counted in
+    route messages and steps, never quoted there or recorded in audit events."""
+    return [f.get("key") or "" for f in (schema or {}).get("fields", [])
+            if f.get("type") == "unsupported" and f.get("required")]  # fmt: skip
 
 
 def route_for_job(db, job) -> RouteDecision:
@@ -190,14 +213,16 @@ def route_for_job(db, job) -> RouteDecision:
     if form is None:
         steps.append("no application form captured yet")
         return RouteDecision("manual_handoff", "manual_handoff", steps,
-                             "Capture the application form first.")  # fmt: skip
-    reasons = form_checkpoint(form.schema)
-    if reasons:
-        steps.append("required controls NoEfforts cannot fill: " + "; ".join(reasons))
+                             "Capture the application form first.", "no_form_captured")  # fmt: skip
+    blocked = form_checkpoint(form.schema)
+    if blocked:
+        n = len(blocked)
+        steps.append(f"required controls NoEfforts cannot fill: {n}")
         return RouteDecision("checkpoint", "manual_handoff", steps,
-                             "This form has required controls NoEfforts cannot fill ("
-                             + "; ".join(reasons) + "). Nothing is sent; complete the "
-                             "application on the employer's site.")  # fmt: skip
+                             f"This form has {n} required control{'s' if n != 1 else ''} "
+                             "NoEfforts cannot fill (see the application's open questions). "
+                             "Nothing is sent; complete the application on the employer's "
+                             "site.", "unsupported_required_control")  # fmt: skip
     p = urlsplit(job.url or "")
     action = (form.schema or {}).get("action")
     destination = {
@@ -208,4 +233,29 @@ def route_for_job(db, job) -> RouteDecision:
         "ats_provider": job.ats_provider,
     }
     d = decide(destination, job.user_id)
-    return RouteDecision(d.route, d.provider, steps + d.steps, d.message)
+    return RouteDecision(d.route, d.provider, steps + d.steps, d.message, d.reason,
+                         d.authorization)  # fmt: skip
+
+
+AUDIT_ROUTE = {"api": "api", "browser": "browser", "checkpoint": "checkpoint",
+               "manual_handoff": "manual"}  # fmt: skip
+EVIDENCE_CAPABILITY = {"api": Capability.official_api_submission,
+                       "browser": Capability.deterministic_fill}  # fmt: skip
+
+
+def audit_route(db, user_id, job_id, d: RouteDecision) -> None:
+    """Record a route decision with safe metadata only: the internal job id, the decision, the
+    provider key and adapter version, the reason code, the evidence level behind the route and
+    the authorization state. Never messages, steps, URLs, labels or applicant data."""
+    from app.modules.audit.service import record
+    from app.modules.execution.policy import ADAPTER_VERSIONS
+
+    spec = registry.PROVIDERS.get(d.provider)
+    cap = EVIDENCE_CAPABILITY.get(d.route)
+    record(db, user_id, "route.decision", "job", job_id,
+           route=AUDIT_ROUTE.get(d.route, "manual"), provider=d.provider,
+           adapter_version=ADAPTER_VERSIONS.get(d.provider),
+           reason_code=d.reason if d.reason in REASONS else "no_supported_provider",
+           evidence=spec.support(cap).level() if spec and cap else "none",
+           api_grant=d.authorization if d.authorization in AUTHORIZATION_STATES
+           else "not_applicable")  # fmt: skip

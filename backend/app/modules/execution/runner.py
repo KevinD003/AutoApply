@@ -202,7 +202,9 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         log.warning("attempt %s: lost authority in phase %s; stopped", aid, phase)
         return "lost_authority"
     except Exception as e:  # noqa: BLE001
-        log.exception("attempt %s failed in phase %s", aid, phase)
+        # The exception type only: browser errors can quote URLs, selectors or page text, so
+        # neither the message nor the traceback is logged (same as the API route below).
+        log.warning("attempt %s failed in phase %s (%s)", aid, phase, type(e).__name__)
         reason = f"internal error ({type(e).__name__})"
         if phase == "before_disclosure":
             svc.fail_safe(aid, worker, gen, reason)

@@ -380,5 +380,6 @@ def application_route(db: Session, row: DiscoveredJob):
     if row.job_id is None:
         return routing.RouteDecision("manual_handoff", "manual_handoff",
                                      ["the source record is incomplete"],
-                                     "Import this job manually.")  # fmt: skip
+                                     "Import this job manually.",
+                                     "source_record_incomplete")  # fmt: skip
     return routing.route_for_job(db, db.get(Job, row.job_id))

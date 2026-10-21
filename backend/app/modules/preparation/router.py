@@ -11,7 +11,7 @@ from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.errors import bad_request, conflict, not_found
 from app.modules.applications.models import Application
-from app.modules.audit.service import record
+from app.modules.audit.service import record, ref
 from app.modules.documents.models import Document, DocumentKind
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
@@ -404,7 +404,7 @@ def put_answer(
         if not entry["bankable"]:
             raise bad_request("This answer depends on the specific job and cannot be reused.")
         _save_to_bank(db, user, app, f, value, sensitive=entry["sensitive"])
-    record(db, user.id, "application.answer", "application", app.id, field=key)
+    record(db, user.id, "application.answer", "application", app.id, field_ref=ref(key))
     db.flush()
     return _package_view(db, app, _current(db, app))
 
@@ -492,7 +492,8 @@ def put_consent(
             db.delete(row)
     else:
         _upsert_input(db, app, "consent", key, {"choice": body.choice})
-    record(db, user.id, "application.consent", "application", app.id, field=key, choice=body.choice)
+    record(db, user.id, "application.consent", "application", app.id, field_ref=ref(key),
+           choice=body.choice)  # fmt: skip
     db.flush()
     return _package_view(db, app, _current(db, app))
 
@@ -607,7 +608,8 @@ def request_draft(
         try:
             text = drafting.validate_draft(req, result)
         except drafting.InvalidDraft as e:
-            record(db, user.id, "draft.rejected", "application", app.id, field=key, reason=str(e))
+            record(db, user.id, "draft.rejected", "application", app.id, field_ref=ref(key),
+                   reason_code=e.code)  # fmt: skip
             db.commit()
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
