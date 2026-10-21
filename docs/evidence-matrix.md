@@ -9,37 +9,35 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
-## Freehire discovery provider (2026-10-21; fixture only, no Freehire request)
+## Freehire discovery provider (2026-10-21; fixture only, no Freehire API request)
 
 All of this is local fixture evidence. The oracle is the fixture's own request table
 (`freehire_requests`: route, offset, limit, whether an Authorization header was present). It
-runs against `fixtures/ats_receiver/freehire_fixture.py`, a stand-in built to Freehire's
-documented read API with synthetic data. **Nothing here shows compatibility with the live
-Freehire service.**
+runs against `fixtures/ats_receiver/freehire_fixture.py`, a stand-in shaped like Freehire's
+public API reference as reviewed on 2026-10-21, with synthetic data. **Nothing here shows
+compatibility with the live Freehire service.** Personal prototype only (D34).
 
 | Requirement | Evidence (`tests/test_freehire_discovery.py` unless noted) | Result |
 |---|---|---|
-| Off by default; nothing requested | `test_disabled_by_default_and_nothing_is_requested` | providers disabled; import and healthcheck 409; 0 fixture requests; unknown provider 404 |
+| Off by default; nothing requested | `test_defaults_are_off_with_no_base_url_and_no_key`, `test_disabled_by_default_and_nothing_is_requested` | default settings: no provider, no base URL, no key, no rate setting; import and healthcheck 409; 0 fixture requests; unknown provider 404 |
 | No live access | `test_a_live_base_url_is_refused_before_any_request` | `https://freehire.me` refused before any request (network call patched to fail the test); nothing written |
-| Status table honest; key never shown | `test_status_table_and_capabilities_never_claim_external_testing` | external configured/tested/production all false; `submits_applications` false; only "configured: yes/no" for the key |
+| Status table honest; key never shown | `test_status_table_and_capabilities_never_claim_external_testing` | external configured/tested/production false; no "600" claimed; attribution "via freehire.me"; only "configured: yes/no" for the key |
 | Mock never in production | `test_mock_provider_is_never_enabled_in_production` | refused |
-| Pagination, normalization, dedup | `test_import_pages_normalizes_and_deduplicates` | 6 records in 3 pages (offsets 0/2/4, no key sent); plain-text summary (script removed); URL preserved with its tracking parameter; tri-state sponsorship with basis "provider enrichment"; location absent stays `None`; duplicate slug linked by job URL; no-URL record incomplete; closed posting creates no job; `raw_ref` holds field names, not content |
-| Unchanged re-import | `test_reimport_is_unchanged` | 0 created, 0 updated, 6 unchanged |
-| Matching and merge policy | `test_existing_jobs_are_matched_by_url_then_conservatively_and_never_modified` | matched by job URL and by employer/title/location (job without URL); the user's title, location and empty description untouched. Mutation-checked: merging into the existing job fails this test |
-| Changed posting | `test_a_changed_posting_is_recorded_and_the_users_job_is_left_alone` | `changed_fields` = title, location; the user's edited title kept |
-| Source attribution | `test_source_is_attributed_on_the_job` | job detail lists "Freehire" with source URL |
-| Filters on supplied data only | `test_filters_use_only_what_the_source_supplied`, `test_sponsorship_filter_matches_only_a_stated_yes`, `test_preferences_are_used_only_when_asked` | missing location or workplace = "not enough data"; stated mismatch excludes; sponsorship "offered" matches only a stated yes (unknown is not "no"); preferences only on request. Mutation-checked: treating unknown sponsorship as a match fails the test |
-| Failures change nothing | `test_provider_failures_change_nothing` (rate limit, outage, bad JSON, pagination loop, timeout) | 503 "Nothing was changed"; 0 rows, 0 jobs; rate limit: exactly 1 request (no retry) |
-| Outage never blocks the rest | `test_an_outage_never_blocks_manual_jobs_imports_or_tracking` | manual job 201, CSV import 1 created, application 201 during the outage |
-| Malformed records | `test_malformed_records_are_skipped_and_counted` | 2 skipped, 6 imported |
-| Bounded paging | `test_paging_is_bounded_and_loops_are_refused`, `test_truncated_listing_is_reported` | repeated cursor refused; page limit stops and reports `truncated`; nothing requested past the documented 10,000 window |
-| Single-record refresh | `test_refresh_reads_one_record_and_marks_it_gone` | updated (changed fields), gone (stale "no longer at the source"), outage 503 |
-| Healthcheck | `test_healthcheck` | ok; outage gives `ok: false` with the reason |
-| Incomplete → manual import | `test_incomplete_records_wait_for_a_manual_import` | missing fields listed; route "Import this job manually." |
-| Tenant isolation | `test_discovered_jobs_are_user_scoped` | other user: empty list, 404 detail, 404 refresh, 404 job |
-| Key server-side only | `test_the_key_is_sent_by_the_server_only_and_never_shown` | bearer sent to the fixture; key absent from responses and captured logs |
-| Untrusted markup | `test_untrusted_markup_becomes_short_plain_text` | scripts and styles dropped; entities decoded; 500-character cap |
-| UI, desktop + mobile | `frontend/e2e/discovery.spec.ts` | source status ("not tested against the live service"), import result, "Source: Freehire", missing fields, closed, sponsorship basis, existing job linked and unchanged, outage message, manual job still added |
+| Documented shapes; pagination; dedup | `test_import_pages_normalizes_and_deduplicates` | 5 open records in 3 pages (offsets 0/2/4, no key); the closed posting is absent from search; top-level `work_mode` read (hybrid/onsite/remote); `enrichment.employment_type`; plain-text summary; tri-state sponsorship with basis "provider enrichment"; duplicate slug linked by job URL; no-URL record incomplete |
+| `work_mode` from the top level only | `test_work_mode_is_read_from_the_top_level_only`, `test_undocumented_fields_are_not_read` | the old shape (only `enrichment.work_mode`) gives `unknown`; `last_seen_at` not read; undocumented work-mode or non-boolean sponsorship values stay unknown. Mutation-checked: an enrichment fallback fails the test |
+| No raw payload kept | `test_no_raw_payload_is_kept` | stored keys are exactly the normalized fields and `raw_ref` (provider, id, fingerprint, field names); no HTML, enrichment, counters or `reality`; the tracker job gets the plain summary |
+| Attribution | `test_every_listing_is_credited_via_freehire`, `test_the_mock_is_never_credited_to_freehire`; `e2e/discovery.spec.ts` | every Freehire listing and job-page source carries `{"text": "via freehire.me", "url": null}` (no documented listing URL); mock credited "local mock data (not from freehire.me)"; UI shows the credit on all 5 listings and on the job page |
+| Pacing from documented headers | `test_paging_stops_when_the_documented_budget_is_used_up`, `test_without_rate_headers_nothing_is_assumed_or_waited` | `X-RateLimit-Remaining: 0` stops after 2 pages (truncated, reason quotes the headers); 2 requests; no sleep anywhere (patched to fail); without headers all pages read, no waiting. Mutation-checked: ignoring Remaining fails the test |
+| 429 | `test_a_429_is_reported_with_retry_after_and_never_retried` | 503 "Freehire is rate limiting requests (Retry-After: 30 s); not retried. Nothing was changed."; exactly 1 request; no sleep; nothing written |
+| Closed and stale | `test_a_posting_closed_since_is_absent_from_search_and_seen_closed_by_detail`, `test_detail_serves_a_closed_posting_and_it_never_creates_a_job`, `test_refresh_marks_a_record_gone` | absent from search: not marked stale (listing never complete); refresh sees `closed_at`: "closed at source", link and tracker job kept; detail serves a closed posting; 404 → "no longer at the source" |
+| No `/status` use | `test_healthcheck_makes_no_request_and_never_uses_status` | healthcheck is configuration only (0 requests even during an outage); imports never call `/status`. Mutation-checked: a healthcheck calling `/status` fails the test |
+| Unchanged re-import; changed posting; matching | `test_reimport_is_unchanged`, `test_a_changed_posting_is_recorded_and_the_users_job_is_left_alone`, `test_existing_jobs_are_matched_by_url_then_conservatively_and_never_modified` | 5 unchanged; `changed_fields` title, location with the user's edit kept; matched by job URL and by employer/title/location; existing job never modified |
+| Filters on supplied data only | `test_filters_use_only_what_the_source_supplied`, `test_sponsorship_filter_matches_only_a_stated_yes`, `test_preferences_are_used_only_when_asked` | missing data = "not enough data"; stated mismatch excludes; sponsorship "offered" matches only a stated yes; preferences only on request |
+| Failures change nothing | `test_provider_failures_change_nothing` (outage, bad JSON, pagination loop, timeout) | 503 "Nothing was changed"; 0 rows, 0 jobs |
+| Outage never blocks the rest | `test_an_outage_never_blocks_manual_jobs_imports_or_tracking` | manual job 201, CSV import 1 created, application 201 |
+| Malformed; bounded paging | `test_malformed_records_are_skipped_and_counted`, `test_paging_is_bounded_and_loops_are_refused`, `test_truncated_listing_is_reported` | 2 skipped, 5 imported; repeated cursor refused; page limit reported as the stop reason; nothing past the 10,000 window |
+| Isolation; key; markup | `test_discovered_jobs_are_user_scoped`, `test_the_key_is_sent_by_the_server_only_and_never_shown`, `test_untrusted_markup_becomes_short_plain_text` | other user: empty / 404; key sent only as a server bearer, absent from responses and logs; scripts dropped, 500-character cap |
+| UI, desktop + mobile | `frontend/e2e/discovery.spec.ts` | source status, import result, "Source: Freehire" with "via freehire.me" (5), missing fields, sponsorship basis, existing job linked and unchanged with the credit on its page, outage message, manual job still added |
 
 ## Submission providers, fake API and discovery (2026-10-21; local only)
 

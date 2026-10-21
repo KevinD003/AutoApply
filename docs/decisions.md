@@ -29,8 +29,12 @@ Tests migrate a dedicated database with Alembic, so migrations are tested too.
 
 ## D7 — Freehire: optional discovery source only (not yet integrated)
 Pinned `strelov1/freehire@ec6e65f7`, MIT. Its public API (`https://freehire.me/api/v1`) is live
-and keyless with a documented 600 req/min/IP limit, and its terms forbid scraping beyond the
-documented API. Plan: a throttled discovery adapter that re-verifies postings at the source ATS.
+and keyless for documented reads, "limited per address". No keyless rate figure is documented
+(corrected 2026-10-21, D34: an earlier version of this entry called a 600 req/min/IP limit
+"documented"; that figure was read in Freehire's source, not in its documentation). Its terms
+forbid scraping beyond the documented API and bypassing rate limits, and limit keyless use to
+personal, non-commercial use (D34). Plan: a discovery adapter that paces only from Freehire's
+`X-RateLimit-*` headers and re-verifies postings at the source ATS.
 Do **not** reuse its TLS-fingerprint spoofing or LinkedIn guest-API harvesting. Its ideas for
 public form-schema endpoints and "unconfirmed ⇒ never resubmit" match our design; no code copied.
 Not reachable from the current cloud sandbox (proxy 403), so integration must be tested locally.
@@ -359,5 +363,15 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   3. pacing from `X-RateLimit-*` headers instead of an assumed figure;
   4. the attribution and retention rules above, if a plan is used;
   5. no use of undocumented fields as facts.
-- **Status unchanged:** a live API call remains unapproved. Freehire stays a discovery source
-  only, never an execution destination.
+- **Applied 2026-10-21; personal prototype chosen by the owner:**
+  - corrections 1, 2, 3 and 5;
+  - a "via freehire.me" credit on every listing (no listing-page URL is documented, so it is
+    text);
+  - no raw payload kept.
+
+  The integration stays off by default and limited to fixture origins. Item 4's retention
+  (deletion within 30 days after a plan ends) is **not implemented** until there is a plan or
+  written clarification from Freehire.
+- **Status unchanged:** a live API call remains unapproved. A future live test needs its own
+  approval with the exact query, page limit, time window and data-retention statement.
+  Freehire stays a discovery source only, never an execution destination.

@@ -14,10 +14,18 @@ on a provider and keep working during a provider outage. This is tested.
 | `freehire`: client for Freehire's documented public read API | yes (fixture of the documented API) | **no** | **no** | **no** |
 | `freehire_mock`: local mock file | yes (invented record shape) | n/a | n/a | no (refused in production) |
 
-Freehire: **Potential future discovery provider; not yet connected or validated.** No request
-to freehire.me was made while building or testing this. The client refuses any base URL that
-is not a local fixture origin, so it cannot reach Freehire until that check is changed in a
-reviewed commit.
+Freehire: **Potential future discovery provider; not yet connected or validated.**
+
+- **Product model:** personal prototype only (D34). Freehire's terms allow keyless use for
+  "your own job search, research, or a tool you run for yourself". Showing postings to other
+  people needs a Freehire API plan. Multi-user behaviour (a plan, and deletion within 30 days
+  after it ends) is **not implemented** and waits on a plan or written clarification from
+  Freehire.
+- **No live access:** no request to freehire.me's API was made while building or testing
+  this. The client refuses any base URL that is not a local fixture origin, so it cannot
+  reach Freehire until that check is changed in a reviewed commit.
+- **Before any live test:** it needs its own approval naming the exact query, page limit,
+  time window and data-retention statement.
 
 ## Configuration (server-side only; everything off by default)
 
@@ -27,8 +35,10 @@ reviewed commit.
 | `NOEFFORTS_FREEHIRE_BASE_URL` | empty | Must be a fixture origin in this version. |
 | `NOEFFORTS_FREEHIRE_API_KEY` | empty | Optional. Sent as `Authorization: Bearer` by the backend only. |
 | `NOEFFORTS_FREEHIRE_PAGE_SIZE` / `_MAX_PAGES` | 50 / 5 | Bounded paging. |
-| `NOEFFORTS_FREEHIRE_MIN_INTERVAL_MS` | 1000 | Spacing between requests. |
 | `NOEFFORTS_FREEHIRE_TIMEOUT_SECONDS` | 10 | Request timeout. |
+
+There is no request-rate setting: Freehire documents no keyless figure, so none is assumed
+(see "Rate limits" below).
 
 Where the key is never exposed:
 
@@ -38,52 +48,64 @@ Where the key is never exposed:
 
 The key lives in settings only.
 
-## Freehire contract, as recorded (not re-verified in this task)
+## Freehire contract (public documentation as reviewed on 2026-10-21)
 
-Source: `docs/research/freehire.md`. That was a documentation and source review on 2026-10-19
-of freehire.me's API docs page and the MIT-licensed repository at `ec6e65f7`, plus one
-1-record read made then. No Freehire request was made for this milestone.
+Source: the documentation review in `docs/research/freehire.md`, covering the API reference,
+its OpenAPI document, the terms ("Last updated: October 19, 2026") and the Jobs API page.
+Only what the documentation states is relied on.
 
-**Endpoints:**
+**Endpoints used:**
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `https://freehire.me/api/v1/jobs/search` | the listing |
-| `GET` | `https://freehire.me/api/v1/jobs/{public_slug}` | one job, closed jobs included |
-| `GET` | `https://freehire.me/api/v1/status` | health |
+| `GET` | `https://freehire.me/api/v1/jobs/search` | the listing (open postings only) |
+| `GET` | `https://freehire.me/api/v1/jobs/{public_slug}` | one job; also served after it closes, with `closed_at` |
 
+- **`/status` is not used.** It is documented as "Ingest-fleet health, per provider", which is
+  the state of Freehire's crawlers, not whether the API answers. Freehire documents no API
+  health endpoint, so the healthcheck makes **no request**: it reports only whether the
+  client is configured for a fixture.
 - **Search parameters:**
   - `q`, `limit` (1–100) and `offset`;
   - facet filters, documented but not used by NoEfforts. NoEfforts filters locally, on what
     the source supplied.
-- **Authentication:** none for public reads. A personal API key (Bearer) is documented for
-  authenticated surfaces.
-- **Rate limits** (read in Freehire's source, per IP): 600 requests per minute for public reads, 300 for
-  `/agent/jobs/search`.
-  - NoEfforts spaces requests at 1 per second by default.
-  - It never retries. A 429 ends the run and reports `Retry-After`.
+- **Authentication:** none for documented public reads. A personal API key (Bearer) is
+  documented. None is configured.
+- **Rate limits:**
+  - **No keyless figure is documented.** Reads are "limited per address", and the figures in
+    force are reported by `GET /plans`, which NoEfforts does not call.
+  - Documented: every response carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and
+    `X-RateLimit-Reset`, and a refusal is `429` with `Retry-After`.
+  - NoEfforts paces **only** from those headers: when `X-RateLimit-Remaining` reaches 0, paging
+    stops and the import is marked truncated. The reason is shown, with the reset value as
+    sent; its unit is not documented, so it is not interpreted.
+  - NoEfforts never waits and never retries. A `429` ends the run, reports `Retry-After` and
+    writes nothing. Without the headers, NoEfforts assumes no rate.
 - **Pagination:** offset-based. `offset + limit <= 10000`, otherwise 400 "pagination too
   deep".
   - NoEfforts never asks beyond that window, and stops at `MAX_PAGES`.
   - It refuses a response whose `meta.offset` differs from the request, or a page identical to
     an earlier one (loop).
-- **Response shape:** `{"data": [...], "meta": {"limit", "offset", "total"}}`. Each record has:
-  - identity and source: `public_slug`, `source`, `external_id`;
-  - `url`, the original posting with `utm_source=freehire.me` appended;
+- **Response shape:** collections are `{"data": [...], "meta": {"total", "limit", "offset"}}`;
+  single items are `{"data": {...}}`.
+- **Fields read** (all documented in the API reference's job example):
+  - identity and source: `public_slug`, `source`, `url`;
   - the posting: `title`, `company`, `location`, `description` (HTML), `cities[]`;
-  - dates: `posted_at`, `updated_at`, `last_seen_at`, `closed_at`;
-  - `enrichment{...}`.
-- **Assumed, not verified:** the `enrichment` sub-keys `work_mode`, `employment_type` and
-  `visa_sponsorship`. Values outside the known set are ignored and stay unknown. Sponsorship
-  from enrichment is stored with basis "provider enrichment", because it may be
-  machine-derived. It is never treated as the employer's statement.
-- **Permitted-use assumptions** (from the review):
-  - Freehire's terms forbid scraping beyond the documented API and bypassing rate limits or
-    authentication, so NoEfforts uses only the documented read endpoints, within their limits;
-  - no data licence was found, and job content belongs to the employers and sources, so it is
-    used for the user's own job tracking only, never redistributed;
-  - some upstream sources may have provenance issues of their own, which is one more reason
-    every listing is shown as unverified.
+  - **`work_mode` (top level)**;
+  - dates: `posted_at`, `updated_at`, `closed_at`;
+  - `enrichment.employment_type` and `enrichment.visa_sponsorship` (boolean).
+- **Not read, because undocumented:** `last_seen_at` and an `apply_url` on the job object.
+  The `utm_source=freehire.me` suffix seen on 2026-10-19 is undocumented too; tracking
+  parameters are dropped for deduplication anyway.
+- **Sponsorship from enrichment** is stored with basis "provider enrichment", because how
+  enrichment is produced is not documented. It is never treated as the employer's statement,
+  and any value other than a boolean stays unknown.
+- **Terms that apply** (quoted in `docs/research/freehire.md`):
+  - no scraping beyond the documented API and no bypassing of rate limits or authentication;
+  - keyless use is personal and non-commercial;
+  - with a plan: attribution (a link to the freehire.me page or "via freehire.me"), no
+    redistribution, and deletion within 30 days after the plan ends;
+  - the postings belong to the employers.
 
 ## Normalized record (`discovery/provider.NormalizedJob`)
 
@@ -99,11 +121,22 @@ of freehire.me's API docs page and the MIT-licensed repository at `ec6e65f7`, pl
   separate one.
 - **ATS:** from known hostnames only. What the source says it crawled is kept separately
   (`source_platform`).
-- **Freshness:** the source's `updated_at` and `last_seen_at`, and our own first-seen,
-  last-seen and import times.
+- **Freshness:** the source's `updated_at` (`last_seen_at` is undocumented and not read), and
+  our own first-seen, last-seen and import times.
 - **Source facts:** `sponsorship_offered` as yes/no/unknown with `stated_by` and `basis`.
+- **Attribution:** `{"text": "via freehire.me", "url": null}`, shown with every Freehire
+  listing and on the job page. The documentation gives no listing-page URL for a job, so the
+  credit is text, not a link. The local mock is credited "local mock data (not from
+  freehire.me)".
 - **Debugging reference:** `raw_ref` holds the provider, id, fingerprint and field names, never
-  the raw payload. The raw payload is not stored.
+  the raw payload.
+- **No raw payload is kept** (tested). In particular, none of these are stored:
+  - the HTML description;
+  - the enrichment object;
+  - counters;
+  - the `reality` signals.
+
+  The tracker job receives the plain-text summary only.
 
 ## Import rules (`discovery/service.import_from`)
 
@@ -130,18 +163,22 @@ of freehire.me's API docs page and the MIT-licensed repository at `ec6e65f7`, pl
    - A posting already closed at the source never creates a job.
 6. **Incomplete records** (no URL, title or employer) are kept, unlinked, with the missing
    fields listed. The user adds the job by hand.
-7. **Stale records:**
-   - a record closed at the source;
-   - a record no longer at the source (single-record refresh);
-   - for complete-listing providers only, a record absent from a complete, unfiltered listing.
-     The Freehire client is never treated as complete.
+7. **Stale and closed records:**
+   - Freehire's search returns open postings only, so a posting that has closed simply stops
+     appearing. A single-record refresh (`get_job`) sees its `closed_at` and marks it "closed
+     at source", keeping the link and the tracker job as they are.
+   - A record no longer served at all is marked "no longer at the source".
+   - For complete-listing providers only (the mock), a record absent from a complete,
+     unfiltered listing is marked stale. The Freehire client is never treated as complete.
+8. **Truncation:** a page limit or an exhausted rate budget stops paging. What was read is
+   kept, and the result says `truncated` with the reason (`stop_reason`).
 
 ## API
 
 | Method and path | Purpose |
 |---|---|
 | `GET /api/discovery/providers` | name, label, enabled, capabilities, configured flags (no values), status table |
-| `POST /api/discovery/providers/{name}/healthcheck` | `{ok, detail}`; 409 when disabled |
+| `POST /api/discovery/providers/{name}/healthcheck` | `{ok, detail}`; 409 when disabled. For Freehire, configuration only: no request is made |
 | `POST /api/discovery/import` | run one import; 409 when disabled, 503 on a provider failure (nothing changed) |
 | `GET /api/discovery/jobs`, `GET /api/discovery/jobs/{id}` | the user's discovered records; the detail includes the application route (manual handoff until a form is captured) |
 | `POST /api/discovery/jobs/{id}/refresh` | re-read one record (`get_job`) |
@@ -160,15 +197,22 @@ All of these are user-scoped: another user's record returns 404. The job detail
     fields, changes at the source, and its sponsorship statement with its basis.
 - A banner says that listings are not verified and imply no eligibility, sponsorship or
   automatic application.
-- The job page names the discovery source.
+- Every listing shows "via freehire.me". The job page names the discovery source with the same
+  credit.
 
 ## Limitations
 
-- **The Freehire contract is from a review on 2026-10-19.**
-  - Before any live call, re-read the docs and terms and record any changes.
-  - The `enrichment` keys, `work_mode` values and the single-job response wrapper
-    (`{"data": {...}}`) are assumptions.
-- **Imports run inside the request:** bounded by page count, timeout and spacing. A background
-  job would be needed for larger imports.
+- **Documentation date:** the contract is from the documentation as read on 2026-10-21.
+  Before any live call, re-read the docs and terms and record any changes.
+- **Undocumented details:**
+  - `X-RateLimit-Reset` has no documented unit;
+  - `work_mode` values outside remote/hybrid/onsite stay unknown;
+  - response schemas are examples only (no required or nullable fields are specified).
+- **Imports run inside the request,** bounded by page count and timeout. A background job would
+  be needed for larger imports.
 - **Freehire listings are query-scoped, never complete,** so "missing from the listing" is never
   used to mark a Freehire record stale.
+- **Not implemented** (needs a plan or written clarification from Freehire):
+  - multi-user use;
+  - plan-based storage;
+  - deletion within 30 days after a plan ends.
