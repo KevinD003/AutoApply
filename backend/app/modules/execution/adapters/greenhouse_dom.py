@@ -21,6 +21,7 @@ from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PWTimeout
 
+from app.modules.execution.adapters import dropdowns
 from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, Outcome, UploadFailed
 from app.modules.execution.adapters.greenhouse import CHALLENGE_SELECTORS, approved_fields
 from app.modules.preparation import greenhouse_dom as dom
@@ -53,6 +54,13 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
     # The confirmation is a status message with no application id; this is all there is.
     confirmation_strength = "employer_confirmation_page"
 
+    def __init__(self, content, documents):
+        super().__init__(content, documents)
+        # Dropdowns without a list in the page at load: key -> the strategy that was verified
+        # (before anything is disclosed). See adapters/dropdowns.py.
+        self._dd: dict[str, str] = {}
+        self._dd_checked = False
+
     # -- inspect ----------------------------------------------------------------------------
     def extract(self, page: Page):
         return dom.snapshot(page.content())
@@ -70,7 +78,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         html = page.content()
         controls = dom.snapshot(html)
         fields = approved_fields(self.content)
-        changed = []
+        changed, pending = [], []
         answered = {a["key"] for a in self.content["answers"] if a["value"] is not None}
         for f, m in zip(fields, dom.map_fields(fields, controls), strict=True):
             if f.type == FieldType.unsupported:
@@ -92,8 +100,11 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 changed.append(f"{f.key}: required by the page, no approved answer")
                 continue
             if f.type == FieldType.select:
-                if m.control.role != "combobox" or not m.control.controls_listbox:
+                if m.control.role != "combobox":
                     changed.append(f"{f.key}: widget")
+                    continue
+                if not m.control.controls_listbox:
+                    pending.append((f, m.control.id))  # verified below, by interaction
                     continue
                 got = page.evaluate(_OPTIONS_JS, m.control.controls)
                 want = [[o.value, o.label] for o in f.options]
@@ -105,6 +116,18 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             for c in dom.unmatched_controls(fields, controls)
             if c.in_form and not c.hidden and c.id not in alternatives
         )
+        if not (changed or new) and not self._dd_checked:
+            # Only once, before the disclosure gate: open, read, close; nothing is selected.
+            for f, cid in pending:
+                try:
+                    self._dd[f.key] = dropdowns.verify(page, cid, f.options)
+                except dropdowns.Refused as e:
+                    changed.append(f"{f.key}: dropdown {e}")
+                    break
+            self._dd_checked = True
+        elif self._dd_checked:
+            missing = [f.key for f, _ in pending if f.key not in self._dd]
+            changed += [f"{k}: dropdown not verified" for k in missing]
         if changed or new:
             detail = "; ".join(
                 p
@@ -150,6 +173,11 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         return disclosures
 
     def _choose(self, page: Page, a: dict) -> None:
+        if a["key"] in self._dd:
+            f = next(x for x in approved_fields(self.content) if x.key == a["key"])
+            dropdowns.select(page, _id(a["key"]), self._dd[a["key"]], f.options,
+                             a["value"]["option"])  # fmt: skip
+            return  # readback decides whether the approved option is shown
         cb = _by_id(page, a["key"])
         cb.click()
         lb = page.locator(f'[id="{_id(cb.get_attribute("aria-controls") or "")}"]')
@@ -202,6 +230,10 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 aid = st.get_attribute("data-attachment-id") if st.count() else None
                 want = [self.documents[a["key"]][0]] if v is not None else []
                 ok = names == want and bool(aid) == (v is not None)
+            elif t == "select" and a["key"] in self._dd:
+                f = next(x for x in approved_fields(self.content) if x.key == a["key"])
+                ok = dropdowns.readback(page, _id(a["key"]), f.options,
+                                        v["option"] if v else None)  # fmt: skip
             elif t == "select":
                 got = loc.evaluate(_SELECTED_JS)
                 if v is None:

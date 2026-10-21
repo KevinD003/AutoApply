@@ -563,6 +563,54 @@ for every control (attachments included), and path shapes of the refused data re
 - If approved, it would be dispatched from a branch created at exactly that commit and
   verified before dispatch, as for run #8. No branch has been created yet.
 
+## Next decision point — two alternatives, neither authorized
+
+Run #9 is the last external activity. Neither path below runs without explicit approval.
+
+### A. Manual structural feedback (recommended first)
+
+- **Who:** you, in your own browser, using `docs/manual-dropdown-checklist.md`. No candidate
+  data, no sharing of content.
+- **Cost:** no automated access.
+- **How the answers would choose the next evidence-backed check** (each strategy is
+  fixture-tested only):
+
+| Your answer | What it indicates | Next step it would justify |
+|---|---|---|
+| A click opens a menu | `click_control` is plausible; run #9's silence then points at something missing in the observed page, such as the refused locale files (Q6) | path B |
+| Opens only via a small arrow button | `trigger_button` | a separately approved check of exactly that action |
+| Opens only via the keyboard | `arrow_down` | a separately approved check of exactly that action |
+| Opens only when typing / typing required | search-as-you-type | none: stays unsupported, like location search |
+| Noticeable delay | the 600 ms window may be too short | a separately approved, longer window |
+| Dialog or inline pattern | which popup source the detector must read | fixture work first |
+| Hundreds of options | likely partial or virtualized rendering | none: stays unsupported (no scrolling) |
+| Locale files load in your browser | consistent with the locale-gate hypothesis | path B |
+
+### B. Narrow locale-resource observation (only if A, or your judgement, points at it)
+
+- **Technical basis:** all 11 data requests refused in run #9 have one shape. The widgets
+  showed no DOM reaction to clicks. A locale-gated fixture reproduces that signature under
+  the same policy. That is consistent with a locale gate, not proof of one.
+- **Proposed scope:** run #9's scope, with exactly one exception:
+
+| Item | Value |
+|---|---|
+| Host | `job-boards.cdn.greenhouse.io:443` only |
+| Method | GET only |
+| Resource type | `fetch` only |
+| Path | `/locales/<segment>/<segment>.json`; each segment 1–32 of `[A-Za-z0-9_-]` |
+| Query string | none (a request with any query is refused) |
+| Redirects | none followed |
+| Everything else | unchanged: other CDN data, fonts, images, other hosts and every other data request refused; no API calls beyond the 3 GETs |
+| Actions and limits | run #9's: at most 12 dropdowns, 24 click/Escape actions, all budgets and stops |
+| Privacy | locale responses are never retained or printed; only the guarded anonymous summary |
+| Excluded | answer selection, typing, uploads, location search, login, OTP, submission |
+
+- **Before such a run:** the exact path rule would have to be implemented and tested, and CI
+  passed on a pinned revision. None of that exists yet.
+- **What it would answer:** whether the widgets react to a click once their locale files
+  load. Opening them would still not mean that filling or submission works.
+
 ## Deliverable: the comparison (once A/B are separately approved and run)
 
 | Area | Compared |

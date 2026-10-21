@@ -37,7 +37,8 @@ gh2_validation_fail, gh2_new_question, gh2_options_changed, gh2_no_confirmation,
 gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, gh2_attach_group(_wrong|_shared), gh2_widgets (cfg widget_bad: submit, fetch, nav, captcha,
 filechooser, required, select, dialog, upload, hash, images, covered),
 gh2_widget_variants (cfg variant, delay_ms; see _VARIANTS_JS), gh2_required_unmarked,
-gh2_required_extra, gh2_required_marker_only, gh2_required_answered, gh2_required_group,
+gh2_required_extra, gh2_required_marker_only, gh2_required_answered, gh2_required_group, gh2_required_cover_group,
+gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS), GET /locales/{lang}/{ns}.json,
 gh2_cdn_app (cfg cdn,
 redirect_away), plus the
 receiver-wide upload_fail, error_before_accept, error_after_accept, drop_after_accept.
@@ -149,7 +150,8 @@ def _render(q, mode) -> str:
     # gh2_required_extra / gh2_required_marker_only: cover_letter (optional in the job data)
     # is required by aria-required / only by a "*" on its label; gh2_required_answered: the
     # same for question_8103 by aria-required; gh2_required_group: the attachment's group,
-    # not its input, carries aria-required.
+    # not its input, carries aria-required; gh2_required_cover_group: the optional cover
+    # letter's group (file input plus its text alternative) carries aria-required.
     dom_req = req
     if mode == "gh2_required_unmarked" and qid == "first_name":
         dom_req = False
@@ -178,7 +180,9 @@ def _render(q, mode) -> str:
                 f'<input type="file" id="{qid}"{areq}><span id="{qid}-status"></span></div>')
     if t == "input_file":
         greq = ""
-        if mode == "gh2_required_group" and req:
+        if (mode == "gh2_required_group" and req) or (
+            mode == "gh2_required_cover_group" and qid == "cover_letter"
+        ):
             greq, areq = ' aria-required="true"', ""
         alt = q["fields"][1]["name"] if len(q["fields"]) > 1 else None
         alt_html = (f'<button type="button" class="manual-toggle" data-for="{alt}">'
@@ -200,7 +204,7 @@ def _render(q, mode) -> str:
             opts = ""
         dup = (f'<input type="text" id="{qid}" aria-label="duplicate">'
                if mode == "gh2_duplicate_id" and qid == "question_8101" else "")
-        if mode in ("gh2_cdn_app", "gh2_widgets", "gh2_widget_variants"):  # list built by script
+        if mode in ("gh2_cdn_app", "gh2_widgets", "gh2_widget_variants", "gh2_dd", "gh2_dd_extras"):
             data = html.escape(json.dumps([[str(v["value"]), v["label"]] for v in values]))
             return (f'<div class="field select">{_label(qid, label_text, req)}'
                     f'<input type="text" id="{qid}" role="combobox" aria-autocomplete="list" '
@@ -218,7 +222,7 @@ def _render(q, mode) -> str:
                 f'<ul id="{qid}-listbox" role="listbox" hidden></ul></div>')
     itype = {"email": "email", "phone": "tel"}.get(qid, "text")
     body = f'{_label(qid, label_text, star)}<input type="{itype}" id="{qid}"{areq}>'
-    if qid == "phone" and mode in ("gh2_widgets", "gh2_widget_variants"):
+    if qid == "phone" and mode in ("gh2_widgets", "gh2_widget_variants", "gh2_dd_extras"):
         # FIXTURE ASSUMPTION (structure observed in B3): a combobox inside the phone field's
         # group, labelled differently from any question; here a dialling-country list equal to
         # the country question's options.
@@ -239,6 +243,7 @@ const form = document.getElementById('application-form');
 const uploads = {};
 for (const cb of document.querySelectorAll('input[role=combobox]')) {
   const lb = document.getElementById(cb.getAttribute('aria-controls'));
+  if (!lb) continue;  // a dropdown without a list in the page: its own script handles it
   cb.addEventListener('click', () => { lb.hidden = false; cb.setAttribute('aria-expanded', 'true'); });
   for (const opt of lb.querySelectorAll('[role=option]')) {
     opt.addEventListener('click', () => {
@@ -453,6 +458,124 @@ _VARIANTS_JS = """
 """
 
 
+def _extra_dropdown(cid, text, opts, required) -> str:
+    data = html.escape(json.dumps([[str(i), o] for i, o in enumerate(opts)]))
+    areq = ' aria-required="true"' if required else ""
+    return (f'<div class="field"><span id="{cid}-label">{html.escape(text)}</span>'
+            f'<input type="text" id="{cid}" role="combobox" aria-expanded="false" '
+            f'aria-labelledby="{cid}-label" data-options="{data}"{areq}></div>')
+
+
+# Dropdown behaviours for the ADAPTER (gh2_dd / gh2_dd_extras, cfg dd, delay_ms). Every one is a
+# FIXTURE ASSUMPTION: none has been seen on a real page (run #9 saw no opening evidence at
+# all). Lists are appended to <body>; an option is chosen by clicking it, which sets the
+# control's text and data-value and closes the list.
+#   click_popup     pressing on the control opens the list (linked by aria-controls)
+#   type_filter     as click_popup; typing also filters the list (the adapter never types)
+#   type_only       the list opens only while typing (a search-as-you-type control)
+#   arrow_down      only ArrowDown on the focused control opens it
+#   trigger_button  only a separate button next to the control opens it
+#   two_triggers    two such buttons (ambiguous)
+#   locale_gate     handlers are attached only after a locale file loads at page load; until
+#                   then each press retries that request and nothing opens
+#   locale_on_open  opening requests a locale file, then shows the list
+#   delayed         busy first, options after delay_ms
+#   virtualized     only the first 5 options are rendered (aria-setsize says more)
+#   inert           never opens
+#   duplicate_option  the list shows one label twice
+#   preselect_first   the first option is highlighted (aria-selected) when the list opens
+#   ignores_choice    clicking an option closes the list without choosing it
+#   wrong_value       the control shows the label but keeps a different value
+_DD_JS = """
+(() => {
+  const DD = %DD%, DELAY = %DELAY%;
+  const open = new Map();
+  let seq = 0;
+  const choose = (cb, o) => {
+    if (DD === 'ignores_choice') { hide(cb); return; }
+    cb.value = o.textContent; cb.dataset.value = DD === 'wrong_value' ? 'zz' : o.dataset.value;
+    cb.dispatchEvent(new Event('change')); hide(cb);
+  };
+  const render = (cb, p, pairs) => {
+    const items = DD === 'duplicate_option' ? pairs.concat([[pairs[0][0] + 'x', pairs[0][1]]]) : pairs;
+    const limit = DD === 'virtualized' ? 5 : items.length;
+    items.slice(0, limit).forEach(([v, l], i) => {
+      const o = document.createElement('li');
+      o.setAttribute('role', 'option'); o.dataset.value = v; o.textContent = l;
+      o.setAttribute('aria-selected', DD === 'preselect_first' && i === 0 ? 'true' : 'false');
+      if (DD === 'virtualized') {
+        o.setAttribute('aria-setsize', String(items.length)); o.setAttribute('aria-posinset', String(i + 1));
+      }
+      o.addEventListener('click', () => choose(cb, o));
+      p.append(o);
+    });
+  };
+  const show = (cb) => {
+    if (open.has(cb) || DD === 'inert') return;
+    const p = document.createElement('ul');
+    p.id = 'dd-pop-' + (++seq); p.setAttribute('role', 'listbox');
+    const r = cb.getBoundingClientRect();
+    Object.assign(p.style, {position: 'absolute', left: (r.left + scrollX) + 'px',
+      top: (r.bottom + scrollY) + 'px', background: '#fff', margin: '0', padding: '2px'});
+    document.body.append(p);
+    open.set(cb, p);
+    cb.setAttribute('aria-expanded', 'true'); cb.setAttribute('aria-controls', p.id);
+    const pairs = JSON.parse(cb.dataset.options);
+    if (DD === 'delayed') {
+      p.setAttribute('aria-busy', 'true');
+      setTimeout(() => { render(cb, p, pairs); p.removeAttribute('aria-busy'); }, DELAY);
+    } else if (DD === 'locale_on_open') {
+      p.setAttribute('aria-busy', 'true');
+      fetch('/locales/en/options.json').then((x) => x.json())
+        .then(() => { render(cb, p, pairs); p.removeAttribute('aria-busy'); }).catch(() => {});
+    } else {
+      render(cb, p, pairs);
+    }
+  };
+  const hide = (cb) => {
+    const p = open.get(cb);
+    if (!p) return;
+    p.remove(); open.delete(cb);
+    cb.setAttribute('aria-expanded', 'false'); cb.removeAttribute('aria-controls');
+  };
+  const attach = (cb) => {
+    if (['trigger_button', 'two_triggers'].includes(DD)) {
+      for (let i = 0; i < (DD === 'two_triggers' ? 2 : 1); i++) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'dd-toggle'; b.setAttribute('aria-label', 'Toggle options');
+        cb.after(b);
+        b.addEventListener('click', () => (open.has(cb) ? hide(cb) : show(cb)));
+      }
+    } else if (DD === 'arrow_down') {
+      cb.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown') show(cb); });
+    } else if (DD === 'type_only') {
+      cb.addEventListener('input', () => show(cb));
+    } else {
+      cb.addEventListener('mousedown', () => show(cb));
+    }
+    if (DD === 'type_filter') {
+      cb.addEventListener('input', () => {
+        const p = open.get(cb); if (!p) return;
+        for (const o of p.children) o.hidden = !o.textContent.toLowerCase().includes(cb.value.toLowerCase());
+      });
+    }
+    cb.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(cb); });
+  };
+  const boxes = Array.from(document.querySelectorAll('input[role=combobox][data-options]'));
+  if (DD === 'locale_gate') {
+    let ready = false;
+    const load = () => fetch('/locales/en/common.json').then((x) => {
+      if (!x.ok) throw new Error('locale'); return x.json();
+    }).then(() => { if (!ready) { ready = true; boxes.forEach(attach); } });
+    load().catch(() => {});
+    for (const cb of boxes) cb.addEventListener('mousedown', () => { if (!ready) load().catch(() => {}); });
+  } else {
+    boxes.forEach(attach);
+  }
+})();
+"""
+
+
 def _form_page(board, job_id, token, cfg) -> HTMLResponse:
     j = JOBS[(board, job_id)]
     mode = cfg["mode"]
@@ -467,6 +590,12 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
                + "".join(f'<label for="{q["fields"][0]["name"]}">Attach</label>'
                          f'<input type="file" id="{q["fields"][0]["name"]}">' for q in files)
                + "</div>")
+    if mode in ("gh2_dd", "gh2_dd_extras"):
+        if mode == "gh2_dd_extras":  # unmatched dropdowns, one required (FIXTURE ASSUMPTION)
+            qs += _extra_dropdown("extra-1", "How did you hear about this job?",
+                                  ["Job board", "Referral", "Other"], True)
+        qs += ("<script>" + _DD_JS.replace("%DD%", json.dumps(cfg.get("dd") or "click_popup"))
+               .replace("%DELAY%", str(int(cfg.get("delay_ms") or 0))) + "</script>")
     if mode in ("gh2_widgets", "gh2_widget_variants"):
         # FIXTURE ASSUMPTIONS: two standalone labelled comboboxes not in the job data (one
         # required); lists are built when a combobox is opened (click) and removed on Escape.
@@ -561,6 +690,10 @@ def mount(app, ledger, cfg, accept) -> None:
   try { new WebSocket(CDN.replace(/^http/, 'ws') + '/gh2-cdn/ws'); } catch (e) {}
   document.documentElement.dataset.cdnApp = 'ran';
 })();"""
+
+    @app.get("/locales/{lang}/{ns}.json")
+    def locale_file(lang: str, ns: str):  # FIXTURE ASSUMPTION: static translation strings
+        return JSONResponse({"locale": "fixture", "strings": {}})
 
     @app.get("/gh2/{board}/jobs/{job_id}/options.json")
     def widget_options(board: str, job_id: str):  # must never be reached during inspection

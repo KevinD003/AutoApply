@@ -217,3 +217,31 @@ def test_refused_request_paths_are_published_as_shapes_only(receiver):
 def test_path_shapes(path, shape):
     assert ro.path_shape(path) == shape and ro._allowed(shape)
     assert not ro._allowed("/acme/jobs")  # a non-generic word is never printable
+
+
+def _inspect_dd(receiver, dd):
+    receiver.config(mode="gh2_dd", dd=dd)
+    obs = ro.observe_page(BOARD, JOB, base=BASE, prefix="gh2", api_json=api(),
+                          inspect_widgets=True)  # fmt: skip
+    return obs["inspection"]
+
+
+def test_run9_signature_is_consistent_with_a_locale_gate_but_does_not_prove_it(receiver):
+    """Under the inspection policy every data request is refused. A widget that waits for a
+    locale file (FIXTURE ASSUMPTION) then shows what run #9 showed on the real page: click and
+    focus, no opening evidence, no DOM change, and refused GET /locales/*/*.json at load and
+    during openings. A widget that never opens shows the same except for those requests. The
+    shared signature is consistent with a locale gate; it does not establish one."""
+    gate = _inspect_dd(receiver, "locale_gate")
+    shapes = {s["path_shape"] for s in gate["data_requests_refused"]["shapes_at_load"]}
+    assert shapes == {"/locales/*/*.json"}
+    assert {s["path_shape"] for s in gate["data_requests_refused"]["shapes_during_actions"]} == (
+        {"/locales/*/*.json"}
+    )
+    for w in gate["widgets"]:
+        assert w["open_state"] == "not_opened" and w["click"]["completed"]
+        assert w["focus_on_target"] and w["added_visible_elements"] == 0
+    receiver.reset()
+    inert = _inspect_dd(receiver, "inert")
+    assert inert["data_requests_refused_total"] == 0
+    assert {w["open_state"] for w in inert["widgets"]} == {"not_opened"}

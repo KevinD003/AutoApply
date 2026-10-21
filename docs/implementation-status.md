@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-21 (diagnostic re-observation run #9: no opening evidence within the window; required evidence consistent; external activity stopped). For requirement-by-requirement evidence see
+Last updated: 2026-10-21 (run #9 closed; local dropdown readiness built and tested; manual checklist and next decision point prepared, not authorized). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,45 @@ Last updated: 2026-10-21 (diagnostic re-observation run #9: no opening evidence 
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Local readiness for dropdown support (2026-10-21; local only, no external request)
+
+- **Run #9 closed.**
+  - Run [39612152070](https://github.com/KevinD003/AutoApply/actions/runs/39612152070) on
+    `e1bd9e7` (pinned branch, CI #52). Workflow success; observation `completed`, 0 internal
+    errors.
+  - A 3×200; 1 navigation, 26 GET, 0 non-GET; 24 actions on 12 dropdowns.
+  - `not_opened` means no opening evidence within the 600 ms window for a click on the
+    control. It does not mean the widgets cannot open.
+  - Required evidence is consistent for all 19 mapped fields; the resume is required by its
+    group.
+  - Refused data requests: `GET /locales/*/*.json` only (evidence, not permission).
+- **Remaining unknowns on the real page:**
+  - how the dropdowns open, if they do;
+  - their options;
+  - what `u1`–`u5` ask (`u1` and `u2` are required);
+  - the missing location control and the page-managed coordinates;
+  - whether the widgets depend on the refused locale files.
+- **Built:**
+  - fixture dropdown behaviours `gh2_dd` / `gh2_dd_extras` (`_DD_JS`, each a labelled
+    assumption);
+  - the strategy engine `adapters/dropdowns.py` (click, ArrowDown, single trigger;
+    post-action evidence; exact selection; readback);
+  - adapter `greenhouse_dom` version 3;
+  - decision D31;
+  - the optional manual checklist `docs/manual-dropdown-checklist.md`;
+  - decision point A/B in the proposal doc (neither authorized).
+- **Unchanged:** `real_destinations` false for filling and submission. Location picker and
+  coordinates unsupported. C and D unapproved.
+- **Commands actually run (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - ruff check and format: clean;
+  - `tests/test_dropdown_strategies.py`: 18 passed;
+  - `tests/test_required_signals.py`: 14 passed;
+  - the run-#9 signature test in `tests/test_widget_detector.py`: passed;
+  - mutation: selecting the first option fails 2 strategy tests; ignoring network activity
+    during opening fails the network test;
+  - full backend suite: 399 passed.
+  - Not run here: the Compose scenarios (no Docker daemon); CI runs them.
 
 ## Diagnostic re-observation, run #9 (2026-10-21)
 

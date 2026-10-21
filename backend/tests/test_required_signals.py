@@ -121,3 +121,70 @@ def test_page_requires_a_field_that_has_an_approved_answer(api, receiver):
     aid = queue(api, app_id)
     assert runner.run_attempt(aid, "w1") == "confirmed"
     assert receiver.ledger()["acceptances"][0]["fields"]["question_8103"]
+
+
+# -- attachment groups, unreadable status, approval retirement ------------------------------
+
+
+def test_resume_group_required_by_the_page_runs_with_its_document(api, receiver):
+    """As on the real page (run #9): the resume is required by its group, not its input."""
+    receiver.config(mode="gh2_required_group")
+    aid = queue(api, v2_application(api))
+    assert runner.run_attempt(aid, "w1") == "confirmed"
+    led = receiver.ledger()
+    assert led["accepted"] == 1
+    assert [d["kind"] for d in led["disclosures"]].count("upload") == 1  # the resume only
+
+
+def test_cover_letter_group_required_by_the_page_blocks_without_a_document(api, receiver):
+    """Tested apart from the resume: the cover letter's group (file input and its text
+    alternative) is marked required; the package has no cover letter, so it stops."""
+    receiver.config(mode="gh2_required_cover_group")
+    by = mapping(receiver, "gh2_required_cover_group")
+    assert by["cover_letter"]["required_signals"]["group_aria"] is True
+    assert by["cover_letter"]["required_evidence"] == "page_required_api_optional"
+    assert by["resume"]["required_evidence"] == "consistent"
+    receiver.reset()
+    receiver.config(mode="gh2_required_cover_group")
+    app_id = v2_application(api)
+    assert answer_of(api, app_id, "cover_letter") is None
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert "cover_letter: required by the page" in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+def test_unreadable_required_status_stops_safely(api, receiver, monkeypatch):
+    receiver.config(mode="normal")
+    aid = queue(api, v2_application(api))
+    monkeypatch.setattr(gdom, "REQUIRED_SIGNALS_JS", "(id) => null")
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert ": not readable" in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+def test_approval_bound_to_an_earlier_adapter_version_is_retired(api, receiver):
+    """The required rule (v2) and the dropdown strategies (v3) changed what the adapter does:
+    an approval given under an earlier version is refused at queueing and retired."""
+    import uuid
+
+    from app.core.db import SessionLocal
+    from app.modules.execution import policy
+    from app.modules.preparation.models import PackageApproval
+
+    assert policy.ADAPTER_VERSIONS["greenhouse_dom"].startswith("greenhouse-dom-3+")
+    app_id = v2_application(api)
+    with SessionLocal() as db:
+        a = (db.query(PackageApproval)
+             .filter(PackageApproval.application_id == uuid.UUID(app_id))
+             .order_by(PackageApproval.approved_at.desc()).first())  # fmt: skip
+        a.adapter_version = "greenhouse-dom-1+" + gdom.EXTRACTION_VERSION
+        db.commit()
+        approval_id = a.id
+    r = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
+    assert r.status_code == 409 and "changed after you approved" in r.text
+    with SessionLocal() as db:
+        assert db.get(PackageApproval, approval_id).invalidated_at is not None
+    assert receiver.ledger()["disclosures"] == []

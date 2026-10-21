@@ -244,3 +244,29 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   - The adapter `greenhouse_dom` moved to version 2 for this. Approvals bound to version 1
     are retired at queueing (D28). Package content is unchanged, so `SCHEMA_VERSION` stays 2.
 
+## D31 — Dropdowns are handled by explicit strategies with evidence, never by guessing
+- **Approach:** a dropdown without a list in the page at load is handled only by a named
+  strategy (`adapters/dropdowns.py`). Each strategy is one bounded action:
+  - a click on the control;
+  - ArrowDown;
+  - a click on the single trigger beside it.
+- **Trigger candidates** are found separately from the input: buttons and popup triggers in
+  the largest container holding no other form control. More than one candidate is refused.
+- **Opened** only with post-action evidence (the inspection probes, `classify_open`): a
+  stable, complete list equal to the approved options. Verification happens before the
+  disclosure gate, and nothing is selected then.
+- **Selected** only by the exact approved label, plus the value where the option exposes
+  one. Never the first, highlighted or default option. No Enter, no typing, no scrolling.
+  Proven by readback.
+- **Refused before disclosure:**
+  - no strategy opened it;
+  - the list is partial, changing, loading or virtualized;
+  - options duplicated or different from the approved ones;
+  - options loaded from the network during the action (a checkpoint until verified);
+  - a failed attempt changed a value.
+- **Unmatched dropdowns** (for example a phone-country selector) are never interpreted; the
+  form is refused as having new fields. Location pickers and coordinates stay unsupported.
+- **Status:** every strategy is fixture-only (`CAPABILITIES`). `real_destinations` stays
+  false. The adapter moved to `greenhouse-dom-3`, so earlier approvals are retired at
+  queueing (D28).
+

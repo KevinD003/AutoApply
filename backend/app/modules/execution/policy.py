@@ -72,6 +72,9 @@ CAPABILITIES: dict[str, dict] = {
         # Each is a fixture assumption; none has been seen working on a real form.
         "unverified": {
             "combobox": "synthetic: opened by click, options in the DOM, value read back",
+            "dropdown_strategies": "synthetic only: click, ArrowDown or a single trigger, with "
+            "post-action evidence and readback (adapters/dropdowns.py CAPABILITIES); run #9 saw "
+            "no opening evidence on the real page within its window",
             "attachments": "synthetic: upload endpoint, status element and attachment ids",
             "submission": "synthetic: JSON POST to the form's submit path",
             "confirmation": "synthetic: a status message replacing the form",
@@ -99,7 +102,9 @@ ADAPTER_VERSIONS: dict[str, str] = {
     "greenhouse_hosted": f"greenhouse-hosted-1+{gh.EXTRACTION_VERSION}",
     # 2: required is checked by every page signal; only a page-required field the package
     # leaves empty blocks (the job data's requirement is never lowered).
-    "greenhouse_dom": f"greenhouse-dom-2+{gdom.EXTRACTION_VERSION}",
+    # 3: dropdowns without a list at load are handled by explicit, evidence-checked strategies
+    # (adapters/dropdowns.py), verified before disclosure.
+    "greenhouse_dom": f"greenhouse-dom-3+{gdom.EXTRACTION_VERSION}",
 }
 # Approvals given before bindings were recorded meant what the code then did: these routes and
 # these versions. They stay valid exactly as long as that is still what would run.
