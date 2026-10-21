@@ -104,7 +104,15 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     passed:
     - backend 484 passed, 1 skipped (the normal CI-only skip);
     - Playwright 30 passed;
-    - Compose and Docker smoke jobs passed.
+    - Compose and Docker smoke jobs passed;
+  - **CI #73** ([39663628144](https://github.com/KevinD003/AutoApply/actions/runs/39663628144))
+    (`81d9965`, status-document update): passed. Per-job test counts were not recorded;
+  - **CI #74** ([39664127329](https://github.com/KevinD003/AutoApply/actions/runs/39664127329))
+    (`fa019a3`, manual dropdown checklist questions 7 and 8): passed. Per-job test counts were
+    not recorded.
+- **Manual dropdown check (Path A):** chosen by the owner; pending the owner's own
+  observations with `docs/manual-dropdown-checklist.md`. No activity on the approved posting is
+  authorized in the meantime. Path B remains unapproved.
 
 **Evidence and capability matrix.** `fixture` = local fixture only; `observed` = seen
 read-only on one real page; `none` = not implemented. No capability cell is live.
