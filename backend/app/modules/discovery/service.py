@@ -19,7 +19,6 @@
 
 import logging
 from dataclasses import dataclass, field
-from urllib.parse import urljoin, urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -373,37 +372,13 @@ def provider(name: str, **kw) -> DiscoveryProvider:
 
 
 def application_route(db: Session, row: DiscoveredJob):
-    """How NoEfforts could apply to a discovered job: only once its application form has been
-    captured; until then, and for anything unsupported, a manual handoff."""
-    from app.modules.preparation.models import JobForm
+    """How NoEfforts could apply to a discovered job. A discovery record is never a form schema:
+    until the application form has been captured from the employer's own page, and for anything
+    unsupported, it is a manual handoff (providers.routing.route_for_job)."""
     from app.modules.providers import routing
 
     if row.job_id is None:
-        return routing.RouteDecision(
-            "manual_handoff",
-            "manual_handoff",
-            ["the source record is incomplete"],
-            "Import this job manually.",
-        )
-    job = db.get(Job, row.job_id)
-    form = db.scalar(
-        select(JobForm)
-        .where(JobForm.job_id == job.id, JobForm.user_id == job.user_id)
-        .order_by(JobForm.version.desc())
-    )
-    if form is None:
-        return routing.RouteDecision(
-            "manual_handoff",
-            "manual_handoff",
-            ["no application form captured yet"],
-            "Capture the application form first.",
-        )
-    p = urlsplit(job.url or "")
-    action = (form.schema or {}).get("action")
-    destination = {
-        "origin": f"{p.scheme}://{p.netloc}" if p.netloc else None,
-        "url": job.url,
-        "submit_url": urljoin(job.url, action) if job.url and action else None,
-        "form_source": form.source,
-    }
-    return routing.decide(destination, job.user_id)
+        return routing.RouteDecision("manual_handoff", "manual_handoff",
+                                     ["the source record is incomplete"],
+                                     "Import this job manually.")  # fmt: skip
+    return routing.route_for_job(db, db.get(Job, row.job_id))

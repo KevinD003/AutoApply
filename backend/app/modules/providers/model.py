@@ -12,7 +12,16 @@ Four kinds of provider exist:
 A capability is never advertised because a fixture supports it. Its support level records the
 evidence separately (`Support`): implemented against a local fixture, observed on a real page,
 supported for live filling, supported for live submission. Each level requires the previous
-one (`check_spec`)."""
+one (`check_spec`).
+
+Workflow traits are kept apart from capabilities: whether an ATS needs a login, a manual
+verification step, may show a CAPTCHA or spans several pages says what the workflow demands,
+not what NoEfforts can do. A trait is "yes"/"no" only with evidence; "expected" for a planned
+adapter's specification; "unknown" otherwise.
+
+The routing vocabulary (`ROUTING_CAPABILITIES`) and the execution interface (`INTERFACE`) are
+the names used in docs/provider-architecture.md; both are views over the capabilities and
+operations below, never separate claims."""
 
 import enum
 from dataclasses import dataclass, field
@@ -59,6 +68,22 @@ class Capability(enum.StrEnum):
     official_api_submission = "official_api_submission"
 
 
+class Trait(enum.StrEnum):
+    login_required = "login_required"
+    manual_verification_required = "manual_verification_required"
+    captcha_possible = "captcha_possible"
+    multi_step = "multi_step"
+
+
+TRAIT_VALUES = ("yes", "no", "expected", "unknown", "not_applicable")
+
+
+@dataclass(frozen=True)
+class TraitValue:
+    value: str = "unknown"  # one of TRAIT_VALUES
+    note: str = ""
+
+
 @dataclass(frozen=True)
 class Support:
     """Evidence for one capability. Absent from a spec = not implemented at all."""
@@ -92,12 +117,18 @@ class ProviderSpec:
     environments: tuple[str, ...] = ("development", "test")
     real_destinations_enabled: bool = False
     status: str = ""  # one line, honest about the evidence
+    traits: dict[Trait, TraitValue] = field(default_factory=dict)
+    stage: str = "implemented"  # "implemented" | "planned" (a specification only: no code)
+    ats: str | None = None  # the ATS identity (jobs.canonical.detect_ats) this provider serves
 
     def support(self, cap: Capability) -> Support:
         return self.capabilities.get(cap, Support())
 
     def can(self, op: Operation) -> bool:
         return op in self.operations
+
+    def trait(self, t: Trait) -> TraitValue:
+        return self.traits.get(t, TraitValue())
 
 
 class SpecError(ValueError):
@@ -106,6 +137,15 @@ class SpecError(ValueError):
 
 def check_spec(spec: ProviderSpec) -> None:
     """Invariants every registered provider must satisfy."""
+    if spec.stage not in ("implemented", "planned"):
+        raise SpecError(f"{spec.name}: unknown stage {spec.stage}")
+    if spec.stage == "planned" and (spec.operations or spec.capabilities):
+        raise SpecError(f"{spec.name}: a planned adapter has no operations or capabilities")
+    for t, v in spec.traits.items():
+        if v.value not in TRAIT_VALUES:
+            raise SpecError(f"{spec.name}.{t}: unknown trait value {v.value}")
+        if v.value == "expected" and spec.stage != "planned":
+            raise SpecError(f"{spec.name}.{t}: 'expected' is only for a planned specification")
     for cap, s in spec.capabilities.items():
         if s.live_submit and not s.live_fill and cap != Capability.official_api_submission:
             raise SpecError(f"{spec.name}.{cap}: live submission without live filling")
@@ -130,3 +170,56 @@ def check_spec(spec: ProviderSpec) -> None:
 def matrix(spec: ProviderSpec) -> dict[str, str]:
     """{capability: level} for every capability (machine-readable; "none" when absent)."""
     return {c.value: spec.support(c).level() for c in Capability}
+
+
+# The execution interface, as named in docs/provider-architecture.md. Each name is implemented by
+# the operations listed (the runner drives them; adapters keep their own method names).
+INTERFACE: dict[str, tuple[Operation, ...]] = {
+    "inspect_application": (Operation.inspect,),
+    "extract_form_schema": (Operation.extract_form,),
+    "prepare_application": (Operation.prepare,),
+    "validate_application": (Operation.validate_before_disclosure,),
+    "request_user_action": (Operation.checkpoint,),
+    "upload_documents": (Operation.upload,),
+    "submit_application": (Operation.submit,),
+    "collect_confirmation_evidence": (Operation.classify_outcome, Operation.collect_evidence),
+    "reconcile_unknown_outcome": (Operation.reconcile,),
+}
+
+
+def interface(spec: ProviderSpec) -> dict[str, bool]:
+    """{interface operation: implemented} — implemented only when every operation behind it is."""
+    return {name: all(spec.can(op) for op in ops) for name, ops in INTERFACE.items()}
+
+
+# The routing vocabulary: capability names → the evidence-levelled capability behind each (or
+# the workflow trait). A view, never a separate claim.
+ROUTING_CAPABILITIES: dict[str, Capability | Trait] = {
+    "discovery": Capability.discovery,
+    "public_schema_read": Capability.posting_read,
+    "API_submission": Capability.official_api_submission,
+    "browser_inspection": Capability.form_extract,
+    "browser_fill": Capability.deterministic_fill,
+    "document_upload": Capability.file_upload,
+    "login_required": Trait.login_required,
+    "manual_verification_required": Trait.manual_verification_required,
+    "CAPTCHA_possible": Trait.captcha_possible,
+    "multi_step": Trait.multi_step,
+    "location_picker": Capability.location_picker,
+    "custom_dropdown": Capability.custom_dropdowns,
+    "confirmation_detection": Capability.confirmation_detection,
+}
+
+
+def routing_view(spec: ProviderSpec) -> dict[str, str]:
+    """{routing name: support level, or trait value}. Browser inspection is reported only for
+    providers that read pages in a browser (browser and observation kinds)."""
+    out = {}
+    for name, ref in ROUTING_CAPABILITIES.items():
+        if isinstance(ref, Trait):
+            out[name] = spec.trait(ref).value
+        elif name == "browser_inspection" and spec.kind not in (Kind.browser, Kind.observation):
+            out[name] = "none"
+        else:
+            out[name] = spec.support(ref).level()
+    return out

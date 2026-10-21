@@ -107,6 +107,7 @@ export default function JobPage() {
           {job.status !== "new" && <Button variant="secondary" onClick={() => patch({ status: "new" })}>Reset to new</Button>}
         </div>
       </Card>
+      <RouteCard jobId={id} />
       <FormCard jobId={id} onPrepare={prepare} />
       <Card title="Why this job matches (or doesn't)">
         <ul className="space-y-2">
@@ -139,6 +140,47 @@ interface FormInfo {
   source: string;
   source_ref: string | null;
   schema: { title: string | null; fields: unknown[] };
+}
+
+const ROUTE_LABEL: Record<string, string> = {
+  api: "Authorized API (local test fixture only)",
+  browser: "Browser adapter (local test fixture only)",
+  checkpoint: "Needs you: a step NoEfforts cannot do",
+  manual_handoff: "Manual: apply on the employer's site",
+};
+
+function RouteCard({ jobId }: { jobId: string }) {
+  const [route, setRoute] = useState<{ route: string; provider: string; message: string } | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const load = useCallback(() => {
+    setError(null);
+    api<{ route: string; provider: string; message: string }>(`/jobs/${jobId}/route`).then(setRoute).catch(setError);
+  }, [jobId]);
+  useEffect(() => {
+    load();
+  }, [load]);
+  return (
+    <Card
+      title="How NoEfforts could apply"
+      actions={
+        <Button variant="secondary" onClick={load}>
+          Check again
+        </Button>
+      }
+    >
+      <ErrorBox error={error} />
+      {route && (
+        <div className="space-y-1 text-sm">
+          <p>
+            <Badge tone={route.route === "browser" || route.route === "api" ? "indigo" : "amber"}>
+              {ROUTE_LABEL[route.route] ?? route.route}
+            </Badge>
+          </p>
+          {route.message && <p className="text-slate-700">{route.message}</p>}
+        </div>
+      )}
+    </Card>
+  );
 }
 
 function FormCard({ jobId, onPrepare }: { jobId: string; onPrepare: () => void }) {

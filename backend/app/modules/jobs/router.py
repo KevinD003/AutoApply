@@ -290,6 +290,19 @@ def get_job(job_id: uuid.UUID, user: User = Depends(current_user), db: Session =
     )
 
 
+@router.get("/{job_id}/route")
+def get_route(job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """How NoEfforts could apply to this job now: an authorized API, a supported browser
+    adapter, a checkpoint for the user, or a manual handoff, with the reasons in order."""
+    from app.modules.providers import registry, routing
+
+    job = _owned(db, user, job_id)
+    d = routing.route_for_job(db, job)
+    spec = registry.PROVIDERS.get(d.provider)
+    return {"route": d.route, "provider": d.provider, "message": d.message, "steps": d.steps,
+            "stage": spec.stage if spec else None}  # fmt: skip
+
+
 @router.patch("/{job_id}", response_model=JobOut)
 def patch_job(
     job_id: uuid.UUID,

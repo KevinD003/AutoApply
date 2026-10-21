@@ -4,6 +4,8 @@ Nothing here is enabled for a real destination: `real_destinations_enabled` is f
 everywhere, so no capability has live filling or live submission support. "observed" means
 seen on one real page under a separately approved read-only scope, never more."""
 
+from dataclasses import replace
+
 from app.modules.providers.model import (
     FIXTURE,
     Capability,
@@ -11,8 +13,12 @@ from app.modules.providers.model import (
     Operation,
     ProviderSpec,
     Support,
+    Trait,
+    TraitValue,
     check_spec,
+    interface,
     matrix,
+    routing_view,
 )
 
 C, Op = Capability, Operation
@@ -159,6 +165,15 @@ PROVIDERS: dict[str, ProviderSpec] = {
         },
         status="Potential future discovery provider; not yet connected or validated.",
     ),
+    "workday": ProviderSpec(
+        name="workday",
+        kind=Kind.browser,
+        description="Future Workday adapter: a specification only (docs/provider-architecture.md"
+        " §7). No code, no fixture, no observation.",
+        operations=frozenset(),
+        stage="planned",
+        status="Planned only. Workday applications are not supported: no automation exists.",
+    ),
     "manual_handoff": ProviderSpec(
         name="manual_handoff",
         kind=Kind.manual,
@@ -168,6 +183,61 @@ PROVIDERS: dict[str, ProviderSpec] = {
         status="Always available.",
     ),
 }
+
+T, V = Trait, TraitValue
+_NA = {t: V("not_applicable") for t in Trait}
+# What each workflow demands, with the evidence for it. "yes"/"no" only where it was seen (a
+# fixture's own design counts only for that fixture); "expected" only for a specification.
+_TRAITS: dict[str, dict[Trait, TraitValue]] = {
+    "fixture_ats": {
+        T.login_required: V("no", "fixture design"),
+        T.manual_verification_required: V("yes", "fixture design: an emailed code, entered by "
+                                                 "the user"),
+        T.captcha_possible: V("yes", "fixture design: a CAPTCHA mode; a checkpoint, never solved"),
+        T.multi_step: V("no", "fixture design"),
+    },
+    "greenhouse_hosted": {
+        T.login_required: V("unknown", "fixture approximation only"),
+        T.manual_verification_required: V("unknown", "the emailed-code step is the fixture's "
+                                                     "own design"),
+        T.captcha_possible: V("unknown", "handled as a checkpoint if it appears"),
+        T.multi_step: V("unknown", "fixture approximation only"),
+    },
+    "greenhouse_dom": {
+        T.login_required: V("no", "the observed posting loaded without an account (runs #3-#9)"),
+        T.manual_verification_required: V("unknown", "never submitted; not observed"),
+        T.captcha_possible: V("unknown", "none seen in read-only runs #3-#9; a checkpoint if it "
+                                         "appears, never solved"),
+        T.multi_step: V("no", "the observed posting was one page"),
+    },
+    "greenhouse_readonly": {
+        T.login_required: V("no", "the observed posting loaded without an account"),
+        T.manual_verification_required: V("not_applicable", "never fills or submits"),
+        T.captcha_possible: V("unknown", "none seen; the observation stops on a challenge"),
+        T.multi_step: V("no", "the observed posting was one page"),
+    },
+    "fake_api": {
+        T.login_required: V("no", "credentials, not a login: the user's grant plus a token"),
+        T.manual_verification_required: V("no", "fixture design"),
+        T.captcha_possible: V("no", "an API; fixture design"),
+        T.multi_step: V("no", "draft, documents, submit: API calls, not form pages"),
+    },
+    "freehire": _NA,
+    "freehire_mock": _NA,
+    "manual_handoff": _NA,
+    "workday": {
+        T.login_required: V("expected", "employer-scoped candidate accounts and sessions"),
+        T.manual_verification_required: V("expected", "email verification, security prompts"),
+        T.captcha_possible: V("expected", "a checkpoint for the user, never solved"),
+        T.multi_step: V("expected", "multi-step forms with per-step validation"),
+    },
+}  # fmt: skip
+# The ATS identity each provider serves (jobs.canonical.detect_ats names). Fixture origins are
+# identified as "unknown", so fixture adapters are chosen by the captured form, not by host.
+_ATS = {"greenhouse_hosted": "greenhouse", "greenhouse_dom": "greenhouse",
+        "greenhouse_readonly": "greenhouse", "workday": "workday"}  # fmt: skip
+PROVIDERS = {k: replace(v, traits=_TRAITS.get(k, {}), ats=_ATS.get(k))
+             for k, v in PROVIDERS.items()}  # fmt: skip
 
 for _spec in PROVIDERS.values():
     check_spec(_spec)
@@ -190,6 +260,20 @@ def summary() -> dict:
             "capabilities": matrix(p),
             "real_destinations_enabled": p.real_destinations_enabled,
             "status": p.status,
+            "stage": p.stage,
+            "ats": p.ats,
+            "traits": {t.value: {"value": v.value, "note": v.note} for t, v in p.traits.items()},
+            "routing_capabilities": routing_view(p),
+            "interface": interface(p),
         }
         for p in PROVIDERS.values()
     }
+
+
+def planned_for_ats(ats: str) -> ProviderSpec | None:
+    """The planned (specification-only) adapter for an ATS identity, if any."""
+    return next((p for p in PROVIDERS.values() if p.stage == "planned" and p.ats == ats), None)
+
+
+def implemented_for_ats(ats: str) -> list[ProviderSpec]:
+    return [p for p in PROVIDERS.values() if p.stage == "implemented" and p.ats == ats]
