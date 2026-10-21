@@ -75,6 +75,13 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     during opening fails the network test;
   - full backend suite: 399 passed.
   - Not run here: the Compose scenarios (no Docker daemon); CI runs them.
+- **CI #56** ([39621845104](https://github.com/KevinD003/AutoApply/actions/runs/39621845104))
+  on `b38631e`, all four jobs passed:
+  - backend 398 passed, 1 skipped, including `test_dropdown_strategies.py` (18),
+    `test_required_signals.py` (14) and `test_widget_detector.py` (26);
+  - frontend: full Playwright passed;
+  - execution-compose passed;
+  - docker-smoke passed.
 
 ## Diagnostic re-observation, run #9 (2026-10-21)
 
