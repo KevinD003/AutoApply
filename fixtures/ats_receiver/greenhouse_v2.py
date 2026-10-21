@@ -36,6 +36,8 @@ Modes (cfg["mode"]): gh2_duplicate_id, gh2_label_mismatch, gh2_missing_control,
 gh2_validation_fail, gh2_new_question, gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, gh2_many_assets,
 gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, gh2_attach_group(_wrong|_shared), gh2_widgets (cfg widget_bad: submit, fetch, nav, captcha,
 filechooser, required, select, dialog, upload, hash, images, covered),
+gh2_widget_variants (cfg variant, delay_ms; see _VARIANTS_JS), gh2_required_unmarked,
+gh2_required_extra, gh2_required_marker_only, gh2_required_answered, gh2_required_group,
 gh2_cdn_app (cfg cdn,
 redirect_away), plus the
 receiver-wide upload_fail, error_before_accept, error_after_accept, drop_after_accept.
@@ -142,7 +144,20 @@ def _render(q, mode) -> str:
         label_text = "Do you need a visa?"
     if mode == "gh2_missing_control" and qid == "question_8103":
         return ""
-    areq = ' aria-required="true"' if req else ""
+    # How the page marks required can differ from the job data (FIXTURE ASSUMPTIONS):
+    # gh2_required_unmarked: first_name carries no marker although the job data requires it;
+    # gh2_required_extra / gh2_required_marker_only: cover_letter (optional in the job data)
+    # is required by aria-required / only by a "*" on its label; gh2_required_answered: the
+    # same for question_8103 by aria-required; gh2_required_group: the attachment's group,
+    # not its input, carries aria-required.
+    dom_req = req
+    if mode == "gh2_required_unmarked" and qid == "first_name":
+        dom_req = False
+    if (mode, qid) in (("gh2_required_extra", "cover_letter"),
+                       ("gh2_required_answered", "question_8103")):  # fmt: skip
+        dom_req = True
+    star = dom_req or (mode == "gh2_required_marker_only" and qid == "cover_letter")
+    areq = ' aria-required="true"' if dom_req else ""
     if t == "input_hidden":
         return f'<input type="hidden" id="{qid}">'
     if t == "input_file" and mode in ("gh2_attach_group", "gh2_attach_group_wrong"):
@@ -162,12 +177,15 @@ def _render(q, mode) -> str:
                 f'<label for="{qid}">Attach</label>'
                 f'<input type="file" id="{qid}"{areq}><span id="{qid}-status"></span></div>')
     if t == "input_file":
+        greq = ""
+        if mode == "gh2_required_group" and req:
+            greq, areq = ' aria-required="true"', ""
         alt = q["fields"][1]["name"] if len(q["fields"]) > 1 else None
         alt_html = (f'<button type="button" class="manual-toggle" data-for="{alt}">'
                     f'Enter manually</button><textarea id="{alt}" hidden '
                     f'aria-labelledby="{qid}-label"></textarea>') if alt else ""
-        return (f'<div class="field" role="group" aria-labelledby="{qid}-label">'
-                f'{_label(qid, label_text, req, for_id=False)}'
+        return (f'<div class="field" role="group" aria-labelledby="{qid}-label"{greq}>'
+                f'{_label(qid, label_text, star, for_id=False)}'
                 f'<input type="file" id="{qid}" aria-labelledby="{qid}-label"{areq} '
                 f'accept=".pdf,.doc,.docx,.txt,.rtf"><span id="{qid}-status" '
                 f'class="attachment-status"></span>{alt_html}</div>')
@@ -182,7 +200,7 @@ def _render(q, mode) -> str:
             opts = ""
         dup = (f'<input type="text" id="{qid}" aria-label="duplicate">'
                if mode == "gh2_duplicate_id" and qid == "question_8101" else "")
-        if mode in ("gh2_cdn_app", "gh2_widgets"):  # no list in the page until a script builds it
+        if mode in ("gh2_cdn_app", "gh2_widgets", "gh2_widget_variants"):  # list built by script
             data = html.escape(json.dumps([[str(v["value"]), v["label"]] for v in values]))
             return (f'<div class="field select">{_label(qid, label_text, req)}'
                     f'<input type="text" id="{qid}" role="combobox" aria-autocomplete="list" '
@@ -199,8 +217,8 @@ def _render(q, mode) -> str:
                 f'aria-expanded="false" aria-controls="{qid}-listbox"{areq}>'
                 f'<ul id="{qid}-listbox" role="listbox" hidden></ul></div>')
     itype = {"email": "email", "phone": "tel"}.get(qid, "text")
-    body = f'{_label(qid, label_text, req)}<input type="{itype}" id="{qid}"{areq}>'
-    if qid == "phone" and mode == "gh2_widgets":
+    body = f'{_label(qid, label_text, star)}<input type="{itype}" id="{qid}"{areq}>'
+    if qid == "phone" and mode in ("gh2_widgets", "gh2_widget_variants"):
         # FIXTURE ASSUMPTION (structure observed in B3): a combobox inside the phone field's
         # group, labelled differently from any question; here a dialling-country list equal to
         # the country question's options.
@@ -337,6 +355,104 @@ _WIDGETS_JS = """
 """
 
 
+# A second, independent widget model (gh2_widget_variants, cfg variant / delay_ms), written to
+# break the inspection detector's assumptions rather than to match them. Every combobox
+# behaves the same way within one variant. FIXTURE ASSUMPTIONS, not observations:
+#   portal_linked    list appended to <body> (outside the control's container), linked by
+#                    aria-controls once open; opens on mousedown, not on click
+#   portal_unlinked  the same, without any link; another listbox is visible from the start
+#   aria11           a wrapper (not the input) carries aria-expanded / aria-owns
+#   delayed          the list is busy, then filled after delay_ms
+#   no_roles         list and items without roles; only aria-expanded changes
+#   class_hint       as no_roles, items carry an "option" class
+#   silent           list and items without roles, and no state change at all
+#   wrong_target     only a separate toggle button opens it; the input does nothing
+#   data_dependent   items come from a data endpoint (refused under inspection): busy, then an
+#                    error alert
+#   virtualized      only the first 5 items are rendered, with aria-setsize/aria-posinset
+_VARIANTS_JS = """
+(() => {
+  const V = %VARIANT%, DELAY = %DELAY%, BASE = %BASE%;
+  const roleless = V === 'no_roles' || V === 'class_hint' || V === 'silent';
+  const open = new Map();
+  let seq = 0;
+  const show = (cb) => {
+    if (open.has(cb)) return;
+    const p = document.createElement(roleless ? 'div' : 'ul');
+    p.id = 'fx-pop-' + (++seq);
+    if (!roleless) p.setAttribute('role', 'listbox');
+    const r = cb.getBoundingClientRect();
+    Object.assign(p.style, {position: 'absolute', left: (r.left + scrollX) + 'px',
+      top: (r.bottom + scrollY) + 'px', background: '#fff', margin: '0', padding: '2px'});
+    document.body.append(p);
+    open.set(cb, p);
+    const holder = V === 'aria11' ? cb.closest('.fx-wrap') : cb;
+    if (V !== 'silent') holder.setAttribute('aria-expanded', 'true');
+    if (['portal_linked', 'delayed', 'data_dependent', 'virtualized'].includes(V)) {
+      cb.setAttribute('aria-controls', p.id);
+    }
+    if (V === 'aria11') holder.setAttribute('aria-owns', p.id);
+    const pairs = JSON.parse(cb.dataset.options);
+    const fill = (items, limit) => {
+      items.slice(0, limit ?? items.length).forEach(([v, l], i) => {
+        const o = document.createElement(roleless ? 'div' : 'li');
+        if (V === 'class_hint') o.className = 'fx-option';
+        if (!roleless) { o.setAttribute('role', 'option'); o.setAttribute('aria-selected', 'false'); }
+        if (V === 'virtualized') {
+          o.setAttribute('aria-setsize', String(items.length));
+          o.setAttribute('aria-posinset', String(i + 1));
+        }
+        o.dataset.value = v; o.textContent = l; p.append(o);
+      });
+    };
+    if (V === 'delayed') {
+      p.setAttribute('aria-busy', 'true');
+      setTimeout(() => { fill(pairs); p.removeAttribute('aria-busy'); }, DELAY);
+    } else if (V === 'data_dependent') {
+      p.setAttribute('aria-busy', 'true');
+      fetch(BASE + '/options.json').then((x) => x.json()).then((d) => {
+        p.removeAttribute('aria-busy'); fill(d);
+      }).catch(() => {
+        p.removeAttribute('aria-busy');
+        const e = document.createElement('div');
+        e.setAttribute('role', 'alert'); e.textContent = 'Options could not be loaded';
+        p.append(e);
+      });
+    } else {
+      fill(pairs, V === 'virtualized' ? 5 : undefined);
+    }
+  };
+  const hide = (cb) => {
+    const p = open.get(cb);
+    if (!p) return;
+    p.remove(); open.delete(cb);
+    const holder = V === 'aria11' ? cb.closest('.fx-wrap') : cb;
+    if (V !== 'silent') holder.setAttribute('aria-expanded', 'false');
+    cb.removeAttribute('aria-controls');
+    if (V === 'aria11') holder.removeAttribute('aria-owns');
+  };
+  for (const cb of document.querySelectorAll('input[role=combobox][data-options]')) {
+    if (V === 'aria11') {
+      const w = document.createElement('div');
+      w.className = 'fx-wrap'; w.setAttribute('aria-haspopup', 'listbox');
+      w.setAttribute('aria-expanded', 'false');
+      cb.before(w); w.append(cb);
+    }
+    if (V === 'silent') cb.removeAttribute('aria-expanded');
+    if (V === 'wrong_target') {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'fx-toggle'; b.setAttribute('aria-label', 'Show choices');
+      cb.after(b);
+      b.addEventListener('click', () => (open.has(cb) ? hide(cb) : show(cb)));
+    } else {
+      cb.addEventListener('mousedown', () => show(cb));
+    }
+    cb.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(cb); });
+  }
+})();
+"""
+
+
 def _form_page(board, job_id, token, cfg) -> HTMLResponse:
     j = JOBS[(board, job_id)]
     mode = cfg["mode"]
@@ -351,7 +467,7 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
                + "".join(f'<label for="{q["fields"][0]["name"]}">Attach</label>'
                          f'<input type="file" id="{q["fields"][0]["name"]}">' for q in files)
                + "</div>")
-    if mode == "gh2_widgets":
+    if mode in ("gh2_widgets", "gh2_widget_variants"):
         # FIXTURE ASSUMPTIONS: two standalone labelled comboboxes not in the job data (one
         # required); lists are built when a combobox is opened (click) and removed on Escape.
         def extra(cid, text, opts, required):
@@ -364,8 +480,16 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
                     ["Job board", "Referral", "Other"], True)
         qs += extra("extra-2", "Preferred contact time", ["Morning", "Afternoon", "Evening",
                                                           "Any time"], False)
-        qs += "<script>" + _WIDGETS_JS.replace("%BAD%", json.dumps(cfg.get("widget_bad") or ""))\
-            .replace("%BASE%", json.dumps(base)) + "</script>"
+        if mode == "gh2_widgets":
+            qs += "<script>" + _WIDGETS_JS.replace("%BAD%", json.dumps(cfg.get("widget_bad") or ""))\
+                .replace("%BASE%", json.dumps(base)) + "</script>"
+        else:
+            if cfg.get("variant") == "portal_unlinked":  # a list that is visible from the start
+                qs += ('<ul role="listbox" id="fx-decoy" aria-label="Language">'
+                       '<li role="option">English</li><li role="option">Deutsch</li></ul>')
+            qs += ("<script>" + _VARIANTS_JS.replace("%VARIANT%", json.dumps(cfg.get("variant") or ""))
+                   .replace("%DELAY%", str(int(cfg.get("delay_ms") or 0)))
+                   .replace("%BASE%", json.dumps(base)) + "</script>")
     if mode == "gh2_many_assets":  # same-origin requests beyond a small budget
         qs += "".join(f'<img alt="" src="/gh2-api/robots.txt?i={i}">' for i in range(10))
     if mode == "gh2_cdn_app":

@@ -97,7 +97,9 @@ CAPABILITIES: dict[str, dict] = {
 ADAPTER_VERSIONS: dict[str, str] = {
     "fixture_ats": f"fixture-ats-1+{forms.EXTRACTION_VERSION}",
     "greenhouse_hosted": f"greenhouse-hosted-1+{gh.EXTRACTION_VERSION}",
-    "greenhouse_dom": f"greenhouse-dom-1+{gdom.EXTRACTION_VERSION}",
+    # 2: required is checked by every page signal; only a page-required field the package
+    # leaves empty blocks (the job data's requirement is never lowered).
+    "greenhouse_dom": f"greenhouse-dom-2+{gdom.EXTRACTION_VERSION}",
 }
 # Approvals given before bindings were recorded meant what the code then did: these routes and
 # these versions. They stay valid exactly as long as that is still what would run.

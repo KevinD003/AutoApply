@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-21 (replacement widget inspection run #8 completed: 24 actions, no option list observable; external activity stopped). For requirement-by-requirement evidence see
+Last updated: 2026-10-21 (detector diagnosis after run #8, local only; a diagnostic re-observation is proposed, not authorized). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,44 @@ Last updated: 2026-10-21 (replacement widget inspection run #8 completed: 24 act
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Detector diagnosis after run #8 (2026-10-21; local only, no external request)
+
+- **Run-#8 detector limits** (details in the compatibility report):
+  - the expanded state was not compared;
+  - only the input's own `aria-controls`/`aria-owns`, or a sole visible `role=listbox`;
+  - `role=listbox` and `role=option` were assumed;
+  - one snapshot at 600 ms;
+  - `opened: false` covered 5 different situations, shown against an independent widget
+    model.
+- **Built:**
+  - structural per-action diagnostics and an `open_state` classification, with the same
+    actions and window;
+  - path shapes for refused data requests;
+  - an explicit `control_gone` case;
+  - required signals recorded separately for every control;
+  - adapter `greenhouse_dom` version 2: a page-required field with no approved answer
+    blocks; an unmarked field required by the job data keeps its requirement and runs.
+  - Decision D30.
+- **Tests:**
+  - `tests/test_widget_detector.py`: 11 variants of the independent model, classification
+    rules, path shapes;
+  - `tests/test_required_signals.py`: mutation-checked against the old rule;
+  - updated `tests/test_widget_inspection.py` and `tests/test_readonly_cli_process.py`.
+- **Commands actually run (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - ruff check and format: clean;
+  - focused (`test_widget_detector`, `test_required_signals`, `test_widget_inspection`,
+    `test_readonly_cli_process`, `test_gh_readonly`, `test_b3_policy`, `test_greenhouse_dom`,
+    `test_approval_binding`): 139 passed, 2 failed. The 2 were fixed: a test expecting the
+    old summary keys, and a crash when a refused navigation removed the control, now
+    `control_gone`. After the fixes, `test_widget_inspection.py`: 20 passed;
+  - full backend suite: 376 passed;
+  - run #8's detector (`181b7c3`) against the variants, in a scratch copy: `opened: false`
+    for `portal_unlinked`, `no_roles`, `class_hint`, `silent` and `wrong_target`;
+  - mutation: the old required rule fails 3 of the 4 execution tests.
+  - Not run here: the Compose scenarios (no Docker daemon); CI runs them.
+- **Not done:** no external request. A diagnostic re-observation is proposed in the
+  proposal doc and is not authorized.
 
 ## Replacement widget inspection, run #8 (2026-10-21)
 

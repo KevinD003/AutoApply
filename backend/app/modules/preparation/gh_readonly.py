@@ -447,6 +447,9 @@ def observe_page(
                 u = urlsplit(request.url)
                 data_refused.append({"phase": phase[0], "resource_type": request.resource_type,
                                      "kind": _category(u.netloc) if u.netloc else "no-host",
+                                     "host": u.hostname or "", "method": request.method,
+                                     "path_shape": path_shape(u.path),
+                                     "query_params": len([q for q in u.query.split("&") if q]),
                                      "same_origin": _origin_of(request.url) == origin})  # fmt: skip
                 return route.abort()
             if request.is_navigation_request() and request.frame == page.main_frame:
@@ -554,7 +557,9 @@ def observe_page(
         if inspect_widgets and api_json is not None and not bot_check:
             inspection = inspect_comboboxes(
                 page, html, api_json, limits, phase, stops, events, data_refused, left_ms,
-                CHALLENGE_SELECTORS, lambda: (seen["requests"], len(blocked)),
+                CHALLENGE_SELECTORS,
+                lambda: {"requests": seen["requests"], "blocked": len(blocked),
+                         "failed": len(failed)},
             )  # fmt: skip
         frames = []
         for f in page.frames[1:]:
@@ -746,6 +751,11 @@ def mapping_evidence(page, html: str, api_json: dict) -> dict:
             "group_label": "not_applicable" if c is None or c.group_key is None
             else gdom._norm(c.group_name) == label,
         }  # fmt: skip
+        signals = (
+            page.evaluate(gdom.REQUIRED_SIGNALS_JS, c.id)
+            if c is not None and _SAFE_ID.fullmatch(c.id)
+            else None
+        )
         options_at_load = None
         if c is not None and is_choice and _SAFE_ID.fullmatch(c.id):
             texts = page.evaluate(_OPTION_TEXT_JS, c.id)
@@ -772,6 +782,11 @@ def mapping_evidence(page, html: str, api_json: dict) -> dict:
             "fill_support": _FILL_SUPPORT.get(m.status, "supported")
             if observation == "unique" or m.status == "protocol" else "not_applicable",
             "control": _control_evidence(c, checks["visible"]) if c is not None else None,
+            # Kept apart; the job data's requirement ("required") is never lowered by them.
+            "required_signals": signals,
+            "required_evidence": "not_applicable"
+            if c is None or f.type.value == "unsupported"
+            else gdom.required_evidence(f.required, signals),
         }  # fmt: skip
         per_field.append(entry)
     keys = {f.key.removesuffix("[]") for f in fields}
@@ -787,6 +802,9 @@ def mapping_evidence(page, html: str, api_json: dict) -> dict:
     unmatched = []
     for c in gdom.unmatched_controls(fields, controls):
         e = _control_evidence(c, visible(c.id))
+        e["required_signals"] = (
+            page.evaluate(gdom.REQUIRED_SIGNALS_JS, c.id) if _SAFE_ID.fullmatch(c.id) else None
+        )
         e["alternative_of_api_field"] = c.id.endswith("_text") and c.id[:-5] in keys
         # Structure only (purpose is never inferred): inside the same group as an API field's
         # control; labelled like an API question; labelled on its own; or unlabelled.
@@ -1041,7 +1059,23 @@ _OUTPUT_WORDS = {
     "action_seconds", "events",
     "outcome", "completed", "policy_stop", "internal_error", "internal_errors",
     "inspection_complete", "fixture",
-    *INSPECTION_STOPS,
+    "group_label_marker", "required_evidence", "consistent",
+    "api_required_page_unmarked", "page_required_api_optional",
+    "open_state", "open_states", "opening_evidence", "partial_reasons", "click_failed",
+    "not_opened", "undetermined", "added_visible_elements", "opened_options_not_observable",
+    "partially_observed",
+    "observed_sufficiently", "expanded", "popup", "class_hint", "still_changing",
+    "loading", "setsize_larger", "fewer_than_api", "click", "target_box", "zero", "small",
+    "normal", "haspopup", "autocomplete", "wrapper_combobox", "focus_on_target", "before",
+    "after", "wrapper_before", "wrapper_after", "true", "false", "absent", "reference",
+    "aria-controls", "aria-owns", "aria-activedescendant", "none", "associated",
+    "associated_visible", "new_popups", "class_hint_popups", "source", "associated_popup",
+    "new_popup", "count", "counts_over_time", "setsize", "elsewhere",
+    "class_hint_candidates", "indicators", "class_hint_loading", "alerts_added",
+    "dom_mutations", "control_gone", "requests_during", "routed", "data_refused", "failed",
+    "list", "both",
+    "inline", "menu", "dialog", "grid", "tree", "refused_shapes", "shapes_at_load",
+    "shapes_during_actions", "path_shape", "query_params", *INSPECTION_STOPS,
 }  # fmt: skip
 VOCAB = frozenset(
     _OUTPUT_WORDS | STANDARD_NAMES | {f"{n}[]" for n in STANDARD_NAMES} | GH_TYPES
@@ -1122,9 +1156,71 @@ def _error_name(name: str | None) -> str | None:
     return name if name in ERROR_NAMES else "OtherError"
 
 
+# Generic path words that may be printed in a refused request's path shape; every other
+# segment is replaced by its shape (*num, *hex, *), so ids, tokens and names never appear.
+PATH_WORDS = frozenset({
+    "api", "v1", "v2", "v3", "v4", "assets", "static", "public", "build", "dist", "chunks",
+    "_next", "locales", "locale", "i18n", "translations", "lang", "config", "configuration",
+    "settings", "features", "feature_flags", "flags", "experiments", "countries", "country",
+    "phone", "phone_numbers", "dial_codes", "options", "values", "choices", "search",
+    "autocomplete", "suggest", "geo", "geocode", "places", "location", "locations", "cities",
+    "regions", "states", "address", "education", "schools", "degrees", "disciplines",
+    "questions", "fields", "schema", "form", "forms", "embed", "boards", "board", "jobs", "job",
+    "job_app", "apply", "application", "applications", "candidate", "candidates", "resume",
+    "upload", "uploads", "attachments", "presigned", "metrics", "telemetry", "analytics",
+    "events", "log", "logs", "health", "status", "demographic", "demographics", "eeoc",
+    "compliance", "consent", "privacy", "token", "session", "csrf", "data", "json",
+})  # fmt: skip
+_SHAPE_EXT = ("json", "js", "css", "txt", "xml")
+_PATH_SHAPE = re.compile(
+    r"(?:/(?:\*num|\*hex|\*|" + "|".join(re.escape(w) for w in sorted(PATH_WORDS)) + r")){1,12}"
+    r"(?:/\.\.\.)?(?:\.(?:" + "|".join(_SHAPE_EXT) + r"))?|/"
+)
+
+
+def path_shape(path: str) -> str:
+    """A refused request's path with every non-generic segment replaced by its shape."""
+    segs = [x for x in path.split("/") if x]
+    out = []
+    ext = ""
+    for i, seg in enumerate(segs[:12]):
+        if i == len(segs) - 1 and "." in seg:
+            base, _, e = seg.rpartition(".")
+            if e.lower() in _SHAPE_EXT:
+                seg, ext = base, "." + e.lower()
+        low = seg.lower()
+        if low in PATH_WORDS:
+            out.append(low)
+        elif seg.isdigit():
+            out.append("*num")
+        elif re.fullmatch(r"[0-9a-fA-F]{8,}", seg):
+            out.append("*hex")
+        else:
+            out.append("*")
+    if not out:
+        return "/"
+    return "/" + "/".join(out) + ("/..." if len(segs) > 12 else "") + ext
+
+
+def refused_shapes(entries: list[dict]) -> list[dict]:
+    """Refused data requests grouped by printable host (else its category), method, type,
+    path shape and number of query parameters (names and values never kept)."""
+    groups: dict[tuple, int] = {}
+    for d in entries:
+        host = d.get("host") or ""
+        host = host if _PRINTABLE_HOST.fullmatch(host) else d.get("kind", "other")
+        k = (host, d.get("method", "OTHER") if d.get("method") in METHODS else "OTHER",
+             d["resource_type"] if d["resource_type"] in RESOURCE_TYPES else "other",
+             d.get("path_shape") or "/", min(int(d.get("query_params") or 0), 99))  # fmt: skip
+        groups[k] = groups.get(k, 0) + 1
+    return [{"host": h, "method": m, "resource_type": t, "path_shape": p, "query_params": q,
+             "count": n} for (h, m, t, p, q), n in sorted(groups.items())]  # fmt: skip
+
+
 def _allowed(s: str) -> bool:
     return (
         s in VOCAB
+        or bool(_PATH_SHAPE.fullmatch(s))
         or bool(_ALIAS.fullmatch(s))
         or bool(_STOP_TEXT.fullmatch(s))
         or bool(_PRINTABLE_HOST.fullmatch(s))
@@ -1518,38 +1614,124 @@ _STATE_JS = """() => {
   };
 }"""
 
-# The list a combobox shows: its aria-controls/aria-owns target, else the only visible listbox.
-_OPEN_LIST_JS = """(id) => {
+# Structural probes for one widget action. They read the page only (no events are dispatched)
+# and leave nothing behind but a MutationObserver that is disconnected after the widget. Texts
+# of option-like elements are compared inside the worker and never leave it.
+_OPTION_ROLES = ("[role=option],[role=menuitem],[role=menuitemradio],[role=menuitemcheckbox],"
+                 "[role=treeitem],[role=gridcell]")  # fmt: skip
+_POPUP_ROLES = "[role=listbox],[role=menu],[role=grid],[role=tree],[role=dialog]"
+_PROBE_COMMON = (
+    "const OPT = '" + _OPTION_ROLES + "', POP = '" + _POPUP_ROLES + "';\n"
+    """const HINT_POP = ['[class*="menu" i]', '[class*="dropdown" i]', '[class*="popover" i]',
+                  '[class*="listbox" i]'].join(',');
+const HINT_OPT = '[class*="option" i]';
+const BUSY = '[aria-busy=true],[role=progressbar]';
+const HINT_BUSY = '[class*="loading" i],[class*="spinner" i]';
+const vis = (e) => e.checkVisibility
+  ? e.checkVisibility({visibilityProperty: true})
+  : !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
+const all = (sel) => Array.from(document.querySelectorAll(sel));
+"""
+)
+# Before the click: remember what is already visible, and count DOM changes from now on.
+_PRE_JS = (
+    "(id) => {\n"
+    + _PROBE_COMMON
+    + """
   const el = document.getElementById(id);
   if (!el) return null;
-  const vis = (e) => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
-  const ref = el.getAttribute('aria-controls') || el.getAttribute('aria-owns');
-  let lb = ref ? document.getElementById(ref) : null, via = 'aria';
-  if (!lb || !vis(lb)) {
-    const shown = Array.from(document.querySelectorAll('[role=listbox]')).filter(vis);
-    lb = shown.length === 1 ? shown[0] : null; via = 'only_visible_listbox';
+  const sel = [OPT, POP, HINT_POP, HINT_OPT, BUSY, HINT_BUSY, '[role=alert]'].join(',');
+  window.__neBefore = new Set(all(sel).filter(vis));
+  window.__neMut = {n: 0, last: 0, added: []};
+  if (window.__neObs) window.__neObs.disconnect();
+  window.__neObs = new MutationObserver((ms) => {
+    const m = window.__neMut;
+    m.n += ms.length; m.last = performance.now();
+    for (const r of ms) for (const a of r.addedNodes) {
+      if (a.nodeType === 1 && m.added.length < 500) m.added.push(a);
+    }
+  });
+  window.__neObs.observe(document.documentElement,
+                         {subtree: true, childList: true, attributes: true, characterData: true});
+  const r = el.getBoundingClientRect();
+  const wrap = el.parentElement && el.parentElement.closest('[role=combobox],[aria-haspopup]');
+  const box = (r.width * r.height === 0) ? 'zero'
+    : (r.width < 8 || r.height < 8) ? 'small' : 'normal';
+  return {box,
+          haspopup: el.getAttribute('aria-haspopup')
+            ?? (wrap && wrap.getAttribute('aria-haspopup')) ?? 'absent',
+          autocomplete: el.getAttribute('aria-autocomplete') ?? 'absent',
+          wrapper: !!wrap};
+}"""
+)
+# During and after the action: what is visible now that was not before.
+_PROBE_JS = (
+    "(id) => {\n"
+    + _PROBE_COMMON
+    + """
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const before = window.__neBefore || new Set();
+  const isNew = (e) => vis(e) && !before.has(e);
+  const wrap = el.parentElement
+    && el.parentElement.closest('[role=combobox],[aria-haspopup],[aria-expanded]');
+  const exp = (n) => (n && n.getAttribute('aria-expanded')) || 'absent';
+  let ref = 'none';
+  const ids = [];
+  const pairs = [[el, 'aria-controls'], [el, 'aria-owns'],
+                 [wrap, 'aria-controls'], [wrap, 'aria-owns']];
+  for (const [n, a] of pairs) {
+    const v = n && n.getAttribute(a);
+    if (v) { if (ref === 'none') ref = a; ids.push(...v.split(/\\s+/).filter(Boolean)); }
   }
-  if (!lb) return null;
-  return {via, expanded: el.getAttribute('aria-expanded'),
-          options: Array.from(lb.querySelectorAll('[role=option]')).map(o => o.textContent),
-          selected: lb.querySelectorAll('[role=option][aria-selected=true]').length};
+  const assoc = ids.map((i) => document.getElementById(i)).filter(Boolean);
+  const ad = el.getAttribute('aria-activedescendant');
+  const adEl = ad && document.getElementById(ad);
+  const adPop = adEl && adEl.closest(POP);
+  if (adPop && !assoc.includes(adPop)) {
+    assoc.push(adPop);
+    if (ref === 'none') ref = 'aria-activedescendant';
+  }
+  const assocVis = assoc.filter(vis);
+  const newPops = all(POP).filter(isNew).filter((p) => !assoc.includes(p));
+  let source = 'none', opts = [];
+  const inAssoc = assocVis.flatMap((p) => Array.from(p.querySelectorAll(OPT))).filter(vis);
+  if (inAssoc.length) { source = 'associated_popup'; opts = inAssoc; }
+  else if (newPops.length === 1) {
+    const o = Array.from(newPops[0].querySelectorAll(OPT)).filter(vis);
+    if (o.length) { source = 'new_popup'; opts = o; }
+  }
+  const elsewhere = all(OPT).filter(isNew).filter((o) => !opts.includes(o)).length;
+  const sizes = opts.map((o) => parseInt(o.getAttribute('aria-setsize'), 10)).filter((n) => n > 0);
+  const scope = assocVis.concat(newPops);
+  const active = document.activeElement;
+  const now = performance.now(), m = window.__neMut || {n: 0, last: 0, added: []};
+  return {
+    expanded: exp(el), wrapper_expanded: wrap && wrap !== el ? exp(wrap) : 'absent',
+    reference: ref, associated: assoc.length, associated_visible: assocVis.length,
+    new_popups: newPops.length,
+    hint_popups: all(HINT_POP).filter(isNew).filter((p) => !p.matches(POP)).length,
+    source, texts: opts.map((o) => o.textContent), elsewhere,
+    hint_options: all(HINT_OPT).filter(isNew).filter((o) => !o.matches(OPT)).length,
+    setsize: sizes.length ? Math.max(...sizes) : null,
+    busy: all(BUSY).filter(isNew).length
+      + scope.filter((p) => p.getAttribute('aria-busy') === 'true').length,
+    hint_loading: all(HINT_BUSY).filter(isNew).length,
+    alerts: all('[role=alert]').filter(isNew).length,
+    focus: active === el || el.contains(active) || !!(wrap && wrap.contains(active)),
+    mutations: m.n, quiet_ms: m.last ? Math.round(now - m.last) : null,
+    added_visible: m.added.filter((a) => a.isConnected && vis(a)).length,
+  };
 }"""
-
-# Required signals kept apart (HTML attribute, ARIA attribute, enclosing group, label marker).
-_REQUIRED_JS = """(id) => {
-  const el = document.getElementById(id);
-  if (!el) return null;
-  const grp = el.closest('fieldset, [role=group]');
-  const ids = (el.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean);
-  const lab = ids.map(i => document.getElementById(i)).filter(Boolean)
-    .concat(Array.from(document.querySelectorAll('label')).filter(l => l.htmlFor === id));
-  return {html: el.required === true, aria: el.getAttribute('aria-required') === 'true',
-          group_aria: !!(grp && grp.getAttribute('aria-required') === 'true'),
-          label_marker: lab.some(l => /\\*\\s*$/.test(l.textContent.trim()))};
-}"""
-
+)
+_END_PROBE_JS = "() => { if (window.__neObs) window.__neObs.disconnect(); window.__neObs = null; }"
 
 _CLICK_MS = 2000  # per action; an element that is not actionable by then is not acted on
+_SAMPLES = 3  # probes spread over the settle window (the window itself is not extended)
+_QUIET_MS = 150  # DOM changes more recent than this at the last probe: still changing
+_HASPOPUP = frozenset({"listbox", "menu", "dialog", "grid", "tree", "true", "false", "absent"})
+_AUTOCOMPLETE = frozenset({"list", "both", "inline", "none", "absent"})
+_ARIA_BOOL = frozenset({"true", "false", "absent"})
 
 # Stops after which the page may have been replaced: the end-state counts are not measured.
 _LEFT_PAGE = frozenset({
@@ -1558,14 +1740,68 @@ _LEFT_PAGE = frozenset({
 })  # fmt: skip
 
 
+def _vocab(v, allowed: frozenset) -> str:
+    return v if v in allowed else "other"
+
+
+def classify_open(pre: dict, post: dict, series: list[int], api_count: int | None,
+                  click_ok: bool) -> tuple[str, list[str], list[str]]:  # fmt: skip
+    """(open_state, opening_evidence, partial_reasons). Never "absent": an action that shows no
+    list says only that, within the window, under the permitted action.
+    - click_failed: the target was not actionable (e.g. something else would get the click);
+    - not_opened: the click completed and nothing indicates an opening, and no visible
+      element was added;
+    - undetermined: visible elements were added, but nothing that identifies an opening
+      (no expanded state, popup, option-like or class-hinted element);
+    - opened_options_not_observable: it opened (state, popup or option-like elements) but no
+      role-based option list could be read;
+    - partially_observed: options read, but still changing or loading, fewer than the list
+      says it has (aria-setsize), or fewer than the job data lists;
+    - observed_sufficiently: options read, stable, nothing loading, complete as far as can be
+      told: only then are they compared."""
+    if not click_ok:
+        return "click_failed", [], []
+    evidence = []
+    if (pre["expanded"] != "true" and post["expanded"] == "true") or (
+        pre["wrapper_expanded"] != "true" and post["wrapper_expanded"] == "true"
+    ):
+        evidence.append("expanded")
+    if post["associated_visible"] > pre["associated_visible"] or post["new_popups"]:
+        evidence.append("popup")
+    if post["texts"] or post["elsewhere"]:
+        evidence.append("options")
+    if post["hint_popups"] or post["hint_options"]:
+        evidence.append("class_hint")
+    if not evidence:
+        return ("undetermined" if post["added_visible"] else "not_opened"), evidence, []
+    n = len(post["texts"])
+    if not n:
+        return "opened_options_not_observable", evidence, []
+    partial = []
+    if len(series) >= 2 and series[-1] != series[-2]:
+        partial.append("still_changing")
+    elif post["quiet_ms"] is not None and post["quiet_ms"] < _QUIET_MS:
+        partial.append("still_changing")
+    if post["busy"] or post["hint_loading"]:
+        partial.append("loading")
+    if post["setsize"] and post["setsize"] > n:
+        partial.append("setsize_larger")
+    if api_count is not None and n < api_count:
+        partial.append("fewer_than_api")
+    return ("partially_observed" if partial else "observed_sufficiently"), evidence, partial
+
+
 def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_refused,
                        left_ms, challenge_selectors, counts) -> dict:  # fmt: skip
     """Open, then close, each combobox present at load (API-mapped ones first, then unmatched
-    ones), within limits.widget_actions. Never clicks anything else, never types, never
-    selects an option. Records per widget what became observable and what changed; stops the
-    inspection at the first selection/value change, submission attempt, file chooser, dialog,
-    challenge, navigation attempt, address change or blocked non-GET request (e.g. an upload).
-    `counts()` returns (requests routed, non-GET requests blocked) so far."""
+    ones), within limits.widget_actions: one click on the control itself, one Escape. Never
+    clicks anything else, never types, never selects an option. Per widget it records
+    structural diagnostics (click, focus, expanded state, popup, option-like elements, loading
+    and error indicators, requests refused during the action) sampled within the settle window,
+    and classifies the result (`classify_open`). Stops the inspection at the first selection or
+    value change, submission attempt, file chooser, dialog, challenge, navigation attempt,
+    address change or blocked non-GET request (e.g. an upload).
+    `counts()` returns {"requests", "blocked", "failed"} so far."""
     from app.modules.preparation import greenhouse_dom as gdom
 
     fields = gh.schema_from_api(api_json).fields
@@ -1578,10 +1814,11 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
     targets += [(f"u{i}", c, "unmatched") for i, c in enumerate(unmatched, 1)]
     page.evaluate(_SUBMIT_GUARD_JS)
     results, actions, stopped = [], 0, None
-    n_load_refused, (n_requests, _) = len(data_refused), counts()
+    n_load_refused, n_requests = len(data_refused), counts()["requests"]
     started = time.monotonic()
     ends = started + limits.widget_seconds
     per_widget_s = 2 * (_CLICK_MS + limits.widget_settle_ms) / 1000  # worst case: open + close
+    step_ms = max(1, limits.widget_settle_ms // _SAMPLES)
 
     def check_stop(before_stops: int) -> str | None:
         if len(stops) > before_stops:
@@ -1609,68 +1846,112 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
             results.append({"target": key, "kind": kind, "skipped": "not_visible_or_not_unique"})
             continue
         before = page.evaluate(_STATE_JS)
-        req = page.evaluate(_REQUIRED_JS, c.id)
-        n_stops, n_data, n_blocked = len(stops), len(data_refused), counts()[1]
+        req = page.evaluate(gdom.REQUIRED_SIGNALS_JS, c.id)
+        n_stops, n_data, base = len(stops), len(data_refused), counts()
+        shape = page.evaluate(_PRE_JS, c.id)
+        pre = page.evaluate(_PROBE_JS, c.id)
         actions += 1
         phase[0] = f"action:{actions}"
+        click_ok, click_error, series, post = True, None, [], pre
         try:
             # Actionability checks: if another element would receive the click (an overlay or
             # a wrapper drawn over the input), nothing is clicked at all.
             loc.click(timeout=left_ms(_CLICK_MS))  # open
-            page.wait_for_timeout(left_ms(limits.widget_settle_ms))
         except Stop:
             raise
-        except Exception as e:  # noqa: BLE001 - a widget that cannot be opened is a finding
-            after = page.evaluate(_STATE_JS)
-            results.append({"target": key, "kind": kind, "opened": False,
-                            "error": "pointer_intercepted" if "intercepts pointer events"
-                            in str(e) else "open_failed",
-                            "value_changed": after["values"] != before["values"]})  # fmt: skip
-            reason = check_stop(n_stops)
-            if reason or after["values"] != before["values"]:
-                stopped = reason or "opening changed a value or selected an option"
-                break
-            continue
-        shown = page.evaluate(_OPEN_LIST_JS, c.id)
+        except Exception as e:  # noqa: BLE001 - a widget that cannot be clicked is a finding
+            click_ok = False
+            click_error = (
+                "pointer_intercepted" if "intercepts pointer events" in str(e) else "open_failed"
+            )
+        gone = False
+        if click_ok:
+            for _ in range(_SAMPLES):  # the settle window, sampled; not extended
+                page.wait_for_timeout(left_ms(step_ms))
+                got = page.evaluate(_PROBE_JS, c.id)
+                if got is None:  # the control is gone (e.g. the page was replaced)
+                    gone = True
+                    break
+                post = got
+                series.append(len(post["texts"]))
         mid = page.evaluate(_STATE_JS)
         reason = check_stop(n_stops)
-        actions += 1
-        phase[0] = f"action:{actions}"
-        if reason is None:
-            try:
-                loc.press("Escape", timeout=left_ms(_CLICK_MS))  # close
-                page.wait_for_timeout(left_ms(limits.widget_settle_ms))
-            except Stop:
-                raise
-            except Exception:  # noqa: BLE001
-                pass
-        after = page.evaluate(_STATE_JS)
-        reason = reason or check_stop(n_stops)
-        opts = [gdom._norm(t) for t in (shown or {}).get("options", [])]
-        same = sorted(k for k, v in option_lists.items() if opts and v == opts)
+        api_count = len(option_lists[key]) if kind == "api_field" and key in option_lists else None
+        state, evidence, partial = classify_open(pre, post, series, api_count, click_ok)
+        if gone:
+            state, evidence, partial = "undetermined", ["control_gone"], []
+        after, closed = mid, None
+        if click_ok and not gone:
+            actions += 1
+            phase[0] = f"action:{actions}"
+            if reason is None:
+                try:
+                    loc.press("Escape", timeout=left_ms(_CLICK_MS))  # close
+                    page.wait_for_timeout(left_ms(limits.widget_settle_ms))
+                except Stop:
+                    raise
+                except Exception:  # noqa: BLE001
+                    pass
+                shut = page.evaluate(_PROBE_JS, c.id)
+                closed = shut is not None and (
+                    shut["expanded"] != "true"
+                    and shut["associated_visible"] <= pre["associated_visible"]
+                    and not shut["new_popups"]
+                    and not shut["texts"]
+                )
+            after = page.evaluate(_STATE_JS)
+            reason = reason or check_stop(n_stops)
+        page.evaluate(_END_PROBE_JS)
+        opts = [] if gone else [gdom._norm(t) for t in post["texts"]]
+        sufficient = state == "observed_sufficiently"
+        now = counts()
         r = {
             "target": key,
             "kind": kind,
-            "opened": shown is not None,
-            "options_via": (shown or {}).get("via"),
-            "options_count": len(opts) if shown is not None else None,
-            # api_field: do the shown options equal this question's; any target: which API
-            # questions have exactly this option list (structure only, no text)
-            "options_match_api": (option_lists.get(key) == opts) if kind == "api_field"
-            and shown is not None else None,
-            "options_equal_to_fields": same,
+            "open_state": state,
+            "opening_evidence": evidence,
+            "partial_reasons": partial,
+            "click": {"completed": click_ok, "error": click_error},
+            "target_box": shape["box"],
+            "haspopup": _vocab(shape["haspopup"], _HASPOPUP),
+            "autocomplete": _vocab(shape["autocomplete"], _AUTOCOMPLETE),
+            "wrapper_combobox": shape["wrapper"],
+            "focus_on_target": post["focus"],
+            "expanded": {"before": _vocab(pre["expanded"], _ARIA_BOOL),
+                         "after": _vocab(post["expanded"], _ARIA_BOOL),
+                         "wrapper_before": _vocab(pre["wrapper_expanded"], _ARIA_BOOL),
+                         "wrapper_after": _vocab(post["wrapper_expanded"], _ARIA_BOOL)},
+            "popup": {"reference": post["reference"], "associated": post["associated"],
+                      "associated_visible": post["associated_visible"],
+                      "new_popups": post["new_popups"], "class_hint_popups": post["hint_popups"]},
+            "options": {"source": post["source"], "count": len(opts), "counts_over_time": series,
+                        "setsize": post["setsize"], "elsewhere": post["elsewhere"],
+                        "class_hint_candidates": post["hint_options"]},
+            "indicators": {"loading": post["busy"], "class_hint_loading": post["hint_loading"],
+                           "alerts_added": post["alerts"]},
+            "control_gone": gone,
+            "dom_mutations": post["mutations"],
+            "added_visible_elements": post["added_visible"],
+            # Compared only when observed sufficiently; otherwise not compared (None).
+            "options_match_api": (option_lists.get(key) == opts)
+            if kind == "api_field" and sufficient else None,
+            "options_equal_to_fields": sorted(k for k, v in option_lists.items() if v == opts)
+            if sufficient else [],
+            "closed": closed,
             "selected_after_open": mid["selected"] - before["selected"],
             "value_changed": mid["values"] != before["values"]
             or after["values"] != before["values"],
             "url_changed": mid["href"] != before["href"] or after["href"] != before["href"],
-            "closed": after["listboxes"] <= before["listboxes"],
             "required_signals": req,
             "changes": {k: after[k] - before[k]
                         for k in ("controls", "required", "hidden", "invalid", "alerts")},
             "controls_added": len(set(after["ids"]) - set(before["ids"])),
             "submit_attempts": after["submits"] - before["submits"],
-            "data_requests_refused": len(data_refused) - n_data,
-            "blocked_non_get": counts()[1] - n_blocked,
+            "requests_during": {"routed": now["requests"] - base["requests"],
+                                "data_refused": len(data_refused) - n_data,
+                                "refused_shapes": refused_shapes(data_refused[n_data:]),
+                                "blocked_non_get": now["blocked"] - base["blocked"],
+                                "failed": now["failed"] - base["failed"]},
         }  # fmt: skip
         results.append(r)
         # The cause first (a refused navigation also replaces the page, changing values).
@@ -1678,7 +1959,7 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
             stopped = reason
         elif r["submit_attempts"]:
             stopped = "a submission was attempted"
-        elif r["blocked_non_get"]:
+        elif r["requests_during"]["blocked_non_get"]:
             stopped = "a non-GET request was attempted"
         elif r["url_changed"]:
             stopped = "the page address changed"
@@ -1695,11 +1976,16 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
     labels = {gdom._norm(f.label) for f in fields}
     left_page = stopped in _LEFT_PAGE or any(w.get("url_changed") for w in results)
     final = None if left_page else gdom.snapshot(page.content())
+    states: dict[str, int] = {}
+    for w in results:
+        s = w.get("open_state") or "skipped"
+        states[s] = states.get(s, 0) + 1
     return {
         "targets": len(targets),
         "actions": actions,
         "action_limit": limits.widget_actions,
         "stopped": stopped,
+        "open_states": states,
         "widgets": results,
         # Not measured once the page may have been replaced (None: not observed).
         "location_control_present": None if left_page
@@ -1714,8 +2000,10 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
         "data_requests_refused_total": len(data_refused),
         "data_requests_refused": {"at_load": n_load_refused, "during_actions": len(during),
                                   "same_origin": sum(1 for d in during if d["same_origin"]),
-                                  "by_type": by_type},
-        "requests_during_actions": counts()[0] - n_requests,
+                                  "by_type": by_type,
+                                  "shapes_at_load": refused_shapes(data_refused[:n_load_refused]),
+                                  "shapes_during_actions": refused_shapes(during)},
+        "requests_during_actions": counts()["requests"] - n_requests,
         "events": len(events),
         "action_seconds": round(time.monotonic() - started, 1),
     }  # fmt: skip

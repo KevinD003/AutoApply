@@ -68,7 +68,9 @@ def test_opening_reveals_options_without_selecting_anything(receiver):
     by = widgets(obs)
     assert {"question_8101", "u1", "u2", "u3"} <= set(by)
     for w in by.values():
-        assert w["opened"] and w["closed"] and w["options_count"]
+        assert w["open_state"] == "observed_sufficiently" and w["closed"] is True
+        assert w["click"] == {"completed": True, "error": None} and w["focus_on_target"]
+        assert w["expanded"]["before"] == "false" and w["expanded"]["after"] == "true"
         assert w["selected_after_open"] == 0 and w["value_changed"] is False
         assert w["submit_attempts"] == 0 and w["url_changed"] is False
         assert w["changes"] == {"controls": 0, "required": 0, "hidden": 0, "invalid": 0,
@@ -78,9 +80,10 @@ def test_opening_reveals_options_without_selecting_anything(receiver):
     # The phone group's combobox shows the country question's list; the standalone ones match
     # no API question. Required signals are kept apart (HTML, ARIA, group, label marker).
     assert by["u1"]["options_equal_to_fields"] == ["question_8102"]
-    assert by["u2"]["options_count"] == 3 and by["u2"]["options_equal_to_fields"] == []
+    assert by["u2"]["options"]["count"] == 3 and by["u2"]["options_equal_to_fields"] == []
     assert by["u2"]["required_signals"] == {"html": False, "aria": True, "group_aria": False,
-                                            "label_marker": False}  # fmt: skip
+                                            "label_marker": False,
+                                            "group_label_marker": False}  # fmt: skip
     assert by["u3"]["required_signals"]["aria"] is False
     assert ins["location_control_present"] is False
     assert ins["data_requests_refused"]["during_actions"] == 0
@@ -143,9 +146,15 @@ def test_a_widget_data_request_is_refused_even_as_a_same_origin_get(receiver):
     ins = obs["inspection"]
     assert ins["stopped"] is None  # a refused request is a finding, not a reason to stop
     u2 = widgets(obs)["u2"]
-    assert u2["opened"] is False and u2["data_requests_refused"] == 1
-    assert ins["data_requests_refused"] == {"at_load": 0, "during_actions": 1,
-                                            "same_origin": 1, "by_type": {"fetch": 1}}  # fmt: skip
+    # Nothing appeared (this widget shows nothing until its data arrives): "not opened" plus
+    # a refused request during that action, never "absent".
+    assert u2["open_state"] == "not_opened" and u2["requests_during"]["data_refused"] == 1
+    refused = ins["data_requests_refused"]
+    assert {k: refused[k] for k in ("at_load", "during_actions", "same_origin", "by_type")} == {
+        "at_load": 0, "during_actions": 1, "same_origin": 1, "by_type": {"fetch": 1}}  # fmt: skip
+    assert refused["shapes_during_actions"] == [
+        {"host": "other", "method": "GET", "resource_type": "fetch",
+         "path_shape": "/*/*/jobs/*num/options.json", "query_params": 0, "count": 1}]  # fmt: skip
     only_the_page_was_requested(receiver)
 
 
@@ -154,6 +163,8 @@ def test_a_navigation_started_by_a_widget_is_refused_and_stops(receiver):
     ins = obs["inspection"]
     assert ins["stopped"] == "a second top-level navigation was attempted"
     assert ins["controls_at_end"] is None  # the page may have been replaced: not measured
+    last = ins["widgets"][-1]
+    assert last["control_gone"] is True and last["open_state"] == "undetermined"
     only_the_page_was_requested(receiver)
 
 
@@ -192,9 +203,9 @@ def test_a_covered_widget_is_not_clicked_through_its_cover(receiver):
     nothing is clicked, the widget is reported as not opened and the inspection continues."""
     obs = inspect(receiver, "covered")
     u2 = widgets(obs)["u2"]
-    assert u2["opened"] is False and u2["error"] == "pointer_intercepted"
+    assert u2["open_state"] == "click_failed" and u2["click"]["error"] == "pointer_intercepted"
     assert u2["value_changed"] is False and obs["inspection"]["stopped"] is None
-    assert widgets(obs)["u3"]["opened"] is True
+    assert widgets(obs)["u3"]["open_state"] == "observed_sufficiently"
     only_the_page_was_requested(receiver)
 
 

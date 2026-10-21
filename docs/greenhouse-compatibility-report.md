@@ -396,6 +396,89 @@ inspection".
   - raw data was destroyed with the stack.
 - **External activity:** stopped after this run.
 
+## Detector diagnosis after run #8 (local only; no external request)
+
+**Limitations of the run-#8 detector** (revision `181b7c3`):
+- **Click target:** the element with the control's id (the `input role=combobox`), with
+  Playwright's actionability checks. Nothing else was clicked; that is unchanged.
+- **Expanded state:** read once, but never compared before and after.
+- **Popup relationships:** only the input's own `aria-controls` and `aria-owns` were
+  followed. `aria-activedescendant` and wrapper elements carrying the state were ignored.
+- **Options elsewhere in the DOM:** used only if exactly one visible `role=listbox` existed in
+  the whole document. A popup next to any other visible listbox was missed.
+- **Role assumption:** it required `role=listbox` and `role=option`.
+- **Timing:** one snapshot 600 ms after the click, so delayed or partly rendered lists could
+  not be told apart. The output's `opened: false` meant only "no such list found then".
+- **Comparison:** a virtualized list would have been compared as if complete, and so
+  reported as a mismatch.
+- **Closing:** `closed` was true by construction whenever nothing was found.
+
+**Demonstrated against an independent widget model.** The fixture mode
+`gh2_widget_variants` was written to break the detector's assumptions; each variant is a
+FIXTURE ASSUMPTION, not an observation. Run #8's own detector reported `opened: false` for 5
+different situations:
+- a popup next to another visible list (`portal_unlinked`);
+- items without roles (`no_roles`);
+- items with only an "option" class (`class_hint`);
+- a widget that changes nothing it declares (`silent`);
+- a click target that does not open the widget (`wrong_target`).
+
+It reported `opened: true` with 0 options for a list still loading after 2 s, and for a list
+waiting on a refused data request.
+
+**What run #8's result still supports.** For each of the 12 dropdowns, about 600 ms after the
+click:
+- no element referenced by the input's `aria-controls`/`aria-owns` was visible;
+- the document did not contain exactly one visible `role=listbox`.
+
+So a linked, or sole, `role=listbox` popup (even an empty or loading one) did not appear in
+that time. Run #8 cannot say:
+- whether the dropdowns opened at all;
+- whether they opened without ARIA list roles;
+- whether they opened next to another listbox;
+- whether the click reached the element that opens them;
+- whether their options depend on the refused CDN data.
+
+**New diagnostics** (same actions, same 600 ms window sampled 3 times, no new permission):
+- click completion; focus on the control;
+- `aria-expanded` before and after, on the control and on a wrapper;
+- the popup reference (`aria-controls` / `aria-owns` / `aria-activedescendant`), whether an
+  associated popup became visible, and newly visible popup-role elements anywhere;
+- role-based options in the associated or new popup, new option-role elements elsewhere,
+  class-hinted candidates (counted only), `aria-setsize`, and counts over time;
+- loading indicators (`aria-busy`, `progressbar`, class hints), alerts added;
+- DOM mutations and visible elements added;
+- requests during the action (routed, data refused, non-GET blocked, failed), with refused
+  data requests published only as host (printable names only), method, type and a **path
+  shape** (generic words and placeholders such as `*`, `*num`, `*hex`; never ids, tokens or
+  names).
+
+**Classification (`open_state`):**
+- `click_failed`;
+- `not_opened`: the click completed; no state, popup, option-like element or added visible
+  element;
+- `undetermined`: visible elements were added, but nothing identifies an opening;
+- `opened_options_not_observable`;
+- `partially_observed`: still changing, loading, `aria-setsize` larger than rendered, or fewer
+  options than the job data lists;
+- `observed_sufficiently`: the only state that is compared.
+
+None of them means "absent".
+
+**Required fields:**
+- **Signals recorded separately**, for attachments as for every control, in the mapping
+  evidence: HTML, ARIA, group ARIA, label marker, group label marker.
+- **Evidence state:** `consistent`, `api_required_page_unmarked`, `page_required_api_optional`
+  or `not_observable`.
+- **Job data's requirement:** never lowered.
+- **What blocks execution** (adapter `greenhouse_dom` version 2):
+  - the page requires a field the approved package leaves empty, by any signal;
+  - a mapped control whose required state cannot be read.
+- **What does not block by itself:** the job data requiring a field that the page does not
+  mark. The field keeps its requirement and its approved answer. No particular marker
+  (ARIA, `*`) is a prerequisite.
+- **Tests:** `tests/test_widget_detector.py` and `tests/test_required_signals.py`.
+
 ## Log cleanup (run #3's logs deleted with authorization; runs #1 and #2 untouched)
 
 Manual "Greenhouse read-only check" runs. None has artifacts: the workflow uploads none and

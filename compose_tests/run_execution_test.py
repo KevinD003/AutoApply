@@ -614,7 +614,8 @@ obs = ro.observe_page("northwind", "5020001", base="http://receiver:8799", prefi
 ins = obs["inspection"]
 print(json.dumps({"stopped": ins["stopped"], "actions": ins["actions"],
                   "targets": ins["targets"],
-                  "opened": sorted(w["target"] for w in ins["widgets"] if w.get("opened")),
+                  "opened": sorted(w["target"] for w in ins["widgets"]
+                                   if w.get("open_state") == "observed_sufficiently"),
                   "selected": sum(w.get("selected_after_open", 0) for w in ins["widgets"]),
                   "changed": any(w.get("value_changed") for w in ins["widgets"]),
                   "refused": ins["data_requests_refused"],

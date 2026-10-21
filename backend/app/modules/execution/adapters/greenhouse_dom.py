@@ -71,15 +71,27 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         controls = dom.snapshot(html)
         fields = approved_fields(self.content)
         changed = []
+        answered = {a["key"] for a in self.content["answers"] if a["value"] is not None}
         for f, m in zip(fields, dom.map_fields(fields, controls), strict=True):
             if f.type == FieldType.unsupported:
                 continue  # never filled; a required one could not have been approved
             ok = m.status == "mapped" or (
                 m.status == "mapped_via_group" and f.type == FieldType.file
             )
-            if not ok or m.control.required != f.required:
-                changed.append(f"{f.key}: {m.status if m.status != 'mapped' else 'required'}")
-            elif f.type == FieldType.select:
+            if not ok:
+                changed.append(f"{f.key}: {m.status}")
+                continue
+            # Required: the job data's requirement stands whatever the page shows (a required
+            # field was approved with an answer). What blocks is the page requiring a field
+            # the package leaves empty, by any signal (HTML, ARIA, group, label marker).
+            signals = page.evaluate(dom.REQUIRED_SIGNALS_JS, m.control.id)
+            if signals is None:
+                changed.append(f"{f.key}: not readable")
+                continue
+            if dom.page_marks_required(signals) and not f.required and f.key not in answered:
+                changed.append(f"{f.key}: required by the page, no approved answer")
+                continue
+            if f.type == FieldType.select:
                 if m.control.role != "combobox" or not m.control.controls_listbox:
                     changed.append(f"{f.key}: widget")
                     continue

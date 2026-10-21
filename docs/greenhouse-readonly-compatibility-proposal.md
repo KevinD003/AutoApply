@@ -514,6 +514,51 @@ and submission cases through the real runner and session proxy.
   - the workflow status is never read as the page-inspection result: the printed `outcome`
     is.
 
+## Diagnostic re-observation — proposed, NOT authorized, NOT run
+
+**Why:** run #8's detector cannot tell "did not open" apart from "opened, but not in a way
+it could read" (see the report, "Detector diagnosis after run #8"). The new diagnostics can,
+but only on the page itself: run #8's output cannot be reclassified afterwards.
+
+**Is it necessary?**
+- To answer the dropdown question: yes.
+- For safety: no. The posting stays refused regardless, because of the absent location
+  control, the page-managed coordinates and the unexplained `u1`–`u5`, of which `u1` and
+  `u2` are required.
+
+**Scope: run #8's, unchanged.**
+- **Requests:** the 3 API GETs and 1 page navigation.
+- **Destinations and methods:** B3's.
+  - `job-boards.cdn.greenhouse.io`: scripts and stylesheets only, GET/HEAD;
+  - every data request refused at every origin, GET included;
+  - `recruiting.cdn.greenhouse.io` and everything else blocked.
+- **Actions:** at most 12 dropdowns present at the start, at most 24 actions. One click on
+  the control and one Escape; nothing else.
+- **Budgets:**
+  - 600 ms per action, sampled 3 times and not extended;
+  - 30 s inspection, 90 s observation, 150 s run, 200 s outer kill;
+  - 150 requests, 20 MB received (a stop condition, not a cap), 2M characters retained;
+  - 256 KiB output.
+- **Stops:** as before, including the immediate filter-failure stop.
+- **Excluded:** no selection, typing, scrolling of lists, uploads, location search, OTP,
+  candidate data or submission.
+
+**What it adds** (reads only): the per-action diagnostics and `open_state`, required signals
+for every control (attachments included), and path shapes of the refused data requests.
+
+**How the result would be read:**
+- `observed_sufficiently`: compare with the job data.
+- `opened_options_not_observable` with data requests refused during that action: the path
+  shapes show what was asked. Only if one shape plainly points at the option list would a
+  **separate** request be proposed, for that one exact host, method (GET) and path shape.
+  Never all CDN data requests.
+- `not_opened` with focus on the control: the click does not open these widgets. Any other
+  action (a wrapper, a key) is a new action type needing its own approval.
+- `undetermined` or `click_failed`: reported as such; no follow-up is implied.
+
+**Pinned revision:** to be the code revision whose CI has passed, dispatched from a branch at
+exactly that commit (as for run #8).
+
 ## Deliverable: the comparison (once A/B are separately approved and run)
 
 | Area | Compared |

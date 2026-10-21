@@ -235,6 +235,43 @@ def unmatched_controls(fields: list[FormField], controls: list[Control]) -> list
 
 ACCEPTED = ("mapped", "mapped_via_group", "protocol", "search_picker")
 
+# How a page marks a control as required, kept apart (any of them may be used, or none): the
+# HTML attribute, the ARIA attribute, ARIA on the enclosing group, and a trailing "*" on the
+# control's own label or on its group's label. Read from the live page (labels can be built
+# by scripts). The job data's own requirement is never lowered by any of these.
+REQUIRED_SIGNALS_JS = """(id) => {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const grp = el.closest('fieldset, [role=group], [role=radiogroup]');
+  const refs = (n) => ((n && n.getAttribute('aria-labelledby')) || '').split(/\\s+/)
+    .filter(Boolean).map((i) => document.getElementById(i)).filter(Boolean);
+  const own = refs(el).concat(Array.from(document.querySelectorAll('label'))
+    .filter((l) => l.htmlFor === id || l.contains(el)));
+  const glab = grp ? refs(grp).concat(Array.from(grp.children)
+    .filter((c) => c.tagName === 'LEGEND')) : [];
+  const star = (ls) => ls.some((l) => /\\*\\s*$/.test((l.textContent || '').trim()));
+  return {html: el.required === true, aria: el.getAttribute('aria-required') === 'true',
+          group_aria: !!(grp && grp.getAttribute('aria-required') === 'true'),
+          label_marker: star(own), group_label_marker: star(glab)};
+}"""
+
+
+def page_marks_required(signals: dict | None) -> bool | None:
+    """Any required signal at all (None: the control could not be read)."""
+    return None if signals is None else any(signals.values())
+
+
+def required_evidence(api_required: bool, signals: dict | None) -> str:
+    """How the page's marking relates to the job data's requirement (for review, never to
+    change it): consistent, api_required_page_unmarked (still required), page_required_api_
+    optional (needs an answer to be safe), or not_observable."""
+    page = page_marks_required(signals)
+    if page is None:
+        return "not_observable"
+    if api_required == page:
+        return "consistent"
+    return "api_required_page_unmarked" if api_required else "page_required_api_optional"
+
 
 def build_schema(api: dict, page_html: str) -> tuple[FormSchema, list[FieldMapping]]:
     """Job-post fields, verified against the page's controls. Raises gh.SchemaMismatch unless

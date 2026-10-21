@@ -219,3 +219,28 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   fresh-process test runs the workflow's exact `python -m` entry point against the synthetic
   receiver (a test-only target, accepted only for listed fixture origins outside production).
 
+## D30 — A widget inspection reports what it could tell apart; required evidence never lowers a requirement
+- **Open state per widget:**
+  - `click_failed`;
+  - `not_opened`;
+  - `undetermined`;
+  - `opened_options_not_observable`;
+  - `partially_observed`;
+  - `observed_sufficiently`.
+  It is decided from structural diagnostics sampled within the unchanged settle window. Only
+  `observed_sufficiently` is compared with the job data. No state means "absent", and a
+  short window is never proof of absence.
+- **The detector must not be validated only against fixtures built on its own assumptions:**
+  `gh2_widget_variants` is an independent model. Each variant is a fixture assumption.
+- **Refused data requests** are reported as path shapes, built from generic words and
+  placeholders, so their purpose can be judged without publishing identifiers. Access is
+  never widened because some requests were refused.
+- **Required:** the job data's requirement stands. The page's signals (HTML, ARIA, group ARIA,
+  label marker, group label marker) are recorded separately and reviewed as `consistent`,
+  `api_required_page_unmarked` or `page_required_api_optional`.
+  - Execution is blocked only where it would be unsafe: a page-required field the package
+    leaves empty, or an unreadable control.
+  - An unmarked required field keeps its approved answer.
+  - The adapter `greenhouse_dom` moved to version 2 for this. Approvals bound to version 1
+    are retired at queueing (D28). Package content is unchanged, so `SCHEMA_VERSION` stays 2.
+

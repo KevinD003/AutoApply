@@ -105,7 +105,7 @@ def test_workflow_entry_point_inspects_the_fixture_and_completes(receiver, tmp_p
     ins = res["inspection"]
     assert ins["stopped"] is None and ins["targets"] >= 6
     assert ins["actions"] == 2 * ins["targets"] <= 24
-    assert all(w["opened"] and w["closed"] for w in ins["widgets"])
+    assert all(w["open_state"] == "observed_sufficiently" and w["closed"] for w in ins["widgets"])
     assert sum(w["selected_after_open"] for w in ins["widgets"]) == 0
     got = sent(receiver)
     assert all(m == "GET" for m, _ in got), got
