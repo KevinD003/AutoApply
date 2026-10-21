@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-21 (Freehire personal prototype: documented shapes, header-only pacing, no /status, "via freehire.me" attribution; still off by default and fixture-only; no Freehire API request). For requirement-by-requirement evidence see
+Last updated: 2026-10-21 (execution routing: ATS identity first, per-job route with checkpoints, workflow traits, Workday planned only; local only, no external request). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,56 @@ Last updated: 2026-10-21 (Freehire personal prototype: documented shapes, header
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Execution routing (2026-10-21; local only, no external request)
+
+- **Built** (`6fc61df`, lint fix `93200b4`):
+  - **Execution interface** (`providers/model.INTERFACE`): `inspect_application`,
+    `extract_form_schema`, `prepare_application`, `validate_application`,
+    `request_user_action`, `upload_documents`, `submit_application`,
+    `collect_confirmation_evidence`, `reconcile_unknown_outcome`. Each maps to the existing
+    operations.
+  - **Routing vocabulary** (`ROUTING_CAPABILITIES`), 13 names as a view over the
+    evidence-levelled capabilities.
+  - **Workflow traits** (login, manual verification, CAPTCHA possible, multi-step), kept apart
+    from capabilities.
+  - **Workday** registered as `planned`, with no operations or capabilities.
+  - **Routing** identifies the ATS first: a planned-only ATS gives a manual handoff that says
+    so, and a form from another ATS is refused.
+  - **`route_for_job`:**
+    - no form gives a manual handoff;
+    - required controls NoEfforts cannot fill give a `checkpoint` before disclosure;
+    - otherwise the authorized API (grant + credentials + support), then the browser
+      adapter, then manual.
+  - `GET /api/jobs/{id}/route` and a "How NoEfforts could apply" card on the job page.
+- **Docs** (`1eae3d5`):
+  - `docs/provider-architecture.md` §2b (interface, matrix, order, roles), §6 (Freehire plan),
+    §7 (Workday specification), §8 (exact Greenhouse status) and §9 (safety rules with their
+    tests);
+  - the architecture roles table, D35, and evidence rows.
+- **Unchanged:**
+  - `real_destinations` false everywhere; real origins route to a manual handoff;
+  - C and D unapproved;
+  - no capability live; Greenhouse not generally supported;
+  - no Workday automation exists.
+- **Commands actually run (cloud sandbox):**
+  - `ruff format .`, then `ruff check .` and `ruff format --check .`: clean after the fix. The
+    first push (`6fc61df`) went out with two long lines because a pipe hid ruff's exit code.
+    CI #69 failed at its lint step; `93200b4` fixed it;
+  - `tests/test_execution_routing.py`: 11 passed;
+  - with the provider, discovery, Freehire, approval-binding and API suites: 84 passed;
+  - two mutations, each failing its tests and then reverted:
+    - no ATS-identity refusal (Workday and other-ATS tests fail);
+    - no unsupported-control checkpoint (checkpoint test fails);
+  - full backend suite: 485 passed, exit 0;
+  - frontend: `npx tsc --noEmit` and `npm run lint` clean;
+  - `e2e/routing.spec.ts`: 2 passed; full Playwright suite: 30 passed.
+- **CI:**
+  - CI #69 on `6fc61df`: failed at backend lint, tests skipped;
+  - CI #70 on `93200b4`: success;
+  - CI #71 ([39656190937](https://github.com/KevinD003/AutoApply/actions/runs/39656190937)) on
+    `1eae3d5`: all four jobs passed. Backend 484 passed, 1 skipped (the same CI-only skip);
+    Playwright 30 passed; execution-compose and docker-smoke passed.
 
 ## Freehire personal prototype (2026-10-21; no Freehire API request)
 
