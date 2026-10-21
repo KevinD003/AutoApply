@@ -15,7 +15,8 @@ export COMPOSE_PROJECT_NAME=noefforts_ghcheck
 export COMPOSE_FILE=docker-compose.yml:docker-compose.readonly-check.yml
 BROWSER_RUNNER_TOKEN="runner-$(openssl rand -hex 16)"
 EGRESS_CONTROL_TOKEN="control-$(openssl rand -hex 16)"
-export BROWSER_RUNNER_TOKEN EGRESS_CONTROL_TOKEN
+AUDIT_REF_KEY="$(openssl rand -hex 32)"  # throwaway, for this disposable stack only
+export BROWSER_RUNNER_TOKEN EGRESS_CONTROL_TOKEN AUDIT_REF_KEY
 trap 'docker compose down -v --remove-orphans >/dev/null 2>&1 || true' EXIT
 
 docker compose down -v --remove-orphans >/dev/null 2>&1 || true

@@ -93,8 +93,9 @@ policy already covered by the netns tests.
 | mounts / docker socket / host network / privileged | none / none / no / no | `egress_control` volume (its own control socket) / none / no / no |
 | environment | `RUNNER_TOKEN`, proxy address, limits | `EGRESS_CONTROL_TOKEN`, proxy port, socket path, TTL |
 
-`BROWSER_RUNNER_TOKEN` and `EGRESS_CONTROL_TOKEN` are required: Compose refuses to start
-without them (`${VAR:?}`). The runner's environment contains its own token, which is used only
+`BROWSER_RUNNER_TOKEN`, `EGRESS_CONTROL_TOKEN` and `AUDIT_REF_KEY` (the audit reference key,
+given to the backend and worker only) are required: Compose refuses to start without them
+(`${VAR:?}`). The runner's environment contains its own token, which is used only
 to authenticate the worker. Chromium processes are started with a minimal environment.
 
 ## Running it
@@ -102,7 +103,7 @@ to authenticate the worker. Chromium processes are started with a minimal enviro
 App stack (development, no real destinations can be executed):
 
 ```
-cp .env.example .env    # set BROWSER_RUNNER_TOKEN and EGRESS_CONTROL_TOKEN to random values
+cp .env.example .env    # set BROWSER_RUNNER_TOKEN, EGRESS_CONTROL_TOKEN and AUDIT_REF_KEY to random values
 docker compose up -d --build
 ```
 

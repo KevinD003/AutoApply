@@ -18,11 +18,41 @@ different metadata key without this table changing with it.
   - a value that is not a number, a flag, `null` or a short identifier-like string (or a short
     list of those) becomes `[omitted]`: free text, URLs, e-mail addresses, exception text and
     nested objects never reach the table;
-  - external identifiers are stored as references (`ref:` plus a short hash). A `field` key,
-    which always held a posting's question key, is stored as `field_ref`.
-- **Not append-only in one respect:** migration `c303eee5a3c9` rewrote the `meta` of rows
-  stored before sanitizing existed (once, irreversibly; `audit/repair.py`). No other code
-  updates or deletes audit rows.
+  - external identifiers are stored as keyed references (see "References" below). A `field`
+    key, which always held a posting's question key, is stored as `field_ref`;
+  - a legacy unkeyed reference (`ref:` plus 12 hex characters) is never kept: it becomes
+    `[omitted]`.
+- **Not append-only in one respect:** two one-way repair migrations rewrite the `meta` of
+  legacy rows (`audit/repair.py`; see "Legacy repairs" below). No other code updates or
+  deletes audit rows.
+
+## References
+
+- **Format (version 2):** `ref:v2:` followed by the first 32 hex characters of
+  HMAC-SHA-256 over a fixed domain label, the user's id and the identifier.
+- **Key:** `NOEFFORTS_AUDIT_REF_KEY`, held by the server and supplied through the environment
+  like every other secret; never stored in the repository. It must be at least 32 characters.
+  The API refuses to start without it, and production refuses a key starting `test-only`
+  (the tests use such a key, set in their own configuration).
+- **Properties (tested):** the same user and identifier give the same reference; another user
+  or another key gives an unrelated one; without the key, a reference cannot be recomputed
+  from a list of candidate identifiers. Neither the key nor the identifier appears in a
+  reference, an audit row, a migration's output or an error message.
+- **Changing the key** makes new references unrelated to earlier ones; existing rows are not
+  rewritten.
+
+## Legacy repairs
+
+Both run the current sanitizer over every stored `meta` object, scoped by the row's own user,
+and rewrite only rows that change. They read only `audit_events.id`, `user_id` and `meta`,
+write only `meta`, and touch no other table. Both are irreversible (the downgrade restores
+nothing and no removed value is kept anywhere), idempotent (a second run changes no row) and
+report aggregate counts only.
+
+| Migration | Repair | What it removes |
+|---|---|---|
+| `c303eee5a3c9` | version 1 | raw values stored before sanitizing existed |
+| `7a1e4c2b9d30` | version 2 | legacy unkeyed references. Their source identifier is not stored in the audit row, so they cannot be converted: each becomes `[omitted]`, a constant that correlates nothing. A raw `field` value still present becomes a keyed reference |
 
 ## Event inventory
 

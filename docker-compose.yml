@@ -33,6 +33,7 @@ services:
       NOEFFORTS_REDIS_URL: redis://redis:6379/0
       NOEFFORTS_CORS_ORIGINS: '["http://localhost:3000"]'
       NOEFFORTS_BROWSER_ISOLATION: container
+      NOEFFORTS_AUDIT_REF_KEY: ${AUDIT_REF_KEY:?set AUDIT_REF_KEY in .env}
       NOEFFORTS_FIXTURE_ORIGINS: ${NOEFFORTS_FIXTURE_ORIGINS:-[]}
     volumes: [storage:/data/storage]
     ports: ["127.0.0.1:8000:8000"]

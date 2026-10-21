@@ -36,14 +36,14 @@ OM = "[omitted]"
 # None is a stored JSON null, which holds nothing and is left as it is.
 LEGACY = [
     # application answers, and the question keys stored with them
-    ({"field": "question_8101"}, {"field_ref": ref("question_8101")}),
+    ({"field": "question_8101"}, {"field_ref": ref("question_8101", None)}),
     ({"field": "question_8104", "choice": "yes"},
-     {"field_ref": ref("question_8104"), "choice": "yes"}),
+     {"field_ref": ref("question_8104", None), "choice": "yes"}),
     ({"answer": "Yes", "value": "Sammy", "text": "I led a team"},
      {"answer": RD, "value": RD, "text": RD}),
     # raw draft-rejection and other free-text reasons
     ({"field": "why_us", "reason": "Draft mentions 40 nurses and 12 years not in your facts."},
-     {"field_ref": ref("why_us"), "reason": OM}),
+     {"field_ref": ref("why_us", None), "reason": OM}),
     ({"reason": "execution method changed"}, {"reason": OM}),
     # resume / attachment contents and filenames
     ({"filename": "resume.pdf", "content": "%PDF-1.4", "attachment": "resume.pdf"},
@@ -73,7 +73,9 @@ LEGACY = [
       "content_hash": "a" * 64, "flag": True, "rows": 2, "cost_usd": 0.0, "nothing": None},
      {"version": 3, "provider": "greenhouse_dom", "fields": ["title", "notes"],
       "content_hash": "a" * 64, "flag": True, "rows": 2, "cost_usd": 0.0, "nothing": None}),
-    ({"field_ref": ref("question_8101")}, {"field_ref": ref("question_8101")}),
+    ({"field_ref": ref("question_8101", None)}, {"field_ref": ref("question_8101", None)}),
+    # a legacy unkeyed reference (enumerable) is never kept
+    ({"field_ref": "ref:" + "a1b2c3d4e5f6"}, {"field_ref": OM}),
     ({"route": "browser", "provider": "greenhouse_dom", "adapter_version": "greenhouse-dom-3+x",
       "reason_code": "browser_supported", "evidence": "fixture", "api_grant": "none"},
      {"route": "browser", "provider": "greenhouse_dom", "adapter_version": "greenhouse-dom-3+x",
@@ -152,7 +154,7 @@ def test_a_failed_repair_reveals_no_legacy_content(error, monkeypatch, caplog):
     with engine.begin() as c:
         ids = seed(c)
 
-    def broken(meta):
+    def broken(meta, scope=None):
         raise error(meta)
 
     monkeypatch.setattr(repair, "sanitize", broken)
@@ -196,8 +198,8 @@ def disposable():
     admin.dispose()
 
 
-def repair_line(out: str) -> str:
-    (line,) = [x for x in out.splitlines() if "audit metadata repair" in x]
+def repair_line(out: str, what: str = "audit metadata repair") -> str:
+    (line,) = [x for x in out.splitlines() if what in x]
     return line.split("] ", 1)[-1]
 
 
@@ -209,6 +211,8 @@ def test_the_migration_repairs_legacy_rows_reports_counts_only_and_is_irreversib
     out = alembic("upgrade", "head")
     n = len(LEGACY)
     assert repair_line(out) == f"audit metadata repair v1: {n} row(s) scanned, {CHANGED} changed"
+    assert repair_line(out, "audit reference repair") == (
+        f"audit reference repair v2: {n} row(s) scanned, 0 changed")  # fmt: skip
     assert_clean(out, keys=True)
     with disposable.connect() as c:
         after = metas(c, ids)

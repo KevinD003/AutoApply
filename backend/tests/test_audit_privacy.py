@@ -144,8 +144,8 @@ def test_safe_metadata_is_kept_and_external_identifiers_become_references():
             "version": 3, "flag": True, "fields": ["title", "notes"], "nothing": None,
             "content_hash": "a" * 64}  # fmt: skip
     assert sanitize(meta) == meta
-    r = ref("question_8101")
-    assert r.startswith("ref:") and "8101" not in r and r == ref("question_8101")
+    r = ref("question_8101", None)  # sanitize() without a user scopes to "no user"
+    assert r.startswith("ref:v2:") and "8101" not in r and r == ref("question_8101", None)
     assert sanitize({"field_ref": r}) == {"field_ref": r}
     assert sanitize({"weird key!": 1}) == {}  # keys themselves must be identifier-like
     # `field` always held a posting's question key: it is stored as its reference.
@@ -255,7 +255,7 @@ def test_a_rejected_draft_records_a_reason_code_not_its_content(api, monkeypatch
     r = api.post(f"/applications/{app['id']}/answers/why_us/draft")
     assert r.status_code == 422
     (row,) = audit_rows("draft.rejected")
-    assert row.meta == {"field_ref": ref("why_us"), "reason_code": "invented_numbers"}
+    assert row.meta == {"field_ref": ref("why_us", row.user_id), "reason_code": "invented_numbers"}
     assert "40" not in dump([row]) and "nurses" not in dump([row])
 
 
@@ -269,7 +269,9 @@ def test_a_created_draft_records_a_field_reference_not_the_question_key(api, mon
     assert api.post(f"/applications/{app['id']}/answers/why_us/draft").status_code == 200
     (row,) = audit_rows("draft.created")
     assert set(row.meta) == {"field_ref", "provider", "cost_usd"}
-    assert row.meta["field_ref"] == ref("why_us") and row.meta["provider"] == "test-fake"
+    assert (
+        row.meta["field_ref"] == ref("why_us", row.user_id) and row.meta["provider"] == "test-fake"
+    )
 
 
 # -- diagnostics: logs keep the type, never the payload ---------------------------------------

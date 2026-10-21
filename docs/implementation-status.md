@@ -84,14 +84,27 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   - **CI #77** ([39681835330](https://github.com/KevinD003/AutoApply/actions/runs/39681835330))
     (`24d8bb9`): passed;
   - **CI #78** ([39687972651](https://github.com/KevinD003/AutoApply/actions/runs/39687972651))
-    (`991ed1d`): passed.
+    (`991ed1d`): passed;
+  - **CI #79** ([39691935177](https://github.com/KevinD003/AutoApply/actions/runs/39691935177))
+    (`c54596e`, Phase 1 documentation consistency): pending.
 
   Per-job test counts were not recorded for these runs.
-- **Known, not fixed here** (separate phases): audit references are an unkeyed hash, so
-  enumerable question keys could be recovered (keyed references are the next phase); an
-  isolation failure stores the internal runner address and error text in the attempt outcome;
-  a form-capture mismatch lists posting question keys to the user; no global exception
-  handler.
+- **Keyed audit references (separate security commit after `c54596e`):**
+  - references are `ref:v2:` + HMAC-SHA-256 (truncated to 32 hex characters) over a domain
+    label, the user's id and the identifier, keyed by the server-held
+    `NOEFFORTS_AUDIT_REF_KEY`. The same user and identifier give the same reference; another
+    user or another key gives an unrelated one;
+  - the key is mandatory: the API refuses to start without one of at least 32 characters, and
+    production refuses a `test-only` key. No key is committed; tests use a test-only key from
+    their own configuration, and the Compose test scripts generate a throwaway one;
+  - migration `7a1e4c2b9d30` (repair version 2, irreversible, idempotent, counts-only output)
+    replaces every legacy unkeyed reference with `[omitted]`, since its source identifier is
+    no longer stored; a raw `field` value still present becomes a keyed reference;
+  - new `tests/test_audit_refs.py` (10 tests); mutation checks: removing the user scope from
+    the HMAC input and keeping legacy references were each caught.
+- **Known, not fixed here** (a separate API and error-boundary phase): an isolation failure
+  stores the internal runner address and error text in the attempt outcome; a form-capture
+  mismatch lists posting question keys to the user; no global exception handler.
 
 ## Execution routing and capabilities (2026-10-21; local only, no external request)
 

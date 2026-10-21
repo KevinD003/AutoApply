@@ -13,6 +13,8 @@ if not TEST_DB.rsplit("/", 1)[-1].split("?")[0].endswith("_test"):
     raise SystemExit(f"Refusing to run tests against a non-test database: {TEST_DB}")
 os.environ["NOEFFORTS_DATABASE_URL"] = TEST_DB
 os.environ.setdefault("NOEFFORTS_ENV", "test")
+# Test-only audit reference key (deterministic; production refuses any "test-only" key).
+os.environ.setdefault("NOEFFORTS_AUDIT_REF_KEY", "test-only-audit-reference-key-for-pytest")
 # Execution tests talk only to the synthetic receiver on this fixed local origin.
 RECEIVER_PORT = int(os.environ.get("NOEFFORTS_TEST_RECEIVER_PORT", "8799"))
 os.environ.setdefault("NOEFFORTS_FIXTURE_ORIGINS", f'["http://127.0.0.1:{RECEIVER_PORT}"]')

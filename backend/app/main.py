@@ -5,6 +5,7 @@ from sqlalchemy import text
 from app.core.config import get_settings
 from app.core.db import engine
 from app.modules.applications.router import router as applications_router
+from app.modules.audit.service import check_ref_key
 from app.modules.discovery.router import router as discovery_router
 from app.modules.documents.router import router as documents_router
 from app.modules.execution.router import router as execution_router
@@ -17,6 +18,7 @@ from app.modules.providers.router import router as providers_router
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    check_ref_key()  # no audit reference without the server-held key: refuse to start
     app = FastAPI(
         title="NoEfforts API",
         version="0.1.0",

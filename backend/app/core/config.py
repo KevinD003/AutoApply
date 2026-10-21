@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     max_import_rows: int = 5000
 
     login_rate_limit_per_minute: int = 10
+
+    # Server-held key for audit references (HMAC-SHA-256; audit/service.ref). Required: the API
+    # refuses to start without one of at least 32 characters, and production refuses a key
+    # starting "test-only". There is no default; set NOEFFORTS_AUDIT_REF_KEY in the environment.
+    audit_ref_key: SecretStr = SecretStr("")
 
     # Approvals lapse after this long; the user must re-approve.
     approval_ttl_hours: int = 72

@@ -36,6 +36,9 @@ supported for automatic submission. See
    ```
    On Homebrew Postgres the user is usually your macOS username with no password, e.g.
    `NOEFFORTS_DATABASE_URL=postgresql+psycopg://YOURNAME@127.0.0.1:5432/noefforts`.
+   Set `NOEFFORTS_AUDIT_REF_KEY` to a secret of your own (e.g. the output of
+   `openssl rand -hex 32`); the API refuses to start without it. For Docker Compose set
+   `AUDIT_REF_KEY` in `.env` the same way.
 
 3. **Start the API** (terminal 1):
    ```bash
@@ -62,7 +65,7 @@ supported for automatic submission. See
 ## Run it with Docker
 
 ```bash
-cp .env.example .env
+cp .env.example .env   # then set AUDIT_REF_KEY (e.g. `openssl rand -hex 32`); it is required
 docker compose up --build
 ```
 Then open http://localhost:3000. Data lives in the `pgdata` and `storage` volumes.

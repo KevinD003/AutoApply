@@ -3,6 +3,8 @@
 # Uses its own compose project name and removes its volumes at the end (disposable data only).
 set -euo pipefail
 export COMPOSE_PROJECT_NAME=noefforts_smoke
+# A throwaway audit reference key for this disposable stack, unless one is already set.
+export AUDIT_REF_KEY="${AUDIT_REF_KEY:-$(openssl rand -hex 32)}"
 # shellcheck source=scripts/smoke_lib.sh
 source "$(dirname "$0")/smoke_lib.sh"
 cleanup() {

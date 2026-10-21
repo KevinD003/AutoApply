@@ -238,16 +238,19 @@ Both views are served at `GET /api/providers` (`routing_capabilities`, `traits`,
     employers, files, answers, raw content) are redacted;
   - non-identifier values are omitted: free text, URLs, e-mail addresses, exception text and
     nested objects;
-  - external identifiers such as a posting's question keys are stored as one-way references;
-    a `field` key, which always held one, is stored as `field_ref`.
+  - external identifiers such as a posting's question keys are stored as keyed, user-scoped
+    references (`ref:v2:`, HMAC-SHA-256 with the server-held `NOEFFORTS_AUDIT_REF_KEY`; details
+    in `docs/audit-events.md`); a `field` key, which always held one, is stored as `field_ref`.
 - Rows stored before sanitizing existed are repaired once by migration `c303eee5a3c9`
-  (`audit/repair.py`, repair version 1):
-  - every `audit_events.meta` object goes through the same sanitizer; a value that is not an
-    object becomes `{}` (a JSON null, which holds nothing, is left as it is); no other column
-    or table is read or written;
-  - only rows whose metadata changes are rewritten, so a second run changes nothing;
-  - it is irreversible: the downgrade restores nothing and no removed value is kept;
-  - its output is aggregate counts only (rows scanned, rows changed); a failure names the
+  (`audit/repair.py`, repair version 1), and legacy unkeyed references are removed by
+  migration `7a1e4c2b9d30` (repair version 2: each becomes `[omitted]`, since its source is no
+  longer stored). Both repairs:
+  - pass every `audit_events.meta` object through the current sanitizer, scoped by the row's
+    user; a value that is not an object becomes `{}` (a JSON null, which holds nothing, is
+    left as it is); they read only `id`, `user_id` and `meta`, and write only `meta`;
+  - rewrite only rows whose metadata changes, so a second run changes nothing;
+  - are irreversible: the downgrade restores nothing and no removed value is kept;
+  - output aggregate counts only (rows scanned, rows changed); a failure names the
     error type only, with no message or chained exception, and the transaction rolls back.
 - The browser runner logs an unexpected exception by type only, and the egress proxy logs
   destination counts, never hosts.
@@ -533,4 +536,5 @@ fill, upload or submit operation.
 | A job source is never a form schema | `test_freehire_imports_are_never_treated_as_form_schemas` |
 | Audit events and logs carry safe metadata only (no applicant data, documents, credentials, employer or posting identifiers, raw exceptions or page content) | `tests/test_audit_privacy.py`: sanitizer tests per prohibited category, `test_record_sanitizes_before_anything_is_stored`, `test_route_decisions_are_audited_without_applicant_or_external_data`, `test_a_full_application_leaves_no_applicant_or_posting_data_in_audit_events`, `test_a_rejected_draft_records_a_reason_code_not_its_content`, `test_unexpected_runner_errors_are_logged_by_type_only`, `test_the_egress_proxy_never_logs_destination_hosts` |
 | Audit rows stored before sanitizing are repaired once, irreversibly and idempotently, with counts-only output | `tests/test_audit_repair.py`: `test_repair_sanitizes_every_legacy_row_and_a_second_run_changes_nothing`, `test_a_failed_repair_reveals_no_legacy_content`, `test_the_migration_repairs_legacy_rows_reports_counts_only_and_is_irreversible` |
+| Audit references are keyed and user-scoped; legacy unkeyed references are removed | `tests/test_audit_refs.py`: `test_same_user_and_input_give_a_stable_versioned_reference`, `test_different_users_never_share_a_reference_for_the_same_input`, `test_changing_the_key_changes_every_reference`, `test_a_missing_or_short_key_fails_closed_without_showing_it`, `test_production_refuses_a_test_only_key`, `test_stored_references_are_user_scoped_and_hold_no_raw_key_or_secret`, `test_the_v2_migration_removes_legacy_references_and_is_idempotent` |
 | An unsupported ATS is never routed to another ATS's adapter | `test_a_workday_job_is_shown_unsupported_never_routed_to_greenhouse`, `test_a_form_from_another_ats_is_refused` |

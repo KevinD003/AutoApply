@@ -404,7 +404,7 @@ def put_answer(
         if not entry["bankable"]:
             raise bad_request("This answer depends on the specific job and cannot be reused.")
         _save_to_bank(db, user, app, f, value, sensitive=entry["sensitive"])
-    record(db, user.id, "application.answer", "application", app.id, field_ref=ref(key))
+    record(db, user.id, "application.answer", "application", app.id, field_ref=ref(key, user.id))
     db.flush()
     return _package_view(db, app, _current(db, app))
 
@@ -492,7 +492,7 @@ def put_consent(
             db.delete(row)
     else:
         _upsert_input(db, app, "consent", key, {"choice": body.choice})
-    record(db, user.id, "application.consent", "application", app.id, field_ref=ref(key),
+    record(db, user.id, "application.consent", "application", app.id, field_ref=ref(key, user.id),
            choice=body.choice)  # fmt: skip
     db.flush()
     return _package_view(db, app, _current(db, app))
@@ -608,8 +608,8 @@ def request_draft(
         try:
             text = drafting.validate_draft(req, result)
         except drafting.InvalidDraft as e:
-            record(db, user.id, "draft.rejected", "application", app.id, field_ref=ref(key),
-                   reason_code=e.code)  # fmt: skip
+            record(db, user.id, "draft.rejected", "application", app.id,
+                   field_ref=ref(key, user.id), reason_code=e.code)  # fmt: skip
             db.commit()
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -633,7 +633,7 @@ def request_draft(
             "draft.created",
             "application",
             app.id,
-            field_ref=ref(key),
+            field_ref=ref(key, user.id),
             provider=result.provider,
             cost_usd=result.cost_usd,
         )

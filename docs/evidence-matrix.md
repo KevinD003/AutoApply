@@ -32,6 +32,10 @@ Redis 7); CI results are in `docs/implementation-status.md`.
 | CAPTCHA claimed only where detected | `tests/test_execution_routing.py`: `test_a_captcha_checkpoint_is_claimed_only_where_the_adapter_detects_one`; `tests/test_greenhouse_dom.py`: `test_a_captcha_on_the_form_stops_before_anything_is_disclosed` | `fixture_ats` claims none; `greenhouse_dom` stops with 0 disclosures |
 | Cancel echoes only its own refusal | `tests/test_execution_failures.py`: `test_cancel_reports_only_its_own_refusals` | terminal state 400; any other error stays a server error; fails with the old catch-all |
 | Route endpoint is tenant-scoped | `tests/test_execution_routing.py`: `test_another_users_job_route_is_not_found_and_not_audited` | 404; no route decision recorded |
+| Keyed references: stable per user and key, unrelated across users and keys | `tests/test_audit_refs.py`: `test_same_user_and_input_give_a_stable_versioned_reference`, `test_different_users_never_share_a_reference_for_the_same_input`, `test_changing_the_key_changes_every_reference`, `test_a_reference_is_not_the_legacy_unkeyed_hash` | `ref:v2:` + 32 hex; no identifier or key in it; a legacy reference becomes `[omitted]` (also inside a list) |
+| The key is mandatory and never shown | `tests/test_audit_refs.py`: `test_a_missing_or_short_key_fails_closed_without_showing_it`, `test_production_refuses_a_test_only_key`, `test_the_key_is_not_in_the_settings_repr` | missing or short key: references and API start-up refused; production refuses a test-only key; the key is in no message or repr |
+| Stored references are user-scoped | `tests/test_audit_refs.py`: `test_stored_references_are_user_scoped_and_hold_no_raw_key_or_secret` | two users, same question: different `field_ref`; same user: identical; no raw key or secret in the rows |
+| Legacy references removed once, irreversibly | `tests/test_audit_refs.py`: `test_the_v2_migration_removes_legacy_references_and_is_idempotent` | 8 synthetic rows from 2 users: 6 changed, then 0; no legacy reference, raw key or secret in the rows or the output; downgrade restores nothing |
 
 ## Execution routing (2026-10-21; local only, no external request)
 

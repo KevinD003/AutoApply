@@ -9,6 +9,8 @@ export const RECEIVER_TOKEN = "e2e-receiver-admin-token"; // test-only receiver 
 const backendEnv = {
   NOEFFORTS_DATABASE_URL: db,
   NOEFFORTS_STORAGE_DIR: "/tmp/noefforts-e2e-storage",
+  // Test-only audit reference key (production refuses any "test-only" key).
+  NOEFFORTS_AUDIT_REF_KEY: "test-only-audit-reference-key-for-e2e",
   NOEFFORTS_FIXTURE_ORIGINS: JSON.stringify([RECEIVER]),
   NOEFFORTS_SUBMIT_TIMEOUT_SECONDS: "20",
   NOEFFORTS_CHECKPOINT_TTL_SECONDS: "90",
