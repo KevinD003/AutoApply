@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-21 (submission-provider architecture: provider model, routing, fake authorized API, Freehire mock discovery; local only, no external request). For requirement-by-requirement evidence see
+Last updated: 2026-10-21 (Greenhouse readiness-gap handoff; Freehire discovery provider built and tested against a local fixture only, off by default, no Freehire request). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,69 @@ Last updated: 2026-10-21 (submission-provider architecture: provider model, rout
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Greenhouse readiness gap and Freehire discovery (2026-10-21; no external request)
+
+- **Greenhouse (docs only):** `docs/greenhouse-readiness-gap.md` separates five things:
+  - what is confirmed on the one real posting;
+  - what is confirmed only on fixtures;
+  - assumed fixture behaviour;
+  - unknown or unsupported behaviour;
+  - what a live filling pilot would need.
+
+  It holds the support matrix. Status: "Greenhouse fixture support exists; one real posting
+  has been structurally observed, but real filling and submission remain disabled." No
+  identical dropdown observation will be requested again.
+- **Freehire discovery: implemented locally.** External API not configured and not tested;
+  not production-ready. Details in `docs/discovery.md`.
+  - **Contract:** taken from the existing review of Freehire's documented API
+    (`docs/research/freehire.md`, 2026-10-19). Not re-fetched; no Freehire request in this
+    task.
+  - **Code:**
+    - the interface: `provider_capabilities`, `healthcheck`, `list_jobs(filters, cursor)`,
+      `get_job`, `normalize_job`;
+    - the `freehire` client, which only accepts fixture base URLs;
+    - the local stand-in `fixtures/ats_receiver/freehire_fixture.py`;
+    - import, filters, dedup and the merge policy;
+    - `/api/discovery/*`;
+    - the Discover page and source attribution on jobs;
+    - migration `955a3214d25a`;
+    - D33.
+  - **Off by default:** `NOEFFORTS_DISCOVERY_PROVIDERS=[]`. The key, if ever set, stays
+    server-side.
+- **Commits:**
+  - `b1d2f5b`: Greenhouse handoff;
+  - `eecc2ed`: backend;
+  - `db7d4d8`: frontend;
+  - `6c88490`: docs.
+- **Commands actually run (cloud sandbox, PostgreSQL 16, Redis 7, Node 22):**
+  - `ruff format .`, `ruff check .`: clean;
+  - migration on a scratch DB: `alembic upgrade head` (with an existing row),
+    `alembic check` ("No new upgrade operations detected"), `downgrade -1`, `upgrade head`;
+  - `tests/test_freehire_discovery.py`: 27 passed;
+  - with `test_discovery.py`, `test_providers.py`, `test_jobs.py`, `test_migrations.py` and
+    `test_api_provider.py`: 83 passed;
+  - two mutations, each failing its test and then reverted:
+    - unknown sponsorship treated as a match;
+    - discovery merging into an existing job;
+  - full backend suite: 465 passed, exit 0;
+  - frontend: `npx tsc --noEmit` and `npm run lint` clean;
+  - `e2e/discovery.spec.ts`: 2 passed (desktop, mobile), after two locator fixes in the spec
+    itself;
+  - full Playwright suite: 28 passed;
+  - not run here: the Compose scenarios (no Docker daemon).
+- **CI #63** ([39641708598](https://github.com/KevinD003/AutoApply/actions/runs/39641708598))
+  on `6c88490`, all four jobs passed:
+  - backend 464 passed, 1 skipped (the same CI-only skip as before);
+  - frontend: typecheck, lint, Playwright 28 passed;
+  - execution-compose passed;
+  - docker-smoke passed.
+- **Limitations:**
+  - the Freehire contract may have changed since 2026-10-19;
+  - the `enrichment` keys and the single-job wrapper are assumptions;
+  - imports run inside the request (bounded);
+  - Freehire listings are never treated as complete, so "missing from the listing" does not
+    mark them stale.
 
 ## Submission-provider architecture (2026-10-21; local only, no external request)
 
