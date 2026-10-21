@@ -110,8 +110,9 @@ def test_route_selection_api_then_browser_then_manual(api, receiver, monkeypatch
     monkeypatch.setattr(get_settings(), "fake_api_token", "fixture-api-token")
     r = job_route(api, job_id)
     assert (r["route"], r["provider"]) == ("api", "fake_api")
-    real = api.post("/jobs", json={"url": "https://job-boards.greenhouse.io/acme/jobs/1",
-                                   "title": "Analyst", "employer": "Acme"}).json()["job"]["id"]  # fmt: skip
+    real_job = {"url": "https://job-boards.greenhouse.io/acme/jobs/1", "title": "Analyst",
+                "employer": "Acme"}  # fmt: skip
+    real = api.post("/jobs", json=real_job).json()["job"]["id"]
     r = job_route(api, real)
     assert r["route"] == "manual_handoff"  # nothing captured or enabled for a real origin
 
@@ -196,8 +197,9 @@ def test_a_workday_job_is_shown_unsupported_never_routed_to_greenhouse(api, rece
                                                        "implemented")  # fmt: skip
     assert "Workday applications are not supported yet" in r["message"]
     # Even a form claiming to be Greenhouse cannot pull a Workday job into the Greenhouse adapter.
-    d = routing.decide({"origin": "https://acme-example.wd5.myworkdayjobs.com", "url": WORKDAY_URL,
-                        "submit_url": WORKDAY_URL, "form_source": "greenhouse_api_dom"})  # fmt: skip
+    origin = "https://acme-example.wd5.myworkdayjobs.com"
+    d = routing.decide({"origin": origin, "url": WORKDAY_URL, "submit_url": WORKDAY_URL,
+                        "form_source": "greenhouse_api_dom"})  # fmt: skip
     assert d.provider == "manual_handoff" and "Workday" in d.message
     # And its form is never captured as a Greenhouse form (refused without any request).
     assert api.post(f"/jobs/{job['id']}/form/greenhouse").status_code == 400
