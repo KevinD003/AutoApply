@@ -93,7 +93,12 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   - full backend suite: 438 passed, exit 0 (399 before this task, plus the 39 new tests);
   - frontend unchanged, so no frontend checks were run here;
   - not run here: the Compose scenarios (no Docker daemon); CI runs them.
-- **CI:** pending for this commit; the result is recorded in a follow-up commit.
+- **CI #58** ([39635232058](https://github.com/KevinD003/AutoApply/actions/runs/39635232058))
+  on `4c3ec01`, all four jobs passed:
+  - backend: 437 passed, 1 skipped (the same CI-only skip as CI #56);
+  - frontend: typecheck, lint and the full Playwright suite passed;
+  - execution-compose passed;
+  - docker-smoke passed.
 
 ## Local readiness for dropdown support (2026-10-21; local only, no external request)
 
