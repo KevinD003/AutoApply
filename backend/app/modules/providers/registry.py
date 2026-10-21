@@ -40,7 +40,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
             C.deterministic_fill: FIXTURE,
             C.file_upload: FIXTURE,
             C.email_verification: Support(fixture=True, note="code entered by the user"),
-            C.captcha_checkpoint: Support(fixture=True, note="stop and hand off; never solved"),
+            # No captcha_checkpoint: this fixture has no CAPTCHA mode and its adapter detects none.
             C.final_submit: FIXTURE,
             C.confirmation_detection: FIXTURE,
             C.reconciliation: _USER_RECONCILES,
@@ -193,7 +193,7 @@ _TRAITS: dict[str, dict[Trait, TraitValue]] = {
         T.login_required: V("no", "fixture design"),
         T.manual_verification_required: V("yes", "fixture design: an emailed code, entered by "
                                                  "the user"),
-        T.captcha_possible: V("yes", "fixture design: a CAPTCHA mode; a checkpoint, never solved"),
+        T.captcha_possible: V("no", "fixture design: no CAPTCHA mode"),
         T.multi_step: V("no", "fixture design"),
     },
     "greenhouse_hosted": {

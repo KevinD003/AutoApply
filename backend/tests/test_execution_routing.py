@@ -214,7 +214,34 @@ def test_a_form_from_another_ats_is_refused():
     assert d.provider == "manual_handoff" and "does not belong" in d.message
 
 
+def test_another_users_job_route_is_not_found_and_not_audited(api, other_api):
+    from app.modules.audit.models import AuditEvent
+
+    synthetic_candidate(api)
+    job_id = v2_job(api)
+    assert other_api.get(f"/jobs/{job_id}/route").status_code == 404
+    with SessionLocal() as db:
+        n = db.scalar(select(func.count()).select_from(AuditEvent)
+                      .where(AuditEvent.action == "route.decision"))  # fmt: skip
+    assert n == 0
+
+
 # -- checkpoints -------------------------------------------------------------------------------
+
+
+class _ChallengePage:
+    """A page on which every challenge selector matches (and nothing else is asked)."""
+
+    def locator(self, selector):
+        return type("L", (), {"count": lambda self: 1})()
+
+
+def test_a_captcha_checkpoint_is_claimed_only_where_the_adapter_detects_one():
+    for name, cls in runner.ADAPTERS.items():
+        claims = registry.C.captcha_checkpoint in registry.get(name).capabilities
+        detects = cls({}, {}).blocked_reason(_ChallengePage()) is not None
+        assert claims == detects, name
+    assert registry.get("fixture_ats").traits[registry.T.captcha_possible].value == "no"
 
 
 def test_a_captcha_becomes_a_user_action_never_an_automated_solve(api, receiver):

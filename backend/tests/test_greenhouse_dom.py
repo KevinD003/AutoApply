@@ -260,6 +260,15 @@ def test_outcome_classification(api, receiver, mode, expected, accepted):
     assert receiver.ledger()["accepted"] == accepted
 
 
+def test_a_captcha_on_the_form_stops_before_anything_is_disclosed(api, receiver):
+    aid = queue(api, v2_application(api))
+    receiver.config(mode="gh2_captcha")
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert "does not solve or bypass" in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
 def test_combobox_that_does_not_keep_its_choice_is_caught_by_readback(api, receiver):
     aid = queue(api, v2_application(api))
     receiver.config(mode="gh2_combobox_ignores")

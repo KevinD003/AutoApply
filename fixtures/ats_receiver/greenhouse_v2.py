@@ -33,7 +33,7 @@ Routes (on the synthetic receiver; same ledger):
   POST /gh2/{board}/jobs/{id}/attachments  upload (a disclosure)
   POST /gh2/{board}/jobs/{id}/submit       application (an acceptance)
 Modes (cfg["mode"]): gh2_duplicate_id, gh2_label_mismatch, gh2_missing_control,
-gh2_validation_fail, gh2_new_question, gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, gh2_many_assets,
+gh2_validation_fail, gh2_captcha, gh2_new_question, gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, gh2_many_assets,
 gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, gh2_attach_group(_wrong|_shared), gh2_widgets (cfg widget_bad: submit, fetch, nav, captcha,
 filechooser, required, select, dialog, upload, hash, images, covered),
 gh2_widget_variants (cfg variant, delay_ms; see _VARIANTS_JS), gh2_required_unmarked,
@@ -633,6 +633,8 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
                '<script src="https://northwind.fixture.greenhouse.io/board.js"></script>')
     if mode == "gh2_navigate_away":  # the page navigates itself after load
         qs += f'<script>setTimeout(() => {{ location.href = "{base}?again=1"; }}, 200)</script>'
+    if mode == "gh2_captcha":  # a bot-check widget on the form (static markup, nothing real)
+        qs += '<div class="g-recaptcha" data-sitekey="fixture-not-real"></div>'
     if mode == "gh2_new_question":  # a visible question the job data does not list
         qs += ('<div class="field"><label for="question_8199">Years of experience</label>'
                '<input type="text" id="question_8199"></div>')

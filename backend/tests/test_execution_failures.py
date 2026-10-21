@@ -352,6 +352,25 @@ def test_cancel_after_send_gate_is_refused(api, receiver):
     assert receiver.ledger()["accepted"] == 1
 
 
+def test_cancel_reports_only_its_own_refusals(api, receiver, monkeypatch):
+    import sqlalchemy as sa
+
+    app_id, aid = ready(api, receiver)
+    assert runner.run_attempt(aid, "w1") == "confirmed"
+    r = api.post(f"/applications/{app_id}/cancel")  # a terminal state: NoEfforts' own refusal
+    assert r.status_code == 400 and "cancelled" in r.json()["detail"]
+
+    raw = "UPDATE applications SET state=%(state)s -- sam.synthetic@example.com"
+
+    def broken(db, app):
+        raise sa.exc.OperationalError(raw, {"state": "x"}, Exception("lock timeout"))
+
+    monkeypatch.setattr(svc, "cancel", broken)
+    # Any other error is not turned into a 400 carrying its text; it stays a server error.
+    with pytest.raises(sa.exc.OperationalError):
+        api.post(f"/applications/{app_id}/cancel")
+
+
 # ---------------------------------------------------------------- broker outage
 
 

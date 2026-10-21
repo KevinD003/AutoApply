@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db, utcnow
 from app.core.errors import bad_request, conflict, not_found
 from app.modules.applications.models import Application
+from app.modules.applications.states import IllegalTransition
 from app.modules.execution import service as svc
 from app.modules.execution.models import AttemptEvent, Checkpoint, Evidence, ExecutionAttempt
 from app.modules.execution.policy import CAPABILITIES
@@ -147,7 +148,7 @@ def cancel(
     except PermissionError as e:
         db.rollback()
         raise conflict(str(e)) from None
-    except Exception as e:  # IllegalTransition from a terminal state
+    except IllegalTransition as e:  # from a terminal state; its text is NoEfforts' own
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from None
     db.commit()

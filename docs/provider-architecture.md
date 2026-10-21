@@ -86,7 +86,7 @@ Columns: FA = `fixture_ats`, GH = `greenhouse_hosted`, GD = `greenhouse_dom`, AP
 | login_required | – | – | – | – | – | – | – |
 | email_verification | fixture | fixture | – | – | – | – | – |
 | mobile_verification | – | – | – | – | – | – | – |
-| captcha_checkpoint | fixture | fixture | fixture | – | – | – | – |
+| captcha_checkpoint | – | fixture | fixture | – | – | – | – |
 | final_submit | fixture | fixture | fixture | fixture | – | – | – |
 | confirmation_detection | fixture | fixture | fixture | fixture | – | – | – |
 | reconciliation | fixture | fixture | fixture | fixture | – | – | – |
@@ -181,7 +181,7 @@ not implemented. **No cell is `live_fill` or `live_submit`.**
 | document_upload | fixture | fixture | fixture | fixture | none | none | none | none |
 | login_required *(trait)* | no | unknown | no | no | no | n/a | expected | n/a |
 | manual_verification_required *(trait)* | yes | unknown | unknown | no | n/a | n/a | expected | n/a |
-| CAPTCHA_possible *(trait)* | yes | unknown | unknown | no | unknown | n/a | expected | n/a |
+| CAPTCHA_possible *(trait)* | no | unknown | unknown | no | unknown | n/a | expected | n/a |
 | multi_step *(trait)* | no | unknown | no | no | no | n/a | expected | n/a |
 | location_picker | none | none | none | none | none | none | none | none |
 | custom_dropdown | none | none | fixture | none | observed (structure only) | none | none | none |
@@ -524,7 +524,7 @@ fill, upload or submit operation.
 | Standard questions use approved facts first, deterministically (no LLM) | `test_full_workflow_with_zero_llm_calls`, `test_fixture_classification_table`, `test_unknown_or_unapproved_facts_never_resolve` |
 | Long-form content is manual unless an approved AI provider is connected | `test_long_form_is_unresolved_without_draft`, `test_drafting_unavailable_without_provider`, `test_fake_provider_draft_is_validated_and_needs_acceptance` |
 | Never fabricate qualifications, salary, legal answers, sponsorship, authorization, demographics or coordinates | `test_sponsorship_timeframes`, `test_without_sponsorship_needs_both_facts`, `test_vague_or_country_less_questions_need_user`, `test_option_mismatch_is_not_guessed`, `test_sensitive_needs_answer_and_disclosure_consent`, `test_location_job_is_a_checkpoint`, `test_an_unsupported_required_control_is_a_checkpoint_before_disclosure` |
-| CAPTCHA is a manual checkpoint, never solved or bypassed | `test_a_captcha_becomes_a_user_action_never_an_automated_solve`, `test_captcha_stops_before_anything_is_disclosed`, `test_no_solver_or_evasion_code_exists`, `test_no_checkpoint_is_ever_completed_by_noefforts` |
+| CAPTCHA is a manual checkpoint, never solved or bypassed; claimed only where the adapter detects one | `test_a_captcha_becomes_a_user_action_never_an_automated_solve`, `test_captcha_stops_before_anything_is_disclosed`, `test_a_captcha_on_the_form_stops_before_anything_is_disclosed`, `test_a_captcha_checkpoint_is_claimed_only_where_the_adapter_detects_one`, `test_no_solver_or_evasion_code_exists`, `test_no_checkpoint_is_ever_completed_by_noefforts` |
 | Email or mobile verification needs an explicit user checkpoint | `test_security_code_wrong_then_right` (the code is entered by the user; old rounds are replays); SMS codes are unsupported (`checkpoints.py`) |
 | Unknown outcomes are reconciled, never resubmitted | `test_accepted_but_response_lost_is_unknown_and_never_resent`, `test_outcomes_after_sending`, `test_outcome_classification` |
 | An approval binds destination, adapter and version, documents, answers, consents and relevant facts | `test_manifest_binds_owner_destination_documents_and_policy`, `test_approval_records_the_execution_method`, `test_accepted_draft_depends_on_its_facts` |
