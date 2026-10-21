@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-21 (Greenhouse readiness-gap handoff; Freehire discovery provider built and tested against a local fixture only, off by default, no Freehire request). For requirement-by-requirement evidence see
+Last updated: 2026-10-21 (Freehire personal prototype: documented shapes, header-only pacing, no /status, "via freehire.me" attribution; still off by default and fixture-only; no Freehire API request). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,54 @@ Last updated: 2026-10-21 (Greenhouse readiness-gap handoff; Freehire discovery p
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Freehire personal prototype (2026-10-21; no Freehire API request)
+
+- **Product model:** personal prototype only (owner's choice, D34). Multi-user use, plan
+  storage and 30-day deletion are **not implemented**; they wait on a plan or written
+  clarification from Freehire.
+- **Documentation review:** `468742e` (research note, D34). Public pages only; no `/api/v1`
+  request.
+- **Corrections in code** (`7465f64`):
+  - `work_mode` is read from the top-level field; `last_seen_at` is no longer read;
+  - the fixed 1-second spacing and its setting are removed. Paging stops when
+    `X-RateLimit-Remaining` is 0 (truncated, with the reason shown). A 429 reports
+    `Retry-After` and is never retried. Nothing sleeps;
+  - the healthcheck makes no request: `/status` is crawler health;
+  - "via freehire.me" appears on every listing and on the job page. No listing-page URL is
+    documented, so it is text, not a link;
+  - no raw payload is kept (tested);
+  - the fixture follows the documented shapes: closed postings are absent from search and
+    served by the detail endpoint, and every response carries rate-limit headers.
+- **Docs** (`f487626`):
+  - D7 no longer calls 600/min documented;
+  - `docs/discovery.md` follows the reviewed documentation;
+  - D34 lists the applied items;
+  - new evidence rows.
+- **Unchanged:**
+  - off by default (`NOEFFORTS_DISCOVERY_PROVIDERS=[]`), fixture origins only;
+  - no account, no key, no live request;
+  - a future live test needs its own approval naming the query, page limit, time window and
+    data-retention statement.
+- **Commands actually run (cloud sandbox):**
+  - `ruff format .`, `ruff check .`: clean;
+  - `tests/test_freehire_discovery.py`: 36 passed (it had 27);
+  - with `test_discovery.py`, `test_providers.py` and `test_jobs.py`: 74 passed;
+  - three mutations, each failing its test and then reverted:
+    - falling back to `enrichment.work_mode`;
+    - ignoring `X-RateLimit-Remaining`;
+    - a healthcheck calling `/status`;
+  - full backend suite: 474 passed, exit 0. A first attempt had collected with a global
+    pytest outside the backend virtualenv and stopped at collection with no test run; it was
+    re-run with `backend/.venv/bin/python -m pytest tests`;
+  - frontend: `npx tsc --noEmit` and `npm run lint` clean;
+  - `e2e/discovery.spec.ts`: 2 passed;
+  - full Playwright suite: 28 passed.
+- **CI:**
+  - CI #66 on `7465f64`: success;
+  - CI #67 ([39647705737](https://github.com/KevinD003/AutoApply/actions/runs/39647705737))
+    on `f487626`: all four jobs passed. Backend 473 passed, 1 skipped (the same CI-only skip);
+    frontend Playwright 28 passed; execution-compose and docker-smoke passed.
 
 ## Greenhouse readiness gap and Freehire discovery (2026-10-21; no external request)
 
