@@ -332,3 +332,32 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   - a provider outage must never affect manual entry or tracking.
 - **Status:** implemented locally. External API not configured and not tested; not
   production-ready. Details: `docs/discovery.md`.
+
+## D34 — Freehire documentation review (2026-10-21): what changes before any live use
+- **Evidence:** documentation and terms only (`docs/research/freehire.md`, review of
+  2026-10-21). No API endpoint was called.
+- **Terms ("Last updated: October 19, 2026"):**
+  - **Without a plan**, the API is for personal and non-commercial use. Showing postings in a
+    product or service offered to others, paid or not, needs an API plan.
+  - **A plan** allows storing and showing postings. Each posting must link to its freehire.me
+    page or carry "via freehire.me". No redistribution of the raw data. Stored data must be
+    deleted within 30 days after the plan ends.
+  - **Whether NoEfforts' use is "a tool you run for yourself" or "a service offered to
+    others"** is the owner's decision. It is not inferred here.
+- **Contract corrections against D7, D33 and `docs/discovery.md`:**
+  - **Rate limits:** D7 called the 600/min keyless limit "documented", which was wrong. No
+    keyless figure is documented (`GET /plans` reports it). The documented plan rates are
+    1,200/min (API) and 6,000/min (Data).
+  - **Work mode:** `work_mode` is a top-level job field, not `enrichment.work_mode`.
+  - **`/status`:** it reports ingest-fleet health, not API availability.
+  - **Undocumented fields:** `last_seen_at` and the `utm_source` suffix appear in no
+    documentation.
+- **Not applied yet** (no code change was in scope). Before any live call is proposed, the
+  client and `docs/discovery.md` need:
+  1. `work_mode` read from the top level;
+  2. no reliance on `/status` for health, or relabel it as ingest health;
+  3. pacing from `X-RateLimit-*` headers instead of an assumed figure;
+  4. the attribution and retention rules above, if a plan is used;
+  5. no use of undocumented fields as facts.
+- **Status unchanged:** a live API call remains unapproved. Freehire stays a discovery source
+  only, never an execution destination.
