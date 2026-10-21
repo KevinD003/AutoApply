@@ -72,6 +72,13 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     for `portal_unlinked`, `no_roles`, `class_hint`, `silent` and `wrong_target`;
   - mutation: the old required rule fails 3 of the 4 execution tests.
   - Not run here: the Compose scenarios (no Docker daemon); CI runs them.
+- **CI #52** ([39602660714](https://github.com/KevinD003/AutoApply/actions/runs/39602660714))
+  on `e1bd9e7`, all four jobs passed:
+  - backend 375 passed, 1 skipped, including `test_widget_detector.py` (25) and
+    `test_required_signals.py` (10);
+  - frontend: full Playwright passed;
+  - execution-compose 89 checks, 0 failed;
+  - docker-smoke passed.
 - **Not done:** no external request. A diagnostic re-observation is proposed in the
   proposal doc and is not authorized.
 

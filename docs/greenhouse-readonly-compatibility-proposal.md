@@ -556,8 +556,11 @@ for every control (attachments included), and path shapes of the refused data re
   action (a wrapper, a key) is a new action type needing its own approval.
 - `undetermined` or `click_failed`: reported as such; no follow-up is implied.
 
-**Pinned revision:** to be the code revision whose CI has passed, dispatched from a branch at
-exactly that commit (as for run #8).
+**Pinned revision:** `e1bd9e711f30c550b842280a6d9e3975bdbcb69d` (`e1bd9e7`).
+- CI #52 ([39602660714](https://github.com/KevinD003/AutoApply/actions/runs/39602660714)) passed
+  all four jobs on it.
+- If approved, it would be dispatched from a branch created at exactly that commit and
+  verified before dispatch, as for run #8. No branch has been created yet.
 
 ## Deliverable: the comparison (once A/B are separately approved and run)
 
