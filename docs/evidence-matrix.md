@@ -9,6 +9,24 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Execution routing (2026-10-21; local only, no external request)
+
+These are local fixture tests. The receiver, its Greenhouse-style forms and its fake API are
+labelled stand-ins, and nothing claims live API or ATS compatibility.
+
+| Requirement | Evidence (`tests/test_execution_routing.py` unless noted) | Result |
+|---|---|---|
+| Routing vocabulary, no live claims | `test_every_provider_declares_the_routing_vocabulary_without_live_claims` | 13 names for every provider; no `live_*` level; `greenhouse_dom`: browser_fill and custom_dropdown fixture, location_picker none, public_schema_read observed, CAPTCHA_possible unknown |
+| Workday is a specification only | `test_workday_is_a_specification_only` | stage planned; every capability none; traits "expected"; status says not supported |
+| Interface only where operations exist | `test_interface_is_implemented_only_where_the_operations_exist` | 9 names; manual handoff only `request_user_action`; Workday and Freehire none |
+| API vs browser vs manual | `test_route_selection_api_then_browser_then_manual` | no form: manual; captured: browser `greenhouse_dom`; grant without token: browser; grant plus token: API `fake_api`; real origin: manual |
+| API connector needs explicit authorization | `test_a_known_api_connector_is_never_selected_without_explicit_authorization` | token configured, no grant: browser, with the reason "no active authorization"; 0 `/fapi/` requests |
+| Unsupported capability: checkpoint before disclosure | `test_an_unsupported_required_control_is_a_checkpoint_before_disclosure` | location job: route `checkpoint`, "Nothing is sent"; coordinates unresolved; approval refused; 0 disclosures. Mutation-checked |
+| Adapter version mismatch | `test_an_adapter_version_mismatch_blocks_queueing_and_execution` | 409 at queue; after queueing: `failed_safe` "execution method changed"; 0 disclosures, 0 acceptances |
+| Job source is not a form schema | `test_freehire_imports_are_never_treated_as_form_schemas` | after an import: 0 `JobForm` rows; every linked job "Capture the application form first."; only `search` requested; the client has no form method |
+| Workday never routed to Greenhouse | `test_a_workday_job_is_shown_unsupported_never_routed_to_greenhouse`, `test_a_form_from_another_ats_is_refused`; `frontend/e2e/routing.spec.ts` | Workday job: manual "Workday applications are not supported yet", even with a Greenhouse form source; Greenhouse capture refused (400) with 0 requests; a Lever job with a Greenhouse form refused; the job page shows it (desktop and mobile). Mutation-checked |
+| CAPTCHA is a user action | `test_a_captcha_becomes_a_user_action_never_an_automated_solve` | `failed_safe` "does not solve"; application `needs_user_action`; 0 disclosures; every checkpoint policy non-automated |
+
 ## Freehire discovery provider (2026-10-21; fixture only, no Freehire API request)
 
 All of this is local fixture evidence. The oracle is the fixture's own request table

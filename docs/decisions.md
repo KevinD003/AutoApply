@@ -375,3 +375,25 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Status unchanged:** a live API call remains unapproved. A future live test needs its own
   approval with the exact query, page limit, time window and data-retention statement.
   Freehire stays a discovery source only, never an execution destination.
+
+## D35 — Route by ATS identity first; traits apart from capabilities; Workday planned only
+- **ATS identity first:** routing identifies the job's ATS from known hostnames before choosing
+  a route.
+  - An ATS with only a planned adapter is a manual handoff that names the reason.
+  - A form captured as one ATS for a job on another is refused.
+  - So no job can reach another ATS's adapter by its form source alone.
+- **Per job** (`route_for_job`, `GET /api/jobs/{id}/route`):
+  - no captured form gives a manual handoff;
+  - a required control NoEfforts cannot fill gives a **checkpoint** before any disclosure;
+  - otherwise the existing order applies: authorized API (grant + credentials + support),
+    then the browser adapter, then a manual handoff.
+  - A job source never supplies a form.
+- **Workflow traits** (login, manual verification, CAPTCHA possible, multi-step) describe what
+  a workflow demands. They are recorded apart from capabilities: "yes"/"no" only with
+  evidence, "expected" only for a planned specification, "unknown" otherwise.
+- **Vocabulary and interface:** the routing vocabulary and the nine-operation interface are
+  views over the existing capabilities and operations, never separate claims.
+- **Workday:** registered as `planned` with no operations or capabilities. No Workday
+  automation exists.
+- **Status:** nothing became live. `real_destinations` is false everywhere; C and D remain
+  unapproved.

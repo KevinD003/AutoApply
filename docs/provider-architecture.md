@@ -135,6 +135,99 @@ The route never changes silently:
 - **Read-only to filling:** observation providers are not routes, and their spec cannot
   declare fill, upload or submit.
 
+## 2b. Execution routing: interface, vocabulary, per-job route (2026-10-21)
+
+Each application takes the safest supported path:
+
+1. an employer-authorized API, when one is genuinely available and permitted;
+2. a validated browser adapter, when there is no authorized API;
+3. a checkpoint for the user, or a manual handoff, when the workflow is unsupported, ambiguous,
+   needs a CAPTCHA, a login or verification, or risks disclosure outside the approved scope.
+
+**Execution interface** (`model.INTERFACE`). These are the names used here. Each maps to the
+operations an adapter implements; the runner drives them, and adapters keep their own method
+names.
+
+| Interface operation | Implemented by | Where |
+|---|---|---|
+| `inspect_application` | `inspect` | capture: job data plus page, cross-checked |
+| `extract_form_schema` | `extract_form` | `preparation/forms.py`, `greenhouse.py`, `greenhouse_dom.py` |
+| `prepare_application` | `prepare` | package build: deterministic answers, approval |
+| `validate_application` | `validate_before_disclosure` | re-extract and compare before gate 1 |
+| `request_user_action` | `checkpoint` | `checkpoints.py`; emailed code; `needs_user_action` |
+| `upload_documents` | `upload` | after gate 1; the digest is checked |
+| `submit_application` | `submit` | after gate 2, once |
+| `collect_confirmation_evidence` | `classify_outcome` + `collect_evidence` | minimal evidence, no screenshots or traces |
+| `reconcile_unknown_outcome` | `reconcile` | API: read-only lookup by key. Browser: the user records what they checked |
+
+**Routing vocabulary** (`model.ROUTING_CAPABILITIES`) is a view over the evidence-levelled
+capabilities. Rows marked *trait* are what a workflow demands, not what NoEfforts can do:
+
+- a trait is "yes" or "no" only with evidence (a fixture's own design counts only for that
+  fixture);
+- "expected" is used only for a planned specification;
+- "unknown" otherwise.
+
+Levels: `fixture` = local fixture only; `observed` = seen read-only on one real page; `none` =
+not implemented. **No cell is `live_fill` or `live_submit`.**
+
+| Capability | fixture_ats | greenhouse_hosted | greenhouse_dom | fake_api | greenhouse_readonly | freehire / mock | workday (planned) | manual_handoff |
+|---|---|---|---|---|---|---|---|---|
+| discovery | none | none | none | none | none | fixture | none | none |
+| public_schema_read | fixture | fixture | observed | fixture | observed | none | none | none |
+| API_submission | none | none | none | fixture | none | none | none | none |
+| browser_inspection | fixture | fixture | observed | none | observed | none | none | none |
+| browser_fill | fixture | fixture | fixture | none | none | none | none | none |
+| document_upload | fixture | fixture | fixture | fixture | none | none | none | none |
+| login_required *(trait)* | no | unknown | no | no | no | n/a | expected | n/a |
+| manual_verification_required *(trait)* | yes | unknown | unknown | no | n/a | n/a | expected | n/a |
+| CAPTCHA_possible *(trait)* | yes | unknown | unknown | no | unknown | n/a | expected | n/a |
+| multi_step *(trait)* | no | unknown | no | no | no | n/a | expected | n/a |
+| location_picker | none | none | none | none | none | none | none | none |
+| custom_dropdown | none | none | fixture | none | observed (structure only) | none | none | none |
+| confirmation_detection | fixture | fixture | fixture | fixture | none | none | none | none |
+
+Both views are served at `GET /api/providers` (`routing_capabilities`, `traits`,
+`interface`, `stage`).
+
+**Routing order** (`routing.decide`, `routing.route_for_job`; `GET /api/jobs/{id}/route`):
+
+0. **Identity.** The job's ATS comes from known hostnames.
+   - An ATS with only a planned adapter (Workday) is a manual handoff that says so.
+   - A form captured as one ATS for a job on another is refused: it never reaches the wrong
+     adapter.
+1. **No captured form:** a manual handoff ("Capture the application form first."). A job
+   source never supplies the form.
+2. **Required controls NoEfforts cannot fill** (search pickers, page-managed hidden values,
+   unknown widgets): a **checkpoint**, reached before anything is disclosed. They are never
+   turned into a guessed answer.
+3. **Enabled:** real origins and production give a manual handoff. No provider has live
+   support.
+4. **Authorized API (A):** only with the user's grant, configured credentials, declared
+   support and the provider's identity rule. No undocumented or inferred private endpoint.
+   The package approval, document digests, answer provenance and evidence are exactly as for
+   the browser route.
+5. **Browser (B):** only an adapter that `policy.adapter_for` names for this form source and
+   origin.
+   - Before any disclosure, the runner re-checks the destination, adapter and version
+     (approval binding), approval state, documents, mapping and form fingerprint.
+   - After filling, it reads every value back.
+   - A click is never assumed to open a control, persist a value or submit.
+6. **Otherwise:** a manual handoff. At run time every stop gives its reason: unsupported
+   control, unknown question, CAPTCHA, login, verification code, page change, changed form,
+   uncertain mapping, or unknown result.
+
+**Provider roles:**
+
+| Component | Primary role | Not responsible for |
+|---|---|---|
+| Freehire or other job source | Discover/import job listings and URLs | Filling or submitting employer applications |
+| ATS adapter | Read, map, fill and verify a specific ATS workflow | Broad compatibility claims without evidence |
+| Browser worker | Execute approved browser steps in isolation | Guessing facts or bypassing restrictions |
+| Authorized API connector | Structured retrieval/submission where permitted | Replacing browser support everywhere |
+| Candidate profile and answer bank | Approved facts and reusable answers | Inferring missing legal/sensitive answers |
+| User | Approval, verification, manual checkpoints, final scope decisions | Repeatedly re-entering already approved facts |
+
 ## 3. API-provider contract (internal; no real ATS is claimed to offer it)
 
 `adapters/fake_api.py` is NoEfforts' own contract. It is exercised only against the local
@@ -251,6 +344,24 @@ calls Freehire. There are two providers:
 The interface, contract, filters, merge policy, API and status table are in
 `docs/discovery.md`. The rest of this section describes the shared rules.
 
+**Integration plan:**
+
+- **Optional and replaceable.** Freehire supplies job metadata and application URLs only. No
+  job source is authoritative for the employer's live application schema: the form is always
+  captured from the employer's own page, and an import never creates a form (tested).
+- **Deduplication** against existing jobs, in this order:
+  1. the normalized application URL;
+  2. the job URL;
+  3. the ATS requisition identity, which is part of the job's dedupe key when the host is
+     recognised;
+  4. one conservative employer, title and location match;
+  5. the source's own id, which keeps each record linked.
+- **Provenance and freshness:** the source provenance and the import timestamp are kept for
+  every record.
+- **Before any live integration:** the terms, permitted use (personal prototype only, D34),
+  rate limits, freshness and field coverage are validated. Freehire is not contacted
+  otherwise.
+
 **Normalized record** (`discovery/provider.NormalizedJob`):
 
 - source and identity: source provider, source job id, raw-source fingerprint (sha256);
@@ -294,27 +405,38 @@ job manually (`POST /api/jobs`).
 - after that, `routing.decide`. For the fixture posting that is `greenhouse_dom`; for a real
   origin it is the manual handoff.
 
-## 7. Workday (documentation and fixture strategy only)
+## 7. Workday (future adapter specification only)
 
-Nothing for Workday is built or accessed. Workday needs its own adapter rather than a
-variant of the Greenhouse one. These are expectations to verify, not observations:
+**No Workday automation exists.** `workday` is registered as a *planned* provider:
 
-- **Employer-scoped candidate accounts.** Each employer's site may require its own account,
-  so a session belongs to one employer.
-- **Login and session requirements.** Signing in is a checkpoint (`login_required`).
-  NoEfforts never creates accounts or enters passwords for the user.
-- **Multi-page navigation.** Each "Next" is a disclosure boundary (section 4), so the
-  single-gate model is not enough.
-- **Repeating employment and education entries.** These are lists of records, not a flat
-  field set. The package needs list-shaped answers with stable ordering and readback per
-  entry.
-- **Custom controls.** Search-as-you-type selectors, date widgets and nested dropdowns need
-  D31-style strategies with evidence.
-- **Step-level validation.** The server can reject a step after data was sent. That must be
-  classified as rejected or unknown per step, never retried blindly.
-- **Possible verification checkpoints** (email, SMS, bot checks), per section 5.
-- **Disclosure before the final submit.** Pages and drafts may be saved by the employer well
-  before submission.
+- it has no operations, no capabilities, no code, no fixture and no observation;
+- routing turns every Workday job into a manual handoff that says so ("Workday applications are
+  not supported yet"), never into the Greenhouse or fixture adapter (tested).
+
+A Workday adapter will likely require the following. These are expectations, recorded as
+"expected" traits, not observations:
+
+- **Employer-scoped accounts and sessions.** Each employer's site may need its own candidate
+  account, so a session belongs to one employer.
+- **User-assisted login and verification.** The user signs in and completes any email or
+  security prompt themselves. NoEfforts never creates accounts, stores passwords or enters
+  codes for the user.
+- **Multi-step forms.** Each "Next" is a disclosure boundary (section 4), so the single-gate
+  model is not enough. Pages and drafts may be saved by the employer long before the final
+  submit.
+- **Repeating work-history and education records.** These are lists, not a flat field set:
+  list-shaped answers with stable order and readback per entry.
+- **Custom dropdowns and autocomplete widgets** need D31-style strategies with evidence.
+  Search-as-you-type stays unsupported until proven.
+- **Résumé parsing and prefill validation.** Fields Workday prefills from an uploaded résumé
+  must be read back and compared with the approved package before going on. A prefilled
+  value is never accepted as approved.
+- **Per-step validation.** The server can reject a step after data was sent. That is
+  classified per step as rejected or unknown, never retried blindly.
+- **Checkpoints** for CAPTCHA, security prompts, unfamiliar questions and unsupported widgets
+  (section 5).
+- **Separate approvals:** one before any data disclosure and another before the final
+  submission.
 
 Safe implementation sequence. Each step needs its own approval before the next:
 
@@ -333,21 +455,45 @@ Safe implementation sequence. Each step needs its own approval before the next:
 
 The short, evidence-linked handoff is `docs/greenhouse-readiness-gap.md`.
 
+**Greenhouse is not generally supported.**
 
-- **Observed:** the real page structure, in limited read-only runs, the last being run #9 on
-  `e1bd9e7` (evidence only; see `docs/implementation-status.md`).
-- **Required state:** all 19 mapped fields have a consistent required-state interpretation.
-  The résumé is required by its group.
-- **Dropdowns: unresolved.**
-  - Run #9 recorded no opening evidence for any of the 12 dropdowns within its 600 ms
-    window.
-  - That does not show they cannot open.
-  - The D31 strategies are fixture-only.
-- **Blockers:**
-  - the location-related controls (the missing location control and the page-managed
-    coordinates);
-  - the unmatched required controls (`u1`, `u2`).
-- **Adapter:** `greenhouse_dom` (version 3) keeps refusing that posting for live filling and
-  submission. `real_destinations_enabled` is false.
+- **Fixture compatibility exists:** `greenhouse_hosted` and `greenhouse_dom` (version 3)
+  against two labelled local approximations.
+- **Real-page observation exists only within the earlier read-only limits** (runs #3–#9; the
+  last, run #9 on `e1bd9e7`, is evidence only).
+- **Real form mapping is partial:**
+  - 19 mapped fields have a consistent required state;
+  - the résumé and cover letter map through their labelled groups;
+  - the résumé is required by its group.
+- **Not proven:**
+  - dropdown behaviour: no opening evidence within run #9's 600 ms window, which does not
+    show they cannot open; the D31 strategies are fixture-only;
+  - location handling: the missing location control and the page-managed coordinates;
+  - the unmatched required controls (`u1`, `u2`);
+  - real uploads;
+  - real submission.
+- **Real Greenhouse origins stay blocked** for filling and submission. `real_destinations` is
+  false, and real origins route to a manual handoff.
 - **Fixture success is not real-site compatibility.** No mapping rule was weakened to change
   this.
+
+The real-page diagnostic work (read-only observation, `gh_readonly.py`, the decision point in
+`docs/greenhouse-readonly-compatibility-proposal.md`) is kept separate from any future
+submission development. No observation can become filling: the observation provider has no
+fill, upload or submit operation.
+
+## 9. Safety rules and the tests that hold them
+
+| Rule | Evidence |
+|---|---|
+| Standard questions use approved facts first, deterministically (no LLM) | `test_full_workflow_with_zero_llm_calls`, `test_fixture_classification_table`, `test_unknown_or_unapproved_facts_never_resolve` |
+| Long-form content is manual unless an approved AI provider is connected | `test_long_form_is_unresolved_without_draft`, `test_drafting_unavailable_without_provider`, `test_fake_provider_draft_is_validated_and_needs_acceptance` |
+| Never fabricate qualifications, salary, legal answers, sponsorship, authorization, demographics or coordinates | `test_sponsorship_timeframes`, `test_without_sponsorship_needs_both_facts`, `test_vague_or_country_less_questions_need_user`, `test_option_mismatch_is_not_guessed`, `test_sensitive_needs_answer_and_disclosure_consent`, `test_location_job_is_a_checkpoint`, `test_an_unsupported_required_control_is_a_checkpoint_before_disclosure` |
+| CAPTCHA is a manual checkpoint, never solved or bypassed | `test_a_captcha_becomes_a_user_action_never_an_automated_solve`, `test_captcha_stops_before_anything_is_disclosed`, `test_no_solver_or_evasion_code_exists`, `test_no_checkpoint_is_ever_completed_by_noefforts` |
+| Email or mobile verification needs an explicit user checkpoint | `test_security_code_wrong_then_right` (the code is entered by the user; old rounds are replays); SMS codes are unsupported (`checkpoints.py`) |
+| Unknown outcomes are reconciled, never resubmitted | `test_accepted_but_response_lost_is_unknown_and_never_resent`, `test_outcomes_after_sending`, `test_outcome_classification` |
+| An approval binds destination, adapter and version, documents, answers, consents and relevant facts | `test_manifest_binds_owner_destination_documents_and_policy`, `test_approval_records_the_execution_method`, `test_accepted_draft_depends_on_its_facts` |
+| Any material change invalidates the approval | `test_an_adapter_version_mismatch_blocks_queueing_and_execution`, `test_original_adapter_approval_cannot_run_through_a_new_route`, `test_edit_committed_after_approval_invalidates_before_queue`, `test_drift_after_approval_stops_before_anything_is_disclosed`, `test_granting_the_api_retires_a_browser_approval_and_revoking_retires_it_again` |
+| A known API connector is never chosen without the user's explicit authorization | `test_a_known_api_connector_is_never_selected_without_explicit_authorization`, `test_without_authorization_the_api_is_never_contacted` |
+| A job source is never a form schema | `test_freehire_imports_are_never_treated_as_form_schemas` |
+| An unsupported ATS is never routed to another ATS's adapter | `test_a_workday_job_is_shown_unsupported_never_routed_to_greenhouse`, `test_a_form_from_another_ats_is_refused` |

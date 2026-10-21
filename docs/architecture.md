@@ -235,6 +235,28 @@ origins; capability flags are served at `GET /api/execution/capabilities`.
 Test oracle: `fixtures/ats_receiver/` (never deployed) with its own ledger and failure modes,
 including the labelled Greenhouse approximation `greenhouse_like.py`.
 
+## Execution routing and provider roles
+
+Each application takes the safest supported path:
+
+1. an authorized API (user grant, credentials, declared support);
+2. else a supported browser adapter for that form and origin;
+3. else a checkpoint for the user, or a manual handoff.
+
+The job's ATS is identified first. An ATS with only a planned adapter (Workday) is a manual
+handoff that says so, and a form captured as another ATS is refused. The full order, the
+capability matrix and the safety rules with their tests are in `docs/provider-architecture.md`
+§2b and §9. The route is served at `GET /api/jobs/{id}/route` and shown on the job page.
+
+| Component | Primary role | Not responsible for |
+|---|---|---|
+| Freehire or other job source | Discover/import job listings and URLs | Filling or submitting employer applications |
+| ATS adapter | Read, map, fill and verify a specific ATS workflow | Broad compatibility claims without evidence |
+| Browser worker | Execute approved browser steps in isolation | Guessing facts or bypassing restrictions |
+| Authorized API connector | Structured retrieval/submission where permitted | Replacing browser support everywhere |
+| Candidate profile and answer bank | Approved facts and reusable answers | Inferring missing legal/sensitive answers |
+| User | Approval, verification, manual checkpoints, final scope decisions | Repeatedly re-entering already approved facts |
+
 ## Submission providers and discovery (local only)
 
 Details: `docs/provider-architecture.md` (decision D32).
