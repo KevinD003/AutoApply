@@ -78,6 +78,79 @@ export interface Job {
 export interface JobDetail extends Job {
   description: string | null;
   explanations: { kind: "match" | "mismatch" | "exclude" | "info"; text: string }[];
+  discovered_from: {
+    provider: string;
+    label: string;
+    source_url: string | null;
+    last_seen_at: string;
+    stale: boolean;
+    stale_reason: string | null;
+    changed_fields: string[];
+  }[];
+}
+
+export interface DiscoveryProviderInfo {
+  name: string;
+  label: string;
+  enabled: boolean;
+  capabilities: Record<string, unknown>;
+  status: {
+    implemented_locally: boolean;
+    external_api_configured: boolean;
+    external_api_tested: boolean;
+    production_ready: boolean;
+    note: string;
+  };
+}
+
+export interface SourceFact {
+  value: "yes" | "no" | "unknown";
+  stated_by: string;
+  basis: string;
+}
+
+export interface DiscoveredJob {
+  id: string;
+  provider: string;
+  provider_label: string;
+  source_job_id: string;
+  title: string | null;
+  employer: string | null;
+  location: string | null;
+  workplace: string;
+  employment_type: string | null;
+  job_url: string | null;
+  application_url: string | null;
+  published_on: string | null;
+  source_last_seen_at: string | null;
+  status: "linked" | "incomplete" | "closed";
+  job_id: string | null;
+  link_basis: string | null;
+  missing: string[];
+  filter: { result: "match" | "insufficient"; fields: string[] } | null;
+  source_facts: { sponsorship_offered?: SourceFact };
+  stale: boolean;
+  stale_reason: string | null;
+  changed_fields: string[];
+  last_seen_at: string;
+}
+
+export interface DiscoveryImportResult {
+  provider: string;
+  fetched: number;
+  pages: number;
+  truncated: boolean;
+  created: number;
+  updated: number;
+  unchanged: number;
+  malformed: number;
+  duplicates_in_listing: number;
+  excluded_by_filters: number;
+  insufficient_data: number;
+  incomplete: number;
+  stale: number;
+  linked_new_jobs: number;
+  linked_existing_jobs: number;
 }
 
 export interface Application {

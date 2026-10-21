@@ -76,6 +76,21 @@ export default function JobPage() {
           <Row k="Times seen" v={String(job.seen_count)} />
           <Row k="Source" v={job.source} />
         </dl>
+        {job.discovered_from.length > 0 && (
+          <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+            <p className="font-medium">Found through a discovery source</p>
+            <ul className="mt-1 space-y-1">
+              {job.discovered_from.map((d, i) => (
+                <li key={i}>
+                  <Badge>{d.label}</Badge> last seen {new Date(d.last_seen_at).toLocaleString()}
+                  {d.stale && <> · <span className="text-amber-800">{d.stale_reason}</span></>}
+                  {d.changed_fields.length > 0 && <> · changed at the source: {d.changed_fields.join(", ")} (not applied here)</>}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 text-xs text-slate-500">A source listing is not verified, and says nothing about eligibility or sponsorship.</p>
+          </div>
+        )}
         {job.url && (
           <p className="mt-3 break-all text-sm">
             <a className="text-indigo-700 underline" href={job.url} target="_blank" rel="noopener noreferrer nofollow">

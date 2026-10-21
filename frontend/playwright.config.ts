@@ -14,6 +14,11 @@ const backendEnv = {
   NOEFFORTS_CHECKPOINT_TTL_SECONDS: "90",
   NOEFFORTS_OUTBOX_RELAY_INTERVAL_SECONDS: "1",
   NOEFFORTS_REDIS_URL: process.env.NOEFFORTS_E2E_REDIS_URL ?? "redis://127.0.0.1:6379/5",
+  // Discovery against the receiver's stand-in of Freehire's documented API (never Freehire).
+  NOEFFORTS_DISCOVERY_PROVIDERS: JSON.stringify(["freehire"]),
+  NOEFFORTS_FREEHIRE_BASE_URL: `${RECEIVER}/freehire-fixture`,
+  NOEFFORTS_FREEHIRE_PAGE_SIZE: "2",
+  NOEFFORTS_FREEHIRE_MIN_INTERVAL_MS: "0",
 };
 
 export default defineConfig({
