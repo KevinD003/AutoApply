@@ -65,7 +65,14 @@ def assert_no_markers(text: str, extra=()):
     "meta",
     [
         {"answer": "Yes", "value": "Sammy", "text": "I led a team"},  # application answers
-        {"filename": "resume.pdf", "content": "%PDF-1.4", "resume": "x", "cv": "y"},  # documents
+        {
+            "filename": "resume.pdf",
+            "content": "%PDF-1.4",
+            "resume": "x",
+            "cv": "y",
+            "file": "resume.pdf",
+            "attachments": "resume.pdf",
+        },  # documents  # fmt: skip
         {
             "email": "a@b.c",
             "phone": "+1 555 0100",
@@ -134,12 +141,31 @@ def test_unsafe_values_are_omitted_under_any_key(value):
 def test_safe_metadata_is_kept_and_external_identifiers_become_references():
     meta = {"route": "browser", "provider": "greenhouse_dom", "adapter_version": "greenhouse-dom-3",
             "reason_code": "browser_supported", "evidence": "fixture", "api_grant": "none",
-            "version": 3, "flag": True, "fields": ["title", "notes"], "nothing": None}  # fmt: skip
+            "version": 3, "flag": True, "fields": ["title", "notes"], "nothing": None,
+            "content_hash": "a" * 64}  # fmt: skip
     assert sanitize(meta) == meta
     r = ref("question_8101")
     assert r.startswith("ref:") and "8101" not in r and r == ref("question_8101")
     assert sanitize({"field_ref": r}) == {"field_ref": r}
     assert sanitize({"weird key!": 1}) == {}  # keys themselves must be identifier-like
+    # `field` always held a posting's question key: it is stored as its reference.
+    assert sanitize({"field": "question_8101"}) == {"field_ref": r}
+    assert sanitize({"field": "question_8101", "field_ref": "ref:0"}) == {"field_ref": "ref:0"}
+    assert sanitize({"field": ["question_8101"]}) == {"field_ref": "[omitted]"}
+
+
+@pytest.mark.parametrize(
+    "meta",
+    [
+        {"field": "question_8101", "reason": "Draft mentions 40 nurses", "version": 2},
+        {"email": "a@b.c", "source": "https://boards.example.com/x", "weird key!": 1},
+        {"fields": ["title", "notes"], "nested": {"a": 1}, "flag": False, "n": None},
+        {"reason_code": "[redacted]", "route": "[omitted]"},
+    ],
+)
+def test_sanitizing_is_idempotent(meta):
+    once = sanitize(meta)
+    assert sanitize(once) == once
 
 
 def test_record_sanitizes_before_anything_is_stored(api):
@@ -231,6 +257,19 @@ def test_a_rejected_draft_records_a_reason_code_not_its_content(api, monkeypatch
     (row,) = audit_rows("draft.rejected")
     assert row.meta == {"field_ref": ref("why_us"), "reason_code": "invented_numbers"}
     assert "40" not in dump([row]) and "nurses" not in dump([row])
+
+
+def test_a_created_draft_records_a_field_reference_not_the_question_key(api, monkeypatch):
+    from tests.test_preparation import FakeProvider, new_application, setup_candidate
+
+    setup_candidate(api)
+    _, app = new_application(api)
+    good = FakeProvider("I handled patient intake for 3 doctors and want to keep doing it well.")
+    monkeypatch.setattr(drafting, "get_provider", lambda: good)
+    assert api.post(f"/applications/{app['id']}/answers/why_us/draft").status_code == 200
+    (row,) = audit_rows("draft.created")
+    assert set(row.meta) == {"field_ref", "provider", "cost_usd"}
+    assert row.meta["field_ref"] == ref("why_us") and row.meta["provider"] == "test-fake"
 
 
 # -- diagnostics: logs keep the type, never the payload ---------------------------------------

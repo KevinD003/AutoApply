@@ -633,7 +633,7 @@ def request_draft(
             "draft.created",
             "application",
             app.id,
-            field=key,
+            field_ref=ref(key),
             provider=result.provider,
             cost_usd=result.cost_usd,
         )

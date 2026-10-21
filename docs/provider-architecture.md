@@ -238,7 +238,17 @@ Both views are served at `GET /api/providers` (`routing_capabilities`, `traits`,
     employers, files, answers, raw content) are redacted;
   - non-identifier values are omitted: free text, URLs, e-mail addresses, exception text and
     nested objects;
-  - external identifiers such as a posting's question keys are stored as one-way references.
+  - external identifiers such as a posting's question keys are stored as one-way references;
+    a `field` key, which always held one, is stored as `field_ref`.
+- Rows stored before sanitizing existed are repaired once by migration `c303eee5a3c9`
+  (`audit/repair.py`, repair version 1):
+  - every `audit_events.meta` object goes through the same sanitizer; a value that is not an
+    object becomes `{}` (a JSON null, which holds nothing, is left as it is); no other column
+    or table is read or written;
+  - only rows whose metadata changes are rewritten, so a second run changes nothing;
+  - it is irreversible: the downgrade restores nothing and no removed value is kept;
+  - its output is aggregate counts only (rows scanned, rows changed); a failure names the
+    error type only, with no message or chained exception, and the transaction rolls back.
 - The browser runner logs an unexpected exception by type only, and the egress proxy logs
   destination counts, never hosts.
 
@@ -522,4 +532,5 @@ fill, upload or submit operation.
 | A known API connector is never chosen without the user's explicit authorization | `test_a_known_api_connector_is_never_selected_without_explicit_authorization`, `test_without_authorization_the_api_is_never_contacted` |
 | A job source is never a form schema | `test_freehire_imports_are_never_treated_as_form_schemas` |
 | Audit events and logs carry safe metadata only (no applicant data, documents, credentials, employer or posting identifiers, raw exceptions or page content) | `tests/test_audit_privacy.py`: sanitizer tests per prohibited category, `test_record_sanitizes_before_anything_is_stored`, `test_route_decisions_are_audited_without_applicant_or_external_data`, `test_a_full_application_leaves_no_applicant_or_posting_data_in_audit_events`, `test_a_rejected_draft_records_a_reason_code_not_its_content`, `test_unexpected_runner_errors_are_logged_by_type_only`, `test_the_egress_proxy_never_logs_destination_hosts` |
+| Audit rows stored before sanitizing are repaired once, irreversibly and idempotently, with counts-only output | `tests/test_audit_repair.py`: `test_repair_sanitizes_every_legacy_row_and_a_second_run_changes_nothing`, `test_a_failed_repair_reveals_no_legacy_content`, `test_the_migration_repairs_legacy_rows_reports_counts_only_and_is_irreversible` |
 | An unsupported ATS is never routed to another ATS's adapter | `test_a_workday_job_is_shown_unsupported_never_routed_to_greenhouse`, `test_a_form_from_another_ats_is_refused` |

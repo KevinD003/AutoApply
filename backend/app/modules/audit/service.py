@@ -12,7 +12,10 @@ flags. Anything else is dropped before it is stored:
     "[omitted]": free text, URLs, e-mail addresses, exception messages and nested objects
     never reach the table;
   * external identifiers (for example a posting's question key) are passed through `ref()`,
-    which stores a short one-way reference instead of the identifier."""
+    which stores a short one-way reference instead of the identifier. A `field` key always
+    holds such a key, so it is stored as `field_ref` (an explicit `field_ref` wins).
+
+`sanitize` is idempotent; `repair.py` applies it to rows stored before it existed."""
 
 import hashlib
 import re
@@ -25,14 +28,16 @@ from app.modules.audit.models import AuditEvent
 _DENY_TOKENS = {
     "password", "passwd", "token", "secret", "cookie", "cookies", "authorization", "auth",
     "header", "headers", "session", "otp", "email", "phone", "address", "name", "title", "url",
-    "uri", "origin", "host", "employer", "company", "filename", "answer", "value", "text",
-    "content", "resume", "cv", "body", "payload", "raw", "exception", "traceback", "message",
-    "detail",
+    "uri", "origin", "host", "employer", "company", "filename", "file", "files", "attachment",
+    "attachments", "answer", "value", "text", "content", "resume", "cv", "body", "payload",
+    "raw", "exception", "traceback", "message", "detail",
 }  # fmt: skip
 _DENY_EXACT = {"code"}  # a verification code; "reason_code" stays allowed
+_ALLOW_EXACT = {"content_hash"}  # a package's one-way hash, not its content
 _SAFE_STR = re.compile(r"^[A-Za-z0-9_.:+\-]{0,64}$")
 _SAFE_KEY = re.compile(r"^[A-Za-z0-9_.:\-]{0,64}$")
 MAX_LIST = 20
+_REFERENCE_KEYS = {"field": "field_ref"}
 
 
 def ref(value: object) -> str:
@@ -42,6 +47,8 @@ def ref(value: object) -> str:
 
 def _denied(key: str) -> bool:
     k = key.lower()
+    if k in _ALLOW_EXACT:
+        return False
     return k in _DENY_EXACT or bool(set(re.split(r"[^a-z0-9]+", k)) & _DENY_TOKENS)
 
 
@@ -58,11 +65,16 @@ def _safe_value(v: object) -> object:
 
 
 def sanitize(meta: dict) -> dict:
-    return {
-        k: ("[redacted]" if _denied(k) else _safe_value(v))
-        for k, v in meta.items()
-        if isinstance(k, str) and _SAFE_KEY.match(k)
-    }
+    out: dict = {}
+    for k, v in meta.items():
+        if not (isinstance(k, str) and _SAFE_KEY.match(k)):
+            continue
+        if k in _REFERENCE_KEYS:
+            k, v = _REFERENCE_KEYS[k], (ref(v) if isinstance(v, str) else "[omitted]")
+            if k in meta:
+                continue
+        out[k] = "[redacted]" if _denied(k) else _safe_value(v)
+    return out
 
 
 def record(
