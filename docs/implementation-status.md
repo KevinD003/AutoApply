@@ -57,6 +57,9 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   - `pytest tests/test_widget_inspection.py`: 20 passed;
   - the two new tests against the run-#7 module (`1fc58b2`): both failed, as intended;
   - `uv run pytest` (full backend): 338 passed.
+- **CI #47** ([39538552333](https://github.com/KevinD003/AutoApply/actions/runs/39538552333))
+  on `5f47409`: all four jobs passed (backend, frontend including full Playwright,
+  execution-compose, docker-smoke).
 - **External activity:** stopped. Another run needs a new authorization.
 
 ## Widget inspection mode, local only (2026-10-20; not approved for a real page, not run)
