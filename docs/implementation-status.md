@@ -37,6 +37,36 @@ Last updated: 2026-10-21 (widget inspection run #7 failed before any widget acti
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## Before the replacement run (2026-10-21): fresh-process regression, explicit outcome
+
+- **Fresh-process regression** (`tests/test_readonly_cli_process.py`, 3 tests): runs the
+  workflow's exact entry point, `python -m app.modules.preparation.gh_readonly --out DIR
+  --inspect-widgets`, against the synthetic receiver through the netns browser. The
+  test-only target `NOEFFORTS_READONLY_FIXTURE_BASE` is accepted only for listed fixture
+  origins outside production. It shows:
+  - the navigation passes the filter (one page GET) and the inspection completes (exit 0);
+  - an injected filter failure ends the run within seconds (exit 6), and the page is never
+    requested;
+  - no browser work directory or process is left;
+  - stdout is the guarded summary only, and stderr is empty: no traceback, no marker
+    values.
+  - Mutation-checked: an entry point placed as in run #7, and a filter that is not fail-closed,
+    both make it fail.
+- **Explicit outcome:**
+  - `completed` (exit 0);
+  - `policy_stop` (exit 7; partial evidence, not compatibility);
+  - `internal_error` (exit 6): any unexpected error, a failed handler, or a filter failure,
+    even when a summary was printed;
+  - an incomplete inspection is never `completed`;
+  - script-mode stderr goes to a raw file in the out directory.
+- **Commands actually run (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - ruff check and format: clean;
+  - full backend suite: 339 passed, 2 failed. The 2 were in-process CLI tests whose stub
+    `fetch` lacked the new `base` argument. After fixing the stub:
+    `pytest tests/test_gh_readonly.py tests/test_widget_inspection.py
+    tests/test_readonly_cli_process.py tests/test_b3_policy.py`: 67 passed.
+  - CI runs the full suite on the commit (recorded below once it has run).
+
 ## Widget inspection run #7 (2026-10-21): authorized once, failed before any widget action
 
 - **Run:** manual run #7 (39535843106) on `2b0bcbb` (`1fc58b2` + docs; CI #45 and #46 passed).

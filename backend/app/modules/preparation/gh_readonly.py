@@ -312,6 +312,9 @@ def _b3_rules() -> tuple:
     )
 
 
+# An internal error inside the request filter: the request is refused and the run stops.
+FILTER_FAILED = "the request filter failed"
+
 PAGE_REQUEST_LIMIT = LIMITS.page_requests  # kept for existing callers
 PAGE_SECONDS = 60  # one navigation's own timeout, also clamped to the deadline
 
@@ -332,6 +335,7 @@ def observe_page(
     limits: Limits = LIMITS,
     subresources: tuple = (),
     inspect_widgets: bool = False,
+    fault: str | None = None,
 ) -> dict:
     """Permission B: ONE page load in the isolated browser, observe only.
 
@@ -346,7 +350,11 @@ def observe_page(
     resource types (SubresourceRule); still observe-only, and the same rules hold for requests
     the page's scripts start. Methods: GET only for the page origin; GET/HEAD only where a
     rule allows them; everything else is blocked before sending and recorded.
-    `base` is for tests against the local fixture (a fixture origin)."""
+    `base` is for tests against the local fixture (a fixture origin). `fault` (fixture only,
+    ignored otherwise) injects a failure for tests: "request_filter".
+    Errors inside event handlers never escape (a raising handler would leave a request
+    pending and print a traceback): they are recorded in `internal_errors` (type names) and
+    make the caller report an internal error."""
     from app.core.config import get_settings
     from app.core.urlsafety import is_fixture_origin
     from app.modules.execution.adapters.greenhouse import CHALLENGE_SELECTORS
@@ -368,6 +376,18 @@ def observe_page(
     if not fixture and s.browser_isolation != "container":
         raise NotApproved("a real page is opened only in the isolated browser container")
     deadline = time.monotonic() + limits.observe_seconds
+    if not fixture:
+        fault = None
+    internal_errors: list[str] = []
+
+    def safe(fn):
+        def run(*args):
+            try:
+                return fn(*args)
+            except Exception as e:  # noqa: BLE001 - recorded, reported as an internal error
+                internal_errors.append(_error_name(type(e).__name__))
+
+        return run
 
     def left_ms(cap_ms: float) -> int:
         left = deadline - time.monotonic()
@@ -406,8 +426,9 @@ def observe_page(
             # print a traceback).
             try:
                 return decide(route, request)
-            except Exception:  # noqa: BLE001
-                stops.append("the request filter failed")
+            except Exception as e:  # noqa: BLE001
+                internal_errors.append(_error_name(type(e).__name__))
+                stops.append(FILTER_FAILED)
                 try:
                     route.abort()
                 except Exception:  # noqa: BLE001 - already handled
@@ -415,6 +436,8 @@ def observe_page(
 
         def decide(route, request):
             seen["requests"] += 1
+            if fault == "request_filter":
+                raise RuntimeError("injected request-filter failure (test fixture only)")
             if not method_ok(request):
                 blocked.append({"method": request.method, "path": urlsplit(request.url).path})
                 return route.abort()
@@ -467,27 +490,30 @@ def observe_page(
             # never reaches the network (Playwright mocks it); record it and do nothing else.
             # (Calling ws.close() from this sync handler deadlocks.)
             pat = re.compile("^wss?://" + re.escape(urlsplit(o).netloc) + "(/|$)")
-            page.route_web_socket(pat, lambda ws: failed.append(_ws_failure(ws.url)))
+            page.route_web_socket(pat, safe(lambda ws: failed.append(_ws_failure(ws.url))))
         if inspect_widgets:
             # WebSockets to any origin: routed, recorded, never connected (see above).
             page.route_web_socket(
                 re.compile(".*"),
-                lambda ws: data_refused.append(
-                    {
-                        "phase": phase[0],
-                        "resource_type": "websocket",
-                        "kind": _category(urlsplit(ws.url).netloc),
-                        "same_origin": False,
-                    }
+                safe(
+                    lambda ws: data_refused.append(
+                        {
+                            "phase": phase[0],
+                            "resource_type": "websocket",
+                            "kind": _category(urlsplit(ws.url).netloc),
+                            "same_origin": False,
+                        }
+                    )
                 ),  # fmt: skip
             )
-            page.on("dialog", lambda d: (events.append({"phase": phase[0], "event": "dialog"}),
-                                         d.dismiss()))  # fmt: skip
-            page.on("filechooser", lambda fc: events.append({"phase": phase[0],
-                                                             "event": "file_chooser"}))  # fmt: skip
-        page.on("request", on_request)
-        page.on("requestfinished", on_finished)
-        page.on("requestfailed", lambda r: failed.append(_failure(r, origin)))
+            page.on("dialog", safe(lambda d: (events.append({"phase": phase[0],
+                                                             "event": "dialog"}),
+                                              d.dismiss())))  # fmt: skip
+            page.on("filechooser", safe(lambda fc: events.append(
+                {"phase": phase[0], "event": "file_chooser"})))  # fmt: skip
+        page.on("request", safe(on_request))
+        page.on("requestfinished", safe(on_finished))
+        page.on("requestfailed", safe(lambda r: failed.append(_failure(r, origin))))
         try:
             resp = page.goto(url, wait_until="load", timeout=left_ms(PAGE_SECONDS * 1000))
         except Exception:  # noqa: BLE001 - an aborted or stopped navigation; say which
@@ -575,6 +601,7 @@ def observe_page(
         },
         "mapping": evidence,
         "inspection": inspection,
+        "internal_errors": internal_errors,
     }
 
 
@@ -962,7 +989,7 @@ INSPECTION_STOPS = frozenset({
     "the page address changed", "challenge", "dialog", "file_chooser",
     "a second top-level navigation was attempted", "page request budget reached",
     "received data limit reached", "redirected to another origin", "too many redirects",
-    "the request filter failed",
+    FILTER_FAILED,
 })  # fmt: skip
 _STATUSES = {"mapped", "mapped_via_group", "matched_via_attachment_group", "search_picker",
              "protocol", "absent", "ambiguous", "type_mismatch", "label_mismatch"}  # fmt: skip
@@ -1012,6 +1039,8 @@ _OUTPUT_WORDS = {
     "unmatched", "only_visible_listbox", "pointer_intercepted", "at_load", "during_actions",
     "by_type",
     "action_seconds", "events",
+    "outcome", "completed", "policy_stop", "internal_error", "internal_errors",
+    "inspection_complete", "fixture",
     *INSPECTION_STOPS,
 }  # fmt: skip
 VOCAB = frozenset(
@@ -1028,7 +1057,7 @@ _STOPS = (
     "page request budget reached", "overall time limit reached",
     "a second top-level navigation was attempted", "too many redirects",
     "received data limit reached", "page larger than the retained-data limit",
-    "the request filter failed",
+    FILTER_FAILED,
 )  # fmt: skip
 _NOT_APPROVED = (
     "board token or job id has an unexpected shape",
@@ -1172,11 +1201,22 @@ def write_json(path: Path, data) -> None:
     path.write_text(json.dumps(data, indent=2, sort_keys=True))
 
 
-def main(argv=None) -> int:
+# Exit codes. Only a completed observation exits 0; the summary's "outcome" says which.
+EXIT_COMPLETED, EXIT_INTERNAL_ERROR, EXIT_POLICY_STOP = 0, 6, 7
+_EXIT = {"completed": EXIT_COMPLETED, "internal_error": EXIT_INTERNAL_ERROR,
+         "policy_stop": EXIT_POLICY_STOP}  # fmt: skip
+
+
+def main(argv=None, capture_stderr: bool = False) -> int:
     """python -m app.modules.preparation.gh_readonly --out DIR [--observe [--mapping]]
     The posting comes from NOEFFORTS_READONLY_GREENHOUSE_APPROVED ("<board>/<job_id>"), so it
     never appears on a command line or in a log. Raw data goes to DIR; stdout gets only the
-    publishable summary, and only after `guard` has passed it (exit 4 otherwise)."""
+    publishable summary, and only after `guard` has passed it (exit 4 otherwise).
+    Exit codes: 0 completed; 7 stopped by policy (partial evidence, not a compatibility
+    result); 6 internal error (fails the check even when a summary was printed); 2 refused
+    or stopped before the page; 3 error before the page; 4 output suppressed; 5 time limit.
+    `capture_stderr` (script mode): the process's stderr, including tracebacks from any
+    library, goes to DIR/stderr.log (raw, destroyed with the rest) instead of the log."""
     import argparse
 
     ap = argparse.ArgumentParser()
@@ -1204,6 +1244,11 @@ def main(argv=None) -> int:
         "(at most Limits.widget_actions actions); data requests refused; nothing selected",
     )
     a = ap.parse_args(argv)
+    if capture_stderr:
+        a.out.mkdir(parents=True, exist_ok=True)
+        fd = os.open(a.out / "stderr.log", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        os.dup2(fd, 2)  # file descriptor level: child processes (the driver) inherit it
+        os.close(fd)
     watchdog = start_watchdog(LIMITS.run_seconds)
     try:
         return _run(a)
@@ -1250,35 +1295,81 @@ def start_watchdog(seconds: float, exit=os._exit) -> threading.Timer:
     return t
 
 
+def _fixture_target() -> str | None:
+    """Tests only: NOEFFORTS_READONLY_FIXTURE_BASE points the whole CLI (API, page) at the
+    synthetic receiver. Accepted only where fixture origins are (not production, origin listed
+    in NOEFFORTS_FIXTURE_ORIGINS); the manual workflow's stack lists none."""
+    base = os.environ.get("NOEFFORTS_READONLY_FIXTURE_BASE")
+    if not base:
+        return None
+    from app.core.config import get_settings
+    from app.core.urlsafety import is_fixture_origin
+
+    if not (get_settings().env in ("development", "test") and is_fixture_origin(base)):
+        raise NotApproved("a non-default page origin is allowed only for test fixtures")
+    return base.rstrip("/")
+
+
+def _fixture_rules() -> tuple:
+    from app.modules.execution.browser import SubresourceRule
+
+    cdn = os.environ.get("NOEFFORTS_READONLY_FIXTURE_CDN")
+    if not cdn:
+        return ()
+    return (SubresourceRule(cdn, frozenset({"GET", "HEAD"}), frozenset({"script", "stylesheet"}),
+                            allow_private=True),)  # fmt: skip
+
+
+def outcome(inspect: bool, observed: dict | None, page_error: str | None, internal: bool) -> str:
+    """completed / policy_stop / internal_error. An internal error wins over everything (also
+    when a summary could be printed); an incomplete inspection is never "completed"."""
+    ins = (observed or {}).get("inspection")
+    if (
+        internal
+        or (observed or {}).get("internal_errors")
+        or (ins is not None and ins.get("stopped") == FILTER_FAILED)
+    ):
+        return "internal_error"
+    if page_error or (inspect and observed is not None and (ins is None or ins["stopped"])):
+        return "policy_stop"
+    return "completed"
+
+
 def _run(a) -> int:
     board, _, job_id = os.environ.get("NOEFFORTS_READONLY_GREENHOUSE_APPROVED", "").partition("/")
     sensitive = sensitive_values(board, job_id, None, None)
     if a.identify_only:
         return _identify(board, job_id, sensitive)
     try:
-        log = fetch(board, job_id, a.out)
+        fx = _fixture_target()
+        log = fetch(board, job_id, a.out, base=f"{fx}/gh2-api" if fx else None)
         api_json = json.loads((a.out / "job.json").read_text())
         board_json = json.loads((a.out / "board.json").read_text())
         sensitive = sensitive_values(board, job_id, api_json, board_json)
-        page_stop = None
+        page_stop, internal = None, False
         b3 = a.b3 or a.inspect_widgets
-        rules = _b3_rules() if b3 else ()
+        rules = (_fixture_rules() if fx else _b3_rules()) if b3 else ()
         try:
             observed = (
                 observe_page(
                     board,
                     job_id,
+                    base=fx,
+                    prefix="gh2" if fx else "gh",
                     api_json=api_json if (a.mapping or b3) else None,
                     subresources=rules,
                     inspect_widgets=a.inspect_widgets,
+                    fault=os.environ.get("NOEFFORTS_READONLY_FAULT") if fx else None,
                 )
                 if (a.observe or b3)
                 else None
             )
         except Stop as e:  # A's result is still reported
             observed, page_stop = None, f"Stop: {e}"
+            internal = str(e) == FILTER_FAILED
         except Exception as e:  # noqa: BLE001 - messages can carry URLs; type only
             observed, page_stop = None, f"error ({_error_name(type(e).__name__)})"
+            internal = True
         if observed is not None and observed["rendered"] is not None:
             write_json(a.out / "rendered.json", observed["rendered"].model_dump())
         result = {"requests": [r["status"] for r in log["requests"]],
@@ -1287,6 +1378,12 @@ def _run(a) -> int:
             result["page_stopped"] = page_stop
         if a.inspect_widgets:
             result["mode"] = "inspect_widgets"
+        if fx:
+            result["target"] = "fixture"
+        result["outcome"] = outcome(a.inspect_widgets, observed, page_stop, internal)
+        result["internal_errors"] = len((observed or {}).get("internal_errors", [])) + internal
+        if a.inspect_widgets:
+            result["inspection_complete"] = result["outcome"] == "completed"
         if rules:
             result["subresources"] = [
                 {"host": r.host_port[0], "port": r.host_port[1],
@@ -1300,7 +1397,7 @@ def _run(a) -> int:
         emit({"stopped": f"error ({_error_name(type(e).__name__)})"}, sensitive)
         return 3
     withhold_sensitive_hosts(result, sensitive, (board, job_id))
-    return 0 if emit(result, sensitive) else 4
+    return _EXIT[result["outcome"]] if emit(result, sensitive) else 4
 
 
 # ---- B2 → B3 comparison (local, over two published summaries) -------------------------------
@@ -1627,4 +1724,4 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
 # Last statement of the module: everything above is defined before main() runs as a script
 # (python -m ...). A test checks that it stays last.
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(capture_stderr=True))

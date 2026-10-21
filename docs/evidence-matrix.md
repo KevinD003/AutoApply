@@ -34,6 +34,7 @@ any real employer, and none of it shows that a real page can be filled or submit
 | B2 limits enforced | `tests/test_gh_readonly.py` limit tests | navigation, redirects, request budget, received-bytes stop, retained DOM, deadline, watchdog, output size; fixtures only |
 | Options only on open | `test_options_rendered_only_on_open_are_not_observable_not_a_mismatch` | `not_observable_at_load` |
 | Widget inspection (local only; not approved for a real page) | `tests/test_widget_inspection.py` (18), Compose `s_readonly_widget_inspection_in_container` | open/close only, nothing selected; action, time and request budgets; submission cancelled, upload POST and navigation refused before sending, same-origin GET data request refused; challenge, dialog, file chooser, address change stop; receiver saw only the page GET |
+| Workflow entry point in a fresh process; explicit outcome | `tests/test_readonly_cli_process.py` (3) | `python -m … --inspect-widgets` against the receiver: navigation through the filter, inspection completed, exit 0; injected filter failure: page never requested, exit 6 within seconds; no browser left behind; public output has no traceback or marker. Mutation-checked (entry point misplaced; filter not fail-closed) |
 
 Fixture assumptions (not observed on any real page): how comboboxes open and select, option
 values, the upload endpoint and status element, JSON submission, the confirmation message and

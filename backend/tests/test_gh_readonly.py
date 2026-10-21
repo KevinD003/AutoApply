@@ -187,7 +187,8 @@ def run_main(monkeypatch, tmp_path, capsys, *, api=None, fetch_error=None, obser
     monkeypatch.setenv("NOEFFORTS_READONLY_GREENHOUSE_APPROVED", f"{MARK.lower()}/{MARK_ID}")
     api = api or marked_api()
 
-    def fake_fetch(board, job_id, out):
+    def fake_fetch(board, job_id, out, base=None):
+        assert base is None  # no fixture target in these tests
         if fetch_error:
             raise fetch_error
         out.mkdir(parents=True, exist_ok=True)
@@ -223,7 +224,10 @@ def test_failure_paths_print_types_only(monkeypatch, tmp_path, capsys):
         raise RuntimeError(f"failed at https://job-boards.example/{MARK}/jobs/{MARK_ID}")
 
     code, out = run_main(monkeypatch, tmp_path, capsys, observe=boom)
-    assert code == 0 and json.loads(out)["page_stopped"] == "error (RuntimeError)"
+    res = json.loads(out)
+    # An unexpected page error fails the check (exit 6) although a summary was printed.
+    assert code == ro.EXIT_INTERNAL_ERROR and res["page_stopped"] == "error (RuntimeError)"
+    assert res["outcome"] == "internal_error" and res["internal_errors"] == 1
     assert_clean(out)
 
     class Weird(Exception):

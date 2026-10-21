@@ -208,3 +208,14 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Run #7 lesson:** the request filter now fails closed (any internal error aborts the request
   and stops the run). The CLI's script entry point must stay the module's last statement,
   because the tests import the module and cannot see definitions that script mode skips.
+- **Outcome is explicit (after run #7):** the read-only CLI reports `outcome`:
+  - `completed` (exit 0);
+  - `policy_stop` (exit 7): an expected stop, so the evidence is partial and is not a
+    compatibility result;
+  - `internal_error` (exit 6): any unexpected error, a failed handler, or the filter-failure
+    stop. It fails the check even when a sanitized summary was printed.
+  An incomplete inspection is never `completed`. In script mode the process's stderr goes to
+  a raw file in the out directory, so the log carries only the guarded summary. A
+  fresh-process test runs the workflow's exact `python -m` entry point against the synthetic
+  receiver (a test-only target, accepted only for listed fixture origins outside production).
+
