@@ -32,5 +32,11 @@ The answers below are all that is needed.
 6. *(Only if you choose to open your browser's network panel.)* **Do requests whose
    address contains `/locales/` and ends in `.json` load successfully?**
    yes / no / did not check
+7. **Does the list show all its options at once?** all at once / loads more as you scroll /
+   needs typing to find options
+8. **For each of these required controls — (a) the control beside the phone number and
+   (b) the other unlabelled-looking control — what kind of choice is it?** For each, answer:
+   country or dialling code / yes-no / list of places / something else. Give the kind only,
+   not its wording.
 
 Reply with the question numbers and the short answers only.
