@@ -565,6 +565,9 @@ for every control (attachments included), and path shapes of the refused data re
 
 ## Next decision point — two alternatives, neither authorized
 
+**Update (2026-10-21):** the owner chose A, carried out by the owner in their own browser;
+B remains unauthorized (`docs/implementation-status.md`).
+
 Run #9 is the last external activity. Neither path below runs without explicit approval.
 
 ### A. Manual structural feedback (recommended first)

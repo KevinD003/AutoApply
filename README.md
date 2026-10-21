@@ -71,7 +71,7 @@ Then open http://localhost:3000. Data lives in the `pgdata` and `storage` volume
 
 ```bash
 # Backend: needs PostgreSQL (database noefforts_test, wiped each run; the migration tests also
-# create and drop noefforts_migration_test) and Redis on localhost. Execution tests start the
+# create and drop databases whose names end in _migration_test) and Redis on localhost. Execution tests start the
 # synthetic receiver (ports 8799/8798) and a real Celery worker themselves.
 createdb noefforts_test
 cd backend && uv run playwright install chromium   # first time only

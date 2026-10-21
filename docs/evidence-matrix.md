@@ -9,6 +9,30 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Privacy, audit and baseline corrections (2026-10-21; local only, no external request)
+
+Synthetic data and local fixtures only. Results are from the cloud sandbox (PostgreSQL 16,
+Redis 7); CI results are in `docs/implementation-status.md`.
+
+| Requirement | Evidence (`tests/test_audit_privacy.py` unless noted) | Result |
+|---|---|---|
+| Prohibited audit keys are redacted | `test_prohibited_keys_are_redacted` (6 categories) | every value `[redacted]` |
+| Unsafe values are omitted under any key | `test_unsafe_values_are_omitted_under_any_key` (12 values) | `[omitted]` |
+| Safe metadata kept; external ids become references | `test_safe_metadata_is_kept_and_external_identifiers_become_references`, `test_sanitizing_is_idempotent` | unchanged; `field` → `field_ref`; a second pass changes nothing |
+| Sanitizing happens before storage | `test_record_sanitizes_before_anything_is_stored` | stored row redacted and omitted; fails when the sanitizer is bypassed |
+| Route decisions audited with safe fields only | `test_route_decisions_are_audited_without_applicant_or_external_data` | 5 decisions, exactly 6 keys each, no synthetic marker |
+| Generic route messages | `test_ui_route_messages_are_generic_and_carry_a_reason_code` | no form wording; `unsupported_required_control` |
+| A full application leaves no applicant or posting data | `test_a_full_application_leaves_no_applicant_or_posting_data_in_audit_events` | no marker in any audit row |
+| Drafts recorded by reference and reason code | `test_a_rejected_draft_records_a_reason_code_not_its_content`, `test_a_created_draft_records_a_field_reference_not_the_question_key` | `field_ref` + `invented_numbers`; no draft text |
+| Logs keep the error type, never the payload | `test_unexpected_runner_errors_are_logged_by_type_only`, `test_the_egress_proxy_never_logs_destination_hosts` | type name only, no traceback; destination count only |
+| Legacy audit rows repaired once, irreversibly | `tests/test_audit_repair.py`: `test_repair_sanitizes_every_legacy_row_and_a_second_run_changes_nothing`, `test_the_migration_repairs_legacy_rows_reports_counts_only_and_is_irreversible` | 18 synthetic rows: 13 changed, then 0; downgrade restores nothing; output is counts only |
+| A failed repair reveals nothing | `tests/test_audit_repair.py`: `test_a_failed_repair_reveals_no_legacy_content` | type name only, nothing chained, transaction rolled back |
+| Audit inventory matches the code | `tests/test_audit_inventory.py`: `test_the_inventory_lists_exactly_the_events_the_code_writes`, `test_every_documented_metadata_key_survives_the_sanitizer` | fails on a removed document row or an added code key (both checked) |
+| Documents cite only existing tests | `tests/test_doc_references.py`: `test_every_cited_test_exists` | every cited test function or module exists |
+| CAPTCHA claimed only where detected | `tests/test_execution_routing.py`: `test_a_captcha_checkpoint_is_claimed_only_where_the_adapter_detects_one`; `tests/test_greenhouse_dom.py`: `test_a_captcha_on_the_form_stops_before_anything_is_disclosed` | `fixture_ats` claims none; `greenhouse_dom` stops with 0 disclosures |
+| Cancel echoes only its own refusal | `tests/test_execution_failures.py`: `test_cancel_reports_only_its_own_refusals` | terminal state 400; any other error stays a server error; fails with the old catch-all |
+| Route endpoint is tenant-scoped | `tests/test_execution_routing.py`: `test_another_users_job_route_is_not_found_and_not_audited` | 404; no route decision recorded |
+
 ## Execution routing (2026-10-21; local only, no external request)
 
 These are local fixture tests. The receiver, its Greenhouse-style forms and its fake API are
@@ -365,7 +389,7 @@ Local vs CI:
 | Exact wording, help, options, required, types | `test_schema_keeps_exact_wording_help_options_and_required` | — |
 | Hidden and unknown controls → unsupported | `test_hidden_and_unknown_controls_become_unsupported` | — |
 | JSON vs page cross-check (extra field, reworded question) | `test_job_data_and_page_must_agree`, `test_capture_refused_when_page_disagrees_with_job_data` | — |
-| Real posts not read | `test_real_greenhouse_posts_are_not_read` | — |
+| Form capture refuses real posts | `test_real_greenhouse_posts_are_not_read` | — |
 | Unsupported required control is a checkpoint (no input, no approval) | `test_required_unsupported_control_is_a_checkpoint` | — |
 | Conditional question not asked / asked and required | `test_conditional_question_follows_its_trigger`, `test_conditional_question_is_filled_when_it_applies` | 1 acceptance with the conditional answer |
 | Full run: exact values, withheld sensitive answer blank, attachment disclosed once with the approved digest, confirmation-page evidence | `test_full_run_is_confirmed_and_sends_exactly_the_approved_values` | 1 acceptance, 1 upload |

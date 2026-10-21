@@ -7,6 +7,19 @@ var/
 *.sqlite3
 *.har
 captures/
+# Résumés and other documents (tests build theirs in memory; force-add a synthetic one if needed)
+*.pdf
+*.doc
+*.docx
+*.odt
+*.rtf
+*.pages
+# Browser authentication and session state (Playwright storageState, saved cookies)
+.auth/
+auth.json
+*storage-state*.json
+*storageState*.json
+cookies.json
 
 # Python
 __pycache__/

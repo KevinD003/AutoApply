@@ -2,8 +2,10 @@
 
 Status: **implemented and tested against a local, labelled approximation only.** It has not
 been run against Greenhouse or any real employer. Real Greenhouse destinations are refused at
-queue time, and real job posts are not read. Passing the tests shows compatibility with the
-fixture, not with any real employer's form.
+queue time, and NoEfforts' form capture refuses to read real job posts. (One public posting was
+observed read-only by the separate, owner-authorized manual workflow described in
+`docs/greenhouse-compatibility-report.md`; nothing was filled or submitted.) Passing the tests
+shows compatibility with the fixture, not with any real employer's form.
 
 ## Why Greenhouse
 

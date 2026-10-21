@@ -29,6 +29,15 @@ GH2 = {"origin": BASE, "url": f"{BASE}/gh2/northwind/jobs/5020001",
 # -- registry -------------------------------------------------------------------------------
 
 
+def test_the_policy_tables_cover_exactly_the_adapters_that_exist():
+    from app.modules.execution import policy, runner
+
+    assert set(policy.ADAPTER_VERSIONS) == set(runner.ADAPTERS) | set(runner.API_ADAPTERS)
+    assert len(policy.ADAPTER_VERSIONS) == 4  # as policy.py's docstring says
+    assert set(policy.CAPABILITIES) == set(runner.ADAPTERS)  # browser adapters only
+    assert not any(c.get("real_destinations", False) for c in policy.CAPABILITIES.values())
+
+
 def test_no_provider_is_enabled_for_real_destinations_or_claims_live_support():
     for spec in registry.PROVIDERS.values():
         assert spec.real_destinations_enabled is False, spec.name

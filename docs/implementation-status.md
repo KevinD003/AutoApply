@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-21 (routing/capability milestone: one route per application, API connector, then browser adapter, then a user stop; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-21 (privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,62 @@ Last updated: 2026-10-21 (routing/capability milestone: one route per applicatio
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Privacy and audit hardening, baseline corrections (2026-10-21; local only, no external request)
+
+- **Nothing changed outside the repository:** no external request, credential, permission,
+  provider configuration or live-support change. Routing order and support states are
+  unchanged; one unevidenced fixture claim was removed (below).
+- **Commits on `main`:**
+  - `6b534f6` – audit events and logs carry safe metadata only:
+    - `audit.record` sanitizes every event's metadata (sensitive keys redacted, non-identifier
+      values omitted, external identifiers stored as references);
+    - every route decision carries a fixed reason code and an API grant state, is returned by
+      `GET /api/jobs/{id}/route`, shown on the job page and recorded as `route.decision`;
+    - checkpoint route messages no longer repeat the form's own labels;
+    - draft rejections record a reason code, not their text;
+    - the browser runner logs unexpected errors by type only, and the egress proxy logs
+      destination counts, never hosts;
+    - Alembic's logging setup no longer disables the app's loggers (log assertions in tests
+      had observed nothing).
+  - `24d8bb9` – migration `c303eee5a3c9`, a one-way repair of audit metadata stored before
+    sanitizing existed (irreversible; a second run changes nothing; counts-only output). Also:
+    `draft.created` stored a raw question key and now stores a reference; `content_hash` was
+    over-redacted and is kept again.
+  - `991ed1d` – baseline corrections from the Phase 0 review:
+    - `fixture_ats` no longer claims a CAPTCHA checkpoint or trait (its receiver has no
+      CAPTCHA mode and its adapter detects none);
+    - `greenhouse_dom`'s CAPTCHA checkpoint gained an execution test (labelled static
+      `gh2_captcha` fixture mode);
+    - cancelling reports only NoEfforts' own refusal, never another error's text;
+    - a cross-tenant test for `GET /api/jobs/{id}/route`.
+  - The documentation-consistency pass that adds this entry: `docs/audit-events.md` (every
+    audit event and its allowed metadata, logs, retention and disposal), with
+    `tests/test_audit_inventory.py` and `tests/test_doc_references.py` keeping the documents
+    in line with the code.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `6b534f6`: `tests/test_audit_privacy.py` 26 passed; full backend 511 passed; Playwright
+    30 passed; frontend typecheck and lint clean;
+  - `24d8bb9`: audit repair, privacy and migration tests 38 passed; full backend 520 passed;
+  - `991ed1d`: affected modules 95 passed; full backend 524 passed;
+  - mutation checks: bypassing the sanitizer, logging the runner's full exception and
+    catching every exception on cancel were each caught.
+- **CI:**
+  - **CI #75** ([39667481752](https://github.com/KevinD003/AutoApply/actions/runs/39667481752))
+    (`f16ce8f`, status document): passed;
+  - **CI #76** ([39676548834](https://github.com/KevinD003/AutoApply/actions/runs/39676548834))
+    (`6b534f6`): passed;
+  - **CI #77** ([39681835330](https://github.com/KevinD003/AutoApply/actions/runs/39681835330))
+    (`24d8bb9`): passed;
+  - **CI #78** ([39687972651](https://github.com/KevinD003/AutoApply/actions/runs/39687972651))
+    (`991ed1d`): passed.
+
+  Per-job test counts were not recorded for these runs.
+- **Known, not fixed here** (separate phases): audit references are an unkeyed hash, so
+  enumerable question keys could be recovered (keyed references are the next phase); an
+  isolation failure stores the internal runner address and error text in the attempt outcome;
+  a form-capture mismatch lists posting question keys to the user; no global exception
+  handler.
 
 ## Execution routing and capabilities (2026-10-21; local only, no external request)
 
@@ -125,7 +181,7 @@ read-only on one real page; `none` = not implemented. No capability cell is live
 | browser_fill / document_upload | fixture | fixture | none / fixture | none | none | none | none |
 | custom_dropdown / location_picker | none | fixture / none | none | observed (structure only) / none | none | none | none |
 | confirmation_detection | fixture | fixture | fixture | none | none | none | none |
-| login / verification / CAPTCHA / multi-step traits | no / yes / yes / no | no / unknown / unknown / no | no / no / no / no | no / n/a / unknown / no | n/a | expected ×4 | n/a |
+| login / verification / CAPTCHA / multi-step traits | no / yes / no / no | no / unknown / unknown / no | no / no / no / no | no / n/a / unknown / no | n/a | expected ×4 | n/a |
 
 **Support states.** Fixture behaviour and read-only observations are not live operational
 support.
@@ -156,9 +212,12 @@ support.
 2. The required controls `u1` and `u2` understood and mapped. Otherwise that posting must
    remain refused.
 3. A location answer set without writing the page-managed hidden coordinate fields.
-4. Real upload handling and real submission, each proven separately.
-5. `docs/live-pilot-gate.md` met, including separate permissions for disclosure (C) and
-   submission (D), plus a reviewed change that raises the relevant capability evidence.
+4. Real upload evidence: attachments uploaded to a real form, proven on their own.
+5. Real submission evidence: a real final submit and its confirmation, proven separately from
+   uploads.
+6. `docs/live-pilot-gate.md` met, including separate permissions for disclosure (C,
+   permission 3 there) and submission (D, permission 4), plus a reviewed change that raises
+   the relevant capability evidence.
 
 ## Freehire personal prototype (2026-10-21; no Freehire API request)
 
@@ -939,15 +998,16 @@ employer.
 | Minimal evidence | complete; daily retention purge; user deletion (refused while running) |
 | Browser isolation (container, `NOEFFORTS_BROWSER_ISOLATION=container`, used by Compose) | separate browser-runner container: uid 10002, Chromium sandbox on and self-checked, seccomp, no capabilities, read-only root, CPU/memory/pids/time limits, internal networks only, per-session egress proxy, single-use authenticated control channel. Compose-tested in CI against the synthetic receiver only |
 | Browser isolation (netns, local development) | network + PID + mount namespaces, egress proxy, locked hiding mounts; Chromium's own sandbox off in this mode. Limit: same OS user, deny-list |
-| ATS adapter | Greenhouse-hosted, **fixture-verified only** (`docs/greenhouse-adapter.md`); real destinations refused |
+| ATS adapter | `greenhouse_hosted` and `greenhouse_dom`, **fixture-verified only** (`docs/greenhouse-adapter.md`); real destinations refused |
 | Real employer execution | **not started** — all real destinations are refused; pilot gate proposed, not approved |
 | Execution UI | browser-tested, desktop and mobile, receiver as oracle |
 | Readback mismatch | forced for text, select, checkbox, file |
 
-## Phase D — Verification and integrations: not started
-Manual code entry, optional Gmail OAuth (personal/testing first; see `docs/research/gmail-oauth.md`),
-optional Tsenta provider (disabled by default; docs inaccessible from this environment),
-spend reporting.
+## Phase D — Verification and integrations: partial
+Built: manual entry of an emailed verification code, as a checkpoint the user answers
+(fixture-tested; see "Verification-code checkpoints" above). Not started: optional Gmail OAuth
+(personal/testing first; see `docs/research/gmail-oauth.md`), optional Tsenta provider (disabled
+by default; docs inaccessible from this environment), spend reporting.
 
 ## Phase E — Expansion: not started
 
@@ -956,10 +1016,10 @@ spend reporting.
 | Service | Docs | Access | Implemented | Tested |
 |---|---|---|---|---|
 | Tsenta | product + MCP docs read; developer docs inaccessible from this environment | none | no | no |
-| Freehire API | read in code and public docs | network-blocked here | no | no |
+| Freehire API | read in code and public docs | none (no live call has been made or approved) | discovery client implemented locally: off by default, fixture origins only, never an execution destination (D33, D34) | fixture only |
 | Gmail API | requirements documented | none | no | no |
 | LLM provider | — | no key configured | interface only | fake provider in tests only |
-| Real ATS (Greenhouse, Lever, …) | Greenhouse public Job Board API docs read | none | Greenhouse-hosted adapter against a local approximation only; real posts not read, real destinations refused | fixture only |
+| Real ATS (Greenhouse, Lever, …) | Greenhouse public Job Board API docs read | read-only only: one public Greenhouse posting observed in owner-authorized manual runs (`docs/greenhouse-compatibility-report.md`) | Greenhouse-style adapters against local approximations only; nothing filled, uploaded or submitted on a real page; real destinations refused | fixture only (structure observed read-only) |
 | REA | README/docs read | `--help` ran once | not used for any analysis | — |
 
 ## Known limitations

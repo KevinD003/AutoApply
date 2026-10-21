@@ -1,7 +1,10 @@
 """Which destinations may be executed, and by which adapter.
 
-Three adapters exist, all for local synthetic fixtures only and only outside production. Every
-real employer destination is refused: no adapter has been verified against a real employer.
+Four adapters exist (`ADAPTER_VERSIONS`): three browser adapters (`fixture_ats`,
+`greenhouse_hosted`, `greenhouse_dom`) and the authorized-API adapter `fake_api`. All run only
+against local synthetic fixtures and only outside production. Every real employer destination is
+refused by `adapter_for`, whatever the flags below say: no adapter has been verified against a
+real employer.
 """
 
 from urllib.parse import urlsplit
@@ -12,7 +15,10 @@ from app.modules.preparation import forms
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation import greenhouse_dom as gdom
 
-# Capability flags per adapter. A job *source* (e.g. a discovery feed) implies none of these.
+# Capability flags per browser adapter (the API adapter's are in providers/registry.py). A job
+# *source* (e.g. a discovery feed) implies none of these. `real_destinations` is stated on the
+# Greenhouse entries because their forms are modelled on real ones; it is false for every
+# adapter, since `adapter_for` refuses any origin that is not a local fixture.
 CAPABILITIES: dict[str, dict] = {
     "fixture_ats": {
         "description": "Local synthetic ATS receiver (fictional employer). Test/development only.",

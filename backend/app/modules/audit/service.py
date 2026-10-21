@@ -1,4 +1,5 @@
-"""Append-only audit events, limited to safe metadata.
+"""Audit events, limited to safe metadata. Application code never updates or deletes them; the
+privacy repair migration (`repair.py`) rewrote legacy metadata once.
 
 `meta` may carry only short identifier-like values: internal ids, provider keys, adapter
 versions, route decisions, reason codes, evidence levels, authorization states, counts and

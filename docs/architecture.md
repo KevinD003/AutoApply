@@ -40,7 +40,7 @@ Next.js frontend ──rewrite──▶ FastAPI backend ──▶ PostgreSQL (du
 | `documents` | Immutable document versions grouped by `lineage_id` |
 | `applications` | One per user and job; state, outcome, optimistic `lock_version` |
 | `application_events` | Append-only timeline |
-| `audit_events` | Append-only audit trail (sensitive keys redacted) |
+| `audit_events` | Audit trail; `meta` sanitized before storage (`docs/audit-events.md`). Application code never updates or deletes rows; the privacy repair migration `c303eee5a3c9` rewrote legacy `meta` once |
 
 Every fact row carries `provenance` (user_entered / resume_parse / import), `approval_status`
 (proposed / approved / rejected), `version` and `updated_at`. User edits are approved by
@@ -170,7 +170,16 @@ a retention date (`NOEFFORTS_EVIDENCE_RETENTION_DAYS`); a daily beat task purges
 evidence, and users can delete an application's evidence (`DELETE
 /api/applications/{id}/evidence`, refused while an attempt is active).
 
-Browser isolation (`browser.py`, `sandbox/`), enforced outside the browser:
+Browser isolation has two modes, both enforced outside the browser:
+
+- **`container`** (used by Docker Compose; `docs/execution-service.md`): a separate
+  browser-runner container with its own uid, Chromium's own sandbox on and self-checked at
+  startup, seccomp, no capabilities, a read-only root, resource limits, internal networks only
+  and a per-session egress proxy. It is Compose-tested in CI against the synthetic receiver
+  only.
+- **`netns`** (local development on Linux; `browser.py`, `sandbox/`), described below.
+
+The `netns` mode:
 
 ```
 worker ──launch──> unshare -n -p -f --mount-proc [-r] ──> netns_boot.py ──exec──> Chromium
@@ -186,7 +195,7 @@ destination only; resolves, refuses non-public IPs (fixture exception is test/de
 
 The browser gets PATH/HOME/TMPDIR only, starts in its own work directory (not the worker's),
 and inherits no descriptors beyond stdio and the DevTools pipes. Production refuses to run
-without this isolation (`NOEFFORTS_BROWSER_ISOLATION=netns`, no user-facing switch); if the
+without isolation (`NOEFFORTS_BROWSER_ISOLATION` must be `netns` or `container`; no user-facing switch); if the
 namespaces or the browser cannot be started, the attempt stops before disclosure (no fallback
 to an unisolated browser). Work directories are named after the worker PID; the sweep task
 removes those whose worker is gone (a hard-killed worker cannot clean up).
@@ -215,22 +224,28 @@ them through AppArmor, which CI lifts with `sysctl kernel.apparmor_restrict_unpr
 on its throwaway runner. That is a CI host setting, not the supported deployment configuration:
 a deployment should give browser workers a host or container profile that permits these
 namespaces for that service only (Docker's default seccomp profile does not). The Compose stack
-does not support execution yet: the image has no browser, so attempts fail safe. On macOS there
+uses the `container` mode instead. On macOS there
 are no Linux namespaces; development there can run everything except execution, or execution
 against fixtures with `NOEFFORTS_BROWSER_ISOLATION=off`, which only non-production accepts.
 
-Limits:
+Limits of the `netns` mode:
 - Hiding is a deny-list on a shared filesystem under the same OS user, not a minimal root
   filesystem: other files readable by that user stay readable.
 - Chromium runs with Playwright's default `--no-sandbox` as uid 0 of a nested user namespace
   (full capabilities inside it, none outside); there is no seccomp profile or cgroup limit.
-- Before untrusted live browsing, run browser workers as a dedicated user in a container that
-  mounts no secrets, and evaluate enabling Chromium's own sandbox.
+- The `container` mode addresses these; the live pilot gate requires it
+  (`docs/live-pilot-gate.md` §7).
 
-Adapters (`execution/adapters/`, chosen at queue time by `policy.adapter_for`, recorded on the
-attempt): `fixture_ats` for the generic synthetic form and `greenhouse_hosted` for forms captured
-from a Greenhouse-style job post (`docs/greenhouse-adapter.md`). Both run only against fixture
-origins; capability flags are served at `GET /api/execution/capabilities`.
+Adapters (`execution/adapters/`, chosen by `providers.routing.decide` and recorded on the
+attempt with their version):
+
+- browser: `fixture_ats` for the generic synthetic form, `greenhouse_hosted` for forms captured
+  from a Greenhouse-style job post (`docs/greenhouse-adapter.md`), and `greenhouse_dom` for the
+  second Greenhouse-style structure (controls with ids but no names, ARIA comboboxes);
+- API: `fake_api`, the internal authorized-API contract, exercised only against a local fake.
+
+All four run only against fixture origins; no real destination is enabled for any of them.
+Capability flags are served at `GET /api/execution/capabilities`.
 
 Test oracle: `fixtures/ats_receiver/` (never deployed) with its own ledger and failure modes,
 including the labelled Greenhouse approximation `greenhouse_like.py`.
@@ -303,12 +318,12 @@ Details: `docs/provider-architecture.md` (decision D32).
 ## Planned components (not built)
 
 - Live ATS adapters (each needs its own capability entry and receiver-style tests)
-- Dedicated-user / container sandbox for browser workers (see limits above)
 - Account export/deletion
 - A real API provider (needs an agreement, secret storage, its own adapter and capability entry).
 - Multi-page adapters with a disclosure boundary per step (Workday: see provider-architecture.md).
 - A live discovery provider (Freehire is fixture-only; see `docs/discovery.md`).
-- Manual verification-code entry, optional Gmail OAuth, spend tracking (Phase D).
+- Optional Gmail OAuth and spend tracking (Phase D). Manual entry of an emailed verification
+  code is built: a checkpoint the user answers (`providers/checkpoints.py`).
 
 ## Deployment, backup and recovery (current guidance)
 

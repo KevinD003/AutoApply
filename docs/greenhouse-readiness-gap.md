@@ -128,10 +128,14 @@ Where each row's evidence lives:
    refused. Their purpose is never guessed.
 3. **Location:** a supported, evidence-backed way to set the location without writing hidden
    coordinates. Otherwise postings with that question stay a manual handoff.
-4. **The gate in `docs/live-pilot-gate.md`:** you name the posting, the data to disclose and
+4. **Real upload evidence:** attachments uploaded to a real form, proven on their own (an
+   upload is a disclosure: the document reaches the employer before any submit).
+5. **Real submission evidence:** a real final submit and its confirmation, proven separately
+   from uploads.
+6. **The gate in `docs/live-pilot-gate.md`:** you name the posting, the data to disclose and
    the stop conditions, and give separate yes/no permissions for disclosure (C) and
    submission (D). The isolation requirements must hold.
-5. **A capability entry raised from `fixture` to `observed`** for exactly the capabilities
+7. **A capability entry raised from `fixture` to `observed`** for exactly the capabilities
    used, with a reviewed change to `real_destinations`. This is never done to claim progress.
 
 ## Rule for any future real-page request

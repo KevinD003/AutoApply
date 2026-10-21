@@ -2,7 +2,9 @@
 
 A live pilot means the first real disclosure and submission to a real employer. Nothing in this
 repository performs one today: real destinations are refused in code (`policy.adapter_for`),
-real Greenhouse posts are not read, and production refuses fixture origins. This document lists
+and production refuses fixture origins. One public Greenhouse posting has been read, read-only,
+in owner-authorized manual observation runs (`docs/greenhouse-compatibility-report.md`); nothing
+has been filled, uploaded or submitted anywhere real. This document lists
 what must be decided, and by whom, before that changes. Each permission below is separate;
 approving one never implies another.
 
@@ -27,7 +29,8 @@ approving one never implies another.
    values too.
 4. **Submit** the application with a final click, once.
 
-A "no" at any step stops there. Permission 3 does not include 4.
+A "no" at any step stops there. Permission 3 does not include 4. Other documents call
+permission 3 "C" (disclosure) and permission 4 "D" (submission).
 
 ## 3. Exact data to disclose (from the approved package)
 
@@ -81,7 +84,9 @@ The attempt stops, with no retry, on any of:
 - **Host:** a Linux worker host where the namespace isolation self-check passes. The browser
   runs as a dedicated OS user, in a container that mounts no secrets (the current deny-list
   hiding is not enough for untrusted pages).
-- **Chromium:** a decision on enabling Chromium's own sandbox, which is currently off.
+- **Chromium:** Chromium's own sandbox must be on. It is on, and checked at startup, in the
+  `container` isolation mode (Compose-tested against fixtures only); it is off in the local
+  `netns` mode, so a pilot must use the `container` mode.
 - **Isolation tests:** `test_browser_isolation.py` and the credential probe pass on that exact
   host and image, and the result is recorded with the revision.
 - **Egress:** allow-list = the posting's host:port only; no fixture origins configured;
