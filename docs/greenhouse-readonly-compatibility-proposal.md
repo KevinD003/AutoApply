@@ -484,6 +484,35 @@ and submission cases through the real runner and session proxy.
 > selection, typing, upload, location search, OTP, candidate data or submission. Stop
 > conditions and retention as listed. Run once; do not retry; report anonymously.
 
+## Replacement widget inspection (authorized 2026-10-21, conditional; one run)
+
+- **Condition met:** the fresh-process regression and the explicit outcome are in place,
+  and CI passed on the code revision below.
+- **Code revision:** `181b7c357652c4403d4cb9e23250758a77262dfc` (`181b7c3`).
+  - The run is dispatched from the branch `readonly-inspect-181b7c3`, created at exactly that
+    commit and verified through the API before dispatch.
+  - It is not run from a moving `main`. The run record's head SHA is checked afterwards.
+- **CI #49** ([39543318002](https://github.com/KevinD003/AutoApply/actions/runs/39543318002))
+  on `181b7c3`, all four jobs passed:
+  - backend: 340 passed, 1 skipped, including `test_readonly_cli_process.py` (3) and
+    `test_widget_inspection.py` (20);
+  - frontend: full Playwright suite passed;
+  - execution-compose: 89 checks, 0 failed;
+  - docker-smoke: passed.
+- **Scope:** unchanged from the approval above.
+  - The 3 API GETs and 1 page navigation.
+  - At most 12 dropdowns present at the start, and at most 24 open/close actions (one click
+    and one Escape each).
+  - B3's destinations and method/resource restrictions; every data request blocked.
+  - All budgets; the existing stops, including the immediate filter-failure stop.
+  - Anonymous output; raw data destroyed with the stack.
+- **How the result is read:**
+  - the workflow is green only for outcome `completed`;
+  - `policy_stop` (exit 7) means partial evidence;
+  - `internal_error` (exit 6) means the check failed;
+  - the workflow status is never read as the page-inspection result: the printed `outcome`
+    is.
+
 ## Deliverable: the comparison (once A/B are separately approved and run)
 
 | Area | Compared |

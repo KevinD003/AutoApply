@@ -65,7 +65,14 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     `fetch` lacked the new `base` argument. After fixing the stub:
     `pytest tests/test_gh_readonly.py tests/test_widget_inspection.py
     tests/test_readonly_cli_process.py tests/test_b3_policy.py`: 67 passed.
-  - CI runs the full suite on the commit (recorded below once it has run).
+  - **CI #49** ([39543318002](https://github.com/KevinD003/AutoApply/actions/runs/39543318002))
+    on `181b7c3`, all four jobs passed:
+    - backend 340 passed, 1 skipped;
+    - Playwright full suite passed;
+    - execution-compose 89/0;
+    - docker-smoke passed.
+    The replacement run uses this revision, from the pinned branch
+    `readonly-inspect-181b7c3`.
 
 ## Widget inspection run #7 (2026-10-21): authorized once, failed before any widget action
 
