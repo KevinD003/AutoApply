@@ -270,3 +270,40 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   false. The adapter moved to `greenhouse-dom-3`, so earlier approvals are retired at
   queueing (D28).
 
+
+## D32 — One provider model for browser, API, discovery, observation and manual routes
+- **Approach:** each provider (`app/modules/providers/registry.py`) declares:
+  - its kind;
+  - the operations it implements;
+  - a support level per capability: `fixture`, `observed`, `live_fill` or `live_submit`.
+- **Invariants,** enforced on import by `check_spec`:
+  - no live level without real-page evidence;
+  - nothing live while `real_destinations_enabled` is false;
+  - discovery, observation and manual providers never fill, upload or submit;
+  - only API providers claim API submission.
+- **Routing** (`routing.decide`) is deterministic:
+  - a real destination is a manual handoff;
+  - the authorized API route needs the user's grant, configured credentials and declared
+    support;
+  - else the browser adapter;
+  - else a manual handoff.
+  - The chosen provider and its version are part of the approval binding (D28). So a grant, a
+    revocation, a missing credential or a version change retires the approval, or stops the
+    worker before disclosure. Nothing switches silently.
+- **API route:** same attempt, gates and fencing as the browser. The idempotency key is the
+  attempt id. Anything ambiguous after sending is `unknown`. Reconciliation is a read-only
+  lookup that never resends and never changes the state by itself. Evidence holds a hash of
+  the receipt, not the receipt.
+- **Contract status:** the contract is NoEfforts' own, tested only against the receiver's fake
+  API. No real ATS is claimed to offer it.
+- **Discovery:**
+  - finds jobs only;
+  - source statements are tri-state source facts, never candidate facts;
+  - incomplete records stay unlinked for manual import;
+  - Freehire is a mock: "Potential future discovery provider; not yet connected or
+    validated."
+- **Why:**
+  - adding a route (API, a new ATS, discovery) must not weaken the guarantees the browser
+    route already has;
+  - a fixture pass must never read as live support.
+- **Status:** no provider has live support. C and D remain unapproved.

@@ -432,7 +432,7 @@ def approve(db: Session, app: Application, version: int, expected_hash: str) -> 
     from app.modules.execution.policy import execution_binding
 
     now = utcnow()
-    binding = execution_binding(pkg.content["destination"]) or {}
+    binding = execution_binding(pkg.content["destination"], app.user_id) or {}
     appr = PackageApproval(
         package_id=pkg.id,
         application_id=app.id,

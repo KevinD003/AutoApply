@@ -2,6 +2,7 @@
 
 from app.modules.applications.models import Application, ApplicationEvent  # noqa: F401
 from app.modules.audit.models import AuditEvent  # noqa: F401
+from app.modules.discovery.models import DiscoveredJob  # noqa: F401
 from app.modules.documents.models import Document  # noqa: F401
 from app.modules.execution.models import (  # noqa: F401
     AttemptEvent,
@@ -29,3 +30,4 @@ from app.modules.profiles.models import (  # noqa: F401
     JobPreferences,
     WorkAuthorization,
 )
+from app.modules.providers.models import ApiAuthorization  # noqa: F401

@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     # How long an attempt waits for a free browser-runner slot before refusing (before any
     # disclosure; must stay well under lease_seconds).
     browser_slot_wait_seconds: int = 40
+    # Credentials of the local fake authorized API (fixture only; providers/routing.py). No
+    # real provider's credentials are configured anywhere in this version.
+    fake_api_token: str = ""
+    api_timeout_seconds: int = 10
     # TEST ONLY: turn off the worker's in-process request interception so a test can show
     # that the container boundary (runner launch settings + session proxy) alone holds.
     # Refused outside development/test.

@@ -21,6 +21,7 @@ from app.modules.documents.models import Document
 from app.modules.documents.storage import get_storage
 from app.modules.execution import policy
 from app.modules.execution import service as svc
+from app.modules.execution.adapters.fake_api import FakeApiAdapter
 from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, UploadFailed
 from app.modules.execution.adapters.greenhouse import GreenhouseHostedAdapter
 from app.modules.execution.adapters.greenhouse_dom import GreenhouseDomAdapter
@@ -29,6 +30,8 @@ from app.modules.execution.faults import fault
 from app.modules.execution.models import ExecutionAttempt
 from app.modules.preparation.models import ApplicationPackage, PackageApproval
 
+# API providers (providers.registry kind "api"): no browser; same attempt, lease and gates.
+API_ADAPTERS = {"fake_api": FakeApiAdapter}
 # Keyed by the adapter recorded on the attempt when it was queued (policy.adapter_for).
 ADAPTERS = {
     "fixture_ats": FixtureAtsAdapter,
@@ -91,6 +94,12 @@ def run_attempt(attempt_id: str, worker: str) -> str:
 
     try:
         content, docs, adapter_name = _snapshot(aid)
+        if adapter_name in API_ADAPTERS:
+            refusal = _binding_refusal(aid)
+            if refusal:
+                svc.fail_safe(aid, worker, gen, refusal)
+                return "failed_safe"
+            return _run_api(aid, worker, gen, API_ADAPTERS[adapter_name](content, docs, str(aid)))
         adapter = ADAPTERS[adapter_name](content, docs)
         dest = content["destination"]
         if s.browser_isolation not in ("netns", "container") and s.env == "production":
@@ -220,6 +229,88 @@ class _Closing:
 def _origin_of(url: str) -> str:
     p = urlsplit(url)
     return f"{p.scheme}://{p.netloc}" if p.netloc else p.scheme
+
+
+def _run_api(aid, worker, gen, adapter) -> str:
+    """The API route: the same phases and fencing as the browser route, no browser."""
+    s = get_settings()
+    phase = "before_disclosure"
+    try:
+        reason = adapter.validate_before_disclosure()
+        if reason:
+            svc.fail_safe(aid, worker, gen, reason)
+            return "failed_safe"
+        try:
+            svc.gate_before_disclosure(aid, worker, gen)
+        except svc.GateRefused as e:
+            svc.fail_safe(aid, worker, gen, str(e))
+            return "failed_safe"
+        phase = "after_disclosure"
+        fault("after_disclosure_gate")
+        try:
+            draft = adapter.prepare()
+            svc.record_evidence(aid, worker, gen, "disclosure",
+                                {"route": "api", "kind": "application_draft"})  # fmt: skip
+            for d in adapter.upload(draft):
+                svc.record_evidence(aid, worker, gen, "disclosure", d)
+        except UploadFailed as e:
+            svc.abandon(aid, worker, gen, str(e))
+            return "abandoned"
+        fault("before_send_gate")
+        try:
+            svc.gate_before_send(aid, worker, gen)
+        except svc.GateRefused as e:
+            svc.abandon(aid, worker, gen, str(e))
+            return "abandoned"
+        phase = "after_send"
+        fault("before_click")
+        out = adapter.submit(draft, s.submit_timeout_seconds * 1000)
+        fault("after_click")
+        if out.kind == "accepted":
+            ev = adapter.receipt_evidence(out)
+            fault("after_receipt_before_commit")
+            svc.confirmed(aid, worker, gen,
+                          [{"kind": "receipt", "data": ev,
+                            "strength": adapter.confirmation_strength}])  # fmt: skip
+            return "confirmed"
+        if out.kind == "rejected":
+            svc.rejected(aid, worker, gen, out.detail)
+            return "rejected"
+        svc.unknown(aid, worker, gen, out.detail)
+        return "unknown"
+    except svc.LostAuthority:
+        log.warning("attempt %s: lost authority in phase %s; stopped", aid, phase)
+        return "lost_authority"
+    except Exception as e:  # noqa: BLE001
+        log.warning("attempt %s failed in phase %s (%s)", aid, phase, type(e).__name__)
+        reason = f"internal error ({type(e).__name__})"
+        if phase == "before_disclosure":
+            svc.fail_safe(aid, worker, gen, reason)
+        elif phase == "after_disclosure":
+            svc.abandon(aid, worker, gen, reason)
+        else:
+            svc.unknown(aid, worker, gen, reason)
+        return "error"
+
+
+def reconcile_api(attempt_id: str) -> str:
+    """For an API attempt with an unknown outcome: ask the API, read-only, whether its
+    idempotency key was accepted, and record the finding as an event. Never resubmits and never
+    changes the outcome by itself: the user reconciles the application (applications router)."""
+    aid = uuid.UUID(attempt_id)
+    content, docs, name = _snapshot(aid)
+    if name not in API_ADAPTERS:
+        raise ValueError("not an API attempt")
+    with SessionLocal() as db:
+        att = db.get(ExecutionAttempt, aid)
+        if att.state != svc.S.unknown:
+            raise ValueError("only an attempt with an unknown outcome is reconciled")
+    finding = API_ADAPTERS[name](content, docs, str(aid)).reconcile()
+    with SessionLocal() as db:
+        att = db.get(ExecutionAttempt, aid)
+        svc.event(db, att, "reconciliation_checked", finding=finding, route="api")
+        db.commit()
+    return finding
 
 
 def _conclude(aid, worker, gen, adapter, page, out) -> str:

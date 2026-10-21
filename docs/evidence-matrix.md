@@ -9,6 +9,36 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Submission providers, fake API and discovery (2026-10-21; local only)
+
+All of this is **local fixture evidence**. No external service was contacted. The fake API is
+NoEfforts' own contract, and the Freehire provider is a mock with an invented record shape.
+The oracle for the API route is the receiver's ledger (drafts, uploads, acceptances keyed by
+the idempotency key).
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| No live claim from a fixture | `test_no_provider_is_enabled_for_real_destinations_or_claims_live_support`, `test_real_page_evidence_is_recorded_only_where_it_exists`, `test_spec_invariants_reject_unsupported_claims` (6) | no `live_fill`/`live_submit` anywhere; `observed` only where run evidence exists; unsupported specs refused on import |
+| Capabilities machine-readable | `test_capabilities_are_machine_readable_through_the_api` | `GET /api/providers`, `GET /api/execution/capabilities` → `providers` |
+| Routing: real destination, nothing captured | `test_real_destinations_go_to_a_manual_handoff`, `test_no_captured_destination_is_a_manual_handoff` | manual handoff |
+| Browser vs API selection | `test_browser_unless_the_api_is_authorized_configured_and_supported`, `test_observation_and_discovery_providers_are_never_routes` | API only with the user's grant + credentials + support; revoke → browser; observation/discovery never chosen |
+| Grants are user-scoped and fixture-only | `test_authorizations_are_user_scoped_and_fixture_only` | non-fixture origin 400; non-API provider 400; other user's delete 404; other user still routes to the browser |
+| Approval invalidated by a route change | `test_granting_the_api_retires_a_browser_approval_and_revoking_retires_it_again`, `test_missing_credentials_after_approval_stop_before_anything_is_sent` | 409 at queue (approval retired); token removed after approval → failed_safe "execution method changed", 0 API requests |
+| No run without authorization | `test_without_authorization_the_api_is_never_contacted` | browser route; 0 `/fapi/` requests |
+| No stale approval | `test_a_stale_approval_stops_before_disclosure` | not run; 0 POSTs, 0 disclosures |
+| No wrong provider | `test_an_attempt_recorded_for_another_provider_is_refused` | failed_safe; 0 API requests, 0 acceptances |
+| API happy path sends exactly the approved package | `test_authorized_api_submission_sends_exactly_the_approved_package` | 1 acceptance, key = attempt id, every value equal, upload digest = approved, no form-page request during the run |
+| Refusals before disclosure | `test_refusals_before_disclosure` (schema changed, 401, 429) | failed_safe after the schema GET only; 0 disclosures |
+| Outcomes after sending | `test_outcomes_after_sending` (422, 500, 429) | rejected / unknown / unknown; exactly 1 submit; second delivery ignored |
+| Accepted but response lost | `test_accepted_but_response_lost_is_unknown_and_never_resent` | unknown; ledger 1 acceptance; reconcile (read-only) = accepted; still 1 submit; state left unknown; event recorded |
+| Idempotency at the API | `test_the_fake_api_itself_never_accepts_one_key_twice` | same key → same draft, same receipt, 1 acceptance; incomplete → 422; status lookup by key |
+| No leakage | `test_api_evidence_and_logs_carry_no_candidate_data_secrets_or_raw_ids` | email, phone, token, raw receipt, document bytes absent from evidence, events, outcome detail and captured logs; evidence holds `receipt_ref_sha256` |
+| Discovery: import, normalization, dedup | `test_import_normalizes_deduplicates_and_keeps_incomplete_records_unlinked`, `test_a_posting_the_user_already_tracks_is_linked_not_duplicated` | 5 records → 3 tracker jobs (tracking-parameter duplicate merged); existing job linked; URLs preserved; ATS "unknown" for the fixture origin |
+| Discovery: unknown stays unknown | `test_missing_data_stays_missing_and_source_facts_stay_out_of_the_profile` | sponsorship yes/unknown/no as stated; location `None`; workplace `unknown`; no salary or eligibility; 0 work-authorization rows |
+| Discovery: stale, unchanged, scoped | `test_reimport_is_unchanged_and_stale_records_are_marked_not_deleted`, `test_discovered_jobs_are_user_scoped` | re-import 5 unchanged; missing → stale, tracker job kept; closed → stale; relisted → un-staled; other user sees nothing |
+| Discovery → application route | `test_application_route_is_a_manual_handoff_until_a_form_is_captured` | incomplete → "Import this job manually."; uncaptured → "Capture the application form first."; real origin → manual; captured fixture form → browser `greenhouse_dom` |
+| Checkpoints, never solved | `test_no_checkpoint_is_ever_completed_by_noefforts`, `test_no_solver_or_evasion_code_exists`, `test_manual_handoff_spec_cannot_fill`; existing `test_captcha_stops_before_anything_is_disclosed` and the emailed-code round tests in `test_execution_security.py` | no automated checkpoint; only an emailed code typed by the user resumes; no solver or stealth library in `app/` |
+
 ## Id-only page mapping, v2 fixture and adapter, output privacy (2026-10-20)
 
 Everything here is **local fixture evidence**. Nothing in this section touched Greenhouse or

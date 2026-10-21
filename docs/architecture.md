@@ -235,12 +235,56 @@ origins; capability flags are served at `GET /api/execution/capabilities`.
 Test oracle: `fixtures/ats_receiver/` (never deployed) with its own ledger and failure modes,
 including the labelled Greenhouse approximation `greenhouse_like.py`.
 
+## Submission providers and discovery (local only)
+
+Details: `docs/provider-architecture.md` (decision D32).
+
+- **Model** (`app/modules/providers/`):
+  - every provider has a kind (`browser`, `api`, `discovery`, `observation`, `manual`), the
+    operations it implements and capability flags;
+  - each capability is at a support level: `fixture`, `observed`, `live_fill` or
+    `live_submit`;
+  - `check_spec` refuses live claims without real-page evidence, and anything live while
+    `real_destinations_enabled` is false;
+  - no provider has live support.
+- **Routing** (`routing.decide`, used by `policy.execution_binding`):
+  - real destination → manual handoff;
+  - authorized API → only with the user's grant (`api_authorizations`), configured
+    credentials and declared API submission;
+  - else the browser adapter;
+  - else manual handoff.
+  - The chosen provider and version are part of the approval binding (D28). A route change
+    retires the approval at queueing and stops the worker before disclosure.
+- **API route** (`adapters/fake_api.py`, `runner._run_api`): the same attempt, lease, gates
+  and fencing as the browser route.
+
+  ```
+  schema check → gate 1 → draft + documents (disclosures) → gate 2 → submit once (idempotency
+  key = attempt id) → confirmed | rejected | unknown → reconcile_api (read-only, never resends)
+  ```
+
+  It is exercised only against the receiver's fake API (`fixtures/ats_receiver/fake_api.py`),
+  which is NoEfforts' own contract, not any real ATS's.
+- **Discovery** (`app/modules/discovery/`):
+  - providers normalize records into `discovered_jobs` (source facts kept apart, tri-state);
+  - they deduplicate through `jobs.upsert_job` and mark stale records;
+  - they never touch the profile;
+  - `application_route` is a manual handoff until a form is captured.
+  - The only provider is the local Freehire mock.
+- **Checkpoints** (`providers/checkpoints.py`):
+  - CAPTCHA, bot checks, login/MFA, SMS codes and identity checks stop the attempt and send
+    the user to the employer's site;
+  - only an emailed code entered by the user can resume an attempt;
+  - nothing is solved or bypassed.
+
 ## Planned components (not built)
 
 - Live ATS adapters (each needs its own capability entry and receiver-style tests)
 - Dedicated-user / container sandbox for browser workers (see limits above)
 - Account export/deletion
-- Execution-provider contract, local fixture ATS, first real adapter, evidence store (Phase C).
+- A real API provider (needs an agreement, secret storage, its own adapter and capability entry).
+- Multi-page adapters with a disclosure boundary per step (Workday: see provider-architecture.md).
+- A live discovery provider (Freehire is mock-only).
 - Manual verification-code entry, optional Gmail OAuth, spend tracking (Phase D).
 
 ## Deployment, backup and recovery (current guidance)

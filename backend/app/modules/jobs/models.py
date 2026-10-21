@@ -23,6 +23,7 @@ class JobSource(enum.StrEnum):
     url = "url"
     csv = "csv"
     xlsx = "xlsx"
+    discovery = "discovery"  # from a discovery provider (see app/modules/discovery)
 
 
 class JobStatus(enum.StrEnum):

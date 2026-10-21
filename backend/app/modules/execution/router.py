@@ -13,6 +13,7 @@ from app.modules.execution.models import AttemptEvent, Checkpoint, Evidence, Exe
 from app.modules.execution.policy import CAPABILITIES
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
+from app.modules.providers.registry import summary as provider_summary
 
 router = APIRouter(tags=["execution"])
 
@@ -28,6 +29,9 @@ def _owned_app(db: Session, user: User, app_id: uuid.UUID) -> Application:
 def capabilities(user: User = Depends(current_user)) -> dict:
     return {
         "adapters": CAPABILITIES,
+        # Machine-readable provider model (providers.registry): per capability "none",
+        # "fixture", "observed", "live_fill" or "live_submit".
+        "providers": provider_summary(),
         "note": "Adapters run only against local synthetic fixtures (the Greenhouse one against "
         "a labelled approximation). No live employer system is supported for automatic "
         "submission.",

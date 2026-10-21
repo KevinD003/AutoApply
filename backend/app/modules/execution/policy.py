@@ -105,6 +105,8 @@ ADAPTER_VERSIONS: dict[str, str] = {
     # 3: dropdowns without a list at load are handled by explicit, evidence-checked strategies
     # (adapters/dropdowns.py), verified before disclosure.
     "greenhouse_dom": f"greenhouse-dom-3+{gdom.EXTRACTION_VERSION}",
+    # The internal authorized-API contract, exercised only against the local fake API.
+    "fake_api": "fake-api-1",
 }
 # Approvals given before bindings were recorded meant what the code then did: these routes and
 # these versions. They stay valid exactly as long as that is still what would run.
@@ -122,14 +124,16 @@ class BindingChanged(ValueError):
     """The way NoEfforts would execute this package differs from what was approved."""
 
 
-def execution_binding(destination: dict) -> dict | None:
-    """{"adapter", "adapter_version"} that would execute this destination now, or None if no
-    adapter may execute it (then nothing can be queued anyway)."""
-    try:
-        name = adapter_for(destination)
-    except UnsupportedDestination:
+def execution_binding(destination: dict, user_id=None) -> dict | None:
+    """{"adapter", "adapter_version"} of the provider that would execute this destination now
+    (providers.routing.decide: authorized API, else browser), or None for a manual handoff
+    (then nothing can be queued anyway). The route follows from the provider's kind."""
+    from app.modules.providers import routing
+
+    d = routing.decide(destination, user_id)
+    if d.route == "manual_handoff":
         return None
-    return {"adapter": name, "adapter_version": ADAPTER_VERSIONS[name]}
+    return {"adapter": d.provider, "adapter_version": ADAPTER_VERSIONS[d.provider]}
 
 
 def approved_binding(approval, destination: dict) -> dict | None:
@@ -148,7 +152,7 @@ def approved_binding(approval, destination: dict) -> dict | None:
 def check_binding(approval, destination: dict, adapter: str | None = None) -> dict:
     """The current binding, if it is what the user approved; otherwise BindingChanged.
     `adapter`: the one recorded on a queued attempt, which must also still match."""
-    now = execution_binding(destination)
+    now = execution_binding(destination, getattr(approval, "user_id", None))
     if now is None:
         raise UnsupportedDestination("No adapter may execute this destination.")
     if approved_binding(approval, destination) != now or (adapter and adapter != now["adapter"]):

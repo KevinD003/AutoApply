@@ -1,0 +1,25 @@
+{
+  "_comment": "SYNTHETIC mock discovery feed (FIXTURE ASSUMPTION). The record shape is NoEfforts' own invention for the mock provider; it is NOT Freehire's real API or data. All employers and jobs are fictional.",
+  "jobs": [
+    {"id": "fh-1001", "title": "Support Specialist", "company": "Northwind Example (fictional)",
+     "location": "Riverton", "workplace": "hybrid",
+     "url": "http://127.0.0.1:8799/gh2/northwind/jobs/5020001",
+     "apply_url": "http://127.0.0.1:8799/gh2/northwind/jobs/5020001",
+     "published": "2026-10-01", "summary": "Help customers by email and chat.",
+     "visa_sponsorship": true},
+    {"id": "fh-1002", "title": "Field Technician", "company": "Northwind Example (fictional)",
+     "location": "Riverton", "workplace": "onsite",
+     "url": "http://127.0.0.1:8799/gh2/northwind/jobs/5020002",
+     "published": "2026-10-03", "summary": "Install and service equipment on site."},
+    {"id": "fh-1003", "title": "Data Analyst", "company": "Contoso Example (fictional)",
+     "location": null, "workplace": "remote",
+     "url": "https://jobs.example.test/contoso/analyst-77",
+     "published": "2026-09-20", "summary": "Build weekly reports.", "visa_sponsorship": false},
+    {"id": "fh-1004", "title": "Office Coordinator", "company": "Fabrikam Example (fictional)",
+     "workplace": "unknown", "summary": "Coordinate the front office."},
+    {"id": "fh-1005", "title": "Support Specialist", "company": "Northwind Example (fictional)",
+     "location": "Riverton", "workplace": "hybrid",
+     "url": "http://127.0.0.1:8799/gh2/northwind/jobs/5020001?utm_source=feed",
+     "published": "2026-10-01", "summary": "Same posting, listed twice by the source."}
+  ]
+}

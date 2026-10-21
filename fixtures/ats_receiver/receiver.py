@@ -14,6 +14,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 import greenhouse_like  # labelled approximation of a Greenhouse-hosted form (same ledger)
+import fake_api  # a fake authorized application API (internal contract only; same ledger)
 import greenhouse_v2  # second approximation: id-only controls, ARIA comboboxes (same ledger)
 
 SCHEMA = """
@@ -139,6 +140,7 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
 
     greenhouse_like.mount(app, ledger, cfg, _accept)
     greenhouse_v2.mount(app, ledger, cfg, _accept)
+    fake_api.mount(app, ledger, cfg, _accept)
 
     @app.post("/apply/{slug}/submit", response_class=HTMLResponse)
     async def submit(slug: str, request: Request):

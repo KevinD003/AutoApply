@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-21 (run #9 closed; local dropdown readiness built and tested; manual checklist and next decision point prepared, not authorized). For requirement-by-requirement evidence see
+Last updated: 2026-10-21 (submission-provider architecture: provider model, routing, fake authorized API, Freehire mock discovery; local only, no external request). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,64 @@ Last updated: 2026-10-21 (run #9 closed; local dropdown readiness built and test
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Submission-provider architecture (2026-10-21; local only, no external request)
+
+- **No external service was contacted:** no Greenhouse, Workday, Freehire, Gmail or Tsenta
+  request, and no real candidate data, upload or submission.
+  - Run #9 stays evidence only.
+  - C and D stay unapproved.
+  - `real_destinations_enabled` is false for every provider.
+- **Built:**
+  - Provider model and registry (`app/modules/providers/`):
+    - kinds and operations;
+    - 15 capability flags plus `real_destinations_enabled`, each at an evidence level
+      (`fixture` / `observed` / `live_fill` / `live_submit`);
+    - invariants checked on import;
+    - served at `GET /api/providers`.
+  - Routing (`routing.decide`): real → manual handoff; authorized API; browser; manual. The
+    provider and its version are part of the approval binding, so a route change retires the
+    approval.
+  - User-scoped API authorizations (`/api/api-authorizations`, fixture origins only).
+  - The API route (`adapters/fake_api.py`, `runner._run_api`, `runner.reconcile_api`) and the
+    local fake API on the receiver (`fixtures/ats_receiver/fake_api.py`, own ledger). It is an
+    internal contract; no real ATS is claimed to offer it.
+  - Checkpoint policy (`providers/checkpoints.py`): nothing automated; only an emailed code
+    typed by the user can resume. No solver, no bypass, no mailbox integration.
+  - Discovery (`app/modules/discovery/`, table `discovered_jobs`):
+    - the Freehire mock reads `fixtures/discovery/freehire_mock.json`, a shape invented by
+      NoEfforts;
+    - normalization, tri-state source facts, dedup through `upsert_job`, stale marking;
+    - the application route is a manual handoff until a form is captured.
+    - Status: "Potential future discovery provider; not yet connected or validated."
+  - Migration `8b41c0d7e2f5`: `api_authorizations`, `discovered_jobs`, and the `discovery` job
+    source.
+  - Docs: `docs/provider-architecture.md` (capability matrix, routing, API contract, browser
+    lifecycle and disclosure boundaries, checkpoints, Freehire, Workday sequence, Greenhouse
+    status), the architecture section, D32, and evidence-matrix rows.
+- **Greenhouse status (unchanged; no request made):**
+  - 19 of 19 mapped fields have a consistent required state;
+  - dropdowns unresolved (no opening evidence within run #9's window);
+  - the location controls and the unmatched required controls (`u1`, `u2`) are blockers;
+  - `greenhouse_dom` refuses that posting for live use;
+  - fixture success is not real-site compatibility.
+- **Workday:** documentation and fixture strategy only (`provider-architecture.md` §7).
+  Nothing is built.
+- **Package content shape unchanged:** `SCHEMA_VERSION` stays 2. The binding gains the
+  `fake_api` provider (`fake-api-1`). Browser approvals are unaffected unless the user grants
+  an API authorization.
+- **Commands actually run (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `ruff format .`, then `ruff check .` and `ruff format --check .`: clean;
+  - migration on a scratch DB: `alembic upgrade head`, `alembic check` ("No new upgrade
+    operations detected"), `downgrade -1`, `upgrade head`;
+  - focused suites, 134 passed:
+    - `test_providers.py` 18, `test_api_provider.py` 15, `test_discovery.py` 6 (new);
+    - `test_approval_binding.py` 9, `test_greenhouse_dom.py` 30, `test_greenhouse_adapter.py`
+      24, `test_dropdown_strategies.py` 18, `test_required_signals.py` 14;
+  - full backend suite: 438 passed, exit 0 (399 before this task, plus the 39 new tests);
+  - frontend unchanged, so no frontend checks were run here;
+  - not run here: the Compose scenarios (no Docker daemon); CI runs them.
+- **CI:** pending for this commit; the result is recorded in a follow-up commit.
 
 ## Local readiness for dropdown support (2026-10-21; local only, no external request)
 
