@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-21 (detector diagnosis after run #8, local only; a diagnostic re-observation is proposed, not authorized). For requirement-by-requirement evidence see
+Last updated: 2026-10-21 (diagnostic re-observation run #9: no opening evidence within the window; required evidence consistent; external activity stopped). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,20 @@ Last updated: 2026-10-21 (detector diagnosis after run #8, local only; a diagnos
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Diagnostic re-observation, run #9 (2026-10-21)
+
+- **Revision and result:** run #9 on `e1bd9e7` (pinned branch; CI #52 passed). The workflow
+  succeeded; the observation outcome is `completed`, with 0 internal errors.
+- **Requests and actions:** A 3×200; 1 navigation, 26 GET requests; 24 actions on 12
+  dropdowns.
+- **Findings:**
+  - all 12 dropdowns `not_opened` within the 600 ms window: the click completed and focus
+    reached the control, but there was 0 DOM change;
+  - the 11 refused data requests are all `GET /locales/*/*.json`;
+  - required evidence is consistent for all 19 mapped fields, and the resume is required by
+    its group.
+- **External activity:** stopped. No unchanged rerun is proposed.
 
 ## Detector diagnosis after run #8 (2026-10-21; local only, no external request)
 

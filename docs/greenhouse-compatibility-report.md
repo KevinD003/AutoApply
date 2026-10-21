@@ -479,6 +479,60 @@ None of them means "absent".
   (ARIA, `*`) is a prerequisite.
 - **Tests:** `tests/test_widget_detector.py` and `tests/test_required_signals.py`.
 
+## Diagnostic re-observation (manual run #9, authorized once): no opening evidence within the window
+
+- **Run:** [39612152070](https://github.com/KevinD003/AutoApply/actions/runs/39612152070), from the
+  pinned branch `readonly-inspect-e1bd9e7`; the run record's head SHA is `e1bd9e7`. CI #52
+  passed on that revision.
+- **Workflow:** success.
+- **Observation outcome:** `completed`, `inspection_complete: true`, 0 internal errors. No
+  traceback was printed and stderr went to the raw file.
+- **Requests:**
+  - **API:** 3 GETs, all 200.
+  - **Page:** 1 navigation (200); 26 browser requests, all GET, 0 non-GET; 391,780 bytes
+    received. No bot challenge.
+  - **Refused, never sent:**
+    - `job-boards.cdn.greenhouse.io`: 11 data requests (fetch) and 6 fonts;
+    - `recruiting.cdn.greenhouse.io`: 1 image.
+  - **All 11 refused data requests have one path shape:** `GET /locales/*/*.json`, 0 query
+    parameters (a two-segment locale path to a JSON file). 4 came at load and 7 during
+    openings: `q02` 1, `q09` 2, `q11` 2, `u1` 1, `u3` 1.
+  - The DOM is identical to run #8, with the same request totals.
+- **Actions:** 12 dropdowns, 24 actions (12 clicks and 12 Escapes) in 15.6 s.
+  - Every click completed, and focus reached the control.
+  - Nothing selected, no value or address change, no submission attempt, no non-GET request.
+- **Each widget, the same for all 12:**
+  - **Opening evidence:** none within the window (3 probes over 600 ms after the click).
+    `aria-expanded` stayed `false`; there was no wrapper state, no popup reference, no
+    associated or new popup, and no option-role or class-hinted element.
+  - **DOM:** 0 mutations and 0 visible elements added after the click, not even a state or
+    class change.
+  - **Open state:** `not_opened`. This is qualified by the permitted action (a click on the
+    control) and the 600 ms window. It does not show the widgets cannot open.
+  - **Completeness:** not evaluable, since no option was observed. **Comparison with the job
+    data:** not performed.
+  - **Structure:** each control is `aria-haspopup="true"` and `aria-autocomplete="list"`, with
+    a very small box (under 8 px on one side). No wrapper carries the combobox state.
+- **Unmatched controls:**
+  - `u1`, inside the phone group, and `u2`: required by `aria-required` plus a label marker;
+  - `u3`–`u5`: no required signal;
+  - all five are structurally dropdowns (`aria-haspopup`, `aria-autocomplete="list"`). No
+    options were observed, so their purpose is **not** inferred.
+- **Required evidence (new: recorded per signal):**
+  - all 19 mapped fields are `consistent`;
+  - `resume` is required by its **group**: `aria-required` on the group and a marker on the
+    group's label. Run #8's detector looked only at the input, so its "attachment lacks a
+    required signal" was a detector limitation, not the page;
+  - `cover_letter` is unmarked and optional;
+  - the dropdowns and text fields use `aria-required` plus a label marker, and none uses
+    HTML `required`.
+- **What this narrows down:** the page's widget scripts did not react to the click in any
+  visible way. Three explanations remain, and the run cannot tell them apart:
+  - the widgets wait on the refused locale files, so the application may not be fully
+    initialised;
+  - the element that opens them is not the input (for example a container or an indicator);
+  - they open on another event, such as a key press.
+
 ## Log cleanup (run #3's logs deleted with authorization; runs #1 and #2 untouched)
 
 Manual "Greenhouse read-only check" runs. None has artifacts: the workflow uploads none and

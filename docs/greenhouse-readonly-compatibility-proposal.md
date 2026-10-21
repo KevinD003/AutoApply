@@ -149,6 +149,7 @@ To run it:
 | CI read-only #6 (B3) | `bf6642b` | **completed**, authorized once, after CI #42 passed on that revision. A: 3×200. B: 1 navigation, 19 GET requests; CDN scripts/stylesheets loaded; refused: 4 data requests + 6 fonts to the CDN, 1 image to the other host. Mapping unchanged from B2; attachments sit in groups named by the question |
 | CI read-only #7 (widget inspection) | `2b0bcbb` (= `1fc58b2` + docs) | authorized once; workflow **succeeded but the page observation failed**: A 3×200; the page navigation was held inside the browser by a failing request filter (a `NameError` in script mode) and timed out after 60 s; **0 widget actions, no page evidence**. Authorization used; not rerun. Fixed locally afterwards |
 | CI read-only #8 (replacement widget inspection) | `181b7c3` (pinned branch) | authorized once (conditional; conditions met, CI #49). Workflow success; **observation outcome `completed`**: A 3×200; 1 navigation, 26 GET requests, 0 non-GET; 12 dropdowns opened and closed (24 actions); **no option list observable** for any of them; 7 CDN data requests refused during actions; no selection or structural change. Not a compatibility result |
+| CI read-only #9 (diagnostic re-observation) | `e1bd9e7` (pinned branch) | authorized once, after CI #52. Workflow success; **observation outcome `completed`**. A 3×200; 1 navigation, 26 GET requests; 24 actions on 12 dropdowns. All 12 `not_opened` within 600 ms, with 0 DOM mutations after each click. All 11 refused data requests are `GET /locales/*/*.json`. Required evidence consistent for all 19 mapped fields (resume required by its group) |
 
 **Note on the budget.** A was written as "at most 3 requests in total" and B as "exactly one"
 navigation. Runs #2 and #3 each used that budget once more, relying on the user's general
@@ -514,7 +515,7 @@ and submission cases through the real runner and session proxy.
   - the workflow status is never read as the page-inspection result: the printed `outcome`
     is.
 
-## Diagnostic re-observation — proposed, NOT authorized, NOT run
+## Diagnostic re-observation — authorized 2026-10-21 for one run; run once as manual run #9 (authorization used)
 
 **Why:** run #8's detector cannot tell "did not open" apart from "opened, but not in a way
 it could read" (see the report, "Detector diagnosis after run #8"). The new diagnostics can,
