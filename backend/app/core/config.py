@@ -59,6 +59,18 @@ class Settings(BaseSettings):
     # real provider's credentials are configured anywhere in this version.
     fake_api_token: str = ""
     api_timeout_seconds: int = 10
+
+    # Job discovery (app/modules/discovery). Off unless a provider is named here, e.g.
+    # ["freehire"]. The Freehire client accepts only a fixture base URL in this version: no live
+    # Freehire call is authorized. The optional key stays server-side (never returned by the API,
+    # never passed to the browser or the frontend).
+    discovery_providers: list[str] = Field(default_factory=list)
+    freehire_base_url: str = ""
+    freehire_api_key: str = ""
+    freehire_page_size: int = 50
+    freehire_max_pages: int = 5
+    freehire_min_interval_ms: int = 1000  # well under the documented 600 requests/minute
+    freehire_timeout_seconds: int = 10
     # TEST ONLY: turn off the worker's in-process request interception so a test can show
     # that the container boundary (runner launch settings + session proxy) alone holds.
     # Refused outside development/test.

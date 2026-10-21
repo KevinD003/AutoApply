@@ -5,6 +5,7 @@ from sqlalchemy import text
 from app.core.config import get_settings
 from app.core.db import engine
 from app.modules.applications.router import router as applications_router
+from app.modules.discovery.router import router as discovery_router
 from app.modules.documents.router import router as documents_router
 from app.modules.execution.router import router as execution_router
 from app.modules.identity.router import router as auth_router
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
         preparation_router,
         execution_router,
         providers_router,
+        discovery_router,
     ):
         app.include_router(r, prefix="/api")
 

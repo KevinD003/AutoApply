@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 import greenhouse_like  # labelled approximation of a Greenhouse-hosted form (same ledger)
 import fake_api  # a fake authorized application API (internal contract only; same ledger)
+import freehire_fixture  # stand-in for Freehire's documented read API (synthetic data only)
 import greenhouse_v2  # second approximation: id-only controls, ARIA comboboxes (same ledger)
 
 SCHEMA = """
@@ -51,7 +52,8 @@ class Ledger:
 def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     cfg = {"mode": "normal", "delay_s": 0.0, "idempotent": True, "canary": None,
-           "token_ttl_s": 3600, "autosave": False, "tamper": None, "form_delay_s": 0.0}
+           "token_ttl_s": 3600, "autosave": False, "tamper": None, "form_delay_s": 0.0,
+           "fh_mode": "normal"}
 
     def admin(tok: str | None):
         if tok != admin_token:
@@ -77,6 +79,7 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
         dis = ledger.run("select kind, slug, detail from disclosures order by id")
         ch = ledger.run("select id, code, attempts, done from challenges order by created_at")
         req = ledger.run("select method, path from requests order by id")
+        fh = ledger.run("select route, offset_, limit_, q, auth_present from fh_requests order by id")
         return {
             "requests": [{"method": m, "path": p} for m, p in req],
             "accepted": len(acc),
@@ -85,15 +88,17 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
             "disclosures": [{"kind": k, "slug": s, "detail": d} for k, s, d in dis],
             "challenges": [{"id": i, "code": c, "attempts": a, "done": bool(d)}
                            for i, c, a, d in ch],
+            "freehire_requests": [{"route": r, "offset": o, "limit": n, "q": q,
+                                   "auth_present": bool(a)} for r, o, n, q, a in fh],
         }
 
     @app.post("/_admin/reset")
     def reset(x_admin_token: str | None = Header(None)):
         admin(x_admin_token)
-        for t in ("acceptances", "disclosures", "tokens", "challenges", "requests"):
+        for t in ("acceptances", "disclosures", "tokens", "challenges", "requests", "fh_requests"):
             ledger.run(f"delete from {t}")
         cfg.update({"mode": "normal", "delay_s": 0.0, "idempotent": True, "autosave": False,
-                    "tamper": None, "form_delay_s": 0.0})
+                    "tamper": None, "form_delay_s": 0.0, "fh_mode": "normal"})
         return {"ok": True}
 
     @app.get("/apply/{slug}", response_class=HTMLResponse)
@@ -141,6 +146,7 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
     greenhouse_like.mount(app, ledger, cfg, _accept)
     greenhouse_v2.mount(app, ledger, cfg, _accept)
     fake_api.mount(app, ledger, cfg, _accept)
+    freehire_fixture.mount(app, ledger, cfg)
 
     @app.post("/apply/{slug}/submit", response_class=HTMLResponse)
     async def submit(slug: str, request: Request):

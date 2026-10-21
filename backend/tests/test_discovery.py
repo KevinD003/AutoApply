@@ -74,6 +74,7 @@ def test_missing_data_stays_missing_and_source_facts_stay_out_of_the_profile(api
     assert r["fh-1001"].source_facts["sponsorship_offered"] == {
         "value": "yes",
         "stated_by": "freehire_mock",
+        "basis": "source field",
     }
     assert r["fh-1002"].source_facts["sponsorship_offered"]["value"] == "unknown"  # not stated
     assert r["fh-1003"].source_facts["sponsorship_offered"]["value"] == "no"

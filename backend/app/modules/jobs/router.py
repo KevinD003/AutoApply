@@ -72,6 +72,8 @@ class JobOut(BaseModel):
 class JobDetail(JobOut):
     description: str | None
     explanations: list[dict]
+    # Discovery sources that list this job (source attribution only; never verified facts).
+    discovered_from: list[dict] = []
 
 
 class JobCreated(BaseModel):
@@ -256,10 +258,30 @@ async def import_jobs(
 def get_job(job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
     job = _owned(db, user, job_id)
     prefs = db.scalar(select(JobPreferences).where(JobPreferences.user_id == user.id))
+    from app.modules.discovery.models import DiscoveredJob
+    from app.modules.discovery.provider import PROVIDERS
+
+    sources = db.scalars(
+        select(DiscoveredJob).where(
+            DiscoveredJob.user_id == user.id, DiscoveredJob.job_id == job.id
+        )
+    )
     return JobDetail(
         **JobOut.model_validate(job).model_dump(),
         description=job.description,
         explanations=explain(job, prefs),
+        discovered_from=[
+            {
+                "provider": d.provider,
+                "label": PROVIDERS[d.provider].label if d.provider in PROVIDERS else d.provider,
+                "source_url": (d.normalized or {}).get("job_url"),
+                "last_seen_at": d.last_seen_at.isoformat(),
+                "stale": d.stale,
+                "stale_reason": d.stale_reason,
+                "changed_fields": d.changed_fields or [],
+            }
+            for d in sources
+        ],
     )
 
 

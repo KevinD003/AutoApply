@@ -146,6 +146,19 @@ PROVIDERS: dict[str, ProviderSpec] = {
         capabilities={C.discovery: FIXTURE},
         status="Potential future discovery provider; not yet connected or validated.",
     ),
+    "freehire": ProviderSpec(
+        name="freehire",
+        kind=Kind.discovery,
+        description="Client for Freehire's documented public read API; fixture base URLs only.",
+        operations=frozenset({Op.discover}),
+        capabilities={
+            C.discovery: Support(
+                fixture=True,
+                note="local fixture of the documented API; no live call made or authorized",
+            )
+        },
+        status="Potential future discovery provider; not yet connected or validated.",
+    ),
     "manual_handoff": ProviderSpec(
         name="manual_handoff",
         kind=Kind.manual,
