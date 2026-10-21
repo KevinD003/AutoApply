@@ -148,6 +148,7 @@ To run it:
 | CI read-only #5 (identification) | `90a12ab` | **completed**, authorized once, `--identify-only`: 0 API requests; 1 navigation, 9 GET requests; blocked hosts: `job-boards.cdn.greenhouse.io:443` (5 script, 2 stylesheet), `recruiting.cdn.greenhouse.io:443` (1 image) |
 | CI read-only #6 (B3) | `bf6642b` | **completed**, authorized once, after CI #42 passed on that revision. A: 3×200. B: 1 navigation, 19 GET requests; CDN scripts/stylesheets loaded; refused: 4 data requests + 6 fonts to the CDN, 1 image to the other host. Mapping unchanged from B2; attachments sit in groups named by the question |
 | CI read-only #7 (widget inspection) | `2b0bcbb` (= `1fc58b2` + docs) | authorized once; workflow **succeeded but the page observation failed**: A 3×200; the page navigation was held inside the browser by a failing request filter (a `NameError` in script mode) and timed out after 60 s; **0 widget actions, no page evidence**. Authorization used; not rerun. Fixed locally afterwards |
+| CI read-only #8 (replacement widget inspection) | `181b7c3` (pinned branch) | authorized once (conditional; conditions met, CI #49). Workflow success; **observation outcome `completed`**: A 3×200; 1 navigation, 26 GET requests, 0 non-GET; 12 dropdowns opened and closed (24 actions); **no option list observable** for any of them; 7 CDN data requests refused during actions; no selection or structural change. Not a compatibility result |
 
 **Note on the budget.** A was written as "at most 3 requests in total" and B as "exactly one"
 navigation. Runs #2 and #3 each used that budget once more, relying on the user's general
@@ -484,7 +485,7 @@ and submission cases through the real runner and session proxy.
 > selection, typing, upload, location search, OTP, candidate data or submission. Stop
 > conditions and retention as listed. Run once; do not retry; report anonymously.
 
-## Replacement widget inspection (authorized 2026-10-21, conditional; one run)
+## Replacement widget inspection (authorized 2026-10-21, conditional; run once as manual run #8; authorization used)
 
 - **Condition met:** the fresh-process regression and the explicit outcome are in place,
   and CI passed on the code revision below.

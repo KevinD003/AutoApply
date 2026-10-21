@@ -335,6 +335,67 @@ inspection".
   The behaviour within the authorized scope is unchanged.
 - **Unknowns:** everything listed under "Dropdowns" above is still unknown.
 
+## Replacement widget inspection (manual run #8, authorized once): completed; no option list observable
+
+- **Run:** [39544745638](https://github.com/KevinD003/AutoApply/actions/runs/39544745638),
+  from the pinned branch `readonly-inspect-181b7c3`; the run record's head SHA is `181b7c3`.
+  CI #49 passed on that revision.
+- **Workflow conclusion:** success.
+- **Observation outcome (printed, separate from the workflow):** `completed`,
+  `inspection_complete: true`, 0 internal errors.
+  - The inspection ran to the end of its targets without a stop.
+  - This is not a compatibility result: no option list was observed (below).
+- **Requests:**
+  - **API:** 3 GETs, all 200.
+  - **Page:** 1 navigation (200); 26 browser requests in total, all GET, 0 non-GET;
+    391,774 bytes received. No bot challenge; network idle reached.
+  - **Refused, never sent:**
+    - `job-boards.cdn.greenhouse.io`: 11 data requests (fetch) and 6 fonts;
+    - `recruiting.cdn.greenhouse.io`: 1 image.
+  - The 11 data requests split into 4 at load (as in B3) and 7 while widgets were being
+    opened. All 7 went to the CDN; none to the page origin.
+- **Widget actions:** 12 targets (the 7 mapped dropdowns and the 5 unmatched comboboxes), so
+  24 actions in 15.2 s: 12 clicks and 12 Escapes.
+  - No selection, value change, address change, submission attempt, non-GET request, file
+    chooser or dialog.
+- **Options:** for all 12 controls, **unavailable under the permitted actions**. After the
+  click, no list was found:
+  - by `aria-controls` or `aria-owns`;
+  - as the only visible `role=listbox` element.
+  None was fully or partially observed.
+  - **Not proof of absence or incompatibility.** Possible reasons the run cannot tell apart:
+    - the list depends on the refused CDN data requests: 4 of the 12 openings (`q02`, `q11`,
+      `u2`, `u4`) triggered such requests;
+    - the list is rendered without `role=listbox`;
+    - the widget opens on another event or needs longer than 600 ms;
+    - the click did not reach the element that opens it.
+- **Required signals, now kept apart:**
+  - all 7 mapped dropdowns, `u1` and `u2`: `aria-required="true"` and a label marker; no HTML
+    `required` attribute and no group-level signal;
+  - `u3`–`u5`: none.
+- **Structure:** opening and closing changed nothing:
+  - control, required, hidden, invalid and alert counts all unchanged;
+  - 0 controls added; 24 controls at the end, as at load;
+  - DOM counts identical to B3;
+  - no location control appeared, and none is labelled like the location question.
+- **Unmatched controls:**
+  - `u1` is inside the phone field's group;
+  - `u2`–`u5` are standalone and labelled, none named like an API question;
+  - `u1` and `u2` carry the required signals above.
+  With no options observed, their purpose stays **undetermined**. Nothing is inferred.
+- **Attachments:**
+  - in this run's mapping evidence, `resume` and `cover_letter` were `unique` through the
+    attachment-group rule (`matched_via_attachment_group`). This is the first real run since
+    that rule;
+  - their inputs still carry no required signal while the job data requires the resume, so
+    the adapter would still refuse the form.
+- **Privacy:**
+  - the log holds only the guarded summary: aliases, counts, flags and the printable
+    `*.greenhouse.io` names;
+  - no traceback was printed, and stderr went to the raw file;
+  - raw data was destroyed with the stack.
+- **External activity:** stopped after this run.
+
 ## Log cleanup (run #3's logs deleted with authorization; runs #1 and #2 untouched)
 
 Manual "Greenhouse read-only check" runs. None has artifacts: the workflow uploads none and

@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-21 (widget inspection run #7 failed before any widget action because of a script-mode defect; fixed locally; a new run needs a new authorization). For requirement-by-requirement evidence see
+Last updated: 2026-10-21 (replacement widget inspection run #8 completed: 24 actions, no option list observable; external activity stopped). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,21 @@ Last updated: 2026-10-21 (widget inspection run #7 failed before any widget acti
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Replacement widget inspection, run #8 (2026-10-21)
+
+- **Revision and result:** run #8 on `181b7c3` (pinned branch; CI #49 passed). The workflow
+  succeeded; the printed outcome is `completed`, with 0 internal errors.
+- **Requests and actions:** A 3×200; 1 navigation, 26 GET requests; 24 actions on 12
+  dropdowns.
+- **Findings:**
+  - no option list was observable for any dropdown;
+  - 7 CDN data requests were refused during the openings;
+  - nothing was selected or changed;
+  - required is represented by `aria-required` plus a label marker;
+  - attachments are unique through the group rule but still lack a required signal.
+  Details: `docs/greenhouse-compatibility-report.md`.
+- **Not done:** no further external request. C and D remain unapproved.
 
 ## Before the replacement run (2026-10-21): fresh-process regression, explicit outcome
 
