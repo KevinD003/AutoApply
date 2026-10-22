@@ -250,7 +250,8 @@ export interface PackageView {
     };
   };
   approval:
-    | { status: "approved"; approved_at: string; version: number }
+    // scope: "submit" fills and submits once; "disclose_only" is a rehearsal that never submits.
+    | { status: "approved"; approved_at: string; version: number; scope: ApprovalScope }
     | { status: "invalidated"; approved_at: string; invalidated_at: string; reason: string }
     | { status: "not_approved" };
   history: { version: number; created_at: string; change_summary: string[]; was_approved: boolean }[];
@@ -271,10 +272,13 @@ export interface BankEntry {
   updated_at: string;
 }
 
+export type ApprovalScope = "submit" | "disclose_only";
+
 export interface AttemptView {
   id: string;
   state: string;
   adapter: string;
+  approval_scope: ApprovalScope | null;
   created_at: string;
   disclosure_started_at: string | null;
   send_started_at: string | null;

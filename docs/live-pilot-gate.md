@@ -32,6 +32,11 @@ approving one never implies another.
 A "no" at any step stops there. Permission 3 does not include 4. Other documents call
 permission 3 "C" (disclosure) and permission 4 "D" (submission).
 
+Permission 3 can be recorded on its own: an approval to disclose only (a rehearsal,
+`docs/upload-and-submission-evidence.md`). Such an attempt stops before the send gate, and the
+gate refuses it. Today this runs on the local fixtures only: real destinations are refused
+whatever the approval, and no permission above has been given.
+
 ## 3. Exact data to disclose (from the approved package)
 
 - Package version and content hash: _recorded at approval_.

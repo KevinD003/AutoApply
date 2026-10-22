@@ -1,3 +1,4 @@
+import enum
 import uuid
 from datetime import datetime
 
@@ -103,6 +104,14 @@ class ApplicationPackage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ApprovalScope(enum.StrEnum):
+    """What an approval permits (docs/live-pilot-gate.md §2: permission C, disclosure, and
+    permission D, submission). Fixed when the approval is given; not package content."""
+
+    submit = "submit"  # fill, upload, check and submit once (C and D)
+    disclose_only = "disclose_only"  # a rehearsal: fill, upload and check; never submit (C)
+
+
 class PackageApproval(Base):
     """Approval bound to one package version and its content hash."""
 
@@ -121,6 +130,9 @@ class PackageApproval(Base):
     # bindings were recorded (see policy.approved_binding).
     adapter: Mapped[str | None] = mapped_column(String(50))
     adapter_version: Mapped[str | None] = mapped_column(String(100))
+    scope: Mapped[str] = mapped_column(
+        String(20), default=ApprovalScope.submit, server_default=ApprovalScope.submit.value
+    )
     approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

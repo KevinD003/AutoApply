@@ -14,6 +14,7 @@ from app.modules.execution.models import AttemptEvent, Checkpoint, Evidence, Exe
 from app.modules.execution.policy import CAPABILITIES
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
+from app.modules.preparation.models import PackageApproval
 from app.modules.providers.registry import summary as provider_summary
 
 router = APIRouter(tags=["execution"])
@@ -44,6 +45,13 @@ def list_attempts(
     app_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> list[dict]:
     app = _owned_app(db, user, app_id)
+    scopes = dict(
+        db.execute(
+            select(PackageApproval.id, PackageApproval.scope).where(
+                PackageApproval.application_id == app.id, PackageApproval.user_id == user.id
+            )
+        ).all()
+    )
     out = []
     for a in db.scalars(
         select(ExecutionAttempt)
@@ -66,6 +74,8 @@ def list_attempts(
                 "id": str(a.id),
                 "state": a.state,
                 "adapter": a.adapter,
+                # What its approval permitted: submit, or disclose_only (a rehearsal).
+                "approval_scope": scopes.get(a.approval_id),
                 "package_hash": a.package_hash,
                 "created_at": a.created_at,
                 "disclosure_started_at": a.disclosure_started_at,

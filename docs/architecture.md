@@ -135,7 +135,10 @@ relay ── publishes attempt id ──> Redis ──> Celery task ──> clai
   → GATE 1 (before disclosure): REPEATABLE READ + app/attempt row locks; approval live,
     unexpired, same package hash, freshly rebuilt content identical → disclosure_started_at
   → fill + upload (evidence: disclosures) → read every control back, compare → re-extract
-  → GATE 2 (before send) — the linearization point → attempt `sending`, app `submitting`
+  → a rehearsal (approval scope `disclose_only`) stops here: attempt `rehearsed`, approval
+    used up, nothing submitted
+  → GATE 2 (before send) — the linearization point; refuses any scope but `submit`
+    → attempt `sending`, app `submitting`
   → click submit → classify: receipt → confirmed | code requested → checkpoint
     | refusal → rejected | timeout/error/unrecognised → unknown (submitted_unconfirmed)
 sweeper (beat): expired leases → claimed & nothing disclosed: re-pend (≤2) |
@@ -149,7 +152,7 @@ side, not exactly-once delivery at the employer.
 
 Disclosure vs submission: gate 1 authorizes sending the approved data to the named
 destination (filling can transmit via autosave, uploads always do). Gate 2 authorizes the
-final submit. A form that changes (new fields, new submit target) stops the attempt before
+final submit. An approval to disclose only (a rehearsal, D41) passes gate 1 and never gate 2. A form that changes (new fields, new submit target) stops the attempt before
 disclosing anything new.
 
 Verification codes: after the submit step, an employer may ask for an emailed code. The

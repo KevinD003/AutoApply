@@ -33,6 +33,7 @@ from app.modules.preparation.models import (
     AnswerBankEntry,
     ApplicationInput,
     ApplicationPackage,
+    ApprovalScope,
     JobForm,
     PackageApproval,
 )
@@ -418,7 +419,19 @@ def _settle_state(
         )
 
 
-def approve(db: Session, app: Application, version: int, expected_hash: str) -> PackageApproval:
+SCOPE_WORDS = {
+    ApprovalScope.submit: "to fill and submit",
+    ApprovalScope.disclose_only: "for a rehearsal (fill and check, never submit)",
+}
+
+
+def approve(
+    db: Session,
+    app: Application,
+    version: int,
+    expected_hash: str,
+    scope: ApprovalScope = ApprovalScope.submit,
+) -> PackageApproval:
     pkg = ensure_current(db, app)
     if pkg.version != version or pkg.content_hash != expected_hash:
         raise ApprovalError(
@@ -427,8 +440,15 @@ def approve(db: Session, app: Application, version: int, expected_hash: str) -> 
         )
     if pkg.content["unresolved"] or pkg.content["validation_errors"]:
         raise ApprovalError("Resolve every required question before approving.")
-    if active_approval(db, pkg) is not None:
-        return active_approval(db, pkg)
+    active = active_approval(db, pkg)
+    if active is not None:
+        # Same scope: the same approval. Another scope is never swapped in silently.
+        if active.scope != scope:
+            raise ApprovalError(
+                f"This package is already approved {SCOPE_WORDS[ApprovalScope(active.scope)]}. "
+                "Revoke that approval first."
+            )
+        return active
     from app.modules.execution.policy import execution_binding
 
     now = utcnow()
@@ -440,6 +460,7 @@ def approve(db: Session, app: Application, version: int, expected_hash: str) -> 
         content_hash=pkg.content_hash,
         adapter=binding.get("adapter"),
         adapter_version=binding.get("adapter_version"),
+        scope=scope,
         approved_at=now,
         expires_at=now + timedelta(hours=get_settings().approval_ttl_hours),
     )
@@ -454,6 +475,7 @@ def approve(db: Session, app: Application, version: int, expected_hash: str) -> 
         content_hash=pkg.content_hash,
         adapter=binding.get("adapter"),
         adapter_version=binding.get("adapter_version"),
+        scope=scope.value,
     )
     return appr
 

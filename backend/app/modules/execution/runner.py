@@ -4,6 +4,8 @@ Phases and what a failure in each one means:
   before disclosure  -> failed_safe   (nothing left NoEfforts; may be retried by the sweeper)
   after disclosure   -> abandoned     (data entered/uploaded, not submitted; user decides)
   after send gate    -> unknown       (may have been accepted; reconcile, never auto-retry)
+A rehearsal (an approval to disclose only) succeeds as `rehearsed` once the checks after
+filling pass, before the send gate: data entered/uploaded, nothing submitted.
 """
 
 import hashlib
@@ -28,7 +30,7 @@ from app.modules.execution.adapters.greenhouse_dom import GreenhouseDomAdapter
 from app.modules.execution.browser import IsolationUnavailable, browser_session
 from app.modules.execution.faults import fault
 from app.modules.execution.models import ExecutionAttempt
-from app.modules.preparation.models import ApplicationPackage, PackageApproval
+from app.modules.preparation.models import ApplicationPackage, ApprovalScope, PackageApproval
 
 # API providers (providers.registry kind "api"): no browser; same attempt, lease and gates.
 API_ADAPTERS = {"fake_api": FakeApiAdapter}
@@ -77,6 +79,15 @@ def _binding_refusal(attempt_id) -> str | None:
         except policy.UnsupportedDestination as e:
             return str(e)
         return None
+
+
+def _rehearsal(attempt_id) -> bool:
+    """True unless the attempt's approval permits submitting. A rehearsal (an approval to
+    disclose only) stops after filling and checking, before the send gate; the gate refuses
+    it as well (service.gate_before_send)."""
+    with SessionLocal() as db:
+        att = db.get(ExecutionAttempt, attempt_id)
+        return db.get(PackageApproval, att.approval_id).scope != ApprovalScope.submit
 
 
 def run_attempt(attempt_id: str, worker: str) -> str:
@@ -189,6 +200,9 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                     },
                 )
             beat()
+            if _rehearsal(aid):
+                svc.rehearsed(aid, worker, gen)
+                return "rehearsed"
             fault("before_send_gate")
             try:
                 svc.gate_before_send(aid, worker, gen)
@@ -281,6 +295,9 @@ def _run_api(aid, worker, gen, adapter) -> str:
         except UploadFailed as e:
             svc.abandon(aid, worker, gen, str(e))
             return "abandoned"
+        if _rehearsal(aid):
+            svc.rehearsed(aid, worker, gen)
+            return "rehearsed"
         fault("before_send_gate")
         try:
             svc.gate_before_send(aid, worker, gen)

@@ -83,9 +83,9 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `draft.created` | `application` | `cost_usd`, `field_ref`, `provider` | drafting cost; reference; the drafting provider's name |
 | `draft.rejected` | `application` | `field_ref`, `reason_code` | reference; a fixed rejection code (`empty`, `too_long`, `placeholders`, `uncited_facts`, `invented_numbers`) |
 | `answer_bank.delete` | `answer_bank` | - | |
-| `package.approve` | `application` | `adapter`, `adapter_version`, `content_hash`, `version` | the adapter and version bound to the approval; the package's one-way hash; package version |
+| `package.approve` | `application` | `adapter`, `adapter_version`, `content_hash`, `scope`, `version` | the adapter and version bound to the approval; the package's one-way hash; `submit` or `disclose_only` (a rehearsal); package version |
 | `package.approval_invalidated` | `application` | `version` | the package version that invalidated it |
-| `package.approval_retired` | `application` | `reason_code` | `execution_method_changed` |
+| `package.approval_retired` | `application` | `reason_code` | `execution_method_changed`, or `rehearsal_completed` (a rehearsal used its approval up) |
 | `package.revoke` | `application` | - | |
 | `api_authorization.grant` | `api_authorization` | `provider` | the API provider key (never its origin or any token) |
 | `api_authorization.revoke` | `api_authorization` | - | |

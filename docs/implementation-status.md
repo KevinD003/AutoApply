@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-22 (Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-22 (rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,41 @@ Last updated: 2026-10-22 (Lever as a planned provider; location design without h
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Rehearsal: disclosure without submission (E5 step 1, 2026-10-22; fixtures only, no external request)
+
+- **Nothing changed outside the repository**, no support state changed, and no real
+  destination is enabled. Evidence: `docs/evidence-matrix.md` ("Rehearsal: disclosure without
+  submission"); decision D41; `docs/upload-and-submission-evidence.md`.
+- **Before:** every approval covered filling and submitting. Permission C (disclosure) could
+  not be given, or proven, without permission D (submission).
+- **Now:**
+  - an approval has a scope: `submit`, the default, or `disclose_only`, a rehearsal;
+  - a rehearsal runs exactly like an attempt to submit up to the send gate (disclosure gate,
+    filling, uploads, readback, the form re-checked), then ends `rehearsed`: nothing was
+    submitted;
+  - it uses its approval up in the same transaction. Submitting afterwards needs an approval
+    to submit and a new attempt, which repeats every check;
+  - the send gate refuses any approval that is not `submit`, so a rehearsal cannot submit
+    even if the runner's stop were bypassed;
+  - approving with the other scope while an approval is active is refused: revoke first;
+  - the review page offers "Approve a rehearsal" and shows the result on the attempt. The
+    tracker does not show it yet (step 2 in `docs/upload-and-submission-evidence.md`).
+- **No package hash changed:** the scope is on the approval, not in the package content
+  (`SCHEMA_VERSION` unchanged). Migration `9597307f950d` adds the column, with `submit` for
+  every existing approval, which is what each was given for.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - rehearsal module (`tests/test_rehearsal.py`, 7 tests): 7 passed;
+  - full backend (`pytest tests`): 649 passed;
+  - rehearsal e2e (desktop and mobile) with the submission specs: 22 passed; full Playwright:
+    34 passed, 2 skipped (the desktop-only configuration checks);
+  - `ruff check` and `ruff format --check` clean; `tsc --noEmit` and `npm run lint` clean;
+  - sabotage checks, each caught: the runner's stop removed (browser route, API route), the
+    send gate's refusal removed, both removed (a rehearsal then submits), the approval not
+    used up, the scope not stored, and the other scope swapped in silently.
+- **CI for the previous change:** **CI #91**
+  ([39757737713](https://github.com/KevinD003/AutoApply/actions/runs/39757737713)) (`8de730a`,
+  Lever): passed.
 
 ## Lever as a planned provider (F1, F2, F4, F5, 2026-10-22; local only, nothing read from Lever)
 

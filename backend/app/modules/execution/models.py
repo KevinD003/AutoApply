@@ -21,6 +21,9 @@ class AttemptState(enum.StrEnum):
     rejected = "rejected"  # employer explicitly refused (validation, expired session)
     failed_safe = "failed_safe"  # stopped before disclosing anything
     abandoned = "abandoned"  # data disclosed (fill/upload) but not submitted; user decides
+    # A rehearsal (approval scope disclose_only) ended as approved: filled, uploaded, read
+    # back and re-checked, then stopped before the send gate. Nothing was submitted.
+    rehearsed = "rehearsed"
     cancelled = "cancelled"
 
 

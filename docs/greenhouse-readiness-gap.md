@@ -135,7 +135,10 @@ Where each row's evidence lives:
    coordinates. Otherwise postings with that question stay a manual handoff. The options and
    the evidence each would need are in `docs/location-handling.md` (design only).
 4. **Real upload evidence:** attachments uploaded to a real form, proven on their own (an
-   upload is a disclosure: the document reaches the employer before any submit).
+   upload is a disclosure: the document reaches the employer before any submit). What that
+   evidence would be is in `docs/upload-and-submission-evidence.md`. The rehearsal it needs
+   (an approval to disclose only, which stops before the send gate) exists and is tested on
+   the local fixtures only; it has never run against a real page.
 5. **Real submission evidence:** a real final submit and its confirmation, proven separately
    from uploads.
 6. **The gate in `docs/live-pilot-gate.md`:** you name the posting, the data to disclose and

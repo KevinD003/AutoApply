@@ -99,6 +99,31 @@ test("approve, double-click submit, see receipt; exactly one acceptance", async 
   await expect(page.getByText("Submitted (confirmed)").first()).toBeVisible();
 });
 
+test("a rehearsal fills and checks, never submits; an approval to submit then submits once", async ({ page, request }, info) => {
+  const slug = `rehearsal-${info.project.name}-${RUN}`;
+  const { appId } = await setup(page, slug);
+  await page.goto(`/applications/${appId}`);
+  await page.getByRole("button", { name: /Approve a rehearsal of v\d+/ }).click();
+  await expect(page.getByText("Approved for a rehearsal only (never submits)")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Submit approved package" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Start rehearsal (nothing is submitted)" }).click();
+  await expect(badge(page, "Rehearsal finished: nothing submitted")).toBeVisible({ timeout: 60_000 });
+  let l = await ledger(request, slug);
+  expect(l.disclosures).toBe(1); // the resume reached the receiver
+  expect(l.accepted).toBe(0);
+  // The rehearsal used its approval up: submitting needs an approval to submit and a new attempt.
+  await expect(page.getByText(/^Used by a rehearsal/)).toBeVisible();
+  await page.getByRole("button", { name: /Approve package v\d+/ }).click();
+  await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Submit approved package" }).click();
+  await expect(badge(page, "Employer receipt received")).toBeVisible({ timeout: 60_000 });
+  l = await ledger(request, slug);
+  expect(l.accepted).toBe(1);
+  expect(l.disclosures).toBe(2);
+  const attempts = await (await page.request.get(`/api/applications/${appId}/attempts`)).json();
+  expect(attempts.map((a: { state: string }) => a.state)).toEqual(["confirmed", "rehearsed"]);
+});
+
 test("reload during execution keeps state and creates no second attempt", async ({ page, request }, info) => {
   const slug = `reload-${info.project.name}-${RUN}`;
   await admin(request, "config", { mode: "delay", delay_s: 6 });

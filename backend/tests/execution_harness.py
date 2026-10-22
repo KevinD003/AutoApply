@@ -105,8 +105,11 @@ def synthetic_candidate(api) -> None:
         api.post("/documents", files={"file": ("resume.pdf", PDF, "application/pdf")})
 
 
-def prepared_application(api, receiver, *, slug="clinic", why_text=None, hear_about="input") -> str:
-    """Synthetic candidate + approved package for the receiver's form. Returns app id."""
+def prepared_application(
+    api, receiver, *, slug="clinic", why_text=None, hear_about="input", scope=None
+) -> str:
+    """Synthetic candidate + approved package for the receiver's form. Returns app id.
+    `scope`: the approval's scope; None sends none (the default, submit)."""
     synthetic_candidate(api)
     job = api.post(
         "/jobs",
@@ -139,9 +142,9 @@ def prepared_application(api, receiver, *, slug="clinic", why_text=None, hear_ab
     ).json()
     p = v["package"]
     assert not p["content"]["unresolved"], p["content"]["unresolved"]
+    body = {"version": p["version"], "content_hash": p["content_hash"]}
     r = api.post(
-        f"/applications/{app_id}/package/approve",
-        json={"version": p["version"], "content_hash": p["content_hash"]},
+        f"/applications/{app_id}/package/approve", json=body | ({"scope": scope} if scope else {})
     )
     assert r.status_code == 200, r.text
     return app_id

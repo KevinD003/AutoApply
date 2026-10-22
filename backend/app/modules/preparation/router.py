@@ -34,6 +34,7 @@ from app.modules.preparation.models import (
     AnswerDraft,
     ApplicationInput,
     ApplicationPackage,
+    ApprovalScope,
     JobForm,
     PackageApproval,
 )
@@ -285,7 +286,12 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
             "form_source": wording.form_source_label(pkg.content["destination"]["form_source"])
         },
         "approval": (
-            {"status": "approved", "approved_at": appr.approved_at, "version": pkg.version}
+            {
+                "status": "approved",
+                "approved_at": appr.approved_at,
+                "version": pkg.version,
+                "scope": appr.scope,
+            }
             if appr
             else {
                 "status": "invalidated",
@@ -552,6 +558,8 @@ def put_documents(
 class ApproveIn(BaseModel):
     version: int
     content_hash: str = Field(min_length=64, max_length=64)
+    # submit: fill and submit once. disclose_only: a rehearsal that never submits.
+    scope: ApprovalScope = ApprovalScope.submit
 
 
 @router.post("/applications/{app_id}/package/approve")
@@ -563,7 +571,7 @@ def approve_package(
 ) -> dict:
     app = _owned_app(db, user, app_id)
     try:
-        pk.approve(db, app, body.version, body.content_hash)
+        pk.approve(db, app, body.version, body.content_hash, body.scope)
     except pk.NoForm as e:
         raise conflict(str(e)) from None
     except pk.ApprovalError as e:

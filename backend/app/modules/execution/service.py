@@ -41,7 +41,7 @@ from app.modules.execution.policy import (
     check_binding,
 )
 from app.modules.preparation import package as pk
-from app.modules.preparation.models import PackageApproval
+from app.modules.preparation.models import ApprovalScope, PackageApproval
 
 S = AttemptState
 TOPIC_EXECUTE = "execute_attempt"
@@ -280,6 +280,9 @@ def gate_before_send(attempt_id, worker: str, gen: int) -> None:
         att = _locked_attempt(db, attempt_id, worker, gen, S.claimed)
         try:
             app = _gate_checks(db, att)
+            # A rehearsal stops before this gate (runner); this refusal holds even if it did not.
+            if db.get(PackageApproval, att.approval_id).scope != ApprovalScope.submit:
+                raise GateRefused("this approval permits filling and checking only, not submitting")
         except GateRefused as e:
             db.rollback()
             raise GateRefused(str(e)) from None
@@ -305,7 +308,10 @@ def _finish(
     app_target: AppState | None,
     detail: str,
     evidence: list[dict] | None = None,
+    retire: str | None = None,
 ) -> bool:
+    """`retire`: a reason code (RETIRED); the attempt's approval is retired with it in the same
+    transaction, so it cannot outlive the outcome that used it up."""
     with SessionLocal() as db:
         att = db.scalar(
             select(ExecutionAttempt).where(ExecutionAttempt.id == attempt_id).with_for_update()
@@ -319,6 +325,10 @@ def _finish(
             _app_to(db, app, app_target, Actor.worker, detail[:900])
         for ev in evidence or []:
             add_evidence(db, att, **ev)
+        if retire is not None:
+            retire_approval(db, att.approval_id, RETIRED[retire])
+            record(db, att.user_id, "package.approval_retired", "application",
+                   att.application_id, reason_code=retire)  # fmt: skip
         event(db, att, f"outcome_{to.value}", detail=detail[:500])
         record(db, att.user_id, f"execution.{to.value}", "application", att.application_id)
         db.commit()
@@ -381,6 +391,30 @@ def abandon(attempt_id, worker, gen, reason: str) -> bool:
         S.abandoned,
         AppState.needs_user_action,
         f"Verification was not completed: {reason}",
+    )
+
+
+REHEARSAL_DONE = "Rehearsal finished: the form was filled and checked, and nothing was submitted."
+# Why an outcome retired its approval (`_finish(retire=...)`), shown on the review page.
+RETIRED = {
+    "rehearsal_completed": "Used by a rehearsal: the form was filled and checked, and nothing "
+    "was submitted. Approve again to submit, or to rehearse again.",
+}
+
+
+def rehearsed(attempt_id, worker, gen) -> bool:
+    """A rehearsal (an approval to disclose only) ends here: filled, uploaded, read back and
+    re-checked, before the send gate. Nothing was submitted. Its approval is used up, so
+    submitting needs an approval to submit and a new attempt, which repeats every check."""
+    return _finish(
+        attempt_id,
+        worker,
+        gen,
+        (S.claimed,),
+        S.rehearsed,
+        AppState.needs_user_action,
+        REHEARSAL_DONE,
+        retire="rehearsal_completed",
     )
 
 

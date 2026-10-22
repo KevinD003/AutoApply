@@ -9,6 +9,20 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Rehearsal: disclosure without submission (E5 step 1, 2026-10-22; fixtures only)
+
+Synthetic candidate and local fixtures only (the clinic form, the second Greenhouse-style
+approximation, the fake API). The receiver's ledger is the oracle.
+
+| Requirement | Evidence (`tests/test_rehearsal.py` unless noted) | Result |
+|---|---|---|
+| A rehearsal fills and checks, then stops before submitting | `test_a_rehearsal_fills_and_checks_then_stops_without_submitting`; `frontend/e2e/submission.spec.ts` (desktop and mobile) | attempt `rehearsed`; the ledger has one upload whose digest is the approved document's; 0 acceptances and no submit request; disclosure and readback evidence, no receipt; application `needs_user_action`. Removing the runner's stop is caught |
+| The approval is used up | same test | the approval is retired ("Used by a rehearsal") in the same transaction; queueing again is refused (409); one `package.approval_retired` event with `rehearsal_completed`. Not retiring it is caught |
+| Submitting afterwards needs its own approval and a new attempt | `test_after_a_rehearsal_an_approval_to_submit_submits_once`; the e2e test | after approving to submit: one acceptance, two uploads (each attempt repeats every check), attempts `confirmed` and `rehearsed` |
+| The send gate refuses a rehearsal on its own | `test_the_send_gate_refuses_a_rehearsal_even_if_the_runner_did_not_stop`, `test_the_send_gate_itself_refuses_an_approval_to_fill_only` | with the runner's stop bypassed: `abandoned`, 0 acceptances, no send started. Removing the gate's refusal is caught: the attempt then ends `confirmed`. Removing both makes a rehearsal submit, which the first test catches |
+| Every route rehearses the same way | `test_a_rehearsal_on_the_greenhouse_style_form`, `test_the_api_route_rehearses_too` | id-mapping adapter: one upload, 0 acceptances. API route: a draft and its upload, no submit call, 0 acceptances. Removing the API route's stop is caught |
+| The scope is explicit and never switched silently | `test_the_scope_defaults_to_submit_is_validated_and_is_never_switched_silently` | no scope given: `submit` (existing flows unchanged); same scope again: the same approval; the other scope while approved: 409; an unknown scope: 422; another user: 404; `package.approve` records `scope`. Swapping the scope in silently, or not storing it, is caught |
+
 ## Lever as a planned provider (2026-10-22; local only, nothing read from Lever)
 
 The Lever URLs in these tests are fictional (company "acme", a random posting id) and are

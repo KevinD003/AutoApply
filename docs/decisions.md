@@ -473,3 +473,25 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   planned provider can never be documented with more than it has.
 - **A form-ATS mismatch** is now shown with an ATS that has no specification (Ashby), since
   Lever's own planned refusal comes first.
+
+## D41 — A rehearsal is an approval to disclose only, used once (2026-10-22)
+- **Permission C alone:** an approval has a scope.
+  - `submit`, the default and what every earlier approval meant, permits filling and the
+    final click.
+  - `disclose_only` permits filling, uploads and the checks, never the click.
+
+  The scope is fixed when the approval is given and is not package content, so no package
+  hash changes.
+- **Where it stops:** after readback and the re-check of the form after filling, before the
+  send gate. The attempt ends `rehearsed`: nothing was submitted. It is never retried and
+  never continues into a submit.
+- **Used once:** the rehearsal retires its approval in the same transaction that ends the
+  attempt. Submitting afterwards needs an approval to submit and a new attempt, which repeats
+  every check. Rehearsing again needs a new approval to rehearse.
+- **Two independent stops:** the runner stops at the rehearsal point, and the send gate (D17)
+  refuses any approval whose scope is not `submit`. Each is tested with the other bypassed
+  or removed.
+- **Never switched silently:** approving with another scope while an approval is active is
+  refused; the user revokes first.
+- **Fixtures only:** no support state changes and no real destination is enabled. A
+  rehearsal against a real page would still need the live-pilot gate's permissions.

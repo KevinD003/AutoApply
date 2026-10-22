@@ -125,7 +125,12 @@ export default function ReviewPage() {
           <span>
             Package v{view.package.version} · <code title={view.package.content_hash}>{view.package.content_hash.slice(0, 12)}</code>
           </span>
-          {view.approval.status === "approved" && <Badge tone="green">Approved</Badge>}
+          {view.approval.status === "approved" &&
+            (view.approval.scope === "disclose_only" ? (
+              <Badge tone="indigo">Approved for a rehearsal only (never submits)</Badge>
+            ) : (
+              <Badge tone="green">Approved</Badge>
+            ))}
           {view.approval.status === "not_approved" && <Badge>Not approved</Badge>}
           {view.approval.status === "invalidated" && <Badge tone="red">Approval invalidated</Badge>}
         </div>
@@ -157,6 +162,20 @@ export default function ReviewPage() {
           >
             Approve package v{view.package.version}
           </Button>
+          <Button
+            variant="secondary"
+            disabled={!ready || busy || view.approval.status === "approved"}
+            onClick={() =>
+              call(
+                `/applications/${id}/package/approve`,
+                "POST",
+                { version: view.package.version, content_hash: view.package.content_hash, scope: "disclose_only" },
+                "Approved for a rehearsal: the form will be filled and checked, and never submitted.",
+              )
+            }
+          >
+            Approve a rehearsal of v{view.package.version} (fill and check, never submit)
+          </Button>
           {view.approval.status === "approved" && (
             <Button variant="secondary" disabled={busy} onClick={() => call(`/applications/${id}/package/revoke`, "POST", {}, "Approval revoked.")}>
               Revoke approval
@@ -165,11 +184,18 @@ export default function ReviewPage() {
         </div>
         <p className="mt-2 text-xs text-slate-500">
           Approval is tied to this exact content. Changing a fact, document, answer, consent or the job itself creates a new version
-          that needs approval again. Approvals also expire after a few days.
+          that needs approval again. Approvals also expire after a few days. A rehearsal fills the form and uploads your documents
+          exactly as a submission would, checks them, then stops: nothing is submitted, and the approval is used up.
         </p>
       </Card>
 
-      <ExecutionCard appId={id} appState={view.state} approved={view.approval.status === "approved"} onChange={load} />
+      <ExecutionCard
+        appId={id}
+        appState={view.state}
+        approved={view.approval.status === "approved"}
+        scope={view.approval.status === "approved" ? view.approval.scope : null}
+        onChange={load}
+      />
 
       <Card title="Documents">
         {resumes.length === 0 ? (

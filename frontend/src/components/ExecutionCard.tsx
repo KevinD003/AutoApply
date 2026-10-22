@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { api, AttemptView } from "@/lib/api";
+import { api, ApprovalScope, AttemptView } from "@/lib/api";
 import { Badge, Button, Card, ErrorBox, inputCls, Notice } from "./ui";
 
 const STATE: Record<string, { label: string; tone: "green" | "amber" | "red" | "indigo" | "slate" }> = {
@@ -15,10 +15,23 @@ const STATE: Record<string, { label: string; tone: "green" | "amber" | "red" | "
   rejected: { label: "Refused by the employer's form", tone: "red" },
   failed_safe: { label: "Stopped before sending anything", tone: "slate" },
   abandoned: { label: "Stopped after entering data, not submitted", tone: "amber" },
+  rehearsed: { label: "Rehearsal finished: nothing submitted", tone: "indigo" },
   cancelled: { label: "Cancelled", tone: "slate" },
 };
 
-export default function ExecutionCard({ appId, appState, approved, onChange }: { appId: string; appState: string; approved: boolean; onChange: () => void }) {
+export default function ExecutionCard({
+  appId,
+  appState,
+  approved,
+  scope,
+  onChange,
+}: {
+  appId: string;
+  appState: string;
+  approved: boolean;
+  scope: ApprovalScope | null;
+  onChange: () => void;
+}) {
   const [attempts, setAttempts] = useState<AttemptView[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
@@ -72,11 +85,16 @@ export default function ExecutionCard({ appId, appState, approved, onChange }: {
       <ErrorBox error={error} />
       {notice && <Notice>{notice}</Notice>}
       <div className="my-3 flex flex-wrap gap-2">
-        {appState === "awaiting_approval" && (
-          <Button disabled={!approved} onClick={() => act(() => api(`/applications/${appId}/transition`, { json: { to: "queued" } }), "Queued.")}>
-            Submit approved package
-          </Button>
-        )}
+        {appState === "awaiting_approval" &&
+          (scope === "disclose_only" ? (
+            <Button onClick={() => act(() => api(`/applications/${appId}/transition`, { json: { to: "queued" } }), "Rehearsal queued: nothing will be submitted.")}>
+              Start rehearsal (nothing is submitted)
+            </Button>
+          ) : (
+            <Button disabled={!approved} onClick={() => act(() => api(`/applications/${appId}/transition`, { json: { to: "queued" } }), "Queued.")}>
+              Submit approved package
+            </Button>
+          ))}
         {["queued", "running", "needs_user_action"].includes(appState) && (
           <Button variant="danger" onClick={() => act(() => api(`/applications/${appId}/cancel`, { method: "POST" }), "Cancelled.")}>
             Cancel
@@ -115,6 +133,7 @@ export default function ExecutionCard({ appId, appState, approved, onChange }: {
               <li key={a.id} className="rounded-lg border border-slate-200 p-3 text-sm">
                 <p className="flex flex-wrap items-center gap-2">
                   <Badge tone={s.tone}>{s.label}</Badge>
+                  {a.approval_scope === "disclose_only" && <Badge tone="slate">Rehearsal: never submits</Badge>}
                   <span className="text-xs text-slate-500">{new Date(a.created_at).toLocaleString()}</span>
                 </p>
                 {a.outcome && <p className="mt-1">{a.outcome}</p>}
