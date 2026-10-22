@@ -366,9 +366,12 @@ def test_cancel_reports_only_its_own_refusals(api, receiver, monkeypatch):
         raise sa.exc.OperationalError(raw, {"state": "x"}, Exception("lock timeout"))
 
     monkeypatch.setattr(svc, "cancel", broken)
-    # Any other error is not turned into a 400 carrying its text; it stays a server error.
-    with pytest.raises(sa.exc.OperationalError):
-        api.post(f"/applications/{app_id}/cancel")
+    # Any other error is not turned into a 400 carrying its text; it is the generic server error.
+    from app.core.errors import UNEXPECTED_ERROR
+
+    r = api.post(f"/applications/{app_id}/cancel")
+    assert r.status_code == 500 and r.json() == {"detail": UNEXPECTED_ERROR}
+    assert "UPDATE" not in r.text and "sam.synthetic" not in r.text
 
 
 # ---------------------------------------------------------------- broker outage

@@ -360,7 +360,8 @@ def test_driver_version_mismatch_is_refused_with_reason(container_mode, api, rec
     app_id = prepared_application(api, receiver)
     aid = queue(api, app_id)
     assert runner.run_attempt(aid, "w1") == "failed_safe"
-    assert "does not match" in attempt(aid).outcome_detail
+    detail = attempt(aid).outcome_detail
+    assert "runner_version_mismatch" in detail and "0.0.0" not in detail  # a code, no versions
     assert receiver.ledger()["disclosures"] == [] and receiver.ledger()["accepted"] == 0
 
 

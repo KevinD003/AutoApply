@@ -205,8 +205,11 @@ def capture_greenhouse_form(
             # and role instead, refusing anything absent or ambiguous.
             schema, _ = greenhouse_dom.build_schema(api, page)
             source, extraction = "greenhouse_api_dom", greenhouse_dom.EXTRACTION_VERSION
-    except gh.SchemaMismatch as e:
-        raise conflict(f"Could not capture the form: {e}") from None
+    except gh.SchemaMismatch as e:  # generic wording plus the fixed code; no form structure
+        raise conflict(
+            "Could not capture the form: its structure is unsupported or incomplete. Nothing was "
+            f"sent; apply on the employer's site. (reason: {e.code})"
+        ) from None
     except (OSError, ValueError, ExtractionError, ValidationError) as e:
         raise bad_request(f"Could not read the job post ({type(e).__name__})") from None
     return _store_form(db, user, job, schema, source, posting.ref, extraction)

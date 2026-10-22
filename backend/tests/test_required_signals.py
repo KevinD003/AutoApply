@@ -109,7 +109,7 @@ def test_page_requires_a_field_with_no_approved_answer_stops_before_disclosure(a
     aid = queue(api, app_id)
     assert runner.run_attempt(aid, "w1") == "failed_safe"
     detail = attempt(aid).outcome_detail
-    assert "cover_letter: required by the page, no approved answer" in detail
+    assert "required by the page, no approved answer" in detail and "cover_letter" not in detail
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
 
@@ -150,7 +150,8 @@ def test_cover_letter_group_required_by_the_page_blocks_without_a_document(api, 
     assert answer_of(api, app_id, "cover_letter") is None
     aid = queue(api, app_id)
     assert runner.run_attempt(aid, "w1") == "failed_safe"
-    assert "cover_letter: required by the page" in attempt(aid).outcome_detail
+    detail = attempt(aid).outcome_detail
+    assert "required by the page" in detail and "cover_letter" not in detail
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
 
@@ -160,7 +161,7 @@ def test_unreadable_required_status_stops_safely(api, receiver, monkeypatch):
     aid = queue(api, v2_application(api))
     monkeypatch.setattr(gdom, "REQUIRED_SIGNALS_JS", "(id) => null")
     assert runner.run_attempt(aid, "w1") == "failed_safe"
-    assert ": not readable" in attempt(aid).outcome_detail
+    assert "changed: not readable" in attempt(aid).outcome_detail
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
 

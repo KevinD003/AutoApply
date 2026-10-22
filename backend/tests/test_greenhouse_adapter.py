@@ -164,11 +164,13 @@ def test_job_data_and_page_must_agree():
     cond = {f.key: f.condition for f in s.fields if f.condition}
     assert cond["question_7006"].key == "question_7005" and cond["question_7006"].any_of == ["1"]
     drift = greenhouse_like._form_page(BOARD, JOB, "t", {"mode": "gh_drift"}).body.decode()
-    with pytest.raises(gh.SchemaMismatch, match="only on the page: question_7099"):
+    with pytest.raises(gh.SchemaMismatch, match="1 only on the page") as e:
         gh.build_schema(api_json, drift)
+    assert e.value.code == "form_sources_disagree" and "question_" not in str(e.value)
     reworded = page.replace("How did you hear about this job?", "Who referred you?")
-    with pytest.raises(gh.SchemaMismatch, match="different: question_7004"):
+    with pytest.raises(gh.SchemaMismatch, match="1 different") as e:
         gh.build_schema(api_json, reworded)
+    assert "question_" not in str(e.value)  # counts, never the posting's field keys
 
 
 # ------------------------------------------------------------------ capture and preparation
@@ -187,7 +189,8 @@ def test_real_greenhouse_posts_are_not_read(api):
 def test_capture_refused_when_page_disagrees_with_job_data(api, receiver):
     receiver.config(mode="gh_drift")
     r = api.post(f"/jobs/{gh_job(api)}/form/greenhouse")
-    assert r.status_code == 409 and "question_7099" in r.text
+    assert r.status_code == 409 and "question_7099" not in r.text  # no posting field keys
+    assert "unsupported or incomplete" in r.text and "(reason: form_sources_disagree)" in r.text
 
 
 def test_required_unsupported_control_is_a_checkpoint(api, receiver):
@@ -352,7 +355,9 @@ def test_form_changed_after_approval_stops_before_disclosure(api, receiver):
     aid = queue(api, app_id)
     receiver.config(mode="gh_drift")
     assert runner.run_attempt(aid, "w1") == "failed_safe"
-    assert "question_7099" in attempt(aid).outcome_detail
+    detail = attempt(aid).outcome_detail
+    assert "changed since you approved" in detail and "1 new field(s)" in detail
+    assert "question_" not in detail  # counts only, never the posting's field keys
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
 

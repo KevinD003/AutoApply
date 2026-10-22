@@ -148,7 +148,7 @@ def test_an_attempt_recorded_for_another_provider_is_refused(api, receiver):
 @pytest.mark.parametrize(
     "mode,reason",
     [
-        ("fapi_schema_changed", "the API's form differs from what you approved (question_8199)"),
+        ("fapi_schema_changed", "the API's form differs from what you approved (1 field(s))"),
         ("fapi_unauthorized", "the API refused NoEfforts' authorization"),
         ("fapi_rate_limited_schema", "the API is rate limiting requests (not retried)"),
     ],

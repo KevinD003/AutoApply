@@ -69,12 +69,13 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
             new = sorted(set(got) - set(want))
             changed = sorted(k for k in set(got) & set(want) if got[k] != want[k])
             gone = sorted(set(want) - set(got))
+            # Counts only: field keys are the posting's identifiers and never reach the user.
             detail = "; ".join(
                 part
                 for part in (
-                    f"new fields: {', '.join(new)}" if new else "",
-                    f"changed: {', '.join(changed)}" if changed else "",
-                    f"missing: {', '.join(gone)}" if gone else "",
+                    f"{len(new)} new field(s)" if new else "",
+                    f"{len(changed)} changed" if changed else "",
+                    f"{len(gone)} missing" if gone else "",
                 )
                 if part
             )
@@ -118,7 +119,7 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
             arg=key,
         )
         if status.get_attribute("data-attachment-error"):
-            raise UploadFailed(f"attachment {key} was not accepted")
+            raise UploadFailed("an attachment was not accepted")
         return {
             "field": key,
             "upload_id": status.get_attribute("data-attachment-id"),

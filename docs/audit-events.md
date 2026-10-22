@@ -114,8 +114,19 @@ another):
 - **What NoEfforts' own log lines contain:** internal ids, counts, phases and exception type
   names. The browser runner logs an unexpected exception by type only, and the egress proxy
   logs how many destinations a session allows, never the hosts.
-- **Known gap (not fixed here):** there is no global exception handler, so the web server logs
-  the full traceback of an uncaught error.
+- **Unexpected API errors** (`core/errors.py` `ErrorBoundary`): the response is a generic
+  500 with no exception text, traceback, SQL or configuration, and the log line is
+  `unhandled <type> in <method> <route template>` (the template, never the raw path). The
+  error is not re-raised, so the server logs no traceback for it. Expected errors
+  (validation, authentication, not found, NoEfforts' own refusals) keep their status codes
+  and messages.
+- **Execution failures:** an isolation failure is stored and shown as `browser isolation
+  unavailable (<code>)` and logged by its code; service addresses, response bodies and
+  command output are never kept. Form-drift, upload and readback outcomes give counts and
+  NoEfforts' own fixed reasons, never the posting's field keys.
+- **Known gap (not fixed here):** the web server's own access log (uvicorn) prints each
+  request's raw path, and some paths contain a posting's question key (for example an
+  answer's URL).
 - **CI:**
   - the Compose execution test and the Docker smoke test print the last lines of their
     containers' logs when they fail; those stacks talk only to the synthetic receiver;

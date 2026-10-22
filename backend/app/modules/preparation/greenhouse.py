@@ -69,7 +69,12 @@ def api_url(posting: Posting, origin: str) -> str:
 
 
 class SchemaMismatch(ValueError):
-    pass
+    """The form's structure is unsupported or incomplete. `code` is a fixed reason code; the
+    message gives counts only, never the posting's field keys, labels or addresses."""
+
+    def __init__(self, message: str, code: str = "form_structure_mismatch"):
+        super().__init__(message)
+        self.code = code
 
 
 # -- JSON → schema -----------------------------------------------------------------------------
@@ -202,10 +207,11 @@ def build_schema(api: dict, hosted_html: str) -> FormSchema:
         changed = sorted(k for k in set(a) & set(d) if a[k] != d[k])
         raise SchemaMismatch(
             "the job post data and the application page disagree"
-            + (f"; only in job data: {', '.join(only_api)}" if only_api else "")
-            + (f"; only on the page: {', '.join(only_page)}" if only_page else "")
-            + (f"; different: {', '.join(changed)}" if changed else "")
+            + (f"; {len(only_api)} only in job data" if only_api else "")
+            + (f"; {len(only_page)} only on the page" if only_page else "")
+            + (f"; {len(changed)} different" if changed else ""),
+            "form_sources_disagree",
         )
     if not dom.action or (dom.method or "").lower() != "post":
-        raise SchemaMismatch("the application page has no form to submit")
+        raise SchemaMismatch("the application page has no form to submit", "no_submittable_form")
     return FormSchema(title=from_api.title, action=dom.action, method="post", fields=fields)

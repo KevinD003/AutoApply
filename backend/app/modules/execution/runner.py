@@ -124,7 +124,9 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             )
             page, eg = session.__enter__()
         except IsolationUnavailable as e:
-            svc.fail_safe(aid, worker, gen, f"browser isolation unavailable ({e})")
+            # The fixed code only: the message is for developers reading the code, never stored.
+            log.warning("attempt %s: browser isolation unavailable (%s)", aid, e.code)
+            svc.fail_safe(aid, worker, gen, f"browser isolation unavailable ({e.code})")
             return "failed_safe"
         with _Closing(session):
             beat()
@@ -162,7 +164,8 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                 {"checked": len(content["answers"]), "mismatches": mismatches},
             )
             if mismatches:
-                svc.abandon(aid, worker, gen, f"fields did not keep their values: {mismatches}")
+                n = len(mismatches)  # which fields is kept in the readback evidence, not here
+                svc.abandon(aid, worker, gen, f"{n} field(s) did not keep their values")
                 return "abandoned"
             reason = adapter.schema_matches(page)  # conditional fields appear after filling
             if reason:

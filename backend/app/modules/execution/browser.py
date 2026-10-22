@@ -54,7 +54,15 @@ def _origin(url: str) -> str:
 
 
 class IsolationUnavailable(RuntimeError):
-    pass
+    """`code` is a fixed reason code, the only part shown to users or logged. The message is
+    NoEfforts' own wording: it never includes service addresses, response bodies or command
+    output. `status` is the HTTP status of a refusing service, if any."""
+
+    def __init__(
+        self, message: str, code: str = "isolation_unavailable", status: int | None = None
+    ):
+        super().__init__(message)
+        self.code, self.status = code, status
 
 
 @dataclass(frozen=True)
@@ -131,11 +139,13 @@ def _netns_wrapper(
     """Executable that Playwright launches instead of Chromium: unshare -> netns_boot -> chrome.
     DevTools pipes (fds 3/4) pass through unshare and exec unchanged."""
     if shutil.which("unshare") is None:
-        raise IsolationUnavailable("unshare(1) is not installed")
+        raise IsolationUnavailable("unshare(1) is not installed", "unshare_missing")
     boot = os.path.join(os.path.dirname(__file__), "sandbox", "netns_boot.py")
     hide = hidden_paths() if hide is None else hide
     if any(os.path.commonpath([h, os.path.realpath(chrome)]) == h for h in hide):
-        raise IsolationUnavailable("the browser binary lies inside a hidden path")
+        raise IsolationUnavailable(
+            "the browser binary lies inside a hidden path", "browser_path_hidden"
+        )
     path = os.path.join(workdir, "chromium-netns")
     with open(path, "w") as f:
         f.write(
@@ -212,11 +222,14 @@ class RemoteBrowser:
         try:
             with opener.open(req, timeout=60) as r:
                 return _json.loads(r.read() or b"{}")
-        except urllib.error.HTTPError as e:
-            detail = e.read()[:300].decode("utf-8", "replace")
-            raise IsolationUnavailable(f"{base} refused ({e.code}): {detail}") from e
+        except urllib.error.HTTPError as e:  # neither the address nor the body is kept
+            raise IsolationUnavailable(
+                f"the browser runner refused ({e.code})", "runner_refused", e.code
+            ) from None
         except OSError as e:
-            raise IsolationUnavailable(f"{base} unreachable ({type(e).__name__})") from e
+            raise IsolationUnavailable(
+                f"the browser runner is unreachable ({type(e).__name__})", "runner_unreachable"
+            ) from None
 
     def _proxy(self, method: str, path: str, body=None) -> dict:
         s = self.s
@@ -226,10 +239,12 @@ class RemoteBrowser:
             )
         except OSError as e:
             raise IsolationUnavailable(
-                f"egress proxy control unreachable ({type(e).__name__})"
-            ) from e
-        if code >= 300:
-            raise IsolationUnavailable(f"egress proxy control refused ({code}): {out}")
+                f"egress proxy control unreachable ({type(e).__name__})", "proxy_unreachable"
+            ) from None
+        if code >= 300:  # the proxy's answer is not kept
+            raise IsolationUnavailable(
+                f"egress proxy control refused ({code})", "proxy_refused", code
+            )
         return out
 
     def _runner(self, method: str, path: str, body=None) -> dict:
@@ -246,7 +261,8 @@ class RemoteBrowser:
         if h.get("driver_version") != mine:
             raise IsolationUnavailable(
                 f"browser runner driver {h.get('driver_version')!r} does not match this "
-                f"worker's {mine!r}; rebuild the browser-runner image from this revision"
+                f"worker's {mine!r}; rebuild the browser-runner image from this revision",
+                "runner_version_mismatch",
             )
 
     def _runner_session(self, body: dict) -> dict:
@@ -257,7 +273,7 @@ class RemoteBrowser:
             try:
                 return self._runner("POST", "/sessions", body)
             except IsolationUnavailable as e:
-                if "(429)" not in str(e) or time.monotonic() >= deadline:
+                if e.status != 429 or time.monotonic() >= deadline:
                     raise
             time.sleep(1)
 
@@ -337,7 +353,7 @@ def isolation_self_check() -> None:
 
     r = subprocess.run(["unshare", *_unshare_flags(), "true"], capture_output=True, timeout=10)
     if r.returncode != 0:
-        raise IsolationUnavailable(f"cannot create namespaces: {r.stderr[:200]!r}")
+        raise IsolationUnavailable("cannot create namespaces", "namespaces_unavailable")
 
 
 @contextmanager
@@ -387,7 +403,7 @@ def browser_session(
         elif isolation == "off":
             launch["executable_path"] = chrome
         elif isolation != "container":
-            raise IsolationUnavailable(f"unknown isolation mode {isolation!r}")
+            raise IsolationUnavailable("unknown isolation mode", "unknown_isolation_mode")
         try:
             if isolation == "container":
                 remote = RemoteBrowser(host, port, allow_private_destination, rules)
@@ -404,8 +420,8 @@ def browser_session(
             raise
         except Exception as e:  # noqa: BLE001 - never retry without isolation
             raise IsolationUnavailable(
-                f"isolated browser did not start ({type(e).__name__})"
-            ) from e
+                f"isolated browser did not start ({type(e).__name__})", "browser_start_failed"
+            ) from None
         try:
             ctx = browser.new_context(
                 service_workers="block" if intercept else "allow", accept_downloads=False

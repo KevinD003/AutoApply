@@ -78,7 +78,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         html = page.content()
         controls = dom.snapshot(html)
         fields = approved_fields(self.content)
-        changed, pending = [], []
+        changed, pending = [], []  # NoEfforts' fixed reasons, one per field; never field keys
         answered = {a["key"] for a in self.content["answers"] if a["value"] is not None}
         for f, m in zip(fields, dom.map_fields(fields, controls), strict=True):
             if f.type == FieldType.unsupported:
@@ -87,21 +87,21 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 m.status == "mapped_via_group" and f.type == FieldType.file
             )
             if not ok:
-                changed.append(f"{f.key}: {m.status}")
+                changed.append(m.status)
                 continue
             # Required: the job data's requirement stands whatever the page shows (a required
             # field was approved with an answer). What blocks is the page requiring a field
             # the package leaves empty, by any signal (HTML, ARIA, group, label marker).
             signals = page.evaluate(dom.REQUIRED_SIGNALS_JS, m.control.id)
             if signals is None:
-                changed.append(f"{f.key}: not readable")
+                changed.append("not readable")
                 continue
             if dom.page_marks_required(signals) and not f.required and f.key not in answered:
-                changed.append(f"{f.key}: required by the page, no approved answer")
+                changed.append("required by the page, no approved answer")
                 continue
             if f.type == FieldType.select:
                 if m.control.role != "combobox":
-                    changed.append(f"{f.key}: widget")
+                    changed.append("widget")
                     continue
                 if not m.control.controls_listbox:
                     pending.append((f, m.control.id))  # verified below, by interaction
@@ -109,7 +109,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 got = page.evaluate(_OPTIONS_JS, m.control.controls)
                 want = [[o.value, o.label] for o in f.options]
                 if got != want:
-                    changed.append(f"{f.key}: options")
+                    changed.append("options")
         alternatives = {f"{f.key}_text" for f in fields if f.type == FieldType.file}
         new = sorted(
             c.id
@@ -122,18 +122,20 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 try:
                     self._dd[f.key] = dropdowns.verify(page, cid, f.options)
                 except dropdowns.Refused as e:
-                    changed.append(f"{f.key}: dropdown {e}")
+                    changed.append(f"dropdown: {e}")
                     break
             self._dd_checked = True
         elif self._dd_checked:
             missing = [f.key for f, _ in pending if f.key not in self._dd]
-            changed += [f"{k}: dropdown not verified" for k in missing]
+            changed += ["dropdown not verified" for _ in missing]
         if changed or new:
+            # Counts and fixed reasons only: field keys are the posting's identifiers.
+            reasons = "; ".join(dict.fromkeys(changed))
             detail = "; ".join(
                 p
                 for p in (
-                    f"new fields: {', '.join(new)}" if new else "",
-                    f"changed: {', '.join(changed)}" if changed else "",
+                    f"{len(new)} new field(s)" if new else "",
+                    f"{len(changed)} changed: {reasons}" if changed else "",
                 )
                 if p
             )
@@ -202,7 +204,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         )
         status = page.locator(f'[id="{key}-status"]')
         if status.get_attribute("data-attachment-error"):
-            raise UploadFailed(f"attachment {key} was not accepted")
+            raise UploadFailed("an attachment was not accepted")
         return {
             "field": a["key"],
             "upload_id": status.get_attribute("data-attachment-id"),

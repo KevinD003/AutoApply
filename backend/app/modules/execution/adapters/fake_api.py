@@ -102,7 +102,7 @@ class FakeApiAdapter:
             or live[k][1] != approved[k][1]
         )  # fmt: skip
         if changed:
-            return f"the API's form differs from what you approved ({', '.join(changed)})"
+            return f"the API's form differs from what you approved ({len(changed)} field(s))"
         return None
 
     # -- disclosure -------------------------------------------------------------------------
@@ -129,7 +129,7 @@ class FakeApiAdapter:
                 "content_b64": base64.b64encode(raw).decode(),
             })  # fmt: skip
             if status != 200 or data.get("sha256") != d["sha256"]:
-                raise UploadFailed(f"the API did not keep document {d['field']} intact")
+                raise UploadFailed("the API did not keep a document intact")
             out.append({"field": d["field"], "sha256": d["sha256"], "route": "api"})
         return out
 

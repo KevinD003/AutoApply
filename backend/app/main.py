@@ -4,6 +4,7 @@ from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.core.db import engine
+from app.core.errors import ErrorBoundary
 from app.modules.applications.router import router as applications_router
 from app.modules.audit.service import check_ref_key
 from app.modules.discovery.router import router as discovery_router
@@ -25,6 +26,9 @@ def create_app() -> FastAPI:
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
     )
+    # Innermost (added first): unexpected errors become a generic 500 that still passes through
+    # the CORS and security-header layers below.
+    app.add_middleware(ErrorBoundary)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

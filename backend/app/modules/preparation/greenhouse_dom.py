@@ -281,8 +281,11 @@ def build_schema(api: dict, page_html: str) -> tuple[FormSchema, list[FieldMappi
     mappings = map_fields(from_api.fields, controls)
     bad = [m for m in mappings if m.status not in ACCEPTED]
     if bad:
-        detail = "; ".join(f"{m.key}: {m.status}" for m in bad)
-        raise gh.SchemaMismatch(f"page controls do not match the job data ({detail})")
+        statuses = sorted({m.status for m in bad})  # fixed mapping statuses, never field keys
+        raise gh.SchemaMismatch(
+            f"page controls do not match the job data ({len(bad)} field(s): {', '.join(statuses)})",
+            "controls_do_not_match",
+        )
     form = _form_attrs(page_html)
     fields = []
     for f, m in zip(from_api.fields, mappings, strict=True):

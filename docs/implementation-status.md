@@ -96,7 +96,8 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     is also the earlier unexplained local failure of this test). Fixed in the following
     commit: whole-number tokens are checked in the metadata only, next to the existing
     exact-metadata assertion; the check still catches a leaked number. 25 repeated runs
-    passed. CI for that commit: pending.
+    passed. **CI #81** ([39698542143](https://github.com/KevinD003/AutoApply/actions/runs/39698542143))
+    (`3cc68fd`, that fix): passed.
 
   Per-job test counts were not recorded for these runs.
 - **Keyed audit references (separate security commit after `c54596e`):**
@@ -112,9 +113,25 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     no longer stored; a raw `field` value still present becomes a keyed reference;
   - new `tests/test_audit_refs.py` (10 tests); mutation checks: removing the user scope from
     the HMAC input and keeping legacy references were each caught.
-- **Known, not fixed here** (a separate API and error-boundary phase): an isolation failure
-  stores the internal runner address and error text in the attempt outcome; a form-capture
-  mismatch lists posting question keys to the user; no global exception handler.
+- **API and error boundaries (Phase 11A, commit after `3cc68fd`):**
+  - isolation failures carry a fixed code (`runner_refused`, `runner_unreachable`,
+    `proxy_refused`, `proxy_unreachable`, `namespaces_unavailable`, …); attempt outcomes and
+    logs show only that code, never the runner's address, its response body or command
+    output;
+  - form-capture mismatches return a generic "unsupported or incomplete" message with a
+    code (`form_sources_disagree`, `controls_do_not_match`, `no_submittable_form`);
+    form-drift, upload and readback outcomes give counts and NoEfforts' own fixed reasons
+    (for example "required by the page, no approved answer"), never field keys;
+  - a global boundary turns any unexpected API error into a generic 500, logged as type,
+    method and route template only;
+  - new `tests/test_error_boundary.py` (10 tests); 11 existing tests that expected field keys
+    (or runner versions) in messages now assert they are absent, and 3 more follow the new
+    wording. Sabotage checks: removing the boundary and storing the raw isolation error were
+    each caught.
+- **Known, not fixed here:** the web server's access log prints raw request paths, some of
+  which contain posting question keys; the outbox stores a failed publish's error message
+  (database only); execution evidence keeps readback mismatch keys and blocked egress
+  origins for the user's own records.
 
 ## Execution routing and capabilities (2026-10-21; local only, no external request)
 

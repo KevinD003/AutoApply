@@ -46,7 +46,7 @@ class FixtureAtsAdapter:
             approved = {a["key"] for a in self.content["answers"]}
             extra = sorted({f.key for f in live.fields} - approved)
             return "the form has changed since you approved it" + (
-                f" (new fields: {', '.join(extra)})" if extra else ""
+                f" ({len(extra)} new field(s))" if extra else ""
             )
         if live.action and urljoin(page.url, live.action) != dest["submit_url"]:
             return "the form now submits to a different address"
@@ -83,7 +83,7 @@ class FixtureAtsAdapter:
             )
             status = page.locator("#upload-status")
             if status.get_attribute("data-upload-error"):
-                raise UploadFailed(f"upload of {key} failed")
+                raise UploadFailed("a document upload failed")
             return {
                 "field": key,
                 "upload_id": status.get_attribute("data-upload-id"),

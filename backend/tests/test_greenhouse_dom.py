@@ -89,8 +89,9 @@ def test_ambiguous_or_mismatched_mappings_are_rejected(mode, key, status):
         )
     }
     assert maps[key].status == status
-    with pytest.raises(gh.SchemaMismatch, match=f"{key}: {status}"):
+    with pytest.raises(gh.SchemaMismatch, match=status) as e:
         dom.build_schema(api(), page_html(mode=mode))
+    assert e.value.code == "controls_do_not_match" and key not in str(e.value)
 
 
 def test_text_question_rendered_as_search_picker_is_unsupported_not_typed():
@@ -126,7 +127,8 @@ def test_capture_routes_v2_structure_to_the_dom_mapper(api, receiver):
 def test_capture_refuses_an_ambiguous_page(api, receiver):
     receiver.config(mode="gh2_duplicate_id")
     r = api.post(f"/jobs/{v2_job(api)}/form/greenhouse")
-    assert r.status_code == 409 and "question_8101: ambiguous" in r.text
+    assert r.status_code == 409 and "question_8101" not in r.text  # no posting field keys
+    assert "(reason: controls_do_not_match)" in r.text
 
 
 def test_preferred_name_and_unknown_condition_are_not_guessed(api, receiver):
@@ -273,7 +275,8 @@ def test_combobox_that_does_not_keep_its_choice_is_caught_by_readback(api, recei
     aid = queue(api, v2_application(api))
     receiver.config(mode="gh2_combobox_ignores")
     assert runner.run_attempt(aid, "w1") == "abandoned"
-    assert "question_8102" in attempt(aid).outcome_detail
+    detail = attempt(aid).outcome_detail
+    assert "1 field(s) did not keep their values" in detail and "question_" not in detail
     assert receiver.ledger()["accepted"] == 0
 
 
@@ -317,8 +320,9 @@ def test_attachment_group_must_be_named_exactly_and_hold_one_file_input(mode):
     maps = {m.key: m for m in dom.map_fields(gh.schema_from_api(api()).fields,
                                              dom.snapshot(page_html(mode=mode)))}  # fmt: skip
     assert maps["resume"].status == "label_mismatch"
-    with pytest.raises(gh.SchemaMismatch, match="resume: label_mismatch"):
+    with pytest.raises(gh.SchemaMismatch, match="label_mismatch") as e:
         dom.build_schema(api(), page_html(mode=mode))
+    assert "resume" not in str(e.value)
 
 
 def test_full_run_with_group_named_attachments(api, receiver):

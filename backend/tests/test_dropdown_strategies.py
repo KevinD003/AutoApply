@@ -93,7 +93,8 @@ def test_unmatched_dropdowns_are_refused_not_interpreted(api, receiver):
     _, aid, result = run(api, receiver, mode="gh2_dd_extras", dd="click_popup")
     assert result == "failed_safe"
     detail = attempt(aid).outcome_detail
-    assert "new fields" in detail and "extra-1" in detail and "phone-country" in detail
+    assert "2 new field(s)" in detail  # both unmatched dropdowns, counted, never named
+    assert "extra-1" not in detail and "phone-country" not in detail
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
 
