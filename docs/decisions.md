@@ -102,7 +102,8 @@ whether Celery repeats a *task*; they never make an external submission idempote
 Gate 1 authorizes disclosure, gate 2 authorizes the click. Both run in REPEATABLE READ under
 the application row lock and recheck approval, expiry, package hash and freshly rebuilt
 content. Revocation, cancellation or edits that commit before gate 2 stop the send; after
-gate 2, cancellation is refused because data may already be in flight.
+gate 2, cancellation is refused because data may already be in flight. (Amended by D43: each
+gate also locks the approval row.)
 
 ## D18 — No automatic retry after disclosure or send
 Crashes before disclosure are re-pended (max 2). After disclosure: `abandoned`, the user
@@ -510,3 +511,18 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **A rehearsal's result is shown as such:** an approval a rehearsal used up appears as
   "rehearsal finished", derived from its `rehearsed` attempt, not as an invalidation. The
   tracker shows the latest attempt.
+
+## D43 — Each gate locks the approval row too (2026-10-22)
+- **Fixed:** a gate's REPEATABLE READ snapshot is taken at its first statement, the attempt
+  lock, and the application lock comes after it. A revocation that committed while the gate
+  waited for the application lock (revoking takes that lock too) was not in the snapshot. The
+  gate then read the approval as still valid: the disclosure gate let filling start, and the
+  send gate let the submit go ahead after the user had revoked.
+- **Now:** after the application lock, each gate locks the attempt's approval row (`FOR
+  SHARE`). If the row changed after the snapshot (a revocation, or a new package version that
+  invalidated it), PostgreSQL refuses the lock with a serialization failure, and the gate
+  refuses: "the approval changed while it was being checked". The attempt then stops as any
+  refused gate does: before disclosure `failed_safe`, after it `abandoned`.
+- **Test:** `tests/test_gate_snapshot_race.py` commits a revocation in a second session
+  inside that window, deterministically, for both gates. It failed on the code before the
+  fix (the gate did not refuse) and passes now.

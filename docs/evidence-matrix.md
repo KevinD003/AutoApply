@@ -9,6 +9,12 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Gates and concurrent revocation (2026-10-22; local only)
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| A revocation committed while a gate waits for the application lock stops that gate | `tests/test_gate_snapshot_race.py`, `test_a_revocation_committed_while_a_gate_waits_is_refused` (disclosure gate, send gate) | a second session revokes after the gate's snapshot and before its application lock; the gate refuses ("the approval changed while it was being checked"); the attempt stays `claimed` with no send started. Before the fix both cases passed the gate (reproduced first: 2 failed); removing the approval lock is caught |
+
 ## Upload evidence and rehearsal results (E5 step 2, 2026-10-22; fixtures only)
 
 Synthetic candidate and local fixtures only (the clinic form, both Greenhouse-style

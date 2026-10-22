@@ -17,6 +17,7 @@ import uuid
 from datetime import timedelta
 
 from sqlalchemy import delete, select, update
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -45,6 +46,7 @@ from app.modules.preparation.models import ApprovalScope, PackageApproval
 
 S = AttemptState
 TOPIC_EXECUTE = "execute_attempt"
+SERIALIZATION_FAILURE = "40001"  # PostgreSQL: a row changed after this transaction's snapshot
 
 
 class LostAuthority(RuntimeError):
@@ -234,8 +236,23 @@ def _locked_attempt(db: Session, attempt_id, worker: str, gen: int, state) -> Ex
 
 def _gate_checks(db: Session, att: ExecutionAttempt) -> Application:
     """Authorization checks shared by both gates. Runs inside a REPEATABLE READ transaction
-    holding the application and attempt row locks."""
-    app = pk.lock_application(db, att.application_id)
+    holding the application and attempt row locks.
+
+    The snapshot is taken at the attempt lock, before the application lock, so a revocation (or
+    a new package version) committed while this gate waited for the application lock is not in
+    it. The approval row is therefore locked as well: if it changed after the snapshot,
+    PostgreSQL refuses the lock with a serialization failure, and so does the gate."""
+    try:
+        app = pk.lock_application(db, att.application_id)
+        db.execute(
+            select(PackageApproval.id)
+            .where(PackageApproval.id == att.approval_id)
+            .with_for_update(read=True)
+        )
+    except DBAPIError as e:
+        if getattr(e.orig, "sqlstate", None) == SERIALIZATION_FAILURE:
+            raise GateRefused("the approval changed while it was being checked") from None
+        raise
     if app.state != AppState.running:
         raise GateRefused(f"application is {app.state.value}")
     if not _approval_still_valid(db, app, att):

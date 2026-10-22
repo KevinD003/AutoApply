@@ -132,8 +132,9 @@ Module `app/modules/execution/`. Only destinations whose origin is listed in
 user queues ──(same txn)──> attempt(pending) + outbox row
 relay ── publishes attempt id ──> Redis ──> Celery task ──> claim (CAS, generation+1, lease)
   → open isolated browser (origin allow-list) → load form → re-extract schema, compare
-  → GATE 1 (before disclosure): REPEATABLE READ + app/attempt row locks; approval live,
-    unexpired, same package hash, freshly rebuilt content identical → disclosure_started_at
+  → GATE 1 (before disclosure): REPEATABLE READ + attempt, app and approval row locks (an
+    approval changed after the snapshot is a refusal); approval live, unexpired, same package
+    hash, freshly rebuilt content identical → disclosure_started_at
   → fill + upload (evidence: disclosures) → read every control back, compare → re-extract
   → a rehearsal (approval scope `disclose_only`) stops here: attempt `rehearsed`, approval
     used up, nothing submitted

@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-22 (upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-22 (each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,34 @@ Last updated: 2026-10-22 (upload evidence kept as a digest and a fixed acknowled
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Gates and concurrent revocation (2026-10-22; local only, no external request)
+
+- **Fixed (approval gating, fail-open):** a gate's REPEATABLE READ snapshot is taken at the
+  attempt lock, before the application lock. A revocation committed while the gate waited for
+  the application lock was not in that snapshot. The disclosure gate then allowed filling, and
+  the send gate allowed the submit, after the user had revoked. Found while designing E5 step
+  3; reproduced first by a deterministic test (2 failed), then fixed.
+- **Now:** each gate also locks the attempt's approval row. A change to it after the snapshot
+  is a serialization failure, and the gate refuses ("the approval changed while it was being
+  checked"). Decision D43; evidence: `docs/evidence-matrix.md` ("Gates and concurrent
+  revocation").
+- **Noted from reading the code, not reproduced, not changed here:** the gates lock the
+  attempt, then the application; cancel locks the application, then the attempt. By that lock
+  order, a cancel racing a gate can end in a PostgreSQL deadlock, which aborts one side. The
+  gate side would stop the attempt as an internal error (`failed_safe` before disclosure,
+  `abandoned` after), and the cancel side would return an error the user can retry. Both fail
+  closed.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `tests/test_gate_snapshot_race.py` (2 tests): 2 failed on the code before the fix
+    (reproduction), 2 passed after it; with the core execution modules (`test_execution`,
+    `test_execution_validation`, `test_execution_failures`, `test_rehearsal`): 57 passed;
+  - full backend (`pytest tests`): 660 passed;
+  - `ruff check` and `ruff format --check` clean; no frontend change;
+  - sabotage check, caught: the approval lock removed (both tests fail).
+- **CI for the previous change:** **CI #93**
+  ([39780495364](https://github.com/KevinD003/AutoApply/actions/runs/39780495364)) (`1b06bd4`,
+  E5 step 2): passed.
 
 ## Upload evidence and rehearsal results (E5 step 2, 2026-10-22; fixtures only, no external request)
 
