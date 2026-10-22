@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-21 (privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-22 (route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,59 @@ Last updated: 2026-10-21 (privacy and audit hardening, legacy audit repair, base
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Route reason codes and route truthfulness (Group B, 2026-10-22; local only, no external request)
+
+- **Nothing changed outside the repository:** no external request, credential, permission or
+  provider configuration. No support state, routing order or live gate changed. Evidence:
+  `docs/evidence-matrix.md` ("Route reason codes and route truthfulness").
+- **Reason-code contract (B1):**
+  - `routing.REASONS` is the canonical list of 14 codes. `docs/provider-architecture.md`
+    ("Reason codes") lists each with its route and the path that produces it;
+  - `no_supported_provider` is the named fail-closed fallback (`routing.FALLBACK_REASON`): the
+    default of `RouteDecision` and `UnsupportedDestination`, and what an unknown code is
+    recorded as. No path produces it;
+  - new `tests/test_reason_codes.py` (23 tests). Every other code is produced through its own
+    path; every decision and refusal in the source names a listed code (read from the
+    source); 576 sample decisions never reach the fallback; the documentation table equals
+    `REASONS`.
+- **Route cleanup (B2):**
+  - redundant local imports removed from `route_for_job`;
+  - the evidence level behind a route is computed in one place (`routing.evidence_level`) for
+    the API responses and the audit row;
+  - the router's own real-destination gate, which holds even if `policy.adapter_for` were
+    changed to accept a real origin, is kept on purpose and now has its own test;
+  - a browser refusal (no submit address, or a cross-origin one) does not block an authorized
+    API route, because the API adapter sends only to the authorized origin's own API. This is
+    now documented and tested.
+- **Discovery routes (B3):**
+  - a posting closed at its source before it was linked was told "Import this job manually."
+    with `source_record_incomplete`. It now says it was closed and not added to the tracker
+    (`source_posting_closed`);
+  - `GET /api/discovery/jobs/{id}` returns the route's reason code, grant state and evidence
+    level, and records a linked record's route like the job page does.
+- **Route-audit deduplication (B4):** a `route.decision` event is recorded only when the
+  decision differs from the job's last recorded one; a route shown again unchanged adds
+  nothing. Two concurrent first checks may each record one. The audit inventory test now fails
+  on `record(**...)`, which would hide an event's keys.
+- **Provider on the route card (B5):** for an API or browser route the job page shows
+  "Provider: <key> · evidence: <level>" (`fixture` today); a checkpoint or manual route shows
+  no provider.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `tests/test_reason_codes.py` with the audit-inventory and doc-reference tests: 26 passed;
+  - routing, discovery, audit, provider, job and approval-binding modules (11 files): 169
+    passed;
+  - full backend (`pytest tests`): 594 passed;
+  - Playwright (`npx playwright test`): 32 passed, 2 skipped (the desktop-only configuration
+    checks of `log-privacy.spec.ts`), including the extended `routing.spec.ts` on desktop and
+    mobile;
+  - frontend typecheck and lint clean; `ruff check` and `ruff format --check` clean;
+  - sabotage checks, each caught: removing the deduplication, a refusal left on the default
+    code, removing the router's own real-destination gate, a missing documentation row,
+    `record(**meta)`, removing the closed-posting branch, not auditing the discovery view, and
+    a code added without a path.
+- **Not done here:** support-state wording (B6, next). The deduplication reads the job's last
+  route row through the per-user index; no composite index was added.
 
 ## Privacy and audit hardening, baseline corrections (2026-10-21; local only, no external request)
 
@@ -101,7 +154,9 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   - **CI #82** ([39704738837](https://github.com/KevinD003/AutoApply/actions/runs/39704738837))
     (`f5bb30f`, Phase 11A error boundaries): passed;
   - **CI #83** ([39719684839](https://github.com/KevinD003/AutoApply/actions/runs/39719684839))
-    (`051b200`, Phase 11B access logs): passed.
+    (`051b200`, Phase 11B access logs): passed;
+  - **CI #84** ([39724014142](https://github.com/KevinD003/AutoApply/actions/runs/39724014142))
+    (`8447c79`, Phase A5-A7 retained errors, evidence and library logs): passed.
 
   Per-job test counts were not recorded for these runs.
 - **Keyed audit references (separate security commit after `c54596e`):**

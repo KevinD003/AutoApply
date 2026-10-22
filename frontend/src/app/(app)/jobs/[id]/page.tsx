@@ -149,12 +149,16 @@ const ROUTE_LABEL: Record<string, string> = {
   manual_handoff: "Manual: apply on the employer's site",
 };
 
+// GET /api/jobs/{id}/route. `evidence` is the provider's support level for what the route does
+// (providers/routing.py evidence_level): "fixture" today, never a live level.
+type Route = { route: string; provider: string; message: string; reason: string; evidence: string };
+
 function RouteCard({ jobId }: { jobId: string }) {
-  const [route, setRoute] = useState<{ route: string; provider: string; message: string; reason: string } | null>(null);
+  const [route, setRoute] = useState<Route | null>(null);
   const [error, setError] = useState<unknown>(null);
   const load = useCallback(() => {
     setError(null);
-    api<{ route: string; provider: string; message: string; reason: string }>(`/jobs/${jobId}/route`)
+    api<Route>(`/jobs/${jobId}/route`)
       .then(setRoute)
       .catch(setError);
   }, [jobId]);
@@ -179,6 +183,11 @@ function RouteCard({ jobId }: { jobId: string }) {
             </Badge>
           </p>
           {route.message && <p className="text-slate-700">{route.message}</p>}
+          {(route.route === "api" || route.route === "browser") && (
+            <p className="text-xs text-slate-500">
+              Provider: {route.provider} · evidence: {route.evidence}
+            </p>
+          )}
           <p className="text-xs text-slate-500">Reason code: {route.reason}</p>
         </div>
       )}

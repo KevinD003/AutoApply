@@ -377,6 +377,12 @@ def application_route(db: Session, row: DiscoveredJob):
     unsupported, it is a manual handoff (providers.routing.route_for_job)."""
     from app.modules.providers import routing
 
+    if row.job_id is None and row.status == "closed":
+        return routing.RouteDecision("manual_handoff", "manual_handoff",
+                                     ["the posting was closed at its source"],
+                                     "This posting was closed at its source, so it was not "
+                                     "added to your tracker.",
+                                     "source_posting_closed")  # fmt: skip
     if row.job_id is None:
         return routing.RouteDecision("manual_handoff", "manual_handoff",
                                      ["the source record is incomplete"],

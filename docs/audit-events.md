@@ -95,14 +95,19 @@ Allowed metadata per event. `-` means the event has no metadata.
 
 ### Route decisions
 
-Every `GET /api/jobs/{id}/route` records one `route.decision` event (a repeated check records
-another):
+A route shown to the user is recorded as a `route.decision` event when it differs from the
+job's last recorded decision. That covers the job page (`GET /api/jobs/{id}/route`) and the
+discovery view of a record linked to a tracker job (`GET /api/discovery/jobs/{id}`). A route
+shown again unchanged records nothing (two concurrent first checks may each record one). The
+event's metadata:
 
 - `route`: `api`, `browser`, `checkpoint` or `manual`;
 - `provider`: the registry key of the chosen provider (`manual_handoff` for a manual route);
 - `adapter_version`: that provider's version from `execution/policy.py` `ADAPTER_VERSIONS`,
   or `null` when it has none;
-- `reason_code`: one of `providers/routing.py` `REASONS`;
+- `reason_code`: one of `providers/routing.py` `REASONS` (each listed, with the path that
+  produces it, in `docs/provider-architecture.md`); an unknown code is recorded as the
+  fallback `no_supported_provider`;
 - `evidence`: the evidence level behind the route, or `none`;
 - `api_grant`: `granted`, `none` or `not_applicable`.
 

@@ -32,6 +32,7 @@ def code_events() -> set[tuple[str, str, tuple[str, ...]]]:
     for path in APP.rglob("*.py"):
         for n in ast.walk(ast.parse(path.read_text())):
             if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "record":
+                assert all(k.arg for k in n.keywords), f"{path.name}: record(**...) hides its keys"
                 keys = tuple(sorted(k.arg for k in n.keywords))
                 (entity,) = _pattern(n.args[3])
                 out |= {(action, entity, keys) for action in _pattern(n.args[2])}

@@ -9,6 +9,25 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Route reason codes and route truthfulness (2026-10-22; local only, no external request)
+
+Synthetic data and local fixtures only; no employer, ATS or Freehire was contacted. No provider
+support state changed. Results are from the cloud sandbox (PostgreSQL 16, Redis 7).
+
+| Requirement | Evidence (`tests/test_reason_codes.py` unless noted) | Result |
+|---|---|---|
+| Every code but the fallback has a producing path | `test_every_code_but_the_fallback_has_a_path_and_the_fallback_has_none`, `test_each_code_is_produced_by_its_path` (13 paths) | each of the 13 codes produced by its own path: `decide`, `route_for_job` through the API, `policy.check_binding` (`no_adapter`), the discovery view (`source_record_incomplete`, `source_posting_closed`); a code added without a path is caught |
+| No decision or refusal relies on the fallback | `test_every_decision_and_refusal_in_the_code_names_a_known_code` (read from the source), `test_no_destination_falls_through_to_the_fallback` (test and production) | every `RouteDecision` names a reason and every `UnsupportedDestination` a fixed code listed in `REASONS`; 576 decisions over sample destinations (origin, submit address, form source, ATS host), with and without an API grant, in test and production: none gets `no_supported_provider`, and only fixture origins outside production get an API or browser route. A refusal left on the default code is caught by all three tests |
+| Codes are safe to record | `test_codes_are_fixed_identifiers_that_are_safe_to_record` | lowercase identifiers; each survives the audit sanitizer unchanged |
+| The router refuses real destinations on its own | `test_the_router_refuses_a_real_destination_even_if_the_adapter_policy_accepts_it` | with `policy.adapter_for` patched to accept everything, a non-fixture origin is still a manual handoff (`real_destination_disabled`); removing the router's own gate is caught |
+| A browser refusal does not block an authorized API route | `test_a_browser_refusal_does_not_block_an_authorized_api_route` | no submit address, or a cross-origin one: API `fake_api` with the grant and credentials; without a grant the refusal stands (`no_captured_destination`) |
+| The documentation lists exactly the codes | `test_the_documentation_lists_exactly_the_reason_codes` | the table in `docs/provider-architecture.md` equals `REASONS` (14 codes); a removed row is caught |
+| A route is audited once per change | `test_a_repeated_route_check_is_recorded_once_and_each_change_again` | 3 identical checks → 1 row; form captured, API granted, grant revoked → 4 rows in all, the last equal to the second (a change from the previous one); removing the comparison is caught |
+| The discovery view audits a linked record's route like the job page | `test_the_discovery_view_records_a_linked_jobs_route_as_the_job_page_does` | view → 1 row for the tracker job; the job page then shows the same decision and adds none; an unlinked record and another user's view (404) add none. Not auditing the view, or not deduplicating, is caught |
+| The audit inventory cannot hide keys | `tests/test_audit_inventory.py` | a `record(**meta)` call fails the scan, so every event's keys stay readable |
+| A posting closed before linking says so | `test_each_code_is_produced_by_its_path[source_posting_closed]` | mock feed with the posting closed at its first import: no tracker job; route "This posting was closed at its source, so it was not added to your tracker." (`source_posting_closed`), not "Import this job manually."; removing the branch is caught |
+| The job page names the provider and its evidence | `frontend/e2e/routing.spec.ts` | Workday: `planned_adapter_only`, no provider line; no form: `no_form_captured`; a form captured from the local receiver: "Browser adapter (local test fixture only)", "Provider: fixture_ats · evidence: fixture", `browser_supported` |
+
 ## Privacy, audit and baseline corrections (2026-10-21; local only, no external request)
 
 Synthetic data and local fixtures only. Results are from the cloud sandbox (PostgreSQL 16,
@@ -123,7 +142,7 @@ the idempotency key).
 | Discovery: import, normalization, dedup | `test_import_normalizes_deduplicates_and_keeps_incomplete_records_unlinked`, `test_a_posting_the_user_already_tracks_is_linked_not_duplicated` | 5 records → 3 tracker jobs (tracking-parameter duplicate merged); existing job linked; URLs preserved; ATS "unknown" for the fixture origin |
 | Discovery: unknown stays unknown | `test_missing_data_stays_missing_and_source_facts_stay_out_of_the_profile` | sponsorship yes/unknown/no as stated; location `None`; workplace `unknown`; no salary or eligibility; 0 work-authorization rows |
 | Discovery: stale, unchanged, scoped | `test_reimport_is_unchanged_and_stale_records_are_marked_not_deleted`, `test_discovered_jobs_are_user_scoped` | re-import 5 unchanged; missing → stale, tracker job kept; closed → stale; relisted → un-staled; other user sees nothing |
-| Discovery → application route | `test_application_route_is_a_manual_handoff_until_a_form_is_captured` | incomplete → "Import this job manually."; uncaptured → "Capture the application form first."; real origin → manual; captured fixture form → browser `greenhouse_dom` |
+| Discovery → application route | `test_application_route_is_a_manual_handoff_until_a_form_is_captured`; `tests/test_reason_codes.py` | incomplete → "Import this job manually." (`source_record_incomplete`); closed before linking → `source_posting_closed`; uncaptured → "Capture the application form first."; real origin → manual; captured fixture form → browser `greenhouse_dom` |
 | Checkpoints, never solved | `test_no_checkpoint_is_ever_completed_by_noefforts`, `test_no_solver_or_evasion_code_exists`, `test_manual_handoff_spec_cannot_fill`; existing `test_captcha_stops_before_anything_is_disclosed` and the emailed-code round tests in `test_execution_security.py` | no automated checkpoint; only an emailed code typed by the user resumes; no solver or stealth library in `app/` |
 
 ## Id-only page mapping, v2 fixture and adapter, output privacy (2026-10-20)

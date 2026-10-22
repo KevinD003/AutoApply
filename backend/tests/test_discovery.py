@@ -138,6 +138,7 @@ def test_application_route_is_a_manual_handoff_until_a_form_is_captured(api, rec
         uncaptured = service.application_route(db, db.get(DiscoveredJob, r["fh-1001"].id))
         external = service.application_route(db, db.get(DiscoveredJob, r["fh-1003"].id))
     assert (incomplete.route, incomplete.message) == ("manual_handoff", "Import this job manually.")
+    assert incomplete.reason == "source_record_incomplete"
     assert uncaptured.message == "Capture the application form first."
     assert external.route == "manual_handoff"
     job_id = str(r["fh-1001"].job_id)

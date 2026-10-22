@@ -15,7 +15,7 @@ Observation and discovery providers are never routes: a read-only observation ca
 filling, and finding a job never implies being able to apply to it."""
 
 from dataclasses import dataclass, field
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from sqlalchemy import select
 
@@ -26,6 +26,9 @@ from app.modules.providers import registry
 from app.modules.providers.model import Capability, Kind
 
 # Reason codes: fixed, safe to record (no content, no identifiers). Messages are for the user.
+# Every code but FALLBACK_REASON is produced by a known path (tests/test_reason_codes.py);
+# FALLBACK_REASON is the fail-closed default that no path is expected to produce.
+FALLBACK_REASON = "no_supported_provider"
 REASONS = {
     "api_authorized": "authorized API: the user's grant, credentials and declared support",
     "browser_supported": "a browser adapter supports this form source and origin",
@@ -40,6 +43,7 @@ REASONS = {
     "no_adapter": "no adapter may execute this destination",
     "no_supported_provider": "no provider supports this destination",
     "source_record_incomplete": "the discovery record is incomplete",
+    "source_posting_closed": "the posting was closed at its source before it was linked",
 }
 AUTHORIZATION_STATES = ("granted", "none", "not_applicable")
 
@@ -50,7 +54,7 @@ class RouteDecision:
     provider: str
     steps: list[str] = field(default_factory=list)  # why, in order (no content, no secrets)
     message: str = ""  # for the user when the route is a manual handoff
-    reason: str = "no_supported_provider"  # a REASONS code
+    reason: str = FALLBACK_REASON  # a REASONS code
     authorization: str = "not_applicable"  # the API grant state, when an API provider applies
 
 
@@ -145,7 +149,7 @@ def decide(destination: dict, user_id=None) -> RouteDecision:
     except policy.UnsupportedDestination as e:
         browser, refusal, refusal_code = None, str(e), e.code
     else:
-        refusal, refusal_code = "", "no_supported_provider"
+        refusal, refusal_code = "", FALLBACK_REASON
     real = not is_fixture_origin(origin) or s.env == "production"
     if real:
         steps.append("enabled: no provider is enabled for real destinations")
@@ -197,18 +201,14 @@ def route_for_job(db, job) -> RouteDecision:
       * the form has required controls NoEfforts cannot fill → checkpoint (the user's step)
       * otherwise                                         → decide() on the captured destination
     A job source (e.g. Freehire) never supplies the form: only a capture does."""
-    from urllib.parse import urljoin, urlsplit
-
-    from sqlalchemy import select as _select
-
     from app.modules.preparation.models import JobForm
 
     steps: list[str] = []
     refused = _identity_refusal({"url": job.url, "ats_provider": job.ats_provider}, steps)
     if refused is not None:
         return refused
-    form = db.scalar(_select(JobForm).where(JobForm.job_id == job.id,
-                                            JobForm.user_id == job.user_id)
+    form = db.scalar(select(JobForm).where(JobForm.job_id == job.id,
+                                           JobForm.user_id == job.user_id)
                      .order_by(JobForm.version.desc()))  # fmt: skip
     if form is None:
         steps.append("no application form captured yet")
@@ -243,19 +243,48 @@ EVIDENCE_CAPABILITY = {"api": Capability.official_api_submission,
                        "browser": Capability.deterministic_fill}  # fmt: skip
 
 
-def audit_route(db, user_id, job_id, d: RouteDecision) -> None:
-    """Record a route decision with safe metadata only: the internal job id, the decision, the
-    provider key and adapter version, the reason code, the evidence level behind the route and
-    the authorization state. Never messages, steps, URLs, labels or applicant data."""
-    from app.modules.audit.service import record
-    from app.modules.execution.policy import ADAPTER_VERSIONS
-
+def evidence_level(d: RouteDecision) -> str:
+    """The evidence behind a route: the chosen provider's support level for what the route does
+    (API submission or browser filling); "none" for a checkpoint or a manual handoff."""
     spec = registry.PROVIDERS.get(d.provider)
     cap = EVIDENCE_CAPABILITY.get(d.route)
-    record(db, user_id, "route.decision", "job", job_id,
-           route=AUDIT_ROUTE.get(d.route, "manual"), provider=d.provider,
-           adapter_version=ADAPTER_VERSIONS.get(d.provider),
-           reason_code=d.reason if d.reason in REASONS else "no_supported_provider",
-           evidence=spec.support(cap).level() if spec and cap else "none",
-           api_grant=d.authorization if d.authorization in AUTHORIZATION_STATES
-           else "not_applicable")  # fmt: skip
+    return spec.support(cap).level() if spec and cap else "none"
+
+
+def audit_route(db, user_id, job_id, d: RouteDecision) -> bool:
+    """Record a route decision with safe metadata only: the internal job id, the decision, the
+    provider key and adapter version, the reason code, the evidence level behind the route and
+    the authorization state. Never messages, steps, URLs, labels or applicant data.
+
+    A decision identical to the job's last recorded one is not recorded again: checking the same
+    route twice changes nothing, so only changes reach the audit trail (two concurrent first
+    checks may each record one). Returns whether a row was added."""
+    from app.modules.audit.models import AuditEvent
+    from app.modules.audit.service import record, sanitize
+    from app.modules.execution.policy import ADAPTER_VERSIONS
+
+    route = AUDIT_ROUTE.get(d.route, "manual")
+    version = ADAPTER_VERSIONS.get(d.provider)
+    reason = d.reason if d.reason in REASONS else FALLBACK_REASON
+    evidence = evidence_level(d)
+    grant = d.authorization if d.authorization in AUTHORIZATION_STATES else "not_applicable"
+    meta = {"route": route, "provider": d.provider, "adapter_version": version,
+            "reason_code": reason, "evidence": evidence, "api_grant": grant}  # fmt: skip
+    last = db.scalar(
+        select(AuditEvent.meta)
+        .where(
+            AuditEvent.user_id == user_id,
+            AuditEvent.action == "route.decision",
+            AuditEvent.entity_type == "job",
+            AuditEvent.entity_id == str(job_id),
+        )
+        .order_by(AuditEvent.created_at.desc())
+        .limit(1)
+    )
+    if last == sanitize(meta, scope=user_id):
+        return False
+    # Explicit keywords: the audit inventory (tests/test_audit_inventory.py) reads them.
+    record(db, user_id, "route.decision", "job", job_id, route=route, provider=d.provider,
+           adapter_version=version, reason_code=reason, evidence=evidence,
+           api_grant=grant)  # fmt: skip
+    return True

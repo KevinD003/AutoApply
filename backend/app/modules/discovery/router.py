@@ -211,10 +211,18 @@ def list_rows(
 
 @router.get("/jobs/{row_id}")
 def get_row(row_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from app.modules.providers import routing
+
     row = _owned(db, user, row_id)
     out = _row(row, detail=True)
     d = service.application_route(db, row)
-    out["route"] = {"route": d.route, "provider": d.provider, "message": d.message}
+    out["route"] = {"route": d.route, "provider": d.provider, "message": d.message,
+                    "reason": d.reason, "authorization": d.authorization,
+                    "evidence": routing.evidence_level(d)}  # fmt: skip
+    # A linked row shows its tracker job's route: recorded as the job page records it. A row
+    # without a job has no job to record against (its route is always a manual handoff).
+    if row.job_id is not None and routing.audit_route(db, user.id, row.job_id, d):
+        db.commit()
     return out
 
 

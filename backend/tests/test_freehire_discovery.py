@@ -464,7 +464,9 @@ def test_incomplete_records_wait_for_a_manual_import(api):
     d = api.get(f"/discovery/jobs/{row_id}").json()
     assert d["missing"] == ["no job or application URL"]
     assert d["route"] == {"route": "manual_handoff", "provider": "manual_handoff",
-                          "message": "Import this job manually."}  # fmt: skip
+                          "message": "Import this job manually.",
+                          "reason": "source_record_incomplete",
+                          "authorization": "not_applicable", "evidence": "none"}  # fmt: skip
 
 
 def test_discovered_jobs_are_user_scoped(api, other_api):

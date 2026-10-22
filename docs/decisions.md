@@ -397,3 +397,21 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   automation exists.
 - **Status:** nothing became live. `real_destinations` is false everywhere; C and D remain
   unapproved.
+
+## D36 — Route reason codes are a closed set; the route audit records changes only (2026-10-22)
+- **Closed set:** `routing.REASONS` lists every reason a route decision or a destination
+  refusal can carry; each code is a fixed identifier, safe to record. Every code but one is
+  produced by a known, tested path (`tests/test_reason_codes.py`), and the table in
+  `docs/provider-architecture.md` lists exactly these codes.
+- **Named fallback:** `no_supported_provider` is the fail-closed default, never a path's own
+  answer. It is what an unknown code is recorded as. A decision or refusal that would rely on
+  it fails the tests, so a new path must name its own code.
+- **Truthful explanations:** a discovery record without a tracker job says why: incomplete
+  (`source_record_incomplete`) or closed at its source before it was linked
+  (`source_posting_closed`).
+- **Audit of changes, not views:** a `route.decision` event is recorded when the decision
+  differs from the job's last recorded one, from the job page or the discovery view of a linked
+  record. Before, every check recorded a row, so the audit trail mostly repeated itself. What
+  is no longer recorded is when an unchanged route was shown again; the decision itself is
+  already there. Two concurrent first checks may each record one.
+- **Status:** no support state, routing order or live gate changed.

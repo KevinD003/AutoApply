@@ -298,11 +298,12 @@ def get_route(job_id: uuid.UUID, user: User = Depends(current_user), db: Session
 
     job = _owned(db, user, job_id)
     d = routing.route_for_job(db, job)
-    routing.audit_route(db, user.id, job.id, d)
-    db.commit()
+    if routing.audit_route(db, user.id, job.id, d):
+        db.commit()
     spec = registry.PROVIDERS.get(d.provider)
     return {"route": d.route, "provider": d.provider, "message": d.message, "steps": d.steps,
             "reason": d.reason, "authorization": d.authorization,
+            "evidence": routing.evidence_level(d),
             "stage": spec.stage if spec else None}  # fmt: skip
 
 

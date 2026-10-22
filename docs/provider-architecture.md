@@ -217,20 +217,52 @@ Both views are served at `GET /api/providers` (`routing_capabilities`, `traits`,
    control, unknown question, CAPTCHA, login, verification code, page change, changed form,
    uncertain mapping, or unknown result.
 
-**Reason codes and audit** (`routing.REASONS`, `routing.audit_route`, `audit/service.py`):
+**Reason codes** (`routing.REASONS`). Every decision carries exactly one.
+`tests/test_reason_codes.py` fails when a code is added or removed without this table changing
+with it, when a code other than the fallback has no path that produces it, or when a decision
+or refusal in the source relies on the default code or names one this table does not list.
 
-- Every decision carries a fixed reason code. Examples: `api_authorized`, `browser_supported`,
-  `no_form_captured`, `unsupported_required_control`, `planned_adapter_only`,
-  `form_ats_mismatch`, `real_destination_disabled`, `no_supported_provider`.
-- It also carries an API grant state: `granted`, `none` or `not_applicable`.
-- `GET /api/jobs/{id}/route` returns the code, and the job page shows it under the message.
-- Each route decision is recorded as a `route.decision` audit event with only these fields:
+| Code | Route | Produced by | When |
+|---|---|---|---|
+| `api_authorized` | api | `decide` | the user's grant for that provider and origin, configured credentials and declared API support |
+| `browser_supported` | browser | `decide` | `policy.adapter_for` names an adapter for this form source and origin |
+| `planned_adapter_only` | manual | identity (`decide`, `route_for_job`) | the job's ATS has only a planned adapter (Workday) |
+| `form_ats_mismatch` | manual | identity | the captured form belongs to a different ATS than the job |
+| `no_form_captured` | manual | `route_for_job` | no application form has been captured yet |
+| `unsupported_required_control` | checkpoint | `route_for_job` | the form has required controls NoEfforts cannot fill |
+| `real_destination_disabled` | manual | `decide` | a real origin. `policy.adapter_for` refuses it, and the router's own gate refuses it again even if the adapter policy accepted it (tested) |
+| `production_disabled` | manual | `decide` (`policy.adapter_for`) | automatic submission is not available in production |
+| `no_captured_destination` | manual | `decide` (`policy.adapter_for`) | no origin or submit address was captured |
+| `submit_origin_mismatch` | manual | `decide` (`policy.adapter_for`) | the form submits to a different site than the job page |
+| `no_adapter` | none: a refusal | `policy.check_binding` | queueing or running a destination whose route is a manual handoff. Never a route's code |
+| `source_record_incomplete` | manual | discovery `application_route` | the discovery record lacks what a tracker job needs (its `missing` list) |
+| `source_posting_closed` | manual | discovery `application_route` | the posting was closed at its source before it was linked, so no tracker job exists |
+| `no_supported_provider` | manual | nothing | the fail-closed fallback: the default of `RouteDecision` and `UnsupportedDestination`, and what an unknown code is recorded as. No path produces it (tested over a grid of sample origins, submit addresses, form sources, ATS hosts and API grant states, in the test and production environments) |
+
+- A browser refusal for a fixture destination (`no_captured_destination`,
+  `submit_origin_mismatch`) does not block an authorized API route. The API adapter sends only
+  to the authorized origin's own API, never to the captured form's submit address.
+- Every decision also carries:
+  - an API grant state: `granted`, `none` or `not_applicable`;
+  - the evidence level behind the route (`routing.evidence_level`): the provider's support for
+    API submission or browser filling, or `none` for a checkpoint or a manual handoff.
+- `GET /api/jobs/{id}/route` and the discovery view of a record (`GET /api/discovery/jobs/{id}`,
+  its `route`) return the code, the grant state and the evidence level.
+- The job page shows the code under the message. For an API or browser route it also shows
+  the provider key and its evidence level.
+
+**Route audit** (`routing.audit_route`, `audit/service.py`):
+
+- A route decision is recorded as a `route.decision` audit event with only these fields:
   - the internal job id;
   - the route (`api`, `browser`, `checkpoint` or `manual`);
   - the provider key and adapter version;
   - the reason code;
   - the evidence level behind the route;
   - the grant state.
+- A decision is recorded when it differs from the job's last recorded one. A route shown again
+  unchanged adds nothing, on the job page or in the discovery view of a linked record. A
+  discovery record without a tracker job has no job to record against.
 - User-facing route messages are generic. A checkpoint gives the number of controls NoEfforts
   cannot fill, never their labels or keys, which are the employer's wording.
 - Audit `meta` is sanitized before it is stored, for every event:
@@ -439,9 +471,12 @@ job manually (`POST /api/jobs`).
 
 **Application route** (`service.application_route`):
 
-- a manual handoff until the job's application form has been captured;
-- after that, `routing.decide`. For the fixture posting that is `greenhouse_dom`; for a real
-  origin it is the manual handoff.
+- a record without a tracker job is a manual handoff: `source_record_incomplete` ("Import this
+  job manually.") or, for a posting closed at its source before it was linked,
+  `source_posting_closed`;
+- a linked record has its tracker job's route (`routing.route_for_job`): a manual handoff until
+  the job's application form has been captured, then `routing.decide`. For the fixture posting
+  that is `greenhouse_dom`; for a real origin it is the manual handoff.
 
 ## 7. Workday (future adapter specification only)
 

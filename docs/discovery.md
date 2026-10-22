@@ -180,7 +180,7 @@ Only what the documentation states is relied on.
 | `GET /api/discovery/providers` | name, label, enabled, capabilities, configured flags (no values), status table |
 | `POST /api/discovery/providers/{name}/healthcheck` | `{ok, detail}`; 409 when disabled. For Freehire, configuration only: no request is made |
 | `POST /api/discovery/import` | run one import; 409 when disabled, 503 on a provider failure (nothing changed) |
-| `GET /api/discovery/jobs`, `GET /api/discovery/jobs/{id}` | the user's discovered records; the detail includes the application route (manual handoff until a form is captured) |
+| `GET /api/discovery/jobs`, `GET /api/discovery/jobs/{id}` | the user's discovered records. The detail includes the application route with its reason code, grant state and evidence level: a manual handoff until a form is captured, or, without a tracker job, `source_record_incomplete` or `source_posting_closed`. Viewing a linked record records its job's route decision as the job page does (changes only) |
 | `POST /api/discovery/jobs/{id}/refresh` | re-read one record (`get_job`) |
 
 All of these are user-scoped: another user's record returns 404. The job detail
