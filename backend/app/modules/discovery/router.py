@@ -22,6 +22,7 @@ from app.modules.discovery.provider import PROVIDERS, DiscoveryError, DiscoveryF
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
 from app.modules.profiles.models import JobPreferences
+from app.modules.providers import registry, wording
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
 
@@ -143,6 +144,8 @@ def providers(user: User = Depends(current_user)) -> list[dict]:
                 if name == "freehire"
                 else {},
                 "status": STATUS[name],
+                # Derived from the provider registry's evidence (providers/wording.py).
+                "support_label": wording.support_label(registry.PROVIDERS[name]),
             }
         )
     return out
@@ -216,9 +219,7 @@ def get_row(row_id: uuid.UUID, user: User = Depends(current_user), db: Session =
     row = _owned(db, user, row_id)
     out = _row(row, detail=True)
     d = service.application_route(db, row)
-    out["route"] = {"route": d.route, "provider": d.provider, "message": d.message,
-                    "reason": d.reason, "authorization": d.authorization,
-                    "evidence": routing.evidence_level(d)}  # fmt: skip
+    out["route"] = routing.route_view(d)
     # A linked row shows its tracker job's route: recorded as the job page records it. A row
     # without a job has no job to record against (its route is always a manual handoff).
     if row.job_id is not None and routing.audit_route(db, user.id, row.job_id, d):

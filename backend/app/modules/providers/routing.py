@@ -251,6 +251,19 @@ def evidence_level(d: RouteDecision) -> str:
     return spec.support(cap).level() if spec and cap else "none"
 
 
+def route_view(d: RouteDecision) -> dict:
+    """A route as the API shows it: the decision, its codes and the wording for it
+    (providers/wording.py), the same for the job page and the discovery view."""
+    from app.modules.providers import wording
+
+    spec = registry.PROVIDERS.get(d.provider)
+    evidence = evidence_level(d)
+    return {"route": d.route, "provider": d.provider, "message": d.message, "reason": d.reason,
+            "authorization": d.authorization, "evidence": evidence,
+            "label": wording.route_label(d.route, evidence),
+            "provider_support": wording.support_label(spec) if spec else None}  # fmt: skip
+
+
 def audit_route(db, user_id, job_id, d: RouteDecision) -> bool:
     """Record a route decision with safe metadata only: the internal job id, the decision, the
     provider key and adapter version, the reason code, the evidence level behind the route and

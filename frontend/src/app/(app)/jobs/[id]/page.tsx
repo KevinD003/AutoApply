@@ -135,23 +135,26 @@ export default function JobPage() {
   );
 }
 
+// Support wording (labels) comes from the API (backend providers/wording.py), derived from
+// evidence; this page writes none of its own.
 interface FormInfo {
   version: number;
   source: string;
+  source_label: string | null; // set for a local test source, which says so
   source_ref: string | null;
   schema: { title: string | null; fields: unknown[] };
 }
 
-const ROUTE_LABEL: Record<string, string> = {
-  api: "Authorized API (local test fixture only)",
-  browser: "Browser adapter (local test fixture only)",
-  checkpoint: "Needs you: a step NoEfforts cannot do",
-  manual_handoff: "Manual: apply on the employer's site",
+// GET /api/jobs/{id}/route.
+type Route = {
+  route: string;
+  provider: string;
+  message: string;
+  reason: string;
+  evidence: string; // the evidence level behind an API or browser route ("fixture" today)
+  label: string; // the route and the evidence behind it
+  provider_support: string | null; // the provider's support state, worded
 };
-
-// GET /api/jobs/{id}/route. `evidence` is the provider's support level for what the route does
-// (providers/routing.py evidence_level): "fixture" today, never a live level.
-type Route = { route: string; provider: string; message: string; reason: string; evidence: string };
 
 function RouteCard({ jobId }: { jobId: string }) {
   const [route, setRoute] = useState<Route | null>(null);
@@ -178,14 +181,12 @@ function RouteCard({ jobId }: { jobId: string }) {
       {route && (
         <div className="space-y-1 text-sm">
           <p>
-            <Badge tone={route.route === "browser" || route.route === "api" ? "indigo" : "amber"}>
-              {ROUTE_LABEL[route.route] ?? route.route}
-            </Badge>
+            <Badge tone={route.route === "browser" || route.route === "api" ? "indigo" : "amber"}>{route.label}</Badge>
           </p>
           {route.message && <p className="text-slate-700">{route.message}</p>}
           {(route.route === "api" || route.route === "browser") && (
             <p className="text-xs text-slate-500">
-              Provider: {route.provider} · evidence: {route.evidence}
+              Provider: {route.provider} — {route.provider_support}
             </p>
           )}
           <p className="text-xs text-slate-500">Reason code: {route.reason}</p>
@@ -240,8 +241,8 @@ function FormCard({ jobId, onPrepare }: { jobId: string; onPrepare: () => void }
       ) : form === null ? (
         <div className="space-y-2 text-sm">
           <p>
-            No form captured yet. Reading forms from live employer sites arrives later; for now you can attach a local test form
-            (fictional employer) to try the preparation workflow.
+            No form captured yet. Reading forms from employer sites is not available in this version; for now you can attach a
+            local test form (fictional employer) to try the preparation workflow.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <select aria-label="Test form" className={inputCls} value={pick} onChange={(e) => setPick(e.target.value)}>
@@ -260,16 +261,19 @@ function FormCard({ jobId, onPrepare }: { jobId: string; onPrepare: () => void }
             the application page and check that they agree. Real Greenhouse posts are not read in this version.
           </p>
           <Button variant="secondary" onClick={readGreenhouse}>
-            Read Greenhouse form
+            Read Greenhouse-style test form
           </Button>
         </div>
       ) : (
         <div className="space-y-3 text-sm">
           <p>
             Form v{form.version} · {form.schema.fields.length} questions · source: {form.source}
-            {form.source === "fixture" && <> <Badge tone="amber">Local test fixture</Badge></>}
-            {form.source === "greenhouse_api" && <> <Badge tone="amber">Greenhouse-style form (local test approximation)</Badge></>}
-            {form.source === "greenhouse_api_dom" && <> <Badge tone="amber">Greenhouse-style form, mapped by id and label (second local test approximation)</Badge></>}
+            {form.source_label && (
+              <>
+                {" "}
+                <Badge tone="amber">{form.source_label}</Badge>
+              </>
+            )}
           </p>
           <Button onClick={onPrepare}>Prepare application</Button>
         </div>

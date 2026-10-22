@@ -24,6 +24,7 @@ from app.modules.discovery.provider import (
     plain_summary,
 )
 from app.modules.jobs.models import Job
+from app.modules.providers import wording
 from tests.execution_harness import BASE, Receiver
 
 FIXTURE = f"{BASE}/freehire-fixture"
@@ -466,7 +467,9 @@ def test_incomplete_records_wait_for_a_manual_import(api):
     assert d["route"] == {"route": "manual_handoff", "provider": "manual_handoff",
                           "message": "Import this job manually.",
                           "reason": "source_record_incomplete",
-                          "authorization": "not_applicable", "evidence": "none"}  # fmt: skip
+                          "authorization": "not_applicable", "evidence": "none",
+                          "label": "Manual: apply on the employer's site",
+                          "provider_support": wording.SUPPORT_LABELS["manual"]}  # fmt: skip
 
 
 def test_discovered_jobs_are_user_scoped(api, other_api):

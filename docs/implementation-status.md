@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-22 (route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-22 (support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,43 @@ Last updated: 2026-10-22 (route reason-code contract, discovery route explanatio
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Support-state wording (B6, 2026-10-22; local only, no external request)
+
+- **Nothing changed outside the repository**, and no support state changed: the wording now
+  follows from the evidence already recorded. Evidence: `docs/evidence-matrix.md`
+  ("Support-state wording").
+- **Before:** support wording came from three unconnected places. The registry's status lines,
+  the discovery router's own status table, and badges hard-coded on two pages. The two pages
+  described the same captured form in different words, and nothing stopped a page from
+  writing a claim with no evidence behind it.
+- **Now** (`providers/wording.py`, decision D37):
+  - a provider's support state is derived from its stage and capability levels (`manual`,
+    `planned`, `fixture_only`, `observed_read_only`, `not_supported`). A live level has no
+    label, so no page can show one until it is added deliberately;
+  - an API or browser route is always labelled with the evidence behind it ("Browser adapter
+    (local test fixture only)"), and is refused if it has none;
+  - a captured form from a local test stand-in says so, in one wording on both pages;
+  - the API serves every label: providers, discovery sources, job and discovery routes
+    (`label`, `provider_support`), forms (`source_label`) and the package view (`labels`,
+    outside the package content, so no hash or approval changes);
+  - the pages show the served labels and write none of their own. The job page no longer
+    promises that reading live employer forms "arrives later", and its button reads "Read
+    Greenhouse-style test form";
+  - the registry's status lines and the discovery sources' notes remain as fuller
+    descriptions next to the labels; the badges show the labels.
+- **Tests:** new `tests/test_support_wording.py` (8 tests). It reads the frontend sources for
+  hard-coded labels and the capture code for every stored form source. Four e2e specs assert
+  the served wording, and the job and application pages show the same form label.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - wording, routing, discovery, provider, preparation, application, job, Greenhouse,
+    audit-inventory, doc-reference and approval-binding modules (14 files): 209 passed;
+  - full backend (`pytest tests`): 602 passed;
+  - Playwright: 32 passed, 2 skipped (the desktop-only configuration checks);
+  - frontend typecheck and lint clean; `ruff check` and `ruff format --check` clean;
+  - sabotage checks, each caught: a page hard-coding a qualifier, observed evidence ignored,
+    a live label added, a bare API or browser route allowed, a label claiming support, a
+    stored form source without wording, the package view dropping its label.
 
 ## Route reason codes and route truthfulness (Group B, 2026-10-22; local only, no external request)
 
@@ -87,8 +124,10 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     code, removing the router's own real-destination gate, a missing documentation row,
     `record(**meta)`, removing the closed-posting branch, not auditing the discovery view, and
     a code added without a path.
-- **Not done here:** support-state wording (B6, next). The deduplication reads the job's last
-  route row through the per-user index; no composite index was added.
+- **Not done here:** support-state wording (B6, the entry above). The deduplication reads the
+  job's last route row through the per-user index; no composite index was added.
+- **CI:** **CI #85** ([39728771798](https://github.com/KevinD003/AutoApply/actions/runs/39728771798))
+  (`02e0be4`): passed.
 
 ## Privacy and audit hardening, baseline corrections (2026-10-21; local only, no external request)
 

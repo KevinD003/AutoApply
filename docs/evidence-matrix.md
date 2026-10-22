@@ -9,6 +9,23 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Support-state wording (2026-10-22; local only, no external request)
+
+Synthetic data and local fixtures only. No support state changed: the wording now follows from
+the evidence already recorded. Results are from the cloud sandbox (PostgreSQL 16, Redis 7).
+
+| Requirement | Evidence (`tests/test_support_wording.py` unless noted) | Result |
+|---|---|---|
+| Support states follow the evidence | `test_each_providers_support_state_follows_its_evidence` | 9 providers: 5 `fixture_only`, 2 `observed_read_only` (`greenhouse_dom`, `greenhouse_readonly`), `workday` planned, `manual_handoff` manual; ignoring observed evidence is caught |
+| No live label in advance | `test_a_live_level_has_no_label_until_one_is_added_deliberately` | a spec given `live_fill` derives `live`, and its label and route qualifier lookups fail; adding a live label is caught |
+| API and browser routes carry their evidence | `test_an_api_or_browser_route_always_carries_its_evidence` | no evidence → refused; every implemented API or browser provider's route reads "(local test fixture only)"; allowing a bare route is caught |
+| No label claims more than its evidence | `test_no_label_claims_more_than_its_evidence` | no "live", "supported" (other than "Not supported"), "available", "compatible" or "verified"; every test-source label says "local test" and "(fictional employer)"; a label claiming support is caught |
+| Every stored form source is worded | `test_every_form_source_the_capture_code_stores_is_worded` (read from the source) | the 5 sources the capture code assigns equal the label table; a missing one is caught |
+| The pages write no support wording of their own | `test_the_frontend_writes_no_support_wording_of_its_own` | no served label and none of the retired qualifiers in `frontend/src`; a page that hard-codes one is caught |
+| The API serves the labels | `test_the_api_serves_the_labels` | providers, discovery sources, a job's route (manual, then browser), the form and the package view; the job page and the application page get the same form label; dropping the package view's label is caught |
+| Wording never changes a package | `test_wording_never_changes_the_package_or_its_hash` | the label is outside the content; rewording it changes neither the package version nor its hash |
+| The same form, the same words, on both pages | `frontend/e2e/submission.spec.ts` (both Greenhouse-style forms), `phase-b.spec.ts`, `discovery.spec.ts`, `routing.spec.ts` | one label on the job page and the application page; the discover page shows the served "Local test fixtures only"; the button reads "Read Greenhouse-style test form" |
+
 ## Route reason codes and route truthfulness (2026-10-22; local only, no external request)
 
 Synthetic data and local fixtures only; no employer, ATS or Freehire was contacted. No provider
@@ -26,7 +43,7 @@ support state changed. Results are from the cloud sandbox (PostgreSQL 16, Redis 
 | The discovery view audits a linked record's route like the job page | `test_the_discovery_view_records_a_linked_jobs_route_as_the_job_page_does` | view → 1 row for the tracker job; the job page then shows the same decision and adds none; an unlinked record and another user's view (404) add none. Not auditing the view, or not deduplicating, is caught |
 | The audit inventory cannot hide keys | `tests/test_audit_inventory.py` | a `record(**meta)` call fails the scan, so every event's keys stay readable |
 | A posting closed before linking says so | `test_each_code_is_produced_by_its_path[source_posting_closed]` | mock feed with the posting closed at its first import: no tracker job; route "This posting was closed at its source, so it was not added to your tracker." (`source_posting_closed`), not "Import this job manually."; removing the branch is caught |
-| The job page names the provider and its evidence | `frontend/e2e/routing.spec.ts` | Workday: `planned_adapter_only`, no provider line; no form: `no_form_captured`; a form captured from the local receiver: "Browser adapter (local test fixture only)", "Provider: fixture_ats · evidence: fixture", `browser_supported` |
+| The job page names the provider and its evidence | `frontend/e2e/routing.spec.ts` | Workday: `planned_adapter_only`, no provider line; no form: `no_form_captured`; a form captured from the local receiver: "Browser adapter (local test fixture only)", `browser_supported`, and (since the support-wording change below) "Provider: fixture_ats — Local test fixtures only", equal to what the API serves |
 
 ## Privacy, audit and baseline corrections (2026-10-21; local only, no external request)
 

@@ -44,7 +44,7 @@ test("phase B preparation and approval", async ({ page }, info) => {
   await page.getByRole("button", { name: "Prepare application" }).click();
 
   // Review: deterministic answers with sources; checkpoints for the rest.
-  await expect(page.getByText("Local test fixture — fictional employer")).toBeVisible();
+  await expect(page.getByText("Local test fixture (fictional employer)")).toBeVisible(); // as on the job page
   await expect(page.getByText("Needs your input")).toBeVisible();
   await expect(page.getByText("Profile: authorized to work in United States = yes.")).toBeVisible();
   await expect(page.getByText(/Profile \(United States\): needs sponsorship now = no, later = no/)).toBeVisible();

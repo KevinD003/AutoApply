@@ -257,12 +257,13 @@ test("Greenhouse-style form: read from job data and page, prepare, approve, subm
   const before = (await ledger(request, "gh-examplehealth-4012001")).accepted;
 
   await page.goto(`/jobs/${job.job.id}`);
-  await page.getByRole("button", { name: "Read Greenhouse form" }).click();
-  await expect(page.getByText("Greenhouse-style form (local test approximation)")).toBeVisible();
+  await page.getByRole("button", { name: "Read Greenhouse-style test form" }).click();
+  const v1 = "Greenhouse-style form: local test approximation (fictional employer)";
+  await expect(page.getByText(v1)).toBeVisible();
   await page.getByRole("button", { name: "Prepare application" }).click();
   await expect(page).toHaveURL(/\/applications\//);
   const appId = page.url().split("/applications/")[1];
-  await expect(page.getByText("Greenhouse-style form — local test approximation, fictional employer")).toBeVisible();
+  await expect(page.getByText(v1)).toBeVisible(); // the same wording on the application page
   // Exact employer wording is shown for review.
   await expect(page.getByText("Are you legally authorized to work in the United States?")).toBeVisible();
 
@@ -314,12 +315,13 @@ test("Greenhouse-style v2 form (id-only controls, comboboxes): user answers, app
   const before = (await ledger(request, slug)).accepted;
 
   await page.goto(`/jobs/${job.job.id}`);
-  await page.getByRole("button", { name: "Read Greenhouse form" }).click();
-  await expect(page.getByText("Greenhouse-style form, mapped by id and label (second local test approximation)")).toBeVisible();
+  await page.getByRole("button", { name: "Read Greenhouse-style test form" }).click();
+  const v2 = "Greenhouse-style form mapped by id and label: second local test approximation (fictional employer)";
+  await expect(page.getByText(v2)).toBeVisible();
   await page.getByRole("button", { name: "Prepare application" }).click();
   await expect(page).toHaveURL(/\/applications\//);
   const appId = page.url().split("/applications/")[1];
-  await expect(page.getByText("Greenhouse-style form (id-mapped) — second local test approximation, fictional employer")).toBeVisible();
+  await expect(page.getByText(v2)).toBeVisible(); // the same wording on the application page
 
   const answer = async (label: string, fill: (c: ReturnType<Page["getByLabel"]>) => Promise<void>) => {
     const item = page.getByRole("listitem").filter({ has: page.getByLabel(label, { exact: true }) });

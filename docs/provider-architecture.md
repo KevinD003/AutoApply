@@ -68,6 +68,38 @@ So a fixture success can never become a live claim by accident. Reaching `observ
 `live_fill` or `live_submit` requires an edit to the registry and a review. The registry is
 served at `GET /api/providers` and inside `GET /api/execution/capabilities` (`providers`).
 
+**Support states and wording** (`providers/wording.py`). What a page says about support comes
+from this one module and follows from evidence. The pages show it as served and write none of
+their own; `tests/test_support_wording.py` reads the frontend sources to check.
+
+| Support state | Derived when | Label |
+|---|---|---|
+| `manual` | the provider is the manual handoff | Manual: you apply on the employer's site |
+| `planned` | the provider is a planned specification | Planned only: no automation exists |
+| `fixture_only` | the strongest capability level is `fixture` | Local test fixtures only |
+| `observed_read_only` | some capability is `observed` | Local test fixtures only; seen read-only on a real page, never filled there |
+| `not_supported` | the provider has no capability at all | Not supported |
+| `live` | some capability is `live_fill` or `live_submit` | none. The lookup fails until a label is added deliberately, with its evidence, tests and docs |
+
+- **Today:** `fixture_ats`, `greenhouse_hosted`, `fake_api`, `freehire` and `freehire_mock`
+  are `fixture_only`; `greenhouse_dom` and `greenhouse_readonly` are `observed_read_only`;
+  `workday` is `planned`; `manual_handoff` is `manual`.
+- **Routes:** a route's label is its kind and the evidence behind it, for example "Browser
+  adapter (local test fixture only)". An API or browser route is never shown without its
+  evidence: the lookup refuses one that has none.
+- **Captured forms:** a form from a local test stand-in says so: "Local test fixture (fictional
+  employer)" and the two Greenhouse-style approximations. A form read from page HTML the user
+  provided, or entered by hand, carries no qualifier; the route card says how it could be
+  applied.
+- **Where it is served:**
+  - `GET /api/providers`: `support_state`, `support_label`;
+  - `GET /api/discovery/providers`: `support_label`;
+  - the route of a job or of a discovery record: `label`, `provider_support`;
+  - `GET /api/jobs/{id}/form`: `source_label`;
+  - `GET /api/applications/{id}/package`: `labels`, outside the package content, so wording
+    never changes a package or its hash.
+- The registry's one-line `status` notes remain as fuller descriptions; they are not labels.
+
 ### Capability matrix (registry as committed)
 
 Columns: FA = `fixture_ats`, GH = `greenhouse_hosted`, GD = `greenhouse_dom`, API =
@@ -248,8 +280,9 @@ or refusal in the source relies on the default code or names one this table does
     API submission or browser filling, or `none` for a checkpoint or a manual handoff.
 - `GET /api/jobs/{id}/route` and the discovery view of a record (`GET /api/discovery/jobs/{id}`,
   its `route`) return the code, the grant state and the evidence level.
-- The job page shows the code under the message. For an API or browser route it also shows
-  the provider key and its evidence level.
+- The job page shows the route's label, and the code under the message. For an API or
+  browser route it also shows the provider key and its support label ("Support states and
+  wording" in §1).
 
 **Route audit** (`routing.audit_route`, `audit/service.py`):
 

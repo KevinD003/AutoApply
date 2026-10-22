@@ -301,10 +301,7 @@ def get_route(job_id: uuid.UUID, user: User = Depends(current_user), db: Session
     if routing.audit_route(db, user.id, job.id, d):
         db.commit()
     spec = registry.PROVIDERS.get(d.provider)
-    return {"route": d.route, "provider": d.provider, "message": d.message, "steps": d.steps,
-            "reason": d.reason, "authorization": d.authorization,
-            "evidence": routing.evidence_level(d),
-            "stage": spec.stage if spec else None}  # fmt: skip
+    return {**routing.route_view(d), "steps": d.steps, "stage": spec.stage if spec else None}
 
 
 @router.patch("/{job_id}", response_model=JobOut)

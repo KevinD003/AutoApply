@@ -257,7 +257,8 @@ def test_the_discovery_view_records_a_linked_jobs_route_as_the_job_page_does(api
     assert view == {"route": "manual_handoff", "provider": "manual_handoff",
                     "message": "Capture the application form first.",
                     "reason": "no_form_captured", "authorization": "not_applicable",
-                    "evidence": "none"}  # fmt: skip
+                    "evidence": "none", "label": "Manual: apply on the employer's site",
+                    "provider_support": "Manual: you apply on the employer's site"}  # fmt: skip
     assert [x.meta["reason_code"] for x in route_rows(linked.job_id)] == ["no_form_captured"]
     page = api.get(f"/jobs/{linked.job_id}/route").json()
     assert {k: page[k] for k in view} == view  # the same decision, from the job page...

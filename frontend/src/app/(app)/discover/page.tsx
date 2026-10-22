@@ -60,7 +60,7 @@ export default function DiscoverPage() {
               <li key={p.name} className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{p.label}</span>
                 <Badge tone={p.enabled ? "green" : "slate"}>{p.enabled ? "enabled" : "disabled"}</Badge>
-                {!p.status.external_api_tested && <Badge tone="amber">not tested against the live service</Badge>}
+                <Badge tone="amber">{p.support_label}</Badge>
                 <span className="text-slate-500">{p.status.note}</span>
               </li>
             ))}

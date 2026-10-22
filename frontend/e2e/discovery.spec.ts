@@ -29,7 +29,7 @@ test("discover jobs: source, import result, duplicates, incomplete fields, outag
   await expect(page.getByText(/They are not verified/)).toBeVisible();
   const sources = page.locator("section", { has: page.getByRole("heading", { name: "Sources" }) });
   await expect(sources.getByText("enabled", { exact: true })).toBeVisible();
-  await expect(sources.getByText("not tested against the live service").first()).toBeVisible();
+  await expect(sources.getByText("Local test fixtures only").first()).toBeVisible(); // served, derived from evidence
 
   await page.getByRole("button", { name: "Find jobs" }).click();
   await expect(

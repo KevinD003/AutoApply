@@ -38,6 +38,9 @@ test("job page shows the execution route: Workday unsupported, uncaptured form m
   expect(form.status()).toBe(201);
   await page.goto(`/jobs/${fixture}`);
   await expect(card.getByText("Browser adapter (local test fixture only)")).toBeVisible();
-  await expect(card.getByText("Provider: fixture_ats · evidence: fixture")).toBeVisible();
+  await expect(card.getByText("Provider: fixture_ats — Local test fixtures only")).toBeVisible();
   await expect(card.getByText("Reason code: browser_supported")).toBeVisible();
+  // The card shows the wording the API serves (derived from evidence), not wording of its own.
+  const served = await (await page.request.get(`/api/jobs/${fixture}/route`)).json();
+  expect([served.label, served.provider_support]).toEqual(["Browser adapter (local test fixture only)", "Local test fixtures only"]);
 });

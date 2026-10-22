@@ -107,6 +107,7 @@ export interface DiscoveryProviderInfo {
     production_ready: boolean;
     note: string;
   };
+  support_label: string; // derived from the provider registry's evidence (backend providers/wording.py)
 }
 
 export interface SourceFact {
@@ -253,6 +254,8 @@ export interface PackageView {
     | { status: "invalidated"; approved_at: string; invalidated_at: string; reason: string }
     | { status: "not_approved" };
   history: { version: number; created_at: string; change_summary: string[]; was_approved: boolean }[];
+  // Served wording (backend providers/wording.py): set when the form's source is a local test stand-in.
+  labels: { form_source: string | null };
   drafting_available: boolean;
   drafts: { id: string; field_key: string; text: string; evidence: string[]; provider: string }[];
 }

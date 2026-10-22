@@ -415,3 +415,17 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   is no longer recorded is when an unchanged route was shown again; the decision itself is
   already there. Two concurrent first checks may each record one.
 - **Status:** no support state, routing order or live gate changed.
+
+## D37 — Support wording is derived from evidence and served from one place (2026-10-22)
+- **One source:** every user-visible support label (provider support states, routes and the
+  evidence behind them, captured-form sources) lives in `providers/wording.py`. The API serves
+  the labels; the pages write none of their own (checked against the frontend sources).
+- **Derived, not declared:** a provider's support state follows from its stage and capability
+  levels. A hand-written line cannot raise it.
+- **No live label in advance:** a live level has no label, so a page cannot show one until it
+  is added deliberately, with its evidence, tests and documentation. An API or browser route
+  is never shown without the evidence behind it.
+- **Wording is not content:** labels are served next to a package, never inside it, so a
+  wording change never changes a package hash or invalidates an approval.
+- **Status:** no support state changed. The wording on two pages that described the same form
+  differently is now one label.

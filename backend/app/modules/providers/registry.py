@@ -6,6 +6,7 @@ seen on one real page under a separately approved read-only scope, never more.""
 
 from dataclasses import replace
 
+from app.modules.providers import wording
 from app.modules.providers.model import (
     FIXTURE,
     Capability,
@@ -260,6 +261,8 @@ def summary() -> dict:
             "capabilities": matrix(p),
             "real_destinations_enabled": p.real_destinations_enabled,
             "status": p.status,
+            "support_state": wording.support_state(p),
+            "support_label": wording.support_label(p),
             "stage": p.stage,
             "ats": p.ats,
             "traits": {t.value: {"value": v.value, "note": v.note} for t, v in p.traits.items()},

@@ -46,6 +46,7 @@ from app.modules.profiles.models import (
     Approval,
     Provenance,
 )
+from app.modules.providers import wording
 
 router = APIRouter(tags=["preparation"])
 
@@ -220,6 +221,7 @@ def _form_out(form) -> dict:
         "id": str(form.id),
         "version": form.version,
         "source": form.source,
+        "source_label": wording.form_source_label(form.source),
         "source_ref": form.source_ref,
         "fingerprint": form.fingerprint,
         "extraction_version": form.extraction_version,
@@ -276,6 +278,10 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
             "created_at": pkg.created_at,
             "change_summary": pkg.change_summary,
             "content": pkg.content,
+        },
+        # Outside the content, so wording never changes the package hash.
+        "labels": {
+            "form_source": wording.form_source_label(pkg.content["destination"]["form_source"])
         },
         "approval": (
             {"status": "approved", "approved_at": appr.approved_at, "version": pkg.version}

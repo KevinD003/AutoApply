@@ -112,19 +112,9 @@ export default function ReviewPage() {
           Form v{c.destination.form_version} ({c.destination.form_source}
           {c.destination.form_title ? ` — ${c.destination.form_title}` : ""})
         </p>
-        {c.destination.form_source === "fixture" && (
+        {view.labels.form_source && (
           <p className="mt-2">
-            <Badge tone="amber">Local test fixture — fictional employer</Badge>
-          </p>
-        )}
-        {c.destination.form_source === "greenhouse_api" && (
-          <p className="mt-2">
-            <Badge tone="amber">Greenhouse-style form — local test approximation, fictional employer</Badge>
-          </p>
-        )}
-        {c.destination.form_source === "greenhouse_api_dom" && (
-          <p className="mt-2">
-            <Badge tone="amber">Greenhouse-style form (id-mapped) — second local test approximation, fictional employer</Badge>
+            <Badge tone="amber">{view.labels.form_source}</Badge>
           </p>
         )}
       </Card>
