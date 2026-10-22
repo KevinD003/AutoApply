@@ -210,10 +210,11 @@ def test_a_workday_job_is_shown_unsupported_never_routed_to_greenhouse(api, rece
 
 
 def test_a_form_from_another_ats_is_refused():
-    url = "https://jobs.lever.co/acme/0b9c6d2e-1f3a-4e5b-8c7d-9a0b1c2d3e4f"
-    d = routing.decide({"origin": "https://jobs.lever.co", "url": url, "submit_url": url,
+    url = "https://jobs.ashbyhq.com/acme/0b9c6d2e-1f3a-4e5b-8c7d-9a0b1c2d3e4f"  # no spec
+    d = routing.decide({"origin": "https://jobs.ashbyhq.com", "url": url, "submit_url": url,
                         "form_source": "greenhouse_api_dom"})  # fmt: skip
     assert d.provider == "manual_handoff" and "does not belong" in d.message
+    assert d.reason == "form_ats_mismatch"
 
 
 def test_another_users_job_route_is_not_found_and_not_audited(api, other_api):

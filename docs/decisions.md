@@ -458,3 +458,18 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 
   The documented status table is tested against the computation. Today none of the seven is
   met.
+
+## D40 — Lever is a planned provider: identity, an honest route, and expectations only (2026-10-22)
+- **Planned, like Workday (D35):** `lever` is registered with no operations or capabilities,
+  and nothing was read from Lever to define it. Its identity comes from known hostnames only.
+- **Route:** a Lever job is a manual handoff that says Lever is not supported yet
+  (`planned_adapter_only`), before any other step. A form captured as another ATS cannot
+  pull it into that ATS's adapter.
+- **Traits are expectations, never observations.** CAPTCHA is expected; login, multiple steps
+  and verification are "unknown" with the expectation noted as unverified. They are never
+  "no", which would need evidence.
+- **Docs held to the registry:** the routing-vocabulary table in
+  `docs/provider-architecture.md` is tested column by column against the registry, so a
+  planned provider can never be documented with more than it has.
+- **A form-ATS mismatch** is now shown with an ATS that has no specification (Ashby), since
+  Lever's own planned refusal comes first.

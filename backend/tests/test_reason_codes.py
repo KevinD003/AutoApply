@@ -29,7 +29,8 @@ from tests.test_greenhouse_dom import LOC_JOB, v2_job
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 APP = ROOT / "backend" / "app"
 DOC = ROOT / "docs" / "provider-architecture.md"
-LEVER_URL = "https://jobs.lever.co/acme/0b9c6d2e-1f3a-4e5b-8c7d-9a0b1c2d3e4f"
+LEVER_URL = "https://jobs.lever.co/acme/0b9c6d2e-1f3a-4e5b-8c7d-9a0b1c2d3e4f"  # planned
+ASHBY_URL = "https://jobs.ashbyhq.com/acme/0b9c6d2e-1f3a-4e5b-8c7d-9a0b1c2d3e4f"  # no spec
 ELSEWHERE = "https://careers.example.com"  # a non-fixture origin; never contacted
 GH2 = {"origin": BASE, "url": f"{BASE}/gh2/northwind/jobs/5020001",
        "submit_url": f"{BASE}/gh2/northwind/jobs/5020001/submit",
@@ -106,7 +107,7 @@ PATHS = {
     "api_authorized": lambda c: routing.decide(GH2, authorize_api(c.api, c.monkeypatch)).reason,
     "browser_supported": lambda c: routing.decide(GH2).reason,
     "planned_adapter_only": lambda c: routing.decide({**GH2, "url": WORKDAY_URL}).reason,
-    "form_ats_mismatch": lambda c: routing.decide({**GH2, "url": LEVER_URL}).reason,
+    "form_ats_mismatch": lambda c: routing.decide({**GH2, "url": ASHBY_URL}).reason,
     "no_form_captured": lambda c: _job_route(c),
     "unsupported_required_control": lambda c: _job_route(c, LOC_JOB, capture=True),
     "real_destination_disabled": lambda c: routing.decide(REAL).reason,
@@ -184,7 +185,7 @@ def test_no_destination_falls_through_to_the_fallback(env, api, monkeypatch):
     for origin, user_id, source in itertools.product(origins, user_ids, sources):
         submits = (f"{origin}/submit" if origin else None, f"{ELSEWHERE}/elsewhere", None)
         urls = (f"{origin}/gh2/northwind/jobs/5020001" if origin else None, WORKDAY_URL,
-                LEVER_URL, None)  # fmt: skip
+                LEVER_URL, ASHBY_URL, None)  # fmt: skip
         for submit, url in itertools.product(submits, urls):
             dest = {"origin": origin, "url": url, "submit_url": submit, "form_source": source}
             d = routing.decide(dest, user_id)

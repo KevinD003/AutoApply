@@ -29,7 +29,8 @@ EXPECTED = {
     "fixture_ats": "fixture_only", "greenhouse_hosted": "fixture_only",
     "greenhouse_dom": "observed_read_only", "fake_api": "fixture_only",
     "greenhouse_readonly": "observed_read_only", "freehire_mock": "fixture_only",
-    "freehire": "fixture_only", "workday": "planned", "manual_handoff": "manual",
+    "freehire": "fixture_only", "workday": "planned", "lever": "planned",
+    "manual_handoff": "manual",
 }  # fmt: skip
 
 

@@ -175,6 +175,15 @@ PROVIDERS: dict[str, ProviderSpec] = {
         stage="planned",
         status="Planned only. Workday applications are not supported: no automation exists.",
     ),
+    "lever": ProviderSpec(
+        name="lever",
+        kind=Kind.browser,
+        description="Future Lever adapter: a specification only (docs/provider-architecture.md"
+        " §7b). No code, no fixture, no observation; nothing was read from Lever.",
+        operations=frozenset(),
+        stage="planned",
+        status="Planned only. Lever applications are not supported: no automation exists.",
+    ),
     "manual_handoff": ProviderSpec(
         name="manual_handoff",
         kind=Kind.manual,
@@ -226,6 +235,14 @@ _TRAITS: dict[str, dict[Trait, TraitValue]] = {
     "freehire": _NA,
     "freehire_mock": _NA,
     "manual_handoff": _NA,
+    # Lever: the specification's expectations, none observed (nothing was read from Lever).
+    "lever": {
+        T.login_required: V("unknown", "a hosted form without a candidate account is "
+                                       "expected; unverified"),
+        T.manual_verification_required: V("unknown", "not specified; unverified"),
+        T.captcha_possible: V("expected", "a checkpoint for the user, never solved"),
+        T.multi_step: V("unknown", "a single page is expected; unverified"),
+    },
     "workday": {
         T.login_required: V("expected", "employer-scoped candidate accounts and sessions"),
         T.manual_verification_required: V("expected", "email verification, security prompts"),
@@ -236,7 +253,7 @@ _TRAITS: dict[str, dict[Trait, TraitValue]] = {
 # The ATS identity each provider serves (jobs.canonical.detect_ats names). Fixture origins are
 # identified as "unknown", so fixture adapters are chosen by the captured form, not by host.
 _ATS = {"greenhouse_hosted": "greenhouse", "greenhouse_dom": "greenhouse",
-        "greenhouse_readonly": "greenhouse", "workday": "workday"}  # fmt: skip
+        "greenhouse_readonly": "greenhouse", "lever": "lever", "workday": "workday"}  # fmt: skip
 PROVIDERS = {k: replace(v, traits=_TRAITS.get(k, {}), ats=_ATS.get(k))
              for k, v in PROVIDERS.items()}  # fmt: skip
 

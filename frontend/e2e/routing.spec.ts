@@ -28,6 +28,12 @@ test("job page shows the execution route: Workday unsupported, uncaptured form m
   await expect(card.getByText("Reason code: planned_adapter_only")).toBeVisible();
   await expect(card.getByText(/^Provider:/)).toHaveCount(0); // no provider acts on a manual route
 
+  // Lever is a planned provider only: a fictional posting id, never requested.
+  const lever = await add({ url: "https://jobs.lever.co/acme/0b9c6d2e-1f3a-4e5b-8c7d-9a0b1c2d3e4f", title: "Engineer", employer: "Acme Example (fictional)" });
+  await page.goto(`/jobs/${lever}`);
+  await expect(card.getByText(/Lever applications are not supported yet/)).toBeVisible();
+  await expect(card.getByText("Reason code: planned_adapter_only")).toBeVisible();
+
   const plain = await add({ title: "Clerk", employer: "Example Co (fictional)" });
   await page.goto(`/jobs/${plain}`);
   await expect(card.getByText("Capture the application form first.")).toBeVisible();

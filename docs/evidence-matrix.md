@@ -9,6 +9,19 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Lever as a planned provider (2026-10-22; local only, nothing read from Lever)
+
+The Lever URLs in these tests are fictional (company "acme", a random posting id) and are
+never requested.
+
+| Requirement | Evidence (`tests/test_lever.py` unless noted) | Result |
+|---|---|---|
+| Identity from known hostnames only | `test_lever_postings_are_identified_from_their_hostname_and_path` (4), `test_anything_else_is_not_lever` (5) | posting, `/apply`, tracking query and EU host: `lever`, company and posting id; tracking parameters dropped. Vendor site, company page, non-UUID id, lookalike host and a query parameter: `unknown` |
+| A specification only | `test_lever_is_a_specification_only` | planned; no operations or capabilities; every routing capability `none`; CAPTCHA `expected`; login, multi-step and verification `unknown` with "unverified" (never "no"); "Planned only: no automation exists". Claiming login "no", or not expecting a CAPTCHA, is caught |
+| An honest route, never another ATS's adapter | `test_a_lever_job_is_shown_unsupported_and_never_routed_to_greenhouse`; `frontend/e2e/routing.spec.ts` | manual handoff, `planned_adapter_only`, "Lever applications are not supported yet"; a Greenhouse form source changes nothing; Greenhouse capture refused (400) with 0 requests; the job page shows it. Unlinking Lever from its ATS is caught |
+| The documented vocabulary is the registry | `test_the_documented_routing_vocabulary_is_the_registry` | every column of the routing-vocabulary table, Lever's included, equals `routing_view`; a drifted cell is caught |
+| A form-ATS mismatch still has a path | `tests/test_reason_codes.py`, `test_a_form_from_another_ats_is_refused` | shown with a fictional Ashby posting (no specification): `form_ats_mismatch` |
+
 ## Greenhouse: page controls the job data does not list (2026-10-22; local only, no external request)
 
 Local fixture (`gh2_dd_extras`: a phone-country selector inside the phone group and a required

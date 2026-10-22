@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-22 (location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-22 (Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,37 @@ Last updated: 2026-10-22 (location design without hidden coordinates; page contr
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Lever as a planned provider (F1, F2, F4, F5, 2026-10-22; local only, nothing read from Lever)
+
+- **Nothing changed outside the repository.** No Lever page, API or documentation was read,
+  and no support state was raised: `lever` is a planned specification with nothing
+  implemented. Evidence: `docs/evidence-matrix.md` ("Lever as a planned provider"); decision
+  D40; `docs/provider-architecture.md` §7b.
+- **Identity (F1):** Lever postings are identified from known hostnames and a UUID posting id
+  only. Identity variants and lookalikes are tested.
+- **Traits (F2):** CAPTCHA `expected`; login, multi-step and verification `unknown`, noted as
+  unverified expectations.
+- **Route (F4):** a Lever job is a manual handoff that says Lever is not supported yet
+  (`planned_adapter_only`). Before, it got the general real-destination refusal (B7). It is
+  never routed to another ATS's adapter.
+- **Support state (F5):** "Planned only: no automation exists". The routing-vocabulary table
+  in the architecture doc gained a Lever column and is now tested against the registry, column
+  by column.
+- **Moved:** the form-ATS mismatch tests use a fictional Ashby posting, since Lever's own
+  planned refusal now comes first.
+- **Not done here:** a Lever fixture (F3) and a pilot-readiness framework (F6); each needs its
+  own step, starting with an approved review of Lever's public documentation.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - Lever, reason-code, execution-routing and support-wording modules (4 files): 57 passed;
+  - full backend (`pytest tests`): 642 passed;
+  - Playwright: 32 passed, 2 skipped (the desktop-only configuration checks);
+  - `ruff check` and `ruff format --check` clean;
+  - sabotage checks, each caught: login claimed "no", no CAPTCHA expected, Lever unlinked
+    from its ATS, and a drifted cell in the documented table.
+- **CI for the previous change:** **CI #90**
+  ([39752326150](https://github.com/KevinD003/AutoApply/actions/runs/39752326150)) (`e67a6ca`,
+  E3, E4): passed.
 
 ## Greenhouse: location without hidden coordinates (E4, 2026-10-22; design only)
 

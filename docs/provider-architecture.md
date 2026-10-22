@@ -104,7 +104,8 @@ their own; `tests/test_support_wording.py` reads the frontend sources to check.
 
 Columns: FA = `fixture_ats`, GH = `greenhouse_hosted`, GD = `greenhouse_dom`, API =
 `fake_api`, RO = `greenhouse_readonly` (observation), FH = `freehire_mock` and `freehire`
-(discovery; identical rows), MH = `manual_handoff`. A dash means none.
+(discovery; identical rows), MH = `manual_handoff`. A dash means none. The planned providers
+(`workday`, `lever`) have no capabilities, so they have no column here.
 
 | Capability | FA | GH | GD | API | RO | FH | MH |
 |---|---|---|---|---|---|---|---|
@@ -203,24 +204,25 @@ capabilities. Rows marked *trait* are what a workflow demands, not what NoEffort
 Levels: `fixture` = local fixture only; `observed` = seen read-only on one real page; `none` =
 not implemented. **No cell is `live_fill` or `live_submit`.**
 
-| Capability | fixture_ats | greenhouse_hosted | greenhouse_dom | fake_api | greenhouse_readonly | freehire / mock | workday (planned) | manual_handoff |
-|---|---|---|---|---|---|---|---|---|
-| discovery | none | none | none | none | none | fixture | none | none |
-| public_schema_read | fixture | fixture | observed | fixture | observed | none | none | none |
-| API_submission | none | none | none | fixture | none | none | none | none |
-| browser_inspection | fixture | fixture | observed | none | observed | none | none | none |
-| browser_fill | fixture | fixture | fixture | none | none | none | none | none |
-| document_upload | fixture | fixture | fixture | fixture | none | none | none | none |
-| login_required *(trait)* | no | unknown | no | no | no | n/a | expected | n/a |
-| manual_verification_required *(trait)* | yes | unknown | unknown | no | n/a | n/a | expected | n/a |
-| CAPTCHA_possible *(trait)* | no | unknown | unknown | no | unknown | n/a | expected | n/a |
-| multi_step *(trait)* | no | unknown | no | no | no | n/a | expected | n/a |
-| location_picker | none | none | none | none | none | none | none | none |
-| custom_dropdown | none | none | fixture | none | observed (structure only) | none | none | none |
-| confirmation_detection | fixture | fixture | fixture | fixture | none | none | none | none |
+| Capability | fixture_ats | greenhouse_hosted | greenhouse_dom | fake_api | greenhouse_readonly | freehire / mock | workday (planned) | lever (planned) | manual_handoff |
+|---|---|---|---|---|---|---|---|---|---|
+| discovery | none | none | none | none | none | fixture | none | none | none |
+| public_schema_read | fixture | fixture | observed | fixture | observed | none | none | none | none |
+| API_submission | none | none | none | fixture | none | none | none | none | none |
+| browser_inspection | fixture | fixture | observed | none | observed | none | none | none | none |
+| browser_fill | fixture | fixture | fixture | none | none | none | none | none | none |
+| document_upload | fixture | fixture | fixture | fixture | none | none | none | none | none |
+| login_required *(trait)* | no | unknown | no | no | no | n/a | expected | unknown | n/a |
+| manual_verification_required *(trait)* | yes | unknown | unknown | no | n/a | n/a | expected | unknown | n/a |
+| CAPTCHA_possible *(trait)* | no | unknown | unknown | no | unknown | n/a | expected | expected | n/a |
+| multi_step *(trait)* | no | unknown | no | no | no | n/a | expected | unknown | n/a |
+| location_picker | none | none | none | none | none | none | none | none | none |
+| custom_dropdown | none | none | fixture | none | observed (structure only) | none | none | none | none |
+| confirmation_detection | fixture | fixture | fixture | fixture | none | none | none | none | none |
 
 Both views are served at `GET /api/providers` (`routing_capabilities`, `traits`,
-`interface`, `stage`).
+`interface`, `stage`). `tests/test_lever.py` fails when a column of the table above differs
+from the registry.
 
 **Routing order** (`routing.decide`, `routing.route_for_job`; `GET /api/jobs/{id}/route`):
 
@@ -560,6 +562,48 @@ Safe implementation sequence. Each step needs its own approval before the next:
    never stores the credentials.
 6. An approved dry-run filling fixture, with a disclosure boundary per page.
 7. A separately approved real pilot.
+
+## 7b. Lever (future adapter specification only)
+
+**No Lever automation exists, and nothing was read from Lever** (no page, API or
+documentation). `lever` is registered as a *planned* provider:
+
+- it has no operations, no capabilities, no code, no fixture and no observation;
+- **identity** (`jobs.canonical.detect_ats`): a posting is `jobs.lever.co/{company}/{posting
+  id}` or `jobs.eu.lever.co/…`, where the posting id is a UUID. An `/apply` suffix and query
+  strings are accepted, and `lever-source…` tracking parameters are dropped. The vendor's own
+  site, a company page without a posting, a non-UUID id and lookalike hosts are not Lever
+  (tested);
+- **routing** turns every Lever job into a manual handoff that says so ("Lever applications
+  are not supported yet", `planned_adapter_only`). It is never routed to the Greenhouse or
+  fixture adapter, even with a form captured as Greenhouse, and its form is never captured as
+  a Greenhouse form (tested);
+- **support wording** is "Planned only: no automation exists"
+  (`providers/wording.py`).
+
+Expectations for a future Lever adapter. They are unverified, recorded as traits only where
+the specification expects something, and as "unknown" otherwise:
+
+- **CAPTCHA possible:** expected. A checkpoint for the user, never solved.
+- **Login:** unknown. A hosted application form without a candidate account is expected but
+  not verified, so the trait is not "no".
+- **Multi-step:** unknown. A single page is expected but not verified.
+- **Manual verification:** unknown.
+- **Sensitive questions** (for example an optional demographic survey) would follow the
+  existing consent model: never inferred, disclosed only by an explicit per-question choice.
+- **Any API route** would need the employer's own authorization. None exists for
+  candidates, so the authorized-API route does not apply.
+
+Safe implementation sequence, the same as for Workday (§7). Each step needs its own approval
+before the next:
+
+1. A review of Lever's public documentation and terms, in repository-safe form.
+2. A local synthetic fixture.
+3. A read-only, approved compatibility observation.
+4. An evidence-backed extractor.
+5. A supported-control matrix.
+6. An approved dry-run.
+7. A separately approved pilot.
 
 ## 8. Greenhouse status (no Greenhouse request was made in this task)
 
