@@ -46,7 +46,7 @@ from app.modules.execution.policy import (
     check_binding,
 )
 from app.modules.preparation import package as pk
-from app.modules.preparation.models import ApprovalScope, PackageApproval
+from app.modules.preparation.models import ApplicationPackage, ApprovalScope, PackageApproval
 
 S = AttemptState
 TOPIC_EXECUTE = "execute_attempt"
@@ -86,10 +86,27 @@ def enqueue(db: Session, app: Application) -> ExecutionAttempt:
         raise pk.ApprovalError("Approve the current package version before queueing.")
     adapter_for(pkg.content["destination"])  # raises if unsupported
     try:
-        adapter = check_binding(appr, pkg.content["destination"])["adapter"]
+        binding = check_binding(appr, pkg.content["destination"])
     except BindingChanged as e:
         e.approval_id = appr.id  # the caller retires it after rolling back the queue
         raise
+    adapter, dest = binding["adapter"], pkg.content["destination"]
+    cls = rehearsal.destination_class(dest.get("origin"))
+    ref = rehearsal.path_ref(app.user_id, rehearsal.execution_path(dest, adapter))
+    if appr.scope == ApprovalScope.submit:
+        v = rehearsal.prerequisite(
+            db,
+            layer="enqueue",
+            user_id=app.user_id,
+            destination=dest,
+            adapter=adapter,
+            adapter_version=binding["adapter_version"],
+            destination_class=cls,
+            path_ref_value=ref,
+            approval=appr,
+        )
+        if v.status == rehearsal.UNMET:
+            raise rehearsal.RehearsalRequired(v.code)  # the caller rolls the queueing back
     att = ExecutionAttempt(
         application_id=app.id,
         user_id=app.user_id,
@@ -97,7 +114,8 @@ def enqueue(db: Session, app: Application) -> ExecutionAttempt:
         package_hash=pkg.content_hash,
         approval_id=appr.id,
         adapter=adapter,
-        destination_class=rehearsal.destination_class(pkg.content["destination"].get("origin")),
+        destination_class=cls,
+        path_ref=ref,
     )
     db.add(att)
     db.flush()
@@ -182,8 +200,15 @@ def claim(attempt_id: uuid.UUID, worker: str) -> int | None:
             att.state, att.finished_at = S.failed_safe, now
             att.outcome_detail = "Approval no longer valid when a worker picked this up."
             event(db, att, "claim_refused_approval")
-            if app.state == AppState.queued:
-                _app_to(db, app, AppState.awaiting_approval, Actor.system, att.outcome_detail)
+            _claim_refused(db, app, att.outcome_detail)
+            db.commit()
+            return None
+        code = _claim_prerequisite(db, att)
+        if code is not None:  # before any page is opened; nothing is disclosed
+            att.state, att.finished_at = S.failed_safe, now
+            att.outcome_detail = rehearsal.refusal(code)
+            event(db, att, "claim_refused_rehearsal", reason_code=code)
+            _claim_refused(db, app, att.outcome_detail)
             db.commit()
             return None
         if app.state == AppState.queued:
@@ -191,6 +216,38 @@ def claim(attempt_id: uuid.UUID, worker: str) -> int | None:
         event(db, att, "claimed", worker=worker)
         db.commit()
         return gen
+
+
+def _claim_refused(db: Session, app: Application, reason: str) -> None:
+    """The application after a claim refused its attempt: back to approval when it was queued;
+    waiting for the user when it was already running (a re-claim after the sweeper re-pended
+    an attempt that had disclosed nothing), so it is never left `running` with no attempt."""
+    if app.state == AppState.queued:
+        _app_to(db, app, AppState.awaiting_approval, Actor.system, reason)
+    elif app.state == AppState.running:
+        _app_to(db, app, AppState.needs_user_action, Actor.system, reason)
+
+
+def _claim_prerequisite(db: Session, att: ExecutionAttempt) -> str | None:
+    """The rehearsal prerequisite at claim, from the attempt's recorded class and path and its
+    immutable package; a code if unmet. Only an approval to submit has the prerequisite."""
+    appr = db.get(PackageApproval, att.approval_id)
+    if appr.scope != ApprovalScope.submit or att.destination_class is None:
+        return None  # no class recorded: the disclosure gate refuses it, with its own message
+    dest = db.get(ApplicationPackage, att.package_id).content["destination"]
+    binding = approved_binding(appr, dest) or {}
+    v = rehearsal.prerequisite(
+        db,
+        layer="claim",
+        user_id=att.user_id,
+        destination=dest,
+        adapter=att.adapter,
+        adapter_version=binding.get("adapter_version"),
+        destination_class=att.destination_class,
+        path_ref_value=att.path_ref,
+        approval=appr,
+    )
+    return v.code if v.status == rehearsal.UNMET else None
 
 
 def _approval_still_valid(db: Session, app: Application, att: ExecutionAttempt) -> bool:
@@ -294,6 +351,29 @@ def _gate_checks(db: Session, att: ExecutionAttempt, approval_lock: str = "share
     return GateContext(app, content, appr)
 
 
+def _gate_prerequisite(db: Session, att: ExecutionAttempt, ctx: GateContext, layer: str):
+    """The rehearsal prerequisite inside a gate, with what it relies on locked; GateRefused (with
+    its code) if unmet. Returns the verdict, or None for an attempt that does not submit."""
+    if ctx.approval.scope != ApprovalScope.submit:
+        return None
+    dest = ctx.content["destination"]
+    v = rehearsal.prerequisite(
+        db,
+        layer=layer,
+        user_id=att.user_id,
+        destination=dest,
+        adapter=att.adapter,
+        adapter_version=approved_binding(ctx.approval, dest)["adapter_version"],
+        destination_class=att.destination_class,
+        path_ref_value=att.path_ref,
+        approval=ctx.approval,
+        lock=True,
+    )
+    if v.status == rehearsal.UNMET:
+        raise GateRefused(rehearsal.refusal(v.code), v.code)
+    return v
+
+
 def _repeatable_read() -> Session:
     db = SessionLocal()
     db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
@@ -306,7 +386,7 @@ def gate_before_disclosure(attempt_id, worker: str, gen: int) -> None:
     with _repeatable_read() as db:
         att = _locked_attempt(db, attempt_id, worker, gen, S.claimed)
         try:
-            _gate_checks(db, att)
+            _gate_prerequisite(db, att, _gate_checks(db, att), "disclosure")
         except GateRefused as e:
             db.rollback()
             raise GateRefused(str(e), e.code) from None
@@ -322,15 +402,18 @@ def gate_before_send(attempt_id, worker: str, gen: int) -> None:
     with _repeatable_read() as db:
         att = _locked_attempt(db, attempt_id, worker, gen, S.claimed)
         try:
-            app = _gate_checks(db, att).app
+            ctx = _gate_checks(db, att)
             # A rehearsal stops before this gate (runner); this refusal holds even if it did not.
-            if db.get(PackageApproval, att.approval_id).scope != ApprovalScope.submit:
+            if ctx.approval.scope != ApprovalScope.submit:
                 raise GateRefused("this approval permits filling and checking only, not submitting")
+            verdict = _gate_prerequisite(db, att, ctx, "send")
         except GateRefused as e:
             db.rollback()
             raise GateRefused(str(e), e.code) from None
+        app = ctx.app
         now = utcnow()
         att.state, att.send_started_at = S.sending, now
+        att.rehearsal_prerequisite = verdict.status
         att.lease_expires_at = now + timedelta(seconds=get_settings().submit_timeout_seconds + 30)
         _app_to(db, app, AppState.ready_to_submit, Actor.worker, "Filled and checked")
         _app_to(db, app, AppState.submitting, Actor.worker, "Submitting")
@@ -499,6 +582,7 @@ def finish_rehearsal(attempt_id, worker: str, gen: int) -> None:
                 destination_class=att.destination_class,
                 adapter=att.adapter,
                 adapter_version=version,
+                path_ref=att.path_ref,
                 **facts,
             )
         )
@@ -737,6 +821,29 @@ def purge_expired_evidence() -> int:
         n = db.execute(delete(Evidence).where(Evidence.retain_until < utcnow())).rowcount
         db.commit()
         return n
+
+
+def withdraw_rehearsal(db: Session, app: Application, attempt_id) -> RehearsalRecord:
+    """The user withdraws a rehearsal: its record is revoked (never edited back), so it no longer
+    meets the prerequisite. Takes the application lock, then the record; a gate relying on the
+    record holds it FOR SHARE, so a withdrawal is either before that gate (and refuses it) or
+    after it. Idempotent. LookupError if the attempt is not this application's rehearsal."""
+    pk.lock_application(db, app.id)
+    rec = db.scalar(
+        select(RehearsalRecord)
+        .where(
+            RehearsalRecord.attempt_id == attempt_id,
+            RehearsalRecord.application_id == app.id,
+            RehearsalRecord.user_id == app.user_id,
+        )
+        .with_for_update()
+    )
+    if rec is None:
+        raise LookupError("Rehearsal")
+    if rec.revoked_at is None:
+        rec.revoked_at, rec.revoked_reason = utcnow(), "withdrawn_by_user"
+        record(db, app.user_id, "rehearsal.withdraw", "application", app.id)
+    return rec
 
 
 def delete_application_evidence(db: Session, app: Application) -> int:

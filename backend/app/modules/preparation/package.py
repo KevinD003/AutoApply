@@ -449,10 +449,27 @@ def approve(
                 "Revoke that approval first."
             )
         return active
+    from app.modules.execution import rehearsal
     from app.modules.execution.policy import execution_binding
 
     now = utcnow()
-    binding = execution_binding(pkg.content["destination"], app.user_id) or {}
+    dest = pkg.content["destination"]
+    binding = execution_binding(dest, app.user_id) or {}
+    verdict = None
+    if scope == ApprovalScope.submit and binding:
+        # E6: an approval to submit needs the rehearsal prerequisite met on this path. A manual
+        # handoff (no binding; every real employer today) keeps its own route reason instead.
+        verdict = rehearsal.prerequisite(
+            db,
+            layer="approve",
+            user_id=app.user_id,
+            destination=dest,
+            adapter=binding["adapter"],
+            adapter_version=binding["adapter_version"],
+            destination_class=rehearsal.destination_class(dest.get("origin")),
+        )
+        if verdict.status == rehearsal.UNMET:
+            raise rehearsal.RehearsalRequired(verdict.code)
     appr = PackageApproval(
         package_id=pkg.id,
         application_id=app.id,
@@ -463,6 +480,7 @@ def approve(
         scope=scope,
         approved_at=now,
         expires_at=now + timedelta(hours=get_settings().approval_ttl_hours),
+        prerequisite_attempt_id=verdict.basis if verdict else None,
     )
     db.add(appr)
     record(
@@ -476,6 +494,7 @@ def approve(
         adapter=binding.get("adapter"),
         adapter_version=binding.get("adapter_version"),
         scope=scope.value,
+        rehearsal_prerequisite=verdict.status if verdict else None,
     )
     return appr
 

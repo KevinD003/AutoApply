@@ -37,6 +37,11 @@ Permission 3 can be recorded on its own: an approval to disclose only (a rehears
 gate refuses it. Today this runs on the local fixtures only: real destinations are refused
 whatever the approval, and no permission above has been given.
 
+Permission 4 on a path is usable only after a successful, recorded rehearsal under permission
+3 on that path (E6, `docs/rehearsal-prerequisite.md`), unless a submission there was already
+confirmed after one. The rehearsal never grants permission 4: it is asked for and recorded
+separately, after the rehearsal's result is shown.
+
 ## 3. Exact data to disclose (from the approved package)
 
 - Package version and content hash: _recorded at approval_.
@@ -76,9 +81,10 @@ The attempt stops, with no retry, on any of:
 
 ## 6. Confirmation and uncertain outcomes
 
-- **Confirmed:** the confirmation page was observed. Evidence: final origin and path, page
-  title, HTTP status. Greenhouse shows no application id, so this is the strongest evidence
-  available.
+- **Confirmed:** the confirmation page was observed. Evidence (as the adapters record it): the
+  final origin, a fixed value naming the confirmation seen, the HTTP status, and the receipt id
+  where the page shows one; never the path or the page title. Greenhouse shows no application
+  id, so this is the strongest evidence available.
 - **Unknown** (timeout, server error, unrecognised page): the application moves to
   `submitted_unconfirmed`. It is never resent. The user checks with the employer (email
   confirmation, candidate portal) and reconciles.

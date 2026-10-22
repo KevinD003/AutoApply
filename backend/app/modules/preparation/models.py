@@ -137,6 +137,11 @@ class PackageApproval(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     invalidation_reason: Mapped[str | None] = mapped_column(Text)
+    # E6: the attempt that met the rehearsal prerequisite when this approval to submit was given
+    # (a rehearsal, or a submission that established the path; execution/rehearsal.py). No
+    # foreign key: one would make a cycle with execution_attempts.approval_id, and an id that
+    # no longer matches simply fails the check.
+    prerequisite_attempt_id: Mapped[uuid.UUID | None] = mapped_column()
 
 
 class AnswerDraft(Base):

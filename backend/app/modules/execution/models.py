@@ -60,6 +60,12 @@ class ExecutionAttempt(Base):
             "destination_class IS NULL OR destination_class IN ('fixture','real')",
             name="ck_attempt_destination_class",
         ),
+        CheckConstraint(
+            "rehearsal_prerequisite IS NULL OR "
+            "rehearsal_prerequisite IN ('met','established','not_required')",
+            name="ck_attempt_rehearsal_prerequisite",
+        ),
+        Index("ix_execution_attempts_user_path", "user_id", "path_ref", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
@@ -82,6 +88,14 @@ class ExecutionAttempt(Base):
     # "fixture" or "real" (rehearsal.destination_class), fixed when queued; NULL = queued before
     # it was recorded, which counts in no evidence class.
     destination_class: Mapped[str | None] = mapped_column(String(10))
+    # E6: the employer/provider path (user, adapter, origin, board) as a keyed reference
+    # (rehearsal.path_ref), computed when queued; NULL when no path can be derived or for an
+    # attempt queued before it was recorded. Never served, logged or audited.
+    path_ref: Mapped[str | None] = mapped_column(String(64))
+    # How the send gate found the rehearsal prerequisite: met (a valid rehearsal), established
+    # (an earlier confirmed submission on the path), not_required (fixture paths); NULL = the
+    # send gate was never passed, or passed before this was recorded.
+    rehearsal_prerequisite: Mapped[str | None] = mapped_column(String(20))
     disclosure_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     send_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -186,6 +200,7 @@ class RehearsalRecord(Base):
             name="ck_rehearsal_revoked_reason",
         ),
         Index("ix_rehearsal_records_user_adapter", "user_id", "adapter"),
+        Index("ix_rehearsal_records_user_path", "user_id", "path_ref"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
@@ -201,6 +216,9 @@ class RehearsalRecord(Base):
     route: Mapped[str] = mapped_column(String(10))  # browser | api
     adapter: Mapped[str] = mapped_column(String(50))
     adapter_version: Mapped[str] = mapped_column(String(100))
+    # The attempt's path_ref, copied at the stop (NULL for one made before paths were recorded,
+    # which then counts for no path).
+    path_ref: Mapped[str | None] = mapped_column(String(64))
     uploads_expected: Mapped[int] = mapped_column(Integer)
     uploads_acknowledged: Mapped[int] = mapped_column(Integer)
     readback_mismatched: Mapped[int | None] = mapped_column(Integer)  # NULL on the API route

@@ -134,13 +134,15 @@ relay ── publishes attempt id ──> Redis ──> Celery task ──> clai
   → open isolated browser (origin allow-list) → load form → re-extract schema, compare
   → GATE 1 (before disclosure): REPEATABLE READ + attempt, app and approval row locks (an
     approval changed after the snapshot is a refusal); approval live, unexpired, same package
-    hash, freshly rebuilt content identical → disclosure_started_at
+    hash, freshly rebuilt content identical; for an approval to submit, the rehearsal
+    prerequisite (E6) → disclosure_started_at
   → fill + upload (evidence: disclosures) → read every control back, compare → re-extract
   → a rehearsal (approval scope `disclose_only`) stops here, through a gate: every gate check
     again under the same locks, and the evidence rows checked; then, in one commit, its record,
     attempt `rehearsed`, approval used up. Refused: `abandoned`. Nothing submitted
-  → GATE 2 (before send) — the linearization point; refuses any scope but `submit`
-    → attempt `sending`, app `submitting`
+  → GATE 2 (before send) — the linearization point; refuses any scope but `submit`, and an
+    unmet rehearsal prerequisite (E6) → attempt `sending` (prerequisite recorded), app
+    `submitting`
   → click submit → classify: receipt → confirmed | code requested → checkpoint
     | refusal → rejected | timeout/error/unrecognised → unknown (submitted_unconfirmed)
 sweeper (beat): expired leases → claimed & nothing disclosed: re-pend (≤2) |
@@ -156,6 +158,12 @@ Disclosure vs submission: gate 1 authorizes sending the approved data to the nam
 destination (filling can transmit via autosave, uploads always do). Gate 2 authorizes the
 final submit. An approval to disclose only (a rehearsal, D41) passes gate 1 and never gate 2. A form that changes (new fields, new submit target) stops the attempt before
 disclosing anything new.
+
+Rehearsal prerequisite (E6, D45, `docs/rehearsal-prerequisite.md`): before the first submission
+through an employer/provider path (user, adapter, origin, board), a valid recorded rehearsal
+on that path is required, checked at approve, enqueue, claim and both gates. Every real
+destination has the rule; fixtures only through a test-only setting. Real destinations are
+still refused before it (manual handoff).
 
 Verification codes: after the submit step, an employer may ask for an emailed code. The
 attempt moves to `awaiting_code`, the application to `needs_user_action`, and a checkpoint

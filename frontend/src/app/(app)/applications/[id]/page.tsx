@@ -20,6 +20,14 @@ const SOURCE: Record<string, { label: string; tone: "green" | "indigo" | "amber"
   unresolved: { label: "Unresolved", tone: "red" },
 };
 
+const PREREQUISITE_TONE: Record<string, "green" | "amber" | "slate"> = {
+  met: "green",
+  established: "green",
+  unmet: "amber",
+  not_required: "slate",
+  not_applicable: "slate",
+};
+
 const STATE_LABEL: Record<string, string> = {
   needs_user_action: "Needs your input",
   awaiting_approval: "Ready for your approval",
@@ -99,6 +107,7 @@ export default function ReviewPage() {
   const ready = c.unresolved.length === 0 && c.validation_errors.length === 0;
   const resumes = docs.filter((d) => d.kind === "resume");
   const drafts = Object.fromEntries(view.drafts.map((d) => [d.field_key, d]));
+  const prereq = view.rehearsal_prerequisite;
 
   return (
     <>
@@ -145,6 +154,18 @@ export default function ReviewPage() {
         {view.approval.status === "invalidated" && (
           <p className="mt-2 rounded-lg bg-red-50 p-2 text-sm text-red-800">{view.approval.reason}</p>
         )}
+        <div className="mt-3 rounded-lg border border-slate-200 p-2 text-sm" role="group" aria-label="Before the first submission">
+          <p className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">Before the first submission</span>
+            <Badge tone={PREREQUISITE_TONE[prereq.status] ?? "slate"}>{prereq.label}</Badge>
+          </p>
+          <p className="mt-1">{prereq.message}</p>
+          {prereq.reason_code && (
+            <p className="mt-1 text-xs text-slate-500">
+              Reason code: <code>{prereq.reason_code}</code>
+            </p>
+          )}
+        </div>
         {c.validation_errors.length > 0 && (
           <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-red-800" aria-label="Validation errors">
             {c.validation_errors.map((e) => (
@@ -158,7 +179,7 @@ export default function ReviewPage() {
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
-            disabled={!ready || busy || view.approval.status === "approved"}
+            disabled={!ready || busy || view.approval.status === "approved" || prereq.status === "unmet"}
             onClick={() =>
               call(
                 `/applications/${id}/package/approve`,
@@ -202,6 +223,7 @@ export default function ReviewPage() {
         appState={view.state}
         approved={view.approval.status === "approved"}
         scope={view.approval.status === "approved" ? view.approval.scope : null}
+        prerequisiteUnmet={prereq.status === "unmet"}
         onChange={load}
       />
 

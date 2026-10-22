@@ -106,15 +106,24 @@ def synthetic_candidate(api) -> None:
 
 
 def prepared_application(
-    api, receiver, *, slug="clinic", why_text=None, hear_about="input", scope=None
+    api,
+    receiver,
+    *,
+    slug="clinic",
+    why_text=None,
+    hear_about="input",
+    scope=None,
+    url_suffix="",
+    approve=True,
 ) -> str:
     """Synthetic candidate + approved package for the receiver's form. Returns app id.
-    `scope`: the approval's scope; None sends none (the default, submit)."""
+    `scope`: the approval's scope; None sends none (the default, submit). `url_suffix`: e.g.
+    "?posting=2", another posting on the same form. `approve`: False leaves it unapproved."""
     synthetic_candidate(api)
     job = api.post(
         "/jobs",
         json={
-            "url": f"{BASE}/apply/{slug}",
+            "url": f"{BASE}/apply/{slug}{url_suffix}",
             "title": "Clinic Assistant",
             "employer": "Example Health Clinic (fictional)",
         },
@@ -142,6 +151,8 @@ def prepared_application(
     ).json()
     p = v["package"]
     assert not p["content"]["unresolved"], p["content"]["unresolved"]
+    if not approve:
+        return app_id
     body = {"version": p["version"], "content_hash": p["content_hash"]}
     r = api.post(
         f"/applications/{app_id}/package/approve", json=body | ({"scope": scope} if scope else {})
@@ -151,14 +162,16 @@ def prepared_application(
 
 
 def queue(api, app_id) -> str:
+    """Queue the application; the id of the attempt this created (its newest)."""
     r = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
     assert r.status_code == 200, r.text
     with SessionLocal() as db:
         return str(
             db.scalar(
-                select(ExecutionAttempt.id).where(
-                    ExecutionAttempt.application_id == uuid.UUID(app_id)
-                )
+                select(ExecutionAttempt.id)
+                .where(ExecutionAttempt.application_id == uuid.UUID(app_id))
+                .order_by(ExecutionAttempt.created_at.desc())
+                .limit(1)
             )
         )
 

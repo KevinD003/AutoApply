@@ -39,7 +39,8 @@ different metadata key without this table changing with it.
   from a list of candidate identifiers. Neither the key nor the identifier appears in a
   reference, an audit row, a migration's output or an error message.
 - **Changing the key** makes new references unrelated to earlier ones; existing rows are not
-  rewritten.
+  rewritten. The same key makes the execution paths' references (`path_ref`,
+  `docs/rehearsal-prerequisite.md`), so after a change every path needs a new rehearsal.
 
 ## Legacy repairs
 
@@ -83,7 +84,7 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `draft.created` | `application` | `cost_usd`, `field_ref`, `provider` | drafting cost; reference; the drafting provider's name |
 | `draft.rejected` | `application` | `field_ref`, `reason_code` | reference; a fixed rejection code (`empty`, `too_long`, `placeholders`, `uncited_facts`, `invented_numbers`) |
 | `answer_bank.delete` | `answer_bank` | - | |
-| `package.approve` | `application` | `adapter`, `adapter_version`, `content_hash`, `scope`, `version` | the adapter and version bound to the approval; the package's one-way hash; `submit` or `disclose_only` (a rehearsal); package version |
+| `package.approve` | `application` | `adapter`, `adapter_version`, `content_hash`, `rehearsal_prerequisite`, `scope`, `version` | the adapter and version bound to the approval; the package's one-way hash; how the rehearsal prerequisite stood for an approval to submit (`met`, `established`, `not_required`; none for a rehearsal or a manual handoff); `submit` or `disclose_only` (a rehearsal); package version |
 | `package.approval_invalidated` | `application` | `version` | the package version that invalidated it |
 | `package.approval_retired` | `application` | `reason_code` | `execution_method_changed`, or `rehearsal_completed` (a rehearsal used its approval up; written only when the approval was still live) |
 | `package.revoke` | `application` | - | |
@@ -92,6 +93,7 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `execution.{state}` | `application` | - | `state` is the attempt state entered (`execution/models.py` `AttemptState`) |
 | `checkpoint.code_submitted` | `checkpoint` | `round` | which code round; never the code |
 | `evidence.delete` | `application` | `rehearsals_revoked`, `rows` | number of the application's rehearsal records revoked with it; number of evidence rows deleted |
+| `rehearsal.withdraw` | `application` | - | the user withdrew one of the application's rehearsals; it no longer meets the rehearsal prerequisite |
 
 ### Route decisions
 

@@ -52,6 +52,24 @@ FORM_SOURCE_LABELS: dict[str, str | None] = {
     "manual": None,
 }
 
+# What an attempt's result counts as (one of providers/evidence.py's classes), shown beside it.
+EVIDENCE_CLASS_LABELS = {
+    "fixture": "Local test fixture: counts for nothing on a real employer's form",
+    "public_doc_expectation": "Expected from public descriptions only; never seen",
+    "read_only_observation": "Seen read-only on a real page; never filled there",
+    "rehearsal": "Rehearsal on a real employer's form: filled and checked, nothing submitted",
+    "real_submission": "Submitted to a real employer's form after a rehearsal",
+}
+
+# Where the rehearsal prerequisite stands for a package (execution/rehearsal.py), on its review.
+PREREQUISITE_LABELS = {
+    "met": "Rehearsal passed",
+    "established": "Submitted here before, after a rehearsal",
+    "unmet": "Rehearsal needed before the first submission",
+    "not_required": "No rehearsal needed (local test form)",
+    "not_applicable": "Not applicable: you apply on the employer's site",
+}
+
 
 def support_state(spec: ProviderSpec) -> str:
     """The strongest evidence behind any of the provider's capabilities."""

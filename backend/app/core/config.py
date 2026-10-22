@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # A rehearsal record older than this no longer counts (execution/rehearsal.py). Must be
     # between 1 and evidence_retention_days, or every check of it refuses.
     rehearsal_max_age_days: int = 30
+    # TEST ONLY (honoured only when env == "test"): fnmatch patterns over "adapter:board" that
+    # also put the rehearsal prerequisite (execution/rehearsal.py) on those local fixture paths,
+    # so it can be exercised end to end. It can only add the requirement: every real
+    # destination always has it, and nothing that routes or classifies a destination reads it.
+    execution_test_rehearsal_rule_paths: list[str] = Field(default_factory=list)
     # Redis redelivers an unacknowledged message after this long. Production keeps 3600s; only
     # the redelivery test shortens it, for a disposable broker.
     broker_visibility_timeout_seconds: int = 3600

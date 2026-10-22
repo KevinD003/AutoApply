@@ -13,6 +13,7 @@ from app.core.errors import bad_request, conflict, not_found
 from app.modules.applications.models import Application
 from app.modules.audit.service import record, ref
 from app.modules.documents.models import Document, DocumentKind
+from app.modules.execution import rehearsal
 from app.modules.execution.models import AttemptState, ExecutionAttempt
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
@@ -321,6 +322,8 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
             "form_source": wording.form_source_label(pkg.content["destination"]["form_source"])
         },
         "approval": _approval_view(db, app, pkg, appr, last),
+        # E6: whether a submission here needs a rehearsal first, and why (execution/rehearsal.py).
+        "rehearsal_prerequisite": rehearsal.view(db, app, pkg, appr),
         "history": [
             {
                 "version": h.version,

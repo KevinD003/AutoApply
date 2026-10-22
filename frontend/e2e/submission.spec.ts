@@ -84,7 +84,11 @@ test("approve, double-click submit, see receipt; exactly one acceptance", async 
   const slug = `ok-${info.project.name}-${RUN}`;
   const { appId } = await setup(page, slug);
   await approveAndSubmit(page, appId, { double: true });
+  // Not one of the "e6-" forms: no rehearsal needed first (the served label), and the attempt is
+  // labelled as fixture evidence, never as a submission to a real employer.
+  await expect(page.getByRole("group", { name: "Before the first submission" })).not.toContainText("Reason code:");
   await expect(badge(page, "Employer receipt received")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Local test fixture: counts for nothing on a real employer's form").first()).toBeVisible();
   await expect(page.getByText(/^Receipt R-/)).toBeVisible();
   expect(await page.locator("li", { hasText: /Employer receipt received|Waiting|Filling|Submitting/ }).count()).toBe(1);
   expect((await ledger(request, slug)).accepted).toBe(1);

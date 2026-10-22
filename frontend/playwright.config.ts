@@ -20,6 +20,11 @@ const backendEnv = {
   NOEFFORTS_DISCOVERY_PROVIDERS: JSON.stringify(["freehire"]),
   NOEFFORTS_FREEHIRE_BASE_URL: `${RECEIVER}/freehire-fixture`,
   NOEFFORTS_FREEHIRE_PAGE_SIZE: "2",
+  // env "test" differs from "development" only where a test-only switch is honoured: the fault
+  // points (inactive without NOEFFORTS_FAULT) and the setting below, which puts the rehearsal
+  // prerequisite (E6) on the fictional "e6-" fixture forms only. It can only add the rule.
+  NOEFFORTS_ENV: "test",
+  NOEFFORTS_EXECUTION_TEST_REHEARSAL_RULE_PATHS: JSON.stringify(["fixture_ats:e6-*"]),
 };
 
 export default defineConfig({

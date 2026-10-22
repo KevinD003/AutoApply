@@ -80,10 +80,17 @@ def check_ref_key() -> None:
     _key()
 
 
+def keyed_digest(domain: bytes, *parts: object) -> str:
+    """HMAC-SHA-256 (hex) over a fixed domain label and `parts`, keyed by the audit reference
+    key. Each use has its own domain label, so digests made for one purpose never match
+    another's. Raises AuditKeyMissing without a usable key."""
+    msg = b"\0".join([domain, *(str(p).encode() for p in parts)])
+    return hmac.new(_key(), msg, hashlib.sha256).hexdigest()
+
+
 def ref(value: object, scope: object) -> str:
     """A keyed reference for an external identifier, scoped to `scope` (the user's id)."""
-    msg = b"\0".join([_REF_DOMAIN, str(scope).encode(), str(value).encode()])
-    return REF_PREFIX + hmac.new(_key(), msg, hashlib.sha256).hexdigest()[:32]
+    return REF_PREFIX + keyed_digest(_REF_DOMAIN, scope, value)[:32]
 
 
 def _denied(key: str) -> bool:

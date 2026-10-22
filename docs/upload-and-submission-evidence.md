@@ -1,9 +1,10 @@
 # Upload and submission evidence (2026-10-22)
 
 **Status:**
-- **Steps 1 to 3 are built and tested on the local fixtures only:** the rehearsal, the page's
-  acknowledgement of each upload, and readiness reading recorded rehearsal evidence (see
-  "Order of work" below).
+- **Steps 1 to 4 are built and tested on the local fixtures only:** the rehearsal, the page's
+  acknowledgement of each upload, readiness reading recorded rehearsal evidence, and the
+  rehearsal required before the first submission through each path (see "Order of work"
+  below).
 - **The rest is design.**
 - **Nothing here is enabled for a real destination.**
 
@@ -112,13 +113,15 @@ The receipt and outcome evidence above already proves a submission on the fixtur
 real destination, three things are missing:
 
 - the submission approval (permission D);
-- an attempt on that destination after a recorded rehearsal. Enforcing that order is E6, the
-  next step: it is not built yet, and readiness does not check it today;
+- an attempt on that destination after a recorded rehearsal. That order is enforced (E6,
+  built and tested on the fixtures only, `docs/rehearsal-prerequisite.md`): a submission
+  through a path needs a valid recorded rehearsal on it first, unless a submission there was
+  already confirmed after one;
 - the same evidence, held to the same "confirmed only on an attempt-bound confirmation" rule.
 
-What readiness counts today as real-submission evidence is a confirmed attempt of class
-`real` with an attempt-bound confirmation. None can exist while real destinations are
-disabled, so `real_submission` stays not met.
+What readiness counts as real-submission evidence is a confirmed attempt of class `real` with
+an attempt-bound confirmation whose send gate found the rehearsal prerequisite held. None can
+exist while real destinations are disabled, so `real_submission` stays not met.
 
 ## Order of work (each its own step; fixtures first)
 
@@ -136,6 +139,10 @@ disabled, so `real_submission` stays not met.
    reading the caller's recorded evidence by class (`tests/test_rehearsal_stop.py`,
    `tests/test_pilot_readiness.py`). It still shows the real conditions not met, because no
    real destination is enabled.
+4. **Done, fixtures only (E6):** a recorded, valid rehearsal required before the first
+   submission through each employer/provider path, at five layers
+   (`docs/rehearsal-prerequisite.md`, `tests/test_rehearsal_prerequisite.py`,
+   `tests/test_rehearsal_codes.py`, `frontend/e2e/rehearsal-prerequisite.spec.ts`).
 
 None of these steps enables a real destination, relaxes the disclosure or submission
 permissions, or approves a pilot. Each of those remains the owner's decision through the gate.

@@ -475,7 +475,7 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **A form-ATS mismatch** is now shown with an ATS that has no specification (Ashby), since
   Lever's own planned refusal comes first.
 
-## D41 — A rehearsal is an approval to disclose only, used once (2026-10-22; stop amended by D44)
+## D41 — A rehearsal is an approval to disclose only, used once (2026-10-22; stop amended by D44; prerequisite D45)
 - **Permission C alone:** an approval has a scope.
   - `submit`, the default and what every earlier approval meant, permits filling and the
     final click.
@@ -559,3 +559,36 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   and a holding rehearsal record of class `real` with an upload; `real_submission` needs real
   destinations and a confirmed real attempt with an attempt-bound confirmation. Fixture
   evidence meets nothing. With real destinations disabled, nothing recorded can meet either.
+
+## D45 — A recorded rehearsal before the first submission through each path (2026-10-22)
+- **Rule (CTO decision):** a successful, recorded, disclosure-only rehearsal is required before
+  the first real submission through a new employer/provider execution path. Built and tested
+  on the local fixtures only (`docs/rehearsal-prerequisite.md`); nothing is enabled for a real
+  employer, and real destinations are still refused first.
+- **Path:** user, adapter, normalised origin and board (the posting URL's board token, or the
+  fixture form's slug), stored only as a keyed reference (HMAC under the audit reference key,
+  its own domain label). No path, no rehearsal can count (`rehearsal_path_unknown`).
+- **"First":** the newest result on the path decides, by when it finished: a finished
+  rehearsal, or an establishing submission. Met by a valid rehearsal record (D44) named by the
+  approval to submit. Established by a confirmed submission, by the same adapter version and
+  class, whose own send gate found the prerequisite held, with its attempt-bound receipt
+  retained. A newer failed or cancelled rehearsal, or an adapter version change, needs a new
+  rehearsal. A withdrawal or deletion of the evidence relied on makes it no longer count, and
+  the next newest result decides. A rehearsal record counts for 30 days
+  (`rehearsal_max_age_days`). An established path has no age limit of its own: it lasts while
+  an establishing submission's receipt is retained (`evidence_retention_days`, 365), and each
+  established submission renews it. Chosen over "a rehearsal before every submission": each
+  rehearsal on a real page is another real disclosure, and every submission still repeats
+  every check of its own. Making it stricter is one branch and its tests.
+- **Five layers:** approve, enqueue, claim, the disclosure gate and the send gate, each tested
+  with the others bypassed. In the gates what is relied on is locked FOR SHARE, so a
+  withdrawal committed after the snapshot is a refusal. Fail-closed: any error or ambiguity
+  is `rehearsal_check_unavailable`, never met.
+- **Twelve fixed codes** in their own vocabulary (`rehearsal.REASONS`, pinned in the doc), each
+  with fixed text shown to the user; the review page shows the status and code, and the user
+  can withdraw a rehearsal.
+- **A rehearsal is never permission to submit.** The prerequisite applies only to approvals to
+  submit, which the user gives separately after seeing the rehearsal's result.
+- **Fixture paths** get the rule only through a TEST-ONLY setting, honoured only when
+  `env == "test"`; it can only add the rule. Readiness counts a real submission only if its
+  send gate found the prerequisite held.

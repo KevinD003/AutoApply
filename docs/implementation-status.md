@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-22 (the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-22 (a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,56 @@ Last updated: 2026-10-22 (the rehearsal stop is a gate and writes a rehearsal re
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Rehearsal prerequisite (E6, 2026-10-22; fixtures only, no external request)
+
+- **Nothing changed outside the repository**, no support state changed, and no real
+  destination is enabled: real destinations are still refused before the rule is reached
+  (manual handoff, `real_destination_disabled`). Decision D45; `docs/rehearsal-prerequisite.md`;
+  evidence: `docs/evidence-matrix.md` ("Rehearsal prerequisite").
+- **The rule:** before the first submission through an employer/provider path (user, adapter,
+  normalised origin, board), a successful, recorded, disclosure-only rehearsal on that path is
+  required. The newest result on the path decides, by when it finished: a valid rehearsal
+  record named by the approval to submit (`met`), or a confirmed submission whose own send gate
+  found the prerequisite held, with its receipt retained (`established`). A rehearsal is never
+  permission to submit.
+- **Five layers:** approve, enqueue, claim, the disclosure gate and the send gate; in the gates
+  what is relied on is locked FOR SHARE. Fail-closed; 12 fixed reason codes in their own
+  vocabulary, shown on the review page; a rehearsal can be withdrawn.
+- **Path stored only as a keyed reference** (migration `33c1622938ba`): never served, logged or
+  audited. Fixture paths get the rule only through a test-only setting (`env == "test"`), which
+  can only add it; the e2e backend now runs with `env` `test` for it.
+- **Fixed on the way:** a claim that refused a re-pended attempt (application already
+  `running`) left the application `running`, also for the existing approval refusal; it now
+  waits for the user. The test harness's `queue()` returned an arbitrary attempt of the
+  application, now the newest.
+- **Package content unchanged** (`SCHEMA_VERSION` unchanged, no package hash changes).
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `tests/test_rehearsal_prerequisite.py` (33), `tests/test_rehearsal_codes.py` (17),
+    `tests/test_pilot_readiness.py` (+1), `tests/test_support_wording.py` (the new labels);
+    first run of the new modules: 10 failed and 32 passed. Causes, all in the tests: a default
+    slug that put rehearsals on another path, the wrong upload-failure switch for the clinic
+    form, a missing candidate profile, `queue()` returning an arbitrary attempt, and the doc
+    not yet written;
+  - an adversarial read-only review (6 reviewers, 2 skeptics per finding): 20 findings
+    confirmed, 3 refuted. Fixed: "newest" ordered by queue time instead of finish time (a
+    rehearsal failing last could be outvoted); an approved manual handoff shown as needing a
+    rehearsal; the re-claim left `running`; withdrawal offered for a rehearsal with no record;
+    submitting not disabled while unmet; card wording; missing tests (adapter version and
+    class on an established path, a newer failure after it, the receipt lock, a submission made
+    before the rule applied); an e2e wait that did not wait; doc wording (D45's 30 days, the
+    status header);
+  - focused: the rehearsal, rehearsal-stop, prerequisite and codes modules, 80 passed;
+  - full backend (`pytest tests`): 741 passed, exit 0 (a first run was stopped by the
+    sandbox's 30-minute background limit at 97% with no failure, and re-run in full);
+  - full Playwright: 36 passed, 2 skipped (the desktop-only configuration checks), exit 0, run
+    after the review fixes; the new `rehearsal-prerequisite.spec.ts` on desktop and mobile;
+  - `ruff check` and `ruff format --check` clean; `npx tsc --noEmit` and `npm run lint` clean;
+  - sabotage checks, 28, each caught (an exception read as met was missed at first; a test
+    was added): see the evidence matrix.
+- **CI for the previous change:** **CI #95**
+  ([39802170059](https://github.com/KevinD003/AutoApply/actions/runs/39802170059)) (`122903a`,
+  E5 step 3): passed.
 
 ## Rehearsal stop, rehearsal records and readiness evidence (E5 step 3, 2026-10-22; fixtures only, no external request)
 

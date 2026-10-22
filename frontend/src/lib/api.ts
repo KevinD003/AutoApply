@@ -261,6 +261,10 @@ export interface PackageView {
   history: { version: number; created_at: string; change_summary: string[]; was_approved: boolean }[];
   // Served wording (backend providers/wording.py): set when the form's source is a local test stand-in.
   labels: { form_source: string | null };
+  // Whether a submission here needs a successful rehearsal first (backend execution/rehearsal.py).
+  // All text is served; reason_code is a fixed code (a rehearsal code, or the route's own code
+  // when NoEfforts does not submit here at all).
+  rehearsal_prerequisite: RehearsalPrerequisite;
   drafting_available: boolean;
   drafts: { id: string; field_key: string; text: string; evidence: string[]; provider: string }[];
 }
@@ -278,6 +282,13 @@ export interface BankEntry {
 
 export type ApprovalScope = "submit" | "disclose_only";
 
+export interface RehearsalPrerequisite {
+  status: "met" | "established" | "unmet" | "not_required" | "not_applicable";
+  reason_code: string | null;
+  message: string;
+  label: string;
+}
+
 export interface AttemptView {
   id: string;
   state: string;
@@ -288,7 +299,16 @@ export interface AttemptView {
   send_started_at: string | null;
   finished_at: string | null;
   outcome: string | null;
-  events: { kind: string; generation: number; at: string }[];
+  // What the result counts as (one evidence class), with its served label; null when it counts
+  // as none. rehearsal_prerequisite: how the send gate found it (met, established, not_required).
+  destination_class: "fixture" | "real" | null;
+  evidence_class: string | null;
+  evidence_label: string | null;
+  rehearsal_prerequisite: string | null;
+  // For a finished rehearsal: "valid" while its own record holds, or the fixed code saying why
+  // not; withdrawable when it has a record that is not revoked yet.
+  rehearsal: { status: string; revoked_at: string | null; withdrawable: boolean } | null;
+  events: { kind: string; generation: number; detail?: Record<string, unknown>; at: string }[];
   checkpoints: { id: string; status: string; round: number; message: string | null; expires_at: string; wrong_attempts: number; max_attempts: number }[];
   evidence: { kind: string; strength: string; data: Record<string, unknown>; at: string }[];
 }

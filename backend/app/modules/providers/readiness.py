@@ -78,7 +78,8 @@ def conditions(observation=_UNSET, *, evidence: RecordedEvidence = NO_EVIDENCE) 
         upload_ev = (f"rehearsal evidence: {evidence.rehearsals_valid_with_upload} holding on "
                      f"real destinations with an upload; {fixture}")  # fmt: skip
         submit_ev = (f"real-submission evidence: {evidence.real_submissions} with an "
-                     f"attempt-bound confirmation; {fixture}")  # fmt: skip
+                     "attempt-bound confirmation after the rehearsal prerequisite held; "
+                     f"{fixture}")  # fmt: skip
     rows = [
         ("dropdowns", "each required dropdown opens through one bounded, fixture-tested "
          "strategy, with the complete list", level(Capability.custom_dropdowns) in OBSERVED,

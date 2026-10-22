@@ -636,6 +636,11 @@ The short, evidence-linked handoff is `docs/greenhouse-readiness-gap.md`.
   owner's optional manual check (Path A, `providers/path_a.py`) is kept as fixed choices only
   and meets none of them.
 
+- **A first real submission would need a rehearsal first** (E6,
+  `docs/rehearsal-prerequisite.md`): a valid recorded rehearsal on the same employer board by
+  the same provider, checked at five layers. It is built and tested on the fixtures only and
+  enables nothing; real Greenhouse origins are refused before it is reached.
+
 The real-page diagnostic work (read-only observation, `gh_readonly.py`, the decision point in
 `docs/greenhouse-readonly-compatibility-proposal.md`) is kept separate from any future
 submission development. No observation can become filling: the observation provider has no

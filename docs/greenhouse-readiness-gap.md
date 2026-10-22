@@ -141,7 +141,9 @@ Where each row's evidence lives:
    run against a real page. Its stop repeats every gate check and records what it proved, and
    readiness counts such a record only while it still holds and only for a real destination.
 5. **Real submission evidence:** a real final submit and its confirmation, proven separately
-   from uploads.
+   from uploads. A submission through a new path needs a valid recorded rehearsal on that path
+   first (E6, `docs/rehearsal-prerequisite.md`; built on the fixtures only), and readiness counts
+   a real submission only if its send gate found that prerequisite held.
 6. **The gate in `docs/live-pilot-gate.md`:** you name the posting, the data to disclose and
    the stop conditions, and give separate yes/no permissions for disclosure (C) and
    submission (D). The isolation requirements must hold.

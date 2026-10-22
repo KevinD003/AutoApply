@@ -9,12 +9,14 @@ from app.core.db import get_db, utcnow
 from app.core.errors import bad_request, conflict, not_found
 from app.modules.applications.models import Application
 from app.modules.applications.states import IllegalTransition
+from app.modules.execution import rehearsal
 from app.modules.execution import service as svc
 from app.modules.execution.models import AttemptEvent, Checkpoint, Evidence, ExecutionAttempt
 from app.modules.execution.policy import CAPABILITIES
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
 from app.modules.preparation.models import PackageApproval
+from app.modules.providers import wording
 from app.modules.providers.registry import summary as provider_summary
 
 router = APIRouter(tags=["execution"])
@@ -69,6 +71,7 @@ def list_attempts(
         ev = db.scalars(
             select(Evidence).where(Evidence.attempt_id == a.id, Evidence.user_id == user.id)
         ).all()
+        evidence_class = rehearsal.evidence_class(a)
         out.append(
             {
                 "id": str(a.id),
@@ -76,6 +79,13 @@ def list_attempts(
                 "adapter": a.adapter,
                 # What its approval permitted: submit, or disclose_only (a rehearsal).
                 "approval_scope": scopes.get(a.approval_id),
+                # What its result counts as (providers/evidence.py), with the served label, and
+                # how its send gate found the rehearsal prerequisite (E6).
+                "destination_class": a.destination_class,
+                "evidence_class": evidence_class,
+                "evidence_label": wording.EVIDENCE_CLASS_LABELS.get(evidence_class),
+                "rehearsal_prerequisite": a.rehearsal_prerequisite,
+                "rehearsal": rehearsal.record_status(db, a) if a.state == "rehearsed" else None,
                 "package_hash": a.package_hash,
                 "created_at": a.created_at,
                 "disclosure_started_at": a.disclosure_started_at,
@@ -163,6 +173,23 @@ def cancel(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from None
     db.commit()
     return {"state": app.state.value}
+
+
+@router.post("/applications/{app_id}/rehearsals/{attempt_id}/withdraw")
+def withdraw_rehearsal(
+    app_id: uuid.UUID,
+    attempt_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Withdraw a finished rehearsal: it no longer counts for the rehearsal prerequisite."""
+    app = _owned_app(db, user, app_id)
+    try:
+        rec = svc.withdraw_rehearsal(db, app, attempt_id)
+    except LookupError:
+        raise not_found("Rehearsal") from None
+    db.commit()
+    return {"status": "withdrawn", "revoked_at": rec.revoked_at}
 
 
 @router.delete("/applications/{app_id}/evidence")

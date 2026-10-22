@@ -49,7 +49,9 @@ def _reset(receiver):
 def labels() -> list[str]:
     return [*wording.SUPPORT_LABELS.values(), *wording.ROUTE_LABELS.values(),
             *filter(None, wording.EVIDENCE_LABELS.values()),
-            *filter(None, wording.FORM_SOURCE_LABELS.values())]  # fmt: skip
+            *filter(None, wording.FORM_SOURCE_LABELS.values()),
+            *wording.EVIDENCE_CLASS_LABELS.values(),
+            *wording.PREREQUISITE_LABELS.values()]  # fmt: skip
 
 
 # -- derived from evidence -----------------------------------------------------------------------

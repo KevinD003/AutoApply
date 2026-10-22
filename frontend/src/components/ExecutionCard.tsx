@@ -24,18 +24,23 @@ export default function ExecutionCard({
   appState,
   approved,
   scope,
+  prerequisiteUnmet,
   onChange,
 }: {
   appId: string;
   appState: string;
   approved: boolean;
   scope: ApprovalScope | null;
+  // The rehearsal prerequisite is not met: submitting would be refused (the reason is shown on
+  // the review page's "Before the first submission" row).
+  prerequisiteUnmet: boolean;
   onChange: () => void;
 }) {
   const [attempts, setAttempts] = useState<AttemptView[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
   const [code, setCode] = useState("");
+  const [confirmWithdraw, setConfirmWithdraw] = useState<string | null>(null);
 
   const load = useCallback(() => {
     api<AttemptView[]>(`/applications/${appId}/attempts`).then(setAttempts).catch(setError);
@@ -91,7 +96,10 @@ export default function ExecutionCard({
               Start rehearsal (nothing is submitted)
             </Button>
           ) : (
-            <Button disabled={!approved} onClick={() => act(() => api(`/applications/${appId}/transition`, { json: { to: "queued" } }), "Queued.")}>
+            <Button
+              disabled={!approved || prerequisiteUnmet}
+              onClick={() => act(() => api(`/applications/${appId}/transition`, { json: { to: "queued" } }), "Queued.")}
+            >
               Submit approved package
             </Button>
           ))}
@@ -129,14 +137,58 @@ export default function ExecutionCard({
           {attempts.map((a) => {
             const s = STATE[a.state] ?? { label: a.state, tone: "slate" as const };
             const receipt = a.evidence.find((e) => e.kind === "receipt");
+            const reason = [...a.events].reverse().find((e) => typeof e.detail?.reason_code === "string")?.detail?.reason_code;
             return (
               <li key={a.id} className="rounded-lg border border-slate-200 p-3 text-sm">
                 <p className="flex flex-wrap items-center gap-2">
                   <Badge tone={s.tone}>{s.label}</Badge>
                   {a.approval_scope === "disclose_only" && <Badge tone="slate">Rehearsal: never submits</Badge>}
+                  {a.evidence_label && <Badge tone="slate">{a.evidence_label}</Badge>}
                   <span className="text-xs text-slate-500">{new Date(a.created_at).toLocaleString()}</span>
                 </p>
                 {a.outcome && <p className="mt-1">{a.outcome}</p>}
+                {typeof reason === "string" && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Reason code: <code>{reason}</code>
+                  </p>
+                )}
+                {a.rehearsal && (
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <span>
+                      {a.rehearsal.status === "valid" ? (
+                        "This rehearsal's record still holds."
+                      ) : (
+                        <>
+                          {"This rehearsal's record no longer holds ("}
+                          <code>{a.rehearsal.status}</code>).
+                        </>
+                      )}
+                    </span>
+                    {a.rehearsal.withdrawable &&
+                      (confirmWithdraw === a.id ? (
+                        <>
+                          <Button
+                            variant="danger"
+                            onClick={() =>
+                              act(
+                                () => api(`/applications/${appId}/rehearsals/${a.id}/withdraw`, { method: "POST" }),
+                                "Rehearsal withdrawn: it no longer counts.",
+                              ).then(() => setConfirmWithdraw(null))
+                            }
+                          >
+                            Confirm: withdraw this rehearsal
+                          </Button>
+                          <Button variant="secondary" onClick={() => setConfirmWithdraw(null)}>
+                            Keep it
+                          </Button>
+                        </>
+                      ) : (
+                        <Button variant="secondary" onClick={() => setConfirmWithdraw(a.id)}>
+                          Withdraw rehearsal
+                        </Button>
+                      ))}
+                  </div>
+                )}
                 {receipt && (
                   <p className="mt-1">
                     Receipt <code>{String(receipt.data.receipt_id)}</code> from {String(receipt.data.final_origin)}

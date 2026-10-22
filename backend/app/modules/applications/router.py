@@ -264,6 +264,9 @@ def transition_application(
             except UnsupportedDestination as e:
                 db.rollback()
                 raise conflict(str(e)) from None
+            except ApprovalError as e:  # e.g. the rehearsal prerequisite (E6); nothing queued
+                db.rollback()
+                raise conflict(str(e)) from None
         record(db, user.id, "application.transition", "application", app.id, to=body.to.value)
         db.commit()
     except IllegalTransition as e:

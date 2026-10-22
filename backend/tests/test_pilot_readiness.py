@@ -156,3 +156,25 @@ def test_readiness_reads_only_the_callers_own_records(api, other_api, receiver):
     mine = api.get("/providers/greenhouse_dom/readiness").json()["recorded_evidence"]
     assert (mine["fixture_rehearsals"], mine["rehearsals_valid"], mine["rehearsals_not_valid"],
             mine["rehearsals_valid_with_upload"]) == (0, 0, 1, 0)  # fmt: skip
+
+
+def test_a_real_submission_counts_only_after_its_prerequisite_held(api, receiver):
+    """Simulated rows (labelled): a confirmed fixture submission edited to claim a real
+    destination counts as real-submission evidence only if its send gate recorded that the
+    rehearsal prerequisite held, and even then meets nothing while real destinations are off."""
+    from app.modules.execution.models import ExecutionAttempt
+
+    app_id = v2_application(api)
+    assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
+    with SessionLocal() as db:
+        att = db.scalar(select(ExecutionAttempt))
+        assert att.rehearsal_prerequisite == "not_required"
+        att.destination_class = "real"  # simulated
+        db.commit()
+    mine = api.get("/providers/greenhouse_dom/readiness").json()
+    assert mine["recorded_evidence"]["real_submissions"] == 0
+    with SessionLocal() as db:
+        db.scalar(select(ExecutionAttempt)).rehearsal_prerequisite = "met"  # simulated
+        db.commit()
+    mine = api.get("/providers/greenhouse_dom/readiness").json()
+    assert mine["recorded_evidence"]["real_submissions"] == 1 and mine["met"] == 0
