@@ -228,13 +228,16 @@ Both views are served at `GET /api/providers` (`routing_capabilities`, `traits`,
    - An ATS with only a planned adapter (Workday) is a manual handoff that says so.
    - A form captured as one ATS for a job on another is refused: it never reaches the wrong
      adapter.
-1. **No captured form:** a manual handoff ("Capture the application form first."). A job
-   source never supplies the form.
-2. **Required controls NoEfforts cannot fill** (search pickers, page-managed hidden values,
+1. **Enabled:** production, and a job on a real employer's site, give a manual handoff that
+   says so (`production_disabled`, `real_destination_disabled`, in the adapter policy's own
+   words). No provider has live support. This comes before any form step: capturing a form
+   could not change it, so the user is never asked for one there. `decide` applies the same
+   gate again to a captured destination.
+2. **No captured form** (a local fixture, or a job without an address): a manual handoff
+   ("Capture the application form first."). A job source never supplies the form.
+3. **Required controls NoEfforts cannot fill** (search pickers, page-managed hidden values,
    unknown widgets): a **checkpoint**, reached before anything is disclosed. They are never
    turned into a guessed answer.
-3. **Enabled:** real origins and production give a manual handoff. No provider has live
-   support.
 4. **Authorized API (A):** only with the user's grant, configured credentials, declared
    support and the provider's identity rule. No undocumented or inferred private endpoint.
    The package approval, document digests, answer provenance and evidence are exactly as for
@@ -260,10 +263,10 @@ or refusal in the source relies on the default code or names one this table does
 | `browser_supported` | browser | `decide` | `policy.adapter_for` names an adapter for this form source and origin |
 | `planned_adapter_only` | manual | identity (`decide`, `route_for_job`) | the job's ATS has only a planned adapter (Workday) |
 | `form_ats_mismatch` | manual | identity | the captured form belongs to a different ATS than the job |
-| `no_form_captured` | manual | `route_for_job` | no application form has been captured yet |
+| `no_form_captured` | manual | `route_for_job` | a local fixture, or a job without an address, has no application form captured yet |
 | `unsupported_required_control` | checkpoint | `route_for_job` | the form has required controls NoEfforts cannot fill |
-| `real_destination_disabled` | manual | `decide` | a real origin. `policy.adapter_for` refuses it, and the router's own gate refuses it again even if the adapter policy accepted it (tested) |
-| `production_disabled` | manual | `decide` (`policy.adapter_for`) | automatic submission is not available in production |
+| `real_destination_disabled` | manual | `route_for_job` (before any form step), `decide` | a real origin. `policy.adapter_for` refuses it, and the router's own gate refuses it again even if the adapter policy accepted it (tested) |
+| `production_disabled` | manual | `route_for_job` (before any form step), `decide` (`policy.adapter_for`) | automatic submission is not available in production |
 | `no_captured_destination` | manual | `decide` (`policy.adapter_for`) | no origin or submit address was captured |
 | `submit_origin_mismatch` | manual | `decide` (`policy.adapter_for`) | the form submits to a different site than the job page |
 | `no_adapter` | none: a refusal | `policy.check_binding` | queueing or running a destination whose route is a manual handoff. Never a route's code |

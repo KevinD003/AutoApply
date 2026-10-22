@@ -5,7 +5,9 @@ import { RECEIVER } from "../playwright.config";
 // The job page says how NoEfforts could apply. Synthetic jobs only; nothing is requested from
 // any employer: the routes below are decided from the job's address and captured form alone
 // (the browser route's form is read from the local synthetic receiver).
-test("job page shows the execution route: Workday unsupported, uncaptured form manual, fixture form browser", async ({ page }, info) => {
+test("job page shows the execution route: Workday unsupported, uncaptured form manual, real site refused, fixture form browser", async ({
+  page,
+}, info) => {
   const reg = await page.request.post("/api/auth/register", {
     data: { email: `route.${info.project.name}.${Date.now()}@example.com`, password: "synthetic-password-1" },
   });
@@ -30,6 +32,14 @@ test("job page shows the execution route: Workday unsupported, uncaptured form m
   await page.goto(`/jobs/${plain}`);
   await expect(card.getByText("Capture the application form first.")).toBeVisible();
   await expect(card.getByText("Reason code: no_form_captured")).toBeVisible();
+
+  // A job on a real employer's site (a reserved example domain, never contacted) is told no
+  // provider is enabled there, not asked for a form that could not change that.
+  const real = await add({ url: "https://careers.example.com/jobs/1", title: "Analyst", employer: "Example Co (fictional)" });
+  await page.goto(`/jobs/${real}`);
+  await expect(card.getByText(/only supported for local test fixtures in this version/)).toBeVisible();
+  await expect(card.getByText("Reason code: real_destination_disabled")).toBeVisible();
+  await expect(card.getByText("Capture the application form first.")).toHaveCount(0);
 
   const slug = `route-${info.project.name}-${Date.now().toString(36)}`;
   const fixture = await add({ url: `${RECEIVER}/apply/${slug}`, title: "Clinic Assistant", employer: "Example Health Clinic (fictional)" });

@@ -180,7 +180,9 @@ def test_freehire_imports_are_never_treated_as_form_schemas(api, receiver, monke
     for row in rows:
         r = job_route(api, row["job_id"])
         assert r["route"] == "manual_handoff"
-        assert r["message"] == "Capture the application form first."
+        # A fixture posting waits for its form; a real employer's site is refused outright.
+        local = (row["job_url"] or "").startswith(BASE)
+        assert r["reason"] == ("no_form_captured" if local else "real_destination_disabled")
     routes = {r["route"] for r in receiver.ledger()["freehire_requests"]}
     assert routes == {"search"}  # Freehire's apply-form endpoint is never asked
     from app.modules.discovery.provider import FreehireApiProvider

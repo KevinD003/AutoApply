@@ -193,10 +193,29 @@ def form_checkpoint(schema: dict | None) -> list[str]:
             if f.get("type") == "unsupported" and f.get("required")]  # fmt: skip
 
 
+def _enabled_refusal(url: str | None, steps: list[str]) -> RouteDecision | None:
+    """In production, or for a job on a real employer's site, no provider is enabled whatever
+    form is captured, so the route says that, not "capture the form first" (which could not
+    change it). A local fixture, or a job without an address, goes on to the form."""
+    from app.modules.execution import policy
+
+    p = urlsplit(url or "")
+    origin = f"{p.scheme}://{p.netloc}" if p.netloc else ""
+    if get_settings().env == "production":
+        message, code = policy.PRODUCTION_DISABLED, "production_disabled"
+    elif origin and not is_fixture_origin(origin):
+        message, code = policy.REAL_DESTINATION_DISABLED, "real_destination_disabled"
+    else:
+        return None
+    steps.append("enabled: no provider is enabled for real destinations")
+    return RouteDecision("manual_handoff", "manual_handoff", steps, message, code)
+
+
 def route_for_job(db, job) -> RouteDecision:
     """How NoEfforts could apply to a tracked job now, before any package exists.
 
       * the job's ATS has only a planned adapter          → manual handoff (says so)
+      * production, or a job on a real employer's site    → manual handoff (says so)
       * no application form captured                      → manual handoff
       * the form has required controls NoEfforts cannot fill → checkpoint (the user's step)
       * otherwise                                         → decide() on the captured destination
@@ -205,6 +224,8 @@ def route_for_job(db, job) -> RouteDecision:
 
     steps: list[str] = []
     refused = _identity_refusal({"url": job.url, "ats_provider": job.ats_provider}, steps)
+    if refused is None:
+        refused = _enabled_refusal(job.url, steps)
     if refused is not None:
         return refused
     form = db.scalar(select(JobForm).where(JobForm.job_id == job.id,

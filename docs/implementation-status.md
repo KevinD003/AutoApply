@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-22 (question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-22 (real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,32 @@ Last updated: 2026-10-22 (question keys moved out of URL paths; support-state wo
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Real destinations are told the truth before any form step (B7, 2026-10-22; local only, no external request)
+
+- **Nothing changed outside the repository**, and no route changed: every affected job was a
+  manual handoff before and still is. Only the reason and the message changed.
+- **Before:** a job on a real employer's site, or any job in production, was told "Capture the
+  application form first." But reading real postings is refused, and no provider is enabled
+  for real destinations, so a captured form could not have changed the route.
+- **Now** (`routing.route_for_job`): the enabled gate comes before the form step. Such a job
+  gets `real_destination_disabled` or `production_disabled`, with the adapter policy's own
+  wording (now shared constants in `execution/policy.py`). A local fixture, or a job without
+  an address, still goes on to the form. `decide` keeps its own gate for captured
+  destinations.
+- **Tests:** `test_a_real_destination_is_told_so_before_any_form_step` (new, in
+  `tests/test_reason_codes.py`). The Freehire import test now expects the real-destination
+  reason for imported jobs on non-fixture sites, and `routing.spec.ts` shows it on the job page.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - routing, discovery, provider, audit and wording modules (7 files): 137 passed;
+  - full backend (`pytest tests`): 606 passed;
+  - Playwright: 32 passed, 2 skipped (the desktop-only configuration checks);
+  - frontend typecheck and lint clean; `ruff check` and `ruff format --check` clean;
+  - sabotage: removing the gate from `route_for_job` fails the new test.
+- **CI for the previous change:** **CI #87**
+  ([39738067184](https://github.com/KevinD003/AutoApply/actions/runs/39738067184)) (`5bbe641`,
+  A8): passed, including the Compose execution test against the body-keyed routes, which could
+  not run locally.
 
 ## Question keys out of URL paths (A8, 2026-10-22; local only, no external request)
 

@@ -173,12 +173,18 @@ def check_binding(approval, destination: dict, adapter: str | None = None) -> di
     return now
 
 
+# Shown wherever these refusals apply (here and in providers.routing.route_for_job).
+PRODUCTION_DISABLED = "Automatic submission is not available in production yet."
+REAL_DESTINATION_DISABLED = (
+    "Automatic submission is only supported for local test fixtures in this version. "
+    "Apply on the employer's site and record it in the tracker."
+)
+
+
 def adapter_for(destination: dict) -> str:
     origin, submit = destination.get("origin"), destination.get("submit_url")
     if get_settings().env == "production":
-        raise UnsupportedDestination(
-            "Automatic submission is not available in production yet.", "production_disabled"
-        )
+        raise UnsupportedDestination(PRODUCTION_DISABLED, "production_disabled")
     if not origin or not submit:
         raise UnsupportedDestination(
             "This job has no captured destination to submit to. Apply on the employer's site "
@@ -186,11 +192,7 @@ def adapter_for(destination: dict) -> str:
             "no_captured_destination",
         )
     if not is_fixture_origin(origin):
-        raise UnsupportedDestination(
-            "Automatic submission is only supported for local test fixtures in this version. "
-            "Apply on the employer's site and record it in the tracker.",
-            "real_destination_disabled",
-        )
+        raise UnsupportedDestination(REAL_DESTINATION_DISABLED, "real_destination_disabled")
     sp = urlsplit(submit)
     if f"{sp.scheme}://{sp.netloc}".lower() != origin.lower():
         raise UnsupportedDestination(

@@ -217,6 +217,28 @@ def test_a_browser_refusal_does_not_block_an_authorized_api_route(api, monkeypat
     assert (d.route, d.reason) == ("manual_handoff", "no_captured_destination")
 
 
+def test_a_real_destination_is_told_so_before_any_form_step(api, monkeypatch):
+    """No captured form could make a real employer's site, or production, automatable, so the
+    route says so instead of asking for a form. A local fixture, or a job without an address,
+    still goes on to the form."""
+    job = {"url": f"{ELSEWHERE}/jobs/1", "title": "Analyst", "employer": "Example Co (fictional)"}
+    real = api.post("/jobs", json=job).json()["job"]["id"]
+    r = api.get(f"/jobs/{real}/route").json()
+    assert (r["route"], r["reason"]) == ("manual_handoff", "real_destination_disabled")
+    assert r["message"] == policy.REAL_DESTINATION_DISABLED and "Capture" not in r["message"]
+    assert api.post(f"/jobs/{real}/form", json={"fixture": "basic"}).status_code == 201
+    assert api.get(f"/jobs/{real}/route").json()["reason"] == "real_destination_disabled"
+    plain = api.post("/jobs", json={"title": "Clerk", "employer": "Example Co (fictional)"})
+    assert api.get(f"/jobs/{plain.json()['job']['id']}/route").json()["reason"] == (
+        "no_form_captured"
+    )
+    assert api.get(f"/jobs/{v2_job(api)}/route").json()["reason"] == "no_form_captured"
+    monkeypatch.setattr(get_settings(), "env", "production")
+    local = SimpleNamespace(url=GH2["url"], ats_provider=None)
+    d = routing.route_for_job(None, local)  # refused before any form is looked up
+    assert (d.reason, d.message) == ("production_disabled", policy.PRODUCTION_DISABLED)
+
+
 def test_the_documentation_lists_exactly_the_reason_codes():
     block = DOC.read_text().split("**Reason codes**", 1)[1].split("\n\n**", 1)[0]
     documented = re.findall(r"^\| `([a-z_]+)` \|", block, re.M)
