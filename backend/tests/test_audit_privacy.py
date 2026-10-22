@@ -4,6 +4,7 @@ page content. Synthetic data and local fixtures only; nothing here contacts anyt
 
 import json
 import logging
+import re
 import threading
 import uuid
 
@@ -256,7 +257,10 @@ def test_a_rejected_draft_records_a_reason_code_not_its_content(api, monkeypatch
     assert r.status_code == 422
     (row,) = audit_rows("draft.rejected")
     assert row.meta == {"field_ref": ref("why_us", row.user_id), "reason_code": "invented_numbers"}
-    assert "40" not in dump([row]) and "nurses" not in dump([row])
+    # The draft's numbers as whole tokens, in the metadata only: the row's random UUIDs and the
+    # reference's hex digits contain digit pairs like "40" by chance and are not draft content.
+    stored = json.dumps(row.meta)
+    assert not re.search(r"\b(40|12)\b", stored) and "nurses" not in dump([row])
 
 
 def test_a_created_draft_records_a_field_reference_not_the_question_key(api, monkeypatch):

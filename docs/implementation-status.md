@@ -86,7 +86,17 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   - **CI #78** ([39687972651](https://github.com/KevinD003/AutoApply/actions/runs/39687972651))
     (`991ed1d`): passed;
   - **CI #79** ([39691935177](https://github.com/KevinD003/AutoApply/actions/runs/39691935177))
-    (`c54596e`, Phase 1 documentation consistency): pending.
+    (`c54596e`, Phase 1 documentation consistency): passed;
+  - **CI #80** ([39695296112](https://github.com/KevinD003/AutoApply/actions/runs/39695296112))
+    (`3d99467`, keyed audit references): failed in the backend job only (536 passed,
+    1 skipped, 1 failed); frontend, Docker smoke and Compose execution passed. The failing
+    test, `test_a_rejected_draft_records_a_reason_code_not_its_content`, checked that the
+    bare string "40" (a number from the rejected draft) was absent from the whole row, whose
+    random UUID and reference digits contain such pairs by chance (about one run in five; it
+    is also the earlier unexplained local failure of this test). Fixed in the following
+    commit: whole-number tokens are checked in the metadata only, next to the existing
+    exact-metadata assertion; the check still catches a leaked number. 25 repeated runs
+    passed. CI for that commit: pending.
 
   Per-job test counts were not recorded for these runs.
 - **Keyed audit references (separate security commit after `c54596e`):**
