@@ -39,10 +39,14 @@ def providers(user: User = Depends(current_user)) -> dict:
 
 
 @router.get("/providers/greenhouse_dom/readiness")
-def greenhouse_readiness(user: User = Depends(current_user)) -> dict:
+def greenhouse_readiness(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """Whether a live filling pilot could be proposed (providers/readiness.py): each condition
-    derived from recorded evidence. Holds no user data; approves and enables nothing."""
-    return readiness.summary()
+    derived from recorded evidence. The caller's own records are counted by evidence class
+    beside the global inputs (registry, Path A, gate); counts only. Approves and enables
+    nothing."""
+    from app.modules.execution.rehearsal import readiness_evidence
+
+    return readiness.summary(evidence=readiness_evidence(db, user.id))
 
 
 @router.get("/api-authorizations")

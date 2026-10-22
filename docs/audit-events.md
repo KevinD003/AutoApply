@@ -85,13 +85,13 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `answer_bank.delete` | `answer_bank` | - | |
 | `package.approve` | `application` | `adapter`, `adapter_version`, `content_hash`, `scope`, `version` | the adapter and version bound to the approval; the package's one-way hash; `submit` or `disclose_only` (a rehearsal); package version |
 | `package.approval_invalidated` | `application` | `version` | the package version that invalidated it |
-| `package.approval_retired` | `application` | `reason_code` | `execution_method_changed`, or `rehearsal_completed` (a rehearsal used its approval up) |
+| `package.approval_retired` | `application` | `reason_code` | `execution_method_changed`, or `rehearsal_completed` (a rehearsal used its approval up; written only when the approval was still live) |
 | `package.revoke` | `application` | - | |
 | `api_authorization.grant` | `api_authorization` | `provider` | the API provider key (never its origin or any token) |
 | `api_authorization.revoke` | `api_authorization` | - | |
 | `execution.{state}` | `application` | - | `state` is the attempt state entered (`execution/models.py` `AttemptState`) |
 | `checkpoint.code_submitted` | `checkpoint` | `round` | which code round; never the code |
-| `evidence.delete` | `application` | `rows` | number of evidence rows deleted |
+| `evidence.delete` | `application` | `rehearsals_revoked`, `rows` | number of the application's rehearsal records revoked with it; number of evidence rows deleted |
 
 ### Route decisions
 
@@ -175,6 +175,7 @@ event's metadata:
 |---|---|---|
 | Audit events | no automatic purge | deleted with their user (`ON DELETE CASCADE`); there is no account-deletion endpoint yet |
 | Execution evidence | `NOEFFORTS_EVIDENCE_RETENTION_DAYS` (default 365) | purged daily by the `purge-expired-evidence` beat task; the user can delete it (refused while an attempt runs) |
+| Rehearsal records | until their application or user is deleted (`ON DELETE CASCADE`) | counts and fixed values only; revoked, not deleted, when the user deletes the application's evidence; a record whose evidence has been purged no longer holds (`rehearsal_evidence_missing`) |
 | Sessions | until expiry | purged hourly by `purge-expired-sessions` |
 | Uploaded documents | until deleted | stored under `NOEFFORTS_STORAGE_DIR` (default `./var/storage`, ignored by git) |
 | Test database `noefforts_test` | one test run | the schema is dropped and recreated at the start of every run; tables are truncated after each test |

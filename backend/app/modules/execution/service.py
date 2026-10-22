@@ -15,6 +15,7 @@ Guarantee (and its limits)
 import re
 import uuid
 from datetime import timedelta
+from typing import NamedTuple
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import DBAPIError
@@ -26,6 +27,7 @@ from app.modules.applications.models import Application
 from app.modules.applications.service import transition
 from app.modules.applications.states import Actor, AppState
 from app.modules.audit.service import record
+from app.modules.execution import rehearsal
 from app.modules.execution.models import (
     ACTIVE,
     AttemptEvent,
@@ -34,11 +36,13 @@ from app.modules.execution.models import (
     Evidence,
     ExecutionAttempt,
     OutboxMessage,
+    RehearsalRecord,
 )
 from app.modules.execution.policy import (
     BindingChanged,
     UnsupportedDestination,
     adapter_for,
+    approved_binding,
     check_binding,
 )
 from app.modules.preparation import package as pk
@@ -54,7 +58,12 @@ class LostAuthority(RuntimeError):
 
 
 class GateRefused(RuntimeError):
-    pass
+    """`code`: a fixed reason code (execution/rehearsal.py), or None for the gates' own
+    refusals. Safe to store and show."""
+
+    def __init__(self, message: str, code: str | None = None):
+        super().__init__(message)
+        self.code = code
 
 
 def event(db: Session, att: ExecutionAttempt, kind: str, **detail) -> None:
@@ -88,6 +97,7 @@ def enqueue(db: Session, app: Application) -> ExecutionAttempt:
         package_hash=pkg.content_hash,
         approval_id=appr.id,
         adapter=adapter,
+        destination_class=rehearsal.destination_class(pkg.content["destination"].get("origin")),
     )
     db.add(att)
     db.flush()
@@ -96,12 +106,14 @@ def enqueue(db: Session, app: Application) -> ExecutionAttempt:
     return att
 
 
-def retire_approval(db: Session, approval_id, reason: str) -> None:
+def retire_approval(db: Session, approval_id, reason: str) -> bool:
     """Invalidate one approval whose execution meaning changed, so the user can approve the same
-    content again under the method that would now run."""
+    content again under the method that would now run. True if it was still live."""
     appr = db.get(PackageApproval, approval_id)
     if appr is not None and appr.invalidated_at is None:
         appr.invalidated_at, appr.invalidation_reason = utcnow(), reason
+        return True
+    return False
 
 
 def relay_outbox(publish, limit: int = 50) -> int:
@@ -234,20 +246,27 @@ def _locked_attempt(db: Session, attempt_id, worker: str, gen: int, state) -> Ex
     return att
 
 
-def _gate_checks(db: Session, att: ExecutionAttempt) -> Application:
-    """Authorization checks shared by both gates. Runs inside a REPEATABLE READ transaction
-    holding the application and attempt row locks.
+class GateContext(NamedTuple):
+    app: Application
+    content: dict
+    approval: PackageApproval
+
+
+def _gate_checks(db: Session, att: ExecutionAttempt, approval_lock: str = "share") -> GateContext:
+    """Authorization checks shared by both gates and the rehearsal stop. Runs inside a
+    REPEATABLE READ transaction holding the application and attempt row locks.
 
     The snapshot is taken at the attempt lock, before the application lock, so a revocation (or
     a new package version) committed while this gate waited for the application lock is not in
-    it. The approval row is therefore locked as well: if it changed after the snapshot,
-    PostgreSQL refuses the lock with a serialization failure, and so does the gate."""
+    it. The approval row is therefore locked as well (`share`, or `update` where the caller
+    retires it): if it changed after the snapshot, PostgreSQL refuses the lock with a
+    serialization failure, and so does the gate."""
     try:
         app = pk.lock_application(db, att.application_id)
         db.execute(
             select(PackageApproval.id)
             .where(PackageApproval.id == att.approval_id)
-            .with_for_update(read=True)
+            .with_for_update(read=approval_lock == "share")
         )
     except DBAPIError as e:
         if getattr(e.orig, "sqlstate", None) == SERIALIZATION_FAILURE:
@@ -265,7 +284,14 @@ def _gate_checks(db: Session, att: ExecutionAttempt) -> Application:
         check_binding(appr, content["destination"], att.adapter)
     except (BindingChanged, UnsupportedDestination):
         raise GateRefused("the execution method changed after approval") from None
-    return app
+    # The class recorded at queueing is what readiness counts this attempt as; it must still be
+    # what the destination is (e.g. not a fixture origin removed from the configuration since).
+    if att.destination_class is None:
+        raise GateRefused("this attempt was queued before NoEfforts recorded what kind of "
+                          "destination it is; queue it again")  # fmt: skip
+    if att.destination_class != rehearsal.destination_class(content["destination"].get("origin")):
+        raise GateRefused("the destination is no longer the kind it was when queued")
+    return GateContext(app, content, appr)
 
 
 def _repeatable_read() -> Session:
@@ -283,7 +309,7 @@ def gate_before_disclosure(attempt_id, worker: str, gen: int) -> None:
             _gate_checks(db, att)
         except GateRefused as e:
             db.rollback()
-            raise GateRefused(str(e)) from None
+            raise GateRefused(str(e), e.code) from None
         att.disclosure_started_at = utcnow()
         event(db, att, "disclosure_authorized")
         db.commit()
@@ -296,13 +322,13 @@ def gate_before_send(attempt_id, worker: str, gen: int) -> None:
     with _repeatable_read() as db:
         att = _locked_attempt(db, attempt_id, worker, gen, S.claimed)
         try:
-            app = _gate_checks(db, att)
+            app = _gate_checks(db, att).app
             # A rehearsal stops before this gate (runner); this refusal holds even if it did not.
             if db.get(PackageApproval, att.approval_id).scope != ApprovalScope.submit:
                 raise GateRefused("this approval permits filling and checking only, not submitting")
         except GateRefused as e:
             db.rollback()
-            raise GateRefused(str(e)) from None
+            raise GateRefused(str(e), e.code) from None
         now = utcnow()
         att.state, att.send_started_at = S.sending, now
         att.lease_expires_at = now + timedelta(seconds=get_settings().submit_timeout_seconds + 30)
@@ -325,10 +351,8 @@ def _finish(
     app_target: AppState | None,
     detail: str,
     evidence: list[dict] | None = None,
-    retire: str | None = None,
+    reason_code: str | None = None,
 ) -> bool:
-    """`retire`: a reason code (RETIRED); the attempt's approval is retired with it in the same
-    transaction, so it cannot outlive the outcome that used it up."""
     with SessionLocal() as db:
         att = db.scalar(
             select(ExecutionAttempt).where(ExecutionAttempt.id == attempt_id).with_for_update()
@@ -336,20 +360,39 @@ def _finish(
         if att is None or att.generation != gen or att.state not in from_states:
             return False
         app = pk.lock_application(db, att.application_id)
-        att.state, att.finished_at, att.outcome_detail = to, utcnow(), detail[:2000]
-        att.lease_owner, att.lease_expires_at = None, None
-        if app_target is not None:
-            _app_to(db, app, app_target, Actor.worker, detail[:900])
-        for ev in evidence or []:
-            add_evidence(db, att, **ev)
-        if retire is not None:
-            retire_approval(db, att.approval_id, RETIRED[retire])
-            record(db, att.user_id, "package.approval_retired", "application",
-                   att.application_id, reason_code=retire)  # fmt: skip
-        event(db, att, f"outcome_{to.value}", detail=detail[:500])
-        record(db, att.user_id, f"execution.{to.value}", "application", att.application_id)
+        _apply_outcome(db, att, app, to, app_target, detail, evidence, reason_code=reason_code)
         db.commit()
         return True
+
+
+def _apply_outcome(
+    db: Session,
+    att: ExecutionAttempt,
+    app: Application,
+    to: AttemptState,
+    app_target: AppState | None,
+    detail: str,
+    evidence: list[dict] | None = None,
+    *,
+    retire: str | None = None,
+    reason_code: str | None = None,
+) -> None:
+    """End the attempt in the caller's transaction, which holds its row and application locks.
+    `retire`: a reason code (RETIRED); the attempt's approval is retired with it here, so it
+    cannot outlive the outcome that used it up, and the retirement is recorded only if the
+    approval was still live. `reason_code`: a fixed code kept on the outcome event."""
+    att.state, att.finished_at, att.outcome_detail = to, utcnow(), detail[:2000]
+    att.lease_owner, att.lease_expires_at = None, None
+    if app_target is not None:
+        _app_to(db, app, app_target, Actor.worker, detail[:900])
+    for ev in evidence or []:
+        add_evidence(db, att, **ev)
+    if retire is not None and retire_approval(db, att.approval_id, RETIRED[retire]):
+        record(db, att.user_id, "package.approval_retired", "application",
+               att.application_id, reason_code=retire)  # fmt: skip
+    extra = {"reason_code": reason_code} if reason_code else {}
+    event(db, att, f"outcome_{to.value}", detail=detail[:500], **extra)
+    record(db, att.user_id, f"execution.{to.value}", "application", att.application_id)
 
 
 def add_evidence(
@@ -376,7 +419,7 @@ def record_evidence(attempt_id, worker, gen, kind, data, strength="none") -> Non
         db.commit()
 
 
-def fail_safe(attempt_id, worker, gen, reason: str) -> bool:
+def fail_safe(attempt_id, worker, gen, reason: str, code: str | None = None) -> bool:
     """Stopped before disclosing anything. The application waits for the user."""
     return _finish(
         attempt_id,
@@ -386,10 +429,11 @@ def fail_safe(attempt_id, worker, gen, reason: str) -> bool:
         S.failed_safe,
         AppState.needs_user_action,
         f"Stopped before sending anything: {reason}",
+        reason_code=code,
     )
 
 
-def abandon(attempt_id, worker, gen, reason: str) -> bool:
+def abandon(attempt_id, worker, gen, reason: str, code: str | None = None) -> bool:
     """Data was disclosed (filled/uploaded) but not submitted. Never retried automatically."""
     ok = _finish(
         attempt_id,
@@ -399,6 +443,7 @@ def abandon(attempt_id, worker, gen, reason: str) -> bool:
         S.abandoned,
         AppState.needs_user_action,
         f"Stopped after entering data but before submitting: {reason}",
+        reason_code=code,
     )
     return ok or _finish(
         attempt_id,
@@ -419,20 +464,47 @@ RETIRED = {
 }
 
 
-def rehearsed(attempt_id, worker, gen) -> bool:
-    """A rehearsal (an approval to disclose only) ends here: filled, uploaded, read back and
-    re-checked, before the send gate. Nothing was submitted. Its approval is used up, so
-    submitting needs an approval to submit and a new attempt, which repeats every check."""
-    return _finish(
-        attempt_id,
-        worker,
-        gen,
-        (S.claimed,),
-        S.rehearsed,
-        AppState.needs_user_action,
-        REHEARSAL_DONE,
-        retire="rehearsal_completed",
-    )
+def finish_rehearsal(attempt_id, worker: str, gen: int) -> None:
+    """A rehearsal (an approval to disclose only) ends here, before the send gate, and only
+    through a gate: in one REPEATABLE READ transaction it repeats every check the send gate makes
+    (authority, application state, the approval still live and locked, the content and the
+    execution method unchanged, the destination's class), then checks that the evidence rows show
+    a complete rehearsal (rehearsal.evidence_facts). Only then does it record what the rehearsal
+    proved, end the attempt `rehearsed` and use its approval up, all in the same commit.
+
+    A refusal raises GateRefused (with a fixed code where there is one): the runner then ends the
+    attempt `abandoned`, never `rehearsed`. LostAuthority propagates. Nothing is ever submitted,
+    and the approval is never extended or turned into one to submit."""
+    with _repeatable_read() as db:
+        att = _locked_attempt(db, attempt_id, worker, gen, S.claimed)
+        try:
+            ctx = _gate_checks(db, att, approval_lock="update")
+            if ctx.approval.scope != ApprovalScope.disclose_only:
+                raise GateRefused("this attempt is not a rehearsal")
+            if att.disclosure_started_at is None or att.send_started_at is not None:
+                raise GateRefused("the rehearsal did not run as approved")
+            facts, code = rehearsal.evidence_facts(db, att, ctx.content)
+            if code is not None:
+                raise GateRefused(rehearsal.MESSAGES[code], code)
+        except GateRefused as e:
+            db.rollback()
+            raise GateRefused(str(e), e.code) from None
+        version = approved_binding(ctx.approval, ctx.content["destination"])["adapter_version"]
+        db.add(
+            RehearsalRecord(
+                user_id=att.user_id,
+                application_id=att.application_id,
+                attempt_id=att.id,
+                approval_id=att.approval_id,
+                destination_class=att.destination_class,
+                adapter=att.adapter,
+                adapter_version=version,
+                **facts,
+            )
+        )
+        _apply_outcome(db, att, ctx.app, S.rehearsed, AppState.needs_user_action,
+                       REHEARSAL_DONE, retire="rehearsal_completed")  # fmt: skip
+        db.commit()
 
 
 def confirmed(attempt_id, worker, gen, evidence: list[dict]) -> bool:
@@ -668,7 +740,10 @@ def purge_expired_evidence() -> int:
 
 
 def delete_application_evidence(db: Session, app: Application) -> int:
-    """User-requested deletion. Refused while an attempt is active (it may still write)."""
+    """User-requested deletion. Refused while an attempt is active (it may still write). A
+    rehearsal record cannot be checked against evidence that is gone, so the application's
+    records are revoked in the same transaction (under the application lock the gates take)."""
+    pk.lock_application(db, app.id)
     active = db.scalar(
         select(ExecutionAttempt.id).where(
             ExecutionAttempt.application_id == app.id, ExecutionAttempt.state.in_(ACTIVE)
@@ -676,8 +751,18 @@ def delete_application_evidence(db: Session, app: Application) -> int:
     )
     if active is not None:
         raise PermissionError("An attempt is still running; wait for it to finish.")
+    revoked = db.execute(
+        update(RehearsalRecord)
+        .where(
+            RehearsalRecord.application_id == app.id,
+            RehearsalRecord.user_id == app.user_id,
+            RehearsalRecord.revoked_at.is_(None),
+        )
+        .values(revoked_at=utcnow(), revoked_reason="evidence_deleted")
+    ).rowcount
     n = db.execute(
         delete(Evidence).where(Evidence.application_id == app.id, Evidence.user_id == app.user_id)
     ).rowcount
-    record(db, app.user_id, "evidence.delete", "application", app.id, rows=n)
+    record(db, app.user_id, "evidence.delete", "application", app.id, rows=n,
+           rehearsals_revoked=revoked)  # fmt: skip
     return n

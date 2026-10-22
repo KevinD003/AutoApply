@@ -475,7 +475,7 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **A form-ATS mismatch** is now shown with an ATS that has no specification (Ashby), since
   Lever's own planned refusal comes first.
 
-## D41 — A rehearsal is an approval to disclose only, used once (2026-10-22)
+## D41 — A rehearsal is an approval to disclose only, used once (2026-10-22; stop amended by D44)
 - **Permission C alone:** an approval has a scope.
   - `submit`, the default and what every earlier approval meant, permits filling and the
     final click.
@@ -526,3 +526,36 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Test:** `tests/test_gate_snapshot_race.py` commits a revocation in a second session
   inside that window, deterministically, for both gates. It failed on the code before the
   fix (the gate did not refuse) and passes now.
+
+## D44 — A rehearsal ends through a gate; readiness counts recorded evidence by class (2026-10-22)
+- **The stop is a gate.** A rehearsal ended `rehearsed` without any check: a revocation, a
+  content change or a lost lease after the disclosure gate still let it end as a successful
+  rehearsal (and wrote a `package.approval_retired` row for an approval already revoked). Now
+  `service.finish_rehearsal` repeats every gate check in one REPEATABLE READ transaction,
+  under the attempt, application and approval locks (D43): authority, the approval still live,
+  the content and the execution method unchanged, the destination's class. It then checks the
+  evidence rows (`execution/rehearsal.py` `evidence_facts`):
+  - every approved document uploaded once with its digest and acknowledged;
+  - the readback with no mismatch (on the API route, the draft);
+  - the form checked again after filling (`recheck`; the API route reads its schema again);
+  - nothing unresolved. Requests the egress controls blocked or denied are counted in the
+    record, not disqualifying: a denial means the control held (the browser's own background
+    requests are denied too).
+- **Recorded in the same commit:** the rehearsal record (counts, route, adapter and version,
+  destination class; no host, board, field or file), the `rehearsed` state and the approval
+  used up. A refusal ends the attempt `abandoned`; an evidence refusal carries a fixed
+  reason code on its event (`rehearsal_evidence_missing`, `rehearsal_evidence_inconsistent`),
+  the other gate refusals their fixed message.
+- **A record holds only while it is true:** not revoked, its attempt and class unchanged, its
+  adapter version current, younger than `rehearsal_max_age_days` (30), and its evidence rows
+  still present and in agreement. Deleting an application's evidence revokes its records.
+  Any error while checking is a refusal (`rehearsal_check_unavailable`).
+- **Destination class recorded at queueing:** `fixture` only for a configured fixture origin
+  outside production, otherwise `real`. Each gate refuses an attempt whose destination is no
+  longer the class it was queued as, so a recorded class can be trusted.
+- **Readiness reads the caller's own records** (per user, counts only), each in the class it
+  was recorded in. The five evidence classes are kept apart (`providers/evidence.py`, pinned
+  in `docs/upload-and-submission-evidence.md`). `real_upload` needs real destinations enabled
+  and a holding rehearsal record of class `real` with an upload; `real_submission` needs real
+  destinations and a confirmed real attempt with an attempt-bound confirmation. Fixture
+  evidence meets nothing. With real destinations disabled, nothing recorded can meet either.

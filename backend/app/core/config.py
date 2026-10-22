@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     submit_timeout_seconds: int = 30
     navigation_timeout_seconds: int = 20
     evidence_retention_days: int = 365
+    # A rehearsal record older than this no longer counts (execution/rehearsal.py). Must be
+    # between 1 and evidence_retention_days, or every check of it refuses.
+    rehearsal_max_age_days: int = 30
     # Redis redelivers an unacknowledged message after this long. Production keeps 3600s; only
     # the redelivery test shortens it, for a disposable broker.
     broker_visibility_timeout_seconds: int = 3600

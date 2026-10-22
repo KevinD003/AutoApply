@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-22 (each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-22 (the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,64 @@ Last updated: 2026-10-22 (each gate locks the approval row, so a revocation comm
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Rehearsal stop, rehearsal records and readiness evidence (E5 step 3, 2026-10-22; fixtures only, no external request)
+
+- **Nothing changed outside the repository**, no support state changed, and no real
+  destination is enabled. Evidence: `docs/evidence-matrix.md` ("Rehearsal stop, rehearsal
+  records and readiness evidence"); decision D44; `docs/upload-and-submission-evidence.md`.
+- **Fixed: a rehearsal ended `rehearsed` without any check.** A revocation, a content change
+  or a lost lease after the disclosure gate still let it end as a successful rehearsal, and
+  a retirement was recorded for an approval already revoked. Now the stop
+  (`service.finish_rehearsal`) is a gate: every gate check again under the attempt,
+  application and approval locks, then the evidence rows checked. Only then, in one commit,
+  the rehearsal record, `rehearsed` and the approval used up. A refusal ends `abandoned`; an
+  evidence refusal carries a fixed reason code on its event.
+- **Rehearsal record** (`rehearsal_records`, migration `0b1c00a7e222`): counts and fixed values
+  only. It holds only while its evidence rows agree with it, it is younger than 30 days, its
+  adapter version is current and it is not revoked. Deleting an application's evidence
+  revokes its records.
+- **New evidence row** `recheck` (`{"form": "matched"}`) after the post-fill form check; the
+  API route reads its schema again before a rehearsal's stop.
+- **Destination class** (`fixture` or `real`) recorded on each attempt at queueing; each gate
+  refuses an attempt whose destination is no longer that class.
+- **Readiness** (`GET /api/providers/greenhouse_dom/readiness`) now counts the signed-in
+  user's own records by evidence class (`fixture`, `public_doc_expectation`,
+  `read_only_observation`, `rehearsal`, `real_submission`, kept apart in
+  `providers/evidence.py`). Each condition names the one class that can meet it. Fixture
+  evidence meets nothing; with real destinations disabled, `real_upload` and
+  `real_submission` stay not met whatever is recorded. Still 0 of 7.
+- **Package content unchanged** (`SCHEMA_VERSION` unchanged, no package hash changes).
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `tests/test_rehearsal_stop.py` (25 tests) and `tests/test_pilot_readiness.py` (10, of which 5
+    new), with the rehearsal, upload-evidence, gate-race, audit-inventory, doc-reference,
+    evidence-lifecycle, API-provider and migration modules: 76 passed before the review fixes;
+    first run of the new modules: 7 failed and 29 passed. Two causes, both fixed:
+    - the stop refused every browser rehearsal: it treated requests the egress proxy denied
+      as disqualifying (the browser's own background requests are denied), which is now
+      counted, not disqualifying;
+    - four tests acted before the worker reached the stop: they now wait for it;
+  - an adversarial read-only review (5 reviewers, 2 skeptics per finding): 11 findings, 9
+    confirmed and fixed, 2 refuted (one of them, the savepoint, kept: a test shows it matters);
+  - full backend (`pytest tests`): 690 passed;
+  - full Playwright: 34 passed, 2 skipped (the desktop-only configuration checks);
+  - `ruff check` and `ruff format --check` clean; no frontend change;
+  - sabotage checks, 12, each caught:
+    - the stop without the gate;
+    - the evidence check skipped;
+    - no recheck row;
+    - no API re-read;
+    - `real_upload` met by real destinations alone;
+    - fixture records counted as rehearsal evidence;
+    - other users' records counted;
+    - no savepoint;
+    - records not revoked on evidence deletion;
+    - no class check;
+    - age ignored;
+    - the record not compared with its rows (missed at first; a test was added, then caught).
+- **CI for the previous change:** **CI #94**
+  ([39794330555](https://github.com/KevinD003/AutoApply/actions/runs/39794330555)) (`97e4cfd`,
+  gate approval lock): passed.
 
 ## Gates and concurrent revocation (2026-10-22; local only, no external request)
 

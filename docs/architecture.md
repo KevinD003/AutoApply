@@ -136,8 +136,9 @@ relay ── publishes attempt id ──> Redis ──> Celery task ──> clai
     approval changed after the snapshot is a refusal); approval live, unexpired, same package
     hash, freshly rebuilt content identical → disclosure_started_at
   → fill + upload (evidence: disclosures) → read every control back, compare → re-extract
-  → a rehearsal (approval scope `disclose_only`) stops here: attempt `rehearsed`, approval
-    used up, nothing submitted
+  → a rehearsal (approval scope `disclose_only`) stops here, through a gate: every gate check
+    again under the same locks, and the evidence rows checked; then, in one commit, its record,
+    attempt `rehearsed`, approval used up. Refused: `abandoned`. Nothing submitted
   → GATE 2 (before send) — the linearization point; refuses any scope but `submit`
     → attempt `sending`, app `submitting`
   → click submit → classify: receipt → confirmed | code requested → checkpoint

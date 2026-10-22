@@ -9,6 +9,22 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Rehearsal stop, rehearsal records and readiness evidence (E5 step 3, 2026-10-22; fixtures only)
+
+Synthetic candidate and local fixtures only. The receiver's ledger is the oracle for what
+reached the synthetic employer.
+
+| Requirement | Evidence (`tests/test_rehearsal_stop.py` unless noted) | Result |
+|---|---|---|
+| A rehearsal records what it proved, at its stop | `test_a_rehearsal_records_what_it_proved_at_its_stop` (browser, API) | one record: class `fixture`, route, adapter and current version, 1 of 1 uploads acknowledged, readback 0 mismatched (API: none), recheck matched, nothing unresolved; it holds; one `package.approval_retired`; ledger 1 upload, 0 accepted |
+| The stop repeats the gate | `test_a_revocation_at_the_stop_ends_abandoned_not_rehearsed`, `test_a_change_to_the_profile_at_the_stop_ends_abandoned`, `test_a_cancel_at_the_stop_is_not_a_rehearsal`, `test_a_lost_lease_at_the_stop_is_not_a_rehearsal`, `test_a_revocation_committed_while_the_stop_waits_is_refused` | a worker held at the stop: revoked, edited, cancelled or swept, the attempt ends `abandoned` or `cancelled`, never `rehearsed`, with no record; a revoked approval is shown as revoked and no retirement is recorded for it |
+| The stop checks the evidence | `test_the_stop_ends_rehearsed_only_with_complete_evidence`, `test_the_stop_refuses_incomplete_or_contradicting_evidence` (5), `test_the_stop_refuses_an_upload_not_acknowledged` (2), `test_the_stop_refuses_a_document_that_was_not_approved`, `test_the_api_route_reads_the_form_again_before_its_stop` | missing recheck, readback or upload: `rehearsal_evidence_missing`; a readback mismatch, a changed form, an unacknowledged upload or an unapproved document: `rehearsal_evidence_inconsistent`; the code is kept on the outcome event. Requests the egress proxy denied are counted in the record, not disqualifying |
+| A record holds only while it is true | `test_a_record_holds_only_while_its_evidence_and_attributes_do`, `test_deleting_an_applications_evidence_revokes_its_rehearsals` | another adapter version or class: mismatched; past 30 days: stale; an invalid window: check unavailable; an edited readback: inconsistent; an expired row: missing; a tampered class: mismatched; evidence deleted: revoked (another user: 404) |
+| A destination keeps its class | `test_a_gate_refuses_a_destination_whose_class_changed`, `test_an_attempt_queued_before_classes_were_recorded_is_refused_plainly`, `test_only_a_configured_fixture_origin_outside_production_is_a_fixture` | recorded at queueing; a gate refuses a changed class, and an attempt with no recorded class (queued before this change) with its own plain message, before anything is disclosed; production and unknown origins are `real` |
+| A checking error is a refusal | `test_a_failed_statement_while_checking_a_record_is_a_refusal_not_an_error` | a statement the database refuses: `rehearsal_check_unavailable`, and the caller's session stays usable (a savepoint) |
+| No identifiers kept | `test_records_events_and_audit_hold_no_external_identifiers`, `test_the_ack_and_strength_vocabulary_matches_the_adapters` | the record, events and audit hold no URL, host, slug, field or name; the shared vocabulary equals the adapters' |
+| Readiness counts recorded evidence by class, and nothing meets a real condition | `tests/test_pilot_readiness.py`: `test_recorded_evidence_meets_nothing_while_real_destinations_are_disabled`, `test_a_real_condition_needs_real_destinations_and_evidence_of_its_own_class`, `test_each_condition_is_met_only_by_its_own_evidence_class`, `test_the_documented_evidence_classes_are_the_code`, `test_readiness_reads_only_the_callers_own_records`, `test_the_api_serves_readiness` | every count high: 0 met; with real destinations patched on, fixture evidence meets nothing and each real condition needs its own class; one class per condition; the documented table is the code; the endpoint counts only the caller's records (another user: 0), and a record edited to claim a real destination counts as not holding |
+
 ## Gates and concurrent revocation (2026-10-22; local only)
 
 | Requirement | Evidence | Result |

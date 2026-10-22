@@ -137,8 +137,9 @@ Where each row's evidence lives:
 4. **Real upload evidence:** attachments uploaded to a real form, proven on their own (an
    upload is a disclosure: the document reaches the employer before any submit). What that
    evidence would be is in `docs/upload-and-submission-evidence.md`. The rehearsal it needs
-   (an approval to disclose only, which stops before the send gate) exists and is tested on
-   the local fixtures only; it has never run against a real page.
+   (an approval to disclose only) exists and is tested on the local fixtures only; it has never
+   run against a real page. Its stop repeats every gate check and records what it proved, and
+   readiness counts such a record only while it still holds and only for a real destination.
 5. **Real submission evidence:** a real final submit and its confirmation, proven separately
    from uploads.
 6. **The gate in `docs/live-pilot-gate.md`:** you name the posting, the data to disclose and
@@ -148,22 +149,28 @@ Where each row's evidence lives:
    used, with a reviewed change to `real_destinations`. This is never done to claim progress.
 
 **Status** (computed by `providers/readiness.py` from recorded evidence and served at
-`GET /api/providers/greenhouse_dom/readiness`; `tests/test_pilot_readiness.py` fails when this
-table and the code disagree):
+`GET /api/providers/greenhouse_dom/readiness`. The table is the baseline, with no user's records
+read; the endpoint also counts the signed-in user's own records by evidence class, and none of
+them can meet a real condition while real destinations are disabled.
+`tests/test_pilot_readiness.py` fails when this table and the code disagree):
 
 | Condition | Status | Evidence |
 |---|---|---|
 | `dropdowns` | not met | `custom_dropdowns` is `fixture`; Path A pending |
 | `unmatched_required_controls` | not met | no mapping rule exists for `u1` or `u2`; Path A pending |
 | `location` | not met | `location_picker` is `none` |
-| `real_upload` | not met | `file_upload` is `fixture`; real destinations are disabled, so NoEfforts cannot have made one |
-| `real_submission` | not met | `final_submit` is `fixture`; real destinations are disabled, so NoEfforts cannot have made one |
+| `real_upload` | not met | `file_upload` is `fixture`; met only by rehearsal evidence on a real destination; real destinations are disabled, so NoEfforts cannot have made one |
+| `real_submission` | not met | `final_submit` is `fixture`; met only by real-submission evidence (an attempt-bound confirmation); real destinations are disabled, so NoEfforts cannot have made one |
 | `pilot_gate` | not met | no permission given (`docs/live-pilot-gate.md`) |
 | `capability_entry` | not met | `real_destinations_enabled` is false |
 
 - A condition is met only by evidence of its own kind: a capability level the registry records
-  (reaching `observed` needs an approved read-only run), `real_destinations`, or the gate's
-  separate permissions.
+  (reaching `observed` needs an approved read-only run), the gate's separate permissions, or,
+  for `real_upload` and `real_submission`, `real_destinations` together with recorded evidence
+  of their own class. The five evidence classes (fixture, public-doc expectation, read-only
+  observation, rehearsal, real submission) are kept apart:
+  `docs/upload-and-submission-evidence.md` ("Evidence classes"). Fixture evidence meets
+  nothing.
 - **Path A** (the optional manual check, `docs/manual-dropdown-checklist.md`) is recorded in
   `docs/evidence/path-a.json` as fixed choices only (`providers/path_a.py`). It is shown beside
   the conditions it bears on and meets none of them. Until the owner answers, the record says

@@ -5,7 +5,18 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, new_id, utcnow
@@ -45,6 +56,10 @@ class ExecutionAttempt(Base):
             unique=True,
             postgresql_where=text("state IN ('pending','claimed','sending','awaiting_code')"),
         ),
+        CheckConstraint(
+            "destination_class IS NULL OR destination_class IN ('fixture','real')",
+            name="ck_attempt_destination_class",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
@@ -64,6 +79,9 @@ class ExecutionAttempt(Base):
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    # "fixture" or "real" (rehearsal.destination_class), fixed when queued; NULL = queued before
+    # it was recorded, which counts in no evidence class.
+    destination_class: Mapped[str | None] = mapped_column(String(10))
     disclosure_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     send_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -143,9 +161,52 @@ class Evidence(Base):
         ForeignKey("applications.id", ondelete="CASCADE"), index=True
     )
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    kind: Mapped[str] = mapped_column(String(30))  # disclosure | readback | receipt | outcome
-    # employer_receipt | user_reported | none
+    # disclosure | readback | recheck | egress | receipt
+    kind: Mapped[str] = mapped_column(String(30))
+    # employer_receipt | employer_confirmation_page | api_receipt | none
     strength: Mapped[str] = mapped_column(String(30), default="none")
     data: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     retain_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RehearsalRecord(Base):
+    """What a rehearsal proved, written by the rehearsal stop in the same transaction that ends
+    the attempt `rehearsed` (service.finish_rehearsal), after every gate check passed again.
+    Counts and fixed values only: no host, URL, board, field key, file or page text. It holds
+    while its evidence rows still match it (rehearsal.assess_record); a withdrawn or deleted
+    one is revoked, never edited back."""
+
+    __tablename__ = "rehearsal_records"
+    __table_args__ = (
+        CheckConstraint("destination_class IN ('fixture','real')", name="ck_rehearsal_class"),
+        CheckConstraint("route IN ('browser','api')", name="ck_rehearsal_route"),
+        CheckConstraint(
+            "revoked_reason IS NULL OR revoked_reason IN ('withdrawn_by_user','evidence_deleted')",
+            name="ck_rehearsal_revoked_reason",
+        ),
+        Index("ix_rehearsal_records_user_adapter", "user_id", "adapter"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE")
+    )
+    attempt_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("execution_attempts.id", ondelete="CASCADE"), unique=True
+    )
+    approval_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("package_approvals.id"))
+    destination_class: Mapped[str] = mapped_column(String(10))
+    route: Mapped[str] = mapped_column(String(10))  # browser | api
+    adapter: Mapped[str] = mapped_column(String(50))
+    adapter_version: Mapped[str] = mapped_column(String(100))
+    uploads_expected: Mapped[int] = mapped_column(Integer)
+    uploads_acknowledged: Mapped[int] = mapped_column(Integer)
+    readback_mismatched: Mapped[int | None] = mapped_column(Integer)  # NULL on the API route
+    recheck_matched: Mapped[bool] = mapped_column(Boolean)
+    egress_proxy_denied: Mapped[int] = mapped_column(Integer, default=0)
+    unresolved: Mapped[int] = mapped_column(Integer)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_reason: Mapped[str | None] = mapped_column(String(30))

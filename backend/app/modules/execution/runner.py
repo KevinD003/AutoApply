@@ -21,7 +21,7 @@ from app.core.db import SessionLocal
 from app.core.urlsafety import destination_category, is_fixture_origin
 from app.modules.documents.models import Document
 from app.modules.documents.storage import get_storage
-from app.modules.execution import policy
+from app.modules.execution import policy, rehearsal
 from app.modules.execution import service as svc
 from app.modules.execution.adapters.fake_api import FakeApiAdapter
 from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, UploadFailed
@@ -155,7 +155,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             try:
                 svc.gate_before_disclosure(aid, worker, gen)
             except svc.GateRefused as e:
-                svc.fail_safe(aid, worker, gen, str(e))
+                svc.fail_safe(aid, worker, gen, str(e), code=e.code)
                 return "failed_safe"
             phase = "after_disclosure"
             fault("after_disclosure_gate")
@@ -184,6 +184,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             if reason:
                 svc.abandon(aid, worker, gen, reason)
                 return "abandoned"
+            svc.record_evidence(aid, worker, gen, "recheck", rehearsal.RECHECK_MATCHED)
             denied = eg.proxy_denied()
             if eg.blocked or denied:
                 # Distinct blocked destinations by address category, never the hosts.
@@ -202,13 +203,12 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                 )
             beat()
             if _rehearsal(aid):
-                svc.rehearsed(aid, worker, gen)
-                return "rehearsed"
+                return _stop_rehearsal(aid, worker, gen)
             fault("before_send_gate")
             try:
                 svc.gate_before_send(aid, worker, gen)
             except svc.GateRefused as e:
-                svc.abandon(aid, worker, gen, str(e))
+                svc.abandon(aid, worker, gen, str(e), code=e.code)
                 return "abandoned"
             phase = "after_send"
             fault("before_click")
@@ -234,6 +234,19 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         else:
             svc.unknown(aid, worker, gen, reason)
         return "error"
+
+
+def _stop_rehearsal(aid, worker, gen) -> str:
+    """End a rehearsal through its stop (service.finish_rehearsal): `rehearsed` only if every
+    gate check and the evidence check pass there; otherwise `abandoned` with the stop's reason.
+    Nothing is ever submitted. LostAuthority propagates to the caller."""
+    fault("before_rehearsal_stop")
+    try:
+        svc.finish_rehearsal(aid, worker, gen)
+    except svc.GateRefused as e:
+        svc.abandon(aid, worker, gen, str(e), code=e.code)
+        return "abandoned"
+    return "rehearsed"
 
 
 def _record_disclosures(aid, worker, gen, disclosures: list[dict]) -> None:
@@ -290,7 +303,7 @@ def _run_api(aid, worker, gen, adapter) -> str:
         try:
             svc.gate_before_disclosure(aid, worker, gen)
         except svc.GateRefused as e:
-            svc.fail_safe(aid, worker, gen, str(e))
+            svc.fail_safe(aid, worker, gen, str(e), code=e.code)
             return "failed_safe"
         phase = "after_disclosure"
         fault("after_disclosure_gate")
@@ -305,13 +318,20 @@ def _run_api(aid, worker, gen, adapter) -> str:
             svc.abandon(aid, worker, gen, str(e))
             return "abandoned"
         if _rehearsal(aid):
-            svc.rehearsed(aid, worker, gen)
-            return "rehearsed"
+            # Rehearsals only: read the job's schema again (read-only) after the uploads, so the
+            # stop can check the form was still the approved one. A submission is unchanged.
+            svc.heartbeat(aid, worker, gen)
+            reason = adapter.validate_before_disclosure()
+            if reason:
+                svc.abandon(aid, worker, gen, reason)
+                return "abandoned"
+            svc.record_evidence(aid, worker, gen, "recheck", rehearsal.RECHECK_MATCHED)
+            return _stop_rehearsal(aid, worker, gen)
         fault("before_send_gate")
         try:
             svc.gate_before_send(aid, worker, gen)
         except svc.GateRefused as e:
-            svc.abandon(aid, worker, gen, str(e))
+            svc.abandon(aid, worker, gen, str(e), code=e.code)
             return "abandoned"
         phase = "after_send"
         fault("before_click")
