@@ -1,8 +1,8 @@
 """A revocation the user commits while a gate waits for the application lock must stop that
-gate. The gates read in REPEATABLE READ: their snapshot is taken at the attempt lock, before the
-application lock, so a revocation committed in between is not in the snapshot. Each gate
-therefore locks the approval row too, and a concurrent change to it is a refusal. Synthetic data
-and the local receiver only."""
+gate. The gates take their locks (attempt, application, approval) and then read what is
+committed (D46): a revocation committed in between is seen. (They used to read a REPEATABLE READ
+snapshot taken at the attempt lock, which missed it until D43 locked the approval row.)
+Synthetic data and the local receiver only."""
 
 import uuid
 
@@ -52,7 +52,7 @@ def test_a_revocation_committed_while_a_gate_waits_is_refused(api, receiver, mon
     if gate == "send":
         svc.gate_before_disclosure(aid, "w1", gen)
     done = revoke_while_the_gate_waits(monkeypatch, app_id)
-    with pytest.raises(svc.GateRefused, match="approval changed while it was being checked"):
+    with pytest.raises(svc.GateRefused, match="approval revoked"):
         (svc.gate_before_send if gate == "send" else svc.gate_before_disclosure)(aid, "w1", gen)
     assert done == [True]  # the revocation really happened inside the window
     a = attempt(str(aid))

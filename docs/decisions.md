@@ -99,8 +99,8 @@ compare-and-swap ignores. Celery's `acks_late` / `reject_on_worker_lost=False` o
 whether Celery repeats a *task*; they never make an external submission idempotent.
 
 ## D17 — Two gates; the send gate is the linearization point
-Gate 1 authorizes disclosure, gate 2 authorizes the click. Both run in REPEATABLE READ under
-the application row lock and recheck approval, expiry, package hash and freshly rebuilt
+Gate 1 authorizes disclosure, gate 2 authorizes the click. Both run (since D46: under their
+locks, reading at READ COMMITTED; before, in REPEATABLE READ) under the application row lock and recheck approval, expiry, package hash and freshly rebuilt
 content. Revocation, cancellation or edits that commit before gate 2 stop the send; after
 gate 2, cancellation is refused because data may already be in flight. (Amended by D43: each
 gate also locks the approval row.)
@@ -512,7 +512,7 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   "rehearsal finished", derived from its `rehearsed` attempt, not as an invalidation. The
   tracker shows the latest attempt.
 
-## D43 — Each gate locks the approval row too (2026-10-22)
+## D43 — Each gate locks the approval row too (2026-10-22; the snapshot it patched replaced by D46)
 - **Fixed:** a gate's REPEATABLE READ snapshot is taken at its first statement, the attempt
   lock, and the application lock comes after it. A revocation that committed while the gate
   waited for the application lock (revoking takes that lock too) was not in the snapshot. The
@@ -527,7 +527,7 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   inside that window, deterministically, for both gates. It failed on the code before the
   fix (the gate did not refuse) and passes now.
 
-## D44 — A rehearsal ends through a gate; readiness counts recorded evidence by class (2026-10-22)
+## D44 — A rehearsal ends through a gate; readiness counts recorded evidence by class (2026-10-22; isolation amended by D46)
 - **The stop is a gate.** A rehearsal ended `rehearsed` without any check: a revocation, a
   content change or a lost lease after the disclosure gate still let it end as a successful
   rehearsal (and wrote a `package.approval_retired` row for an approval already revoked). Now
@@ -560,7 +560,7 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   destinations and a confirmed real attempt with an attempt-bound confirmation. Fixture
   evidence meets nothing. With real destinations disabled, nothing recorded can meet either.
 
-## D45 — A recorded rehearsal before the first submission through each path (2026-10-22)
+## D45 — A recorded rehearsal before the first submission through each path (2026-10-22; isolation amended by D46)
 - **Rule (CTO decision):** a successful, recorded, disclosure-only rehearsal is required before
   the first real submission through a new employer/provider execution path. Built and tested
   on the local fixtures only (`docs/rehearsal-prerequisite.md`); nothing is enabled for a real
@@ -581,8 +581,8 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   rehearsal on a real page is another real disclosure, and every submission still repeats
   every check of its own. Making it stricter is one branch and its tests.
 - **Five layers:** approve, enqueue, claim, the disclosure gate and the send gate, each tested
-  with the others bypassed. In the gates what is relied on is locked FOR SHARE, so a
-  withdrawal committed after the snapshot is a refusal. Fail-closed: any error or ambiguity
+  with the others bypassed. In the gates what is relied on is locked FOR SHARE and read after
+  the locks (D46): a withdrawal committed before the read is seen; one arriving after it waits. Fail-closed: any error or ambiguity
   is `rehearsal_check_unavailable`, never met.
 - **Twelve fixed codes** in their own vocabulary (`rehearsal.REASONS`, pinned in the doc), each
   with fixed text shown to the user; the review page shows the status and code, and the user
@@ -592,3 +592,46 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Fixture paths** get the rule only through a TEST-ONLY setting, honoured only when
   `env == "test"`; it can only add the rule. Readiness counts a real submission only if its
   send gate found the prerequisite held.
+
+## D46 — One lock order: the attempt, the application, the approval, then what is relied on (2026-10-22)
+- **Found and reproduced:** the worker paths (both gates, the rehearsal stop, outcomes,
+  checkpoints, the sweeper) locked the attempt, then the application; cancel locked the
+  application, then the attempt. Recording evidence also takes the application's key-share lock
+  (the foreign key) after the attempt. Races between them deadlocked: PostgreSQL aborted one
+  side (`tests/test_lock_order.py`). Reproduced on the old code: a cancel against either gate,
+  the `fail_safe` outcome and evidence recording; then, with cancel put back in the old order,
+  against the rehearsal stop and the sweeper. Checkpoints and the other outcome writers take
+  the same locks in the same order and are covered by the order, without a race test of their
+  own.
+- **Order:** the attempt, then the application, then the approval, then the application's inputs,
+  then what the rehearsal prerequisite relies on (record or receipt). Cancel and claim now
+  follow it; nothing else changed order. Clearing an answer or consent now takes the
+  application before deleting the input (it deleted first, against a save that took the
+  application first).
+- **Cancel** looks again after the application lock, for an attempt queued while it waited,
+  taking it without waiting; if that attempt is locked (being claimed), the cancel is refused
+  ("try again") rather than risk a deadlock. It updates the application as locked, not as it
+  was loaded before the wait.
+- **The gates read what is committed, after their locks** (READ COMMITTED). Their REPEATABLE
+  READ snapshot was taken at the first statement, before they waited for the application, so
+  an answer, consent or profile change committed during that wait was not seen (the gate
+  passed with the content as approved), and a change to the application's notes made the gate
+  refuse. Both reproduced first. D43's serialization-failure refusal is replaced by reading
+  after the locks: the approval row lock stays and still makes a writer wait for the gate.
+  A cancel committed while a gate waits for the attempt is seen as such: lost authority.
+- **Queueing again** with an earlier attempt still pending under an approval no longer valid
+  (queued, then edited before a worker took it) stops that attempt instead of failing as a
+  duplicate (an uncaught 500); the attempt is locked without waiting, and if a worker is
+  taking it, queueing is refused ("try again"). Without this, the claim (now attempt first)
+  and the queueing transaction could deadlock on the attempt's uniqueness check.
+- **Two locks against the order, never waiting:** cancel's look again for a newly queued
+  attempt, and queueing's lock of an earlier pending attempt it stops. Both are NOWAIT and
+  refuse ("try again") when the row is locked, so neither can be part of a deadlock.
+- **Guarantees, stated precisely** (`docs/architecture.md`, "Race guarantees"): a change
+  committed before a gate's check stops it. One arriving later waits if it writes a row the
+  gate locks (cancel, revocation, withdrawal, evidence deletion, the application's answers,
+  consents and chosen documents, the approval); a profile, work-authorization, document-library,
+  answer-bank, form or API-authorization change does not wait, and counts for later packages.
+  Nothing can recall what an authorized step already sent, and what is sent is always the
+  approved package. No retry was added anywhere. A per-user lock that would make those writers
+  wait too is possible (deferred).

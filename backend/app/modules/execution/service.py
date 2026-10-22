@@ -10,6 +10,16 @@ Guarantee (and its limits)
   `unknown` (application `submitted_unconfirmed`) and need reconciliation.
 * This is duplicate *suppression* on our side. It is not exactly-once delivery at the employer:
   an employer that accepts twice from one click, or a user resubmitting elsewhere, is outside it.
+
+Lock order (docs/architecture.md, "Lock order")
+-----------------------------------------------
+Every transaction that locks more than one of these rows takes them in this order: the
+execution attempt, then its application, then its approval, then what the rehearsal
+prerequisite relies on (a rehearsal record or a receipt, FOR SHARE). Inserting a row that
+references an application (evidence, events) key-share locks the application too, after the
+attempt: the same order. Paths that never lock an attempt (approve, revoke, answers, withdraw,
+evidence deletion) start at the application. A checkpoint row is locked only alone (the user
+entering a code) or while holding its attempt (the worker).
 """
 
 import re
@@ -50,7 +60,7 @@ from app.modules.preparation.models import ApplicationPackage, ApprovalScope, Pa
 
 S = AttemptState
 TOPIC_EXECUTE = "execute_attempt"
-SERIALIZATION_FAILURE = "40001"  # PostgreSQL: a row changed after this transaction's snapshot
+LOCK_NOT_AVAILABLE = "55P03"  # PostgreSQL: NOWAIT found the row locked
 
 
 class LostAuthority(RuntimeError):
@@ -84,6 +94,7 @@ def enqueue(db: Session, app: Application) -> ExecutionAttempt:
     appr = pk.active_approval(db, pkg)
     if appr is None:
         raise pk.ApprovalError("Approve the current package version before queueing.")
+    _supersede_stale_attempt(db, app)
     adapter_for(pkg.content["destination"])  # raises if unsupported
     try:
         binding = check_binding(appr, pkg.content["destination"])
@@ -122,6 +133,49 @@ def enqueue(db: Session, app: Application) -> ExecutionAttempt:
     db.add(OutboxMessage(topic=TOPIC_EXECUTE, attempt_id=att.id))
     event(db, att, "enqueued", package_version=pkg.version)
     return att
+
+
+def _supersede_stale_attempt(db: Session, app: Application) -> None:
+    """Before a new attempt is inserted (under the application lock): an earlier one still
+    active would make the insert fail as a duplicate, or wait on its uniqueness check while a
+    claim holding it waits for this lock (a deadlock). One that is pending under an approval
+    no longer valid (queued, then edited before a worker took it) can never run and has
+    disclosed nothing: it is stopped here. It is locked without waiting, the attempt lock being
+    against the order after the application (D46); if a worker is taking it, try again."""
+    old = db.scalar(
+        select(ExecutionAttempt).where(
+            ExecutionAttempt.application_id == app.id, ExecutionAttempt.state.in_(ACTIVE)
+        )
+    )
+    if old is None:
+        return
+    if old.state != S.pending or _approval_still_valid(db, app, old):
+        raise pk.ApprovalError(
+            "An earlier attempt for this application is still running. Wait for it to "
+            "finish, then queue again."
+        )
+    try:
+        with db.begin_nested():
+            locked = db.scalar(
+                select(ExecutionAttempt)
+                .where(ExecutionAttempt.id == old.id, ExecutionAttempt.state == S.pending)
+                .with_for_update(nowait=True)
+                .execution_options(populate_existing=True)
+            )
+    except DBAPIError as e:
+        if getattr(e.orig, "sqlstate", None) != LOCK_NOT_AVAILABLE:
+            raise
+        locked = None
+    if locked is None:
+        raise pk.ApprovalError(
+            "An earlier attempt for this application is being picked up by a worker; it will "
+            "stop, because the package changed. Try again in a moment."
+        )
+    locked.state, locked.finished_at = S.failed_safe, utcnow()
+    locked.outcome_detail = (
+        "Stopped before anything was sent: the package changed and was queued again."
+    )
+    event(db, locked, "superseded")
 
 
 def retire_approval(db: Session, approval_id, reason: str) -> bool:
@@ -166,7 +220,9 @@ def relay_outbox(publish, limit: int = 50) -> int:
 
 def claim(attempt_id: uuid.UUID, worker: str) -> int | None:
     """Atomically take a pending attempt. Returns the new generation, or None if another
-    delivery already claimed it (duplicate deliveries are ignored here)."""
+    delivery already claimed it (duplicate deliveries are ignored here). Locks the attempt (the
+    compare-and-swap), then the application, in the global lock order; the approval is checked
+    under the application lock, so a revocation or cancel committed first is seen."""
     lease = timedelta(seconds=get_settings().lease_seconds)
     with SessionLocal() as db:
         app_id = db.scalar(
@@ -174,7 +230,6 @@ def claim(attempt_id: uuid.UUID, worker: str) -> int | None:
         )
         if app_id is None:
             return None
-        app = pk.lock_application(db, app_id)  # serialize with revoke/cancel/approve
         now = utcnow()
         gen = db.execute(
             update(ExecutionAttempt)
@@ -195,6 +250,7 @@ def claim(attempt_id: uuid.UUID, worker: str) -> int | None:
         if gen is None:
             db.rollback()
             return None
+        app = pk.lock_application(db, app_id)  # serialize with revoke/cancel/approve
         att = db.get(ExecutionAttempt, attempt_id)
         if not _approval_still_valid(db, app, att):
             att.state, att.finished_at = S.failed_safe, now
@@ -286,6 +342,7 @@ def heartbeat(
 
 
 def _locked_attempt(db: Session, attempt_id, worker: str, gen: int, state) -> ExecutionAttempt:
+    # After a wait, the row as committed by whoever held it (e.g. a cancel): checked below.
     att = db.scalar(
         select(ExecutionAttempt).where(ExecutionAttempt.id == attempt_id).with_for_update()
     )
@@ -310,25 +367,23 @@ class GateContext(NamedTuple):
 
 
 def _gate_checks(db: Session, att: ExecutionAttempt, approval_lock: str = "share") -> GateContext:
-    """Authorization checks shared by both gates and the rehearsal stop. Runs inside a
-    REPEATABLE READ transaction holding the application and attempt row locks.
-
-    The snapshot is taken at the attempt lock, before the application lock, so a revocation (or
-    a new package version) committed while this gate waited for the application lock is not in
-    it. The approval row is therefore locked as well (`share`, or `update` where the caller
-    retires it): if it changed after the snapshot, PostgreSQL refuses the lock with a
-    serialization failure, and so does the gate."""
-    try:
-        app = pk.lock_application(db, att.application_id)
-        db.execute(
-            select(PackageApproval.id)
-            .where(PackageApproval.id == att.approval_id)
-            .with_for_update(read=approval_lock == "share")
-        )
-    except DBAPIError as e:
-        if getattr(e.orig, "sqlstate", None) == SERIALIZATION_FAILURE:
-            raise GateRefused("the approval changed while it was being checked") from None
-        raise
+    """Authorization checks shared by both gates and the rehearsal stop, in a transaction that
+    holds the attempt row lock (D46). It takes the application lock, then the approval row lock
+    (`share`, or `update` where the caller retires it), and only then reads, at READ COMMITTED:
+    every check sees what was committed before it ran, including a revocation, an edit or a
+    profile change committed while this gate waited for a lock. (A REPEATABLE READ snapshot,
+    taken at the first statement, missed those.) Writers of the rows it locks (the attempt, the
+    application and its inputs, the approval, the record or receipt the prerequisite locks) wait
+    for this gate to commit. Inputs it does not lock (profile facts, work authorizations, the
+    document library, the answer bank, the job and its form, API authorizations) are checked as
+    of the statement that reads them: a change committed after that read does not wait and does
+    not stop this gate; what is sent is still the approved package."""
+    app = pk.lock_application(db, att.application_id)
+    db.execute(
+        select(PackageApproval.id)
+        .where(PackageApproval.id == att.approval_id)
+        .with_for_update(read=approval_lock == "share")
+    )
     if app.state != AppState.running:
         raise GateRefused(f"application is {app.state.value}")
     if not _approval_still_valid(db, app, att):
@@ -374,16 +429,18 @@ def _gate_prerequisite(db: Session, att: ExecutionAttempt, ctx: GateContext, lay
     return v
 
 
-def _repeatable_read() -> Session:
+def _gate_session() -> Session:
+    """The gates and the rehearsal stop: READ COMMITTED, set explicitly (not left to a server
+    or engine default), reading after their locks (_gate_checks)."""
     db = SessionLocal()
-    db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+    db.connection(execution_options={"isolation_level": "READ COMMITTED"})
     return db
 
 
 def gate_before_disclosure(attempt_id, worker: str, gen: int) -> None:
     """Authority to disclose the approved package to its destination (fill/upload may transmit
     data). Records that disclosure is starting; after this, a crash is never retried silently."""
-    with _repeatable_read() as db:
+    with _gate_session() as db:
         att = _locked_attempt(db, attempt_id, worker, gen, S.claimed)
         try:
             _gate_prerequisite(db, att, _gate_checks(db, att), "disclosure")
@@ -397,9 +454,10 @@ def gate_before_disclosure(attempt_id, worker: str, gen: int) -> None:
 
 def gate_before_send(attempt_id, worker: str, gen: int) -> None:
     """The linearization point. If this commits, this worker (and only it) may click submit.
-    Cancellation, revocation or edits that commit before this point stop the send; anything
-    after it cannot recall data already in flight."""
-    with _repeatable_read() as db:
+    Cancellation, revocation or edits committed before this gate reads them stop the send
+    (_gate_checks says which writers wait for it); anything after it cannot recall data already
+    in flight."""
+    with _gate_session() as db:
         att = _locked_attempt(db, attempt_id, worker, gen, S.claimed)
         try:
             ctx = _gate_checks(db, att)
@@ -549,16 +607,16 @@ RETIRED = {
 
 def finish_rehearsal(attempt_id, worker: str, gen: int) -> None:
     """A rehearsal (an approval to disclose only) ends here, before the send gate, and only
-    through a gate: in one REPEATABLE READ transaction it repeats every check the send gate makes
-    (authority, application state, the approval still live and locked, the content and the
-    execution method unchanged, the destination's class), then checks that the evidence rows show
-    a complete rehearsal (rehearsal.evidence_facts). Only then does it record what the rehearsal
-    proved, end the attempt `rehearsed` and use its approval up, all in the same commit.
+    through a gate: in one transaction, under the same locks, it repeats every check the send
+    gate makes (authority, application state, the approval still live and locked, the content
+    and the execution method unchanged, the destination's class), then checks that the evidence
+    rows show a complete rehearsal (rehearsal.evidence_facts). Only then does it record what the
+    rehearsal proved, end the attempt `rehearsed` and use its approval up, all in one commit.
 
     A refusal raises GateRefused (with a fixed code where there is one): the runner then ends the
     attempt `abandoned`, never `rehearsed`. LostAuthority propagates. Nothing is ever submitted,
     and the approval is never extended or turned into one to submit."""
-    with _repeatable_read() as db:
+    with _gate_session() as db:
         att = _locked_attempt(db, attempt_id, worker, gen, S.claimed)
         try:
             ctx = _gate_checks(db, att, approval_lock="update")
@@ -738,15 +796,36 @@ def submit_code(db: Session, user_id, app_id, checkpoint_id, round_: int, code: 
 # Cancellation and recovery
 
 
-def cancel(db: Session, app: Application) -> str:
-    """User cancel. Takes the same locks as the final gate, so it is either before the gate
-    (and stops the send) or after it (and is refused)."""
-    pk.lock_application(db, app.id)
-    att = db.scalar(
+def _active_attempt(db: Session, app_id, *, nowait: bool = False) -> ExecutionAttempt | None:
+    return db.scalar(
         select(ExecutionAttempt)
-        .where(ExecutionAttempt.application_id == app.id, ExecutionAttempt.state.in_(ACTIVE))
-        .with_for_update()
+        .where(ExecutionAttempt.application_id == app_id, ExecutionAttempt.state.in_(ACTIVE))
+        .with_for_update(nowait=nowait)
+        .execution_options(populate_existing=True)
     )
+
+
+def cancel(db: Session, app: Application) -> str:
+    """User cancel. Takes the same locks as the gates, in the same order (the attempt, then the
+    application), so it is either before a gate (and stops it) or after it: after the
+    disclosure gate it still cancels (the worker stops at its next step, but what it had
+    already entered stays entered); after the send gate it is refused, since the submission
+    may be in flight."""
+    att = _active_attempt(db, app.id)  # waits for a gate holding the attempt
+    pk.lock_application(db, app.id)
+    db.refresh(app)  # as locked: a copy loaded before the wait would fail its update (stale)
+    if att is None:
+        # Queued while this waited for the application lock: taken without waiting (it may be
+        # being claimed), else the user tries again. Never a lock against the order that waits.
+        try:
+            with db.begin_nested():
+                att = _active_attempt(db, app.id, nowait=True)
+        except DBAPIError as e:
+            if getattr(e.orig, "sqlstate", None) != LOCK_NOT_AVAILABLE:
+                raise
+            raise PermissionError(
+                "The application changed while it was being cancelled. Try again."
+            ) from None
     if att is not None and att.state in (S.sending, S.awaiting_code):
         raise PermissionError(
             "Submission may already be in flight; it cannot be cancelled. "

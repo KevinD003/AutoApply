@@ -310,7 +310,7 @@ def test_a_revocation_committed_while_the_stop_waits_is_refused(api, receiver, m
         return original(db, app_uuid)
 
     monkeypatch.setattr(pk, "lock_application", lock_application)
-    with pytest.raises(svc.GateRefused, match="approval changed while it was being checked"):
+    with pytest.raises(svc.GateRefused, match="approval revoked"):
         svc.finish_rehearsal(aid, "w1", gen)
     assert done == [True] and records(app_id) == [] and attempt(str(aid)).state == "claimed"
 

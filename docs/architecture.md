@@ -132,10 +132,10 @@ Module `app/modules/execution/`. Only destinations whose origin is listed in
 user queues ──(same txn)──> attempt(pending) + outbox row
 relay ── publishes attempt id ──> Redis ──> Celery task ──> claim (CAS, generation+1, lease)
   → open isolated browser (origin allow-list) → load form → re-extract schema, compare
-  → GATE 1 (before disclosure): REPEATABLE READ + attempt, app and approval row locks (an
-    approval changed after the snapshot is a refusal); approval live, unexpired, same package
-    hash, freshly rebuilt content identical; for an approval to submit, the rehearsal
-    prerequisite (E6) → disclosure_started_at
+  → GATE 1 (before disclosure): attempt, app and approval row locks, then reads at READ
+    COMMITTED (D46): approval live, unexpired, same package hash, freshly rebuilt content
+    identical; for an approval to submit, the rehearsal prerequisite (E6) →
+    disclosure_started_at
   → fill + upload (evidence: disclosures) → read every control back, compare → re-extract
   → a rehearsal (approval scope `disclose_only`) stops here, through a gate: every gate check
     again under the same locks, and the evidence rows checked; then, in one commit, its record,
@@ -153,6 +153,64 @@ Key properties and their limits are in the `service.py` docstring. In short: one
 attempt per application (partial unique index); one worker per attempt can pass gate 2
 (fencing generation); nothing after gate 2 is retried; this is duplicate suppression on our
 side, not exactly-once delivery at the employer.
+
+### Lock order (D46)
+
+Every transaction that locks more than one of these rows takes them in this order:
+
+1. the execution attempt (FOR UPDATE; the claim's compare-and-swap UPDATE);
+2. its application (FOR UPDATE);
+3. its approval (FOR SHARE in the gates, FOR UPDATE at the rehearsal stop; the UPDATE of
+   approve, revoke and package rebuilds);
+4. the application's inputs (answers and consents: saved, and cleared, after the application);
+5. what the rehearsal prerequisite relies on: a rehearsal record or a receipt (FOR SHARE in the
+   gates; FOR UPDATE or DELETE by a withdrawal or an evidence deletion).
+
+Inserting a row that references an application (evidence, events) key-share locks the
+application too; that happens after the attempt, in the same order. Paths that never lock an
+attempt (approve, revoke, answers, consents, withdrawal, evidence deletion) start at the
+application. A checkpoint row is locked only alone (the user entering a code) or while its
+attempt is held (the worker). Cancel locks the active attempt, then the application. Two locks
+are taken against the order, and only without waiting (NOWAIT), so they can never be part of
+a deadlock: cancel's look again, after the application lock, for an attempt queued while it
+waited; and queueing's lock of an earlier pending attempt it stops (below). If either row is
+locked (being claimed), the request is refused with "try again". `tests/test_lock_order.py`
+races these paths on separate connections. Before this order, a cancel racing either gate,
+the rehearsal stop, an outcome, evidence recording or the sweeper deadlocked (each reproduced
+by putting cancel back in the old order); a claim racing a cancel, checkpoints and the other
+outcome writers follow the same order and are covered by it, the claim with a test.
+
+### Race guarantees
+
+- **How a gate checks:** it takes its locks (the attempt, the application, the approval, then
+  what the prerequisite relies on), and only then reads, at READ COMMITTED. Every check sees
+  what was committed before it ran. (The gates used to read a REPEATABLE READ snapshot taken
+  at their first statement, before they waited for the application: an answer or profile
+  change committed during that wait was not seen, and a change to the application's notes made
+  the gate refuse. Both reproduced, then fixed.)
+- **Committed before a gate's check:** a cancel, revocation, withdrawal, evidence deletion or an
+  edit of the package's inputs (answers, consents, chosen documents, profile facts) stops that
+  gate: it sees the change and refuses, and nothing it would have authorized happens.
+- **Arriving while a gate holds its locks:** a cancel, revocation, withdrawal, evidence deletion,
+  a change to the application's answers, consents or chosen documents, or a write to the
+  approval waits for that gate (each takes a row the gate locks). A change to inputs the gate
+  does not lock (profile facts, work authorizations, the document library, the answer bank,
+  the job and its form, API authorizations) does not wait: committed after the gate read it,
+  it does not stop that gate, and counts for later packages. What is sent is always the
+  approved package, so such a change is never sent half-applied. After the gate:
+  - After the **disclosure gate**, filling may start. A cancel still cancels the attempt, and the
+    worker stops at its next fenced step, but what it had already entered or uploaded may have
+    reached the employer. Nothing is undone.
+  - After the **send gate**, the submission may be in flight. A cancel is refused; a revocation,
+    withdrawal or deletion does not recall it. The outcome is recorded as observed; an uncertain
+    one quarantines the application in `submitted_unconfirmed`, and nothing is retried.
+- A withdrawal or evidence deletion after a submission was authorized counts for later
+  submissions only. A database rollback can undo NoEfforts' own records, never a disclosure or
+  a submission already sent.
+- **Queueing again** while an earlier attempt is still pending under an approval no longer valid
+  (queued, then edited before a worker took it) stops that attempt (`failed_safe`: it has
+  disclosed nothing and could never run). If a worker is taking it at that moment, queueing is
+  refused ("try again"); one that is running is never stopped this way.
 
 Disclosure vs submission: gate 1 authorizes sending the approved data to the named
 destination (filling can transmit via autosave, uploads always do). Gate 2 authorizes the

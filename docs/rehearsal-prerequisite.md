@@ -98,12 +98,15 @@ to submit, and each refuses alone with the others bypassed
 | send gate | `service.gate_before_send`, the linearization point | `abandoned`, never retried; records `rehearsal_prerequisite` (`met`, `established` or `not_required`) when it passes |
 
 Inside the gates, what is relied on is locked FOR SHARE (the rehearsal record, or the
-establishing receipt rows), after the attempt, application and approval locks. A withdrawal or
-deletion committed after a gate's snapshot is a serialization failure, so the gate refuses
-(`rehearsal_check_unavailable`) instead of trusting its snapshot
+establishing receipt rows), after the attempt, application and approval locks, and read as
+committed (D46). A withdrawal or deletion committed before the gate reads it is seen: what it
+removed no longer counts, and the next newest result on the path decides (D45). In the tests
+that is the rehearsal revoked with it, so the gate refuses with `rehearsal_revoked`
 (`test_a_withdrawal_after_the_gate_snapshot_is_refused_not_missed`,
-`test_deleting_an_establishing_receipt_after_the_gate_snapshot_is_refused`). Withdrawal and
-evidence deletion take the rehearsal's (or submission's) application lock, then the record:
+`test_deleting_an_establishing_receipt_after_the_gate_snapshot_is_refused`); with another
+establishing receipt still retained, the gate would pass on that one. One arriving after the
+read waits for the gate, and counts for later submissions only (`tests/test_lock_order.py`). Withdrawal and evidence deletion take the rehearsal's (or
+submission's) application lock, then the record:
 there is no lock cycle. A claim that refuses a re-pended attempt (its application already
 `running`) moves the application to `needs_user_action`, never leaving it running.
 
@@ -113,7 +116,7 @@ disagree):
 
 | Code | When | What the user sees |
 |---|---|---|
-| `rehearsal_check_unavailable` | the check could not be completed: an invalid `rehearsal_max_age_days`, an attempt from before paths were recorded, a serialization conflict on what a gate relies on, or any error | NoEfforts could not check the rehearsal requirement just now, so nothing was submitted. Try again later. |
+| `rehearsal_check_unavailable` | the check could not be completed: an invalid `rehearsal_max_age_days`, an attempt from before paths were recorded, or any error while checking | NoEfforts could not check the rehearsal requirement just now, so nothing was submitted. Try again later. |
 | `rehearsal_path_unknown` | the path cannot be told from the destination (no origin, no board, or an adapter with no path rule); only a real-class destination can get here | NoEfforts cannot tell which employer form and submission method this is, so no rehearsal can count for it. Apply on the employer's site. |
 | `no_rehearsal` | no rehearsal, and no establishing submission, on this user's path | Before the first submission to this employer's form by this method, a rehearsal must succeed: NoEfforts fills and checks the form, then stops before sending. Approve the package for a rehearsal first. |
 | `rehearsal_in_progress` | none has finished; a rehearsal on the path is waiting or running | A rehearsal of this employer's form is waiting or running. Let it finish, then approve to submit. |

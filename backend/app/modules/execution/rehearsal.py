@@ -414,8 +414,9 @@ def prerequisite(
     (approve, enqueue, claim, the disclosure gate and the send gate) and for the review view;
     `layer` names the caller. `path_ref_value`: the attempt's stored reference (computed here
     when not given). `approval`: the approval to submit in use, which must have been given with
-    the rehearsal relied on. `lock`: inside a gate, lock what is relied on (FOR SHARE), so a
-    withdrawal or deletion committed after the gate's snapshot is a refusal, not missed.
+    the rehearsal relied on. `lock`: inside a gate, lock what is relied on (FOR SHARE), read as
+    committed (D46): a withdrawal or deletion committed before the read is seen; one arriving
+    after it waits for the gate to commit.
 
     Never raises: anything unexpected is `rehearsal_check_unavailable`, never met. Runs in a
     savepoint, so a failed statement leaves the caller's transaction usable."""

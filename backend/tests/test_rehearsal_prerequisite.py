@@ -437,8 +437,8 @@ def test_deleting_an_establishing_receipt_after_the_gate_snapshot_is_refused(
     api, receiver, marked, monkeypatch
 ):
     """Deterministic, as above, for an established path: the evidence of the submission that
-    established it is deleted after the send gate's snapshot. The gate holds that receipt FOR
-    SHARE, so the deletion is a serialization failure and the gate refuses."""
+    established it is deleted after the send gate took the attempt, before it read anything. It
+    reads after its locks, so it sees the receipt gone and the rehearsal revoked with it."""
     app1, _ = rehearse(api, receiver)
     submit(api, app1)
     app2 = unapproved(api, receiver, suffix="?posting=2")
@@ -459,7 +459,7 @@ def test_deleting_an_establishing_receipt_after_the_gate_snapshot_is_refused(
     monkeypatch.setattr(pk, "lock_application", lock_application)
     with pytest.raises(svc.GateRefused) as refused:
         svc.gate_before_send(aid, "w1", gen)
-    assert done == [True] and refused.value.code == "rehearsal_check_unavailable"
+    assert done == [True] and refused.value.code == "rehearsal_revoked"
     assert attempt(str(aid)).send_started_at is None
     assert svc.abandon(aid, "w1", gen, "test finished")
 
@@ -487,9 +487,9 @@ def test_withdrawing_the_relied_on_rehearsal_while_the_send_gate_waits(
 def test_a_withdrawal_after_the_gate_snapshot_is_refused_not_missed(
     api, receiver, marked, monkeypatch
 ):
-    """Deterministic: the withdrawal commits in a second session after the send gate's snapshot
-    was fixed (at its attempt lock). The gate holds the relied-on record FOR SHARE, so the change
-    is a serialization failure, and the gate refuses rather than trusting its snapshot."""
+    """Deterministic: the withdrawal commits in a second session after the send gate took the
+    attempt and before it read the record. It reads after its locks, so it sees the withdrawal
+    and refuses (a withdrawal arriving after that read waits for the gate: test_lock_order)."""
     app_id, rid = rehearse(api, receiver)
     assert approve(api, app_id).status_code == 200
     aid = uuid.UUID(queue(api, app_id))
@@ -510,7 +510,7 @@ def test_a_withdrawal_after_the_gate_snapshot_is_refused_not_missed(
     monkeypatch.setattr(pk, "lock_application", lock_application)
     with pytest.raises(svc.GateRefused) as refused:
         svc.gate_before_send(aid, "w1", gen)
-    assert done == [True] and refused.value.code == "rehearsal_check_unavailable"
+    assert done == [True] and refused.value.code == "rehearsal_revoked"
     a = attempt(str(aid))
     assert a.state == "claimed" and a.send_started_at is None
     assert svc.abandon(aid, "w1", gen, "test finished")

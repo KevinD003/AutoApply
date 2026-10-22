@@ -490,6 +490,9 @@ def clear_answer(
     db: Session = Depends(get_db),
 ) -> dict:
     app = _owned_app(db, user, app_id)
+    # The application first, then its input (the order _upsert_input and rebuilds use), so a
+    # clear and a save of the same question serialize instead of deadlocking.
+    pk.lock_application(db, app.id)
     row = db.scalar(
         select(ApplicationInput).where(
             ApplicationInput.application_id == app.id,
@@ -530,6 +533,7 @@ def put_consent(
             if allowed
             else "This question does not take a consent choice."
         )
+    pk.lock_application(db, app.id)  # the application, then its input (as in clear_answer)
     row = db.scalar(
         select(ApplicationInput).where(
             ApplicationInput.application_id == app.id,

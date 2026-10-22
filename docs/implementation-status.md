@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-22 (a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-22 (one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,58 @@ Last updated: 2026-10-22 (a recorded, valid rehearsal is required before the fir
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Lock order and race guarantees (E6 follow-up, 2026-10-22; local only, no external request)
+
+- **Nothing changed outside the repository**; no support state, route or real destination
+  changed, and no retry was added anywhere. Decision D46; `docs/architecture.md` ("Lock order",
+  "Race guarantees"); evidence: `docs/evidence-matrix.md` ("Lock order and race guarantees").
+- **The reported risk was real, and wider.** The worker paths locked the attempt, then the
+  application; cancel locked the application, then the attempt (and recording evidence takes
+  the application's key-share lock after the attempt). A cancel racing either gate, an
+  outcome, evidence recording, the rehearsal stop or the sweeper deadlocked (PostgreSQL aborted
+  one side). Fixed by one order: attempt, application, approval, the application's inputs,
+  then the rehearsal record or receipt. Cancel and claim now follow it.
+- **Also found and fixed** (an independent lock map and an adversarial review beside our own
+  reading):
+  - clearing an answer or consent deleted the input before taking the application (deadlock
+    against a save);
+  - cancel updated an application copy loaded before its wait (`StaleDataError`, a 500);
+  - the gates read a REPEATABLE READ snapshot taken at their first statement: an answer or
+    profile change committed while a gate waited was not seen, and a notes change made it
+    refuse. They now take their locks and read at READ COMMITTED;
+  - queueing again with an earlier attempt pending under a stale approval failed as a
+    duplicate (a 500); that attempt (nothing disclosed) is now stopped, locked without waiting.
+- **Disproved:** a duplicate delivery while a gate holds the attempt never waits or deadlocks
+  (kept as a regression test).
+- **Guarantees, stated precisely:** a change committed before a gate's check stops it; one
+  arriving later waits if it writes a row the gate locks; a profile, document-library,
+  answer-bank, form or API-authorization change committed after the gate read it does not
+  wait and counts for later packages (what is sent is always the approved package). A per-user
+  lock for those writers is deferred.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `tests/test_lock_order.py` (26): two transactions on separate connections, barriers at
+    exact lock points, lock waits read from `pg_stat_activity`, every side bounded to 30 s.
+    On the old code: 4 deadlocks, 2 raw serialization errors, 1 stale copy (first 12 tests);
+    then 4 missed edits, 1 spurious refusal and 1 duplicate 500 (the later tests); the
+    duplicate-claim expectation was disproved. `test_gate_snapshot_race.py`,
+    `test_rehearsal_stop.py` and `test_rehearsal_prerequisite.py` updated for read-after-locks
+    (the refusal now names its reason);
+  - focused: the execution, cancel, rehearsal, preparation and approval modules, all passed;
+  - full backend (`pytest tests`): 767 passed, exit 0, after the review fixes (a run before
+    them: 765 passed);
+  - full Playwright, after the fixes (before the docstring and explicit-isolation edits): 36
+    passed, 2 skipped, exit 0;
+  - `ruff check` and `ruff format --check` clean; `npx tsc --noEmit` and `npm run lint` clean;
+  - sabotage checks, 17 for this change, each caught (one only as a bounded 30-second hang);
+    the E6 record and receipt lock checks re-run against the new reads, caught;
+  - an adversarial read-only review (4 reviewers, 2 skeptics per finding): 10 findings
+    confirmed, 3 refuted; all confirmed ones were wording or test-strength issues, fixed
+    (the guarantee narrowed to what holds, tests that now prove the wait, the stop and
+    sweeper races added).
+- **CI for the previous change:** **CI #96**
+  ([39829073076](https://github.com/KevinD003/AutoApply/actions/runs/39829073076)) (`b5ab47b`,
+  E6): passed (all four jobs).
 
 ## Rehearsal prerequisite (E6, 2026-10-22; fixtures only, no external request)
 
