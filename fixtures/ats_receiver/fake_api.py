@@ -83,6 +83,8 @@ def mount(app, ledger, cfg, accept) -> None:
         if d is None:
             raise HTTPException(404)
         body = await request.json()
+        if cfg["mode"] == "upload_fail":  # received, not kept
+            return JSONResponse({"error": "storage unavailable"}, status_code=500)
         data = base64.b64decode(body["content_b64"])
         digest = hashlib.sha256(data).hexdigest()
         ref = "F-" + secrets.token_hex(6)

@@ -152,6 +152,7 @@ function Tracker() {
                   </span>
                   <span className="flex gap-2">
                     {a.outcome !== "none" && <Badge>{a.outcome.replace("_", " ")}</Badge>}
+                    {a.last_attempt?.state === "rehearsed" && <Badge tone="indigo">Rehearsal finished: nothing submitted</Badge>}
                     <Badge tone={tone(a.state)}>{LABEL[a.state] ?? a.state}</Badge>
                   </span>
                 </button>

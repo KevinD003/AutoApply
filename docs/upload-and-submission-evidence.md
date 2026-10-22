@@ -1,8 +1,8 @@
 # Upload and submission evidence (2026-10-22)
 
 **Status:**
-- **Step 1 is built and tested on the local fixtures only:** the rehearsal (see "Order of
-  work" below).
+- **Steps 1 and 2 are built and tested on the local fixtures only:** the rehearsal, and the
+  page's acknowledgement of each upload (see "Order of work" below).
 - **The rest is design.**
 - **Nothing here is enabled for a real destination.**
 
@@ -30,7 +30,7 @@ that discloses and then stops, before any submission is attempted.
 
 | Step | Evidence | Kept | Never kept |
 |---|---|---|---|
-| Each upload or disclosure | `disclosure` | the field reference, the upload id and the digest of what was sent, which must equal the approved document's SHA-256 | the file, its name, the page's wording |
+| Each upload or disclosure | `disclosure` | the field reference; how it was acknowledged, as a fixed value (page: `attachment_shown`, `error_shown` or `none`; API: `digest_matched` or `not_kept`); and the digest of what was sent, which must equal the approved document's SHA-256. Kept for a failed upload too, with every upload before it in the attempt | the file, its name, the page's wording, the page's own attachment id |
 | After filling | `readback` | how many answers were checked and how many did not keep their values | which fields (the posting's keys) |
 | Blocked requests | `egress` | counts by address category | hosts or URLs |
 | The final click | `receipt` | receipt id, confirmation, final origin, HTTP status, confirmation strength | page title, path or text |
@@ -59,9 +59,12 @@ evidence has ever been produced against a real page.
    - The rehearsal uses its approval up, in the same transaction that ends the attempt.
      Submitting afterwards needs an approval to submit and a new attempt, which repeats every
      check.
-3. **Upload evidence that is the page's, not only NoEfforts'.** The digest sent equals the
-   approved document. In addition, the page's own acknowledgement of the upload (on the
-   fixture, its status element) is recorded as a fixed outcome, never as page text.
+3. **Upload evidence that is the page's, not only NoEfforts' (built, fixtures only).** The
+   digest sent equals the approved document. The page's acknowledgement of each upload (on
+   the fixtures, its status element) is recorded as a fixed value, never as page text or the
+   page's own attachment id. An upload the page refuses, or never acknowledges, is recorded
+   too, with every upload made before it in the attempt, before the attempt stops: that data
+   may already have reached the employer.
 4. **Readiness reading it.** `real_upload` would be met only by such evidence from a real
    destination. Until real destinations are enabled through the gate, it stays not met.
 
@@ -83,8 +86,11 @@ real destination, three things are missing:
    - The receiver's ledger shows the upload, with the approved document's digest, and
      **0 acceptances** (`tests/test_rehearsal.py`, `frontend/e2e/submission.spec.ts`).
    - The review page offers the rehearsal approval and shows its result.
-2. The tracker showing a rehearsal's result, and the page's own acknowledgement of an upload
-   recorded as a fixed outcome (item 3 above).
+2. **Done, fixtures only:**
+   - the page's acknowledgement of an upload recorded as a fixed value (item 3 above);
+   - the review page and the tracker showing a rehearsal's result
+     (`tests/test_upload_evidence.py`, `tests/test_rehearsal.py`,
+     `frontend/e2e/submission.spec.ts`).
 3. Readiness reading recorded rehearsal and submission evidence. It still shows them not met
    for real, because no real destination is enabled.
 

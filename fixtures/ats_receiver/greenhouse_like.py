@@ -272,7 +272,7 @@ def mount(app, ledger, cfg, accept) -> None:
         job_or_404(board, job_id)
         form = await request.form()
         f = form.get("file")
-        if cfg["mode"] == "upload_fail":
+        if cfg["mode"] == "upload_fail" or cfg.get("upload_fail_field") == str(form.get("field")):
             return JSONResponse({"error": "storage unavailable"}, status_code=500)
         data = await f.read()
         aid = "A-" + hashlib.sha256(data).hexdigest()[:12]

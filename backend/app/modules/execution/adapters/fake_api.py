@@ -121,6 +121,8 @@ class FakeApiAdapter:
         return data["application"]
 
     def upload(self, draft: str) -> list[dict]:
+        """Each document's evidence says how the API acknowledged it: `digest_matched` (it
+        returned the digest of what was sent) or `not_kept`. Never its own document id."""
         out = []
         for d in self.content["documents"]:
             name, ctype, raw = self.documents[d["field"]]
@@ -128,9 +130,11 @@ class FakeApiAdapter:
                 "field": d["field"], "filename": name, "content_type": ctype,
                 "content_b64": base64.b64encode(raw).decode(),
             })  # fmt: skip
+            sent = {"field": d["field"], "sha256": d["sha256"], "route": "api"}
             if status != 200 or data.get("sha256") != d["sha256"]:
-                raise UploadFailed("the API did not keep a document intact")
-            out.append({"field": d["field"], "sha256": d["sha256"], "route": "api"})
+                raise UploadFailed("the API did not keep a document intact",
+                                   out + [sent | {"ack": "not_kept"}])  # fmt: skip
+            out.append(sent | {"ack": "digest_matched"})
         return out
 
     # -- the final send ---------------------------------------------------------------------

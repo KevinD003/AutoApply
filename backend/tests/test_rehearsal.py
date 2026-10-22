@@ -80,12 +80,16 @@ def test_a_rehearsal_fills_and_checks_then_stops_without_submitting(api, receive
     assert {"disclosure", "readback"} <= kinds and "receipt" not in kinds
     readback = next(e for e in shown["evidence"] if e["kind"] == "readback")
     assert readback["data"]["mismatched"] == 0
-    assert api.get(f"/applications/{app_id}").json()["state"] == "needs_user_action"
+    shown_app = api.get(f"/applications/{app_id}").json()
+    assert shown_app["state"] == "needs_user_action"
+    assert shown_app["last_attempt"] == {"state": "rehearsed", "approval_scope": "disclose_only"}
     # The approval is used up: the same approval cannot start a second rehearsal.
     view = api.get(f"/applications/{app_id}/package").json()
     assert view["state"] == "awaiting_approval"
-    assert view["approval"]["status"] == "invalidated"
-    assert "rehearsal" in view["approval"]["reason"]
+    # Shown as used by the rehearsal, not as an invalidation (no reason text to interpret).
+    assert view["approval"]["status"] == "used_by_rehearsal"
+    assert view["approval"]["version"] == view["package"]["version"]
+    assert view["approval"]["rehearsed_at"] and "reason" not in view["approval"]
     r = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
     assert r.status_code == 409
     with SessionLocal() as db:
@@ -106,6 +110,8 @@ def test_after_a_rehearsal_an_approval_to_submit_submits_once(api, receiver):
     assert len(uploads(led)) == 2  # each attempt uploads again: every check is repeated
     states = [a["state"] for a in api.get(f"/applications/{app_id}/attempts").json()]
     assert states == ["confirmed", "rehearsed"]
+    (listed,) = api.get("/applications").json()  # the tracker shows the latest attempt
+    assert listed["last_attempt"] == {"state": "confirmed", "approval_scope": "submit"}
 
 
 def test_the_send_gate_refuses_a_rehearsal_even_if_the_runner_did_not_stop(
@@ -173,6 +179,8 @@ def test_the_scope_defaults_to_submit_is_validated_and_is_never_switched_silentl
     with SessionLocal() as db:
         (row,) = db.scalars(select(AuditEvent).where(AuditEvent.action == "package.approve"))
         assert row.meta["scope"] == "submit"
-    # Revoked, it can be approved for a rehearsal instead.
-    api.post(f"/applications/{app_id}/package/revoke")
+    # Revoked, it can be approved for a rehearsal instead. A revocation is still shown as one.
+    revoked = api.post(f"/applications/{app_id}/package/revoke").json()["approval"]
+    assert revoked["status"] == "invalidated" and revoked["reason"] == "Revoked by you"
+    assert api.get("/applications").json()[0]["last_attempt"] is None  # nothing queued yet
     assert approve(api, app_id, "disclose_only").json()["approval"]["scope"] == "disclose_only"

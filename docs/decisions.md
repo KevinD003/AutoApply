@@ -495,3 +495,18 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   refused; the user revokes first.
 - **Fixtures only:** no support state changes and no real destination is enabled. A
   rehearsal against a real page would still need the live-pilot gate's permissions.
+
+## D42 — Upload evidence is a digest and a fixed acknowledgement, kept even when an upload fails (2026-10-22)
+- **What is kept:** for each upload, the field, the digest of the approved document that was
+  sent, and how the destination acknowledged it, as a fixed value.
+  - A page: `attachment_shown`, `error_shown` or `none` (nothing shown in time).
+  - The API route: `digest_matched` or `not_kept`.
+- **What is never kept:** the page's own attachment id or wording. On a real page, that id
+  would be the employer's storage reference.
+- **A failed upload keeps its evidence.** When an upload is refused or never acknowledged,
+  the attempt stops (`abandoned`, as before). The evidence of that upload, and of every
+  upload made before it in the attempt, is recorded first, because that data may already
+  have reached the employer. Before, it was dropped with the exception.
+- **A rehearsal's result is shown as such:** an approval a rehearsal used up appears as
+  "rehearsal finished", derived from its `rehearsed` attempt, not as an invalidation. The
+  tracker shows the latest attempt.

@@ -162,6 +162,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             try:
                 disclosures = adapter.fill(page)
             except UploadFailed as e:
+                _record_disclosures(aid, worker, gen, e.disclosures)
                 svc.abandon(aid, worker, gen, str(e))
                 return "abandoned"
             for d in disclosures:
@@ -235,6 +236,13 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         return "error"
 
 
+def _record_disclosures(aid, worker, gen, disclosures: list[dict]) -> None:
+    """Evidence of every upload made before an upload failed, the failed one included: data
+    may have reached the employer even though the attempt stops."""
+    for d in disclosures:
+        svc.record_evidence(aid, worker, gen, "disclosure", d)
+
+
 class _Closing:
     """Exit an already-entered context manager when the block ends."""
 
@@ -293,6 +301,7 @@ def _run_api(aid, worker, gen, adapter) -> str:
             for d in adapter.upload(draft):
                 svc.record_evidence(aid, worker, gen, "disclosure", d)
         except UploadFailed as e:
+            _record_disclosures(aid, worker, gen, e.disclosures)
             svc.abandon(aid, worker, gen, str(e))
             return "abandoned"
         if _rehearsal(aid):

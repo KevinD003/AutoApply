@@ -21,9 +21,11 @@ from app.modules.applications.states import (
     check,
 )
 from app.modules.audit.service import record
+from app.modules.execution.models import ExecutionAttempt
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
 from app.modules.jobs.models import Job
+from app.modules.preparation.models import PackageApproval
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -69,6 +71,11 @@ class JobSummary(BaseModel):
     ats_provider: str
 
 
+class LastAttempt(BaseModel):
+    state: str  # execution AttemptState
+    approval_scope: str | None  # submit, or disclose_only (a rehearsal)
+
+
 class AppOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -78,6 +85,7 @@ class AppOut(BaseModel):
     outcome: Outcome
     notes: str | None
     created_at: datetime
+    last_attempt: LastAttempt | None = None
 
 
 class AppDetail(AppOut):
@@ -91,6 +99,19 @@ def _owned(db: Session, user: User, app_id: uuid.UUID) -> Application:
     return app
 
 
+def _last_attempt(db: Session, app: Application) -> dict | None:
+    att = db.scalar(
+        select(ExecutionAttempt)
+        .where(ExecutionAttempt.application_id == app.id, ExecutionAttempt.user_id == app.user_id)
+        .order_by(ExecutionAttempt.created_at.desc())
+        .limit(1)
+    )
+    if att is None:
+        return None
+    scope = db.scalar(select(PackageApproval.scope).where(PackageApproval.id == att.approval_id))
+    return {"state": att.state, "approval_scope": scope}
+
+
 def _out(db: Session, app: Application, detail: bool = False):
     job = db.get(Job, app.job_id)
     base = dict(
@@ -101,6 +122,7 @@ def _out(db: Session, app: Application, detail: bool = False):
         outcome=app.outcome,
         notes=app.notes,
         created_at=app.created_at,
+        last_attempt=_last_attempt(db, app),
     )
     if not detail:
         return AppOut(**base)

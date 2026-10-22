@@ -133,7 +133,15 @@ export default function ReviewPage() {
             ))}
           {view.approval.status === "not_approved" && <Badge>Not approved</Badge>}
           {view.approval.status === "invalidated" && <Badge tone="red">Approval invalidated</Badge>}
+          {view.approval.status === "used_by_rehearsal" && (
+            <Badge tone="indigo">Rehearsal of v{view.approval.version} finished: nothing submitted</Badge>
+          )}
         </div>
+        {view.approval.status === "used_by_rehearsal" && (
+          <p className="mt-2 rounded-lg bg-indigo-50 p-2 text-sm text-indigo-900">
+            The rehearsal used its approval up. Approve again to submit, or to rehearse again.
+          </p>
+        )}
         {view.approval.status === "invalidated" && (
           <p className="mt-2 rounded-lg bg-red-50 p-2 text-sm text-red-800">{view.approval.reason}</p>
         )}

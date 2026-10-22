@@ -52,7 +52,7 @@ attempt stops before disclosure.
 
 | When | What reaches the employer | How we know |
 |---|---|---|
-| Choosing the resume | the resume file (attachment upload) | disclosure evidence: field, upload id, digest |
+| Choosing the resume | the resume file (attachment upload) | disclosure evidence: field, the page's acknowledgement (a fixed value), digest; kept for a failed upload too |
 | Typing (if the page autosaves) | typed values | assumed possible for any fill; that is why disclosure needs its own gate |
 | Final click | the complete application | confirmation page, or `unknown` |
 

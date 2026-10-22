@@ -168,7 +168,8 @@ re-enabled Submit after the data had been sent (found by the browser test, now c
 
 Evidence policy: receipt id, final origin, HTTP status (no page title or path); a readback
 summary (how many fields were checked and how many did not keep their values; never which,
-never values); disclosures (field, upload id, digest); blocked egress destinations counted by
+never values); disclosures (field, how the page acknowledged it as a fixed value, digest; for a
+failed upload too, never the page's own attachment id); blocked egress destinations counted by
 address category (loopback, link-local, private, named, public, other), never the hosts. No
 screenshots, traces, cookies, storage state, codes or answer values. Evidence has
 a retention date (`NOEFFORTS_EVIDENCE_RETENTION_DAYS`); a daily beat task purges expired

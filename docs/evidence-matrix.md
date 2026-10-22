@@ -9,6 +9,20 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Upload evidence and rehearsal results (E5 step 2, 2026-10-22; fixtures only)
+
+Synthetic candidate and local fixtures only (the clinic form, both Greenhouse-style
+approximations, the fake API). The receiver's ledger is the oracle for what the synthetic
+employer kept.
+
+| Requirement | Evidence (`tests/test_upload_evidence.py` unless noted) | Result |
+|---|---|---|
+| An upload is kept as its digest and a fixed acknowledgement | `test_an_upload_is_kept_as_its_digest_and_acknowledgement_never_the_pages_id` (3 forms) | `{field, ack: attachment_shown, sha256}`, the digest the receiver stored; the page's own attachment id appears nowhere in the evidence |
+| A failed upload keeps the evidence of every upload before it | `test_a_failed_upload_keeps_the_evidence_of_every_upload_before_it` (2 Greenhouse-style forms, resume then cover letter, the cover letter refused) | `abandoned`; evidence: resume `attachment_shown`, cover letter `error_shown`; the receiver kept only the resume; 0 acceptances. Before, both were lost with the exception |
+| A refused or unacknowledged upload is kept as such | `test_a_refused_upload_is_kept_as_refused`, `test_an_upload_the_page_never_acknowledges_is_kept_as_unacknowledged` | `error_shown`; `none` when the page hears back too late (the receiver did keep it); both `abandoned`, 0 acceptances |
+| The API route keeps the same evidence | `test_the_api_route_keeps_the_same_evidence` (2) | the draft, then the upload with `digest_matched`, or `not_kept` when the API refuses it (`abandoned`) |
+| A rehearsal's result is shown as such | `tests/test_rehearsal.py`; `frontend/e2e/submission.spec.ts` | the used approval is `used_by_rehearsal` (version, time), not an invalidation; a revocation is still `invalidated` with its reason; the tracker's `last_attempt` is `rehearsed`, then `confirmed` after an approval to submit; the review page and tracker show "Rehearsal finished: nothing submitted" |
+
 ## Rehearsal: disclosure without submission (E5 step 1, 2026-10-22; fixtures only)
 
 Synthetic candidate and local fixtures only (the clinic form, the second Greenhouse-style

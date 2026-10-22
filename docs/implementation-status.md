@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-22 (rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-22 (upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,45 @@ Last updated: 2026-10-22 (rehearsal: an approval to disclose only, which stops b
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Upload evidence and rehearsal results (E5 step 2, 2026-10-22; fixtures only, no external request)
+
+- **Nothing changed outside the repository**, no support state changed, and no real
+  destination is enabled. Evidence: `docs/evidence-matrix.md` ("Upload evidence and rehearsal
+  results"); decision D42; `docs/upload-and-submission-evidence.md`.
+- **Fixed: a failed upload lost its evidence.** When an upload was refused, every upload
+  evidence row of that attempt was dropped with the exception, including uploads that had
+  already reached the employer. A form with a resume and a cover letter whose cover letter
+  failed kept no disclosure evidence at all. Now the evidence of each upload, the failed one
+  included, is recorded before the attempt stops (`abandoned`, as before), on every browser
+  adapter and the API route. An upload the page never acknowledges (before, an internal
+  error) is now its own outcome, with `ack: none`.
+- **Upload evidence:** the field, the digest of the approved document sent, and the
+  acknowledgement as a fixed value:
+  - page: `attachment_shown`, `error_shown`, `none`;
+  - API: `digest_matched`, `not_kept`.
+
+  The page's own attachment id is no longer kept.
+- **Rehearsal results:** an approval a rehearsal used up is shown as `used_by_rehearsal`
+  (derived from its `rehearsed` attempt), not as an invalidation. Applications carry their
+  latest attempt (`last_attempt`), so the tracker shows "Rehearsal finished: nothing
+  submitted".
+- **Fixtures:** the receiver can refuse one field's upload (`upload_fail_field`) and answer an
+  upload late (`upload_delay_s`); the fake API honours `upload_fail` for documents.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - upload-evidence and rehearsal modules (2 files, 16 tests): 16 passed;
+  - full backend (`pytest tests`): 658 passed (a first full run was lost to a container
+    restart and was run again from the start);
+  - rehearsal e2e (desktop and mobile): 2 passed; full Playwright: 34 passed, 2 skipped (the
+    desktop-only configuration checks);
+  - `ruff check` and `ruff format --check` clean; `tsc --noEmit` and `npm run lint` clean;
+  - sabotage checks, each caught: earlier uploads dropped (id-mapping and hosted adapters),
+    the runner ignoring the evidence (browser and API routes), the page's own id kept, an
+    unacknowledged upload not caught, an API failure without evidence, and a used rehearsal
+    shown as an invalidation.
+- **CI for the previous change:** **CI #92**
+  ([39764334996](https://github.com/KevinD003/AutoApply/actions/runs/39764334996)) (`b0f31e7`,
+  E5 step 1): passed, the Compose execution test included.
 
 ## Rehearsal: disclosure without submission (E5 step 1, 2026-10-22; fixtures only, no external request)
 

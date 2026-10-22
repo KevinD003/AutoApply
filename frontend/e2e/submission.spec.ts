@@ -111,8 +111,13 @@ test("a rehearsal fills and checks, never submits; an approval to submit then su
   let l = await ledger(request, slug);
   expect(l.disclosures).toBe(1); // the resume reached the receiver
   expect(l.accepted).toBe(0);
-  // The rehearsal used its approval up: submitting needs an approval to submit and a new attempt.
-  await expect(page.getByText(/^Used by a rehearsal/)).toBeVisible();
+  // The rehearsal used its approval up: shown as such (not as an invalidation), here and in the
+  // tracker. Submitting needs an approval to submit and a new attempt.
+  await expect(page.getByText(/^Rehearsal of v\d+ finished: nothing submitted$/)).toBeVisible();
+  await expect(page.getByText("Approval invalidated")).toHaveCount(0);
+  await page.goto("/tracker");
+  await expect(page.getByText("Rehearsal finished: nothing submitted").first()).toBeVisible();
+  await page.goto(`/applications/${appId}`);
   await page.getByRole("button", { name: /Approve package v\d+/ }).click();
   await expect(page.getByText("Approved", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Submit approved package" }).click();

@@ -170,6 +170,8 @@ export interface Application {
   outcome: string;
   notes: string | null;
   created_at: string;
+  // The latest execution attempt, if any (state from the execution service).
+  last_attempt: { state: string; approval_scope: "submit" | "disclose_only" | null } | null;
   events?: {
     kind: string;
     from_state: string | null;
@@ -252,6 +254,8 @@ export interface PackageView {
   approval:
     // scope: "submit" fills and submits once; "disclose_only" is a rehearsal that never submits.
     | { status: "approved"; approved_at: string; version: number; scope: ApprovalScope }
+    // A rehearsal used this approval up: nothing was submitted.
+    | { status: "used_by_rehearsal"; approved_at: string; rehearsed_at: string; version: number }
     | { status: "invalidated"; approved_at: string; invalidated_at: string; reason: string }
     | { status: "not_approved" };
   history: { version: number; created_at: string; change_summary: string[]; was_approved: boolean }[];

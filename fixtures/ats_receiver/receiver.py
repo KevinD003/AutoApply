@@ -53,7 +53,8 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     cfg = {"mode": "normal", "delay_s": 0.0, "idempotent": True, "canary": None,
            "token_ttl_s": 3600, "autosave": False, "tamper": None, "form_delay_s": 0.0,
-           "fh_mode": "normal", "fh_rate_limit": 1000}
+           "fh_mode": "normal", "fh_rate_limit": 1000, "upload_fail_field": None,
+           "upload_delay_s": 0.0}
 
     def admin(tok: str | None):
         if tok != admin_token:
@@ -99,7 +100,7 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
             ledger.run(f"delete from {t}")
         cfg.update({"mode": "normal", "delay_s": 0.0, "idempotent": True, "autosave": False,
                     "tamper": None, "form_delay_s": 0.0, "fh_mode": "normal",
-                    "fh_rate_limit": 1000})
+                    "fh_rate_limit": 1000, "upload_fail_field": None, "upload_delay_s": 0.0})
         return {"ok": True}
 
     @app.get("/apply/{slug}", response_class=HTMLResponse)
@@ -132,6 +133,8 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
                    ("upload", slug, json.dumps({"filename": f.filename, "upload_id": upload_id,
                                                 "sha256": hashlib.sha256(data).hexdigest()}),
                     time.time()))
+        if cfg["upload_delay_s"]:  # stored, but the page hears back only later
+            await asyncio.sleep(cfg["upload_delay_s"])
         return {"upload_id": upload_id, "filename": f.filename}
 
     def _accept(slug: str, token: str, fields: dict) -> str:

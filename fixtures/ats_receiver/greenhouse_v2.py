@@ -763,10 +763,10 @@ def mount(app, ledger, cfg, accept) -> None:
     @app.post("/gh2/{board}/jobs/{job_id}/attachments")
     async def attachment(board: str, job_id: str, request: Request):
         job_or_404(board, job_id)
-        if cfg["mode"] == "upload_fail":
-            return JSONResponse({"error": "storage unavailable"}, status_code=500)
         form = await request.form()
         f = form.get("file")
+        if cfg["mode"] == "upload_fail" or cfg.get("upload_fail_field") == str(form.get("field")):
+            return JSONResponse({"error": "storage unavailable"}, status_code=500)
         data = await f.read()
         aid = "B-" + hashlib.sha256(data).hexdigest()[:12]
         ledger.run("insert into disclosures (kind,slug,detail,created_at) values (?,?,?,?)",

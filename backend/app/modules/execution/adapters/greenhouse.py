@@ -14,7 +14,15 @@ from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PWTimeout
 
-from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, Outcome, UploadFailed
+from app.modules.execution.adapters.fixture_ats import (
+    ACK_ERROR,
+    ACK_NONE,
+    ACK_SHOWN,
+    FixtureAtsAdapter,
+    Outcome,
+    UploadFailed,
+    upload_evidence,
+)
 from app.modules.preparation.forms import Condition, FieldType, FormField, Option
 from app.modules.preparation.greenhouse import comparable, rendered_schema
 
@@ -96,7 +104,11 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
             if a.get("condition"):
                 page.locator(f'[name="{a["key"]}"]').first.wait_for(state="visible")
             if a["type"] == "file":
-                disclosures.append(self._attach(page, a))
+                try:
+                    disclosures.append(self._attach(page, a))
+                except UploadFailed as e:
+                    e.disclosures[:0] = disclosures  # the uploads before it were sent too
+                    raise
                 continue
             try:
                 self._fill_one(page, a)
@@ -113,20 +125,19 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
             files=[{"name": name, "mimeType": ctype, "buffer": data}]
         )
         status = page.locator(f"#{key}-status")
-        page.wait_for_function(
-            "k => { const s = document.getElementById(k + '-status');"
-            " return s && (s.dataset.attachmentId || s.dataset.attachmentError); }",
-            arg=key,
-        )
+        try:
+            page.wait_for_function(
+                "k => { const s = document.getElementById(k + '-status');"
+                " return s && (s.dataset.attachmentId || s.dataset.attachmentError); }",
+                arg=key,
+            )
+        except PWTimeout:
+            sent = upload_evidence(self.content, key, ACK_NONE)
+            raise UploadFailed("an attachment was not acknowledged", [sent]) from None
         if status.get_attribute("data-attachment-error"):
-            raise UploadFailed("an attachment was not accepted")
-        return {
-            "field": key,
-            "upload_id": status.get_attribute("data-attachment-id"),
-            "sha256": next(
-                (d["sha256"] for d in self.content["documents"] if d["field"] == key), None
-            ),
-        }
+            raise UploadFailed("an attachment was not accepted",
+                               [upload_evidence(self.content, key, ACK_ERROR)])  # fmt: skip
+        return upload_evidence(self.content, key, ACK_SHOWN)
 
     # -- verify -----------------------------------------------------------------------------
     def readback(self, page: Page) -> list[str]:

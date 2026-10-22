@@ -61,7 +61,11 @@ class FixtureAtsAdapter:
             if a["value"] is None:
                 continue
             if a["type"] == "file":
-                disclosures.append(self._fill_one(page, a))
+                try:
+                    disclosures.append(self._fill_one(page, a))
+                except UploadFailed as e:
+                    e.disclosures[:0] = disclosures  # the uploads before it were sent too
+                    raise
                 continue
             try:
                 self._fill_one(page, a)
@@ -77,20 +81,18 @@ class FixtureAtsAdapter:
         if t == "file":
             name, ctype, data = self.documents[key]
             loc.set_input_files(files=[{"name": name, "mimeType": ctype, "buffer": data}])
-            page.wait_for_function(
-                "() => { const s = document.getElementById('upload-status');"
-                " return s && (s.dataset.uploadId || s.dataset.uploadError); }"
-            )
-            status = page.locator("#upload-status")
-            if status.get_attribute("data-upload-error"):
-                raise UploadFailed("a document upload failed")
-            return {
-                "field": key,
-                "upload_id": status.get_attribute("data-upload-id"),
-                "sha256": next(
-                    (d["sha256"] for d in self.content["documents"] if d["field"] == key), None
-                ),
-            }
+            try:
+                page.wait_for_function(
+                    "() => { const s = document.getElementById('upload-status');"
+                    " return s && (s.dataset.uploadId || s.dataset.uploadError); }"
+                )
+            except PWTimeout:
+                sent = upload_evidence(self.content, key, ACK_NONE)
+                raise UploadFailed("a document upload was not acknowledged", [sent]) from None
+            if page.locator("#upload-status").get_attribute("data-upload-error"):
+                sent = upload_evidence(self.content, key, ACK_ERROR)
+                raise UploadFailed("a document upload failed", [sent])
+            return upload_evidence(self.content, key, ACK_SHOWN)
         elif t in ("radio",):
             page.locator(f'input[name="{key}"][value="{v["option"]}"]').check()
         elif t == "checkbox_group":
@@ -193,4 +195,24 @@ class FixtureAtsAdapter:
 
 
 class UploadFailed(RuntimeError):
-    pass
+    """An upload was not acknowledged as accepted. `disclosures`: the evidence of every upload
+    this attempt made, the failed one included, since its data may have reached the employer
+    anyway. The runner records it before stopping."""
+
+    def __init__(self, message: str, disclosures: list[dict] | None = None):
+        super().__init__(message)
+        self.disclosures = list(disclosures or [])
+
+
+# How the destination acknowledged an upload, as a fixed value: never the page's text or its
+# own attachment id (on a real page, the employer's storage reference).
+ACK_SHOWN = "attachment_shown"  # the page showed the attachment as received
+ACK_ERROR = "error_shown"  # the page showed an error for it
+ACK_NONE = "none"  # the page showed nothing in time
+
+
+def upload_evidence(content: dict, field: str, ack: str) -> dict:
+    """Disclosure evidence for one upload: its field, how it was acknowledged, and the digest
+    of the approved document that was sent."""
+    digest = next((d["sha256"] for d in content["documents"] if d["field"] == field), None)
+    return {"field": field, "ack": ack, "sha256": digest}

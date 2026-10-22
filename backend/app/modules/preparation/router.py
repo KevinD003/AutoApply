@@ -13,6 +13,7 @@ from app.core.errors import bad_request, conflict, not_found
 from app.modules.applications.models import Application
 from app.modules.audit.service import record, ref
 from app.modules.documents.models import Document, DocumentKind
+from app.modules.execution.models import AttemptState, ExecutionAttempt
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
 from app.modules.jobs.models import Job
@@ -247,6 +248,40 @@ def get_form(
 # Package review
 
 
+def _approval_view(db: Session, app: Application, pkg, appr, last) -> dict:
+    """The current approval, or what became of the last one. An approval a rehearsal used up
+    is shown as such (from its rehearsed attempt), not as an invalidation."""
+    if appr is not None:
+        return {
+            "status": "approved",
+            "approved_at": appr.approved_at,
+            "version": pkg.version,
+            "scope": appr.scope,
+        }
+    if last is None or last.invalidated_at is None:
+        return {"status": "not_approved"}
+    rehearsal = db.scalar(
+        select(ExecutionAttempt).where(
+            ExecutionAttempt.approval_id == last.id,
+            ExecutionAttempt.user_id == app.user_id,
+            ExecutionAttempt.state == AttemptState.rehearsed,
+        )
+    )
+    if rehearsal is not None:
+        return {
+            "status": "used_by_rehearsal",
+            "approved_at": last.approved_at,
+            "rehearsed_at": rehearsal.finished_at,
+            "version": db.get(ApplicationPackage, last.package_id).version,
+        }
+    return {
+        "status": "invalidated",
+        "approved_at": last.approved_at,
+        "invalidated_at": last.invalidated_at,
+        "reason": last.invalidation_reason,
+    }
+
+
 def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dict:
     appr = pk.active_approval(db, pkg)
     last = db.scalar(
@@ -285,23 +320,7 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
         "labels": {
             "form_source": wording.form_source_label(pkg.content["destination"]["form_source"])
         },
-        "approval": (
-            {
-                "status": "approved",
-                "approved_at": appr.approved_at,
-                "version": pkg.version,
-                "scope": appr.scope,
-            }
-            if appr
-            else {
-                "status": "invalidated",
-                "approved_at": last.approved_at,
-                "invalidated_at": last.invalidated_at,
-                "reason": last.invalidation_reason,
-            }
-            if last and last.invalidated_at
-            else {"status": "not_approved"}
-        ),
+        "approval": _approval_view(db, app, pkg, appr, last),
         "history": [
             {
                 "version": h.version,
