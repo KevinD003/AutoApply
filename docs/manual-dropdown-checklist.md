@@ -40,3 +40,9 @@ The answers below are all that is needed.
    not its wording.
 
 Reply with the question numbers and the short answers only.
+
+**How the answers are kept** (`providers/path_a.py`): only as the fixed choices above, in
+`docs/evidence/path-a.json`, with the date and "owner_manual_observation" as their source.
+Anything else (wording, names, links, free text) is refused. The answers are advisory: they
+say which bounded strategy a local fixture would have to prove next, and they never change a
+capability, a route or an approval on their own.

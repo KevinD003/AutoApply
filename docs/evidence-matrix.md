@@ -9,6 +9,21 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Greenhouse: Path A record and pilot readiness (2026-10-22; local only, no external request)
+
+No page was visited and no manual observation was recorded: every answer in these tests is
+synthetic and labelled so. Results are from the cloud sandbox.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| The Path A record ships pending | `tests/test_path_a.py`: `test_the_shipped_record_is_pending` | `docs/evidence/path-a.json` is `{"status": "pending"}`; every assessment is `unknown`; a record filled in for the owner is caught |
+| Only the checklist's fixed choices can be recorded | `test_anything_but_the_fixed_choices_is_refused_without_echoing_it` (9 cases), `test_the_questions_follow_the_checklist` | wording, an unknown question, extra fields, another source, a bad date, a third dropdown, no answers, a guessed status and a URL are refused; no refusal echoes the value; the questions follow the checklist's 8 (question 8 for two controls); accepting free text is caught |
+| Answers are advisory | `test_a_record_is_assessed_but_never_changes_support`, `test_policy_limits_hold_whatever_the_answers` (6 cases) | a candidate strategy or a blocker per answer; the registry is unchanged; search-as-you-type and partial lists stay unsupported whatever the answers |
+| Readiness is derived from evidence | `tests/test_pilot_readiness.py`: `test_no_condition_is_met_today`, `test_a_condition_follows_the_registry_alone` | 0 of 7 met, not proposable, Path A pending; raising one capability to `observed` in a patched registry meets exactly that condition |
+| The owner's observation meets no condition | `test_the_owners_manual_observation_meets_no_condition` | even the most favourable answers meet 0 of 7; letting Path A meet one is caught |
+| The documented status is the computed one | `test_the_documented_status_equals_the_computed_one` | the table in `docs/greenhouse-readiness-gap.md` equals the computation; a drifted row is caught |
+| Served to signed-in users only | `test_the_api_serves_readiness` | `GET /api/providers/greenhouse_dom/readiness` equals the computation; 401 without a session (dropping authentication is caught) |
+
 ## Question keys out of URL paths (2026-10-22; local only, no external request)
 
 Synthetic data and local fixtures only. Results are from the cloud sandbox (PostgreSQL 16,

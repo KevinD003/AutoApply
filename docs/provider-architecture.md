@@ -585,6 +585,11 @@ The short, evidence-linked handoff is `docs/greenhouse-readiness-gap.md`.
   false, and real origins route to a manual handoff.
 - **Fixture success is not real-site compatibility.** No mapping rule was weakened to change
   this.
+- **Pilot readiness is computed, not claimed** (`providers/readiness.py`,
+  `GET /api/providers/greenhouse_dom/readiness`): the seven conditions for proposing a live
+  filling pilot, each derived from recorded evidence. Today none of the seven is met. The
+  owner's optional manual check (Path A, `providers/path_a.py`) is kept as fixed choices only
+  and meets none of them.
 
 The real-page diagnostic work (read-only observation, `gh_readonly.py`, the decision point in
 `docs/greenhouse-readonly-compatibility-proposal.md`) is kept separate from any future

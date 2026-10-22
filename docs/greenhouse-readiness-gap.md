@@ -138,6 +138,28 @@ Where each row's evidence lives:
 7. **A capability entry raised from `fixture` to `observed`** for exactly the capabilities
    used, with a reviewed change to `real_destinations`. This is never done to claim progress.
 
+**Status** (computed by `providers/readiness.py` from recorded evidence and served at
+`GET /api/providers/greenhouse_dom/readiness`; `tests/test_pilot_readiness.py` fails when this
+table and the code disagree):
+
+| Condition | Status | Evidence |
+|---|---|---|
+| `dropdowns` | not met | `custom_dropdowns` is `fixture`; Path A pending |
+| `unmatched_required_controls` | not met | no mapping rule exists for `u1` or `u2`; Path A pending |
+| `location` | not met | `location_picker` is `none` |
+| `real_upload` | not met | `file_upload` is `fixture`; real destinations are disabled, so NoEfforts cannot have made one |
+| `real_submission` | not met | `final_submit` is `fixture`; real destinations are disabled, so NoEfforts cannot have made one |
+| `pilot_gate` | not met | no permission given (`docs/live-pilot-gate.md`) |
+| `capability_entry` | not met | `real_destinations_enabled` is false |
+
+- A condition is met only by evidence of its own kind: a capability level the registry records
+  (reaching `observed` needs an approved read-only run), `real_destinations`, or the gate's
+  separate permissions.
+- **Path A** (the optional manual check, `docs/manual-dropdown-checklist.md`) is recorded in
+  `docs/evidence/path-a.json` as fixed choices only (`providers/path_a.py`). It is shown beside
+  the conditions it bears on and meets none of them. Until the owner answers, the record says
+  `pending`; NoEfforts never fills it in.
+
 ## Rule for any future real-page request
 
 No identical dropdown observation will be requested again. Run #9 already answered what a

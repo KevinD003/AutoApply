@@ -15,7 +15,7 @@ from app.core.urlsafety import is_fixture_origin
 from app.modules.audit.service import record
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
-from app.modules.providers import registry
+from app.modules.providers import readiness, registry
 from app.modules.providers.model import Kind
 from app.modules.providers.models import ApiAuthorization
 
@@ -36,6 +36,13 @@ def _out(a: ApiAuthorization) -> dict:
 @router.get("/providers")
 def providers(user: User = Depends(current_user)) -> dict:
     return registry.summary()
+
+
+@router.get("/providers/greenhouse_dom/readiness")
+def greenhouse_readiness(user: User = Depends(current_user)) -> dict:
+    """Whether a live filling pilot could be proposed (providers/readiness.py): each condition
+    derived from recorded evidence. Holds no user data; approves and enables nothing."""
+    return readiness.summary()
 
 
 @router.get("/api-authorizations")

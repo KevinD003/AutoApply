@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-22 (real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-22 (Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,43 @@ Last updated: 2026-10-22 (real-destination jobs get the truthful route before an
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Greenhouse: Path A record and pilot readiness (E7, E8, 2026-10-22; local only, no external request)
+
+- **Nothing changed outside the repository.** No page was visited, no support state changed,
+  and no manual observation was recorded: the Path A record ships `pending`, and every answer
+  in the tests is synthetic. Evidence: `docs/evidence-matrix.md` ("Greenhouse: Path A record
+  and pilot readiness"); decision D39.
+- **Path A (E7):**
+  - `providers/path_a.py` keeps the owner's optional manual dropdown check
+    (`docs/manual-dropdown-checklist.md`) only as its fixed choices, with the date and the
+    owner as source, in `docs/evidence/path-a.json`. Wording, names, links and free text are
+    refused without echoing them;
+  - its assessment is advisory: a bounded strategy a fixture would have to prove next, the
+    blockers that stay, and the profile a mirroring fixture must reproduce. It never changes
+    support, a route or an approval.
+- **Pilot readiness (E8):**
+  - `providers/readiness.py` derives the seven conditions of `docs/greenhouse-readiness-gap.md`
+    from evidence of their own kind: registry levels, `real_destinations`, and the gate's
+    permissions (recorded nowhere yet). Path A is shown beside the conditions it bears on and
+    meets none of them;
+  - it is served at `GET /api/providers/greenhouse_dom/readiness` to signed-in users. The
+    documented status table is tested against it;
+  - today: 0 of 7 met, not proposable.
+- **Tests:** new `tests/test_path_a.py` (18 tests) and `tests/test_pilot_readiness.py` (5
+  tests).
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - Path A, readiness, API-path, provider, doc-reference, routing and wording modules (7
+    files): 67 passed;
+  - full backend (`pytest tests`): 629 passed;
+  - `ruff check` and `ruff format --check` clean. No frontend file changed, so Playwright was
+    not rerun (its last run, for B7, passed);
+  - sabotage checks, each caught: free text accepted, the record filled in for the owner,
+    Path A allowed to meet a condition, a drifted documented status row, and the readiness
+    endpoint without authentication.
+- **CI for the previous change:** **CI #88**
+  ([39742542513](https://github.com/KevinD003/AutoApply/actions/runs/39742542513)) (`4c603ae`,
+  B7): passed.
 
 ## Real destinations are told the truth before any form step (B7, 2026-10-22; local only, no external request)
 

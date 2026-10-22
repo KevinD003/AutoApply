@@ -440,3 +440,21 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   with `{"key": …}` in the body. The key-in-path routes were removed rather than kept beside
   them. `tests/test_api_paths.py` fails on any new path parameter that is not a UUID or one of
   NoEfforts' own names.
+
+## D39 — Manual observations are fixed choices and advisory; pilot readiness is derived (2026-10-22)
+- **Path A record:** the owner's optional manual dropdown check
+  (`docs/manual-dropdown-checklist.md`) is stored only as its fixed answers, with the date and
+  the owner as source, in `docs/evidence/path-a.json`. Wording, names, links and free text are
+  refused, and refusals never echo the value given. The record ships as `pending`;
+  NoEfforts never fills it in.
+- **Advisory, not evidence of support:** the answers say which bounded strategy a fixture
+  would have to prove next and which blockers stay. They never change a capability level,
+  `real_destinations`, a route or an approval.
+- **Pilot readiness:** the seven conditions of `docs/greenhouse-readiness-gap.md` are computed
+  from evidence of their own kind:
+  - registry levels, where reaching `observed` needs an approved read-only run;
+  - `real_destinations`;
+  - the gate's separate permissions, recorded nowhere yet.
+
+  The documented status table is tested against the computation. Today none of the seven is
+  met.
