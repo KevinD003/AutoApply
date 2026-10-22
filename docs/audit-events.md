@@ -135,6 +135,18 @@ another):
   (`logging.incomingRequests: false`; `next start` has none). When the `/api` proxy cannot
   reach the backend, its error line is replaced by "Failed to proxy an API request to the
   backend (<code>)" (`src/instrumentation.ts`), without the URL or the error's text.
+- **Retained errors:** a failed outbox publish stores the exception's type only (a broker
+  error's text can quote its URL, credentials included).
+- **Database errors:** the engine hides bound parameters (`hide_parameters=True`), so an error's
+  text never carries the values being written. The server's own DETAIL line (a duplicate key or
+  a failing row) can still appear in the text of a database error, which is why every log
+  above keeps exception types only.
+- **Worker logs** (`core/log_safety.py`): Celery logs a failed task's exception and traceback
+  itself; a filter on its loggers reduces the exception to its type name and drops the
+  traceback.
+- **Database server (Compose):** PostgreSQL runs with `log_error_verbosity=terse`, so its log
+  keeps errors without their DETAIL. The CI test database is a separate service container with
+  the default verbosity; it holds synthetic data only.
 - **Paths that still carry a posting's question key** (not logged anywhere above, but visible
   to any proxy placed in front): `PUT`/`DELETE /api/applications/{app_id}/answers/{key}`,
   `PUT /api/applications/{app_id}/consents/{key}` and

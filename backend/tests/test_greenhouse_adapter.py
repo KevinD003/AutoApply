@@ -304,7 +304,8 @@ def test_full_run_is_confirmed_and_sends_exactly_the_approved_values(api, receiv
     rc = next(e for e in att["evidence"] if e["kind"] == "receipt")
     assert rc["strength"] == "employer_confirmation_page" and rc["data"]["receipt_id"] is None
     rb = next(e for e in att["evidence"] if e["kind"] == "readback")["data"]
-    assert rb["mismatches"] == []
+    assert rb["mismatched"] == 0
+    assert set(rc["data"]) == {"receipt_id", "confirmation", "final_origin", "http_status"}
     assert api.get(f"/applications/{app_id}").json()["state"] == "submitted_confirmed"
 
 

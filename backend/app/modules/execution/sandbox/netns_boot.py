@@ -140,8 +140,8 @@ def main():
         # The inherited working directory still points into the (now hidden) worker tree,
         # because a mount does not move processes already inside it. Leave it.
         os.chdir(workdir)
-    except OSError as e:
-        sys.exit(f"netns_boot: cannot isolate the filesystem: {e}")  # fail closed
+    except OSError as e:  # fail closed; the error's text (paths) is not printed
+        sys.exit(f"netns_boot: cannot isolate the filesystem ({type(e).__name__})")
     # Only stdio and Chromium's DevTools pipes (3, 4) may cross into the browser.
     os.closerange(5, os.sysconf("SC_OPEN_MAX"))
     proxy = [f"--proxy-server=http://127.0.0.1:{port}", "--proxy-bypass-list=<-loopback>"]

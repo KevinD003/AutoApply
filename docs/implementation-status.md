@@ -99,7 +99,9 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     passed. **CI #81** ([39698542143](https://github.com/KevinD003/AutoApply/actions/runs/39698542143))
     (`3cc68fd`, that fix): passed;
   - **CI #82** ([39704738837](https://github.com/KevinD003/AutoApply/actions/runs/39704738837))
-    (`f5bb30f`, Phase 11A error boundaries): passed.
+    (`f5bb30f`, Phase 11A error boundaries): passed;
+  - **CI #83** ([39719684839](https://github.com/KevinD003/AutoApply/actions/runs/39719684839))
+    (`051b200`, Phase 11B access logs): passed.
 
   Per-job test counts were not recorded for these runs.
 - **Keyed audit references (separate security commit after `c54596e`):**
@@ -139,10 +141,23 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     unreachable backend: no marker in either log);
   - new `tests/test_access_log.py` (3 tests, one starting a real uvicorn) and
     `e2e/log-privacy.spec.ts`; removing the filter was caught.
+- **Retained errors, evidence and library logs (Phase A5-A7, commit after `051b200`):**
+  - a failed outbox publish stores the exception's type only;
+  - the database engine hides bound parameters in error text;
+  - a filter reduces Celery's own logging of a failed task to the exception's type, with no
+    message or traceback (checked with a real eager Celery task whose error quotes a row);
+  - Compose's PostgreSQL logs errors without DETAIL (`log_error_verbosity=terse`; checked on
+    the local server: the DETAIL line quoting a key value is gone);
+  - receipts no longer keep the confirmation page's title or path; readback evidence keeps
+    counts, not field keys; egress evidence counts blocked destinations by address category,
+    not hosts;
+  - new `tests/test_retained_data_privacy.py` (20 tests); five existing tests and one Compose
+    check now assert the counts and categories. Sabotage checks: hosts kept in egress evidence, the Celery filter
+    removed and parameters not hidden were each caught.
 - **Known, not fixed here:** four API paths still carry a posting's question key (answers,
-  consents, drafts), which a proxy in front of the app could log; the outbox stores a failed
-  publish's error message (database only); execution evidence keeps readback mismatch keys
-  and blocked egress origins for the user's own records.
+  consents, drafts), which a proxy in front of the app could log. The CI test database logs
+  errors with DETAIL (synthetic data only). An error raised inside a migration is printed with
+  its DETAIL by the Alembic command line.
 
 ## Execution routing and capabilities (2026-10-21; local only, no external request)
 

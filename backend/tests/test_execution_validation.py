@@ -107,7 +107,7 @@ def test_page_altering_a_filled_value_stops_before_submit(api, receiver, tamper,
     assert receiver.ledger()["accepted"] == 0
     att = api.get(f"/applications/{app_id}/attempts").json()[0]
     rb = next(e for e in att["evidence"] if e["kind"] == "readback")["data"]
-    assert key in rb["mismatches"], rb
+    assert rb["mismatched"] >= 1 and key not in str(rb), rb  # counted, never named
     assert att["send_started_at"] is None
 
 

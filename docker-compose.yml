@@ -12,6 +12,10 @@
 services:
   postgres:
     image: postgres:16
+    # The server's log keeps errors without their DETAIL, which can quote key or row values
+    # (for example "Failing row contains (...)"). The app's statements are parameterized, so a
+    # logged statement shows placeholders ($1), not values.
+    command: ["postgres", "-c", "log_error_verbosity=terse"]
     environment:
       POSTGRES_DB: noefforts
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}

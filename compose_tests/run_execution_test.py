@@ -753,7 +753,7 @@ def s_infrastructure_only_egress():
               eg.get("blocked_requests", 0) == 0, eg)  # fmt: skip
         check("no interception: canary received nothing", hits == 0, hits)
         check("no interception: the session proxy denied the off-destination requests",
-              any(d.startswith("canary:") for d in eg.get("proxy_denied", [])), eg.get("proxy_denied"))  # fmt: skip
+              eg.get("proxy_denied", {}).get("named", 0) >= 1, eg.get("proxy_denied"))  # fmt: skip
     finally:
         recreate_worker(EXEC_TEST_DISABLE_INTERCEPTION="false")
 

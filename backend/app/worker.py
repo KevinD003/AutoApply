@@ -22,11 +22,13 @@ import socket
 import uuid
 
 from celery import Celery
+from celery.signals import after_setup_logger, after_setup_task_logger
 from sqlalchemy import delete
 
 import app.models  # noqa: F401  (register every table before any task runs)
 from app.core.config import get_settings
 from app.core.db import SessionLocal, utcnow
+from app.core.log_safety import install_worker_filters
 from app.modules.identity.models import UserSession
 
 settings = get_settings()
@@ -58,6 +60,12 @@ celery_app.conf.update(
         "purge-expired-evidence": {"task": "noefforts.purge_expired_evidence", "schedule": 86400.0},
     },
 )
+
+# A failed task is logged with its exception's type only: no message, no traceback (a database
+# error's text can quote a row). Installed now and again after Celery configures its logging.
+install_worker_filters()
+after_setup_logger.connect(lambda **_: install_worker_filters(), weak=False)
+after_setup_task_logger.connect(lambda **_: install_worker_filters(), weak=False)
 
 WORKER_ID = f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
 

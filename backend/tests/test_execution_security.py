@@ -258,13 +258,13 @@ def test_browser_cannot_reach_other_origins(api, receiver, canary):
     assert canary == [], canary  # img, iframe, fetch, beacon and redirect all blocked
     att = api.get(f"/applications/{app_id}/attempts").json()[0]
     eg = next(e for e in att["evidence"] if e["kind"] == "egress")["data"]
-    for origin in (
-        f"http://127.0.0.1:{CANARY_PORT}",
-        "http://169.254.169.254",
-        "http://10.0.0.1",
-        "http://[::1]",
-    ):
-        assert origin in eg["origins"], eg
+    # Every kind of internal target was blocked: the canary and [::1] (loopback), the metadata
+    # address (link-local) and 10.0.0.1 (private). Counted by category; no host is kept.
+    blocked = eg["blocked_destinations"]
+    assert blocked.get("loopback", 0) >= 2 and blocked.get("link_local", 0) >= 1, eg
+    assert blocked.get("private", 0) >= 1, eg
+    for host in ("127.0.0.1", "169.254.169.254", "10.0.0.1", "::1"):
+        assert host not in str(eg), host
     assert receiver.ledger()["accepted"] == 1
 
 

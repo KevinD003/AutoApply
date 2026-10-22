@@ -212,7 +212,7 @@ def test_full_run_sends_exactly_the_approved_values(api, receiver):
     assert sent["resume_attachment_id"] == up["attachment_id"]
     att = api.get(f"/applications/{app_id}/attempts").json()[0]
     rb = next(e for e in att["evidence"] if e["kind"] == "readback")["data"]
-    assert rb["mismatches"] == [] and rb["checked"] == len(approved["answers"])
+    assert rb == {"checked": len(approved["answers"]), "mismatched": 0}
     rc = next(e for e in att["evidence"] if e["kind"] == "receipt")
     assert rc["strength"] == "employer_confirmation_page" and rc["data"]["receipt_id"] is None
     assert api.get(f"/applications/{app_id}").json()["state"] == "submitted_confirmed"

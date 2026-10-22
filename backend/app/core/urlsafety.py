@@ -66,6 +66,30 @@ def _check_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
         raise UnsafeURL("URL resolves to a non-public address")
 
 
+DESTINATION_CATEGORIES = ("loopback", "link_local", "private", "named", "public", "other")
+
+
+def destination_category(host: str) -> str:
+    """A fixed category for a destination host, for records that must not keep the host
+    itself. No lookup is made: a name stays `named`."""
+    h = (host or "").strip().strip("[]").lower()
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return "loopback" if h == "localhost" or h.endswith(".localhost") else "named"
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    if ip.is_loopback:
+        return "loopback"
+    if ip.is_multicast or ip.is_unspecified or ip.is_reserved:
+        return "other"
+    if ip.is_link_local:
+        return "link_local"
+    if ip.is_private:
+        return "private"
+    return "public" if ip.is_global else "other"
+
+
 def resolve_public_destination(url: str, resolver=socket.getaddrinfo) -> list[str]:
     """Return the resolved public IPs for `url`, or raise if any resolve to a blocked range."""
     check_url_syntax(url)

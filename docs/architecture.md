@@ -163,9 +163,11 @@ return 409 (`package.execution_owns_state`). Without this, the review page's pac
 moved a code-waiting application back to `awaiting_approval` with a valid approval, which
 re-enabled Submit after the data had been sent (found by the browser test, now covered).
 
-Evidence policy: receipt id, final origin/path, page title, HTTP status; a readback summary
-(which keys mismatched, never values); disclosures (field, upload id, digest); blocked egress
-origins. No screenshots, traces, cookies, storage state, codes or answer values. Evidence has
+Evidence policy: receipt id, final origin, HTTP status (no page title or path); a readback
+summary (how many fields were checked and how many did not keep their values; never which,
+never values); disclosures (field, upload id, digest); blocked egress destinations counted by
+address category (loopback, link-local, private, named, public, other), never the hosts. No
+screenshots, traces, cookies, storage state, codes or answer values. Evidence has
 a retention date (`NOEFFORTS_EVIDENCE_RETENTION_DAYS`); a daily beat task purges expired
 evidence, and users can delete an application's evidence (`DELETE
 /api/applications/{id}/evidence`, refused while an attempt is active).

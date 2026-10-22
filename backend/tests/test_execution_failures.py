@@ -382,12 +382,13 @@ def test_broker_outage_after_commit_loses_nothing(api, receiver):
     app_id, aid = ready(api, receiver)
 
     def down(topic, attempt_id):
-        raise ConnectionError("broker unavailable")
+        raise ConnectionError("redis://:broker-password@broker.internal:6379 unavailable")
 
     assert svc.relay_outbox(down) == 0
     with SessionLocal() as db:
         m = db.query(OutboxMessage).filter_by(attempt_id=uuid.UUID(aid)).one()
-        assert m.dispatched_at is None and "broker unavailable" in m.last_error
+        # The error's type is kept; its text (which can quote the broker URL) is not.
+        assert m.dispatched_at is None and m.last_error == "ConnectionError"
     published = []
     assert svc.relay_outbox(lambda t, a: published.append(a)) == 1
     assert published == [aid]

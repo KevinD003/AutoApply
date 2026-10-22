@@ -211,7 +211,5 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
             "receipt_id": None,
             "confirmation": "confirmation page",
             "final_origin": f"{p.scheme}://{p.netloc}",
-            "final_path": p.path,
-            "page_title": page.title()[:200],
             "http_status": out.http_status,
         }

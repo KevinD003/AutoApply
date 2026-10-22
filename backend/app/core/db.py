@@ -27,7 +27,9 @@ def new_id() -> uuid.UUID:
     return uuid.uuid4()
 
 
-engine = create_engine(get_settings().database_url, pool_pre_ping=True)
+# hide_parameters: a database error's message never carries bound values (answers, profile
+# facts, metadata), wherever that message ends up (a worker's task log, for example).
+engine = create_engine(get_settings().database_url, pool_pre_ping=True, hide_parameters=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

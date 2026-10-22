@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.db import SessionLocal
-from app.core.urlsafety import is_fixture_origin
+from app.core.urlsafety import destination_category, is_fixture_origin
 from app.modules.documents.models import Document
 from app.modules.documents.storage import get_storage
 from app.modules.execution import policy
@@ -156,12 +156,13 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             for d in disclosures:
                 svc.record_evidence(aid, worker, gen, "disclosure", d)
             mismatches = adapter.readback(page)
+            # How many fields kept their values, never which (the posting's field keys).
             svc.record_evidence(
                 aid,
                 worker,
                 gen,
                 "readback",
-                {"checked": len(content["answers"]), "mismatches": mismatches},
+                {"checked": len(content["answers"]), "mismatched": len(mismatches)},
             )
             if mismatches:
                 n = len(mismatches)  # which fields is kept in the readback evidence, not here
@@ -173,7 +174,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                 return "abandoned"
             denied = eg.proxy_denied()
             if eg.blocked or denied:
-                origins = sorted({_origin_of(u) for u in eg.blocked})
+                # Distinct blocked destinations by address category, never the hosts.
                 svc.record_evidence(
                     aid,
                     worker,
@@ -181,8 +182,10 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                     "egress",
                     {
                         "blocked_requests": len(eg.blocked),
-                        "origins": origins,
-                        "proxy_denied": denied,
+                        "blocked_destinations": _categories(
+                            {_origin_of(u) for u in eg.blocked}, _host_of_origin
+                        ),
+                        "proxy_denied": _categories(set(denied), _host_of_hostport),
                     },
                 )
             beat()
@@ -229,6 +232,23 @@ class _Closing:
 
     def __exit__(self, *exc):
         return self.cm.__exit__(*exc)
+
+
+def _host_of_origin(origin: str) -> str:
+    return urlsplit(origin).hostname or ""
+
+
+def _host_of_hostport(hostport: str) -> str:
+    return hostport.rsplit(":", 1)[0]
+
+
+def _categories(destinations: set[str], host_of) -> dict[str, int]:
+    """{address category: number of distinct destinations}; no host is kept."""
+    out: dict[str, int] = {}
+    for d in destinations:
+        c = destination_category(host_of(d))
+        out[c] = out.get(c, 0) + 1
+    return dict(sorted(out.items()))
 
 
 def _origin_of(url: str) -> str:

@@ -118,7 +118,8 @@ def relay_outbox(publish, limit: int = 50) -> int:
             try:
                 publish(m.topic, str(m.attempt_id))  # ids only, never candidate data
             except Exception as e:  # broker down: keep the message, try again later
-                m.last_error = f"{type(e).__name__}: {e}"[:500]
+                # The type only: a broker error's text can quote its URL, credentials included.
+                m.last_error = type(e).__name__
                 continue
             m.dispatched_at = utcnow()
             m.last_error = None
