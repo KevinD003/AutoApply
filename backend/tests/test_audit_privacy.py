@@ -253,7 +253,7 @@ def test_a_rejected_draft_records_a_reason_code_not_its_content(api, monkeypatch
     _, app = new_application(api)
     invented = FakeProvider("I led a team of 40 nurses for 12 years.")
     monkeypatch.setattr(drafting, "get_provider", lambda: invented)
-    r = api.post(f"/applications/{app['id']}/answers/why_us/draft")
+    r = api.post(f"/applications/{app['id']}/drafts", json={"key": "why_us"})
     assert r.status_code == 422
     (row,) = audit_rows("draft.rejected")
     assert row.meta == {"field_ref": ref("why_us", row.user_id), "reason_code": "invented_numbers"}
@@ -270,7 +270,7 @@ def test_a_created_draft_records_a_field_reference_not_the_question_key(api, mon
     _, app = new_application(api)
     good = FakeProvider("I handled patient intake for 3 doctors and want to keep doing it well.")
     monkeypatch.setattr(drafting, "get_provider", lambda: good)
-    assert api.post(f"/applications/{app['id']}/answers/why_us/draft").status_code == 200
+    assert api.post(f"/applications/{app['id']}/drafts", json={"key": "why_us"}).status_code == 200
     (row,) = audit_rows("draft.created")
     assert set(row.meta) == {"field_ref", "provider", "cost_usd"}
     assert (

@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-22 (support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-22 (question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,38 @@ Last updated: 2026-10-22 (support-state wording derived from evidence and served
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Question keys out of URL paths (A8, 2026-10-22; local only, no external request)
+
+- **Nothing changed outside the repository.** Evidence: `docs/evidence-matrix.md` ("Question
+  keys out of URL paths"); decision D38.
+- **Before:** four routes put a posting's question key in the URL path:
+  - `PUT` and `DELETE /api/applications/{app_id}/answers/{key}`;
+  - `PUT /api/applications/{app_id}/consents/{key}`;
+  - `POST /api/applications/{app_id}/answers/{key}/draft`.
+
+  NoEfforts' own logs recorded route templates only, but a proxy placed in front of the app
+  would have logged the keys.
+- **Now:**
+  - the key travels in the request body: `PUT …/answers`, `POST …/answers/clear`,
+    `PUT …/consents` and `POST …/drafts`;
+  - keys are validated with the form-field key pattern, so a malformed key is refused before
+    any handler runs;
+  - the old routes are removed, and a request that still uses one is `unmatched_route` 404;
+  - every caller moved: the application page, the e2e submission spec, the backend tests and
+    the Compose execution test.
+- **Tests:** new `tests/test_api_paths.py` (3 tests). It reads the OpenAPI schema and fails on
+  any path parameter that is not a UUID or one of NoEfforts' own names. `tests/test_access_log.py`
+  now shows the body-keyed route as its plain template and the old form as unmatched.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - the new and rewritten modules (12 files): 151 passed;
+  - full backend (`pytest tests`): 605 passed;
+  - Playwright: 32 passed, 2 skipped (the desktop-only configuration checks);
+  - frontend typecheck and lint clean; `ruff check` and `ruff format --check` clean; the
+    Compose execution test compiles and passes `ruff check`, but needs Docker and runs in CI
+    only;
+  - sabotage checks, each caught: a key-in-path route re-added, the key pattern dropped, and
+    the ownership check dropped from the new clear route.
 
 ## Support-state wording (B6, 2026-10-22; local only, no external request)
 
@@ -73,6 +105,8 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   - sabotage checks, each caught: a page hard-coding a qualifier, observed evidence ignored,
     a live label added, a bare API or browser route allowed, a label claiming support, a
     stored form source without wording, the package view dropping its label.
+- **CI:** **CI #86** ([39733244668](https://github.com/KevinD003/AutoApply/actions/runs/39733244668))
+  (`aa06a85`): passed.
 
 ## Route reason codes and route truthfulness (Group B, 2026-10-22; local only, no external request)
 
@@ -248,8 +282,9 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   - new `tests/test_retained_data_privacy.py` (20 tests); five existing tests and one Compose
     check now assert the counts and categories. Sabotage checks: hosts kept in egress evidence, the Celery filter
     removed and parameters not hidden were each caught.
-- **Known, not fixed here:** four API paths still carry a posting's question key (answers,
-  consents, drafts), which a proxy in front of the app could log. The CI test database logs
+- **Known, not fixed here:** four API paths still carried a posting's question key (answers,
+  consents, drafts), which a proxy in front of the app could log; fixed on 2026-10-22 (A8,
+  "Question keys out of URL paths" above). The CI test database logs
   errors with DETAIL (synthetic data only). An error raised inside a migration is printed with
   its DETAIL by the Alembic command line.
 

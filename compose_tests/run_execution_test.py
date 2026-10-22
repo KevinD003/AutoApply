@@ -258,8 +258,9 @@ def generic_app(a: Api, slug: str) -> str:
     html = receiver_raw(f"/apply/{slug}")
     a.ok("POST", f"/jobs/{job['job']['id']}/form", {"html": html})
     app_id = a.ok("POST", "/applications", {"job_id": job["job"]["id"]})["id"]
-    a.ok("PUT", f"/applications/{app_id}/answers/hear_about", {"value": {"label": "Referral"}})
-    pkg = a.ok("PUT", f"/applications/{app_id}/consents/privacy_ack", {"choice": "agree"})
+    a.ok("PUT", f"/applications/{app_id}/answers", {"key": "hear_about",
+                                                     "value": {"label": "Referral"}})  # fmt: skip
+    pkg = a.ok("PUT", f"/applications/{app_id}/consents", {"key": "privacy_ack", "choice": "agree"})
     approve(a, app_id, pkg["package"])
     return app_id
 
@@ -271,10 +272,10 @@ def greenhouse_app(a: Api) -> str:
     a.ok("POST", f"/jobs/{job['job']['id']}/form/greenhouse")
     app_id = a.ok("POST", "/applications", {"job_id": job["job"]["id"]})["id"]
     for k, v in (("question_7004", {"label": "Referral"}), ("question_7005", {"label": "No"})):
-        a.ok("PUT", f"/applications/{app_id}/answers/{k}", {"value": v})
-    a.ok("PUT", f"/applications/{app_id}/consents/question_7009", {"choice": "withhold"})
-    pkg = a.ok("PUT", f"/applications/{app_id}/consents/gdpr_processing_consent_given",
-               {"choice": "agree"})  # fmt: skip
+        a.ok("PUT", f"/applications/{app_id}/answers", {"key": k, "value": v})
+    a.ok("PUT", f"/applications/{app_id}/consents", {"key": "question_7009", "choice": "withhold"})
+    pkg = a.ok("PUT", f"/applications/{app_id}/consents",
+               {"key": "gdpr_processing_consent_given", "choice": "agree"})  # fmt: skip
     approve(a, app_id, pkg["package"])
     return app_id
 

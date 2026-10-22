@@ -9,6 +9,19 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Question keys out of URL paths (2026-10-22; local only, no external request)
+
+Synthetic data and local fixtures only. Results are from the cloud sandbox (PostgreSQL 16,
+Redis 7); the Compose execution test, which also calls these endpoints, runs in CI only.
+
+| Requirement | Evidence (`tests/test_api_paths.py` unless noted) | Result |
+|---|---|---|
+| No path carries external text | `test_every_path_parameter_is_an_internal_id_or_one_of_our_own_names` (read from the OpenAPI schema) | every path parameter is a UUID except `name` (NoEfforts' own fixture-form and provider names) |
+| The key-in-path routes are gone | `test_the_key_in_path_routes_are_gone` | for an existing application, `PUT`/`DELETE …/answers/{key}`, `PUT …/consents/{key}` and `POST …/answers/{key}/draft` are 404 |
+| Answers, consents, clearing and drafts take the key in the body | `test_answers_consents_clearing_and_drafts_take_the_key_in_the_body` | an answer saved, then cleared (back to `needs_user`); a consent choice and a draft refused for a question that takes neither, without echoing the key; an unknown key 404 without echoing it; malformed keys 422 before the handler; another user's application 404 on all four routes |
+| Access logs | `tests/test_access_log.py` (3 tests) | the body-keyed route logs as `PUT /api/applications/{app_id}/answers`; the old key-in-path form logs as `PUT unmatched_route` 404; no key, token, e-mail, URL or id on any line, including from a real uvicorn |
+| Every caller moved | the application page, `frontend/e2e/submission.spec.ts`, 51 backend test calls, `compose_tests/run_execution_test.py` | full backend suite and Playwright pass on the new routes |
+
 ## Support-state wording (2026-10-22; local only, no external request)
 
 Synthetic data and local fixtures only. No support state changed: the wording now follows from
@@ -77,7 +90,7 @@ Redis 7); CI results are in `docs/implementation-status.md`.
 | Form drift, uploads and readback give counts and fixed reasons | `test_form_changed_after_approval_stops_before_disclosure`, `test_combobox_that_does_not_keep_its_choice_is_caught_by_readback`, `test_unmatched_dropdowns_are_refused_not_interpreted`, `test_page_requires_a_field_with_no_approved_answer_stops_before_disclosure`, `test_unverifiable_dropdowns_stop_before_anything_is_disclosed` | "1 new field(s)", "1 field(s) did not keep their values", "2 new field(s)", "required by the page, no approved answer", the dropdown's own refusal reason; no field key |
 | Unexpected API errors are a generic 500 | `tests/test_error_boundary.py`: `test_an_unexpected_error_is_a_generic_500_logged_by_type` (route, attempts, authentication); `tests/test_execution_failures.py`: `test_cancel_reports_only_its_own_refusals` | generic body; security headers kept; log is type + method + route template; fails without the boundary |
 | Expected errors unchanged | `tests/test_error_boundary.py`: `test_expected_errors_keep_their_status_and_own_messages` | 401 anonymous, 404 cross-tenant, 422 validation, 409 refusal |
-| Access logs carry route templates only | `tests/test_access_log.py`: `test_access_lines_carry_the_route_template_never_the_raw_path`, `test_raw_access_records_from_the_server_are_dropped`, `test_the_real_server_prints_route_templates_only` | real uvicorn: `"PUT /api/applications/{app_id}/answers/{key} HTTP/1.1" 401`, `unmatched_route` 404, health 200; no question key, token, e-mail, URL, id or client address; fails without the filter |
+| Access logs carry route templates only | `tests/test_access_log.py`: `test_access_lines_carry_the_route_template_never_the_raw_path`, `test_raw_access_records_from_the_server_are_dropped`, `test_the_real_server_prints_route_templates_only` | real uvicorn: `"PUT /api/applications/{app_id}/answers HTTP/1.1"` (the key in the body), the old key-in-path form as `"PUT unmatched_route HTTP/1.1" 404`, health 200; no question key, token, e-mail, URL, id or client address; fails without the filter |
 | The web server logs no raw paths | `frontend/e2e/log-privacy.spec.ts` (development request log off; proxy failure without its URL); manual run of `next dev` and `next start` against an unreachable backend | no marker in either log; "Failed to proxy an API request to the backend (ECONNREFUSED)" |
 | Retained errors are types only | `tests/test_execution_failures.py`: `test_broker_outage_after_commit_loses_nothing` | outbox `last_error` is `ConnectionError`; the broker URL and its password are not kept |
 | Database errors carry no bound values | `tests/test_retained_data_privacy.py`: `test_a_database_error_never_carries_bound_values` | "SQL parameters hidden"; no answer text or e-mail; fails without `hide_parameters` |

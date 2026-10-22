@@ -429,3 +429,14 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   wording change never changes a package hash or invalidates an approval.
 - **Status:** no support state changed. The wording on two pages that described the same form
   differently is now one label.
+
+## D38 — A posting's question keys never appear in a URL path (2026-10-22)
+- **Rule:** a path carries only internal ids (UUIDs) and NoEfforts' own names. A posting's
+  question key is the employer's identifier, so it travels in the request body.
+- **Why:** NoEfforts' own access logs already record route templates only, but any proxy
+  placed in front of the app logs raw paths.
+- **Change:** `PUT /api/applications/{app_id}/answers`, `POST …/answers/clear` (replacing
+  `DELETE …/answers/{key}`, which no page used), `PUT …/consents` and `POST …/drafts`, each
+  with `{"key": …}` in the body. The key-in-path routes were removed rather than kept beside
+  them. `tests/test_api_paths.py` fails on any new path parameter that is not a UUID or one of
+  NoEfforts' own names.

@@ -52,8 +52,11 @@ class Condition(BaseModel):
     any_of: list[str] = Field(min_length=1, max_length=50)
 
 
+KEY_PATTERN = r"^[A-Za-z0-9_.:\[\]-]+$"  # a field key as extracted from a form
+
+
 class FormField(BaseModel):
-    key: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9_.:\[\]-]+$")
+    key: str = Field(min_length=1, max_length=200, pattern=KEY_PATTERN)
     label: str = Field(min_length=1, max_length=2000)
     help_text: str | None = Field(default=None, max_length=4000)
     type: FieldType

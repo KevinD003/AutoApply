@@ -212,7 +212,7 @@ export default function ReviewPage() {
                   <AnswerInput
                     q={q}
                     busy={busy}
-                    onSave={(value, save_to_bank) => call(`/applications/${id}/answers/${q.key}`, "PUT", { value, save_to_bank }, "Answer saved.")}
+                    onSave={(value, save_to_bank) => call(`/applications/${id}/answers`, "PUT", { key: q.key, value, save_to_bank }, "Answer saved.")}
                   />
                 ) : (
                   <p className="text-sm">
@@ -241,18 +241,18 @@ export default function ReviewPage() {
                       ["agree", "I agree"],
                       ["decline", "I decline"],
                     ]}
-                    onPick={(choice) => call(`/applications/${id}/consents/${q.key}`, "PUT", { choice })}
+                    onPick={(choice) => call(`/applications/${id}/consents`, "PUT", { key: q.key, choice })}
                   />
                 ) : (
                   <div className="space-y-2">
-                    <AnswerInput q={q} busy={busy} onSave={(value) => call(`/applications/${id}/answers/${q.key}`, "PUT", { value })} />
+                    <AnswerInput q={q} busy={busy} onSave={(value) => call(`/applications/${id}/answers`, "PUT", { key: q.key, value })} />
                     <ChoiceRow
                       current={c.consents[q.key]}
                       choices={[
                         ["disclose", "Include this answer"],
                         ["withhold", "Don't disclose"],
                       ]}
-                      onPick={(choice) => call(`/applications/${id}/consents/${q.key}`, "PUT", { choice })}
+                      onPick={(choice) => call(`/applications/${id}/consents`, "PUT", { key: q.key, choice })}
                     />
                   </div>
                 )}
@@ -278,7 +278,7 @@ export default function ReviewPage() {
                     onRequest={async () => {
                       setError(null);
                       try {
-                        await api(`/applications/${id}/answers/${q.key}/draft`, { method: "POST" });
+                        await api(`/applications/${id}/drafts`, { method: "POST", json: { key: q.key } });
                         load();
                       } catch (e) {
                         setError(e);
@@ -289,7 +289,7 @@ export default function ReviewPage() {
                 )}
                 {q.draftable && q.status !== "resolved" && (
                   <div className="mt-2">
-                    <AnswerInput q={q} busy={busy} onSave={(value) => call(`/applications/${id}/answers/${q.key}`, "PUT", { value }, "Answer saved.")} />
+                    <AnswerInput q={q} busy={busy} onSave={(value) => call(`/applications/${id}/answers`, "PUT", { key: q.key, value }, "Answer saved.")} />
                   </div>
                 )}
               </li>

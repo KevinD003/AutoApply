@@ -122,13 +122,21 @@ def prepared_application(api, receiver, *, slug="clinic", why_text=None, hear_ab
     app_id = api.post("/applications", json={"job_id": job_id}).json()["id"]
     if hear_about in ("input", "save_to_bank"):
         api.put(
-            f"/applications/{app_id}/answers/hear_about",
-            json={"value": {"label": "Referral"}, "save_to_bank": hear_about == "save_to_bank"},
+            f"/applications/{app_id}/answers",
+            json={
+                "key": "hear_about",
+                "value": {"label": "Referral"},
+                "save_to_bank": hear_about == "save_to_bank",
+            },
         )
     # hear_about == "bank": rely on an existing saved answer for the same wording
     if why_text:
-        api.put(f"/applications/{app_id}/answers/why_us", json={"value": {"text": why_text}})
-    v = api.put(f"/applications/{app_id}/consents/privacy_ack", json={"choice": "agree"}).json()
+        api.put(
+            f"/applications/{app_id}/answers", json={"key": "why_us", "value": {"text": why_text}}
+        )
+    v = api.put(
+        f"/applications/{app_id}/consents", json={"key": "privacy_ack", "choice": "agree"}
+    ).json()
     p = v["package"]
     assert not p["content"]["unresolved"], p["content"]["unresolved"]
     r = api.post(

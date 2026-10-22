@@ -169,7 +169,7 @@ def v2_application(api, *, worked_before="No", approve=True) -> str:
         "question_8104": {"label": worked_before},
     }
     for key, value in answers.items():
-        r = api.put(f"/applications/{app_id}/answers/{key}", json={"value": value})
+        r = api.put(f"/applications/{app_id}/answers", json={"key": key, "value": value})
         assert r.status_code == 200, (key, r.text)
     p = api.get(f"/applications/{app_id}/package").json()["package"]
     assert not p["content"]["unresolved"], p["content"]["unresolved"]

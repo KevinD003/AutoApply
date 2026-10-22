@@ -23,8 +23,12 @@ def ready_app(api):
     setup_candidate(api)
     job, app = new_application(api)
     aid = app["id"]
-    api.put(f"/applications/{aid}/answers/hear_about", json={"value": {"label": "Job board"}})
-    v = api.put(f"/applications/{aid}/consents/privacy_ack", json={"choice": "agree"}).json()
+    api.put(
+        f"/applications/{aid}/answers", json={"key": "hear_about", "value": {"label": "Job board"}}
+    )
+    v = api.put(
+        f"/applications/{aid}/consents", json={"key": "privacy_ack", "choice": "agree"}
+    ).json()
     return job, aid, v
 
 
@@ -121,7 +125,7 @@ def test_false_null_and_decline_are_distinct():
 
 def test_empty_text_is_rejected_not_stored_as_answer(api):
     _, aid, _ = ready_app(api)
-    r = api.put(f"/applications/{aid}/answers/why_us", json={"value": {"text": "   "}})
+    r = api.put(f"/applications/{aid}/answers", json={"key": "why_us", "value": {"text": "   "}})
     assert r.status_code == 400
 
 
@@ -139,7 +143,7 @@ class _Fake:
 def test_accepted_draft_depends_on_its_facts(api, monkeypatch):
     monkeypatch.setattr(drafting, "get_provider", lambda: _Fake())
     _, aid, _ = ready_app(api)
-    d = api.post(f"/applications/{aid}/answers/why_us/draft").json()
+    d = api.post(f"/applications/{aid}/drafts", json={"key": "why_us"}).json()
     v = api.post(f"/applications/{aid}/drafts/{d['id']}/accept").json()
     assert answers(v)["why_us"]["source"] == "draft"
     approve(api, aid, v)

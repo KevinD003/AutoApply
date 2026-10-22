@@ -131,7 +131,8 @@ event's metadata:
   NoEfforts' own fixed reasons, never the posting's field keys.
 - **Access logs** (`core/access_log.py`): one line per request in uvicorn's own format, with
   no client address, the method, the route template
-  (`/api/applications/{app_id}/answers/{key}`, or `unmatched_route`) and the status. Never the
+  (`/api/applications/{app_id}/drafts/{draft_id}/accept`, or `unmatched_route`) and the
+  status. Never the
   raw path, the query string, a header or a body. The app itself drops every other access
   record (including uvicorn's own raw-path line), so this holds for every command that serves
   `app.main:app` (Docker and Compose, the end-to-end tests, local `uvicorn`); it is tested
@@ -152,11 +153,15 @@ event's metadata:
 - **Database server (Compose):** PostgreSQL runs with `log_error_verbosity=terse`, so its log
   keeps errors without their DETAIL. The CI test database is a separate service container with
   the default verbosity; it holds synthetic data only.
-- **Paths that still carry a posting's question key** (not logged anywhere above, but visible
-  to any proxy placed in front): `PUT`/`DELETE /api/applications/{app_id}/answers/{key}`,
-  `PUT /api/applications/{app_id}/consents/{key}` and
-  `POST /api/applications/{app_id}/answers/{key}/draft`. Moving the key into the request body
-  is a separate, unscheduled change.
+- **No path carries a posting's question key** (`tests/test_api_paths.py`), so a proxy placed
+  in front of the app can log paths without logging what a posting wrote:
+  - every path parameter is an internal id (a UUID) or one of NoEfforts' own names (a fixture
+    form or a provider);
+  - answers, consents, cleared answers and drafts take the key in the request body:
+    `PUT /api/applications/{app_id}/answers`, `POST /api/applications/{app_id}/answers/clear`,
+    `PUT /api/applications/{app_id}/consents` and `POST /api/applications/{app_id}/drafts`;
+  - a request that still puts a key in the path matches no route and is logged as
+    `unmatched_route`.
 - **CI:**
   - the Compose execution test and the Docker smoke test print the last lines of their
     containers' logs when they fail; those stacks talk only to the synthetic receiver;

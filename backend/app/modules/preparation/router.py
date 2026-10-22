@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -22,6 +22,7 @@ from app.modules.preparation import package as pk
 from app.modules.preparation.fixtures_registry import FIXTURES, fixture_html
 from app.modules.preparation.forms import (
     EXTRACTION_VERSION,
+    KEY_PATTERN,
     ExtractionError,
     FormField,
     FormSchema,
@@ -379,20 +380,29 @@ def _upsert_input(
         row.value, row.provenance, row.meta = value, provenance, meta
 
 
-class AnswerIn(BaseModel):
+# A posting's question key travels in the request body, never in the path: a proxy in front of
+# the app could log a path (docs/audit-events.md, "Logs"; tests/test_api_paths.py).
+QuestionKey = Annotated[str, Field(min_length=1, max_length=200, pattern=KEY_PATTERN)]
+
+
+class QuestionIn(BaseModel):
+    key: QuestionKey
+
+
+class AnswerIn(QuestionIn):
     value: dict
     save_to_bank: bool = False
 
 
-@router.put("/applications/{app_id}/answers/{key}")
+@router.put("/applications/{app_id}/answers")
 def put_answer(
     app_id: uuid.UUID,
-    key: str,
     body: AnswerIn,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> dict:
     app = _owned_app(db, user, app_id)
+    key = body.key
     entry, f = _field(db, app, key)
     if entry["acknowledgment"]:
         raise bad_request("Legal statements and consents are answered with a consent choice.")
@@ -444,16 +454,19 @@ def _save_to_bank(db, user, app, f, value, sensitive: bool) -> None:
     entry.source_application_id = app.id
 
 
-@router.delete("/applications/{app_id}/answers/{key}")
-def delete_answer(
-    app_id: uuid.UUID, key: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+@router.post("/applications/{app_id}/answers/clear")
+def clear_answer(
+    app_id: uuid.UUID,
+    body: QuestionIn,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
 ) -> dict:
     app = _owned_app(db, user, app_id)
     row = db.scalar(
         select(ApplicationInput).where(
             ApplicationInput.application_id == app.id,
             ApplicationInput.kind == "answer",
-            ApplicationInput.field_key == key,
+            ApplicationInput.field_key == body.key,
         )
     )
     if row is not None:
@@ -462,19 +475,19 @@ def delete_answer(
     return _package_view(db, app, _current(db, app))
 
 
-class ConsentIn(BaseModel):
+class ConsentIn(QuestionIn):
     choice: Literal["agree", "decline", "disclose", "withhold"] | None
 
 
-@router.put("/applications/{app_id}/consents/{key}")
+@router.put("/applications/{app_id}/consents")
 def put_consent(
     app_id: uuid.UUID,
-    key: str,
     body: ConsentIn,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> dict:
     app = _owned_app(db, user, app_id)
+    key = body.key
     entry, _ = _field(db, app, key)
     allowed = (
         {"agree", "decline"}
@@ -574,11 +587,15 @@ def revoke_package(
 # Long-form drafting (optional)
 
 
-@router.post("/applications/{app_id}/answers/{key}/draft")
+@router.post("/applications/{app_id}/drafts")
 def request_draft(
-    app_id: uuid.UUID, key: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+    app_id: uuid.UUID,
+    body: QuestionIn,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
 ) -> dict:
     app = _owned_app(db, user, app_id)
+    key = body.key
     entry, f = _field(db, app, key)
     if not entry["draftable"]:
         raise bad_request("Only long-form questions can be drafted.")

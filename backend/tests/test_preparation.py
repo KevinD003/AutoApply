@@ -109,11 +109,13 @@ def test_full_workflow_with_zero_llm_calls(api, no_llm):
 
     # User corrections.
     v = api.put(
-        f"/applications/{app['id']}/answers/hear_about",
-        json={"value": {"label": "Referral"}, "save_to_bank": True},
+        f"/applications/{app['id']}/answers",
+        json={"key": "hear_about", "value": {"label": "Referral"}, "save_to_bank": True},
     ).json()
     assert answers(v)["hear_about"]["source"] == "user_entered"
-    v = api.put(f"/applications/{app['id']}/consents/privacy_ack", json={"choice": "agree"}).json()
+    v = api.put(
+        f"/applications/{app['id']}/consents", json={"key": "privacy_ack", "choice": "agree"}
+    ).json()
     assert answers(v)["privacy_ack"]["value"] == {"checked": True}
     assert v["state"] == "awaiting_approval"
     assert v["package"]["content"]["unresolved"] == []
@@ -136,8 +138,12 @@ def test_protected_fact_change_invalidates_approval(api):
     setup_candidate(api)
     _, app = new_application(api)
     aid = app["id"]
-    api.put(f"/applications/{aid}/answers/hear_about", json={"value": {"label": "Job board"}})
-    v = api.put(f"/applications/{aid}/consents/privacy_ack", json={"choice": "agree"}).json()
+    api.put(
+        f"/applications/{aid}/answers", json={"key": "hear_about", "value": {"label": "Job board"}}
+    )
+    v = api.put(
+        f"/applications/{aid}/consents", json={"key": "privacy_ack", "choice": "agree"}
+    ).json()
     pkg = v["package"]
     api.post(
         f"/applications/{aid}/package/approve",
@@ -177,8 +183,12 @@ def test_other_material_changes_invalidate_approval(api, change):
     setup_candidate(api)
     job, app = new_application(api)
     aid = app["id"]
-    api.put(f"/applications/{aid}/answers/hear_about", json={"value": {"label": "Job board"}})
-    v = api.put(f"/applications/{aid}/consents/privacy_ack", json={"choice": "agree"}).json()
+    api.put(
+        f"/applications/{aid}/answers", json={"key": "hear_about", "value": {"label": "Job board"}}
+    )
+    v = api.put(
+        f"/applications/{aid}/consents", json={"key": "privacy_ack", "choice": "agree"}
+    ).json()
     pkg = v["package"]
     api.post(
         f"/applications/{aid}/package/approve",
@@ -192,11 +202,14 @@ def test_other_material_changes_invalidate_approval(api, change):
             data={"lineage_id": resume["lineage_id"]},
         )
     elif change == "consent":
-        api.put(f"/applications/{aid}/consents/gender", json={"choice": "withhold"})
+        api.put(f"/applications/{aid}/consents", json={"key": "gender", "choice": "withhold"})
     elif change == "destination":
         api.patch(f"/jobs/{job['id']}", json={"title": "Senior Clinic Assistant"})
     else:
-        api.put(f"/applications/{aid}/answers/hear_about", json={"value": {"label": "Referral"}})
+        api.put(
+            f"/applications/{aid}/answers",
+            json={"key": "hear_about", "value": {"label": "Referral"}},
+        )
     v = api.get(f"/applications/{aid}/package").json()
     assert v["approval"]["status"] == "invalidated", change
 
@@ -205,8 +218,12 @@ def test_unrelated_fact_change_keeps_approval(api):
     setup_candidate(api)
     _, app = new_application(api)
     aid = app["id"]
-    api.put(f"/applications/{aid}/answers/hear_about", json={"value": {"label": "Job board"}})
-    v = api.put(f"/applications/{aid}/consents/privacy_ack", json={"choice": "agree"}).json()
+    api.put(
+        f"/applications/{aid}/answers", json={"key": "hear_about", "value": {"label": "Job board"}}
+    )
+    v = api.put(
+        f"/applications/{aid}/consents", json={"key": "privacy_ack", "choice": "agree"}
+    ).json()
     pkg = v["package"]
     api.post(
         f"/applications/{aid}/package/approve",
@@ -242,7 +259,10 @@ def test_missing_fact_parks_application_and_profile_fix_resolves(api):
     assert a["work_auth_us"]["status"] == "needs_user"
     assert "Work authorization" in a["work_auth_us"]["explanation"]
     # Protected facts are fixed in the profile, not per application.
-    r = api.put(f"/applications/{app['id']}/answers/work_auth_us", json={"value": {"label": "Yes"}})
+    r = api.put(
+        f"/applications/{app['id']}/answers",
+        json={"key": "work_auth_us", "value": {"label": "Yes"}},
+    )
     assert r.status_code == 400
     api.post(
         "/profile/work-authorizations",
@@ -262,8 +282,8 @@ def test_answer_bank_reuse_across_jobs_and_wording_changes(api):
     setup_candidate(api)
     _, app1 = new_application(api)
     api.put(
-        f"/applications/{app1['id']}/answers/hear_about",
-        json={"value": {"label": "Company website"}, "save_to_bank": True},
+        f"/applications/{app1['id']}/answers",
+        json={"key": "hear_about", "value": {"label": "Company website"}, "save_to_bank": True},
     )
     bank = api.get("/answer-bank").json()
     assert len(bank) == 1 and bank[0]["value"] == {"labels": ["Company website"]}
@@ -310,7 +330,10 @@ def test_answer_bank_reuse_across_jobs_and_wording_changes(api):
 def test_form_option_change_invalidates_saved_choice(api):
     setup_candidate(api)
     job, app = new_application(api)
-    api.put(f"/applications/{app['id']}/answers/hear_about", json={"value": {"label": "Referral"}})
+    api.put(
+        f"/applications/{app['id']}/answers",
+        json={"key": "hear_about", "value": {"label": "Referral"}},
+    )
     html = (
         __import__("app.modules.preparation.fixtures_registry", fromlist=["x"])
         .fixture_html("basic")
@@ -330,12 +353,13 @@ def test_job_specific_answers_cannot_go_to_bank(api):
     setup_candidate(api)
     _, app = new_application(api, fixture="tricky")
     r = api.put(
-        f"/applications/{app['id']}/answers/eligible_here",
-        json={"value": {"label": "Yes"}, "save_to_bank": True},
+        f"/applications/{app['id']}/answers",
+        json={"key": "eligible_here", "value": {"label": "Yes"}, "save_to_bank": True},
     )
     assert r.status_code == 400
     r = api.put(
-        f"/applications/{app['id']}/answers/eligible_here", json={"value": {"label": "Yes"}}
+        f"/applications/{app['id']}/answers",
+        json={"key": "eligible_here", "value": {"label": "Yes"}},
     )
     assert answers(r.json())["eligible_here"]["source"] == "user_entered"
 
@@ -346,32 +370,39 @@ def test_input_validation(api):
     aid = app["id"]
     assert (
         api.put(
-            f"/applications/{aid}/answers/years", json={"value": {"number": "lots"}}
+            f"/applications/{aid}/answers", json={"key": "years", "value": {"number": "lots"}}
         ).status_code
         == 400
     )
     assert (
         api.put(
-            f"/applications/{aid}/answers/start_date", json={"value": {"date": "next week"}}
+            f"/applications/{aid}/answers",
+            json={"key": "start_date", "value": {"date": "next week"}},
         ).status_code
         == 400
     )
     assert (
         api.put(
-            f"/applications/{aid}/answers/shifts", json={"value": {"labels": ["Day", "Weekend"]}}
+            f"/applications/{aid}/answers",
+            json={"key": "shifts", "value": {"labels": ["Day", "Weekend"]}},
         ).status_code
         == 400
     )
     v = api.put(
-        f"/applications/{aid}/answers/shifts", json={"value": {"labels": ["Day", "Night"]}}
+        f"/applications/{aid}/answers",
+        json={"key": "shifts", "value": {"labels": ["Day", "Night"]}},
     ).json()
     assert answers(v)["shifts"]["display"] == "Day, Night"
     assert (
-        api.put(f"/applications/{aid}/consents/years", json={"choice": "agree"}).status_code == 400
+        api.put(
+            f"/applications/{aid}/consents", json={"key": "years", "choice": "agree"}
+        ).status_code
+        == 400
     )
     assert (
         api.put(
-            f"/applications/{aid}/answers/background_check", json={"value": {"label": "Yes"}}
+            f"/applications/{aid}/answers",
+            json={"key": "background_check", "value": {"label": "Yes"}},
         ).status_code
         == 400
     )
@@ -382,12 +413,12 @@ def test_drafting_unavailable_without_provider(api):
     _, app = new_application(api)
     v = api.get(f"/applications/{app['id']}/package").json()
     assert v["drafting_available"] is False
-    r = api.post(f"/applications/{app['id']}/answers/why_us/draft")
+    r = api.post(f"/applications/{app['id']}/drafts", json={"key": "why_us"})
     assert r.status_code == 503
     # Manual answer still works.
     v = api.put(
-        f"/applications/{app['id']}/answers/why_us",
-        json={"value": {"text": "I value careful patient intake."}},
+        f"/applications/{app['id']}/answers",
+        json={"key": "why_us", "value": {"text": "I value careful patient intake."}},
     ).json()
     assert answers(v)["why_us"]["source"] == "user_entered"
 
@@ -412,22 +443,22 @@ def test_fake_provider_draft_is_validated_and_needs_acceptance(api, monkeypatch)
     aid = app["id"]
     invented = FakeProvider("I led a team of 40 nurses for 12 years.")
     monkeypatch.setattr(drafting, "get_provider", lambda: invented)
-    r = api.post(f"/applications/{aid}/answers/why_us/draft")
+    r = api.post(f"/applications/{aid}/drafts", json={"key": "why_us"})
     assert r.status_code == 422 and "numbers not found" in r.json()["detail"]
 
     bad_cite = FakeProvider("I enjoy patient intake.", evidence=["made-up-id"])
     monkeypatch.setattr(drafting, "get_provider", lambda: bad_cite)
-    assert api.post(f"/applications/{aid}/answers/why_us/draft").status_code == 422
+    assert api.post(f"/applications/{aid}/drafts", json={"key": "why_us"}).status_code == 422
 
     good = FakeProvider("I handled patient intake for 3 doctors and want to keep doing it well.")
     monkeypatch.setattr(drafting, "get_provider", lambda: good)
-    d = api.post(f"/applications/{aid}/answers/why_us/draft").json()
+    d = api.post(f"/applications/{aid}/drafts", json={"key": "why_us"}).json()
     assert d["provider"] == "test-fake"
     # Not used until accepted.
     a = answers(api.get(f"/applications/{aid}/package").json())
     assert a["why_us"]["status"] == "blank_optional"
     # Same inputs -> cached, no second provider call.
-    api.post(f"/applications/{aid}/answers/why_us/draft")
+    api.post(f"/applications/{aid}/drafts", json={"key": "why_us"})
     assert good.calls == 1
     v = api.post(f"/applications/{aid}/drafts/{d['id']}/accept").json()
     assert answers(v)["why_us"]["source"] == "draft"
@@ -443,13 +474,14 @@ def test_tenant_isolation_for_preparation(api, other_api):
     assert other_api.get(f"/applications/{aid}/package").status_code == 404
     assert (
         other_api.put(
-            f"/applications/{aid}/answers/hear_about", json={"value": {"label": "Referral"}}
+            f"/applications/{aid}/answers",
+            json={"key": "hear_about", "value": {"label": "Referral"}},
         ).status_code
         == 404
     )
     assert (
         other_api.put(
-            f"/applications/{aid}/consents/privacy_ack", json={"choice": "agree"}
+            f"/applications/{aid}/consents", json={"key": "privacy_ack", "choice": "agree"}
         ).status_code
         == 404
     )
@@ -466,8 +498,8 @@ def test_tenant_isolation_for_preparation(api, other_api):
     assert r.status_code == 404
     # Answer bank is per user.
     api.put(
-        f"/applications/{aid}/answers/hear_about",
-        json={"value": {"label": "Referral"}, "save_to_bank": True},
+        f"/applications/{aid}/answers",
+        json={"key": "hear_about", "value": {"label": "Referral"}, "save_to_bank": True},
     )
     assert other_api.get("/answer-bank").json() == []
     entry = api.get("/answer-bank").json()[0]
@@ -480,7 +512,7 @@ def test_package_versions_are_immutable(api):
     aid = app["id"]
     v1 = api.get(f"/applications/{aid}/package").json()["package"]
     v2 = api.put(
-        f"/applications/{aid}/answers/hear_about", json={"value": {"label": "Referral"}}
+        f"/applications/{aid}/answers", json={"key": "hear_about", "value": {"label": "Referral"}}
     ).json()["package"]
     assert v2["version"] == v1["version"] + 1
     from app.core.db import SessionLocal

@@ -68,11 +68,11 @@ def gh_application(api, *, employed="No", site=None, approve=True) -> str:
     if site:
         answers["question_7006"] = {"text": site}
     for key, value in answers.items():
-        r = api.put(f"/applications/{app_id}/answers/{key}", json={"value": value})
+        r = api.put(f"/applications/{app_id}/answers", json={"key": key, "value": value})
         assert r.status_code == 200, (key, r.text)
-    api.put(f"/applications/{app_id}/consents/question_7009", json={"choice": "withhold"})
+    api.put(f"/applications/{app_id}/consents", json={"key": "question_7009", "choice": "withhold"})
     v = api.put(
-        f"/applications/{app_id}/consents/{gh.CONSENT_KEY}", json={"choice": "agree"}
+        f"/applications/{app_id}/consents", json={"key": gh.CONSENT_KEY, "choice": "agree"}
     ).json()
     p = v["package"]
     assert not p["content"]["unresolved"], p["content"]["unresolved"]
@@ -203,7 +203,9 @@ def test_required_unsupported_control_is_a_checkpoint(api, receiver):
     assert {"latitude", "longitude"} <= set(c["unresolved"])
     lat = next(a for a in c["answers"] if a["key"] == "latitude")
     assert lat["user_input_allowed"] is False and "cannot fill" in lat["explanation"]
-    r = api.put(f"/applications/{app_id}/answers/latitude", json={"value": {"text": "39.8"}})
+    r = api.put(
+        f"/applications/{app_id}/answers", json={"key": "latitude", "value": {"text": "39.8"}}
+    )
     assert r.status_code in (400, 409, 422)
     r = api.post(
         f"/applications/{app_id}/package/approve",
@@ -219,7 +221,9 @@ def test_conditional_question_follows_its_trigger(api, receiver):
     assert (
         q["status"] == "blank_optional" and q["value"] is None and "Not asked" in q["explanation"]
     )
-    api.put(f"/applications/{app_id}/answers/question_7005", json={"value": {"label": "Yes"}})
+    api.put(
+        f"/applications/{app_id}/answers", json={"key": "question_7005", "value": {"label": "Yes"}}
+    )
     c = api.get(f"/applications/{app_id}/package").json()["package"]["content"]
     assert "question_7006" in c["unresolved"]  # now asked, required, and not guessed
 

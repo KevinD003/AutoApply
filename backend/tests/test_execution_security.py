@@ -292,10 +292,13 @@ def test_real_employer_destination_is_refused_at_queue(api, receiver):
     html = fixture_html("basic").replace('action="#"', 'action="/acme/jobs/1/submit"')
     assert api.post(f"/jobs/{job['id']}/form", json={"html": html}).status_code == 201
     real_app = api.post("/applications", json={"job_id": job["id"]}).json()["id"]
-    api.put(f"/applications/{real_app}/answers/hear_about", json={"value": {"label": "Referral"}})
-    v = api.put(f"/applications/{real_app}/consents/privacy_ack", json={"choice": "agree"}).json()[
-        "package"
-    ]
+    api.put(
+        f"/applications/{real_app}/answers",
+        json={"key": "hear_about", "value": {"label": "Referral"}},
+    )
+    v = api.put(
+        f"/applications/{real_app}/consents", json={"key": "privacy_ack", "choice": "agree"}
+    ).json()["package"]
     assert v["content"]["destination"]["origin"] == "https://boards.greenhouse.io"
     api.post(
         f"/applications/{real_app}/package/approve",

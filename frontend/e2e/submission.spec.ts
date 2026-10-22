@@ -60,8 +60,8 @@ async function setup(page: Page, slug: string): Promise<{ appId: string; csrf: s
   const html = await (await page.request.get(`${RECEIVER}/apply/${slug}`)).text();
   expect((await post(`/jobs/${job.job.id}/form`, { html })).ok()).toBeTruthy();
   const app = await (await post("/applications", { job_id: job.job.id })).json();
-  await put(`/applications/${app.id}/answers/hear_about`, { value: { label: "Referral" } });
-  await put(`/applications/${app.id}/consents/privacy_ack`, { choice: "agree" });
+  await put(`/applications/${app.id}/answers`, { key: "hear_about", value: { label: "Referral" } });
+  await put(`/applications/${app.id}/consents`, { key: "privacy_ack", choice: "agree" });
   return { appId: app.id, csrf };
 }
 
@@ -268,10 +268,10 @@ test("Greenhouse-style form: read from job data and page, prepare, approve, subm
   await expect(page.getByText("Are you legally authorized to work in the United States?")).toBeVisible();
 
   const put = (url: string, data: object) => page.request.put(`/api${url}`, { headers: h, data });
-  await put(`/applications/${appId}/answers/question_7004`, { value: { label: "Referral" } });
-  await put(`/applications/${appId}/answers/question_7005`, { value: { label: "No" } });
-  await put(`/applications/${appId}/consents/question_7009`, { choice: "withhold" });
-  await put(`/applications/${appId}/consents/gdpr_processing_consent_given`, { choice: "agree" });
+  await put(`/applications/${appId}/answers`, { key: "question_7004", value: { label: "Referral" } });
+  await put(`/applications/${appId}/answers`, { key: "question_7005", value: { label: "No" } });
+  await put(`/applications/${appId}/consents`, { key: "question_7009", choice: "withhold" });
+  await put(`/applications/${appId}/consents`, { key: "gdpr_processing_consent_given", choice: "agree" });
   await page.reload();
   await expect(page.getByText("Not asked: this question only appears for a different answer above.")).toBeVisible();
 

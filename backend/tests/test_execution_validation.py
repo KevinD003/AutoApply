@@ -221,11 +221,14 @@ def m_document(api, app_id, ctx):
 
 
 def m_consent(api, app_id, ctx):
-    api.put(f"/applications/{app_id}/consents/gender", json={"choice": "withhold"})
+    api.put(f"/applications/{app_id}/consents", json={"key": "gender", "choice": "withhold"})
 
 
 def m_answer(api, app_id, ctx):
-    api.put(f"/applications/{app_id}/answers/hear_about", json={"value": {"label": "Job board"}})
+    api.put(
+        f"/applications/{app_id}/answers",
+        json={"key": "hear_about", "value": {"label": "Job board"}},
+    )
 
 
 def m_answer_bank(api, app_id, ctx):
@@ -252,7 +255,7 @@ def m_draft(api, app_id, ctx):
     # A summary to ground on (editing the summary alone does not affect this package).
     api.put("/profile", json=_keep_profile(api) | {"summary": "Patient intake experience."})
     ctx["monkeypatch"].setattr(drafting, "get_provider", lambda: _Fake())
-    d = api.post(f"/applications/{app_id}/answers/why_us/draft").json()
+    d = api.post(f"/applications/{app_id}/drafts", json={"key": "why_us"}).json()
     assert api.post(f"/applications/{app_id}/drafts/{d['id']}/accept").status_code == 200
 
 
