@@ -2,6 +2,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app.core.access_log import AccessLog
+from app.core.access_log import install as install_access_log
 from app.core.config import get_settings
 from app.core.db import engine
 from app.core.errors import ErrorBoundary
@@ -16,9 +18,12 @@ from app.modules.preparation.router import router as preparation_router
 from app.modules.profiles.router import router as profile_router
 from app.modules.providers.router import router as providers_router
 
+API_PREFIX = "/api"
+
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    install_access_log()  # the server's raw-path access lines are dropped, however it starts
     check_ref_key()  # no audit reference without the server-held key: refuse to start
     app = FastAPI(
         title="NoEfforts API",
@@ -45,6 +50,9 @@ def create_app() -> FastAPI:
         response.headers.setdefault("Referrer-Policy", "same-origin")
         return response
 
+    # Outermost: one access line per request with the route template, never the raw path.
+    app.add_middleware(AccessLog, prefix=API_PREFIX)
+
     for r in (
         auth_router,
         profile_router,
@@ -56,7 +64,7 @@ def create_app() -> FastAPI:
         providers_router,
         discovery_router,
     ):
-        app.include_router(r, prefix="/api")
+        app.include_router(r, prefix=API_PREFIX)
 
     @app.get("/api/health", tags=["ops"])
     def health() -> dict:

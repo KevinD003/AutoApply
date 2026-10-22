@@ -97,7 +97,9 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     commit: whole-number tokens are checked in the metadata only, next to the existing
     exact-metadata assertion; the check still catches a leaked number. 25 repeated runs
     passed. **CI #81** ([39698542143](https://github.com/KevinD003/AutoApply/actions/runs/39698542143))
-    (`3cc68fd`, that fix): passed.
+    (`3cc68fd`, that fix): passed;
+  - **CI #82** ([39704738837](https://github.com/KevinD003/AutoApply/actions/runs/39704738837))
+    (`f5bb30f`, Phase 11A error boundaries): passed.
 
   Per-job test counts were not recorded for these runs.
 - **Keyed audit references (separate security commit after `c54596e`):**
@@ -128,10 +130,19 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     (or runner versions) in messages now assert they are absent, and 3 more follow the new
     wording. Sabotage checks: removing the boundary and storing the raw isolation error were
     each caught.
-- **Known, not fixed here:** the web server's access log prints raw request paths, some of
-  which contain posting question keys; the outbox stores a failed publish's error message
-  (database only); execution evidence keeps readback mismatch keys and blocked egress
-  origins for the user's own records.
+- **Access logs (Phase 11B, commit after `f5bb30f`):**
+  - the API writes one access line per request with the method, the route template (or
+    `unmatched_route`) and the status, and drops uvicorn's own raw-path line, whatever command
+    starts the server; no client address, query string or body;
+  - the Next.js development request log is off, and the `/api` proxy's failure line no longer
+    carries the URL (checked by running `next dev` and `next start` locally against an
+    unreachable backend: no marker in either log);
+  - new `tests/test_access_log.py` (3 tests, one starting a real uvicorn) and
+    `e2e/log-privacy.spec.ts`; removing the filter was caught.
+- **Known, not fixed here:** four API paths still carry a posting's question key (answers,
+  consents, drafts), which a proxy in front of the app could log; the outbox stores a failed
+  publish's error message (database only); execution evidence keeps readback mismatch keys
+  and blocked egress origins for the user's own records.
 
 ## Execution routing and capabilities (2026-10-21; local only, no external request)
 

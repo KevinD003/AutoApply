@@ -124,9 +124,22 @@ another):
   unavailable (<code>)` and logged by its code; service addresses, response bodies and
   command output are never kept. Form-drift, upload and readback outcomes give counts and
   NoEfforts' own fixed reasons, never the posting's field keys.
-- **Known gap (not fixed here):** the web server's own access log (uvicorn) prints each
-  request's raw path, and some paths contain a posting's question key (for example an
-  answer's URL).
+- **Access logs** (`core/access_log.py`): one line per request in uvicorn's own format, with
+  no client address, the method, the route template
+  (`/api/applications/{app_id}/answers/{key}`, or `unmatched_route`) and the status. Never the
+  raw path, the query string, a header or a body. The app itself drops every other access
+  record (including uvicorn's own raw-path line), so this holds for every command that serves
+  `app.main:app` (Docker and Compose, the end-to-end tests, local `uvicorn`); it is tested
+  against a real `uvicorn` process with its default logging.
+- **Web server (Next.js):** the development server's request log is off
+  (`logging.incomingRequests: false`; `next start` has none). When the `/api` proxy cannot
+  reach the backend, its error line is replaced by "Failed to proxy an API request to the
+  backend (<code>)" (`src/instrumentation.ts`), without the URL or the error's text.
+- **Paths that still carry a posting's question key** (not logged anywhere above, but visible
+  to any proxy placed in front): `PUT`/`DELETE /api/applications/{app_id}/answers/{key}`,
+  `PUT /api/applications/{app_id}/consents/{key}` and
+  `POST /api/applications/{app_id}/answers/{key}/draft`. Moving the key into the request body
+  is a separate, unscheduled change.
 - **CI:**
   - the Compose execution test and the Docker smoke test print the last lines of their
     containers' logs when they fail; those stacks talk only to the synthetic receiver;
