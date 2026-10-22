@@ -110,12 +110,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 want = [[o.value, o.label] for o in f.options]
                 if got != want:
                     changed.append("options")
-        alternatives = {f"{f.key}_text" for f in fields if f.type == FieldType.file}
-        new = sorted(
-            c.id
-            for c in dom.unmatched_controls(fields, controls)
-            if c.in_form and not c.hidden and c.id not in alternatives
-        )
+        new = sorted(c.id for c in dom.unlisted_controls(fields, controls))
         if not (changed or new) and not self._dd_checked:
             # Only once, before the disclosure gate: open, read, close; nothing is selected.
             for f, cid in pending:

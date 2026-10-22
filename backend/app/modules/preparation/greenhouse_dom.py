@@ -18,6 +18,7 @@ from dataclasses import asdict, dataclass, field
 
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation.forms import (
+    KEY_PATTERN,
     Condition,
     ExtractionError,
     FieldType,
@@ -27,8 +28,14 @@ from app.modules.preparation.forms import (
     _TreeBuilder,
 )
 
-EXTRACTION_VERSION = "greenhouse-dom-v1"
+# v2: a visible page control the job data does not list becomes a blocking field at capture
+# (see `unlisted_controls`), so the route is a checkpoint before anything can be approved.
+EXTRACTION_VERSION = "greenhouse-dom-v2"
 UNKNOWN_TRIGGER = "unknown-trigger"  # Condition.key for "shown by page logic we cannot see"
+UNLISTED_REASON = (
+    "a control on the page that the job data does not list: what it asks, and whether it is "
+    "required, are never inferred"
+)
 
 
 @dataclass
@@ -233,6 +240,15 @@ def unmatched_controls(fields: list[FormField], controls: list[Control]) -> list
     return [c for c in controls if c.id not in keys]
 
 
+def unlisted_controls(fields: list[FormField], controls: list[Control]) -> list[Control]:
+    """Visible controls in the form that no field names, a file field's text alternative
+    excepted. They are never filled or interpreted: blocking fields at capture
+    (`build_schema`) and, if one appears later, a stop before disclosure (the adapter)."""
+    alternatives = {f"{f.key}_text" for f in fields if f.type == FieldType.file}
+    return [c for c in unmatched_controls(fields, controls)
+            if c.in_form and not c.hidden and c.id not in alternatives]  # fmt: skip
+
+
 ACCEPTED = ("mapped", "mapped_via_group", "protocol", "search_picker")
 
 # How a page marks a control as required, kept apart (any of them may be used, or none): the
@@ -310,6 +326,20 @@ def build_schema(api: dict, page_html: str) -> tuple[FormSchema, list[FieldMappi
             # Shown by page logic we cannot see: its condition is unknown, never a guess.
             f = f.model_copy(update={"condition": Condition(key=UNKNOWN_TRIGGER, any_of=["?"])})
         fields.append(f)
+    taken = {f.key for f in fields}
+    for n, c in enumerate(unlisted_controls(from_api.fields, controls), 1):
+        valid = bool(c.id) and re.fullmatch(KEY_PATTERN, c.id) and c.id not in taken
+        key = c.id if valid else f"page_control_{n}"
+        taken.add(key)
+        fields.append(
+            FormField(
+                key=key,
+                label=(c.accessible_name or "")[:2000] or "Unlabelled page control",
+                type=FieldType.unsupported,
+                required=True,
+                unsupported_reason=UNLISTED_REASON,
+            )  # fmt: skip
+        )
     return (
         FormSchema(
             title=from_api.title,

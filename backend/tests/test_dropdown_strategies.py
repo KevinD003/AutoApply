@@ -7,8 +7,9 @@ form can be filled or submitted. The receiver's ledger is the oracle for what wa
 import pytest
 
 from app.modules.execution import runner
-from tests.execution_harness import Receiver, attempt, queue
-from tests.test_greenhouse_dom import v2_application
+from app.modules.preparation import greenhouse_dom as dom
+from tests.execution_harness import Receiver, attempt, queue, synthetic_candidate
+from tests.test_greenhouse_dom import v2_application, v2_job
 
 
 @pytest.fixture(scope="module")
@@ -87,13 +88,42 @@ def test_a_choice_that_does_not_read_back_is_never_submitted(api, receiver, dd):
     assert receiver.ledger()["accepted"] == 0
 
 
-def test_unmatched_dropdowns_are_refused_not_interpreted(api, receiver):
+def test_unlisted_dropdowns_are_a_checkpoint_from_capture(api, receiver):
     """A phone-country selector inside the phone group and a required dropdown the job data does
-    not list: their meaning is never inferred; the form is refused before disclosure."""
-    _, aid, result = run(api, receiver, mode="gh2_dd_extras", dd="click_popup")
-    assert result == "failed_safe"
+    not list: captured as blocking fields whose meaning is never inferred, so the route is a
+    checkpoint and the package cannot be approved before anything is queued or disclosed."""
+    receiver.config(mode="gh2_dd_extras", dd="click_popup")
+    synthetic_candidate(api)
+    job_id = v2_job(api)
+    assert api.post(f"/jobs/{job_id}/form/greenhouse").status_code == 201
+    fields = api.get(f"/jobs/{job_id}/form").json()["schema"]["fields"]
+    unlisted = [f for f in fields if f.get("unsupported_reason") == dom.UNLISTED_REASON]
+    assert len(unlisted) == 2 and all(f["type"] == "unsupported" and f["required"]
+                                      for f in unlisted)  # fmt: skip
+    r = api.get(f"/jobs/{job_id}/route").json()
+    assert (r["route"], r["reason"]) == ("checkpoint", "unsupported_required_control")
+    assert "2 required controls NoEfforts cannot fill" in r["message"]
+    assert "extra-1" not in r["message"] and "phone-country" not in r["message"]
+    app_id = api.post("/applications", json={"job_id": job_id}).json()["id"]
+    p = api.get(f"/applications/{app_id}/package").json()["package"]
+    assert {f["key"] for f in unlisted} <= set(p["content"]["unresolved"])  # never guessed
+    r = api.post(f"/applications/{app_id}/package/approve",
+                 json={"version": p["version"], "content_hash": p["content_hash"]})  # fmt: skip
+    assert r.status_code != 200
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+def test_unlisted_dropdowns_that_appear_after_approval_stop_before_disclosure(api, receiver):
+    """Captured and approved without them; the page then shows the same two dropdowns: counted,
+    never named, and the attempt stops before anything is disclosed."""
+    receiver.config(mode="gh2_dd", dd="click_popup")
+    app_id = v2_application(api)
+    receiver.config(mode="gh2_dd_extras", dd="click_popup")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
     detail = attempt(aid).outcome_detail
-    assert "2 new field(s)" in detail  # both unmatched dropdowns, counted, never named
+    assert "2 new field(s)" in detail  # both unlisted dropdowns, counted, never named
     assert "extra-1" not in detail and "phone-country" not in detail
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0

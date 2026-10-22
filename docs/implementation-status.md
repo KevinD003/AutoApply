@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-22 (Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-22 (location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,48 @@ Last updated: 2026-10-22 (Greenhouse pilot readiness computed from evidence and 
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Greenhouse: location without hidden coordinates (E4, 2026-10-22; design only)
+
+- **Design only, no behaviour change:** `docs/location-handling.md`.
+- **Rules that do not change:**
+  - hidden coordinates are never written;
+  - nothing is typed into a search picker;
+  - a location question's meaning (residence fact or target preference) is never inferred.
+- **Options:** the four options, and the evidence each would need. Only a visible plain-text
+  control could change the outcome without a change of policy.
+- **Decision:** location postings stay a checkpoint, as tested today.
+
+## Greenhouse: page controls the job data does not list (E3, 2026-10-22; local only, no external request)
+
+- **Nothing changed outside the repository**, and no support state changed. Evidence:
+  `docs/evidence-matrix.md` ("Greenhouse: page controls the job data does not list").
+- **Before:** the id-mapping extractor ignored visible controls that no job-data question
+  names (on the real page, `u1`–`u5`). A form with them got a normal route, and the user could
+  approve and queue it. Only the attempt then stopped before disclosure ("N new field(s)").
+- **Now** (`preparation/greenhouse_dom.py`, extraction version `greenhouse-dom-v2`):
+  - each such control is captured as a blocking field (`unsupported`, required, with a fixed
+    reason). What it asks, and whether it is required, are never inferred;
+  - so the route is a checkpoint (`unsupported_required_control`), the package lists them as
+    unresolved, and approval is refused before anything is queued;
+  - capture and the adapter share one filter (`unlisted_controls`). A control that appears
+    only after approval still stops the attempt before disclosure;
+  - the extractor version is part of the adapter version, so an approval given before this
+    change is retired by the existing binding check when it is queued.
+- **Tests:** the dropdown-strategy test for such controls is now two:
+  - from capture: a checkpoint, unresolved, approval refused, 0 disclosures;
+  - after approval: a stop before disclosure.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - dropdown-strategy, id-mapping, required-signal and first-fixture adapter modules (4
+    files): 88 passed;
+  - full backend (`pytest tests`): 630 passed;
+  - Playwright: 32 passed, 2 skipped (the desktop-only configuration checks);
+  - `ruff check` and `ruff format --check` clean;
+  - sabotage checks, each caught: the controls not captured, captured as optional, and the
+    run-time check dropped.
+- **CI for the previous change:** **CI #89**
+  ([39746591121](https://github.com/KevinD003/AutoApply/actions/runs/39746591121)) (`530939d`,
+  E7, E8): passed.
 
 ## Greenhouse: Path A record and pilot readiness (E7, E8, 2026-10-22; local only, no external request)
 

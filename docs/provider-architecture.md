@@ -236,8 +236,9 @@ Both views are served at `GET /api/providers` (`routing_capabilities`, `traits`,
 2. **No captured form** (a local fixture, or a job without an address): a manual handoff
    ("Capture the application form first."). A job source never supplies the form.
 3. **Required controls NoEfforts cannot fill** (search pickers, page-managed hidden values,
-   unknown widgets): a **checkpoint**, reached before anything is disclosed. They are never
-   turned into a guessed answer.
+   unknown widgets, and controls on the page that the job data does not list, which are
+   captured as blocking fields): a **checkpoint**, reached before anything is disclosed or
+   approved. They are never turned into a guessed answer.
 4. **Authorized API (A):** only with the user's grant, configured credentials, declared
    support and the provider's identity rule. No undocumented or inferred private endpoint.
    The package approval, document digests, answer provenance and evidence are exactly as for

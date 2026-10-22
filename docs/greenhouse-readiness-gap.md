@@ -53,6 +53,11 @@ Where each row's evidence lives:
 - **Unknown required controls.** `u1`–`u5` are dropdown-like controls that match no
   job-data question. `u1` (inside the phone group) and `u2` are required. Their purpose is not
   inferred.
+  - On the local fixture, such a control is captured as a blocking field, so the route is a
+    checkpoint and the package cannot be approved before anything is queued
+    (`test_unlisted_dropdowns_are_a_checkpoint_from_capture`).
+  - One that appears only after approval stops the attempt before disclosure
+    (`test_unlisted_dropdowns_that_appear_after_approval_stop_before_disclosure`).
 - **CAPTCHA.**
   - `test_captcha_stops_before_anything_is_disclosed`.
   - Policy: `providers/checkpoints.py`.
@@ -127,7 +132,8 @@ Where each row's evidence lives:
 2. **`u1` and `u2`:** they are understood and either mapped by evidence, or the posting stays
    refused. Their purpose is never guessed.
 3. **Location:** a supported, evidence-backed way to set the location without writing hidden
-   coordinates. Otherwise postings with that question stay a manual handoff.
+   coordinates. Otherwise postings with that question stay a manual handoff. The options and
+   the evidence each would need are in `docs/location-handling.md` (design only).
 4. **Real upload evidence:** attachments uploaded to a real form, proven on their own (an
    upload is a disclosure: the document reaches the employer before any submit).
 5. **Real submission evidence:** a real final submit and its confirmation, proven separately
