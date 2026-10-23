@@ -181,7 +181,9 @@ def test_no_destination_falls_through_to_the_fallback(env, api, monkeypatch):
     user_ids = (None, authorize_api(api, monkeypatch))
     monkeypatch.setattr(get_settings(), "env", env)
     origins = (BASE, ELSEWHERE, None)
-    sources = (None, "html", "greenhouse_api", "greenhouse_api_dom")
+    # Every source an adapter executes, the generic ones, and one no adapter executes.
+    sources = (None, *sorted(s for s in policy.GENERIC_FORM_SOURCES if s),
+               *policy.FORM_SOURCE_ADAPTERS, "example_form")  # fmt: skip
     for origin, user_id, source in itertools.product(origins, user_ids, sources):
         submits = (f"{origin}/submit" if origin else None, f"{ELSEWHERE}/elsewhere", None)
         urls = (f"{origin}/gh2/northwind/jobs/5020001" if origin else None, WORKDAY_URL,

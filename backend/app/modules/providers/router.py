@@ -15,7 +15,7 @@ from app.core.urlsafety import is_fixture_origin
 from app.modules.audit.service import record
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
-from app.modules.providers import readiness, registry
+from app.modules.providers import admission, readiness, registry
 from app.modules.providers.model import Kind
 from app.modules.providers.models import ApiAuthorization
 
@@ -36,6 +36,13 @@ def _out(a: ApiAuthorization) -> dict:
 @router.get("/providers")
 def providers(user: User = Depends(current_user)) -> dict:
     return registry.summary()
+
+
+@router.get("/providers/admission")
+def provider_admission(user: User = Depends(current_user)) -> dict:
+    """How far each provider's code and recorded evidence take it on the admission ladder
+    (providers/admission.py): computed, fixed identifiers only. Approves and enables nothing."""
+    return admission.summary()
 
 
 @router.get("/providers/greenhouse_dom/readiness")

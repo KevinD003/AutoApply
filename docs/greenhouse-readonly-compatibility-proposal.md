@@ -156,6 +156,13 @@ navigation. Runs #2 and #3 each used that budget once more, relying on the user'
 statement. From now on, every further read of the posting needs its own explicit approval
 (below). Nothing further has been run.
 
+**As recorded evidence** (I2): the table is transcribed as `providers/evidence.py`
+`READ_ONLY_RUNS`, run numbers, outcomes and fixed names only
+(`test_the_recorded_runs_are_the_documented_runs`). A run credits a capability or a trait only
+if it was authorized once and completed: #1-#3 (an earlier or general approval) and #7 (no page
+evidence) credit nothing; #5 was completed and authorized once but identified hosts only, so it
+records nothing to credit (`docs/provider-admission.md`).
+
 ## Follow-up observation B2 — approval request (not run)
 
 **Status: authorized by the user for one run on 2026-10-20 and used (manual run #4,

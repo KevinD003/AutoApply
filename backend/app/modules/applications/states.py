@@ -95,7 +95,13 @@ TRANSITIONS: dict[AppState, dict[AppState, set[Actor]]] = {
     },
     # Re-queueing is a user decision (and requires a valid approval). Automatic retry policies
     # for failures known to have sent nothing are added with the Phase C workers.
-    S.failed_retryable: {S.queued: {U}, S.failed_terminal: {SY, U}, S.cancelled: {U}},
+    # W: a slow worker's receipt arriving after the user reconciled it as not received.
+    S.failed_retryable: {
+        S.queued: {U},
+        S.failed_terminal: {SY, U},
+        S.cancelled: {U},
+        S.submitted_confirmed: {W},
+    },
     S.submitted_confirmed: {},
     S.failed_terminal: {},
     S.cancelled: {},

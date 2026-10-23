@@ -250,6 +250,10 @@ PATH_PREFIX = "path:v1:"
 _PATH_DOMAIN = b"noefforts/rehearsal-path/v1"
 _FIXTURE_SLUG = re.compile(r"/apply/([A-Za-z0-9_-]{1,100})/?")
 BOARD_ADAPTERS = frozenset({"greenhouse_hosted", "greenhouse_dom", "fake_api"})
+# The ATS whose boards each adapter's path rule reads (None: the generic fixture form's slug). An
+# adapter with no entry has no path rule: its paths are unknown, so its prerequisite fails closed.
+PATH_RULES: dict[str, str | None] = {**dict.fromkeys(BOARD_ADAPTERS, "greenhouse"),
+                                     "fixture_ats": None}  # fmt: skip
 MET, ESTABLISHED, UNMET, NOT_REQUIRED = "met", "established", "unmet", "not_required"
 HELD = frozenset({MET, ESTABLISHED})  # what a send gate may record as having held
 
@@ -517,19 +521,18 @@ def _establishes(db, att, appr, path, cls, version, lock) -> bool:
 def view(db: Session, app, pkg, approval: PackageApproval | None) -> dict:
     """Where the prerequisite stands for this package, for its review page. A manual handoff (no
     execution binding) is `not_applicable`, with its route's own reason code."""
-    from app.modules.execution.policy import approved_binding, execution_binding
+    from app.modules.execution.policy import MANUAL_BINDING, approved_binding, execution_binding
     from app.modules.providers import routing, wording
 
     dest = pkg.content["destination"]
     submit = approval if approval is not None and approval.scope == ApprovalScope.submit else None
     current = execution_binding(dest, app.user_id)
-    # A manual handoff stays one whatever an approval recorded (an approval given for it has no
-    # execution method, which approved_binding would read as a pre-binding one).
-    binding = (
-        None
-        if current is None
-        else ((approved_binding(submit, dest) if submit else None) or current)
-    )
+    bound = approved_binding(submit, dest) if submit else None
+    if bound is not None and bound["adapter"] == MANUAL_BINDING:
+        bound = None  # approved for a manual handoff: it binds no adapter (queueing retires it)
+    # A manual handoff stays one whatever an approval recorded; otherwise the method approved,
+    # or the one that would run now.
+    binding = None if current is None else (bound or current)
     if binding is None:
         d = routing.decide(dest, app.user_id)
         status, code, message = "not_applicable", d.reason, d.message

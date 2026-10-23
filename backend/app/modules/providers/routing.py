@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.urlsafety import is_fixture_origin
-from app.modules.jobs.canonical import canonicalize_url, detect_ats
+from app.modules.jobs.canonical import ATS_DISPLAY, canonicalize_url, detect_ats
 from app.modules.providers import registry
 from app.modules.providers.model import Capability, Kind
 
@@ -71,12 +71,13 @@ def _fake_api_applies(destination: dict) -> bool:
 
 
 API_IDENTITY = {"fake_api": _fake_api_applies}
+# Whether an API provider's credentials are configured (settings only; never their values).
+API_CREDENTIALS = {"fake_api": lambda s: bool(s.fake_api_token)}
 
 
 def api_credentials_configured(provider: str) -> bool:
-    if provider == "fake_api":
-        return bool(get_settings().fake_api_token)
-    return False
+    configured = API_CREDENTIALS.get(provider)
+    return bool(configured and configured(get_settings()))
 
 
 def active_authorization(user_id, provider: str, origin: str) -> bool:
@@ -121,7 +122,7 @@ def _identity_refusal(destination: dict, steps: list[str]) -> RouteDecision | No
     planned = registry.planned_for_ats(ats)
     if planned is not None:
         steps.append(f"{planned.name}: planned adapter only (no automation exists)")
-        label = ats.capitalize()
+        label = ATS_DISPLAY[ats]
         return RouteDecision("manual_handoff", "manual_handoff", steps,
                              f"{label} applications are not supported yet: NoEfforts has only a "
                              f"specification for a {label} adapter. Apply on the employer's site "
@@ -285,6 +286,17 @@ def route_view(d: RouteDecision) -> dict:
             "provider_support": wording.support_label(spec) if spec else None}  # fmt: skip
 
 
+def route_meta(d: RouteDecision, versions: dict[str, str] | None = None) -> dict:
+    """The safe metadata recorded for a route decision (see `audit_route`): fixed values only."""
+    if versions is None:
+        from app.modules.execution.policy import ADAPTER_VERSIONS as versions
+    grant = d.authorization if d.authorization in AUTHORIZATION_STATES else "not_applicable"
+    return {"route": AUDIT_ROUTE.get(d.route, "manual"), "provider": d.provider,
+            "adapter_version": versions.get(d.provider),
+            "reason_code": d.reason if d.reason in REASONS else FALLBACK_REASON,
+            "evidence": evidence_level(d), "api_grant": grant}  # fmt: skip
+
+
 def audit_route(db, user_id, job_id, d: RouteDecision) -> bool:
     """Record a route decision with safe metadata only: the internal job id, the decision, the
     provider key and adapter version, the reason code, the evidence level behind the route and
@@ -295,15 +307,10 @@ def audit_route(db, user_id, job_id, d: RouteDecision) -> bool:
     checks may each record one). Returns whether a row was added."""
     from app.modules.audit.models import AuditEvent
     from app.modules.audit.service import record, sanitize
-    from app.modules.execution.policy import ADAPTER_VERSIONS
 
-    route = AUDIT_ROUTE.get(d.route, "manual")
-    version = ADAPTER_VERSIONS.get(d.provider)
-    reason = d.reason if d.reason in REASONS else FALLBACK_REASON
-    evidence = evidence_level(d)
-    grant = d.authorization if d.authorization in AUTHORIZATION_STATES else "not_applicable"
-    meta = {"route": route, "provider": d.provider, "adapter_version": version,
-            "reason_code": reason, "evidence": evidence, "api_grant": grant}  # fmt: skip
+    meta = route_meta(d)
+    route, version, reason = meta["route"], meta["adapter_version"], meta["reason_code"]
+    evidence, grant = meta["evidence"], meta["api_grant"]
     last = db.scalar(
         select(AuditEvent.meta)
         .where(

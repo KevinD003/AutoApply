@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-22 (one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-22 (a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,72 @@ Last updated: 2026-10-22 (one lock order for every execution path, gates reading
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Provider admission (I2, 2026-10-22; local only, no external request)
+
+- **Nothing changed outside the repository**: no network request, no support state or
+  capability level raised, no real destination enabled, Path A still pending. Decision D47;
+  `docs/provider-admission.md`; evidence: `docs/evidence-matrix.md` ("Provider admission").
+- **What exists:** `providers/admission.py` computes each provider's stage on one ladder from
+  code tables and recorded evidence, with 37 checks over the framework's eleven requirements,
+  four owner boundaries and a cap at `rehearsal_ready`; served read-only at
+  `GET /api/providers/admission`. Every provider's support state is bounded by it (tested). New
+  import-time rules (`check_spec`: capability/operation agreement, trait evidence, fixture
+  declared, a CAPTCHA checkpoint where one may appear, `real_destinations_enabled` refused;
+  `registry.check_registry`: names, ATS identities, one planned spec per ATS). The read-only
+  runs are recorded as evidence (`evidence.READ_ONLY_RUNS`); no public-docs review is recorded.
+- **Computed today:** `greenhouse_dom` and `greenhouse_readonly` at `observed_read_only`;
+  `greenhouse_hosted`, `fixture_ats`, `fake_api`, `freehire`, `freehire_mock` at
+  `fixture_only`; `lever` and `workday` at `planned` (next: the owner's public-docs review);
+  `manual_handoff` at `registered`. None `rehearsal_ready`. Three waivers (the unrecorded
+  Greenhouse terms review), five known identity gaps pinned with probes.
+- **Found and fixed on the way** (each reproduced first):
+  - D15 was not enforced: after a "not received" reconciliation the old approval was still live
+    and queueing again sent the application a second time (receiver ledger: 2 accepted). The
+    reconciliation now retires it (`reconciled_not_received`);
+  - found by the review: a submission whose verification code was never entered left its
+    approval live after the final click; it is now retired (`verification_not_completed`). A
+    slow worker's receipt after a "not received" reconciliation was lost (an illegal
+    transition); it now confirms the application, reconciliation locks the attempts first and
+    refuses "not received" once a receipt is recorded, and a recorded confirmation is never
+    queued again;
+  - an approval given for a manual handoff was stored with no adapter, read as a pre-binding
+    approval, and was queued for an adapter once the route changed. It now records
+    `manual_handoff`;
+  - an over-long ATS company or posting id was a 500 (DataError); the dedupe key is bounded, the
+    posting id not stored, a URL that canonicalizes past its column refused (400); an over-long
+    spreadsheet cell (found by the review) is its row's error instead of a 500;
+  - an unlisted form source ran on the generic fixture adapter; it is refused (`no_adapter`);
+  - five required fixture scenarios had no ledger test (reconciliation on the three browser
+    adapters, a readback mismatch on `greenhouse_hosted`, the API upload failure); each has one.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `tests/test_provider_admission.py` (150): the ten registered providers pinned; each of the
+    37 checks met on a synthetic, never-registered example and broken by its own sabotage,
+    which breaks exactly that check and its declared dependencies; every reachable stage
+    reached exactly; the cap and four owner boundaries; frozen waivers; reads nothing,
+    changes nothing, imports no browser code (subprocess); served values are fixed identifiers;
+    the doc's tables equal the code;
+  - `tests/test_provider_contracts.py` (39): identity contract for six ATS names, known-gap
+    probes, fixture paths, code tables, receipt keys, route metadata, the recorded runs against
+    the Runs table, the scenario mapping, the documented matrix and support states;
+  - new or extended: `test_providers.py` (every `raise SpecError` has a case; registry
+    problems), `test_approval_binding.py`, `test_execution_failures.py` (reconciliation on three
+    adapters; the late receipt), `test_execution_security.py` (the abandoned code step),
+    `test_rehearsal_prerequisite.py`, `test_greenhouse_adapter.py` (readback), `test_upload_evidence.py`,
+    `test_jobs.py` (over-long cells), `test_reason_codes.py` (an unlisted source);
+  - full backend (`pytest tests`): 993 passed, exit 0, after the review fixes (a run before
+    them: 955 passed, exit 0);
+  - full Playwright: 36 passed, 2 skipped, exit 0, both before and after the review fixes;
+  - `ruff check` and `ruff format --check` clean; the frontend is unchanged;
+  - sabotage checks: 51 (38 for the framework and the first fixes, 13 for the review's), each
+    caught, every file restored and compared afterwards;
+  - an adversarial read-only review (4 reviewers, 2 skeptics per finding): 20 findings, 9
+    confirmed and fixed, among them one high (the abandoned code step's approval); 11 refuted,
+    of which 5 were hardened anyway (waivers capped at the claim frozen at I2, the by-ATS view
+    showing waivers, C and D as separate records, Path A's effect computed, the late receipt).
+- **CI for the previous change:** **CI #97**
+  ([39856144334](https://github.com/KevinD003/AutoApply/actions/runs/39856144334)) (`c385ce0`,
+  the E6 lock-order follow-up): passed (all four jobs).
 
 ## Lock order and race guarantees (E6 follow-up, 2026-10-22; local only, no external request)
 

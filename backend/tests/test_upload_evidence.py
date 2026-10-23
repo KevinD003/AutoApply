@@ -149,3 +149,5 @@ def test_the_api_route_keeps_the_same_evidence(api, receiver, monkeypatch, mode,
     assert draft == {"route": "api", "kind": "application_draft"}
     assert uploads == [{"field": "resume", "sha256": content["documents"][0]["sha256"],
                         "route": "api", "ack": ack}]  # fmt: skip
+    kept = 1 if outcome == "confirmed" else 0  # the employer's own ledger: kept and accepted
+    assert len(stored_uploads(receiver)) == kept and receiver.ledger()["accepted"] == kept

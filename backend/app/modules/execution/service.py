@@ -94,6 +94,14 @@ def enqueue(db: Session, app: Application) -> ExecutionAttempt:
     appr = pk.active_approval(db, pkg)
     if appr is None:
         raise pk.ApprovalError("Approve the current package version before queueing.")
+    confirmed_before = select(ExecutionAttempt.id).where(
+        ExecutionAttempt.application_id == app.id, ExecutionAttempt.state == S.confirmed
+    )
+    if db.scalar(confirmed_before.limit(1)) is not None:
+        # Whatever the application's state says, the employer's receipt was recorded once.
+        raise pk.ApprovalError(
+            "The employer's confirmation of this application was recorded; it is not sent again."
+        )
     _supersede_stale_attempt(db, app)
     adapter_for(pkg.content["destination"])  # raises if unsupported
     try:
@@ -493,7 +501,10 @@ def _finish(
     detail: str,
     evidence: list[dict] | None = None,
     reason_code: str | None = None,
+    retire: str | None = None,
 ) -> bool:
+    """`app_target` may be a function of the locked application: an outcome that depends on the
+    application's state decides it under the lock, never from an earlier read."""
     with SessionLocal() as db:
         att = db.scalar(
             select(ExecutionAttempt).where(ExecutionAttempt.id == attempt_id).with_for_update()
@@ -501,7 +512,9 @@ def _finish(
         if att is None or att.generation != gen or att.state not in from_states:
             return False
         app = pk.lock_application(db, att.application_id)
-        _apply_outcome(db, att, app, to, app_target, detail, evidence, reason_code=reason_code)
+        target = app_target(app) if callable(app_target) else app_target
+        _apply_outcome(db, att, app, to, target, detail, evidence, reason_code=reason_code,
+                       retire=retire)  # fmt: skip
         db.commit()
         return True
 
@@ -586,6 +599,8 @@ def abandon(attempt_id, worker, gen, reason: str, code: str | None = None) -> bo
         f"Stopped after entering data but before submitting: {reason}",
         reason_code=code,
     )
+    # Waiting for a code, the final click was already made: the approval that made it is used
+    # up, so sending again is a new decision (D15).
     return ok or _finish(
         attempt_id,
         worker,
@@ -594,6 +609,7 @@ def abandon(attempt_id, worker, gen, reason: str, code: str | None = None) -> bo
         S.abandoned,
         AppState.needs_user_action,
         f"Verification was not completed: {reason}",
+        retire="verification_not_completed",
     )
 
 
@@ -602,6 +618,12 @@ REHEARSAL_DONE = "Rehearsal finished: the form was filled and checked, and nothi
 RETIRED = {
     "rehearsal_completed": "Used by a rehearsal: the form was filled and checked, and nothing "
     "was submitted. Approve again to submit, or to rehearse again.",
+    # D15: after an unknown outcome the user said was not received, sending it again is a new
+    # decision; the approval that sent it once never sends it twice.
+    "reconciled_not_received": "Used by a submission whose outcome you reconciled as not "
+    "received. Approve again to send it again.",
+    "verification_not_completed": "Used by a submission the employer asked to verify with a "
+    "code that was not completed. Approve again to send it again.",
 }
 
 
@@ -651,16 +673,12 @@ def finish_rehearsal(attempt_id, worker: str, gen: int) -> None:
 
 def confirmed(attempt_id, worker, gen, evidence: list[dict]) -> bool:
     # `unknown` is accepted too: a slow worker may still observe the receipt after the sweeper
-    # gave up on it. Upgrading to confirmed never causes a send.
-    with SessionLocal() as db:
-        app_state = db.scalar(
-            select(Application.state)
-            .join(ExecutionAttempt, ExecutionAttempt.application_id == Application.id)
-            .where(ExecutionAttempt.id == attempt_id)
-        )
-    target = AppState.submitted_confirmed
-    if app_state == AppState.submitted_unconfirmed:
-        target = None  # leave reconciliation state; the user confirms with the evidence
+    # gave up on it. Upgrading to confirmed never causes a send. Decided under the application
+    # lock: still awaiting reconciliation, it is left for the user to confirm with the evidence;
+    # reconciled as not received meanwhile, the receipt shows it was received.
+    def target(app: Application) -> AppState | None:
+        return None if app.state == AppState.submitted_unconfirmed else AppState.submitted_confirmed
+
     return _finish(
         attempt_id,
         worker,

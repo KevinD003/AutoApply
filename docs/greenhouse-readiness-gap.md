@@ -177,6 +177,15 @@ them can meet a real condition while real destinations are disabled.
   `docs/evidence/path-a.json` as fixed choices only (`providers/path_a.py`). It is shown beside
   the conditions it bears on and meets none of them. Until the owner answers, the record says
   `pending`; NoEfforts never fills it in.
+- **On the admission ladder** (I2, `docs/provider-admission.md`): each condition is required at
+  the stage whose evidence can first meet it. `dropdowns`, `unmatched_required_controls` and
+  `location` before `rehearsal_ready`; `real_upload` only for `rehearsed`; `real_submission`,
+  `pilot_gate` and `capability_entry` only for `live`. So a rehearsal is never asked to wait
+  for evidence only a rehearsal or a submission can produce. For `dropdowns` and `location`
+  admission is stricter than this table: it also needs a behaviour credit from a recorded
+  read-only run, and the runs so far credit the dropdowns as structure only. `greenhouse_dom` is
+  admitted to `observed_read_only`; the conditions and this table are unchanged (the gate
+  permission is recorded as two values, C and D, both false; the condition needs both).
 
 ## Rule for any future real-page request
 

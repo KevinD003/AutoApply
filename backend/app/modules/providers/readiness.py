@@ -22,8 +22,11 @@ from app.modules.providers.model import Capability
 PROVIDER = "greenhouse_dom"
 OBSERVED = {"observed", "live_fill", "live_submit"}
 # docs/live-pilot-gate.md: the owner names the posting and gives permissions C (disclosure)
-# and D (submission) separately. None has been given; none is recorded anywhere.
-GATE_PERMISSIONS_RECORDED = False
+# and D (submission) separately, each recorded on its own. Neither has been given; neither is
+# recorded anywhere. The pilot-gate condition needs both.
+DISCLOSURE_PERMISSION_RECORDED = False
+SUBMISSION_PERMISSION_RECORDED = False
+GATE_PERMISSIONS_RECORDED = DISCLOSURE_PERMISSION_RECORDED and SUBMISSION_PERMISSION_RECORDED
 
 _UNSET = object()
 

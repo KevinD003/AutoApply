@@ -64,6 +64,12 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ),
     ("smartrecruiters", re.compile(r"^jobs\.smartrecruiters\.com/(?P<company>[^/]+)/(?P<req>\d+)")),
 ]
+# Every ATS identity detect_ats can return besides "unknown", and the vendor's product name for
+# each (wording only; providers/admission.py checks every registered ATS has both).
+ATS_NAMES = frozenset(name for name, _ in _PATTERNS)
+ATS_DISPLAY = {"greenhouse": "Greenhouse", "lever": "Lever", "ashby": "Ashby",
+               "workable": "Workable", "workday": "Workday",
+               "smartrecruiters": "SmartRecruiters"}  # fmt: skip
 
 
 def detect_ats(canonical_url: str) -> AtsIdentity:
@@ -94,6 +100,17 @@ def employer_key(name: str | None) -> str:
     return re.sub(r"[^a-z0-9]+", "-", n).strip("-")
 
 
+DEDUPE_KEY_MAX = 200  # jobs.dedupe_key is String(200)
+
+
+def _bounded(key: str) -> str:
+    """A key longer than its column becomes its kind and a digest of the whole key: still one
+    stable key per identity (a longer one could never have been stored)."""
+    if len(key) <= DEDUPE_KEY_MAX:
+        return key
+    return f"{key.split(':', 1)[0]}:h:{hashlib.sha256(key.encode()).hexdigest()[:48]}"
+
+
 def dedupe_key(
     *,
     canonical_url: str | None,
@@ -106,12 +123,12 @@ def dedupe_key(
     if canonical_url:
         ats = detect_ats(canonical_url)
         if ats.provider != "unknown" and ats.requisition_id:
-            return (
+            return _bounded(
                 f"ats:{ats.provider}:{ats.company or employer_key(employer)}:{ats.requisition_id}"
             )
     ek = employer_key(employer)
     if requisition_id and ek:
-        return f"req:{ek}:{normalize_text(requisition_id)}"
+        return _bounded(f"req:{ek}:{normalize_text(requisition_id)}")
     if canonical_url:
         return "url:" + hashlib.sha256(canonical_url.encode()).hexdigest()[:32]
     raw = "|".join([ek, normalize_text(title), normalize_text(location)])

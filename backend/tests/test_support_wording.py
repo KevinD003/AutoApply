@@ -6,7 +6,6 @@ of its own. Synthetic data and local fixtures only; nothing here contacts anythi
 
 import ast
 import pathlib
-import re
 from dataclasses import replace
 
 import pytest
@@ -20,9 +19,7 @@ from tests.test_greenhouse_dom import v2_job
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CAPTURE = ROOT / "backend" / "app" / "modules" / "preparation" / "router.py"
 FRONTEND = ROOT / "frontend" / "src"
-# Words that would claim support. "Not supported" states its absence.
-CLAIMS = re.compile(r"\blive\b|(?<!not )\bsupported\b|\bavailable\b|\bcompatible\b|\bverified\b",
-                    re.I)  # fmt: skip
+CLAIMS = wording.CLAIMS
 # Wording the pages used to write themselves; it now comes from the API.
 RETIRED = ["test approximation", "not tested against the live service", "local test fixture only"]
 EXPECTED = {

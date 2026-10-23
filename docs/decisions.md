@@ -86,11 +86,32 @@ when the profile already answers them. This keeps answers consistent across empl
 question itself is ambiguous (e.g. "eligible in the country where this job is located"), the user
 answers per application and that answer is never saved for reuse.
 
-## D15 — Uncertain submissions leave quarantine only through reconciliation
+## D15 — Uncertain submissions leave quarantine only through reconciliation (enforced by I2, D47)
 Removed the direct `submitted_unconfirmed → queued` transition. Reconciliation requires a
 written statement of what was checked and explicit confirmation, and re-queueing then requires a
 fresh approval. System actors may not re-queue `failed_retryable` until Phase C defines
 provider-specific retry policies for failures known to have sent nothing.
+- **Amended (I2):** "requires a fresh approval" was not enforced: after a "not received"
+  reconciliation the approval that sent the application was still live, so queueing again sent
+  it a second time with no new approval (reproduced: the receiver ledger counted two
+  acceptances). The reconciliation now retires the application's live approvals in the same
+  transaction (`reconciled_not_received`, audit `package.approval_retired`), under the
+  application lock; queueing again is refused until the user approves again
+  (`test_reconciling_an_unknown_outcome_never_sends_again`).
+- **Amended (I2 review):** the same held for a submission whose verification code was never
+  entered: the final click was made, the attempt ended `abandoned` and its approval stayed live,
+  so the review page offered to submit again on it. That approval is now retired too
+  (`verification_not_completed`; `test_a_submission_whose_code_was_never_entered_never_sends_again_on_its_approval`).
+  An approval to submit sends once.
+- **Amended (I2 review):** a slow worker may still record the employer's receipt after the
+  sweeper gave up on the attempt. Reconciliation now locks the application's attempts first
+  (D46 order) and refuses "not received" once a confirmation is recorded; a receipt arriving
+  after a "not received" reconciliation confirms the application (a worker may move
+  `failed_retryable` to `submitted_confirmed`; before, the transition was illegal and the
+  receipt was lost); and an application with a recorded confirmation is never queued again,
+  whatever its state (`test_a_late_receipt_after_a_not_received_reconciliation_still_counts_and_nothing_resends`,
+  `test_not_received_is_refused_once_the_employers_receipt_was_recorded`,
+  `test_an_application_with_a_recorded_receipt_is_never_queued_again`).
 
 ## D16 — Transactional outbox + claim CAS instead of trusting queue semantics
 The attempt and its outbox row are written in the queue transaction. A relay publishes ids;
@@ -189,6 +210,13 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   then (`LEGACY_VERSIONS`). They stay valid exactly while that is still what would run, so this
   change invalidates none of them. A later version bump retires only the approvals bound to
   that adapter. Migration `5d2e7a91c4b0` adds the two nullable columns.
+- **Amended (I2):** an approval given while the route was a manual handoff was recorded with no
+  adapter, which reads as an approval given before bindings existed: had the same package later
+  routed to an adapter (for example, once its origin was a test fixture), it ran with that
+  approval (reproduced). It now records `manual_handoff` (`policy.MANUAL_BINDING`), which never
+  matches an adapter's binding: the approval is retired and nothing is sent
+  (`test_an_approval_given_for_a_manual_handoff_never_runs_through_an_adapter`). Approvals stored
+  with no adapter keep their meaning and expire as before.
 
 ## D29 — Widget inspection: open and close only, no data endpoint, GET is not harmless
 - **Purpose:** observe how a page's dropdowns relate to its questions. Opening a widget is
@@ -635,3 +663,48 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   Nothing can recall what an authorized step already sent, and what is sent is always the
   approved package. No retry was added anywhere. A per-user lock that would make those writers
   wait too is possible (deferred).
+
+## D47 — Provider admission is computed and advisory (I2, 2026-10-22)
+- **What:** `providers/admission.py` computes, for every provider, the highest stage of one
+  ladder (`registered`, `planned`, `public_doc_reviewed`, `fixture_only`, `observed_read_only`,
+  `rehearsal_ready`, `rehearsed`, `live`) that its code tables and recorded evidence support,
+  from 37 fixed checks, one framework requirement each (`docs/provider-admission.md`). Served
+  read-only at `GET /api/providers/admission`, fixed identifiers only.
+- **Claims are bounded by it:** a provider's support state never ranks above its admission
+  (tested for every registered provider). A registry raise without its code and records fails
+  CI.
+- **Advisory upward:** it changes no route, label, approval, package or flag; only the
+  providers API imports it. It reads no database, file or network and imports no browser code;
+  the repository facts behind its tables are tested in CI (`tests/test_provider_contracts.py`).
+- **The owner's four boundaries** (a public-docs and terms review, each read-only run,
+  permissions C and D, now recorded separately) open a stage only with a record; code can point
+  at a record, never give an approval. None is recorded for a new stage: no public-docs review is recorded for any ATS,
+  so Lever and Workday stop at `planned`.
+- **A cap:** nothing passes `rehearsal_ready`, whatever the tables say. The import-time rules
+  now refuse `real_destinations_enabled` outright; opening either is a reviewed change to the
+  live-pilot gate.
+- **Recorded runs credit only when single-use and completed** (`evidence.READ_ONLY_RUNS`,
+  transcribed from the Runs table and tested against it). Every observed cell in the registry,
+  and every "no" trait of the Greenhouse providers, is credited by runs #4, #6, #8 or #9; runs
+  #1-#3 (an earlier or general approval) and #7 credit nothing, and #5 recorded nothing to
+  credit. The "no" traits of the two generic fixture adapters are their fixtures' own design. The dropdown cell is credited as structure only, so a
+  rehearsal's dropdown condition is not met even if readiness counted the level.
+- **Waivers keep pre-I2 claims, never advance them:** frozen to the ten providers registered
+  before I2, to the claim each had then, and to two checks; today only the unrecorded
+  Greenhouse terms review
+  (`terms_review_unrecorded`). Known identity gaps are pinned with probes, not fixed (fixing
+  them changes stored identities and package hashes), and block `rehearsal_ready`.
+- **Fixture scenarios:** each execution provider's fixture levels require ledger tests; the
+  mapping found five missing (reconciliation on the three browser adapters, a readback
+  mismatch on `greenhouse_hosted`, an upload failure on the API route) and each now has one.
+- **Fail-closed changes found on the way:** a captured form whose source no adapter executes is
+  refused (`no_adapter`) instead of running on the generic fixture adapter (known sources run
+  as before, so no adapter version or package changes); D15 and D28 amended above; an
+  over-long ATS company or posting id parsed from a URL (and a URL that canonicalizes past its
+  column) no longer fails with a server error: the dedupe key is bounded by a digest of the whole
+  key, an over-long posting id is not stored, the URL is refused as too long; a spreadsheet cell
+  longer than its column is that row's error instead of a 500 for the whole import.
+- **Unchanged:** every support state and capability level, `ADAPTER_VERSIONS`,
+  `LEGACY_VERSIONS`, the package `SCHEMA_VERSION`, the route reason codes, the readiness
+  conditions and their 0 of 7 (the gate permission is now two records, C and D, both false),
+  `detect_ats`, stored identities, migrations. Path A stays pending.

@@ -12,7 +12,7 @@ approving one never implies another.
 
 | Item | To be filled in by the user | Notes |
 |---|---|---|
-| ATS | Greenhouse (hosted form) | the only adapter that exists |
+| ATS | Greenhouse (hosted form) | the only ATS with real-page evidence: its execution adapters are admitted at most to `observed_read_only` (`docs/provider-admission.md`) |
 | Employer | _employer name_ | one employer |
 | Job | _job title + public posting URL_ | one posting, open at the time |
 | Exact destination | `https://job-boards.greenhouse.io/<board>/jobs/<id>` and the form's submit URL as captured | origin and submit URL are bound into the approved package |
@@ -41,6 +41,12 @@ Permission 4 on a path is usable only after a successful, recorded rehearsal und
 3 on that path (E6, `docs/rehearsal-prerequisite.md`), unless a submission there was already
 confirmed after one. The rehearsal never grants permission 4: it is asked for and recorded
 separately, after the rehearsal's result is shown.
+
+On the admission ladder (I2, `docs/provider-admission.md`) permission 3 opens `rehearsed` and
+permission 4 opens `live`, each only with its own record (`providers/readiness.py`
+`DISCLOSURE_PERMISSION_RECORDED`, `SUBMISSION_PERMISSION_RECORDED`, both false), and only for a
+provider already at `rehearsal_ready`. In this version no provider is: admission is capped there
+(`real_destinations_refused`), so neither stage can be reached whatever is recorded.
 
 ## 3. Exact data to disclose (from the approved package)
 

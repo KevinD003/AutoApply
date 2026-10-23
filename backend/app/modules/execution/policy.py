@@ -34,7 +34,7 @@ CAPABILITIES: dict[str, dict] = {
     },
     "greenhouse_hosted": {
         "description": (
-            "Greenhouse-style hosted application form (single page). Verified only against a "
+            "Greenhouse-style hosted application form (single page). Tested only against a "
             "labelled local approximation, not against any real employer's form."
         ),
         "environments": ["development", "test"],
@@ -63,7 +63,7 @@ CAPABILITIES: dict[str, dict] = {
     "greenhouse_dom": {
         "description": (
             "Greenhouse-style hosted form whose controls have ids but no names, with ARIA "
-            "comboboxes (structure observed at load on one real posting). Verified only against "
+            "comboboxes (structure observed at load on one real posting). Tested only against "
             "a second labelled local approximation, not against any real employer's form."
         ),
         "environments": ["development", "test"],
@@ -120,6 +120,11 @@ LEGACY_VERSIONS: dict[str, str] = {
     "fixture_ats": "fixture-ats-1+html-v1",
     "greenhouse_hosted": "greenhouse-hosted-1+greenhouse-v1",
 }
+
+
+# What an approval records as its adapter when the route was a manual handoff: never no adapter,
+# which `approved_binding` reads as an approval given before bindings were recorded.
+MANUAL_BINDING = "manual_handoff"
 
 
 class UnsupportedDestination(ValueError):
@@ -181,6 +186,21 @@ REAL_DESTINATION_DISABLED = (
 )
 
 
+# Which adapter executes a captured form, by the form's source. The generic sources are the local
+# fixture form and forms read from page HTML or entered by hand (and a destination that names
+# none); every other source is refused, never handed to the generic adapter.
+FORM_SOURCE_ADAPTERS = {
+    "greenhouse_api": "greenhouse_hosted",
+    "greenhouse_api_dom": "greenhouse_dom",
+}
+GENERIC_FORM_SOURCES = frozenset({None, "fixture", "html", "manual"})
+GENERIC_ADAPTER = "fixture_ats"
+NO_ADAPTER_FOR_SOURCE = (
+    "No adapter fills forms captured this way. Apply on the employer's site and record it in "
+    "the tracker."
+)
+
+
 def adapter_for(destination: dict) -> str:
     origin, submit = destination.get("origin"), destination.get("submit_url")
     if get_settings().env == "production":
@@ -198,8 +218,9 @@ def adapter_for(destination: dict) -> str:
         raise UnsupportedDestination(
             "The form submits to a different site than the job page.", "submit_origin_mismatch"
         )
-    if destination.get("form_source") == "greenhouse_api":
-        return "greenhouse_hosted"
-    if destination.get("form_source") == "greenhouse_api_dom":
-        return "greenhouse_dom"
-    return "fixture_ats"
+    source = destination.get("form_source")
+    if source in FORM_SOURCE_ADAPTERS:
+        return FORM_SOURCE_ADAPTERS[source]
+    if source in GENERIC_FORM_SOURCES:
+        return GENERIC_ADAPTER
+    raise UnsupportedDestination(NO_ADAPTER_FOR_SOURCE, "no_adapter")

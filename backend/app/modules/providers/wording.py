@@ -13,9 +13,15 @@ here deliberately, with its evidence, tests and documentation; until then a live
 the lookup fail (tests/test_support_wording.py). The frontend shows these labels as served and
 writes none of its own."""
 
+import re
+
 from app.modules.providers.model import Kind, ProviderSpec
 
 LIVE_LEVELS = frozenset({"live_fill", "live_submit"})
+# Words that would claim support ("Not supported" states its absence). No label and no registry
+# text may contain one (tests/test_support_wording.py, providers/admission.py).
+CLAIMS = re.compile(r"\blive\b|(?<!not )\bsupported\b|\bavailable\b|\bcompatible\b|\bverified\b",
+                    re.I)  # fmt: skip
 
 SUPPORT_LABELS = {
     "manual": "Manual: you apply on the employer's site",

@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.db import utcnow
-from app.core.urlsafety import check_url_syntax
+from app.core.urlsafety import UnsafeURL, check_url_syntax
 from app.modules.jobs.canonical import (
     canonicalize_url,
     dedupe_key,
@@ -42,8 +42,12 @@ def upsert_job(
     if url:
         url = check_url_syntax(url)
         canonical = canonicalize_url(url)
+        if len(canonical) > 2048:  # canonicalizing can lengthen it (scheme, encoded query)
+            raise UnsafeURL("URL is too long")
         ats = detect_ats(canonical)
         ats_provider, ats_req = ats.provider, ats.requisition_id
+        if ats_req and len(ats_req) > 200:  # jobs.requisition_id is String(200)
+            ats_req = None
     key = dedupe_key(
         canonical_url=canonical,
         employer=employer,

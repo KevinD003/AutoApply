@@ -12,12 +12,15 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.db import SessionLocal, utcnow
+from app.modules.audit.models import AuditEvent
 from app.modules.execution import runner
 from app.modules.execution import service as svc
 from app.modules.execution.models import ExecutionAttempt, OutboxMessage
+from app.modules.preparation.models import PackageApproval
 from tests.execution_harness import (
     BACKEND,
     PDF,
@@ -394,4 +397,103 @@ def test_broker_outage_after_commit_loses_nothing(api, receiver):
     assert published == [aid]
     assert svc.relay_outbox(lambda t, a: published.append(a)) == 0  # not published twice
     assert runner.run_attempt(published[0], "w1") == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+
+
+def _browser_application(adapter, api, receiver) -> str:
+    from tests.test_greenhouse_adapter import gh_application
+    from tests.test_greenhouse_dom import v2_application
+
+    return {"fixture_ats": lambda: prepared_application(api, receiver),
+            "greenhouse_hosted": lambda: gh_application(api),
+            "greenhouse_dom": lambda: v2_application(api)}[adapter]()  # fmt: skip
+
+
+@pytest.mark.parametrize("finding", ["received", "not_received"])
+@pytest.mark.parametrize("adapter", ["fixture_ats", "greenhouse_hosted", "greenhouse_dom"])
+def test_reconciling_an_unknown_outcome_never_sends_again(api, receiver, adapter, finding):
+    """A browser route's unknown outcome is reconciled by the user's statement. Either answer
+    leaves the employer's ledger exactly as it was; "not received" makes it retryable, and
+    sending again needs a fresh approval."""
+    app_id = _browser_application(adapter, api, receiver)
+    aid = queue(api, app_id)
+    receiver.config(mode="drop_after_accept")
+    assert runner.run_attempt(aid, "w1") == "unknown"
+    with SessionLocal() as db:
+        assert db.get(ExecutionAttempt, uuid.UUID(aid)).adapter == adapter
+    before = receiver.ledger()
+    assert before["accepted"] == 1
+    body = {"finding": finding, "evidence": "Checked the employer's site (synthetic)"}
+    if finding == "not_received":
+        body["confirm_not_received"] = True
+    r = api.post(f"/applications/{app_id}/reconcile", json=body)
+    assert r.status_code == 200, r.text
+    state = "submitted_confirmed" if finding == "received" else "failed_retryable"
+    assert r.json()["state"] == state
+    assert runner.run_attempt(aid, "w2") == "ignored"
+    if finding == "not_received":  # D15: the approval that sent it once never sends it twice
+        again = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
+        assert again.status_code == 409 and "Approve" in again.json()["detail"], again.text
+        with SessionLocal() as db:
+            appr = db.scalar(select(PackageApproval).where(
+                PackageApproval.application_id == uuid.UUID(app_id)))  # fmt: skip
+            assert appr.invalidated_at is not None and "not received" in appr.invalidation_reason
+            retired = db.scalars(select(AuditEvent.meta).where(
+                AuditEvent.action == "package.approval_retired")).all()  # fmt: skip
+            assert retired == [{"reason_code": "reconciled_not_received"}]
+    after = receiver.ledger()
+    assert after["accepted"] == 1 and after["requests"] == before["requests"]
+
+
+def _unknown_outcome(api, receiver) -> tuple[str, str, int]:
+    receiver.config(mode="drop_after_accept")
+    app_id, aid = ready(api, receiver)
+    assert runner.run_attempt(aid, "w1") == "unknown"
+    with SessionLocal() as db:
+        return app_id, aid, db.get(ExecutionAttempt, uuid.UUID(aid)).generation
+
+
+def test_a_late_receipt_after_a_not_received_reconciliation_still_counts_and_nothing_resends(
+    api, receiver
+):
+    """The sweeper gave up on an attempt whose slow worker later sees the employer's receipt,
+    after the user reconciled it as not received: the receipt is recorded (the worker may
+    upgrade an unknown outcome) and the application is confirmed; it is never queued again."""
+    app_id, aid, gen = _unknown_outcome(api, receiver)
+    body = {"finding": "not_received", "evidence": "Checked the employer's site (synthetic)",
+            "confirm_not_received": True}  # fmt: skip
+    assert api.post(f"/applications/{app_id}/reconcile", json=body).status_code == 200
+    receipt = {"kind": "receipt", "data": {"receipt_id": None}, "strength": "none"}
+    assert svc.confirmed(aid, "w1", gen, [receipt])  # the slow worker, as the runner calls it
+    assert api.get(f"/applications/{app_id}").json()["state"] == "submitted_confirmed"
+    assert api.post(f"/applications/{app_id}/transition", json={"to": "queued"}).status_code == 400
+    assert receiver.ledger()["accepted"] == 1
+
+
+def test_not_received_is_refused_once_the_employers_receipt_was_recorded(api, receiver):
+    app_id, aid, gen = _unknown_outcome(api, receiver)
+    assert svc.confirmed(aid, "w1", gen, [])  # the receipt, seen late: left for the user
+    assert api.get(f"/applications/{app_id}").json()["state"] == "submitted_unconfirmed"
+    body = {"finding": "not_received", "evidence": "Checked the employer's site (synthetic)",
+            "confirm_not_received": True}  # fmt: skip
+    r = api.post(f"/applications/{app_id}/reconcile", json=body)
+    assert r.status_code == 409 and "received" in r.json()["detail"]
+    received = {"finding": "received", "evidence": "The receipt NoEfforts recorded"}
+    ok = api.post(f"/applications/{app_id}/reconcile", json=received)
+    assert ok.json()["state"] == "submitted_confirmed"
+
+
+def test_an_application_with_a_recorded_receipt_is_never_queued_again(api, receiver):
+    """Simulated: whatever state an application is left in, a recorded employer confirmation
+    means it is not sent again, even under a fresh approval."""
+    from app.modules.applications.models import Application
+    from app.modules.applications.states import AppState
+
+    app_id, aid, gen = _unknown_outcome(api, receiver)
+    assert svc.confirmed(aid, "w1", gen, [])
+    with SessionLocal() as db:  # simulated: the application left retryable
+        db.get(Application, uuid.UUID(app_id)).state = AppState.failed_retryable
+        db.commit()
+    r = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
+    assert r.status_code == 409 and "not sent again" in r.json()["detail"], r.text
     assert receiver.ledger()["accepted"] == 1

@@ -209,3 +209,24 @@ def test_cross_tenant_job_access_denied(api, other_api):
     assert other_api.get("/jobs").json()["total"] == 0
     # Same posting imported by another user is their own, separate record.
     assert other_api.post("/jobs", json={"title": "Nurse", "employer": "Clinic"}).status_code == 201
+
+
+def test_an_over_long_cell_is_that_rows_error_never_a_server_error(api):
+    """Each stored column's limit (the job API's); a longer cell was a database error that
+    failed the whole import (HTTP 500). Synthetic rows."""
+    long = {"employer": "E" * 201, "title": "T" * 301, "location": "L" * 301,
+            "requisition_id": "R" * 201}  # fmt: skip
+    rows = ["employer,title,location,requisition_id,row_id"]
+    rows.append("Acme Example (fictional),Clerk,,REQ-1,ok")
+    for col in long:
+        cells = {"employer": "Acme Example (fictional)", "title": "Clerk", "location": "",
+                 "requisition_id": "REQ-2", col: long[col]}  # fmt: skip
+        rows.append(",".join([cells["employer"], cells["title"], cells["location"],
+                              cells["requisition_id"], col]))  # fmt: skip
+    r = api.post("/jobs/import", files={"file": ("jobs.csv", "\n".join(rows).encode(), "text/csv")})
+    assert r.status_code == 200, r.text
+    out = {row["row_id"]: row for row in r.json()["rows"]}
+    assert out["ok"]["outcome"] == "created"
+    for col in long:
+        assert out[col]["outcome"] == "error", col
+        assert any(e.startswith(f"{col}: longer than") for e in out[col]["errors"]), out[col]

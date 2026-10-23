@@ -6,6 +6,7 @@ seen on one real page under a separately approved read-only scope, never more.""
 
 from dataclasses import replace
 
+from app.modules.jobs.canonical import ATS_NAMES
 from app.modules.providers import wording
 from app.modules.providers.model import (
     FIXTURE,
@@ -13,6 +14,7 @@ from app.modules.providers.model import (
     Kind,
     Operation,
     ProviderSpec,
+    SpecError,
     Support,
     Trait,
     TraitValue,
@@ -95,8 +97,8 @@ PROVIDERS: dict[str, ProviderSpec] = {
             C.confirmation_detection: FIXTURE,
             C.reconciliation: _USER_RECONCILES,
         },  # fmt: skip
-        status="Fixture filling only. One real posting observed read-only; refused for live use"
-        " (dropdowns, location, unmatched required controls).",
+        status="Fixture filling only. One real posting observed read-only; refused for real"
+        " destinations (dropdowns, location, unmatched required controls).",
     ),
     "fake_api": ProviderSpec(
         name="fake_api",
@@ -143,7 +145,8 @@ PROVIDERS: dict[str, ProviderSpec] = {
                 fixture=True, observed=True, note="structure observed; no opening evidence"
             ),
         },  # fmt: skip
-        status="Ran 9 times under separate approvals; never fills or submits.",
+        status="Observed read-only under the single-use approvals recorded in"
+        " providers/evidence.py; never fills or submits.",
     ),
     "freehire_mock": ProviderSpec(
         name="freehire_mock",
@@ -161,7 +164,8 @@ PROVIDERS: dict[str, ProviderSpec] = {
         capabilities={
             C.discovery: Support(
                 fixture=True,
-                note="local fixture of the documented API; no live call made or authorized",
+                note="local fixture of the documented API; no call to the real service made or "
+                "authorized",
             )
         },
         status="Potential future discovery provider; not yet connected or validated.",
@@ -187,10 +191,10 @@ PROVIDERS: dict[str, ProviderSpec] = {
     "manual_handoff": ProviderSpec(
         name="manual_handoff",
         kind=Kind.manual,
-        description="Nothing supported: the user applies on the employer's site and records it.",
+        description="Nothing automated: the user applies on the employer's site and records it.",
         operations=frozenset({Op.checkpoint}),
         environments=("development", "test", "production"),
-        status="Always available.",
+        status="Always offered.",
     ),
 }
 
@@ -214,14 +218,16 @@ _TRAITS: dict[str, dict[Trait, TraitValue]] = {
         T.multi_step: V("unknown", "fixture approximation only"),
     },
     "greenhouse_dom": {
-        T.login_required: V("no", "the observed posting loaded without an account (runs #3-#9)"),
+        T.login_required: V("no", "the observed posting loaded without an account (single-use "
+                                  "read-only runs, providers/evidence.py)"),
         T.manual_verification_required: V("unknown", "never submitted; not observed"),
         T.captcha_possible: V("unknown", "none seen in read-only runs #3-#9; a checkpoint if it "
                                          "appears, never solved"),
         T.multi_step: V("no", "the observed posting was one page"),
     },
     "greenhouse_readonly": {
-        T.login_required: V("no", "the observed posting loaded without an account"),
+        T.login_required: V("no", "the observed posting loaded without an account (single-use "
+                                  "read-only runs, providers/evidence.py)"),
         T.manual_verification_required: V("not_applicable", "never fills or submits"),
         T.captcha_possible: V("unknown", "none seen; the observation stops on a challenge"),
         T.multi_step: V("no", "the observed posting was one page"),
@@ -254,11 +260,68 @@ _TRAITS: dict[str, dict[Trait, TraitValue]] = {
 # identified as "unknown", so fixture adapters are chosen by the captured form, not by host.
 _ATS = {"greenhouse_hosted": "greenhouse", "greenhouse_dom": "greenhouse",
         "greenhouse_readonly": "greenhouse", "lever": "lever", "workday": "workday"}  # fmt: skip
-PROVIDERS = {k: replace(v, traits=_TRAITS.get(k, {}), ats=_ATS.get(k))
+# The local fixtures each provider's `fixture` levels were tested against (repository paths).
+_RECEIVER = "fixtures/ats_receiver"
+_TESTED_AGAINST = {
+    "fixture_ats": (_RECEIVER,),  # the generic form, served by its receiver
+    "greenhouse_hosted": (f"{_RECEIVER}/greenhouse_like.py",),
+    "greenhouse_dom": (f"{_RECEIVER}/greenhouse_v2.py",),
+    "fake_api": (f"{_RECEIVER}/fake_api.py",),
+    "greenhouse_readonly": (f"{_RECEIVER}/greenhouse_like.py", f"{_RECEIVER}/greenhouse_v2.py"),
+    "freehire_mock": ("fixtures/discovery/freehire_mock.json",),
+    "freehire": (f"{_RECEIVER}/freehire_fixture.py",),
+}
+PROVIDERS = {k: replace(v, traits=_TRAITS.get(k, {}), ats=_ATS.get(k),
+                        tested_against=_TESTED_AGAINST.get(k, ()))
              for k, v in PROVIDERS.items()}  # fmt: skip
 
-for _spec in PROVIDERS.values():
-    check_spec(_spec)
+
+def registry_problems(
+    providers: dict[str, ProviderSpec],
+    *,
+    ats_names: frozenset[str] = ATS_NAMES,
+    side_tables: tuple[dict, ...] = (),
+) -> list[tuple[str, str]]:
+    """What is inconsistent across the registry, as (key, problem): each spec on its own is
+    `check_spec`'s. `side_tables`: tables keyed by provider that must name registered ones."""
+    out = []
+    for table in side_tables:
+        out += [(k, "a side table names an unregistered provider") for k in table
+                if k not in providers]  # fmt: skip
+    planned: dict[str, list[str]] = {}
+    for k, p in providers.items():
+        if p.name != k:
+            out.append((k, "registered under another name"))
+        if p.ats is not None and p.ats not in ats_names:
+            out.append((k, "its ATS is not a detect_ats name"))
+        if p.ats is not None and p.kind in (Kind.discovery, Kind.manual):
+            out.append((k, "a discovery or manual provider serves no ATS"))
+        if p.ats is None and (p.kind == Kind.observation or p.stage == "planned"):
+            out.append((k, "a planned or observation provider names its ATS"))
+        if set(p.traits) != set(Trait):
+            out.append((k, "every workflow trait is stated"))
+        if p.stage == "planned" and p.ats is not None:
+            planned.setdefault(p.ats, []).append(k)
+    for ats, keys in planned.items():
+        if len(keys) > 1:
+            out += [(k, "one planned specification per ATS") for k in keys]
+        implemented = [k for k, p in providers.items() if p.ats == ats and p.stage == "implemented"
+                       and p.kind in (Kind.browser, Kind.api)]  # fmt: skip
+        if implemented:
+            out += [(k, "a planned specification beside an implemented adapter") for k in keys]
+    return out
+
+
+def check_registry(providers: dict[str, ProviderSpec], **kw) -> None:
+    for spec in providers.values():
+        check_spec(spec)
+    problems = registry_problems(providers, **kw)
+    if problems:
+        key, problem = problems[0]
+        raise SpecError(f"{key}: {problem}")
+
+
+check_registry(PROVIDERS, side_tables=(_TRAITS, _ATS, _TESTED_AGAINST))
 
 
 def get(name: str) -> ProviderSpec:
@@ -290,9 +353,12 @@ def summary() -> dict:
     }
 
 
-def planned_for_ats(ats: str) -> ProviderSpec | None:
+def planned_for_ats(
+    ats: str, providers: dict[str, ProviderSpec] | None = None
+) -> ProviderSpec | None:
     """The planned (specification-only) adapter for an ATS identity, if any."""
-    return next((p for p in PROVIDERS.values() if p.stage == "planned" and p.ats == ats), None)
+    specs = (PROVIDERS if providers is None else providers).values()
+    return next((p for p in specs if p.stage == "planned" and p.ats == ats), None)
 
 
 def implemented_for_ats(ats: str) -> list[ProviderSpec]:

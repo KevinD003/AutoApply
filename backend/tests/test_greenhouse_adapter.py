@@ -7,10 +7,11 @@ import sys
 import uuid
 
 import pytest
+from sqlalchemy import select
 
 from app.core.db import SessionLocal
 from app.modules.execution import runner
-from app.modules.execution.models import ExecutionAttempt
+from app.modules.execution.models import Evidence, ExecutionAttempt
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation.forms import FieldType
 from tests.execution_harness import (
@@ -398,3 +399,18 @@ def test_capability_flags(api):
         assert g[flag] is True
     assert g["real_destinations"] is False
     assert g["unverified"]["security_code"].startswith("synthetic")
+
+
+def test_page_altering_a_filled_value_stops_before_submit(api, receiver):
+    """The page wipes a typed value after it was filled: the readback catches it and nothing is
+    submitted (the mismatch is counted, never named)."""
+    aid = queue(api, gh_application(api))
+    receiver.config(tamper="text")
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    assert receiver.ledger()["accepted"] == 0
+    with SessionLocal() as db:
+        att = db.get(ExecutionAttempt, uuid.UUID(aid))
+        rb = db.scalar(select(Evidence.data).where(Evidence.attempt_id == att.id,
+                                                   Evidence.kind == "readback"))  # fmt: skip
+        assert att.adapter == "greenhouse_hosted" and att.send_started_at is None
+    assert rb["mismatched"] >= 1 and "first_name" not in str(rb), rb

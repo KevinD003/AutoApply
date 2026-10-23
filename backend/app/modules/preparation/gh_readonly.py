@@ -26,6 +26,7 @@ from urllib.parse import urlsplit
 
 from app.modules.preparation import greenhouse as gh
 
+PROVIDER = "greenhouse_readonly"  # its registry entry (providers/registry.py)
 API_HOST = "boards-api.greenhouse.io"
 PAGE_HOST = "job-boards.greenhouse.io"
 USER_AGENT = "NoEfforts-compatibility-check/1 (read-only; one approved posting)"

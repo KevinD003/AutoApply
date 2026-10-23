@@ -450,15 +450,17 @@ def approve(
             )
         return active
     from app.modules.execution import rehearsal
-    from app.modules.execution.policy import execution_binding
+    from app.modules.execution.policy import MANUAL_BINDING, execution_binding
 
     now = utcnow()
     dest = pkg.content["destination"]
-    binding = execution_binding(dest, app.user_id) or {}
+    # A manual handoff is recorded as one: an approval with no adapter means one given before
+    # bindings were recorded, which policy.approved_binding reads as the route the code then had.
+    binding = execution_binding(dest, app.user_id) or {"adapter": MANUAL_BINDING}
     verdict = None
-    if scope == ApprovalScope.submit and binding:
+    if scope == ApprovalScope.submit and binding["adapter"] != MANUAL_BINDING:
         # E6: an approval to submit needs the rehearsal prerequisite met on this path. A manual
-        # handoff (no binding; every real employer today) keeps its own route reason instead.
+        # handoff (MANUAL_BINDING; every real employer today) keeps its own route reason instead.
         verdict = rehearsal.prerequisite(
             db,
             layer="approve",

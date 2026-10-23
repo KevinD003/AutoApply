@@ -37,6 +37,10 @@ EXPORT_COLUMNS = [
     "notes",
 ]
 ALLOWED_STATUSES = {"new", "shortlisted", "excluded", "closed"}
+# The longest value each stored column takes (the same limits as the job API); a longer cell is
+# that row's error, never a database error for the whole import.
+MAX_LENGTHS = {"job_url": 2048, "employer": 200, "title": 300, "location": 300,
+               "requisition_id": 200, "notes": 10_000, "row_id": 200}  # fmt: skip
 _FORMULA_PREFIX = ("=", "+", "-", "@", "\t", "\r")
 
 
@@ -128,6 +132,9 @@ def parse(content: bytes, file_format: str, max_rows: int) -> list[ParsedRow]:
                 errors.append(f"{col}: formula cells are not accepted")
                 continue
             values[col] = _cell_to_str(raw[i]) if i < len(raw) else None
+            if values[col] and col in MAX_LENGTHS and len(values[col]) > MAX_LENGTHS[col]:
+                errors.append(f"{col}: longer than {MAX_LENGTHS[col]} characters")
+                values[col] = None
         if values["status"]:
             values["status"] = values["status"].lower()
             if values["status"] not in ALLOWED_STATUSES:

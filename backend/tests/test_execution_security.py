@@ -66,8 +66,9 @@ def open_checkpoint(api, app_id, round_=1):
     return wait_for(get)
 
 
-def start_worker(aid, worker="w-otp"):
+def start_worker(aid, worker="w-otp", **settings):
     env = os.environ | {"PYTHONPATH": str(BACKEND), "NOEFFORTS_FAULT": ""}
+    env |= {f"NOEFFORTS_{k.upper()}": str(v) for k, v in settings.items()}
     return subprocess.Popen(
         [sys.executable, "-m", "app.modules.execution.cli", "run", aid, worker],
         cwd=BACKEND,
@@ -347,3 +348,33 @@ def test_worker_derives_tenant_from_attempt_not_payload(api, receiver, other_api
     assert runner.run_attempt(aid, "w1") in ("failed_safe", "error")
     led = receiver.ledger()
     assert led["accepted"] == 0 and led["disclosures"] == []
+
+
+def test_a_submission_whose_code_was_never_entered_never_sends_again_on_its_approval(api, receiver):
+    """The final click was made and the employer asked for a code that never came: the attempt
+    is abandoned and the approval that made the click is used up. The application can be
+    reviewed again, but it is not queued again without a new approval (D15)."""
+    from sqlalchemy import select
+
+    from app.modules.audit.models import AuditEvent
+    from app.modules.preparation.models import PackageApproval
+
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    receiver.config(mode="otp")
+    w = start_worker(aid, checkpoint_ttl_seconds=2)
+    out, err = w.communicate(timeout=90)
+    assert out.strip() == "abandoned", err[-800:]
+    led = receiver.ledger()
+    assert led["challenges"] and led["accepted"] == 0
+    api.get(f"/applications/{app_id}/package")  # what the review page reads
+    again = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
+    assert again.status_code == 409 and "Approve" in again.json()["detail"], again.text
+    with SessionLocal() as db:
+        appr = db.scalar(select(PackageApproval).where(
+            PackageApproval.application_id == uuid.UUID(app_id)))  # fmt: skip
+        assert appr.invalidated_at is not None and "code" in appr.invalidation_reason
+        retired = db.scalars(select(AuditEvent.meta).where(
+            AuditEvent.action == "package.approval_retired")).all()  # fmt: skip
+        assert retired == [{"reason_code": "verification_not_completed"}]
+    assert receiver.ledger()["accepted"] == 0

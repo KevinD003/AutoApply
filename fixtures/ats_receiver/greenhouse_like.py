@@ -211,6 +211,9 @@ for (const wrap of document.querySelectorAll('[data-show-if]')) {{
   trigger.addEventListener('change', sync); sync();
 }}
 </script>"""
+    if cfg.get("tamper") == "text":  # the page wipes what was typed (readback must catch it)
+        body += ("<script>document.querySelector('[name=first_name]').addEventListener('input', "
+                 "e => { e.target.value = ''; });</script>")
     if cfg["mode"] == "gh_client_rendered":  # controls drawn by script, id-only, no form/name
         body = ("<div id='app'></div><script>const a = document.getElementById('app');"
                 "for (const k of ['first_name', 'last_name', 'email']) {"

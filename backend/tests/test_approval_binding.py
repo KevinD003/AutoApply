@@ -166,3 +166,25 @@ def test_change_between_loading_and_the_disclosure_gate_is_refused(api, receiver
     assert attempt(aid).outcome_detail.endswith("the execution method changed after approval")
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+def test_an_approval_given_for_a_manual_handoff_never_runs_through_an_adapter(
+    api, receiver, monkeypatch
+):
+    """Approved while the route was a manual handoff (here: the origin was not a test fixture
+    then), the approval records that route. When the same package later routes to an adapter,
+    the approval does not match it: it is retired and nothing is sent. Recorded with no adapter,
+    it would have read as an approval given before bindings existed, valid for that adapter."""
+    from app.core.config import get_settings
+
+    app_id = gh_application(api, approve=False)
+    origins = get_settings().fixture_origins
+    monkeypatch.setattr(get_settings(), "fixture_origins", [])
+    assert reapprove(api, app_id).status_code == 200
+    a = approval_of(app_id)
+    assert (a.adapter, a.adapter_version) == (policy.MANUAL_BINDING, None)
+    monkeypatch.setattr(get_settings(), "fixture_origins", origins)
+    assert try_queue(api, app_id).status_code == 409
+    assert approval_of(app_id).invalidated_at is not None
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0

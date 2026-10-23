@@ -654,3 +654,18 @@ def test_a_stale_window_outside_its_bounds_fails_closed(api, receiver, marked, m
         db.scalar(select(RehearsalRecord)).recorded_at -= timedelta(days=31)  # simulated age
         db.commit()
     assert prereq(api, app_id)["reason_code"] == "rehearsal_stale"
+
+
+def test_an_approval_given_for_a_manual_handoff_is_shown_against_the_route_that_would_run(
+    api, receiver, marked, monkeypatch
+):
+    """Approved while the route was a manual handoff (the origin was not a test fixture then),
+    the approval names no adapter: the review shows the prerequisite of the route that would
+    run now (here unmet), never "not required" because of the handoff it was given for."""
+    app_id = unapproved(api, receiver)
+    origins = get_settings().fixture_origins
+    monkeypatch.setattr(get_settings(), "fixture_origins", [])
+    assert approve(api, app_id).status_code == 200
+    monkeypatch.setattr(get_settings(), "fixture_origins", origins)
+    shown = prereq(api, app_id)
+    assert (shown["status"], shown["reason_code"]) == ("unmet", "no_rehearsal")

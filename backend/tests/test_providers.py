@@ -16,10 +16,14 @@ from app.modules.providers.model import (
     ProviderSpec,
     SpecError,
     Support,
+    Trait,
+    TraitValue,
     check_spec,
     matrix,
 )
 from tests.execution_harness import BASE
+
+FA, API = registry.get("fixture_ats"), registry.get("fake_api")
 
 GH2 = {"origin": BASE, "url": f"{BASE}/gh2/northwind/jobs/5020001",
        "submit_url": f"{BASE}/gh2/northwind/jobs/5020001/submit",
@@ -74,12 +78,101 @@ def test_real_page_evidence_is_recorded_only_where_it_exists():
         (dict(kind=Kind.discovery), "cannot fill, upload or submit"),
         (dict(capabilities={Capability.official_api_submission: Support(fixture=True)}),
          "a browser provider cannot claim API submission"),
+        (dict(stage="draft"), "unknown stage"),
+        (dict(traits={Trait.multi_step: TraitValue("maybe", "x")}), "unknown trait value"),
+        (dict(traits={Trait.multi_step: TraitValue("expected", "x")}),
+         "'expected' is only for a planned specification"),
+        (dict(real_destinations_enabled=True), "real destinations outside production"),
+        (dict(operations=FA.operations | {Operation.discover}),
+         "operation without the capability it implements"),
+        (dict(traits={**FA.traits, Trait.multi_step: TraitValue("no", " ")}),
+         "a yes/no trait needs its evidence"),
+        (dict(traits={**FA.traits, Trait.multi_step: TraitValue("not_applicable")}),
+         "not_applicable is not for a browser or API provider"),
+        (dict(tested_against=()), "fixture support without the fixture it was tested against"),
+        (dict(traits={**FA.traits, Trait.captcha_possible: TraitValue("unknown", "x")}),
+         "a CAPTCHA may appear but no checkpoint is declared"),
+        (dict(real_destinations_enabled=True, environments=("development", "test", "production")),
+         "real destinations stay refused until the live-pilot gate"),
     ],
 )  # fmt: skip
 def test_spec_invariants_reject_unsupported_claims(bad, message):
     base = registry.get("fixture_ats")
     with pytest.raises(SpecError, match=message):
         check_spec(replace(base, **bad))
+
+
+@pytest.mark.parametrize(
+    "base,bad,message",
+    [
+        ("lever", dict(operations=frozenset({Operation.fill})),
+         "a planned adapter has no operations or capabilities"),
+        ("workday", dict(traits={**registry.get("workday").traits,
+                                 Trait.multi_step: TraitValue("no", "seen")}),
+         "a planned specification states expectations only"),
+        ("fake_api", dict(capabilities={c: s for c, s in API.capabilities.items()
+                                        if c != Capability.official_api_submission}),
+         "an API provider must declare official_api_submission"),
+        ("freehire_mock", dict(capabilities={Capability.discovery: Support(fixture=True),
+                                             Capability.deterministic_fill: Support(fixture=True)}),
+         "capability without the operation behind it"),
+    ],
+)  # fmt: skip
+def test_spec_invariants_reject_unsupported_claims_of_other_kinds(base, bad, message):
+    with pytest.raises(SpecError, match=message):
+        check_spec(replace(registry.get(base), **bad))
+
+
+def test_every_spec_error_branch_has_a_case():
+    """Each `raise SpecError` in check_spec has its own negative case above (by its message)."""
+    import ast
+    import inspect
+
+    from app.modules.providers import model
+
+    tree = ast.parse(inspect.getsource(model.check_spec))
+    raises = [n for n in ast.walk(tree) if isinstance(n, ast.Raise)
+              and getattr(getattr(n.exc, "func", None), "id", None) == "SpecError"]  # fmt: skip
+    cases = {m for _, m in _cases(test_spec_invariants_reject_unsupported_claims)}
+    cases |= {m for *_, m in _cases(test_spec_invariants_reject_unsupported_claims_of_other_kinds)}
+    assert len(raises) == len(cases) == 20
+
+
+def _cases(fn):
+    return [m.args for m in fn.pytestmark if m.name == "parametrize"][0][1]
+
+
+@pytest.mark.parametrize(
+    "providers,problem",
+    [
+        ({"other_name": FA}, "registered under another name"),
+        ({"lever": replace(registry.get("lever"), ats="work_day")},
+         "its ATS is not a detect_ats name"),
+        ({"freehire": replace(registry.get("freehire"), ats="greenhouse")},
+         "a discovery or manual provider serves no ATS"),
+        ({"lever": replace(registry.get("lever"), ats=None)},
+         "a planned or observation provider names its ATS"),
+        ({"freehire": replace(registry.get("freehire"),
+                              traits={Trait.multi_step: TraitValue("not_applicable")})},
+         "every workflow trait is stated"),
+        ({"lever": registry.get("lever"),
+          "lever_two": replace(registry.get("lever"), name="lever_two")},
+         "one planned specification per ATS"),
+        ({"lever": registry.get("lever"),
+          "lever_form": replace(registry.get("greenhouse_dom"), name="lever_form", ats="lever")},
+         "a planned specification beside an implemented adapter"),
+    ],
+)  # fmt: skip
+def test_registry_problems_reject_inconsistent_entries(providers, problem):
+    assert problem in {p for _, p in registry.registry_problems(providers)}
+    with pytest.raises(SpecError, match=problem):
+        registry.check_registry(providers)
+
+
+def test_a_side_table_naming_an_unregistered_provider_is_refused():
+    problems = registry.registry_problems(dict(registry.PROVIDERS), side_tables=({"ghost": 1},))
+    assert problems == [("ghost", "a side table names an unregistered provider")]
+    assert registry.registry_problems(dict(registry.PROVIDERS)) == []
 
 
 def test_freehire_is_a_discovery_provider_only():

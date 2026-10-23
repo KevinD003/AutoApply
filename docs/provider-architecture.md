@@ -62,7 +62,23 @@ The capability flags are:
 - live support while `real_destinations_enabled` is false, or real destinations outside
   production;
 - a discovery, observation or manual provider that fills, uploads or submits;
-- an API provider without `official_api_submission`, or a browser provider claiming it.
+- an API provider without `official_api_submission`, or a browser provider claiming it;
+- (I2) a capability no operation implements, or an implemented operation without the
+  capability it implements (`model.CAPABILITY_OPERATIONS`, `OPERATION_CAPABILITIES`);
+- (I2) a yes/no trait without its evidence note, a planned spec stating anything but `expected`
+  or `unknown`, `not_applicable` on a browser or API provider;
+- (I2) fixture support without the fixture it was tested against (`tested_against`, repository
+  paths, never served; their existence is checked in CI);
+- (I2) a browser adapter where a CAPTCHA may appear (`captcha_possible` not `no`) without a
+  CAPTCHA checkpoint;
+- (I2) `real_destinations_enabled` at all: real destinations stay refused until the live-pilot
+  gate is opened by a reviewed change to this rule.
+
+`registry.check_registry` adds the rules across providers: each key is its spec's name, every
+ATS is a `detect_ats` name, discovery and manual providers serve none, planned and observation
+providers name theirs, every trait is stated, one planned spec per ATS and none beside an
+implemented adapter, and the side tables name registered providers only. Every `raise SpecError`
+has its own negative case (`test_every_spec_error_branch_has_a_case`).
 
 So a fixture success can never become a live claim by accident. Reaching `observed`,
 `live_fill` or `live_submit` requires an edit to the registry and a review. The registry is
@@ -83,7 +99,8 @@ their own; `tests/test_support_wording.py` reads the frontend sources to check.
 
 - **Today:** `fixture_ats`, `greenhouse_hosted`, `fake_api`, `freehire` and `freehire_mock`
   are `fixture_only`; `greenhouse_dom` and `greenhouse_readonly` are `observed_read_only`;
-  `workday` is `planned`; `manual_handoff` is `manual`.
+  `workday` and `lever` are `planned`; `manual_handoff` is
+  `manual` (`tests/test_provider_contracts.py` checks this list).
 - **Routes:** a route's label is its kind and the evidence behind it, for example "Browser
   adapter (local test fixture only)". An API or browser route is never shown without its
   evidence: the lookup refuses one that has none.
@@ -134,6 +151,9 @@ Notes on the matrix:
 - No cell is `live_fill` or `live_submit`. A test pins this
   (`test_no_provider_is_enabled_for_real_destinations_or_claims_live_support`), and another
   pins the exact set of `observed` cells.
+- Every `observed` cell is credited by a completed read-only run approved for that one run
+  (`providers/evidence.py` `READ_ONLY_RUNS`; `docs/provider-admission.md`). This table is the
+  registry (`test_the_documented_capability_matrix_is_the_registry`).
 
 ## 2. Routing (`providers/routing.decide`)
 
@@ -264,7 +284,7 @@ or refusal in the source relies on the default code or names one this table does
 |---|---|---|---|
 | `api_authorized` | api | `decide` | the user's grant for that provider and origin, configured credentials and declared API support |
 | `browser_supported` | browser | `decide` | `policy.adapter_for` names an adapter for this form source and origin |
-| `planned_adapter_only` | manual | identity (`decide`, `route_for_job`) | the job's ATS has only a planned adapter (Workday) |
+| `planned_adapter_only` | manual | identity (`decide`, `route_for_job`) | the job's ATS has only a planned adapter (Workday, Lever) |
 | `form_ats_mismatch` | manual | identity | the captured form belongs to a different ATS than the job |
 | `no_form_captured` | manual | `route_for_job` | a local fixture, or a job without an address, has no application form captured yet |
 | `unsupported_required_control` | checkpoint | `route_for_job` | the form has required controls NoEfforts cannot fill |
@@ -272,7 +292,7 @@ or refusal in the source relies on the default code or names one this table does
 | `production_disabled` | manual | `route_for_job` (before any form step), `decide` (`policy.adapter_for`) | automatic submission is not available in production |
 | `no_captured_destination` | manual | `decide` (`policy.adapter_for`) | no origin or submit address was captured |
 | `submit_origin_mismatch` | manual | `decide` (`policy.adapter_for`) | the form submits to a different site than the job page |
-| `no_adapter` | none: a refusal | `policy.check_binding` | queueing or running a destination whose route is a manual handoff. Never a route's code |
+| `no_adapter` | manual, or a refusal | `decide` (`policy.adapter_for`), `policy.check_binding` | the captured form's source is not one an adapter executes (an unlisted source is refused, never given to the generic fixture adapter: I2, D47); or queueing or running a destination whose route is a manual handoff |
 | `source_record_incomplete` | manual | discovery `application_route` | the discovery record lacks what a tracker job needs (its `missing` list) |
 | `source_posting_closed` | manual | discovery `application_route` | the posting was closed at its source before it was linked, so no tracker job exists |
 | `no_supported_provider` | manual | nothing | the fail-closed fallback: the default of `RouteDecision` and `UnsupportedDestination`, and what an unknown code is recorded as. No path produces it (tested over a grid of sample origins, submit addresses, form sources, ATS hosts and API grant states, in the test and production environments) |
@@ -550,18 +570,19 @@ A Workday adapter will likely require the following. These are expectations, rec
 - **Separate approvals:** one before any data disclosure and another before the final
   submission.
 
-Safe implementation sequence. Each step needs its own approval before the next:
+Safe implementation sequence: the admission ladder (`docs/provider-admission.md`, "How to
+admit the next ATS"), with its owner stops; each needs its own approval before the next.
+Workday is computed at `planned`, stopped before `public_doc_reviewed` (no public-docs and
+terms review is recorded). What Workday adds to the ladder's steps:
 
-1. A local synthetic fixture: multi-page, an account checkpoint, repeating sections, custom
-   controls, step validation and per-step disclosure counting in the receiver ledger.
-2. A read-only, approved compatibility observation (the `greenhouse_readonly` model: GET only,
-   no account, no typing).
-3. An evidence-backed extractor mapping each observed control to exactly one field.
-4. A supported-control matrix, with capability entries at `fixture` and then `observed`.
-5. A user-assisted login and checkpoint strategy: the user signs in themselves, and NoEfforts
-   never stores the credentials.
-6. An approved dry-run filling fixture, with a disclosure boundary per page.
-7. A separately approved real pilot.
+- the local synthetic fixture needs multi-page forms, an account checkpoint, repeating
+  sections, custom controls, step validation and per-step disclosure counting in the receiver
+  ledger;
+- the read-only observation follows the `greenhouse_readonly` model (GET only, no account, no
+  typing), and an evidence-backed extractor maps each observed control to exactly one field;
+- a user-assisted login and checkpoint strategy: the user signs in themselves, and NoEfforts
+  never stores the credentials;
+- the rehearsal (D41) has a disclosure boundary per page: each "Next" is one.
 
 ## 7b. Lever (future adapter specification only)
 
@@ -594,16 +615,11 @@ the specification expects something, and as "unknown" otherwise:
 - **Any API route** would need the employer's own authorization. None exists for
   candidates, so the authorized-API route does not apply.
 
-Safe implementation sequence, the same as for Workday (§7). Each step needs its own approval
-before the next:
-
-1. A review of Lever's public documentation and terms, in repository-safe form.
-2. A local synthetic fixture.
-3. A read-only, approved compatibility observation.
-4. An evidence-backed extractor.
-5. A supported-control matrix.
-6. An approved dry-run.
-7. A separately approved pilot.
+Safe implementation sequence: the admission ladder (`docs/provider-admission.md`, "How to
+admit the next ATS"). Lever is computed at `planned`; its next stage, `public_doc_reviewed`,
+needs the owner's approved review of Lever's public documentation and terms, recorded in
+repository-safe form. A local fixture, a read-only observation, the rehearsal (D41) and a pilot
+follow, the last three each with their own approval.
 
 ## 8. Greenhouse status (no Greenhouse request was made in this task)
 
@@ -667,3 +683,13 @@ fill, upload or submit operation.
 | Access logs carry route templates, never raw paths | `tests/test_access_log.py`: `test_access_lines_carry_the_route_template_never_the_raw_path`, `test_raw_access_records_from_the_server_are_dropped`, `test_the_real_server_prints_route_templates_only` |
 | Retained errors, evidence and library logs keep no values, hosts or field keys | `tests/test_retained_data_privacy.py`: `test_a_database_error_never_carries_bound_values`, `test_a_failed_task_is_logged_by_exception_type_only`, `test_destinations_are_classified_without_a_lookup`; `test_browser_cannot_reach_other_origins` |
 | An unsupported ATS is never routed to another ATS's adapter | `test_a_workday_job_is_shown_unsupported_never_routed_to_greenhouse`, `test_a_form_from_another_ats_is_refused` |
+
+## 10. Admitting a provider (I2)
+
+`docs/provider-admission.md`: how far each provider's code and recorded evidence take it on the
+admission ladder (`providers/admission.py`, `GET /api/providers/admission`), the eleven
+requirements and the checks behind them, the owner's four boundaries, the cap at
+`rehearsal_ready`, the frozen waivers and known gaps, and the steps for the next ATS. A
+provider's support state never ranks above its admission. Since I2 a captured form whose source
+no adapter executes is refused (`no_adapter`) instead of falling through to the generic fixture
+adapter (`policy.FORM_SOURCE_ADAPTERS`, `GENERIC_FORM_SOURCES`).

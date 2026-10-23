@@ -121,7 +121,10 @@ Packages are rebuilt only while nothing can have been sent (`draft` … `queued`
 Reconciliation: `POST /api/applications/{id}/reconcile` is the only way out of
 `submitted_unconfirmed` towards a retry. It requires a written description of what the user
 checked plus explicit confirmation, moves to `failed_retryable`, and re-queueing still needs a
-fresh approval.
+fresh approval: the approval that sent it is retired in the same transaction (D15, enforced
+since I2), as is an approval whose final click waited for a verification code that never came.
+Reconciliation locks the application's attempts first (D46) and refuses "not received" once
+the employer's receipt is recorded; a recorded confirmation is never queued again.
 
 ## Execution (Phase C, local fixtures only)
 
@@ -356,8 +359,14 @@ Details: `docs/provider-architecture.md` (decision D32).
   - each capability is at a support level: `fixture`, `observed`, `live_fill` or
     `live_submit`;
   - `check_spec` refuses live claims without real-page evidence, and anything live while
-    `real_destinations_enabled` is false;
+    `real_destinations_enabled` is false; since I2 it refuses `real_destinations_enabled`
+    itself, and `registry.check_registry` the inconsistencies across providers;
   - no provider has live support.
+- **Admission** (`providers/admission.py`, `GET /api/providers/admission`, D47): each
+  provider's stage on one ladder, computed from code tables and recorded evidence; its support
+  state never ranks above it; owner boundaries open a stage only with a record; capped at
+  `rehearsal_ready`. Advisory: nothing routes, labels or approves on it
+  (`docs/provider-admission.md`).
 - **Routing** (`routing.decide`, used by `policy.execution_binding`):
   - real destination → manual handoff;
   - authorized API → only with the user's grant (`api_authorizations`), configured

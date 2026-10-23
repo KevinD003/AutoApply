@@ -1,7 +1,7 @@
 """The submission-provider model: what a provider is, which operations it implements, and on
 what evidence each capability rests (docs/provider-architecture.md).
 
-Four kinds of provider exist:
+Five kinds of provider exist:
   browser      fills and submits an employer's application form in the isolated browser
   api          submits through an officially authorized API (never without the user's
                explicit authorization and valid credentials)
@@ -120,6 +120,9 @@ class ProviderSpec:
     traits: dict[Trait, TraitValue] = field(default_factory=dict)
     stage: str = "implemented"  # "implemented" | "planned" (a specification only: no code)
     ats: str | None = None  # the ATS identity (jobs.canonical.detect_ats) this provider serves
+    # Repository paths of the local fixtures its `fixture` levels were tested against (never
+    # served; tests/test_provider_contracts.py checks they exist).
+    tested_against: tuple[str, ...] = ()
 
     def support(self, cap: Capability) -> Support:
         return self.capabilities.get(cap, Support())
@@ -135,8 +138,43 @@ class SpecError(ValueError):
     pass
 
 
+Op = Operation
+# The operations that can implement each capability (any one of them). A capability nothing
+# implements is a claim without code.
+CAPABILITY_OPERATIONS: dict[Capability, frozenset[Operation]] = {
+    Capability.discovery: frozenset({Op.discover}),
+    Capability.posting_read: frozenset({Op.inspect}),
+    Capability.form_extract: frozenset({Op.extract_form}),
+    Capability.deterministic_fill: frozenset({Op.fill}),
+    Capability.custom_dropdowns: frozenset({Op.fill, Op.extract_form}),
+    Capability.file_upload: frozenset({Op.upload}),
+    Capability.location_picker: frozenset({Op.fill, Op.extract_form}),
+    Capability.login_required: frozenset({Op.checkpoint}),
+    Capability.email_verification: frozenset({Op.checkpoint}),
+    Capability.mobile_verification: frozenset({Op.checkpoint}),
+    Capability.captcha_checkpoint: frozenset({Op.checkpoint}),
+    Capability.final_submit: frozenset({Op.submit}),
+    Capability.confirmation_detection: frozenset({Op.classify_outcome}),
+    Capability.reconciliation: frozenset({Op.reconcile, Op.checkpoint}),
+    Capability.official_api_submission: frozenset({Op.submit}),
+}
+# The capability (any one of them) an implemented operation must declare, so an operation is
+# never present without its evidence level. Operations not listed need none of their own.
+OPERATION_CAPABILITIES: dict[Operation, frozenset[Capability]] = {
+    Op.inspect: frozenset({Capability.posting_read}),
+    Op.extract_form: frozenset({Capability.form_extract}),
+    Op.fill: frozenset({Capability.deterministic_fill}),
+    Op.upload: frozenset({Capability.file_upload}),
+    Op.submit: frozenset({Capability.final_submit, Capability.official_api_submission}),
+    Op.classify_outcome: frozenset({Capability.confirmation_detection}),
+    Op.reconcile: frozenset({Capability.reconciliation}),
+    Op.discover: frozenset({Capability.discovery}),
+}
+
+
 def check_spec(spec: ProviderSpec) -> None:
-    """Invariants every registered provider must satisfy."""
+    """Invariants every registered provider must satisfy (registry.check_registry adds the ones
+    across providers; providers/admission.py computes what the evidence admits)."""
     if spec.stage not in ("implemented", "planned"):
         raise SpecError(f"{spec.name}: unknown stage {spec.stage}")
     if spec.stage == "planned" and (spec.operations or spec.capabilities):
@@ -165,6 +203,40 @@ def check_spec(spec: ProviderSpec) -> None:
         raise SpecError(f"{spec.name}: an API provider must declare official_api_submission")
     if spec.kind == Kind.browser and Capability.official_api_submission in spec.capabilities:
         raise SpecError(f"{spec.name}: a browser provider cannot claim API submission")
+    for cap in spec.capabilities:
+        if not CAPABILITY_OPERATIONS[cap] & spec.operations:
+            raise SpecError(f"{spec.name}.{cap}: capability without the operation behind it")
+    if spec.stage == "implemented":
+        for op in spec.operations:
+            if op in OPERATION_CAPABILITIES and not OPERATION_CAPABILITIES[op] & set(
+                spec.capabilities
+            ):
+                raise SpecError(f"{spec.name}.{op}: operation without the capability it implements")
+    for t, v in spec.traits.items():
+        if v.value in ("yes", "no") and not v.note.strip():
+            raise SpecError(f"{spec.name}.{t}: a yes/no trait needs its evidence (a note)")
+        if spec.stage == "planned" and v.value not in ("expected", "unknown"):
+            raise SpecError(f"{spec.name}.{t}: a planned specification states expectations only")
+        if v.value == "not_applicable" and spec.kind in (Kind.browser, Kind.api):
+            raise SpecError(f"{spec.name}.{t}: not_applicable is not for a browser or API provider")
+    if (
+        spec.stage == "implemented"
+        and any(s.fixture for s in spec.capabilities.values())
+        and not spec.tested_against
+    ):
+        raise SpecError(f"{spec.name}: fixture support without the fixture it was tested against")
+    if (
+        spec.kind == Kind.browser
+        and spec.stage == "implemented"
+        and spec.trait(Trait.captcha_possible).value != "no"
+        and Capability.captcha_checkpoint not in spec.capabilities
+    ):
+        raise SpecError(f"{spec.name}: a CAPTCHA may appear but no checkpoint is declared")
+    if spec.real_destinations_enabled:
+        raise SpecError(
+            f"{spec.name}: real destinations stay refused until the live-pilot gate is opened by a "
+            "reviewed change to this rule"
+        )
 
 
 def matrix(spec: ProviderSpec) -> dict[str, str]:

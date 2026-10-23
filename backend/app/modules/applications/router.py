@@ -21,7 +21,7 @@ from app.modules.applications.states import (
     check,
 )
 from app.modules.audit.service import record
-from app.modules.execution.models import ExecutionAttempt
+from app.modules.execution.models import AttemptState, ExecutionAttempt
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
 from app.modules.jobs.models import Job
@@ -290,9 +290,25 @@ def reconcile_application(
     `received` confirms it. `not_received` requires the user to say what they checked and to
     confirm explicitly; it then becomes retryable, and re-queueing still needs a fresh approval.
     """
+    from app.modules.execution.service import RETIRED, retire_approval
+    from app.modules.preparation.package import lock_application
+
     app = _owned(db, user, app_id)
+    # D46: its attempts, then the application, then its approvals. A slow worker recording the
+    # employer's receipt locks the attempt first too, so the two are ordered, never interleaved.
+    attempts = db.scalars(
+        select(ExecutionAttempt.state)
+        .where(ExecutionAttempt.application_id == app.id)
+        .order_by(ExecutionAttempt.id)
+        .with_for_update()
+    ).all()
+    lock_application(db, app.id)
+    db.refresh(app)  # as locked: a concurrent reconciliation is seen, not overwritten
     if app.state != AppState.submitted_unconfirmed:
         raise bad_request("Only submissions with an unknown outcome can be reconciled")
+    if body.finding == "not_received" and AttemptState.confirmed in attempts:
+        raise conflict("NoEfforts recorded the employer's confirmation of this submission since: "
+                       "it was received. Reconcile it as received.")  # fmt: skip
     if body.finding == "received":
         transition(
             db,
@@ -311,6 +327,16 @@ def reconcile_application(
             Actor.system,
             f"User reconciled as not received: {body.evidence}",
         )
+        # D15: re-queueing needs a fresh approval. The one that sent it is used up here.
+        live = db.scalars(
+            select(PackageApproval.id).where(
+                PackageApproval.application_id == app.id, PackageApproval.invalidated_at.is_(None)
+            )
+        )
+        reason = "reconciled_not_received"
+        if any([retire_approval(db, a, RETIRED[reason]) for a in live]):
+            record(db, user.id, "package.approval_retired", "application", app.id,
+                   reason_code=reason)  # fmt: skip
     record(db, user.id, "application.reconcile", "application", app.id, finding=body.finding)
     db.commit()
     return _out(db, app, detail=True)
