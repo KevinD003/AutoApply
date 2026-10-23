@@ -30,6 +30,8 @@ from app.modules.execution.adapters.greenhouse_dom import GreenhouseDomAdapter
 from app.modules.execution.browser import IsolationUnavailable, browser_session
 from app.modules.execution.faults import fault
 from app.modules.execution.models import ExecutionAttempt
+from app.modules.preparation import package as pk
+from app.modules.preparation import sending
 from app.modules.preparation.models import ApplicationPackage, ApprovalScope, PackageApproval
 
 # API providers (providers.registry kind "api"): no browser; same attempt, lease and gates.
@@ -63,6 +65,19 @@ def _snapshot(attempt_id):
                 raise RuntimeError("stored document does not match the approved digest")
             docs[d["field"]] = (doc.original_filename, doc.content_type, data)
         return content, docs, att.adapter
+
+
+def _content_refusal(attempt_id, content: dict) -> str | None:
+    """Why the stored package may not be sent, or None. Checked before any adapter code runs,
+    on both routes: what is filled is exactly what was approved, and only its resolved answers
+    (sending.py). The gates then check the package against current data under lock."""
+    with SessionLocal() as db:
+        approved = db.get(ExecutionAttempt, attempt_id).package_hash
+    if pk.content_hash(content) != approved:
+        return "the stored package does not match the approved one"
+    if sending.unsendable(content):
+        return "the approved package has an answer that is not resolved"
+    return None
 
 
 def _binding_refusal(attempt_id) -> str | None:
@@ -105,6 +120,10 @@ def run_attempt(attempt_id: str, worker: str) -> str:
 
     try:
         content, docs, adapter_name = _snapshot(aid)
+        refusal = _content_refusal(aid, content)
+        if refusal:
+            svc.fail_safe(aid, worker, gen, refusal)
+            return "failed_safe"
         if adapter_name in API_ADAPTERS:
             refusal = _binding_refusal(aid)
             if refusal:

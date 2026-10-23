@@ -9,6 +9,22 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Preparation: guards, and only resolved answers sent (C1, C2, 2026-10-23; local only)
+
+Synthetic candidate and fixture forms; execution against the local receiver, whose ledger is
+the oracle for what was sent. Decision D48.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| An answer that is not resolved is never sent | `tests/test_sending.py::test_a_stale_accepted_draft_is_a_checkpoint_even_when_optional` | before the fix: an optional accepted draft whose fact changed became "blank" but kept its text, the package was approved (200) and the ledger showed the stale text sent, reproduced. Now the question is a checkpoint (`needs_user`, approval 409); the user's own replacement is approved and is what the ledger shows |
+| The package builder keeps no value on a blank row | `test_the_builder_clears_a_blank_row_whatever_the_resolver_returns`, `test_every_fixture_package_sends_only_resolved_answers` (7 packages), and the invariant checked in each package test of the file | with a resolver forced to return values on blank rows, none reaches the package; over the fixture, receiver and Greenhouse-fixture packages, a blank row has no value or display, a row with a value is resolved or blocks approval, documents are exactly the resolved document rows |
+| A document question that is not asked | `test_a_document_question_that_is_not_asked_attaches_nothing`, `test_a_document_question_that_depends_on_a_missing_question_attaches_nothing` (2) | before the fix: HTTP 500 (TypeError) for the package view and every answer saved, reproduced. Now no document is attached until the question applies; a required one depending on a missing question is a checkpoint |
+| The worker refuses a stored package that is not the approved one, before any adapter code | `test_the_runner_refuses_before_anything_is_sent` (8: four adapters; a resolved answer changed in the stored package without its hash; a value on a row that is not resolved with every hash made to agree) | `failed_safe`, no disclosure started; the ledger has no request at all after preparation. Found on the way: nothing compared the stored package with its approval before; with this check removed, the changed resolved answer is sent and confirmed (the gates rebuild the package from current data, which still matches) |
+| Each adapter fills only resolved answers (runner check bypassed) | `test_each_adapter_fills_only_resolved_answers` (4), `test_the_adapter_view_drops_only_what_is_not_resolved`, `test_nothing_else_reads_answer_values_for_sending` | with the runner's check bypassed and the stored package changed without its hash (the gates, rebuilding from current data, pass), each adapter confirms and the injected text appears nowhere in the ledger |
+| The package shape is pinned to `SCHEMA_VERSION` | `tests/test_package_contract.py` (3) | 96 key paths over six synthetic packages (every fact-reference type, answer value shape, condition and unsupported control) equal the shape recorded for version 2; the hash ignores only fact-reference version counters |
+| Cross-tenant routes C1 found untested | `tests/test_preparation.py::test_tenant_isolation_for_revoke_documents_drafts_and_the_bank` | revoke, document selection (with the other user's or the owner's document), draft acceptance (the other user's application or the owner's other application), the document list and versions: 404 or nothing of the owner's; the owner's approval stays live; another user never resolves a question from the owner's saved answer |
+| No candidate document, secret or captured session is committed | `tests/test_repo_hygiene.py` (3) | over what a commit would contain (`git ls-files`, tracked plus untracked files that are not ignored): no document, spreadsheet, environment file (other than `.env.example`), key, browser capture (traces, `.auth/`, storage state, cookies) or database file; every email address, in any file whatever its encoding, on a reserved domain, or the owner's own no-reply address. The review found the first version would have failed on its own sample address once committed (it scanned only tracked files); the sample is now built at run time and untracked files are scanned too |
+
 ## Provider admission (I2, 2026-10-22; local only, no external request)
 
 Computed from code tables and recorded evidence (`providers/admission.py`,

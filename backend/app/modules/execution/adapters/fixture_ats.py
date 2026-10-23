@@ -8,6 +8,7 @@ from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PWTimeout
 
 from app.modules.preparation.forms import FormSchema, extract_form_schema, form_fingerprint
+from app.modules.preparation.sending import sendable_view
 
 
 @dataclass
@@ -27,7 +28,7 @@ class FixtureAtsAdapter:
     confirmation_strength = "employer_receipt"
 
     def __init__(self, content: dict, documents: dict[str, tuple[str, str, bytes]]):
-        self.content = content
+        self.content = sendable_view(content)  # only resolved answers are filled or uploaded
         self.documents = documents  # field key -> (filename, content type, bytes)
 
     # -- inspect ----------------------------------------------------------------------------

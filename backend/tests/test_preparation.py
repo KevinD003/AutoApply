@@ -506,6 +506,62 @@ def test_tenant_isolation_for_preparation(api, other_api):
     assert other_api.delete(f"/answer-bank/{entry['id']}").status_code == 404
 
 
+def test_tenant_isolation_for_revoke_documents_drafts_and_the_bank(api, other_api, monkeypatch):
+    """The routes C1 found without a cross-tenant test: each is a 404 for another user (or for
+    the owner with another application's draft), and nothing of the owner's changes."""
+    monkeypatch.setattr(drafting, "get_provider", lambda: _CountingProvider())
+    setup_candidate(api)
+    _, app = new_application(api)
+    aid = app["id"]
+    saved = {"key": "hear_about", "value": {"label": "Referral"}, "save_to_bank": True}
+    api.put(f"/applications/{aid}/answers", json=saved)
+    p = api.put(f"/applications/{aid}/consents",
+                json={"key": "privacy_ack", "choice": "agree"}).json()["package"]  # fmt: skip
+    r = api.post(f"/applications/{aid}/package/approve",
+                 json={"version": p["version"], "content_hash": p["content_hash"]})  # fmt: skip
+    assert r.status_code == 200, r.text
+    d = api.post(f"/applications/{aid}/drafts", json={"key": "why_us"}).json()
+
+    other_doc = other_api.post(
+        "/documents", files={"file": ("x.pdf", PDF, "application/pdf")}
+    ).json()
+    own_doc = api.get("/documents").json()[0]
+    _, other_app = new_application(other_api, title="Their own role")
+    _, second = new_application(api, title="Second role")
+
+    assert other_api.post(f"/applications/{aid}/package/revoke").status_code == 404
+    for body in ({"resume_document_id": other_doc["id"]}, {"resume_document_id": own_doc["id"]}):
+        assert other_api.put(f"/applications/{aid}/documents", json=body).status_code == 404
+    assert other_api.post(f"/applications/{aid}/drafts/{d['id']}/accept").status_code == 404
+    accept_elsewhere = f"/applications/{other_app['id']}/drafts/{d['id']}/accept"
+    assert other_api.post(accept_elsewhere).status_code == 404
+    # The owner cannot use one application's draft in another application either.
+    assert api.post(f"/applications/{second['id']}/drafts/{d['id']}/accept").status_code == 404
+    assert [x["id"] for x in other_api.get("/documents").json()] == [other_doc["id"]]
+    assert other_api.get(f"/documents/{own_doc['id']}/versions").status_code == 404
+
+    view = api.get(f"/applications/{aid}/package").json()
+    assert view["approval"]["status"] == "approved"  # still live: nothing changed
+    assert answers(view)["why_us"]["source"] == "unresolved"  # the draft was never accepted
+    assert view["package"]["content"]["documents"][0]["document_id"] == own_doc["id"]
+    second_view = api.get(f"/applications/{second['id']}/package").json()
+    assert answers(second_view)["why_us"]["status"] == "blank_optional"
+    # Another user with the same question never resolves it from the owner's saved answer.
+    setup_candidate(other_api)
+    assert len(api.get("/answer-bank").json()) == 1 and other_api.get("/answer-bank").json() == []
+    other_view = other_api.get(f"/applications/{other_app['id']}/package").json()
+    assert answers(other_view)["hear_about"]["status"] == "needs_user"
+    assert answers(other_view)["hear_about"]["source"] == "unresolved"
+
+
+class _CountingProvider:
+    name = "test-fake"
+
+    def draft(self, req):
+        return DraftResult(text="I value careful patient intake.", provider=self.name,
+                           evidence=[f.id for f in req.facts if f.kind == "summary"])  # fmt: skip
+
+
 def test_package_versions_are_immutable(api):
     setup_candidate(api)
     _, app = new_application(api)

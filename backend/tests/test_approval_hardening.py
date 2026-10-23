@@ -164,7 +164,9 @@ def test_accepted_draft_depends_on_its_facts(api, monkeypatch):
     }
     api.put("/profile", json=keep | {"summary": "Different summary now."})
     v = api.get(f"/applications/{aid}/package").json()
-    assert answers(v)["why_us"]["status"] == "blank_optional"
+    # A checkpoint although optional (test_sending.py): nothing stale can be approved or sent.
+    assert answers(v)["why_us"]["status"] == "needs_user"
+    assert "why_us" in v["package"]["content"]["unresolved"]
     assert "changed" in answers(v)["why_us"]["explanation"]
     assert v["approval"]["status"] == "invalidated"
 

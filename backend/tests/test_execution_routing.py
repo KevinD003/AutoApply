@@ -242,7 +242,8 @@ class _ChallengePage:
 def test_a_captcha_checkpoint_is_claimed_only_where_the_adapter_detects_one():
     for name, cls in runner.ADAPTERS.items():
         claims = registry.C.captcha_checkpoint in registry.get(name).capabilities
-        detects = cls({}, {}).blocked_reason(_ChallengePage()) is not None
+        empty = {"answers": [], "documents": []}  # a package with nothing to fill
+        detects = cls(empty, {}).blocked_reason(_ChallengePage()) is not None
         assert claims == detects, name
     assert registry.get("fixture_ats").traits[registry.T.captcha_possible].value == "no"
 

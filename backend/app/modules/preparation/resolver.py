@@ -204,9 +204,14 @@ def resolve_field(f: FormField, ctx: Context) -> Resolution:
             return _unresolved(r, f, f"Your saved answer no longer fits this question: {err}")
         r.status, r.value, r.display = "resolved", inp.value, display_value(f, inp.value)
         if inp.provenance == "draft_accepted" and getattr(inp, "stale", False):
-            return _unresolved(
-                r, f, "The facts this accepted draft was based on have changed. Review it again."
+            # A checkpoint even when optional: the user chose to include this text, and what it
+            # was based on changed. Its value stays for review; the package cannot be approved.
+            r.status = "needs_user"
+            r.explanation = (
+                "The facts this accepted draft was based on have changed. Review it again: save "
+                "it as your own answer, or request a new draft."
             )
+            return r
         if inp.provenance == "draft_accepted":
             meta = inp.meta or {}
             r.fact_refs = [

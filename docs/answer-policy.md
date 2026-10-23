@@ -13,7 +13,7 @@ calls an LLM; drafting is a separate, explicit, optional action.
 | 3 | **Profile fact** / **Mapped from profile** | Names, contact, residence, links, per-country work authorization and sponsorship, relocation, salary. Only *approved* facts are used. "Mapped" means the fact was matched to one of the form's own options (e.g. country → "United States of America", yes → "Yes"). |
 | 4 | **Your answer** / **Accepted draft** | Something you answered for this application. Not allowed for protected facts that your profile already answers: fix the profile so every application stays consistent. |
 | 5 | **Saved answer** | An answer you chose to reuse, for the *exact same normalized wording* and answer shape. For choice questions, the option list must be identical to the one you saw when saving. |
-| 6 | **Unresolved** | Everything else. Required → blocks approval. Optional → left blank. |
+| 6 | **Unresolved** | Everything else. Required → blocks approval. Optional → left blank (nothing is kept or sent). An accepted draft whose facts changed blocks approval even when optional. |
 
 ## Rules that prevent wrong answers
 
@@ -54,6 +54,12 @@ calls an LLM; drafting is a separate, explicit, optional action.
   invalidated with a reason, when a referenced fact value, document version, answer, consent
   or the destination (job/form) changes. Editing an unrelated fact does not invalidate.
 - Queueing requires a live approval of the current content.
+- **Only a resolved answer is sent** (`preparation/sending.py`). A question left blank carries no
+  value; a row that still shows a proposed value (a sensitive answer waiting for your choice, an
+  accepted draft whose facts changed) blocks approval. Before any adapter code runs, the worker
+  refuses a stored package that differs from the approved one or carries a value on a row that is
+  not resolved; each adapter also fills, uploads and reads back only resolved answers.
+- A document question that is not asked (its block is not shown) attaches no document.
 
 ## Long-form drafting (optional)
 
@@ -64,4 +70,6 @@ calls an LLM; drafting is a separate, explicit, optional action.
 - Output must cite provided facts only, fit the length limit, contain no placeholders, and
   contain no numbers that are not in your facts or the job text. Failing drafts are discarded.
 - A draft is never used until you accept it; it then shows as "Accepted draft".
+- If a fact an accepted draft relied on changes, the question becomes a checkpoint, optional or
+  not: save the text as your own answer or request a new draft. Nothing stale is approved or sent.
 - Drafts are cached by input hash so the same request is not paid for twice.

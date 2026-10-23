@@ -27,7 +27,7 @@ from app.modules.applications.states import Actor, AppState
 from app.modules.audit.service import record
 from app.modules.documents.models import Document, DocumentKind
 from app.modules.jobs.models import Job
-from app.modules.preparation import drafting
+from app.modules.preparation import drafting, sending
 from app.modules.preparation.forms import FieldType, FormSchema
 from app.modules.preparation.models import (
     AnswerBankEntry,
@@ -175,6 +175,10 @@ def build_content(db: Session, app: Application) -> dict:
             # Not shown for the answers given, so not asked: nothing is entered or sent.
             r.status, r.value, r.display = "blank_optional", None, None
             r.explanation = "Not asked: this question only appears for a different answer above."
+        if r.status == "blank_optional":
+            # Nothing is sent for it, so it shows nothing (sending.py: only a resolved row is
+            # sent; the other two statuses block approval).
+            r.value = r.display = None
         values[f.key] = r.value
         statuses[f.key] = r.status
         answers.append(
@@ -215,7 +219,8 @@ def build_content(db: Session, app: Application) -> dict:
                 errors.append({"key": f.key, "message": f"Required: {f.label}"})
     docs = []
     for a in answers:
-        if a["source"] == "document":
+        # A document question that is not asked keeps its source and has no value: no document.
+        if a["source"] == "document" and sending.sendable(a):
             doc = db.get(Document, uuid.UUID(a["value"]["document_id"]))
             docs.append(
                 {

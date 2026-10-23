@@ -39,8 +39,9 @@ export default function AnswersPage() {
       <h1 className="text-xl font-semibold">Saved answers</h1>
       <p className="text-sm text-slate-600">
         Answers you chose to reuse. Each is tied to the exact wording of the question and, for multiple-choice questions, to the options
-        the employer offered. If either changes, NoEfforts asks you again instead of guessing. Work authorization, sponsorship,
-        residence, legal statements and job-specific questions are never saved here.
+        the employer offered. If either changes, NoEfforts asks you again instead of guessing. Questions NoEfforts recognises as
+        work authorization, sponsorship, residence, legal statements or job-specific are not offered for saving; it recognises
+        known wordings only, so check what you save.
       </p>
       <Card>
         <ErrorBox error={error} />

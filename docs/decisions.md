@@ -708,3 +708,27 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   `LEGACY_VERSIONS`, the package `SCHEMA_VERSION`, the route reason codes, the readiness
   conditions and their 0 of 7 (the gate permission is now two records, C and D, both false),
   `detect_ats`, stored identities, migrations. Path A stays pending.
+
+## D48 — Only a resolved answer is sent (C2, 2026-10-23)
+
+- **Rule** (`preparation/sending.py`): an answer is filled, uploaded or sent only when its status
+  is `resolved`. The package builder gives every blank optional row no value and no display.
+  A row that still shows a proposed value for review (a sensitive answer waiting for the
+  user's choice, an accepted draft whose facts changed) blocks approval. A document question
+  that is not asked attaches no document.
+- **An accepted draft whose facts changed is a checkpoint, optional or not.** Before, an
+  optional one became "blank" but kept its text, so the package could be approved and the
+  stale draft was sent (reproduced with the receiver's ledger). Now the user saves the text as
+  their own answer or requests a new draft.
+- **Two layers on the send path, each tested with the other bypassed:**
+  - Before any adapter code runs, on both routes, the worker refuses (`failed_safe`, nothing
+    disclosed) a stored package whose hash is not the attempt's approved hash, or that has a
+    value on a row that is not resolved. Nothing compared the stored package with its approval
+    before: the gates check a package rebuilt from current data, so a stored package changed
+    without its hash was filled as stored.
+  - Every adapter takes `sendable_view` of the package in its constructor, so none fills,
+    uploads or reads back a row that is not resolved.
+- **Not a shape change:** `SCHEMA_VERSION` stays 2 (the shape is pinned by
+  `tests/test_package_contract.py`). Only a package with a stale accepted draft gets a new hash
+  (its approval is invalidated, as intended). A form with a document question that is not asked
+  could not be prepared at all before (a server error), so it had no package to change.

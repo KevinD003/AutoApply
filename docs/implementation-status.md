@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-22 (a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-23 (preparation: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,63 @@ Last updated: 2026-10-22 (a provider-admission framework: each provider's stage 
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Preparation guards and only resolved answers sent (C1, C2, 2026-10-23; local only, no external request)
+
+- **Scope:** the first two steps of the preparation platform (the CTO's phase C; the table
+  "Phase B — Preparation" below), from an independent map of the preparation code and its
+  gaps. Nothing contacted; no support state, capability level, real destination or Path A
+  change. Decision D48; evidence: `docs/evidence-matrix.md` ("Preparation: guards, and only
+  resolved answers sent").
+- **C2, only a resolved answer is sent** (`preparation/sending.py`), each defect reproduced
+  first:
+  - an optional accepted draft whose fact changed became "blank" but kept its text; the
+    package could be approved and the receiver's ledger showed the stale draft sent. It is now
+    a checkpoint, optional or not;
+  - a document question that is not asked (in a block not shown, or depending on a missing
+    question) made the package view and every answer saved a 500. It now attaches nothing;
+  - nothing compared the stored package the worker fills with its approval: a stored package
+    changed without its hash was sent (shown with the new check removed: confirmed, because the
+    gates rebuild the package from current data, which still matches);
+  - now the package builder gives every blank row no value; before any adapter code runs, the
+    worker refuses a stored package that is not the approved one, or that has a value on a row
+    that is not resolved; each adapter fills, uploads and reads back only resolved answers.
+    Each layer is tested with the others bypassed.
+- **C1, guards:** the package content shape (96 key paths) pinned to `SCHEMA_VERSION`
+  (unchanged at 2); cross-tenant tests for revoke, document selection, draft acceptance, the
+  document list and the answer bank; no candidate document, secret or captured session
+  committed (tracked or untracked and not ignored), and email addresses on reserved domains
+  only. The Phase B table below is corrected:
+  sensitive consent and the answer bank are partial, tailoring is not started, cover letters
+  are upload only. The saved-answers page no longer says such questions are "never saved"; it
+  says which questions NoEfforts recognises.
+- **Unchanged:** `SCHEMA_VERSION` (2), `ADAPTER_VERSIONS`, reason codes, migrations. Only a
+  package with a stale accepted draft gets a new hash (its approval is invalidated).
+- **Deferred (found by the review, fail-closed today):** a stale accepted draft on an optional
+  question can be cleared only through the API (`/answers/clear`); the review page has no clear
+  control yet (C12), so the user saves their own text or requests a new draft. Requesting a
+  draft again for the same facts returns the cached draft even when already accepted, which the
+  page does not show; reachable only with a draft provider, none of which is configured (C15).
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `tests/test_sending.py` (20), `tests/test_package_contract.py` (3),
+    `tests/test_repo_hygiene.py` (3), the new tenancy test in `tests/test_preparation.py`;
+    `test_approval_hardening.py` (a stale draft is a checkpoint) and `test_execution_routing.py`
+    (an adapter is given package-shaped content) updated;
+  - full backend (`pytest tests`): first run 1019 passed, 1 failed, exit 1: a test defect from
+    this change (the routing test built adapters with empty content `{}`, which the constructor
+    now reads), fixed in the test; second run on the final tree 1020 passed, exit 0;
+  - full Playwright: 36 passed, 2 skipped, exit 0;
+  - `ruff check`, `ruff format --check`, `npx tsc --noEmit`, `npm run lint`: clean;
+  - sabotage checks: 26, each caught, every file restored and compared afterwards (the hash
+    check's sabotage, with a resolved answer changed, confirmed and sent before it was caught);
+  - an adversarial read-only review (4 reviewers, 2 skeptics per finding): 13 findings. Fixed:
+    the hygiene test would have failed on its own sample address once committed (it scanned
+    only tracked files), it missed Playwright's capture paths, skipped files that are not
+    UTF-8 and allowed any no-reply address; two doc counts; one policy row. Deferred: the two
+    above. Refuted: the rest.
+- **CI for the previous change:** **CI #98**
+  ([39882681236](https://github.com/KevinD003/AutoApply/actions/runs/39882681236)) (`8038d4a`,
+  I2 provider admission): passed (all four jobs).
 
 ## Provider admission (I2, 2026-10-22; local only, no external request)
 
@@ -1635,16 +1692,20 @@ employer.
 | Residence / target location / authorization / sponsorship now / later kept separate | complete | resolver tests |
 | Negation, future tense, vague wording, missing country, compound questions | complete for the patterns listed in `docs/answer-policy.md`; anything else becomes a checkpoint | resolver tests |
 | Changed options and wording | complete | `test_answer_bank_reuse_across_jobs_and_wording_changes`, `test_form_option_change_invalidates_saved_choice` |
-| Answer bank with provenance, approval, version, timestamps | complete (edit-in-place UI not built; delete and re-save instead) | `test_answer_bank_*` |
-| Acknowledgments never auto-checked; sensitive answers need consent | complete | resolver + API tests |
+| Answer bank with provenance, approval, version, timestamps | partial: an answer is approved when saved (the approval status is nominal); edit-in-place UI not built (delete and re-save); help text, employer-relative and time-bound wording are not yet kept out (C6) | `test_answer_bank_*` |
+| Acknowledgments never auto-checked; sensitive answers need consent | partial: never auto-checked and consent required (resolver test); sensitive detection reads the label only and covers few topics (C5); consent is tied to the question key, not its wording or value (C7); the disclose path has no end-to-end ledger test yet (C8) | resolver + API tests |
 | Missing facts park the application; profile fix resolves | complete | `test_missing_fact_parks_application_and_profile_fix_resolves` |
 | Immutable package versions; approval bound to content hash | complete | `test_package_versions_are_immutable` |
 | Invalidation on fact, document, answer, consent, destination change; unrelated edits keep approval | complete | `test_protected_fact_change_invalidates_approval`, `test_other_material_changes_invalidate_approval` (4 cases), `test_unrelated_fact_change_keeps_approval` |
 | Queueing requires live approval | complete | API tests |
 | Review screen | complete | Playwright `phase-b.spec.ts` |
 | Long-form drafting interface with grounding validation | partial: interface, validation, caching, acceptance flow done and tested with a **test-only fake provider**; **no real LLM provider is implemented**, so drafting shows as unavailable | `test_fake_provider_draft_is_validated_and_needs_acceptance`, `test_drafting_unavailable_without_provider` |
-| Tenant isolation for forms, packages, answers, consents, documents, answer bank | complete | `test_tenant_isolation_for_preparation` |
+| Tenant isolation for forms, packages, answers, consents, documents, answer bank, revoke, document selection, draft acceptance | complete | `test_tenant_isolation_for_preparation`, `test_tenant_isolation_for_revoke_documents_drafts_and_the_bank` |
 | Resume parsing into proposed facts | not started (resolver already ignores proposed facts) | — |
+| Only resolved answers are sent; stale accepted drafts are checkpoints | complete (C2, D48) | `tests/test_sending.py` |
+| Package content shape pinned to `SCHEMA_VERSION` | complete (C1) | `tests/test_package_contract.py` |
+| Truthful resume tailoring | not started | — |
+| Cover letters | upload only: no generation, and the review page cannot select one (C12) | — |
 | Capturing forms from live ATS pages | not started (Phase C; network-blocked here) | — |
 
 ## Phase C — Controlled execution: partial (local fixtures only)

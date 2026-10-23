@@ -23,6 +23,7 @@ from app.modules.execution.adapters.fixture_ats import Outcome, UploadFailed
 from app.modules.execution.adapters.greenhouse import approved_fields
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation.forms import FieldType
+from app.modules.preparation.sending import sendable_view
 
 
 class ApiRefused(RuntimeError):
@@ -46,7 +47,7 @@ class FakeApiAdapter:
     confirmation_strength = "api_receipt"
 
     def __init__(self, content: dict, documents: dict, idempotency_key: str):
-        self.content = content
+        self.content = sendable_view(content)  # only resolved answers are sent or uploaded
         self.documents = documents
         self.key = idempotency_key
         dest = content["destination"]
