@@ -1,12 +1,19 @@
 """Deterministic answer resolution. This module never calls an LLM.
 
 Order, per field:
-  1. acknowledgments / legal statements  -> only an explicit per-application consent choice
-  2. sensitive disclosures               -> an approved answer + per-application consent
+  1. acknowledgments / legal statements  -> only an explicit per-application agree/decline; a
+                                            statement of a profile fact (work authorization,
+                                            sponsorship, residence) is checked only with agree
+                                            AND an approved fact that makes it true
+  2. sensitive disclosures               -> an answer + per-application consent (a saved answer
+                                            only for the original label topics, never for the
+                                            topics added in C5 or sensitivity found elsewhere)
   3. verified profile fact               -> `profile_fact`, or `deterministic_mapping` when the
                                             fact had to be mapped onto the form's own options
   4. this application's user input       -> `user_entered` (or `draft` once a draft is accepted)
-  5. approved answer-bank entry          -> `answer_bank` (same wording, compatible options)
+  5. approved answer-bank entry          -> `answer_bank` (same wording, compatible options;
+                                            never for no-bank, protected, generic or inherited
+                                            rows)
   6. anything else                       -> unresolved: the user decides
 Facts that are unknown, not approved, or only proposed (e.g. from resume parsing) never resolve.
 """
@@ -16,7 +23,21 @@ import re
 from dataclasses import dataclass, field
 from datetime import date
 
-from app.modules.preparation.classify import COUNTRIES, NO_WORDS, YES_WORDS, Intent, classify
+from app.modules.preparation.classify import (
+    _CITIZEN_CLAIM,
+    _CLAIM,
+    _NEG_EXTRA,
+    COUNTRIES,
+    GENERIC_LABEL,
+    NO_WORDS,
+    YES_WORDS,
+    Intent,
+    _negation_count,
+    _statement_core,
+    classify,
+    exact_country,
+    find_countries,
+)
 from app.modules.preparation.forms import (
     CHOICE_TYPES,
     MULTI_TYPES,
@@ -47,7 +68,15 @@ NO_BANK = PROFILE_ONLY | {
     "long_form",
     "resume_upload",
     "cover_letter_upload",
+    # C3-C5: statements, legal status, sensitive topics added in C5, other people
+    "fact_statement",
+    "statement_input",
+    "legal_status",
+    "sensitive_topic",
+    "references",
 }
+# Shown as a protected fact: never answered from the bank, never drafted.
+PROTECTED = PROFILE_ONLY | {"eligibility", "authorization_status", "fact_statement", "legal_status"}
 
 
 @dataclass
@@ -153,10 +182,17 @@ def _base(f: FormField, intent: Intent) -> Resolution:
         intent=intent.kind,
         sensitive=intent.sensitive,
         acknowledgment=intent.acknowledgment,
-        protected=intent.kind in PROFILE_ONLY | {"eligibility", "authorization_status"},
-        bankable=intent.kind not in NO_BANK and f.type != FieldType.file,
+        protected=intent.protected or intent.kind in PROTECTED,
+        bankable=intent.kind not in NO_BANK
+        and not intent.no_bank
+        and not intent.protected
+        and f.type != FieldType.file
+        and not GENERIC_LABEL.match(normalize(f.label)),
         user_input_allowed=intent.kind not in PROFILE_ONLY or intent.ambiguity is not None,
-        draftable=intent.kind == "long_form" and f.type in TEXT_TYPES,
+        draftable=intent.kind == "long_form"
+        and f.type in TEXT_TYPES
+        and not intent.no_bank
+        and not intent.protected,
     )
 
 
@@ -166,8 +202,8 @@ def _unresolved(r: Resolution, f: FormField, why: str) -> Resolution:
     return r
 
 
-def resolve_field(f: FormField, ctx: Context) -> Resolution:
-    intent = classify(f)
+def resolve_field(f: FormField, ctx: Context, parent: Resolution | None = None) -> Resolution:
+    intent = _inherit(f, classify(f), parent)
     r = _base(f, intent)
 
     if f.type == FieldType.unsupported:
@@ -180,8 +216,10 @@ def resolve_field(f: FormField, ctx: Context) -> Resolution:
             + ("It is required, so apply on the employer's site." if f.required else "Left blank."),
         )
 
+    if intent.kind == "fact_statement":
+        return _resolve_fact_statement(f, r, ctx, intent)
     if intent.acknowledgment:
-        return _resolve_ack(f, r, ctx)
+        return _resolve_ack(f, r, ctx, intent)
 
     if intent.sensitive:
         return _resolve_sensitive(f, r, ctx)
@@ -243,6 +281,18 @@ def resolve_field(f: FormField, ctx: Context) -> Resolution:
     if r.explanation:
         return _unresolved(r, f, r.explanation)
     return _unresolved(r, f, "No verified fact or saved answer matches this question.")
+
+
+def _inherit(f: FormField, intent: Intent, parent: Resolution | None) -> Intent:
+    """N6: a follow-up shown only for an answer to a sensitive question is itself sensitive;
+    one under a sensitive or protected question is never saved, reused or drafted."""
+    if f.condition is None or parent is None:
+        return intent
+    if parent.sensitive and not intent.sensitive and not intent.acknowledgment:
+        return Intent("demographic", {"topic": "follow_up"}, sensitive=True, no_bank=True)
+    if parent.sensitive or parent.protected:
+        intent.no_bank = True
+    return intent
 
 
 # ---------------------------------------------------------------------------------------------
@@ -557,9 +607,9 @@ FACT_RESOLVERS = {
 # Acknowledgments, sensitive disclosures, documents, answer bank
 
 
-def _resolve_ack(f, r, ctx) -> Resolution:
+def _resolve_ack(f, r, ctx, intent: Intent) -> Resolution:
     r.bankable, r.user_input_allowed = False, False
-    choice = ctx.consents.get(f.key)
+    choice = _ack_choice(ctx, f)
     if choice is None:
         r.status, r.source = "needs_consent", "unresolved"
         r.explanation = (
@@ -574,6 +624,18 @@ def _resolve_ack(f, r, ctx) -> Resolution:
         r.status, r.source = "needs_consent", "consent"
         r.explanation = "You declined, but the employer requires this to apply."
         return r
+    if agree and intent.params.get("attests") == "legal_status":
+        blocked = _status_contradiction(f, r, ctx)
+        if blocked is not None:
+            return blocked
+    if not agree and f.type in CHOICE_TYPES and _statement_shaped(f, intent):
+        # "No" to "I certify that I am ..." would state the opposite fact.
+        r.status, r.source = "blank_optional", "consent"
+        r.explanation = (
+            "You declined: left blank. NoEfforts never answers 'No' to a statement, because "
+            "that would state the opposite fact."
+        )
+        return r
     r.source = "consent"
     if f.type == FieldType.checkbox:
         r.status, r.value = "resolved", {"checked": agree}
@@ -585,13 +647,190 @@ def _resolve_ack(f, r, ctx) -> Resolution:
             r.explanation = "Options are not a clear agree/decline pair; answer it yourself."
             return r
         r.status, r.value, r.display = "resolved", _choice(opt), opt.label
-    else:
-        r.status, r.value, r.display = (
-            "resolved",
-            {"text": "Yes" if agree else "No"},
-            "Yes" if agree else "No",
-        )
+    else:  # unreachable since C3 (statement_input); fails closed instead of typing 'Yes'
+        r.status = "needs_consent"
+        r.explanation = "This field does not take an agree/decline answer."
+        return r
     r.explanation = f"Your explicit choice for this application: {choice}."
+    return r
+
+
+def _ack_choice(ctx, f) -> str | None:
+    """N7: only 'agree' or 'decline' is a choice for a statement; anything else is no choice."""
+    choice = ctx.consents.get(f.key)
+    return choice if choice in ("agree", "decline") else None
+
+
+def _statement_shaped(f, intent: Intent) -> bool:
+    """Worded as a statement about the applicant ("I certify that I am ..."), not as a question
+    ("Do you consent to ...?")."""
+    return bool(intent.params.get("attests")) or bool(
+        _CLAIM.search(_statement_core(normalize(f.label)))
+    )
+
+
+_DEMONYMS = {
+    "us": "US", "u.s": "US", "u.s.": "US", "usa": "US", "u.s.a": "US", "u.s.a.": "US",
+    "american": "US", "canadian": "CA", "british": "GB", "uk": "GB", "irish": "IE",
+    "indian": "IN", "australian": "AU", "new zealand": "NZ", "german": "DE", "french": "FR",
+    "dutch": "NL", "spanish": "ES", "italian": "IT", "swedish": "SE", "swiss": "CH",
+    "singaporean": "SG", "emirati": "AE", "mexican": "MX", "brazilian": "BR", "filipino": "PH",
+    "nigerian": "NG", "south african": "ZA", "japanese": "JP", "polish": "PL",
+    "portuguese": "PT",
+}  # fmt: skip
+_DEMONYM_STATUS = re.compile(
+    r"(?<![a-z])("
+    + "|".join(re.escape(d) for d in sorted(_DEMONYMS, key=len, reverse=True))
+    + r") (citizen|national|permanent resident|green card)"
+)
+_STATUS_OF = re.compile(r"\b(citizen|national|permanent resident) of (?P<place>[a-z .']+)")
+
+
+def _status_countries(label: str) -> set[str]:
+    """The countries a citizenship or permanent-residence statement names: by name, by its
+    adjective ("a US citizen", "a Canadian citizen", "citizen of the U.S."), or a green card."""
+    found = set(find_countries(label))
+    found |= {_DEMONYMS[m.group(1)] for m in _DEMONYM_STATUS.finditer(label)}
+    found |= {c for m in _STATUS_OF.finditer(label) if (c := exact_country(m.group("place")))}
+    if re.search(r"\bgreen card\b", label):
+        found.add("US")
+    return found
+
+
+def _status_contradiction(f, r, ctx) -> Resolution | None:
+    """A citizenship / permanent-residence statement about one named country is never checked
+    while the approved work-authorization facts for that country contradict it; one whose country
+    cannot be told is never checked at all."""
+    label = normalize(f.label)
+    if not _CITIZEN_CLAIM.search(label) or _negation_count(label) or _NEG_EXTRA.search(label):
+        return None
+    cs = sorted(_status_countries(label))
+    if len(cs) != 1 or re.search(r"\b(and|or)\b|/|&", label):  # "a US and Canadian citizen"
+        r.status, r.source = "needs_consent", "consent"
+        r.explanation = (
+            "This states a citizenship or residence status, but NoEfforts cannot tell which one "
+            "country it is about, so it never checks it for you. Decline it if it is optional; if "
+            "it is required and true, apply on the employer's site."
+        )
+        return r
+    row = _work_auth_row(ctx, cs[0])
+    if row is None:
+        return None
+    r.fact_refs = [
+        _ref(row, "work_authorization", "authorized"),
+        _ref(row, "work_authorization", "sponsorship_needed_now"),
+    ]
+    if _tri_to_bool(row.authorized) is False or _tri_to_bool(row.sponsorship_needed_now) is True:
+        r.status, r.source = "needs_consent", "consent"
+        r.explanation = (
+            f"Your profile says you are not authorized to work in {country_name(cs[0])} without "
+            "sponsorship, which contradicts this statement. Decline it, or correct your profile."
+        )
+        return r
+    return None
+
+
+def _statement_truth(intent: Intent, ctx) -> tuple[bool | None, list, str]:
+    """(True | False | None, fact_refs, what) for the fact a parsed statement asserts."""
+    a, c = intent.params.get("asserts"), intent.params.get("country")
+    if a == "reside":
+        p = ctx.profile
+        code = p.residence_country if _approved(p) else None
+        if not code:
+            return None, [], "your approved profile does not say which country you live in"
+        return (
+            code == c,
+            [_ref(p, "profile", "residence_country")],
+            (f"you live in {country_name(code)}"),
+        )
+    row = _work_auth_row(ctx, c)
+    if row is None:
+        return None, [], f"no approved work authorization for {country_name(c)}"
+    if a == "auth":
+        return (
+            _tri_to_bool(row.authorized),
+            [_ref(row, "work_authorization", "authorized")],
+            f"authorized to work in {country_name(c)} = {row.authorized.value}",
+        )
+    now = _tri_to_bool(row.sponsorship_needed_now)
+    fut = _tri_to_bool(row.sponsorship_needed_future)
+    refs = [
+        _ref(row, "work_authorization", "sponsorship_needed_now"),
+        _ref(row, "work_authorization", "sponsorship_needed_future"),
+    ]
+    # "I do not / will not require sponsorship": true under every reading only if both are no.
+    truth = True if (now is False and fut is False) else (False if True in (now, fut) else None)
+    what = (
+        f"needs sponsorship in {country_name(c)} now = {row.sponsorship_needed_now.value}, "
+        f"later = {row.sponsorship_needed_future.value}; a no-sponsorship statement is checked "
+        "only when both are no"
+    )
+    return truth, refs, what
+
+
+def _resolve_fact_statement(f, r, ctx, intent: Intent) -> Resolution:
+    """C3: a statement of a fact the profile holds. Checked (or 'Yes') only when you agree AND
+    your approved profile makes it true; declining never answers 'No'."""
+    r.bankable = r.user_input_allowed = r.draftable = False
+    choice = _ack_choice(ctx, f)
+    box = f.type == FieldType.checkbox
+    if choice == "decline":
+        r.source = "consent"
+        if f.required:
+            r.status = "needs_consent"
+            r.explanation = "You declined, but the employer requires this to apply."
+        elif box:
+            r.status, r.value = "resolved", {"checked": False}
+            r.display = "Left unchecked (you declined)"
+            r.explanation = "Your explicit choice for this application: decline."
+        else:
+            r.status = "blank_optional"
+            r.explanation = (
+                "You declined: left blank. NoEfforts never answers 'No' to a statement, because "
+                "that would state the opposite fact."
+            )
+        return r
+    if intent.ambiguity:
+        r.status, r.source = "needs_consent", ("consent" if choice else "unresolved")
+        r.explanation = (
+            f"This states a fact about you, but {intent.ambiguity}, so NoEfforts cannot check it "
+            "against your profile and never checks it for you. "
+            + (
+                "It is required: if it is true, apply on the employer's site."
+                if f.required
+                else "Choose 'I decline' to leave it unchecked."
+            )
+        )
+        return r
+    if choice is None:
+        r.status, r.source = "needs_consent", "unresolved"
+        r.explanation = (
+            "A statement about a fact in your profile. Choose agree or decline; NoEfforts checks "
+            "it only if you agree and your approved profile makes it true."
+        )
+        return r
+    truth, refs, what = _statement_truth(intent, ctx)
+    r.source, r.fact_refs = "consent", refs
+    if truth is True:
+        if box:
+            r.status, r.value = "resolved", {"checked": True}
+            r.display = "Checked (you agreed; your profile confirms it)"
+        else:
+            opt = map_yes_no(f, True)
+            if opt is None:
+                r.status = "needs_consent"
+                r.explanation = "Options are not a clear yes/no pair; answer it yourself."
+                return r
+            r.status, r.value, r.display = "resolved", _choice(opt), opt.label
+        r.explanation = f"You agreed, and your approved profile makes it true ({what})."
+        return r
+    r.status = "needs_consent"
+    r.explanation = (
+        f"You agreed, but your approved profile does not make this true ({what}). NoEfforts "
+        "never checks a statement your profile does not support: correct your profile, or "
+        "decline it"
+        + (" (it is required, so then apply on the employer's site)." if f.required else ".")
+    )
     return r
 
 
@@ -601,8 +840,8 @@ def _resolve_sensitive(f, r, ctx) -> Resolution:
     proposed, source = None, None
     if inp is not None and validate_value(f, inp.value) is None:
         proposed, source = inp.value, "user_entered"
-    else:
-        hit = _from_bank(f, Resolution(key=f.key, status="", source=""), ctx)
+    elif r.bankable:
+        hit = _from_bank(f, Resolution(key=f.key, status="", source="", sensitive=True), ctx)
         if hit is not None and hit.status == "resolved":
             proposed, source, r.fact_refs = hit.value, "answer_bank", hit.fact_refs
     if choice == "withhold":
@@ -657,6 +896,13 @@ def _from_bank(f: FormField, r: Resolution, ctx: Context) -> Resolution | None:
     entry = ctx.bank.get(question_key(f))
     if entry is None or not _approved(entry):
         return None
+    if getattr(entry, "sensitive", False) and not r.sensitive:
+        return _unresolved(
+            r,
+            f,
+            "You saved an answer to this wording as sensitive; it is not reused for a "
+            "question that is not treated as sensitive. Answer it for this application.",
+        )
     r.fact_refs = [
         {"type": "answer_bank", "id": str(entry.id), "version": entry.version, "field": "value"}
     ]

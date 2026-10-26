@@ -732,3 +732,68 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   `tests/test_package_contract.py`). Only a package with a stale accepted draft gets a new hash
   (its approval is invalidated, as intended). A form with a document question that is not asked
   could not be prepared at all before (a server error), so it had no package to change.
+
+## D49 — A statement of a profile fact needs agree and the fact; legal and sensitive questions only narrow (C3-C5, 2026-10-26)
+
+- **C3, statements.** A single checkbox, or "I certify / I confirm …" wording on a yes/no choice,
+  that states work authorization, a sponsorship need or residence is checked only when the user
+  agrees **and** the approved profile makes it true, in one of a closed set of sentence forms
+  naming exactly one country (`classify._STMT`). Before, any checkbox was checked from consent
+  alone, whatever the facts (an applicant not authorized to work had "I am legally authorized to
+  work in the United States" checked once they clicked agree). The facts used are recorded as
+  fact references, so changing them invalidates the approval (before, the approval survived).
+  Everything else that looks like such a statement (negated, compound, qualified, a region, help
+  text that adds a condition, a sensitive topic) is a checkpoint that agree cannot clear.
+  Declining an optional statement leaves a box unchecked and a choice blank; it never answers
+  "No", which would state the opposite fact. Statements with no profile fact (a licence, being
+  over 18, never convicted) stay consent-only; a citizenship statement contradicted by the
+  approved authorization facts is not checked. Only agree or decline count as a choice for a
+  statement (N7). Statement wording on a text, multi-choice or country-list field is answered by
+  the user, never typed as "Yes".
+- **C4, legal-fact misreads.** Today's eligibility classifier runs unchanged; on a question it
+  would answer from the profile, a veto (`classify._c4_veto`) can only add an ambiguity: not a
+  strict yes/no pair, the country only in help text or not exactly one country (regions, "New
+  Mexico", "Northern Ireland", "... of America", the EU, "other than", "us" as a pronoun), help
+  text that adds a condition, negations (unable, cannot, ineligible), a visa type or status,
+  residence in the same question, mixed time frames, conjunctions; authorization only in a
+  closed allowlist of question forms (`_AUTH_Q`), so "Do you require a work permit to work in
+  Germany?" (answered inverted before), "for any employer", "without restrictions" and similar
+  are asked. Citizenship, visa and residence wording that fell to a reusable "unknown" before is
+  now a protected question the user answers for each application (`legal_status`).
+- **C5, sensitive topics.** Criminal history, health, accommodations, age in any wording,
+  national origin, salary history, government IDs, family status, military service, political or
+  union membership, caste and minority identity are sensitive; so is a question whose help text,
+  options or section is demographic, and a follow-up shown only after an answer to a sensitive
+  question (N6). A sensitive topic with an eligibility fact is one sensitive checkpoint. None of
+  these is saved, reused or drafted (an accommodations text box is no longer draftable, N9).
+  References and generic wording ("If yes, please specify") are never saved.
+- **Only narrowing, verified:** against the previous commit, with the very package loop
+  (`package.resolve_answers`, extracted from `build_content` so tests run it), over 117 fixture
+  forms and test wordings (52,800 rows), every row is identical except stored consents of the
+  wrong kind; over 419 fields × 9 profiles × 4 residences × 5 consents × 3 bank states, with and
+  without a typed answer (452,520 resolutions), nothing that was not answered automatically is
+  answered now, and nothing became newly reusable or draftable. The fixture packages keep their
+  hashes (40/40). Recorded as tests: `tests/test_question_safety.py` (the table, controls pinned
+  to the previous resolver, a property test), `tests/test_classify_vocabulary.py`.
+- **Found by the adversarial review and fixed (each probed against the previous commit):** a
+  checkbox mixing a sensitive topic with citizenship ("at least 18 … and a U.S. citizen") lost its
+  sensitivity and resolved from agree (a regression; it is a sensitive checkpoint again, not
+  reusable); statements in other words ("entitled to work", "can legally work", "eligible for
+  employment", "I do not need a visa") stayed consent-only; the citizenship guard missed "a US
+  citizen", demonyms and green cards (now placed, and never checked when not placed in exactly
+  one country); a "Check this box to confirm …" help text ignored its heading; declining an
+  optional statement choice answered "No"; "Answer for the US." followed by a condition passed as
+  harmless help; sponsorship at other times ("when your OPT expires"), sponsorship held and
+  green-card sponsorship were answered from "needs sponsorship now"; Country or Location fields
+  about work authorization or the job's location were filled from residence; regions written as
+  adjectives, countries given as examples and organisations named after a country were read as
+  that country. Every fix only narrows (verified again: the controls, the 452,520 resolutions and
+  the fixture hashes as above).
+- **The legacy EEO topics keep their bank policy** (a saved answer is proposed, consent needed
+  each time) until C8 decides one policy; changing it would re-hash every package with a gender
+  or veteran question.
+- **Unchanged:** `SCHEMA_VERSION` (2: no content key added; the new fact references reuse the
+  existing types), `RESOLVER_VERSION` (a bump would invalidate every approval for nothing), no
+  migration, no bank row deleted or re-keyed. Packages with a changed row get a new version at
+  their next rebuild and their approval is invalidated; a queued attempt is refused at the gate
+  before anything is disclosed.

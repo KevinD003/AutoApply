@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-23 (preparation: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-26 (preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,61 @@ Last updated: 2026-10-23 (preparation: only resolved answers are sent, a stale a
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Statements, legal facts and sensitive topics (C3-C5, 2026-10-26; local only, no external request)
+
+- **Scope:** steps C3-C5 of the preparation platform. Nothing contacted; no support state,
+  capability level, real destination or Path A change. Decision D49; rules in
+  `docs/answer-policy.md` (rows 1, 1a, 2, 2a, 3-5 and the eligibility rules); evidence:
+  `docs/evidence-matrix.md` ("Preparation: statements, legal facts and sensitive topics").
+- **Found (each reproduced against the previous commit) and fixed:**
+  - a checkbox stating "I am legally authorized to work in the United States" was checked from
+    agree alone for an applicant not authorized; such a statement is now checked only when the
+    approved fact makes it true, and the fact is recorded (editing it invalidates the approval);
+  - "Do you require a work permit to work in Germany?" was answered inverted from the
+    authorization fact; a question about New Mexico was answered with Mexico's facts; "for any
+    employer" was answered yes for an employer-tied visa; a saved answer to "Are you a US
+    citizen?" was reused for every employer; each is now a question the user answers;
+  - criminal history, health, accommodations, current salary and similar were ordinary questions
+    whose answers were saved and reused without consent, and an accommodations text box could be
+    drafted; they are now sensitive, never saved, reused or drafted.
+- **Design:** three independent designs and a judge (a read-only workflow with mapping probes),
+  ported verbatim from the judge's verified prototype; `_classify_eligibility` unchanged byte for
+  byte; `package.resolve_answers` extracted from `build_content` (same loop) so tests run it. One
+  change to the prototype: the place rule names no organisation (any "... of America" except the
+  United States of America).
+- **Unchanged:** `SCHEMA_VERSION` (2), `RESOLVER_VERSION`, migrations, the frontend, the bank
+  rows. Packages with a changed row re-hash at their next rebuild; their approvals are
+  invalidated (a queued attempt is refused at the gate before disclosure).
+- **Found by the adversarial review (4 reviewers; a usage limit stopped two reviewers and every
+  skeptic, so each finding was checked by hand with probes against both commits):** one
+  regression, a checkbox mixing a sensitive topic with citizenship resolving from agree (fixed:
+  sensitive again, not reusable), and ten gaps the change had not closed, all fixed and each a
+  table row (`rv.*`): statements of a right to work in other words; the citizenship guard missing
+  "a US citizen", demonyms and green cards (and never checking one it cannot place); headings
+  over a help-text statement; a declined optional statement choice answering "No"; help text
+  after "Answer for ..."; sponsorship at other times, held sponsorship and green cards; Country
+  and Location fields about work authorization or the job; regions as adjectives, example
+  countries and organisations named after a country.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `tests/test_question_safety.py` (366: 348 table rows, the 46 pinned controls, the property
+    test in 9 profiles, the citizenship placement), `tests/test_classify_vocabulary.py` (94),
+    `tests/test_question_safety_api.py` (6); `test_sending.py`'s resolver stub takes the parent;
+  - verification against the previous commit (scratchpad scripts, not in the repository), before
+    and after the review fixes: 52,800 fixture and test rows identical except wrong-kind stored
+    consents; 308 design rows as specified; 452,520 resolutions with no new automatic answer and
+    nothing newly reusable or draftable; fixture package hashes 40/40; the review's scenarios
+    probed one by one;
+  - full backend (`pytest tests`): before the review fixes 1424 passed, exit 0; on the final tree
+    1486 passed, exit 0;
+  - full Playwright: 36 passed, 2 skipped, exit 0 (the frontend is unchanged);
+  - `ruff check`, `ruff format --check`, `npx tsc --noEmit`, `npm run lint`: clean;
+  - sabotage checks: 40, each caught; four were missed at first (each fix covered only together
+    with another rule, or a pattern with no example of its own) and caught after the tests were
+    strengthened; the source compared identical to the backup afterwards.
+- **CI for the previous change:** **CI #99**
+  ([39894454491](https://github.com/KevinD003/AutoApply/actions/runs/39894454491)) (`35aa0c5`,
+  C1, C2): passed (all four jobs).
 
 ## Preparation guards and only resolved answers sent (C1, C2, 2026-10-23; local only, no external request)
 
@@ -1693,7 +1748,7 @@ employer.
 | Negation, future tense, vague wording, missing country, compound questions | complete for the patterns listed in `docs/answer-policy.md`; anything else becomes a checkpoint | resolver tests |
 | Changed options and wording | complete | `test_answer_bank_reuse_across_jobs_and_wording_changes`, `test_form_option_change_invalidates_saved_choice` |
 | Answer bank with provenance, approval, version, timestamps | partial: an answer is approved when saved (the approval status is nominal); edit-in-place UI not built (delete and re-save); help text, employer-relative and time-bound wording are not yet kept out (C6) | `test_answer_bank_*` |
-| Acknowledgments never auto-checked; sensitive answers need consent | partial: never auto-checked and consent required (resolver test); sensitive detection reads the label only and covers few topics (C5); consent is tied to the question key, not its wording or value (C7); the disclose path has no end-to-end ledger test yet (C8) | resolver + API tests |
+| Acknowledgments never auto-checked; sensitive answers need consent | partial: never auto-checked and consent required; a statement of a profile fact checked only with a true approved fact (C3); sensitive detection covers more topics and the help text, options, section and follow-ups (C5); consent is tied to the question key, not its wording or value (C7); the disclose path has no end-to-end ledger test yet (C8) | `test_question_safety.py`, `test_question_safety_api.py`, resolver + API tests |
 | Missing facts park the application; profile fix resolves | complete | `test_missing_fact_parks_application_and_profile_fix_resolves` |
 | Immutable package versions; approval bound to content hash | complete | `test_package_versions_are_immutable` |
 | Invalidation on fact, document, answer, consent, destination change; unrelated edits keep approval | complete | `test_protected_fact_change_invalidates_approval`, `test_other_material_changes_invalidate_approval` (4 cases), `test_unrelated_fact_change_keeps_approval` |

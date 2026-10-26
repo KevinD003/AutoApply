@@ -1,0 +1,1133 @@
+{
+ "c3.ctrl.18": {
+  "acknowledgment": true,
+  "bankable": false,
+  "display": "Checked (you agreed)",
+  "draftable": false,
+  "explanation": "Your explicit choice for this application: agree.",
+  "fact_refs": [],
+  "intent": "acknowledgment",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "consent",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "checked": true
+  }
+ },
+ "c3.ctrl.18years_box": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": null,
+  "draftable": false,
+  "explanation": "Sensitive disclosure: NoEfforts never infers this. Answer it yourself if you want to.",
+  "fact_refs": [],
+  "intent": "demographic",
+  "key": "q",
+  "protected": false,
+  "sensitive": true,
+  "source": "unresolved",
+  "status": "needs_user",
+  "user_input_allowed": true,
+  "value": null
+ },
+ "c3.ctrl.bg_radio": {
+  "acknowledgment": true,
+  "bankable": false,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Your explicit choice for this application: agree.",
+  "fact_refs": [],
+  "intent": "acknowledgment",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "consent",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c3.ctrl.felony": {
+  "acknowledgment": true,
+  "bankable": false,
+  "display": "Checked (you agreed)",
+  "draftable": false,
+  "explanation": "Your explicit choice for this application: agree.",
+  "fact_refs": [],
+  "intent": "acknowledgment",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "consent",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "checked": true
+  }
+ },
+ "c3.ctrl.gdpr": {
+  "acknowledgment": true,
+  "bankable": false,
+  "display": null,
+  "draftable": false,
+  "explanation": "Legal statement or consent. NoEfforts never checks these for you; read it and choose agree or decline.",
+  "fact_refs": [],
+  "intent": "acknowledgment",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "unresolved",
+  "status": "needs_consent",
+  "user_input_allowed": false,
+  "value": null
+ },
+ "c3.ctrl.no_sponsor_role": {
+  "acknowledgment": true,
+  "bankable": false,
+  "display": "Checked (you agreed)",
+  "draftable": false,
+  "explanation": "Your explicit choice for this application: agree.",
+  "fact_refs": [],
+  "intent": "acknowledgment",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "consent",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "checked": true
+  }
+ },
+ "c3.ctrl.privacy": {
+  "acknowledgment": true,
+  "bankable": false,
+  "display": "Checked (you agreed)",
+  "draftable": false,
+  "explanation": "Your explicit choice for this application: agree.",
+  "fact_refs": [],
+  "intent": "acknowledgment",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "consent",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "checked": true
+  }
+ },
+ "c3.ctrl.rn": {
+  "acknowledgment": true,
+  "bankable": false,
+  "display": "Checked (you agreed)",
+  "draftable": false,
+  "explanation": "Your explicit choice for this application: agree.",
+  "fact_refs": [],
+  "intent": "acknowledgment",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "consent",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "checked": true
+  }
+ },
+ "c3.ctrl.rtw_check": {
+  "acknowledgment": true,
+  "bankable": false,
+  "display": "Checked (you agreed)",
+  "draftable": false,
+  "explanation": "Your explicit choice for this application: agree.",
+  "fact_refs": [],
+  "intent": "acknowledgment",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "consent",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "checked": true
+  }
+ },
+ "c3.ctrl.weekends": {
+  "acknowledgment": true,
+  "bankable": false,
+  "display": "Checked (you agreed)",
+  "draftable": false,
+  "explanation": "Your explicit choice for this application: agree.",
+  "fact_refs": [],
+  "intent": "acknowledgment",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "consent",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "checked": true
+  }
+ },
+ "c4.ctrl.auth_no": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "No",
+  "draftable": false,
+  "explanation": "Profile: authorized to work in United States = no.",
+  "fact_refs": [
+   {
+    "field": "authorized",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "no",
+    "version": 1
+   }
+  ],
+  "intent": "work_authorization",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "No",
+   "option": "0"
+  }
+ },
+ "c4.ctrl.auth_yes": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Profile: authorized to work in United States = yes.",
+  "fact_refs": [
+   {
+    "field": "authorized",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "yes",
+    "version": 1
+   }
+  ],
+  "intent": "work_authorization",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c4.ctrl.basic_sp_full": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "No",
+  "draftable": false,
+  "explanation": "Profile (United States): needs sponsorship now = no, later = no.",
+  "fact_refs": [
+   {
+    "field": "sponsorship_needed_now",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "no",
+    "version": 1
+   },
+   {
+    "field": "sponsorship_needed_future",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "no",
+    "version": 1
+   }
+  ],
+  "intent": "sponsorship",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "No",
+   "option": "0"
+  }
+ },
+ "c4.ctrl.basic_sp_fut": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Profile (United States): needs sponsorship now = no, later = yes.",
+  "fact_refs": [
+   {
+    "field": "sponsorship_needed_now",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "no",
+    "version": 1
+   },
+   {
+    "field": "sponsorship_needed_future",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "yes",
+    "version": 1
+   }
+  ],
+  "intent": "sponsorship",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c4.ctrl.comma_frame": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Profile (United States): needs sponsorship now = no, later = yes.",
+  "fact_refs": [
+   {
+    "field": "sponsorship_needed_now",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "no",
+    "version": 1
+   },
+   {
+    "field": "sponsorship_needed_future",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "yes",
+    "version": 1
+   }
+  ],
+  "intent": "sponsorship",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c4.ctrl.country": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "United States of America",
+  "draftable": false,
+  "explanation": "Your country of residence (US) matched the option 'United States of America'.",
+  "fact_refs": [
+   {
+    "field": "residence_country",
+    "id": "p1",
+    "type": "profile",
+    "value": "US",
+    "version": 1
+   }
+  ],
+  "intent": "residence_country",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "United States of America",
+   "option": "1"
+  }
+ },
+ "c4.ctrl.currently": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "No",
+  "draftable": false,
+  "explanation": "Profile (United States): needs sponsorship now = no.",
+  "fact_refs": [
+   {
+    "field": "sponsorship_needed_now",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "no",
+    "version": 1
+   }
+  ],
+  "intent": "sponsorship",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "No",
+   "option": "0"
+  }
+ },
+ "c4.ctrl.do_or_will": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Profile (United States): needs sponsorship now = no, later = yes.",
+  "fact_refs": [
+   {
+    "field": "sponsorship_needed_now",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "no",
+    "version": 1
+   },
+   {
+    "field": "sponsorship_needed_future",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "yes",
+    "version": 1
+   }
+  ],
+  "intent": "sponsorship",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c4.ctrl.eg_tn": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Profile (United States): needs sponsorship now = no, later = yes.",
+  "fact_refs": [
+   {
+    "field": "sponsorship_needed_now",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "no",
+    "version": 1
+   },
+   {
+    "field": "sponsorship_needed_future",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "yes",
+    "version": 1
+   }
+  ],
+  "intent": "sponsorship",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c4.ctrl.fut_ca": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Profile (Canada): will need sponsorship later = yes.",
+  "fact_refs": [
+   {
+    "field": "sponsorship_needed_future",
+    "id": "wa-CA",
+    "type": "work_authorization",
+    "value": "yes",
+    "version": 1
+   }
+  ],
+  "intent": "sponsorship",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c4.ctrl.heading": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Profile: authorized to work in United States = yes.",
+  "fact_refs": [
+   {
+    "field": "authorized",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "yes",
+    "version": 1
+   }
+  ],
+  "intent": "work_authorization",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c4.ctrl.help_answer_for": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Profile: authorized to work in United States = yes.",
+  "fact_refs": [
+   {
+    "field": "authorized",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "yes",
+    "version": 1
+   }
+  ],
+  "intent": "work_authorization",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c4.ctrl.neg_ca": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Profile (Canada): needs sponsorship now = no. The question is negated, so the answer is inverted.",
+  "fact_refs": [
+   {
+    "field": "sponsorship_needed_now",
+    "id": "wa-CA",
+    "type": "work_authorization",
+    "value": "no",
+    "version": 1
+   }
+  ],
+  "intent": "sponsorship",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c4.ctrl.negated": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "No",
+  "draftable": false,
+  "explanation": "Profile: authorized to work in United States = yes. The question is negated, so the answer is inverted.",
+  "fact_refs": [
+   {
+    "field": "authorized",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "yes",
+    "version": 1
+   }
+  ],
+  "intent": "work_authorization",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "No",
+   "option": "0"
+  }
+ },
+ "c4.ctrl.permitted": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "No",
+  "draftable": false,
+  "explanation": "Profile: authorized to work in United States = no.",
+  "fact_refs": [
+   {
+    "field": "authorized",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "no",
+    "version": 1
+   }
+  ],
+  "intent": "work_authorization",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "No",
+   "option": "0"
+  }
+ },
+ "c4.ctrl.right_uk": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Profile: authorized to work in United Kingdom = yes.",
+  "fact_refs": [
+   {
+    "field": "authorized",
+    "id": "wa-GB",
+    "type": "work_authorization",
+    "value": "yes",
+    "version": 1
+   }
+  ],
+  "intent": "work_authorization",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c4.ctrl.status": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": null,
+  "draftable": false,
+  "explanation": "Needs your answer: Asks for a status category, not yes/no; choose the option that matches your situation.",
+  "fact_refs": [],
+  "intent": "authorization_status",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "unresolved",
+  "status": "needs_user",
+  "user_input_allowed": true,
+  "value": null
+ },
+ "c4.ctrl.wa_us": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Profile: authorized to work in United States = yes.",
+  "fact_refs": [
+   {
+    "field": "authorized",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "yes",
+    "version": 1
+   }
+  ],
+  "intent": "work_authorization",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c4.ctrl.ws_ca": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "No",
+  "draftable": false,
+  "explanation": "Profile (Canada): authorized = yes, needs sponsorship now = yes. 'Without sponsorship' is yes only if both fit.",
+  "fact_refs": [
+   {
+    "field": "authorized",
+    "id": "wa-CA",
+    "type": "work_authorization",
+    "value": "yes",
+    "version": 1
+   },
+   {
+    "field": "sponsorship_needed_now",
+    "id": "wa-CA",
+    "type": "work_authorization",
+    "value": "yes",
+    "version": 1
+   }
+  ],
+  "intent": "authorized_without_sponsorship",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "No",
+   "option": "0"
+  }
+ },
+ "c4.ctrl.yesno_suffix": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Profile: authorized to work in United States = yes.",
+  "fact_refs": [
+   {
+    "field": "authorized",
+    "id": "wa-US",
+    "type": "work_authorization",
+    "value": "yes",
+    "version": 1
+   }
+  ],
+  "intent": "work_authorization",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": false,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c4.miss.trailing_us": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": null,
+  "draftable": false,
+  "explanation": "Needs your answer: Does not say which country it is about.",
+  "fact_refs": [],
+  "intent": "eligibility",
+  "key": "q",
+  "protected": true,
+  "sensitive": false,
+  "source": "unresolved",
+  "status": "needs_user",
+  "user_input_allowed": true,
+  "value": null
+ },
+ "c5.ctrl.10y": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Your saved answer to this exact question.",
+  "fact_refs": [
+   {
+    "field": "value",
+    "id": "b-q",
+    "type": "answer_bank",
+    "version": 1
+   }
+  ],
+  "intent": "unknown",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "answer_bank",
+  "status": "resolved",
+  "user_input_allowed": true,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c5.ctrl.cardiac": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Your saved answer to this exact question.",
+  "fact_refs": [
+   {
+    "field": "value",
+    "id": "b-q",
+    "type": "answer_bank",
+    "version": 1
+   }
+  ],
+  "intent": "unknown",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "answer_bank",
+  "status": "resolved",
+  "user_input_allowed": true,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c5.ctrl.children_exp": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Your saved answer to this exact question.",
+  "fact_refs": [
+   {
+    "field": "value",
+    "id": "b-q",
+    "type": "answer_bank",
+    "version": 1
+   }
+  ],
+  "intent": "unknown",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "answer_bank",
+  "status": "resolved",
+  "user_input_allowed": true,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c5.ctrl.clearance": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": "saved text",
+  "draftable": false,
+  "explanation": "Your saved answer to this exact question.",
+  "fact_refs": [
+   {
+    "field": "value",
+    "id": "b-q",
+    "type": "answer_bank",
+    "version": 1
+   }
+  ],
+  "intent": "unknown",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "answer_bank",
+  "status": "resolved",
+  "user_input_allowed": true,
+  "value": {
+   "text": "saved text"
+  }
+ },
+ "c5.ctrl.dl": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Your saved answer to this exact question.",
+  "fact_refs": [
+   {
+    "field": "value",
+    "id": "b-q",
+    "type": "answer_bank",
+    "version": 1
+   }
+  ],
+  "intent": "unknown",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "answer_bank",
+  "status": "resolved",
+  "user_input_allowed": true,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c5.ctrl.eu_member": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Your saved answer to this exact question.",
+  "fact_refs": [
+   {
+    "field": "value",
+    "id": "b-q",
+    "type": "answer_bank",
+    "version": 1
+   }
+  ],
+  "intent": "unknown",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "answer_bank",
+  "status": "resolved",
+  "user_input_allowed": true,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c5.ctrl.expected_ctc": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": null,
+  "draftable": false,
+  "explanation": "No verified fact or saved answer matches this question.",
+  "fact_refs": [],
+  "intent": "unknown",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "unresolved",
+  "status": "needs_user",
+  "user_input_allowed": true,
+  "value": null
+ },
+ "c5.ctrl.gender_bank": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": "Woman",
+  "draftable": false,
+  "explanation": "Sensitive: confirm you want to disclose this to this employer.",
+  "fact_refs": [
+   {
+    "field": "value",
+    "id": "b-q",
+    "type": "answer_bank",
+    "version": 1
+   }
+  ],
+  "intent": "demographic",
+  "key": "q",
+  "protected": false,
+  "sensitive": true,
+  "source": "answer_bank",
+  "status": "needs_consent",
+  "user_input_allowed": true,
+  "value": {
+   "label": "Woman",
+   "option": "0"
+  }
+ },
+ "c5.ctrl.gender_disclose": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": "Woman",
+  "draftable": false,
+  "explanation": "Sensitive disclosure you chose to include for this application.",
+  "fact_refs": [
+   {
+    "field": "value",
+    "id": "b-q",
+    "type": "answer_bank",
+    "version": 1
+   }
+  ],
+  "intent": "demographic",
+  "key": "q",
+  "protected": false,
+  "sensitive": true,
+  "source": "answer_bank",
+  "status": "resolved",
+  "user_input_allowed": true,
+  "value": {
+   "label": "Woman",
+   "option": "0"
+  }
+ },
+ "c5.ctrl.hear": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": "Referral",
+  "draftable": false,
+  "explanation": "Your saved answer to this exact question.",
+  "fact_refs": [
+   {
+    "field": "value",
+    "id": "b-q",
+    "type": "answer_bank",
+    "version": 1
+   }
+  ],
+  "intent": "unknown",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "answer_bank",
+  "status": "resolved",
+  "user_input_allowed": true,
+  "value": {
+   "label": "Referral",
+   "option": "0"
+  }
+ },
+ "c5.ctrl.jobref": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": "saved text",
+  "draftable": false,
+  "explanation": "Your saved answer to this exact question.",
+  "fact_refs": [
+   {
+    "field": "value",
+    "id": "b-q",
+    "type": "answer_bank",
+    "version": 1
+   }
+  ],
+  "intent": "unknown",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "answer_bank",
+  "status": "resolved",
+  "user_input_allowed": true,
+  "value": {
+   "text": "saved text"
+  }
+ },
+ "c5.ctrl.probationary": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Your saved answer to this exact question.",
+  "fact_refs": [
+   {
+    "field": "value",
+    "id": "b-q",
+    "type": "answer_bank",
+    "version": 1
+   }
+  ],
+  "intent": "unknown",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "answer_bank",
+  "status": "resolved",
+  "user_input_allowed": true,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c5.ctrl.relocation_accom": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": "Yes",
+  "draftable": false,
+  "explanation": "Your saved answer to this exact question.",
+  "fact_refs": [
+   {
+    "field": "value",
+    "id": "b-q",
+    "type": "answer_bank",
+    "version": 1
+   }
+  ],
+  "intent": "unknown",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "answer_bank",
+  "status": "resolved",
+  "user_input_allowed": true,
+  "value": {
+   "label": "Yes",
+   "option": "1"
+  }
+ },
+ "c5.ctrl.salary": {
+  "acknowledgment": false,
+  "bankable": true,
+  "display": "85,000",
+  "draftable": false,
+  "explanation": "Your minimum desired salary (85,000 USD per year).",
+  "fact_refs": [
+   {
+    "field": "salary",
+    "id": "pr1",
+    "type": "preferences",
+    "version": "85000-95000-usd-year"
+   }
+  ],
+  "intent": "salary_expectation",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "deterministic_mapping",
+  "status": "resolved",
+  "user_input_allowed": true,
+  "value": {
+   "number": 85000.0
+  }
+ },
+ "c5.ctrl.why": {
+  "acknowledgment": false,
+  "bankable": false,
+  "display": null,
+  "draftable": true,
+  "explanation": "Long-form answer: write it yourself, or request a draft if AI drafting is configured.",
+  "fact_refs": [],
+  "intent": "long_form",
+  "key": "q",
+  "protected": false,
+  "sensitive": false,
+  "source": "unresolved",
+  "status": "blank_optional",
+  "user_input_allowed": true,
+  "value": null
+ }
+}

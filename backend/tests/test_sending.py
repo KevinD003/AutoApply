@@ -170,8 +170,8 @@ def test_the_builder_clears_a_blank_row_whatever_the_resolver_returns(api, recei
     back from the resolver with a value is given none (and the package still builds)."""
     real = pk.resolve_field
 
-    def leaky(f, ctx):
-        r = real(f, ctx)
+    def leaky(f, ctx, parent=None):
+        r = real(f, ctx, parent)
         if r.status == "blank_optional":
             r.value, r.display = {"text": MARKER}, MARKER
         return r

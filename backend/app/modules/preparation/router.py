@@ -448,6 +448,11 @@ def put_answer(
         raise bad_request(str(e)) from None
     _upsert_input(db, app, "answer", key, value)
     if body.save_to_bank:
+        if not entry["bankable"] and (entry["sensitive"] or entry["protected"]):
+            raise bad_request(
+                "Sensitive and protected answers are never saved for reuse; answer them for each "
+                "application."
+            )
         if not entry["bankable"]:
             raise bad_request("This answer depends on the specific job and cannot be reused.")
         _save_to_bank(db, user, app, f, value, sensitive=entry["sensitive"])

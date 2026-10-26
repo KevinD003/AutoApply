@@ -37,7 +37,7 @@ from app.modules.preparation.models import (
     JobForm,
     PackageApproval,
 )
-from app.modules.preparation.resolver import Context, resolve_field
+from app.modules.preparation.resolver import Context, Resolution, resolve_field
 from app.modules.profiles.models import CandidateProfile, JobPreferences, WorkAuthorization
 
 # Bumped to 2 (Phase C hardening): the manifest now binds owner, destination origin and submit
@@ -136,18 +136,18 @@ def _condition_met(cond, value: dict | None) -> bool:
     return bool(chosen & set(cond.any_of))
 
 
-def build_content(db: Session, app: Application) -> dict:
-    job = db.get(Job, app.job_id)
-    form = latest_form(db, job.id)
-    if form is None:
-        raise NoForm("No application form is attached to this job yet.")
-    schema = FormSchema.model_validate(form.schema)
-    ctx = load_context(db, app)
-    answers, unresolved, errors = [], [], []
+def resolve_answers(fields: list, ctx: Context) -> list[tuple]:
+    """Each field with its resolution, in form order: the resolver, then what the answers
+    above decide about a conditional question. Pure (no database), so the tests run the very
+    loop that builds packages."""
     values: dict[str, dict | None] = {}
     statuses: dict[str, str] = {}
-    for f in schema.fields:
-        r = resolve_field(f, ctx)
+    resolved: dict[str, Resolution] = {}
+    out = []
+    for f in fields:
+        # A follow-up takes its trigger's sensitivity (N6): see resolver._inherit.
+        parent = resolved.get(f.condition.key) if f.condition else None
+        r = resolve_field(f, ctx, parent=parent)
         trigger = statuses.get(f.condition.key) if f.condition else None
         if f.condition and f.condition.key not in statuses:
             # Depends on a question that is missing, later in the form, or circular: when it
@@ -181,6 +181,20 @@ def build_content(db: Session, app: Application) -> dict:
             r.value = r.display = None
         values[f.key] = r.value
         statuses[f.key] = r.status
+        resolved[f.key] = r
+        out.append((f, r))
+    return out
+
+
+def build_content(db: Session, app: Application) -> dict:
+    job = db.get(Job, app.job_id)
+    form = latest_form(db, job.id)
+    if form is None:
+        raise NoForm("No application form is attached to this job yet.")
+    schema = FormSchema.model_validate(form.schema)
+    ctx = load_context(db, app)
+    answers, unresolved, errors = [], [], []
+    for f, r in resolve_answers(schema.fields, ctx):
         answers.append(
             {
                 "key": f.key,

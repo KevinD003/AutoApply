@@ -8,11 +8,13 @@ calls an LLM; drafting is a separate, explicit, optional action.
 
 | # | Source (shown in the review) | When it applies |
 |---|---|---|
-| 1 | **Your consent choice** | Legal statements, acknowledgments, consents (privacy notices, certifications, background checks, any single checkbox). Never checked automatically; you choose agree or decline for each application. A declined required statement blocks approval. |
-| 2 | **Sensitive disclosure** | Gender, race/ethnicity, veteran, disability, sexual orientation, religion, age/date of birth, marital status. Needs an answer (yours, or a saved answer to the same wording) **and** a per-application "include this answer" choice. Never inferred. |
-| 3 | **Profile fact** / **Mapped from profile** | Names, contact, residence, links, per-country work authorization and sponsorship, relocation, salary. Only *approved* facts are used. "Mapped" means the fact was matched to one of the form's own options (e.g. country → "United States of America", yes → "Yes"). |
-| 4 | **Your answer** / **Accepted draft** | Something you answered for this application. Not allowed for protected facts that your profile already answers: fix the profile so every application stays consistent. |
-| 5 | **Saved answer** | An answer you chose to reuse, for the *exact same normalized wording* and answer shape. For choice questions, the option list must be identical to the one you saw when saving. |
+| 1 | **Your consent choice** | Legal statements, acknowledgments and consents that state nothing your profile records: privacy notices, terms, certifications such as a licence, background-check consents, other single checkboxes. Never checked automatically: you choose agree or decline for each application. A declined required statement blocks approval, and so does an unanswered one, optional or not. Only agree or decline count; a stored choice of another kind counts as no choice. A statement that you are a citizen or permanent resident of a country is never checked while your approved work-authorization facts for that country say you are not authorized there, or need sponsorship now, nor when NoEfforts cannot tell which one country it is about (it reads the country's name, "a US / Canadian … citizen", "citizen of …" and a green card). Declining an optional statement worded about you ("I certify that I am …") leaves it blank; it is never answered "No". Statement wording on a field that is not one box or a yes/no choice (text, a list of countries, several boxes) is answered by you, never with "Yes". |
+| 1a | **Your consent choice, checked against your profile** | A box, or a yes/no "I certify / I confirm …" choice, that states your work authorization, your sponsorship need or your country of residence in exactly one of these forms: "I am (legally) authorized / eligible / permitted to work in ‹one country›"; "I have the right to work in ‹one country›"; "I do not / will not require (visa) sponsorship … in ‹one country›", with or without "now or in the future"; "I live / reside / am based in ‹one country›"; help text "Check this box to confirm you are …" under a short heading. It is checked (or given its yes option) only if you agree **and** your approved profile makes it true; a no-sponsorship statement needs both "now" and "later" to be no. The facts used are recorded, so editing them invalidates the approval. A fact that is no, unknown, not applicable or not approved gives a checkpoint, never a check. Never checked: a negated statement, one combined with another statement, one qualified ("for any employer"), one naming a region or no country, one whose help text adds a condition, one mixed with a sensitive topic: decline it if optional; if required, apply on the employer's site. Declining leaves an optional box unchecked and an optional choice blank; it is never answered "No". |
+| 2 | **Sensitive disclosure** | Gender, race/ethnicity, veteran, disability, sexual orientation, religion, age/date of birth, marital status; also criminal history; health, pregnancy, vaccination and medication; accommodations; age in any wording (over 18, year of birth, DOB); national origin and place of birth; salary history and current pay; government ID numbers; family status; military service; political or union membership and caste; minority or Indigenous identity. Found in the wording; in help text (not equal-opportunity boilerplate); in demographic option lists; in a self-identification or EEO section; and on a follow-up shown only after an answer to a sensitive question. Needs an answer **and** a per-application "include this answer" choice. Never inferred. A saved answer is proposed (still needing your choice) only for the original topics, found in the wording itself; the topics added in C5, and sensitivity found only in help text, options, a section or a parent question, are never saved, reused or drafted. A sensitive topic combined with authorization, sponsorship, citizenship or residence is one sensitive checkpoint, never answered from your facts. |
+| 2a | **Your answer, never saved** | Citizenship, nationality, visa or immigration status (H-1B, OPT, green card), residence asked as a yes/no or open question, eligibility wording NoEfforts does not map, authorization or sponsorship questions it will not answer from your facts (rules below), references or contacting an employer. You answer them for this application; they are never saved, reused or drafted. Answers saved earlier for such wording are kept but no longer used. |
+| 3 | **Profile fact** / **Mapped from profile** | Names, contact, residence, links, per-country work authorization and sponsorship, relocation, salary. Only *approved* facts are used. "Mapped" means the fact was matched to one of the form's own options (e.g. country → "United States of America", yes → "Yes"). A bare Country / City / State / Location field whose section or help text is about something else (education, an employer, an emergency contact, a preference, citizenship, birth, work authorization, a visa, the job's own location) is asked, not filled. |
+| 4 | **Your answer** / **Accepted draft** | Something you answered for this application. Not allowed for protected facts that your profile already answers: fix the profile so every application stays consistent. Allowed, and never saved, for the row 2a questions. |
+| 5 | **Saved answer** | An answer you chose to reuse, for the *exact same normalized wording* and answer shape. For choice questions, the option list must be identical to the one you saw when saving. Never for the row 1a and 2a questions, the topics added to row 2, follow-ups of a sensitive or protected question, or wording that does not identify the question on its own ("If yes, please specify", "Please select one", "Other", "Comments", "Additional information", "Status"…). A saved answer marked sensitive never fills a question that is not treated as sensitive. |
 | 6 | **Unresolved** | Everything else. Required → blocks approval. Optional → left blank (nothing is kept or sent). An accepted draft whose facts changed blocks approval even when optional. |
 
 ## Rules that prevent wrong answers
@@ -44,6 +46,45 @@ calls an LLM; drafting is a separate, explicit, optional action.
 - **Job-specific answers are never saved for reuse**: authorization/sponsorship/residence,
   location preferences, eligibility questions that depend on the job, acknowledgments,
   long-form answers and documents.
+
+- **Authorization wording.** A question is answered from the profile only in these forms: "Are
+  you (currently) (legally) authorized / eligible / permitted to work (in ‹one country›)"; "…
+  legally able to work …"; "Do you have the (legal) right to work …"; "Do you have (valid) work
+  authorization in/for ‹country›"; optionally after "Work authorization:" or with a trailing
+  "(Yes/No)"; plus "Are you not … authorized …", which is inverted. Anything else is asked: a
+  permit you need, an employer, shifts, a time, a restriction, a second question.
+- **A visa, H-1B, OPT, green card or citizenship is not a sponsorship need** → ask.
+- **Countries must be named exactly once**, in the question, or in help text of the form
+  "Answer for ‹country›". Asked: regions and places containing a country name (Latin or North
+  America, Northern Ireland, New Mexico, New England, Puerto Rico, an organisation "… of
+  America"), the EU, APAC or EMEA, "other than / outside / except / besides / including / abroad
+  / any other", and "us" that may be the pronoun.
+- **Help text** that adds a time frame, condition, answering rule, status word or another
+  country → ask.
+- **Sponsorship**: asked when "and" or "or" remains after removing "now or in the future" and
+  "(e.g. …)" examples; when both now and later cues appear outside that frame; for any other
+  time ("when your OPT expires", "after graduation", "in 2027", "within two years"); for a visa
+  type, status or transfer; for sponsorship you have or a green card; with residence in the same
+  question. "Authorized … without sponsorship" with any future cue → ask.
+- **A country only as an example** ("a Latin American country such as Mexico", "the DACH region
+  (e.g. Germany)") → ask. Help text "Answer for ‹country›" is harmless only when it says exactly
+  that.
+- **Statements in other words** ("entitled / allowed / permitted to work", "can legally work",
+  "eligible for employment", "I do not need a visa") are statements of a profile fact: checked
+  only through the closed forms of row 1a, otherwise a checkpoint. A heading over a "Check this
+  box to confirm …" help text that adds sponsorship, a status, a negation, a place or a sensitive
+  topic is a checkpoint.
+- **Options must fit**: for eligibility, exactly two options, one yes and one no; anything else
+  → ask.
+- **Free-text eligibility**: authorization or sponsorship asked in a text, number, date or
+  multi-choice field → ask, never "Yes".
+- **Negation** also covers unable, cannot, ineligible, unauthorized, lack, neither and nor.
+- **Never saved** also covers statements, legal-status questions, references, the topics added
+  to row 2, generic wording, and follow-ups of sensitive or protected questions.
+- **Drafting** is never offered for sensitive or legal-status questions or their follow-ups.
+- These rules only narrow (D49): verified once against the previous commit, no question that
+  was not answered automatically before is answered now, and nothing became newly reusable or
+  draftable.
 
 ## Packages and approval
 
