@@ -1,8 +1,140 @@
 # Freehire — research notes
 
 Integration status (2026-10-21): `docs/discovery.md`. Built to the 2026-10-19 contract below and
-tested only against a local fixture; no live call is enabled. The documentation review of
-2026-10-21 (next section) supersedes the earlier notes wherever they differ; see D34.
+tested only against a local fixture; no live call is enabled. The re-check of 2026-10-26 (next
+section) updates the documentation review of 2026-10-21 (the section after it), which supersedes
+the earlier notes wherever they differ; see D34.
+
+## Re-check, 2026-10-26 (public pages, OpenAPI document and source only)
+
+**Scope and method.** The same five public pages as on 2026-10-21, fetched live through
+Firecrawl (`maxAge: 0`) on 2026-10-26 at about 23:53 UTC, all with status 200. The upstream
+repository was refreshed with a shallow `git fetch`, and files were read with `git show`; no
+Freehire code was run. The captures are kept outside this repository.
+
+- **Not requested:** any `/api/v1` endpoint (including `/plans` and `/status`),
+  `/docs/api/internal`, `/.well-known/ojcp.json`, any login or key.
+- **Upstream:** `origin/main` is `ab47628c26cb3b7c70ada0ae0138a8de5155266b` (2026-10-26).
+  The four HTML pages (terms, Jobs API, pricing, API reference) carry
+  `sentry-release=ab47628c…` in their metadata; the OpenAPI document is served as JSON and
+  carries none. So the production web front end runs the commit that was read (CONFIRMED);
+  that the Go API, which has its own Sentry project and was not contacted, runs it too is a
+  HYPOTHESIS. The shallow clone's history between `ec6e65f7` and `ab47628c` is not available;
+  only the trees were compared. The earlier notes below stay pinned to `ec6e65f7`.
+- **Same caveat as 2026-10-21:** whether the rendered docs page made background requests is
+  not known. NoEfforts sent none.
+
+Labels: **CONFIRMED** (a fetched page or the source shows it), **HYPOTHESIS**, **UNKNOWN**.
+
+### What changed since 2026-10-21
+
+| Item | 2026-10-21 | 2026-10-26 | Label |
+|---|---|---|---|
+| Terms date | "Last updated: October 19, 2026" | "Last updated: October 26, 2026". The third revision in ten days (October 16, 19 and 26) | CONFIRMED |
+| Retention when a plan ends | "stop showing the postings and delete what you stored within 30 days" | "When the plan ends, stop showing the postings in your product; you may keep what you stored for your own internal analysis." **The 30-day deletion duty is gone** | CONFIRMED |
+| Derived data and models (plan holders) | not addressed | History may be kept "for analysis over time" and used "to build, train and evaluate statistical or machine-learning models"; what is derived "stays yours … as long as it does not reproduce the postings themselves" | CONFIRMED (new) |
+| Attribution, no resale, keyless personal use, upstream rights | as quoted below | unchanged | CONFIRMED |
+| Keyless rate figure | not stated in the reference or on the pages (only "limited per address"); 600/min had been seen only in the source at `ec6e65f7` | **"The read API is free without a key, up to 600 requests a minute per address."** on the Jobs API and pricing pages. The API reference still gives no figure | CONFIRMED |
+| Plans | API $29/month, 1,200 req/min; Data $99/month, 6,000 req/min | unchanged; bulk catalogue files are still "coming soon", and the change feed is still "the next thing we are building" | CONFIRMED |
+| Consumer plans | Pro card price "—" (the page description already said "$5 a month"); "Unattended applications 3 / day" | Pro $5/month on the card: "Chrome and Firefox extension that fills applications for you" and "Auto-apply in the background, within a daily limit"; the allowance, now labelled "Background auto-apply", is still 3 a day | CONFIRMED |
+| OpenAPI | 3.1.0, `info.version` 1.0.0, 123 paths | 3.1.0, 1.0.0, **128 paths**. New: `GET /jobs/{slug}/direct-apply`, `GET /companies/{slug}/closed-jobs`, `GET /companies/{slug}/hiring`, `POST /assistant/sessions/{id}/sync`, `GET /me/referrals/cv-options`. The job operations NoEfforts uses are byte-identical | CONFIRMED |
+| Code licence | MIT | unchanged (empty diff). It covers the code, not the postings | CONFIRMED |
+
+### Rate limits
+
+| Layer | What it says | Label |
+|---|---|---|
+| API reference | "limited per address"; `GET /plans` reports `api_limits`; `X-RateLimit-*` headers; `429` with `Retry-After` | CONFIRMED |
+| Jobs API and pricing pages | 600/min keyless per address; the figure is rendered from `GET /plans`, which would add "and N a day" if a daily cap were set | CONFIRMED |
+| Code, default mode | 600/min for cheap reads and 300/min for `/agent/jobs/search`, per IP, no daily cap | CONFIRMED |
+| Code, **pending strict mode** | With `PUBLIC_ANON_LIMITS=strict`, each anonymous IP gets **120/min and 2,000/day**, one budget shared by the read and agent-search routes (the ChatGPT app's MCP surfaces keep the old per-minute budget). The rollout plan's last step, "set `strict`", is unchecked. An environment switch turns it on, with no code or documentation change. When is UNKNOWN; it was off on 2026-10-26 (HYPOTHESIS: the pages show 600 and no daily cap) | CONFIRMED (code) |
+| `X-RateLimit-Reset` | unit undocumented | whole seconds until reset, rounded up, in code; still undocumented | CONFIRMED (code) |
+
+So no figure is hard-coded: NoEfforts' header-only pacing (`docs/discovery.md`, "Rate limits")
+already handles a switch to the strict mode.
+
+### Job object: what the source shows beyond the documentation
+
+- **`url` is decorated.** A non-empty `url` always carries `utm_source=freehire.me`, overwriting a
+  `utm_source` the source published, and the query is re-encoded, so parameter order and
+  encoding can differ from the source's URL. Some single-company adapters append Freehire's
+  own referral code when configured (whether it is set in production is UNKNOWN). CONFIRMED
+  (code); not in the reference.
+- **`url` is not always the employer's page.** For about 100 aggregator sources it is "a
+  tracking redirect on its own domain", and for one ad-network source a billing landing page.
+  Which sources are aggregators exists only in code. CONFIRMED (code).
+- **There is no apply URL on the job object.** `apply_url` exists only on `/copies` items and
+  is the same tagged `url`. CONFIRMED.
+- **`direct_apply`** (new): such a vacancy takes applications on Freehire and its `url` is
+  empty. Applying there would be submitting on Freehire, which NoEfforts never does (D34).
+  CONFIRMED.
+- **Undocumented fields served:** `last_seen_at` (stamped on every crawl; jobs unseen for 48
+  hours are closed, with documented exceptions), `ghost` (user reports), `auto_apply_available`
+  (true for four ATS sources, "never a guarantee"), `metros`. Not used as facts. CONFIRMED (code).
+- **`enrichment.visa_sponsorship`** is model-extracted and absent when not stated. Seven other
+  enrichment fields (`employment_type`, `seniority`, `category`, `english_level`,
+  `education_level`, `experience_years_min`, `posting_language`) are overwritten from
+  deterministic dictionary columns on read. `summary` is model-written, `requirements` is the
+  model's list whenever it gave one, and `relocation`, `timezone_note`, `domains`,
+  `company_type` and `company_size` stay model output. The salary fields are model output unless
+  the source's structured salary or a manual salary replaces them at write time. CONFIRMED
+  (code); reliability UNKNOWN. NoEfforts already stores it as "provider enrichment", tri-state.
+- **`reality`** is computed on read and changes every day (`age_days`), and the counters
+  change with traffic. NoEfforts fingerprints the whole raw record
+  (`backend/app/modules/discovery/provider.py`), so nearly every refresh would count as
+  "updated", often with no changed field. CONFIRMED from both codebases; the effect is
+  unmeasured.
+- **Which ATS the apply link is on:** the documented public API has no field that reliably
+  names it. `source` names the aggregator for aggregator sources; `/jobs/find?url=` returns
+  only a boolean `ats_board`. D35's rule (identify the ATS from the URL's known hostnames,
+  never from the source) stays necessary, after the tracking and referral parameters are
+  ignored. CONFIRMED.
+- **`/jobs/{slug}/apply-form`** is a reading preview, not a fill schema: no control ids,
+  options, consent text or capture time. D35's "a job source never supplies a form" stays
+  correct. CONFIRMED.
+
+### Still present in Freehire's source and unsafe to reuse (at `ab47628c`)
+
+Reported, not recommended: TLS-fingerprint spoofing (`bogdanfinn/tls-client`), LinkedIn
+harvesting commands, stealth browser flags on its auto-apply, and a cloud browser-agent
+submission path. Its own comments say its in-house browser fill was switched off on
+2026-10-25 because it "lost Greenhouse's invisible reCAPTCHA as often as it passed it", and
+that Lever is excluded because "an invisible hCaptcha defeats it about seven attempts in
+eight". These are Freehire's unverified claims. Some postings may come through these paths, a
+provenance risk NoEfforts would inherit (HYPOTHESIS: which postings is UNKNOWN).
+
+### Blockers after the re-check
+
+**A personal-prototype live read** (one owner, their own search):
+
+1. No approval exists; it must name the exact query, page limit, time window and
+   data-retention statement (D34).
+2. The client refuses non-fixture base URLs; a reviewed code change is needed (D33).
+3. **An owner statement on the competitor rule.** CLAUDE.md forbids "automated access to
+   competitor dashboards/APIs". Freehire sells auto-apply. Its paid-plan auto-apply endpoint
+   is in the 2026-10-19 notes, and Pro already listed "Unattended applications 3 / day" on
+   2026-10-21. New on 2026-10-26 are the $5.00/month price on the card and an extension that
+   "fills applications for you" (above). D7, D33 and D34 class Freehire as a discovery
+   provider using a documented, licensed public API; whether that holds under the competitor
+   rule is the owner's call and is not inferred.
+4. The retention statement is the owner's choice: the terms say nothing about storage without
+   a plan.
+5. Whether this sandbox can reach freehire.me is UNKNOWN (D7 recorded a proxy 403).
+
+**Multi-user or commercial use** additionally needs an API plan (none is held); written
+answers from Freehire (do tracker jobs created from postings count as "showing the postings"
+after a plan ends; do per-user copies count as "your own product"; storage before a plan);
+"stop showing on lapse" built (the 30-day deletion is no longer required); a legal review of
+upstream rights and provenance (Freehire's own per-source terms check is still open); pacing
+against one shared account budget; and the competitor-rule decision.
+
+### Earlier statements this re-check corrects
+
+- The terms date (October 19) and the quoted 30-day deletion below are superseded by the
+  October 26 terms.
+- "No keyless figure is documented" below remains true of the API reference only; the pages
+  now state 600/min, and the code holds the stricter pending mode.
+- "`apply_url` on the job object: not documented" below: the code shows there is none.
 
 ## Documentation review, 2026-10-21 (public documentation and terms only)
 

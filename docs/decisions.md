@@ -404,6 +404,30 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Status unchanged:** a live API call remains unapproved. A future live test needs its own
   approval with the exact query, page limit, time window and data-retention statement.
   Freehire stays a discovery source only, never an execution destination.
+- **Re-checked 2026-10-26** (public pages, OpenAPI document and source at `ab47628c`;
+  `docs/research/freehire.md`, "Re-check, 2026-10-26"; no API endpoint was called):
+  - **Terms dated October 26, 2026.** The 30-day deletion after a plan ends is gone: "stop
+    showing the postings in your product; you may keep what you stored for your own internal
+    analysis". Item 4's retention therefore becomes **stop showing Freehire postings when a
+    plan lapses**, still not implemented. Attribution, no resale and the keyless
+    personal-use rule are unchanged.
+  - **Rate limits:** the Jobs API and pricing pages now state 600 requests a minute per
+    address without a key, and Freehire's code holds a pending strict mode (120/min and
+    2,000/day) that an environment switch turns on. Pacing stays header-only; no figure is
+    configured.
+  - **Data quality, not yet handled:** for aggregator sources `url` is a tracking redirect
+    rather than the employer's page; direct-apply jobs have an empty `url`; some sources append
+    a referral code when configured (whether it is set in production is UNKNOWN), and not every
+    form of it is dropped before deduplication; whole-record fingerprints would make nearly
+    every refresh look "updated" (unmeasured). The `utm_source=freehire.me` tag on every
+    non-empty `url` is already dropped with the other `utm_*` parameters before deduplication
+    and ATS identification. Recorded in `docs/discovery.md` "Limitations".
+  - **Owner question (not raised before):** Freehire sells auto-apply (Pro, $5/month: 3
+    background applications a day, already on the pricing page on 2026-10-21; since 2026-10-26
+    the page also lists an extension that fills applications). The 2026-10-19 notes already
+    record its paid `POST /jobs/:slug/auto-apply`. Whether it still counts as a discovery
+    provider under CLAUDE.md's rule against "automated access to competitor dashboards/APIs"
+    needs an explicit owner statement before any live read. Not inferred.
 
 ## D35 — Route by ATS identity first; traits apart from capabilities; Workday planned only
 - **ATS identity first:** routing identifies the job's ATS from known hostnames before choosing
@@ -895,3 +919,51 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
     said the profile holds citizenship (it does not).
   - Accepted, not changed: some stable wordings are refused (over-narrowing only costs a
     re-answer); refuted: two documentation items and one explanation-wording item.
+
+## D52 — Freehire first for discovery; execution stays separate and earns its own evidence (2026-10-27)
+- **Direction (owner):** Freehire is the primary job-discovery and job-information source.
+  The workflow is discovery → normalized records → dedup and eligibility → matching and
+  ranking → preparation and review → ATS-specific execution → confirmation and tracking
+  (`docs/freehire-first-architecture.md`).
+- **Boundaries kept:**
+  - **Discovery is not execution.** A Freehire record never proves that an ATS form is
+    understood, supported or safe to submit. It never supplies a form (D35), never names the
+    route (the ATS is identified from known hostnames and paths of the job's URL, Freehire's
+    `url`; a Freehire record has no apply URL, D35), and is never an execution destination
+    (D34).
+  - **Only a user action** turns a discovered job into an application. Today a malformed
+    record is skipped; an incomplete one, or one closed before it was linked, stays unlinked
+    with a manual-handoff route; an unsupported destination is a manual handoff. A record
+    closed or gone after linking, a suspicious one and an ambiguous one (more than one dedup
+    candidate, so a new job is created) are not stopped yet: the user can still prepare and
+    approve them (residual gap, `docs/freehire-first-architecture.md` §4.1). S3 (not started)
+    adds a refusal at approval for a job its source says is closed, or one the user excluded,
+    and a possible-duplicate signal; suspicious records have no detection.
+  - **Job text is untrusted data:** plain text, truncated, never instructions, and it never
+    decides which approved facts are used.
+  - **Route order** per job (D35, `route_for_job`): a planned-only ATS, a real destination
+    or production, or no captured form is a manual handoff; a required control NoEfforts
+    cannot fill is a checkpoint before any disclosure; otherwise an authorized API connector,
+    then a supported browser adapter, then a manual handoff. Provider order for adapters:
+    Greenhouse, then Lever, then Workday.
+  - **Unchanged:** the live-pilot gate, the rehearsal prerequisite, per-application approval,
+    admission stages, lock ordering, quarantine and no blind retry. No support state is
+    raised from legacy code, public documentation or fixtures.
+- **Not authorized by this decision:** a live or multi-user Freehire integration, any live
+  application, any reading of the owner's inbox or historical application data, or sending
+  applicant information to an external AI service outside the product's data-processing
+  configuration and consent. Each needs its own approval, and the exact blockers are listed
+  elsewhere: for a live Freehire read, `docs/freehire-first-architecture.md` §11 (with D34 and
+  the re-check above); for a live application, `docs/live-pilot-gate.md`; for inbox and
+  historical data, `docs/outcome-diagnostics.md` §2; for an external drafting provider, steps
+  C15 and L4 in `docs/implementation-plan.md`.
+- **Legacy project (`autojob-greenhouse`):** reviewed read-only as untrusted input
+  (`docs/legacy-audit.md`). Its recollected results (Greenhouse "approximately 85-90%",
+  500-700 applications, confirmation emails, no interviews) are not verified reliability
+  metrics and are never presented as success rates. No code, data, credentials or sessions
+  were copied; its lessons become fixtures and tests (`docs/reliability-test-plan.md`,
+  `docs/outcome-diagnostics.md`), never imported records.
+- **Rejected:** treating `auto_apply_available`, `source` or Freehire's apply-form preview as
+  evidence of support; ranking or eligibility from Freehire's model-extracted fields as facts;
+  porting the legacy answer engine (guessing, fuzzy reuse, LLM fallback for basic questions).
+- **Plan:** `docs/implementation-plan.md` (slices S1-S7 and steps C7-C18). S1 (C6, D51) is done.

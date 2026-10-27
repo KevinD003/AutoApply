@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-27 (preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-27 (documentation: the Freehire-first review published, with the Freehire re-check of 2026-10-26, an amendment to D34 and D52; earlier: preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,41 @@ Last updated: 2026-10-27 (preparation: a saved answer is reused only where it st
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Freehire-first review published; Freehire re-check recorded (2026-10-27; documentation only)
+
+- **Scope:** the deliverables of the Freehire-first and legacy-repository review, published as
+  `docs/legacy-audit.md` (A), `docs/freehire-first-architecture.md` (B),
+  `docs/reliability-test-plan.md` (C), `docs/outcome-diagnostics.md` (D) and
+  `docs/implementation-plan.md` (E); the Freehire re-check of 2026-10-26 in
+  `docs/research/freehire.md` and `docs/discovery.md`; an amendment to D34; D52 (Freehire first
+  for discovery, execution kept separate). No code, support state, capability level, real
+  destination, live permission or pilot-gate change.
+- **External access, all read-only and public:** on 2026-10-26 five freehire.me pages (terms,
+  Jobs API, pricing, API reference, OpenAPI document) and a shallow `git fetch` of Freehire's
+  public source; for this review a shallow clone of the same public repository, read with
+  `git show` only. No Freehire API endpoint, login or key; no Freehire code run. The legacy
+  repository was read only: nothing was copied from it and no record imported; its recollected
+  results are described as unverified, never as success rates.
+- **Review of the published text:** an adversarial review (3 reviewers: Freehire facts against
+  the page captures and the source; the decision and plan against the owner's brief and the
+  code; consistency of line references, cross-references and cited tests), each finding checked
+  by a skeptic. 33 confirmed and fixed, among them: enrichment fields overstated as
+  deterministic; the strict anonymous budget is per IP, not shared by all callers; the
+  `utm_source` tag is already dropped before deduplication and ATS identification (a referral
+  code is not); auto-apply was not new on 2026-10-26; D52 had claimed stale, suspicious and
+  ambiguous records already stop (they do not; S3) and had put the checkpoint after the API and
+  browser routes (D35 decides it first); C6 described as closing what it narrows; letter
+  abbreviations of the drafts and line references off by one. 8 refuted.
+- **Tests run locally (cloud sandbox, PostgreSQL 16):** every test file that reads `docs/`
+  (`test_doc_references.py`, `test_repo_hygiene.py`, `test_audit_inventory.py`, `test_lever.py`,
+  `test_package_contract.py`, `test_path_a.py`, `test_pilot_readiness.py`,
+  `test_provider_admission.py`, `test_provider_contracts.py`, `test_question_safety.py`,
+  `test_reason_codes.py`, `test_rehearsal_codes.py`): 653 passed, exit 0. The full suites were
+  not re-run: no code changed since `b6e4cf4` (2616 and 36 passed there, CI #102 green).
+- **CI for the previous change:** **CI #102**
+  ([40444320612](https://github.com/KevinD003/AutoApply/actions/runs/40444320612)) (`b6e4cf4`,
+  C6): passed (all four jobs).
 
 ## Bank scope: a saved answer is reused only where it stays true (C6, 2026-10-27; local only, no external request)
 

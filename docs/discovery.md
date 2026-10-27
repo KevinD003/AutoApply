@@ -18,14 +18,17 @@ Freehire: **Potential future discovery provider; not yet connected or validated.
 
 - **Product model:** personal prototype only (D34). Freehire's terms allow keyless use for
   "your own job search, research, or a tool you run for yourself". Showing postings to other
-  people needs a Freehire API plan. Multi-user behaviour (a plan, and deletion within 30 days
-  after it ends) is **not implemented** and waits on a plan or written clarification from
-  Freehire.
+  people needs a Freehire API plan. Multi-user behaviour (a plan, and no longer showing
+  Freehire postings when it ends) is **not implemented** and waits on a plan or written
+  clarification from Freehire.
 - **No live access:** no request to freehire.me's API was made while building or testing
   this. The client refuses any base URL that is not a local fixture origin, so it cannot
   reach Freehire until that check is changed in a reviewed commit.
 - **Before any live test:** it needs its own approval naming the exact query, page limit,
-  time window and data-retention statement.
+  time window and data-retention statement, and an owner statement on whether Freehire, which
+  sells auto-apply (its Pro plan), still counts as a discovery provider under the rule against
+  automated access to competitor APIs (D34). The terms changed three times in ten
+  days: re-read them on the day of the run.
 
 ## Configuration (server-side only; everything off by default)
 
@@ -37,8 +40,10 @@ Freehire: **Potential future discovery provider; not yet connected or validated.
 | `NOEFFORTS_FREEHIRE_PAGE_SIZE` / `_MAX_PAGES` | 50 / 5 | Bounded paging. |
 | `NOEFFORTS_FREEHIRE_TIMEOUT_SECONDS` | 10 | Request timeout. |
 
-There is no request-rate setting: Freehire documents no keyless figure, so none is assumed
-(see "Rate limits" below).
+There is no request-rate setting. The API reference gives no keyless figure; the Jobs API
+and pricing pages state 600 requests a minute per address (2026-10-26), and Freehire's code
+holds a stricter mode (120/min and 2,000/day) that a configuration switch turns on. So no
+figure is assumed (see "Rate limits" below).
 
 Where the key is never exposed:
 
@@ -48,11 +53,12 @@ Where the key is never exposed:
 
 The key lives in settings only.
 
-## Freehire contract (public documentation as reviewed on 2026-10-21)
+## Freehire contract (public documentation as reviewed on 2026-10-21, re-checked 2026-10-26)
 
 Source: the documentation review in `docs/research/freehire.md`, covering the API reference,
-its OpenAPI document, the terms ("Last updated: October 19, 2026") and the Jobs API page.
-Only what the documentation states is relied on.
+its OpenAPI document, the terms ("Last updated: October 19, 2026") and the Jobs API page, and
+its re-check of 2026-10-26 (terms dated October 26, 2026; the job operations used here are
+unchanged). Only what the documentation states is relied on.
 
 **Endpoints used:**
 
@@ -72,13 +78,16 @@ Only what the documentation states is relied on.
 - **Authentication:** none for documented public reads. A personal API key (Bearer) is
   documented. None is configured.
 - **Rate limits:**
-  - **No keyless figure is documented.** Reads are "limited per address", and the figures in
-    force are reported by `GET /plans`, which NoEfforts does not call.
+  - **The API reference gives no keyless figure.** Reads are "limited per address", and the
+    figures in force are reported by `GET /plans`, which NoEfforts does not call. The Jobs API
+    and pricing pages say 600 a minute per address (2026-10-26), but a stricter pending mode
+    (120/min and 2,000/day) exists in Freehire's code, so no figure is relied on.
   - Documented: every response carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and
     `X-RateLimit-Reset`, and a refusal is `429` with `Retry-After`.
   - NoEfforts paces **only** from those headers: when `X-RateLimit-Remaining` reaches 0, paging
     stops and the import is marked truncated. The reason is shown, with the reset value as
-    sent; its unit is not documented, so it is not interpreted.
+    sent; its unit is not documented, so it is not interpreted (Freehire's code uses whole
+    seconds, which is not relied on).
   - NoEfforts never waits and never retries. A `429` ends the run, reports `Retry-After` and
     writes nothing. Without the headers, NoEfforts assumes no rate.
 - **Pagination:** offset-based. `offset + limit <= 10000`, otherwise 400 "pagination too
@@ -103,8 +112,10 @@ Only what the documentation states is relied on.
 - **Terms that apply** (quoted in `docs/research/freehire.md`):
   - no scraping beyond the documented API and no bypassing of rate limits or authentication;
   - keyless use is personal and non-commercial;
-  - with a plan: attribution (a link to the freehire.me page or "via freehire.me"), no
-    redistribution, and deletion within 30 days after the plan ends;
+  - with a plan: attribution (a link to the freehire.me page or "via freehire.me") and no
+    redistribution; when the plan ends, stop showing the postings. The terms of October 26,
+    2026 replaced the earlier deletion within 30 days with "you may keep what you stored for
+    your own internal analysis";
   - the postings belong to the employers.
 
 ## Normalized record (`discovery/provider.NormalizedJob`)
@@ -202,10 +213,12 @@ All of these are user-scoped: another user's record returns 404. The job detail
 
 ## Limitations
 
-- **Documentation date:** the contract is from the documentation as read on 2026-10-21.
-  Before any live call, re-read the docs and terms and record any changes.
+- **Documentation date:** the contract is from the documentation as read on 2026-10-21 and
+  re-checked on 2026-10-26. Before any live call, re-read the docs and terms and record any
+  changes.
 - **Undocumented details:**
-  - `X-RateLimit-Reset` has no documented unit;
+  - `X-RateLimit-Reset` has no documented unit (whole seconds in Freehire's code, not relied
+    on);
   - `work_mode` values outside remote/hybrid/onsite stay unknown;
   - response schemas are examples only (no required or nullable fields are specified).
 - **Imports run inside the request,** bounded by page count and timeout. A background job would
@@ -215,4 +228,18 @@ All of these are user-scoped: another user's record returns 404. The job detail
 - **Not implemented** (needs a plan or written clarification from Freehire):
   - multi-user use;
   - plan-based storage;
-  - deletion within 30 days after a plan ends.
+  - no longer showing Freehire postings when a plan ends (the terms of October 26, 2026
+    replaced the earlier deletion within 30 days).
+- **Data quality seen in the 2026-10-26 re-check, not yet handled** (read from Freehire's
+  source; plan S6 in `docs/implementation-plan.md`):
+  - a non-empty `url` carries `utm_source=freehire.me` with a re-encoded query. The tag is
+    already dropped with the other `utm_*` parameters, and the ATS is identified from host and
+    path only (D35), so the tag does not affect it. Some sources add a referral code; some of
+    these, such as Alignerr's `referral-code`, are not in `TRACKING_PARAMS`, so they survive
+    canonicalization and can defeat URL deduplication. Neither case has a test yet;
+  - for aggregator sources `url` is a tracking redirect, not the employer's page, and which
+    sources are aggregators is not documented;
+  - a direct-apply job takes applications on Freehire and has an empty `url`; it can never be
+    an execution destination (D34);
+  - the fingerprint covers the whole record, including `reality.age_days` and counters that
+    change daily, so nearly every refresh would count as "updated" (unmeasured).
