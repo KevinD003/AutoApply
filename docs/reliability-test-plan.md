@@ -146,7 +146,7 @@ Receiver modes already exist (`fixtures/ats_receiver/receiver.py:163-190` at `3a
 | R6.4 | **The form page itself contains confirmation-like text** ("Thank you for your interest…", "application received") in the description or a notice, before any click | No `confirmed` outcome before the click; after a validation failure on that page, `rejected`, ledger 0 acceptances | — | **NEW** modes `gh_phrase_in_body` (greenhouse_like) and `gh2_phrase_in_body` (v2); tests in `test_greenhouse_adapter.py` and `test_greenhouse_dom.py` | LD-01, LD-02 |
 | R6.5 | Confirmation URL substring on a non-confirmation page (the job path contains "confirmation" or "thanks") | Not confirmed | — | **NEW** fixture job slug containing those words | LD-01, LD-02 |
 | R6.6 | Receipt evidence keeps only declared keys | No page ids or values | `test_provider_contracts.py::test_every_adapter_keeps_only_its_declared_receipt_keys`; `test_upload_evidence.py::test_an_upload_is_kept_as_its_digest_and_acknowledgement_never_the_pages_id` | — | U11 |
-| R6.7 | A user can mark `submitted_unconfirmed → submitted_confirmed` with no evidence (`/transition`) | Today allowed (documents the gap); after S2, confirmation by the user requires stated evidence and is recorded as user-claimed, distinct from a receipt | — | **NEW** `test_applications.py` | LD-50 |
+| R6.7 | A user marks `submitted_unconfirmed → submitted_confirmed` (`/transition`) | Needs stated evidence and is recorded as user-claimed, distinct from a receipt (S2, D53) | `test_applications.py::test_a_user_confirmation_needs_stated_evidence`, `::test_a_user_confirmation_is_recorded_as_user_claimed_never_as_a_receipt`, `::test_the_service_refuses_a_user_confirmation_without_evidence` | — | LD-50 |
 
 ### R7. Verification codes
 
@@ -240,17 +240,17 @@ Existing positive controls must still resolve.
 | Execution, routes, rehearsals | `test_execution_security.py::test_execution_resources_are_tenant_bound`, `::test_worker_derives_tenant_from_attempt_not_payload`; `test_execution_routing.py::test_another_users_job_route_is_not_found_and_not_audited`; `test_rehearsal_prerequisite.py::test_a_rehearsal_never_counts_for_another_user` | — |
 | Discovery | `test_freehire_discovery.py::test_discovered_jobs_are_user_scoped`; `test_discovery.py::test_discovered_jobs_are_user_scoped` | — |
 | Prior-application signal and "possible duplicate" | — | **NEW (S3)**: user B never sees A's applications in either signal |
-| Outcome events and funnel counts | — | **NEW (S2)**: user B gets 404 on A's outcome history; funnel counts are per user |
+| Outcome events and funnel counts | `test_funnel.py::test_outcome_history_and_the_funnel_are_per_user` | — |
 
 ### R14. Outcome-tracking integrity
 
 | ID | Scenario | Existing | NEW | Guards |
 |---|---|---|---|---|
-| R14.1 | Outcome change recorded as an event | `test_applications.py::test_user_transitions_and_timeline` | — | LD-51 |
-| R14.2 | Outcome change is audited, carries its source (user-reported) and the date the user says it happened | — | **NEW (S2)** | LD-52 |
-| R14.3 | An outcome on a `draft` (never submitted) application is refused or flagged | — (today accepted, `backend/app/modules/applications/router.py:345-366`) | **NEW (S2)** | LD-50 |
-| R14.4 | "Assessment received" is recordable | — | **NEW (S2)**, migration adds the enum value | LD-52 |
-| R14.5 | The funnel counts come from states and events, and a submission confirmed by receipt is counted apart from one claimed by the user | — | **NEW (S2)** | LD-50 |
+| R14.1 | Outcome change recorded as an event | `test_applications.py::test_user_transitions_and_timeline`, `::test_restating_an_outcome_with_a_date_adds_an_event_and_repeating_it_adds_none` | — | LD-51 |
+| R14.2 | Outcome change is audited, carries its source (user-reported) and the date the user says it happened | `test_audit_privacy.py::test_an_outcome_is_audited_with_its_value_and_source_only`; `test_applications.py::test_assessment_received_is_recordable_with_the_date_and_note_the_user_gives` | — | LD-52 |
+| R14.3 | An outcome on an application never submitted is refused (the owner may switch to a flag) | `test_applications.py::test_an_outcome_before_any_submission_is_refused_with_a_reason_code`, `::test_an_application_closed_before_submission_takes_no_employer_outcome`, `::test_the_owner_can_switch_the_refusal_to_a_flag_without_a_migration` | — | LD-50 |
+| R14.4 | "Assessment received" is recordable | `test_applications.py::test_assessment_received_is_recordable_with_the_date_and_note_the_user_gives`; `test_migrations.py::test_s2_adds_assessment_received_and_outcome_fields_without_rewriting_a_row` | — | LD-52 |
+| R14.5 | The funnel counts come from states and events, and a submission confirmed by receipt is counted apart from one claimed by the user | `test_funnel.py::test_a_receipt_confirmed_submission_counts_once_and_matches_the_ledger`, `::test_a_receipt_recorded_while_quarantined_counts_as_a_receipt`, `::test_applied_by_hand_is_user_claimed_and_never_a_receipt` | — | LD-50 |
 
 ## 2. Coverage check: every high-severity CONFIRMED legacy defect has a guard
 
@@ -286,8 +286,9 @@ test (R3.4), static guards (R7.5, R11.4), multi-select and multi-step readback (
 challenge after the final click (R4.9b), Freehire fingerprint, tagged-URL and aggregator tests
 (R9.4-R9.6), Freehire backoff across runs (R9.2), possible-duplicate, repost and closed-job tests
 (R5.9, R5.11, R9.8, R12.5), embed-URL dedupe (R5.10), `resolve_public_destination` wiring (R10.5),
-outcome integrity (R6.7, R14.2-R14.5), cross-tenant for S2 and S3 (R13), planted instructions in
+cross-tenant for S3 (R13), planted instructions in
 job text (R11.9, with the first drafting provider).
 
 No longer NEW: the C6 bank-scope, migration and race tests (R8.12, R8.13, R12.4) exist (D51,
-`b6e4cf4`).
+`b6e4cf4`); the S2 outcome-integrity and funnel tests (R6.7, R13 outcome row, R14.1-R14.5) exist
+(D53).

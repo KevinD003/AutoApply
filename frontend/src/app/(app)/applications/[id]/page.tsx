@@ -34,7 +34,7 @@ const STATE_LABEL: Record<string, string> = {
   queued: "Approved and queued",
   running: "Being filled in",
   submitting: "Submitting",
-  submitted_confirmed: "Submitted (employer receipt)",
+  submitted_confirmed: "Submitted (confirmed)", // receipt or your statement: see the tracker (D53)
   submitted_unconfirmed: "Submitted? Outcome unknown",
 };
 

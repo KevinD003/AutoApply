@@ -61,14 +61,26 @@ test("phase A slice", async ({ page }, info) => {
   await expect(page.getByText("Title matches 'Electrician'")).toBeVisible();
   await page.getByRole("button", { name: "Track application" }).click();
   await expect(page.getByRole("heading", { name: "Application tracker" })).toBeVisible();
+  // Before any submission only Withdrawn (or nothing) can be recorded (D53).
+  await expect(page.getByLabel("Outcome").locator("option")).toHaveText(["No outcome yet", "Withdrawn"]);
   await page.getByRole("button", { name: "I applied myself" }).click();
-  await expect(page.getByText("Submitted (not confirmed)", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Applied by you (not confirmed)", { exact: true }).first()).toBeVisible();
   // Uncertain outcome: reconciliation requires saying what was checked; no one-click resubmit.
   await page.getByLabel("What did you check?").fill("Confirmation email received, ref SYN-123");
   await page.getByRole("button", { name: "It was received" }).click();
-  await expect(page.getByText("Submitted (confirmed)", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Submitted (confirmed by you)", { exact: true }).first()).toBeVisible();
+  const d = new Date(Date.now() - 86_400_000);
+  const yesterday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   await page.getByLabel("Outcome").selectOption("interviewing");
-  await expect(page.getByText("outcome: none → interviewing")).toBeVisible();
+  await page.getByLabel("When it happened (optional)").fill(yesterday);
+  await page.getByRole("button", { name: "Record outcome" }).click();
+  await expect(
+    page.getByText(`Outcome: No outcome yet → Interviewing · happened on ${yesterday} · you reported`, { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Submitted: 1 of 1 tracked", { exact: true })).toBeVisible();
+  await expect(page.getByText("Confirmed by employer receipt: 0", { exact: true })).toBeVisible();
+  await expect(page.getByText("Confirmed by you (your statement): 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 submission is too few to compare rates; 1 response so far.", { exact: true })).toBeVisible();
 
   // Documents
   await page.getByRole("link", { name: "Documents" }).click();
@@ -80,7 +92,7 @@ test("phase A slice", async ({ page }, info) => {
   await page.reload();
   await expect(page.getByText("resume.pdf · 0 KB · v1")).toBeVisible();
   await page.getByRole("link", { name: "Tracker" }).click();
-  await expect(page.getByText("Submitted (confirmed)")).toBeVisible();
+  await expect(page.getByText("Submitted (confirmed by you)", { exact: true }).first()).toBeVisible();
 
   await page.screenshot({ path: `test-results/phase-a-${info.project.name}.png`, fullPage: true });
 });

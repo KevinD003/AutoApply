@@ -21,6 +21,7 @@ committed).
 | C3-C5 (fact statements, legal misreads, sensitive topics become checkpoints) | Done | `7669c61` (D49) |
 | Q1 (an unknown outcome in the code step is quarantined; the sweeper recovers each attempt alone) | Done | `3af29f0` (D50; `backend/tests/test_code_wait_quarantine.py`). Found by the static code map made for this review |
 | C6 (answer-bank scope) | Done | `b6e4cf4` (D51; the narrowing-only check, 1,315,200 form resolutions with 0 violations; the wording table of 1,037 rows; the five race tests failing against `3af29f0`'s code as described; the full results in `docs/implementation-status.md`); new `backend/app/modules/preparation/bankscope.py`, `backend/migrations/versions/b29cba6e1f6e_answer_bank_help_text.py`, `backend/tests/test_bank_scope.py`, `backend/tests/test_bank_scope_api.py`, `backend/tests/test_bank_races.py`; `backend/tests/test_migrations.py::test_c6_saved_answers_keep_their_key_and_gain_no_help_text` |
+| S2 (outcome integrity and funnel) | Done | D53; `backend/tests/test_funnel.py`, `test_outcome_races.py`, `test_application_events_db.py`, migration `e3a91c5d7b20`; results in `docs/implementation-status.md` |
 | C7-C18 | Not started | "Remaining preparation steps" below |
 | Live discovery | Blocked (code refuses non-fixture base URLs; owner decisions) | `freehire-first-architecture.md` §11 |
 | Live execution | Blocked (pilot permissions 1-4; admission capped at `rehearsal_ready`) | `docs/live-pilot-gate.md:22-35`; `admission.py:86-87` |
@@ -105,7 +106,7 @@ capability).
 - **Blockers:** none.
 - **Size:** M (done).
 
-### S2. O1 outcome integrity and funnel — **recommended next**
+### S2. O1 outcome integrity and funnel — **done** (D53)
 
 - **Goal:** the tracker can tell a receipt-confirmed submission from a user claim, records
   outcomes with a source and a date, and can record an assessment.
@@ -122,12 +123,20 @@ capability).
      refused with a reason code (or flagged, owner decision).
   5. `GET /applications/funnel`: per-user counts from states and events, with denominators and a
      "too few to compare" note (`outcome-diagnostics.md` §1.2); tracker page section.
-- **Files:** `backend/app/modules/applications/{states,router,models}.py`, a migration,
-  `frontend/src/app/(app)/tracker/page.tsx`, `frontend/src/lib/api.ts`, `docs/audit-events.md`,
-  `docs/decisions.md`, `docs/architecture.md` (state diagram).
-- **Tests:** `tests/test_applications.py` (R6.7, R14.2-R14.5), `tests/test_audit_privacy.py`
-  (no free text in outcome audit rows), a cross-tenant 404 for the funnel and outcome history,
-  `tests/test_migrations.py`, Playwright on the tracker. Receiver ledger: a receipt-confirmed
+- **Status:** done (D53); results in `docs/implementation-status.md`. The owner's choices (1)
+  and (4) use the safe defaults (keep the user move with evidence; refuse), each a code switch.
+- **Files:** `backend/app/modules/applications/{states,service,router,models}.py`, new
+  `backend/app/modules/applications/funnel.py`, migration
+  `backend/migrations/versions/e3a91c5d7b20_outcome_integrity.py`,
+  `frontend/src/app/(app)/tracker/page.tsx`, `frontend/src/app/(app)/applications/[id]/page.tsx`,
+  `frontend/src/components/ExecutionCard.tsx`, `frontend/src/lib/api.ts`; docs `audit-events.md`,
+  `decisions.md` (D53), `architecture.md`, `outcome-diagnostics.md`, `reliability-test-plan.md`,
+  `evidence-matrix.md`, `implementation-status.md`, `legacy-audit.md`.
+- **Tests:** `tests/test_applications.py` (R6.7, R14.1-R14.4), new `tests/test_funnel.py`
+  (R13, R14.5), new `tests/test_outcome_races.py`, new `tests/test_application_events_db.py`,
+  `tests/test_audit_privacy.py` (no free text in outcome audit rows), `tests/test_migrations.py`;
+  Playwright `frontend/e2e/phase-a.spec.ts`, `submission.spec.ts` and new
+  `tracker-outcomes.spec.ts`. Receiver ledger: a receipt-confirmed
   submission counts once in the funnel and matches the ledger's single acceptance.
 - **Proves:** legacy LD-50 to LD-52 cannot recur; future diagnostics have trustworthy inputs.
 - **Blockers:** none. Choices (1) and (4) use the safe defaults in §4 until the owner
@@ -280,9 +289,9 @@ capability).
 ## 3. Order
 
 ```
-done: C1 C2 → C3-C5 → Q1 (D50) → S1 (C6, D51)
-now:  S2 (outcome integrity)
-next: S4 (corpus + guards) → C11 → C10
+done: C1 C2 → C3-C5 → Q1 (D50) → S1 (C6, D51) → S2 (outcome integrity, D53)
+now:  S4 (corpus + guards)
+next: C11 → C10
 then: S3 (job state, duplicates) → C7 → C8 → S5 (fixture variants)
 then: C9 → C12 → C13 → C14 → S6 (Freehire hardening; its doc refresh is done)
 then: C15 → C16 → C17 → C18 (one schema bump) → S7 (live-read readiness, still off)
@@ -301,26 +310,20 @@ and employer-relative or time-bound answers fixed once (LD-26, LD-30, LD-31, LD-
 it does not recognise may still be offered for saving (`docs/answer-policy.md` row 5; D51
 records the known misses).
 
-**Recommended next: S2 (outcome integrity and funnel).**
+**S2 (outcome integrity and funnel, D53) is done.** A submission now says what it rests on (a
+receipt, the user's statement, or nothing known), outcomes carry a source and the date the user
+gives, "assessment received" exists, an outcome before any known submission is refused, and the
+funnel counts the user's own applications with denominators and no rate. It gives future
+diagnostics trustworthy inputs for new applications only (`outcome-diagnostics.md` §3-§4).
 
-1. **It gives future outcome diagnostics trustworthy inputs.** It measures new applications
-   only: it cannot explain the legacy results, and automation detection (H12) and the market
-   base rate (H13) stay open without employer-side or external data (`outcome-diagnostics.md`
-   §3-§4). The legacy bot's records could not tell a real submission from a claimed or
-   phrase-matched one and captured no outcomes (`outcome-diagnostics.md` §4). NoEfforts still
-   lets a user mark a submission confirmed with no evidence, and has no "assessment" outcome, no
-   outcome source or date, and no funnel.
-2. **It is local and safe (size M).** No package content change, no approval invalidation, no
-   external access; one additive migration.
-3. **Its two choices have safe defaults that stay reversible.** (1) The user move to
-   `submitted_confirmed` stays but needs stated evidence and is recorded as a user claim;
-   (4) an outcome other than `withdrawn` on an application that was never submitted is refused
-   with a reason code. The owner can switch either later without a data migration.
+**Recommended next: S4 (legacy collision corpus and static guards).** Tests first, size S, no
+external access and no package change; it turns the wording traps the legacy bot fell into into
+permanent resolver tests, and adds static guards against a mailbox client and against tracing
+or screenshots in execution. Any row that fails is fixed only by narrowing (a checkpoint).
 
-**Runner-up: S4 (legacy collision corpus and static guards).** Tests first, size S, and it
-should follow S1 so the bank-scope tables are edited once, which now holds. It ranks second
-because it adds regression tests and static guards, not a capability (every S4 row still has a
-NEW entry in `reliability-test-plan.md`); S2 adds a capability nothing else provides.
+**Runner-up: C11 (protected-fact choice dead ends).** Size S; a required US "State" select blocks
+preparation today. It ranks second because S4's corpus should pin the resolver's behaviour
+before C11 changes it.
 
 ## 5. Never in any slice
 

@@ -967,3 +967,86 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   evidence of support; ranking or eligibility from Freehire's model-extracted fields as facts;
   porting the legacy answer engine (guessing, fuzzy reuse, LLM fallback for basic questions).
 - **Plan:** `docs/implementation-plan.md` (slices S1-S7 and steps C7-C18). S1 (C6, D51) is done.
+
+## D53 — A submission says what it rests on; outcomes are reported, dated and never inferred; the funnel is computed (S2, 2026-10-27)
+- **Found by reading, each reproduced by a test first:**
+  - a user could move `submitted_unconfirmed → submitted_confirmed` through `/transition` with no
+    evidence at all, and it looked exactly like an employer receipt;
+  - `/reconcile` evidence longer than about 970 characters returned 500 (it was concatenated
+    into the 1,000-character `reason`), and 20 spaces passed as evidence;
+  - an outcome could be recorded on a draft, there was no "assessment" outcome, no date, no
+    source and no audit row;
+  - a PATCH racing the worker's receipt lost the row version and returned 500;
+  - the review page called every confirmed submission an "employer receipt"; the tracker list did
+    not reload after reconciling; `GET /applications/funnel` would have been taken as an
+    application id (422).
+- **What a submission rests on.** Each application event gets a `source`, set by
+  `applications/service.py` from the move and its actor, never by a client: `receipt` (the worker
+  observed the employer's receipt), `user_claimed` (the user applied by hand, or confirmed it,
+  saying what they checked: 15 to 2,000 characters after stripping, kept in `evidence_note`),
+  `user_reported` (an outcome). Event reasons become fixed text ("Confirmed by you", "Reconciled
+  as received", "Reconciled as not received"). The unused system actor is removed from both moves
+  into `submitted_confirmed`. An application's `submission` (receipt, user_claimed, unconfirmed)
+  is computed when read: a receipt recorded on one of its attempts counts even when it arrived
+  while the application was quarantined, where the application stays `submitted_unconfirmed` for
+  the user to confirm (`execution/service.py` `confirmed()`, unchanged).
+- **Outcomes** are recorded by the user only (`PATCH /applications/{id}`): one insert-only event
+  with `from_outcome`, `to_outcome`, an optional `occurred_on` (no later than UTC today + 1) and an
+  optional private note, plus the audit row `application.outcome {to, source}`; repeating the same
+  outcome with nothing new writes nothing. `Outcome.assessment_received` is added. "No response
+  yet" (21 days or more in the current submitted stretch, outcome none) is computed, never stored.
+- **Before a submission.** An outcome other than none or withdrawn needs a submission NoEfforts
+  knows of: a submitted state now or before, or a recorded receipt. Otherwise 400 `(reason:
+  outcome_before_submission)`, and nothing is written, not even the notes. Consequence, accepted:
+  under this rule an application that was cancelled, expired or failed before any submission can
+  never take an employer outcome; the message says NoEfforts has no record that it reached the
+  employer, and the page offers "I applied myself" only where that move exists (a draft). A final
+  click whose verification code was never completed ends in `needs_user_action`: the state machine
+  lets the user record it as submitted from there, but no page offers that move yet, so until one
+  does it takes no employer outcome through the page (a known gap, below).
+- **Owner switches (code only, reversible without a data migration):**
+  `states.USER_CONFIRMS_THROUGH_TRANSITION` (True; False refuses `/transition` with `(reason:
+  confirm_through_reconcile)` and leaves `/reconcile`) and `states.OUTCOME_BEFORE_SUBMISSION`
+  ("refuse"; "flag" accepts and shows the outcome as recorded before a submission). Tests switch
+  each one.
+- **Database.** Migration `e3a91c5d7b20`: the enum value, five nullable columns, two CHECK
+  constraints that bind each source to its kind, actor and target (valid at once, also for rows
+  written before S2, which keep NULL everywhere and are never back-filled), and a trigger that
+  makes events insert-only: UPDATE is refused, and DELETE unless it cascades from the application
+  or user. A future data repair must drop and recreate the trigger deliberately. Trade-off,
+  accepted for now: a note the user regrets cannot be edited or removed (the page says so);
+  redaction to a fixed marker would be a later slice with its own trigger exception. Downgrade is
+  refused while an application holds `assessment_received`.
+- **Locks (D46).** PATCH locks the application and re-reads it before deciding; a user's
+  confirmation (`/transition`, `/reconcile`) locks the application's attempts by id, then the
+  application (`service.lock_submission`), the same order as the worker's receipt.
+- **The funnel** (`GET /applications/funnel`, `applications/funnel.py`): per user, computed when
+  read, counts with their denominators and no rate; below 20 submissions it says the numbers are
+  too few to compare. It is a view for the user; tests take "submitted" from the receiver ledger.
+- **Recording Withdrawn does not stop a submission in progress** (Cancel does); the page says so
+  while one is queued or running.
+- **Found by the code review (4 reviewers, each checked by a skeptic) and fixed:** a NULL target
+  let a `receipt` or `user_claimed` row pass the database check (a CHECK passes on NULL); the
+  request and `transition()` stripped evidence differently (pydantic keeps U+001F, Python removes
+  it), so 14 visible characters passed the request and failed later with a 500 on `/reconcile`;
+  one strip now applies everywhere, and a NUL in user text (which PostgreSQL text cannot hold,
+  also in the older `notes` and `reason` fields) is refused with 422; an outcome recorded before
+  S2 dropped out of the funnel when the next one was typed (a typed change's `from_outcome` now
+  counts as recorded); the outcome form sent a date it no longer showed; the Withdrawn warning
+  named a Cancel button the card does not have (and in `submitting` a cancel is refused); the
+  reconcile panel kept typed text across applications. Refuted: 7, among them a lock race in the
+  downgrade guard (it needs the API to serve writes during a downgrade).
+- **Unchanged:** `execution/service.py`, every retry rule (no retry after `sending`), D15, D50,
+  `SCHEMA_VERSION` 2, `RESOLVER_VERSION`, route reason codes, support states and the pilot gate.
+  No package hash changes and no approval is invalidated.
+- **Known gap, out of scope:** after a final click whose verification code was never completed
+  (`needs_user_action`), no page offers "it reached the employer" yet; the move must not be offered
+  while an attempt still holds the application (claimed, sending, awaiting a code), and needs its
+  own wording and e2e step.
+- **Known gap, out of scope:** a late receipt arriving after the user marked the application
+  `failed_terminal`, or after a "not received" reconciliation was queued again, makes
+  `confirmed()` refuse the move; the attempt keeps its earlier state and the funnel cannot count
+  that receipt. It needs its own slice with receiver tests.
+- **Rejected:** a separate outcome endpoint (PATCH already carried outcomes); storing the
+  submission basis (it is derived from attempts and events); back-filling sources or typed values
+  into rows written before S2 (unknown stays unknown); a NOT VALID constraint; percentages.

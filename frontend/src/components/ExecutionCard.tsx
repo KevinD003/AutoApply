@@ -12,7 +12,7 @@ const STATE: Record<string, { label: string; tone: "green" | "amber" | "red" | "
   awaiting_code: { label: "Needs your verification code", tone: "amber" },
   confirmed: { label: "Employer receipt received", tone: "green" },
   unknown: { label: "Outcome unknown — check before doing anything", tone: "red" },
-  rejected: { label: "Refused by the employer's form", tone: "red" },
+  rejected: { label: "Form rejected: the employer's form refused the submission", tone: "red" },
   failed_safe: { label: "Stopped before sending anything", tone: "slate" },
   abandoned: { label: "Stopped after entering data, not submitted", tone: "amber" },
   rehearsed: { label: "Rehearsal finished: nothing submitted", tone: "indigo" },

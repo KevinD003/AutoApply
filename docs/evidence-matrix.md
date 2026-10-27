@@ -9,6 +9,27 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Outcome integrity and funnel (S2, 2026-10-27; local only)
+
+Synthetic applications and the local receiver; its ledger is the oracle for what the employer
+accepted. Decision D53; rules in `docs/architecture.md` ("Application state machine", "Refusal
+codes").
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| A user's confirmation needs what they checked and is never a receipt | `tests/test_applications.py::test_a_user_confirmation_needs_stated_evidence`, `::test_a_user_confirmation_is_recorded_as_user_claimed_never_as_a_receipt`, `::test_the_service_refuses_a_user_confirmation_without_evidence`, `::test_only_a_receipt_or_the_users_statement_enters_submitted_confirmed` | before: confirmed with no evidence (200), indistinguishable from a receipt |
+| Reconcile evidence is kept apart and never a 500 | `tests/test_applications.py::test_reconcile_evidence_is_kept_apart_from_the_reason_and_never_a_500` | before: 2,000 characters returned 500, 20 spaces were accepted |
+| An outcome needs a known submission; Withdrawn always allowed | `::test_an_outcome_before_any_submission_is_refused_with_a_reason_code`, `::test_an_application_closed_before_submission_takes_no_employer_outcome`, `::test_outcome_choices_follow_the_submission_rule`, `tests/test_funnel.py::test_form_rejected_is_not_employer_declined` | before: any outcome on a draft (200) |
+| Outcomes are dated, sourced and audited without free text | `::test_assessment_received_is_recordable_with_the_date_and_note_the_user_gives`, `::test_an_outcome_date_and_note_need_an_outcome_and_no_future_date`, `::test_restating_an_outcome_with_a_date_adds_an_event_and_repeating_it_adds_none`, `tests/test_audit_privacy.py::test_an_outcome_is_audited_with_its_value_and_source_only` | before: no date, source, assessment value or audit row |
+| Owner switches need no migration | `::test_the_owner_can_switch_the_refusal_to_a_flag_without_a_migration`, `::test_the_owner_can_route_confirmations_through_reconcile_only` | both switch at call time |
+| Refusal codes are a fixed, documented set | `::test_outcome_refusal_codes_are_fixed_identifiers_documented_once` | every `Refused(...)` names a literal code; disjoint from route and rehearsal codes |
+| Events are insert-only and their provenance is checked in the database | `tests/test_application_events_db.py::test_application_events_are_insert_only_and_their_provenance_is_checked`, `tests/test_migrations.py::test_s2_adds_assessment_received_and_outcome_fields_without_rewriting_a_row`, `::test_disposable_downgrade_and_reupgrade` | UPDATE and a direct DELETE refused; a cascade still deletes; rows written before S2 untouched |
+| The funnel counts the user's own applications, from the ledger's point of view | `tests/test_funnel.py::test_a_receipt_confirmed_submission_counts_once_and_matches_the_ledger`, `::test_an_unknown_outcome_is_unconfirmed_until_confirmed_and_a_receipt_outranks_a_claim`, `::test_a_receipt_recorded_while_quarantined_counts_as_a_receipt`, `::test_applied_by_hand_is_user_claimed_and_never_a_receipt` | submitted total equals the ledger's accepted count in each case |
+| Funnel rules (pure) | `::test_reached_stages_count_what_was_recorded_and_never_infer_one`, `::test_a_change_to_none_takes_back_only_the_value_it_replaced`, `::test_no_response_yet_is_computed_from_the_current_submission_and_never_stored`, `::test_fewer_than_twenty_submissions_are_too_few_to_compare`, `::test_sources_follow_receipts_and_who_made_the_move` | no rate in the response |
+| Per user; reading writes nothing; route order | `::test_outcome_history_and_the_funnel_are_per_user`, `::test_reading_the_funnel_writes_nothing`, `::test_the_funnel_route_is_matched_before_an_application_id` | before: `/applications/funnel` was taken as an application id (422) |
+| Races with the worker's receipt (D46) | `tests/test_outcome_races.py` (3 tests; a barrier and lock waiters, no sleeps; the real worker against the receiver in two of them) | before: the PATCH lost the row version (500) |
+| The tracker shows what each submission rests on | `frontend/e2e/phase-a.spec.ts`, `submission.spec.ts`, `tracker-outcomes.spec.ts` (desktop and mobile) | exact labels; ledger at 1 accepted where a submission ran |
+
 ## Preparation: bank scope (C6, 2026-10-27; local only)
 
 Synthetic facts and wordings; fictional employers. Decision D51; rules in

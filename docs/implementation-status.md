@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-27 (documentation: the Freehire-first review published, with the Freehire re-check of 2026-10-26, an amendment to D34 and D52; earlier: preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-27 (tracking: a submission says what it rests on (an employer receipt, your statement, or nothing known), a confirmation by you needs what you checked, outcomes are dated, sourced and audited, assessment received exists, an outcome before any known submission is refused, events are insert-only in the database, and a per-user funnel counts with denominators and no rate; earlier: documentation: the Freehire-first review published, with the Freehire re-check of 2026-10-26, an amendment to D34 and D52; earlier: preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,74 @@ Last updated: 2026-10-27 (documentation: the Freehire-first review published, wi
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Outcome integrity and funnel (S2, 2026-10-27; local only, no external request)
+
+- **Scope:** plan slice S2 (`docs/implementation-plan.md`), decision D53; evidence:
+  `docs/evidence-matrix.md` ("Outcome integrity and funnel"). The owner's two choices use the
+  safe defaults (a user's confirmation stays, with what they checked; an outcome before any known
+  submission is refused), each a code switch. Nothing contacted; no support state, capability
+  level, real destination, pilot-gate or execution change (`git diff --stat --
+  backend/app/modules/execution` is empty).
+- **Found (each reproduced by a test first) and fixed:** a user confirmed a submission with no
+  evidence and it looked like a receipt; reconcile evidence of about 970 characters or more
+  returned 500, and blanks passed as evidence; outcomes were accepted on drafts, with no date,
+  source, assessment value or audit row; a PATCH racing the worker's receipt returned 500; the
+  review page called every confirmation a receipt; `/applications/funnel` was taken as an id.
+- **Now:** event sources (`receipt`, `user_claimed`, `user_reported`) set by the server;
+  `Outcome.assessment_received`; dated outcomes with a private note and the audit row
+  `application.outcome {to, source}`; a refusal code set documented in `docs/architecture.md`;
+  insert-only events enforced by a trigger and two checks (migration `e3a91c5d7b20`, no row
+  rewritten); the per-user funnel with denominators and no rate; tracker labels that say what
+  each submission rests on, a funnel card and an outcome form.
+- **Unchanged:** `SCHEMA_VERSION` (2), `RESOLVER_VERSION`, package content (no hash changes, no
+  approval invalidated), every retry rule, D15, D50, route reason codes.
+- **Design and review:** three independent designs (minimal state, integrity first, user first),
+  a judge and a completeness critic (13 corrections applied; the first judge and critic were
+  stopped by a usage limit and a container restart, and resumed from the cached designs); then
+  an adversarial review of the code (4 reviewers, a skeptic each): 8 findings confirmed (one
+  reported twice) and fixed, 7 refuted. Fixed: a NULL target let a source pass the database
+  check; pydantic's strip and Python's strip measured evidence differently (a 500 on
+  `/reconcile`), and a NUL in user text was a 500; an outcome recorded before S2 dropped out of
+  the funnel when the next one was recorded; the outcome form sent a hidden date; the Withdrawn
+  warning named a Cancel button the card does not have; the reconcile panel kept text across
+  applications; the retention table lacked the new notes.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - before the change (the new and updated tests on the unchanged code, alone on
+    `noefforts_test`): 38 failed, 6 passed (the 6 are earlier tests in the same files); each
+    failure was the one targeted (no `source` key, 200 without evidence, 500 from
+    `StaleDataError`, 422 for `/funnel`, no migration);
+  - after the change, first run of the S2 files: 42 passed, 7 failed, all from three test
+    defects (jobs with the same title are one job, so a "second" application was the first; an
+    attempt state is a plain string; the refusal-code scan matched rehearsal's own `refusal()`);
+    fixed, the two files re-run: 26 passed;
+  - full backend before the review fixes: 2652 passed, exit 0, 32 min 47 s;
+  - after the review fixes: the S2 files 81 passed;
+  - full backend after the review fixes: 2651 passed, 3 failed, exit 1. My review fix to
+    `/reconcile` (a try around the two moves) had left the D15 approval retirement after a
+    `raise`, unreachable: after "not received" the approval that sent the submission stayed
+    live and re-queueing returned 200 instead of 409. Caught by
+    `test_execution_failures.py::test_reconciling_an_unknown_outcome_never_sends_again`
+    (the three `not_received` cases); fixed (the retirement runs again for "not received"),
+    then those files and the S2 files: 77 passed;
+  - full backend on the final tree: 2654 passed, exit 0, 34 min 17 s;
+  - full Playwright: after the review fixes 38 passed, 2 skipped (the desktop-only log checks
+    on mobile), exit 0, 6.0 min; on the final tree 38 passed, 2 skipped, exit 0, 5.6 min; the new
+    `tracker-outcomes.spec.ts` runs on desktop and mobile;
+  - `ruff check`, `ruff format --check`, `npx tsc --noEmit`, `npm run lint`: clean, each exit 0;
+  - sabotage checks: 36, each caught by the test aimed at it (among them: no evidence check, a
+    system actor confirming, a receipt for any actor, receipts ignored, the refusal or the lock
+    removed, the lock order reversed, extra client keys, a date in the audit row, the
+    migration's value, guard or trigger removed, a NULL target, evidence back in the reason,
+    pydantic's strip, NUL accepted, the funnel's history, wait, scope or route order broken, an
+    undocumented message, the owner switch read at import, the model and migration checks
+    differing); every source compared identical to its backup afterwards. After the `/reconcile`
+    fix, case 23 again and a 37th case (the D15 retirement skipped after "not received") were run:
+    both caught. `git diff --stat -- backend/app/modules/execution` is empty.
+- **CI for the previous changes:** **CI #102**
+  ([40444320612](https://github.com/KevinD003/AutoApply/actions/runs/40444320612)) (`b6e4cf4`,
+  C6) and **CI #103** ([40448472163](https://github.com/KevinD003/AutoApply/actions/runs/40448472163))
+  (`532ae0a`, the review documents): both passed (all four jobs).
 
 ## Freehire-first review published; Freehire re-check recorded (2026-10-27; documentation only)
 

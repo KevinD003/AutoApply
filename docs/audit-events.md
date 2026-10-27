@@ -25,6 +25,10 @@ different metadata key without this table changing with it.
 - **Not append-only in one respect:** two one-way repair migrations rewrite the `meta` of
   legacy rows (`audit/repair.py`; see "Legacy repairs" below). No other code updates or
   deletes audit rows.
+- **What users write stays out of the audit trail:** the free text a user writes for an outcome
+  or a confirmation (what they checked, their note) is kept in
+  `application_events.evidence_note` on the application's own timeline and never reaches
+  `audit_events`; `application.outcome` carries only the outcome and its source (D53).
 
 ## References
 
@@ -79,6 +83,7 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `application.create` | `application` | - | |
 | `application.transition` | `application` | `to` | the new application state |
 | `application.reconcile` | `application` | `finding` | `received` or `not_received` |
+| `application.outcome` | `application` | `source`, `to` | the outcome the user recorded (`applications/states.py` `Outcome`); `user_reported`, the only source of an outcome a user records. Never the date the user gave, their note or the previous outcome, which stay on the application's timeline |
 | `application.answer` | `application` | `field_ref` | reference to the question, never its key or the answer |
 | `application.consent` | `application` | `choice`, `field_ref` | the consent choice; reference to the question |
 | `draft.created` | `application` | `cost_usd`, `field_ref`, `provider` | drafting cost; reference; the drafting provider's name |
@@ -176,6 +181,7 @@ event's metadata:
 | Data | Retention | Disposal |
 |---|---|---|
 | Audit events | no automatic purge | deleted with their user (`ON DELETE CASCADE`); there is no account-deletion endpoint yet |
+| Outcome notes and what users checked (`application_events.evidence_note`) | until the application or user is deleted (`ON DELETE CASCADE`); there is no application- or account-deletion endpoint yet | private to the owner: served only in their own timeline, never in audit rows or logs. Events are insert-only: a database trigger refuses UPDATE, and DELETE unless it cascades, so a note cannot be edited or removed (D53) |
 | Execution evidence | `NOEFFORTS_EVIDENCE_RETENTION_DAYS` (default 365) | purged daily by the `purge-expired-evidence` beat task; the user can delete it (refused while an attempt runs) |
 | Rehearsal records | until their application or user is deleted (`ON DELETE CASCADE`) | counts and fixed values only; revoked, not deleted, when the user deletes the application's evidence; a record whose evidence has been purged no longer holds (`rehearsal_evidence_missing`) |
 | Sessions | until expiry | purged hourly by `purge-expired-sessions` |

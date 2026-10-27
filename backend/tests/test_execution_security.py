@@ -205,7 +205,7 @@ def scan_for(needles: list[str]) -> dict:
         "execution_evidence": "data::text",
         "attempt_events": "detail::text",
         "audit_events": "meta::text",
-        "application_events": "coalesce(reason,'')",
+        "application_events": "coalesce(reason,'') || coalesce(evidence_note,'')",
         "outbox_messages": "attempt_id::text || coalesce(last_error,'')",
         "checkpoints": "coalesce(code,'') || coalesce(message,'')",
         "execution_attempts": "coalesce(outcome_detail,'')",

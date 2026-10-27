@@ -100,7 +100,9 @@ test("approve, double-click submit, see receipt; exactly one acceptance", async 
   await page.waitForTimeout(4000);
   expect(polls).toBe(0);
   await page.goto("/tracker");
-  await expect(page.getByText("Submitted (confirmed)").first()).toBeVisible();
+  await expect(page.getByText("Submitted (employer receipt)", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Confirmed by employer receipt: 1", { exact: true })).toBeVisible();
+  expect((await ledger(request, slug)).accepted).toBe(1);
 });
 
 test("a rehearsal fills and checks, never submits; an approval to submit then submits once", async ({ page, request }, info) => {
@@ -253,10 +255,14 @@ test("unknown outcome is reconciled in the tracker, never resubmitted", async ({
   await expect(page.getByRole("button", { name: "Cancel" })).toHaveCount(0, { timeout: 10_000 });
   expect((await ledger(request, slug)).accepted).toBe(1);
   await page.goto("/tracker");
+  await expect(page.getByText("Not confirmed (outcome unknown): 1", { exact: true })).toBeVisible();
   await page.getByText("Clinic Assistant").first().click();
   await page.getByLabel("What did you check?").fill("Receiver ledger shows one receipt for this job");
   await page.getByRole("button", { name: "It was received" }).click();
-  await expect(page.getByText("Submitted (confirmed)").first()).toBeVisible();
+  // The user's statement, recorded apart from any employer receipt (D53).
+  await expect(page.getByText("Submitted (confirmed by you)", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Confirmed by employer receipt: 0", { exact: true })).toBeVisible();
+  await expect(page.getByText("Confirmed by you (your statement): 1", { exact: true })).toBeVisible();
   expect((await ledger(request, slug)).accepted).toBe(1);
   const attempts = await (await page.request.get(`/api/applications/${appId}/attempts`)).json();
   expect(attempts.length).toBe(1);

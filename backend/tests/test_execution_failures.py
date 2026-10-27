@@ -481,6 +481,14 @@ def test_not_received_is_refused_once_the_employers_receipt_was_recorded(api, re
     received = {"finding": "received", "evidence": "The receipt NoEfforts recorded"}
     ok = api.post(f"/applications/{app_id}/reconcile", json=received)
     assert ok.json()["state"] == "submitted_confirmed"
+    e = ok.json()["events"][-1]  # the user's statement; the receipt stays on the attempt (D53)
+    assert (e["actor"], e["source"], e["reason"], e["evidence_note"]) == (
+        "user",
+        "user_claimed",
+        "Reconciled as received",
+        "The receipt NoEfforts recorded",
+    )
+    assert ok.json()["submission"] == "receipt"
 
 
 def test_an_application_with_a_recorded_receipt_is_never_queued_again(api, receiver):

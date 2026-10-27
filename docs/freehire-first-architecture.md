@@ -48,7 +48,7 @@ Labels: **CONFIRMED** (code, a fetched page or Freehire source at `ab47628` show
         |                      (quarantine, reconciliation with stated evidence, never re-sent)
         v
  (9) outcomes                  M/applications/states.py Outcome; insert-only application_events
-                               [funnel, outcome provenance and "assessment": NEW, see outcome-diagnostics.md]
+                               [funnel, outcome provenance and "assessment": built (S2, D53)]
 ```
 
 Trust boundaries (CONFIRMED unless NEW):

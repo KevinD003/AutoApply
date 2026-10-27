@@ -249,9 +249,9 @@ references stay valid.
 
 | ID | Defect | Evidence | Sev. | Sources | NoEfforts |
 |---|---|---|---|---|---|
-| LD-50 | Success tallies mix `submitted`, `submitted_unconfirmed` and `dry_run`; the dashboard's "Submitted" counts submitted and unconfirmed together | `legacy:src/main.py:318-320,502-509`; `legacy:src/dashboard.py:62,468` | low | gh-20, pl-09, sec-06 | States kept apart (`backend/app/modules/applications/states.py:21-22`); **gap**: a user can move `submitted_unconfirmed → submitted_confirmed` through `/transition` with no evidence (`states.py:92` at `3af29f0`; `backend/app/modules/applications/router.py:207-278`) |
-| LD-51 | One row per job with the status and time overwritten; no attempt history; the spreadsheet writes "Date Applied" for every status and has no ATS or key column; a row is dropped when the workbook is open | `legacy:src/tracker.py:7-18,53-62`; `legacy:src/excel_log.py:16-26,47-65` | medium | pl-09 | Insert-only `application_events` (`backend/app/modules/applications/models.py:34-48`) |
-| LD-52 | No confirmation email is ever reconciled (thank-you mails are recognised only to be excluded); no outcome field (interview, assessment, rejection) | `legacy:src/email_verify.py:103-115`; `legacy:src/tracker.py:7-18` | medium | gh-20, pl-19 | `Outcome` enum exists but lacks "assessment", outcome changes are not audited (see `outcome-diagnostics.md`) |
+| LD-50 | Success tallies mix `submitted`, `submitted_unconfirmed` and `dry_run`; the dashboard's "Submitted" counts submitted and unconfirmed together | `legacy:src/main.py:318-320,502-509`; `legacy:src/dashboard.py:62,468` | low | gh-20, pl-09, sec-06 | States kept apart (`backend/app/modules/applications/states.py:21-22`); closed by S2 (D53): a user's confirmation needs what they checked and is recorded as user-claimed, a receipt is read from the attempts, and the funnel shows them apart (`backend/app/modules/applications/states.py`, `service.py`, `funnel.py`) |
+| LD-51 | One row per job with the status and time overwritten; no attempt history; the spreadsheet writes "Date Applied" for every status and has no ATS or key column; a row is dropped when the workbook is open | `legacy:src/tracker.py:7-18,53-62`; `legacy:src/excel_log.py:16-26,47-65` | medium | pl-09 | Insert-only `application_events`, enforced by a database trigger since S2 (migration `e3a91c5d7b20`, D53) |
+| LD-52 | No confirmation email is ever reconciled (thank-you mails are recognised only to be excluded); no outcome field (interview, assessment, rejection) | `legacy:src/email_verify.py:103-115`; `legacy:src/tracker.py:7-18` | medium | gh-20, pl-19 | Closed by S2 (D53): `Outcome.assessment_received`, outcome events with a source, a date and the audit row `application.outcome`; inbox reconciliation stays out (D10) |
 
 ### 4.5 Security and privacy
 
@@ -294,7 +294,7 @@ references stay valid.
 | LLM disclosure (U12) | No provider wired (`backend/app/modules/preparation/drafting.py:72-74`); future provider needs server-side config, per-user consent and minimised inputs (L4 in `implementation-plan.md`) | Exists (by absence) |
 | Destination checks (LD-40) | `parse_posting`, `adapter_for`, egress proxy, pinned identity gaps (`docs/provider-admission.md:202-217`) | Exists; `resolve_public_destination` must be called before any live server-side fetch (not called today) |
 | Discovery (LD-41 to LD-46) | Freehire-first provider with tri-state source facts, typed errors and budgets (`backend/app/modules/discovery/`) | Exists, off by default; see `freehire-first-architecture.md` |
-| Tracking (LD-50 to LD-52) | `AppState`, `Outcome`, insert-only events | Partial; outcome integrity is a NEW slice (`implementation-plan.md` S2) |
+| Tracking (LD-50 to LD-52) | `AppState`, `Outcome`, insert-only events, outcome sources and the funnel | Built (S2, D53) |
 | Dashboard (U13) | Authenticated API, CSRF token, SameSite cookies (`backend/app/modules/identity/deps.py:31`, `router.py:51`) | Exists |
 | Committed data (U17) | `tests/test_repo_hygiene.py` | Exists |
 

@@ -39,7 +39,7 @@ Next.js frontend ──rewrite──▶ FastAPI backend ──▶ PostgreSQL (du
 | `import_batches` | Each CSV/XLSX import with per-row outcomes |
 | `documents` | Immutable document versions grouped by `lineage_id` |
 | `applications` | One per user and job; state, outcome, optimistic `lock_version` |
-| `application_events` | Append-only timeline |
+| `application_events` | Append-only timeline; insert-only in the database (a trigger refuses UPDATE, and DELETE unless it cascades from the application or user). `source`, `from_outcome`/`to_outcome`, `occurred_on`, `evidence_note` (D53) |
 | `audit_events` | Audit trail; `meta` sanitized before storage (`docs/audit-events.md`). Application code never updates or deletes rows; the privacy repair migration `c303eee5a3c9` rewrote legacy `meta` once |
 
 Every fact row carries `provenance` (user_entered / resume_parse / import), `approval_status`
@@ -67,11 +67,13 @@ Defined in `app/modules/applications/states.py`. Each transition lists who may p
 ```
 draft → preparing → awaiting_approval → queued → running → ready_to_submit → submitting
                          ↑    │                     │  ↕                          │
-                         └────┘ (package changed)   needs_user_action             ├→ submitted_confirmed
-                                                                                  ├→ submitted_unconfirmed ─(user reconciles)→ confirmed / failed_retryable / failed_terminal
+                         └────┘ (package changed)   needs_user_action             ├→ submitted_confirmed (worker: its attempt's employer receipt; source receipt)
+                                                                                  ├→ submitted_unconfirmed ─(user, saying what they checked: /reconcile received or /transition)→ submitted_confirmed (user_claimed)
+                                                                                  │                        ─(reconciled not received)→ failed_retryable; ─(user)→ failed_terminal
                                                                                   └→ failed_terminal (only if nothing was sent)
 plus: needs_user_action → submitted_unconfirmed (an unknown outcome in the verification-code
 step, recorded by the worker or the sweeper; or the user applied by hand);
+draft, awaiting_approval → submitted_unconfirmed (the user applied by hand; user_claimed);
 failed_retryable → queued (the user, with a valid approval), cancelled, expired (terminal)
 ```
 
@@ -80,7 +82,31 @@ Rules that matter:
   `submitted_unconfirmed` and only a **user** who has checked with the employer can re-queue.
 - `lock_version` is SQLAlchemy's version column, so two concurrent writers conflict instead of
   silently overwriting each other.
-- Every change writes an `application_events` row.
+- Every state or outcome change writes an insert-only `application_events` row; editing the
+  notes writes none.
+- **What a submission rests on (D53).** An event's `source` is set by
+  `applications/service.py` from the move and its actor, never by a client: `receipt` (the
+  worker observed the employer's receipt), `user_claimed` (the user applied by hand, or
+  confirmed it saying what they checked, kept in `evidence_note`), `user_reported` (an outcome).
+  A user's confirmation needs 15 to 2,000 characters of what they checked. An application's
+  `submission` (receipt, user_claimed, unconfirmed) is computed when read; a receipt recorded on
+  one of its attempts counts even when it arrived after the application was quarantined.
+- **Outcomes (D53).** Recorded by the user only (`PATCH /applications/{id}`), with an optional
+  date and private note; never inferred. An outcome other than `none` or `withdrawn` needs a
+  submission NoEfforts knows of: a submitted state now or before, or a recorded receipt. Under
+  this rule an application cancelled, expired or failed before any submission can never take an
+  employer outcome. The funnel (`GET /applications/funnel`, `applications/funnel.py`) is counted
+  per user when read: counts and denominators, no rate, and a note below 20 submissions.
+
+**Refusal codes**
+
+| Code | Refused when | Message |
+|---|---|---|
+| `evidence_required` | the user confirms a submission without at least 15 characters of what they checked | To confirm this submission yourself, say what you checked, in at least 15 characters (for example the reference in the employer's confirmation email). It is recorded as your statement, not as an employer receipt. |
+| `outcome_before_submission` | an outcome other than none or withdrawn, on an application with no submission NoEfforts knows of | NoEfforts has no record that this application reached the employer, so an employer's outcome cannot be recorded for it. Withdrawn can always be recorded. |
+| `confirm_through_reconcile` | the owner's switch routes confirmations through reconciliation only (off by default) | Confirm a submission by reconciling it: say what you checked and choose It was received. |
+
+Each is a 400 whose detail ends `(reason: <code>)`; refusals write nothing and are not audited.
 
 ## Security
 
@@ -177,6 +203,12 @@ Every transaction that locks more than one of these rows takes them in this orde
 6. a saved answer (`answer_bank` row): after the application and its input when an answer is
    saved for reuse (one upsert), or alone when it is deleted (one DELETE). Package rebuilds and
    the gates read the bank without locking it (D51).
+
+Outcomes and confirmations (D53): an outcome or notes (`PATCH /applications/{id}`) locks only the
+application and re-reads it before deciding; a user's confirmation (`/transition` to
+`submitted_confirmed`, `/reconcile`) locks the application's attempts by id, then the
+application (`applications/service.py` `lock_submission`), the order the worker's receipt takes.
+`tests/test_outcome_races.py` races both against the worker.
 
 Inserting a row that references an application (evidence, events) key-share locks the
 application too; that happens after the attempt, in the same order. Paths that never lock an

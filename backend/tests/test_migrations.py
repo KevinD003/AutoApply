@@ -118,6 +118,10 @@ def test_disposable_downgrade_and_reupgrade(disposable):
             )
         )
         assert enums.scalar() == 0
+        funcs = c.execute(
+            text("select count(*) from pg_proc where proname='application_events_insert_only'")
+        )
+        assert funcs.scalar() == 0
     command.upgrade(_cfg(), "head")
 
 
@@ -168,4 +172,139 @@ def test_c6_saved_answers_keep_their_key_and_gain_no_help_text(disposable):
             )
         )
         assert cols.scalar() == 0
+    command.upgrade(_cfg(), "head")
+
+
+BEFORE_S2 = "b29cba6e1f6e"
+OUTCOMES = [
+    "none",
+    "assessment_received",
+    "interviewing",
+    "offer",
+    "rejected",
+    "withdrawn",
+    "no_response",
+]
+
+
+def test_s2_adds_assessment_received_and_outcome_fields_without_rewriting_a_row(disposable):
+    """S2 (D53) adds the outcome assessment_received and five nullable event columns without
+    touching a row: events written before it keep their kind, actor, reason and time, with
+    NULL in every new column. Events become insert-only. A downgrade is refused while an
+    application holds the new outcome; otherwise it drops only what S2 added."""
+    from sqlalchemy.exc import IntegrityError
+
+    command.upgrade(_cfg(), PHASE_A)
+    uid, jid, aid, e1, e2 = (uuid.uuid4() for _ in range(5))
+    with disposable.begin() as c:
+        c.execute(
+            text(
+                "insert into users (id,email,password_hash,created_at,updated_at) "
+                "values (:u,'synthetic@example.com','x',now(),now())"
+            ),
+            {"u": uid},
+        )
+        c.execute(
+            text(
+                "insert into jobs (id,user_id,dedupe_key,employer,title,ats_provider,source,status,"
+                "first_seen_at,last_seen_at,seen_count,created_at,updated_at) values "
+                "(:j,:u,'fp:1','Acme','Cook','unknown','manual','new',now(),now(),1,now(),now())"
+            ),
+            {"j": jid, "u": uid},
+        )
+        c.execute(
+            text(
+                "insert into applications (id,user_id,job_id,state,state_changed_at,outcome,"
+                "lock_version,created_at,updated_at) values "
+                "(:a,:u,:j,'submitted_confirmed',now(),'interviewing',3,now(),now())"
+            ),
+            {"a": aid, "u": uid, "j": jid},
+        )
+        c.execute(
+            text(
+                "insert into application_events (id,application_id,kind,from_state,to_state,actor,"
+                "reason,created_at) values (:e,:a,'state_change','submitted_unconfirmed',"
+                "'submitted_confirmed','user','Reconciled as received: synthetic email',now())"
+            ),
+            {"e": e1, "a": aid},
+        )
+        c.execute(
+            text(
+                "insert into application_events (id,application_id,kind,actor,reason,created_at) "
+                "values (:e,:a,'outcome','user','outcome: none → interviewing',now())"
+            ),
+            {"e": e2, "a": aid},
+        )
+    command.upgrade(_cfg(), BEFORE_S2)
+    rows = text(
+        "select id, kind, actor::text, reason, created_at from application_events "
+        "where application_id=:a order by id"
+    )
+    new_cols = text(
+        "select from_outcome, to_outcome, source, occurred_on, evidence_note "
+        "from application_events where application_id=:a"
+    )
+    with disposable.connect() as c:
+        before = [tuple(r) for r in c.execute(rows, {"a": aid})]
+    command.upgrade(_cfg(), "head")
+    with disposable.connect() as c:
+        assert [tuple(r) for r in c.execute(rows, {"a": aid})] == before
+        assert all(tuple(r) == (None,) * 5 for r in c.execute(new_cols, {"a": aid}))
+        labels = (
+            c.execute(
+                text(
+                    "select enumlabel from pg_enum e join pg_type t on "
+                    "t.oid=e.enumtypid where t.typname='app_outcome' "
+                    "order by e.enumsortorder"
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert labels == OUTCOMES
+    with pytest.raises(Exception, match="insert-only"), disposable.begin() as c:
+        c.execute(text("update application_events set reason='x' where id=:e"), {"e": e1})
+    with pytest.raises(IntegrityError), disposable.begin() as c:
+        c.execute(
+            text(
+                "insert into application_events (id,application_id,kind,to_state,actor,source,"
+                "created_at) values (:e,:a,'state_change','submitted_unconfirmed','user',"
+                "'employer_email',now())"
+            ),
+            {"e": uuid.uuid4(), "a": aid},
+        )
+    with disposable.begin() as c:  # simulated: the user recorded the new outcome
+        c.execute(
+            text("update applications set outcome='assessment_received' where id=:a"), {"a": aid}
+        )
+    with pytest.raises(RuntimeError, match="1 application"):
+        command.downgrade(_cfg(), BEFORE_S2)
+    with disposable.connect() as c:
+        assert c.execute(text("select version_num from alembic_version")).scalar() == "e3a91c5d7b20"
+    with disposable.begin() as c:
+        c.execute(text("update applications set outcome='interviewing' where id=:a"), {"a": aid})
+    command.downgrade(_cfg(), BEFORE_S2)
+    with disposable.connect() as c:
+        assert [tuple(r) for r in c.execute(rows, {"a": aid})] == before
+        gone = c.execute(
+            text(
+                "select (select count(*) from information_schema.columns where "
+                "table_name='application_events' and column_name in ('from_outcome','to_outcome',"
+                "'source','occurred_on','evidence_note')) + (select count(*) from pg_trigger where "
+                "tgname='application_events_insert_only') + (select count(*) from pg_proc where "
+                "proname='application_events_insert_only')"
+            )
+        ).scalar()
+        assert gone == 0
+        labels = (
+            c.execute(
+                text(
+                    "select enumlabel from pg_enum e join pg_type t on "
+                    "t.oid=e.enumtypid where t.typname='app_outcome'"
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert "assessment_received" in labels  # PostgreSQL cannot drop an enum value
     command.upgrade(_cfg(), "head")

@@ -263,6 +263,34 @@ def test_a_rejected_draft_records_a_reason_code_not_its_content(api, monkeypatch
     assert not re.search(r"\b(40|12)\b", stored) and "nurses" not in dump([row])
 
 
+def test_an_outcome_is_audited_with_its_value_and_source_only(api):
+    """R14.2 (D53): the audit row names the outcome and its source; what the user wrote (what
+    they checked, their note, the date they gave) stays on the application's own timeline."""
+    job = api.post("/jobs", json={"title": "Baker", "employer": "Bread Co"}).json()["job"]
+    app_id = api.post("/applications", json={"job_id": job["id"]}).json()["id"]
+    api.post(f"/applications/{app_id}/transition", json={"to": "submitted_unconfirmed"})
+    r = api.post(
+        f"/applications/{app_id}/transition",
+        json={"to": "submitted_confirmed", "evidence": "Sam Synthetic emailed Northwind, 555 0100"},
+    )
+    assert r.status_code == 200, r.text
+    r = api.patch(
+        f"/applications/{app_id}",
+        json={
+            "outcome": "offer",
+            "occurred_on": "2026-10-21",
+            "evidence_note": "Sam Synthetic offer from Northwind, sam.synthetic@example.com",
+        },
+    )
+    assert r.status_code == 200, r.text
+    (row,) = audit_rows("application.outcome")
+    assert (row.entity_type, row.entity_id) == ("application", app_id)
+    assert row.meta == {"to": "offer", "source": "user_reported"}
+    assert all(set(a.meta) == {"to"} for a in audit_rows("application.transition"))
+    text = dump(audit_rows())
+    assert_no_markers(text, extra=("2026-10-21", "offer from"))
+
+
 def test_a_created_draft_records_a_field_reference_not_the_question_key(api, monkeypatch):
     from tests.test_preparation import FakeProvider, new_application, setup_candidate
 

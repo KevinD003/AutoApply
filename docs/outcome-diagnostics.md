@@ -1,6 +1,6 @@
 # Outcome diagnostics
 
-Status: 2026-10-27; code references are to NoEfforts `3af29f0` (Q1, D50) unless marked; C6 (D51) landed afterwards as `b6e4cf4`; completeness-critic fixes G2 and G12-G14 applied.
+Status: 2026-10-27; code references are to NoEfforts `3af29f0` (Q1, D50) unless marked; C6 (D51) landed afterwards as `b6e4cf4`; S2 (D53) built §1 since, and §1 describes it as built; completeness-critic fixes G2 and G12-G14 applied.
 
 Finding ids (gh-/la-/ans-/pl-/sec-), "map Qn" and "critic Gn/Ln/Cn" refer to the review's working notes, which are not committed. C1-C18 and L1-L4 are the preparation steps listed in `implementation-plan.md` (§0 and "Remaining preparation steps"); `docs/implementation-status.md` names the ones already implemented or referenced.
 
@@ -16,52 +16,71 @@ Labels: **CONFIRMED**, **HYPOTHESIS**, **UNKNOWN**, **NEW** (proposed, not built
 
 | Stage | Meaning | Evidence that establishes it | In NoEfforts today | Gap |
 |---|---|---|---|---|
-| `prepared` | A package exists for the current form | A package version | `AppState.awaiting_approval` (`M/applications/states.py:15`); package versions (`M/preparation/package.py`) | Implicit state, not an outcome; fine |
-| `approved` | The user approved this exact package for submission (or for a rehearsal) | `PackageApproval` row bound to the content hash, not expired or revoked | `PackageApproval`; `AppState.queued` once queued | No application state for "approved, not queued"; derive it from the approval rows (NEW, display only) |
-| `disclosed` | Some data left NoEfforts toward the employer (fill, autosave or upload), whether or not it was submitted | `ExecutionAttempt.disclosure_started_at`; attempt state `abandoned` or `rehearsed` (`M/execution/models.py:33-37`) | Attempt level only | NEW: derive an application-level "disclosed" flag for the funnel from its attempts; never stored separately |
-| `submitted_unconfirmed` | The final send may have happened; the outcome is unknown | Attempt state `unknown`; or the user's "I applied myself" | `AppState.submitted_unconfirmed` (`M/applications/states.py:22`) | Two meanings share one state (worker-unknown vs user-claimed manual application); the event's `actor` tells them apart. NEW: show the source |
-| `submitted_confirmed` | The employer's receipt was observed | Receipt evidence from the attempt (`M/execution/service.py:674-716`) | `AppState.submitted_confirmed` (`:21`) | **A user can set it from `submitted_unconfirmed` with no evidence** through `POST /applications/{id}/transition` (`states.py:92`; `M/applications/router.py:207-278`). Only `/reconcile` demands stated evidence. NEW (slice S2): a user confirmation needs stated evidence and is recorded as user-claimed |
-| `rejected` | The employer declined the candidate | User-reported (later: an employer email, only with an inbox permission) | `Outcome.rejected` (`:39`) | Same word as `AttemptState.rejected` (the *form* refused the submission → `failed_terminal`). NEW: label them "form rejected" vs "employer declined" in the UI and docs |
-| `assessment_received` | The employer sent a test, task or screening questionnaire | User-reported | **missing** (`Outcome` has `none`, `interviewing`, `offer`, `rejected`, `withdrawn`, `no_response`; `M/applications/states.py:35-41`) | NEW: add the value (PostgreSQL enum `app_outcome`, so a migration) |
-| `interview_received` | An interview was offered or scheduled | User-reported | `Outcome.interviewing` (`:37`) | One value; no rounds or dates. Keep one value; record the date the user says it happened |
+| `prepared` | A package exists | A package version | `AppState.awaiting_approval` (`M/applications/states.py:15`); package versions (`M/preparation/package.py`) | Built (S2, D53): any package version of the application counts |
+| `approved` | The user approved a package, to submit or to rehearse | A `PackageApproval` row | `PackageApproval` | Built (S2, D53): any approval of any scope, ever, including revoked or expired ones; derived, never stored |
+| `disclosed` | Some data left NoEfforts toward the employer (fill, autosave or upload), whether or not it was submitted | `ExecutionAttempt.disclosure_started_at` | Attempt level | Built (S2, D53): an attempt with `disclosure_started_at` set (rehearsals included); derived, never stored |
+| `submitted_unconfirmed` | The final send may have happened; the outcome is unknown | Attempt state `unknown`; or the user's "I applied myself" | `AppState.submitted_unconfirmed` | Built (S2, D53): the event's `source` tells them apart (`user_claimed` for the user's statement, none for the worker's or sweeper's unknown outcome); the page says "Applied by you (not confirmed)" or "Submitted (not confirmed)" |
+| `submitted_confirmed` | The employer's receipt was observed, or the user confirmed it | A confirmed attempt (receipt); or the user's statement with what they checked | `AppState.submitted_confirmed` | Closed (S2, D53): a user's confirmation needs 15 to 2,000 characters of what they checked and is recorded as `user_claimed`; a receipt is read from the attempts, so a late receipt that left the application `submitted_unconfirmed` still counts as one |
+| `rejected` | The employer declined the candidate | User-reported (later: an employer email, only with an inbox permission) | `Outcome.rejected` | Built (S2, D53): shown as "Employer declined"; a form that refused the submission (`AttemptState.rejected`, `failed_terminal`) is "Form rejected" and is never an employer outcome |
+| `assessment_received` | The employer sent a test, task or screening questionnaire | User-reported | `Outcome.assessment_received` | Built (S2, D53; migration `e3a91c5d7b20`) |
+| `interview_received` | An interview was offered or scheduled | User-reported | `Outcome.interviewing` | One value; no rounds. The user can give the date it happened (S2) |
 | `withdrawn` | The user withdrew | User action | `Outcome.withdrawn` (`:40`) | — |
-| `no_response` | Nothing heard back | User-set today | `Outcome.no_response` (`:41`) | No time rule. NEW: a *computed* "no response yet (N days since confirmed submission)" shown in the funnel, never stored as an outcome; the user sets `no_response` explicitly when they decide |
+| `no_response` | Nothing heard back | User-set | `Outcome.no_response` | Built (S2, D53): "no response yet" (21 days or more in the current submitted stretch, outcome none) is computed in the funnel, never stored; the user sets `no_response` when they decide |
 | (extra) `offer` | — | User-reported | `Outcome.offer` (`:38`) | — |
 
-**Recording today (CONFIRMED):** `PATCH /applications/{id}` with `outcome` accepts any
-application state, even `draft` (`M/applications/router.py:345-366`). It inserts an
-`ApplicationEvent(kind="outcome")` with the reason `"outcome: old → new"` (`:353-362`): no date of
-the employer's event, no source, no evidence note, and no audit `record()` call. The tracker page
-has an outcome select (`frontend/src/app/(app)/tracker/page.tsx:82-84,118-125`). Only
-`tests/test_applications.py::test_user_transitions_and_timeline` covers it.
+**Recording before S2:** `PATCH /applications/{id}` accepted any outcome in any state, even
+`draft`, with no date, no source, no note and no audit row. S2 (D53) replaced it as below.
 
-**No funnel or metrics exist (CONFIRMED):** no aggregation endpoint or page
-(grep of the modules for funnel, metrics, stats found nothing relevant).
+### 1.1 Outcome record (built, S2, D53)
 
-### 1.1 Proposed outcome record (NEW, design only)
+Each outcome change is one insert-only `ApplicationEvent(kind="outcome")` (a database trigger
+refuses UPDATE, and DELETE unless it cascades) with:
 
-Each outcome change stays an insert-only `ApplicationEvent`, plus:
+- `from_outcome` and `to_outcome`: the change, typed; rows written before S2 keep NULL and count
+  only through the application's current outcome (unknown stays unknown);
+- `occurred_on` (date, optional): when the user says the employer acted, no later than UTC today
+  plus one day;
+- `source`: `user_reported` for an outcome; `receipt` and `user_claimed` mark what a submission
+  rests on; `employer_email` does not exist and would need an inbox permission (D10); a source
+  is set by the server only, never sent by a client;
+- `evidence_note`: the user's private note on an outcome (optional), or what they checked when
+  confirming a submission (required, 15 to 2,000 characters); served to its owner only, never
+  copied into audit rows or logs, and it cannot be edited or removed;
+- an audit row `application.outcome` with `to` and `source` only;
+- refusal of an outcome other than none or withdrawn on an application with no submission
+  NoEfforts knows of (`(reason: outcome_before_submission)`; codes in `architecture.md`,
+  "Refusal codes"). The owner can switch this to a visible flag without a data migration.
 
-- `occurred_on` (date, optional): when the user says the employer acted, separate from entry time;
-- `source`: `user_reported` today; `receipt` for the worker's confirmation; `employer_email` only
-  if an inbox permission is ever granted (D10), and never set by inference;
-- a short `evidence_note` (optional for outcomes, required for a user confirmation of a
-  submission), stored like the reconcile finding, never copied into audit rows;
-- an audit `record()` with the outcome value and source only (no free text), per
-  `docs/audit-events.md` conventions;
-- refusal of an outcome other than `withdrawn` on an application that never reached a submitted
-  state, or a visible flag on it (owner decision).
+### 1.2 Funnel (built, S2, D53: `GET /applications/funnel`, `M/applications/funnel.py`)
 
-### 1.2 Funnel computation (NEW)
+Per user only, computed when read, never stored, never compared across users, no rate. Each
+count has its denominator:
 
-- Per user only; computed from states and events at read time; never compared across users.
-- Counts: prepared → approved → disclosed → submitted (confirmed by receipt / unconfirmed /
-  user-claimed shown separately) → any response → assessment → interview → offer; plus
-  rejected, withdrawn, no response.
-- Every count shows its denominator, and with fewer than about 20 submissions the page says the
-  numbers are too few to compare.
-- **Tests use the receiver ledger as the oracle** for "submitted"; the funnel is a user-facing
-  view, never the source of truth for test assertions (CLAUDE.md).
+| Count | Rule | Of |
+|---|---|---|
+| tracked | the user's applications | |
+| prepared | a package exists | tracked |
+| approved | an approval of any scope exists, ever | prepared |
+| disclosed | an attempt with `disclosure_started_at` (rehearsals included) | approved |
+| form_rejected | an attempt the employer's form refused ("Form rejected", never "Employer declined") | disclosed |
+| submitted | the submission rests on a receipt, the user's statement, or is unconfirmed | tracked |
+| responded; assessment_received, interviewing, offer, rejected | the value was recorded (a change to none takes back the value it replaced; nothing is implied) | submitted |
+| no_response | the current outcome is no_response | submitted |
+| no_response_yet | outcome none, no response recorded, 21 days or more in the current submitted stretch (computed) | submitted |
+| withdrawn | withdrawn was recorded | submitted |
+| withdrawn_before_submission | withdrawn, on an application never submitted | tracked |
+
+The submitted split (receipt, user_claimed, unconfirmed) sums to the total; user_claimed splits
+into "confirmed by you" and "applied by you". Outcomes recorded on an application never
+submitted (before S2, or under the owner's flag switch) are counted apart and in no stage.
+Below 20 submissions the page says "N submissions is too few to compare rates". **Tests use the
+receiver ledger as the oracle** for "submitted"; the funnel is a user-facing view, never the
+source of truth for test assertions (CLAUDE.md).
+
+### 1.3 Refusal codes (D53)
+
+The closed set (`evidence_required`, `outcome_before_submission`, `confirm_through_reconcile`)
+and their exact messages are listed under "Refusal codes" in `architecture.md`.
 
 ## 2. Historical evidence that would help, and the permission each needs
 
@@ -141,7 +160,7 @@ are not estimates of it.
 | approved | 20 | 4 parked on checkpoints |
 | disclosed | 19 | 1 rehearsal only |
 | submitted, confirmed by receipt | 16 | ledger-equivalent in tests |
-| submitted, unconfirmed | 2 | 1 reconciled "received" with evidence, 1 open |
+| submitted, unconfirmed | 2 | 1 reconciled "received" with evidence (the built funnel counts it as user-claimed, "confirmed by you"), 1 open |
 | submitted, user-claimed (applied by hand) | 1 | shown separately |
 | any response | 6 | of 19 submitted |
 | assessment_received | 2 | |
@@ -161,10 +180,10 @@ confirmation emails in the same period (owner's own count): 38
    checked against emails per posting.
 ```
 
-### 5.3 A synthetic outcome event (proposed shape)
+### 5.3 A synthetic outcome event (as built, S2)
 
 ```json
-{"kind": "outcome", "from": "none", "to": "assessment_received", "actor": "user",
+{"kind": "outcome", "from_outcome": "none", "to_outcome": "assessment_received", "actor": "user",
  "source": "user_reported", "occurred_on": "2026-11-03", "evidence_note": "(optional, private)"}
 ```
 

@@ -162,24 +162,70 @@ export interface DiscoveryImportResult {
   linked_existing_jobs: number;
 }
 
+export type Outcome =
+  | "none"
+  | "assessment_received"
+  | "interviewing"
+  | "offer"
+  | "rejected"
+  | "withdrawn"
+  | "no_response";
+
+// What a submission rests on (D53): computed by the server, never sent by the client.
+export type SubmissionBasis = "receipt" | "user_claimed" | "unconfirmed";
+
 export interface Application {
   id: string;
   job: Pick<Job, "id" | "title" | "employer" | "location" | "url" | "ats_provider">;
   state: string;
   state_changed_at: string;
-  outcome: string;
+  outcome: Outcome;
   notes: string | null;
   created_at: string;
   // The latest execution attempt, if any (state from the execution service).
   last_attempt: { state: string; approval_scope: "submit" | "disclose_only" | null } | null;
+  submission: SubmissionBasis | null;
+  reached_submission: boolean;
+  outcome_choices?: Outcome[]; // detail only
   events?: {
     kind: string;
     from_state: string | null;
     to_state: string | null;
     actor: string;
     reason: string | null;
+    from_outcome: Outcome | null;
+    to_outcome: Outcome | null;
+    source: "receipt" | "user_claimed" | "user_reported" | null;
+    occurred_on: string | null;
+    evidence_note: string | null;
     created_at: string;
   }[];
+}
+
+export interface FunnelStage {
+  stage: string;
+  count: number;
+  of: number;
+  of_stage: string;
+}
+
+// Counts and their denominators only; never a rate (D53).
+export interface Funnel {
+  tracked: number;
+  stages: FunnelStage[];
+  submitted: {
+    total: number;
+    receipt: number;
+    user_claimed: number;
+    unconfirmed: number;
+    confirmed_by_you: number;
+    applied_by_you: number;
+  };
+  no_response_after_days: number;
+  min_submissions_to_compare: number;
+  too_few_to_compare: boolean;
+  note: string | null;
+  outcome_before_submission: number;
 }
 
 export interface Doc {
