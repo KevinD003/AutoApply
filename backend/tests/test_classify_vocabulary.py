@@ -642,3 +642,162 @@ def test_each_pattern_added_after_review_matches_what_it_is_for(pat, how, yes, n
 )
 def test_a_heading_that_adds_to_its_help_statement(label, adds):
     assert C._heading_adds(N(label)) == adds
+
+
+# S4 (D54): patterns added for the legacy collision corpus (tests/legacy_collisions.json).
+U_S4 = [
+    (C._OTHER_SECTION, "search",
+     ["Emergency contact", "Reference 2", "Referee details", "Recommender 1", "Agency details",
+      "Your recruiter", "Previous employer", "Work history", "Employment history",
+      "Academic advisor", "ICE contact", "Guarantor", "Most recent job"],
+     ["Employment application", "Personal information", "Apply for this job",
+      "Contact information", "My Experience", "Education & experience"]),
+    (C._OTHER_HELP, "search",
+     ["Full name of your emergency contact", "Your manager's email address",
+      "Name of your referee", "Full name of the person who referred you",
+      "Your current employer's website", "Next of kin", "Your referee's LinkedIn profile",
+      "Hiring manager's email", "Email of the hiring manager you spoke with",
+      "Website of your employer", "Employer phone number", "Your recommender's email address",
+      "Who should we call if something happens to you?"],
+     ["The hiring manager will contact you at this address.", "Personal information",
+      "A recruiter will contact you at this number.", "Your recruitment manager will call you.",
+      "We will email you about your application",
+      "Your data is handled under the company's privacy policy."]),
+    (C._RELOC_PLAIN, "fullmatch",
+     ["are you willing to relocate", "would you be willing to relocate", "willing to relocate",
+      "are you willing and able to relocate", "are you willing to relocate for this role",
+      "are you able and willing to relocate", "relocation: are you willing to relocate"],
+     ["are you not willing to relocate", "are you willing to relocate to lisbon",
+      "are you willing to relocate for this position to japan",
+      "are you willing to relocate if offered a position in lisbon",
+      "are you willing to relocate without relocation assistance"]),
+    (C._RELOC_HELP_OK, "fullmatch",
+     ["", "select one", "please select yes or no", "choose the option that applies"],
+     ["this role is based in osaka, japan", "the position is in lisbon",
+      "no relocation assistance is offered", "we are headquartered in lisbon",
+      "start date is january 2027"]),
+    (C._GEO_TRAP, "search", ["the EU", "anywhere in Europe", "the Middle East", "overseas"],
+     ["shifts, including nights", "outside office hours", "other than weekends"]),
+    (C._PREVENT_WORK, "search",
+     ["Is there anything that would prevent you from working in Portugal?",
+      "Are there restrictions on your ability to work in the UK?"],
+     ["Is there anything that would prevent you from starting on Monday?"]),
+    (C._NATIONAL_BARE, "fullmatch", ["portuguese national", "eu/eea national", "eu national"],
+     ["national sales"]),
+    (C._NATIONALITY_Q, "fullmatch",
+     ["are you portuguese", "are you an american", "are you portuguese or spanish",
+      "are you british or irish", "are you an eu national", "are you a portuguese citizen",
+      "are you an eu/eea national"],
+     ["are you a portuguese speaker", "are you portuguese and over 18", "portuguese"]),
+    (C._NATIONAL_Q, "fullmatch",
+     ["are you a portuguese national", "are you a uk national", "are you a national of spain"],
+     ["are you a national sales leader"]),
+    (C._RESIDENT_Q, "fullmatch",
+     ["are you a us resident", "are you a portuguese resident", "are you portugal-based",
+      "are you portugal based", "portugal resident", "us resident", "are you lisbon-based"],
+     ["can you work us-based hours", "do you have experience working with residents in the uk"]),
+    (C._IN_Q, "fullmatch",
+     ["are you in portugal", "are you currently in the united states", "are you in lisbon",
+      "are you physically present in portugal"],
+     ["are you interested in remote work", "are you involved in hiring"]),
+    (C._LOCAL_Q, "search",
+     ["Are you local to Lisbon?", "Do you live locally?", "Are you a local candidate?",
+      "are you local"],
+     ["Do you know the local market?"]),
+    (C._CONSENT_OPTION, "search",
+     ["I agree", "I do not agree", "I accept", "I do not consent", "Acknowledged",
+      "Not acknowledged", "I certify the above is true", "Yes, keep my data for future roles",
+      "Disagree", "Yes, I agree", "No, I do not agree", "Yes, I consent", "No, I disagree",
+      "Yes, I give my consent", "I understand", "Yes, please keep me informed"],
+     ["Yes", "No", "Python", "Not sure", "Native", "Fluent"]),
+    (C._RATING, "search", ["Strongly agree", "Neutral", "Neither agree nor disagree"],
+     ["Agree", "I agree", "Disagree"]),
+    (C._NOT_RESIDENCE_CTX, "search",
+     ["Where would you like to work?", "The city you would most like to work in",
+      "Which country do you hope to work in?", "Where are you willing to work?",
+      "The city where you'd like to be based", "City you plan to move to",
+      "The city you are targeting", "Which city are you interested in?",
+      "Where are you hoping to work?", "Where are you looking to work?",
+      "Your ideal work location", "Where would you work?", "The location you are seeking"],
+     ["Where do you live?", "Your home address", "We'd like to know where you live"]),
+    (C._WORK_IN, "search",
+     ["I cannot work in Portugal", "I am unable to work legally in Portugal",
+      "I am ineligible for employment in Portugal",
+      "I lack the right to work in Portugal", "I am unable to work anywhere in Portugal"],
+     ["I am unable to work weekends", "I cannot work night shifts"]),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize(("pat", "how", "yes", "no"), U_S4, ids=[p.pattern[:40] for p, *_ in U_S4])
+def test_each_pattern_added_for_the_legacy_corpus_matches_what_it_is_for(pat, how, yes, no):
+    assert [s for s in yes if not getattr(pat, how)(N(s))] == []
+    assert [s for s in no if getattr(pat, how)(N(s))] == []
+
+
+@pytest.mark.parametrize(
+    ("label", "kind"),
+    [
+        ("Are you unable to work in Portugal?", "legal_status"),
+        ("I would not be able to work in Portugal", "legal_status"),
+        ("Are you Portugal-based?", "legal_status"),
+        ("Are you UK\u2011based?", "legal_status"),
+        ("Are you a US resident?", "legal_status"),
+        ("Are you a California resident?", "legal_status"),
+        ("Are you Portuguese?", "legal_status"),
+        ("Are you Portuguese (yes/no)?", "legal_status"),
+        ("Are you local to Lisbon?", "legal_status"),
+        ("Are you in Portugal?", "legal_status"),
+        ("Are you in Lisbon?", "legal_status"),
+        ("Are you in " + "/".join(f"Q{c}x" for c in "abcdefghijk") + "/qq?", "legal_status"),
+        ("Do you have Portuguese residency?", "legal_status"),
+        ("Do you hold a Portuguese passport?", "legal_status"),
+        ("Do you use evidence-based methods?", "unknown"),
+        ("Can you work US-based hours?", "unknown"),
+        ("Do you have experience with care home residents?", "unknown"),
+        ("Are you in employment?", "unknown"),
+        ("Are you a medical resident?", "unknown"),
+        ("Have you completed your residency?", "unknown"),
+        ("Are you unable to work weekends?", "unknown"),
+        ("Do you have a passport?", "unknown"),  # any passport: C6 keeps it reusable
+    ],
+)
+def test_residence_nationality_and_a_negated_right_to_work_are_protected(label, kind):
+    assert C.classify(_field(label)).kind == kind
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "I cannot work in Portugal",
+        "I would not be able to work in Portugal",
+        "I won't be able to work in Portugal",
+        "I lack the right to work in Portugal",
+        "I am a US resident",
+        "US resident",
+        "I am Portuguese",
+        "I am from the United States",
+    ],
+)
+def test_a_statement_that_names_no_fact_the_grammar_reads_is_never_checked(label):
+    box = FormField(key="q", label=label, type=FieldType.checkbox)
+    i = C.classify(box)
+    assert (i.kind, i.params.get("asserts"), i.ambiguity is not None) == (
+        "fact_statement",
+        None,
+        True,
+    )
+
+
+@pytest.mark.parametrize(
+    "label", ["I am unable to travel", "I am in compliance", "I hold a valid passport"]
+)
+def test_a_statement_about_no_profile_fact_stays_your_consent_choice(label):
+    box = FormField(key="q", label=label, type=FieldType.checkbox)
+    assert C.classify(box).kind == "acknowledgment"
+
+
+def test_a_citizenship_statement_keeps_the_c3_rule():
+    """Agree checks it unless the authorization facts contradict it (answer-policy row 1)."""
+    box = FormField(key="q", label="I am a U.S. citizen", type=FieldType.checkbox)
+    i = C.classify(box)
+    assert (i.kind, i.params, i.ambiguity) == ("acknowledgment", {"attests": "legal_status"}, None)

@@ -22,6 +22,7 @@ committed).
 | Q1 (an unknown outcome in the code step is quarantined; the sweeper recovers each attempt alone) | Done | `3af29f0` (D50; `backend/tests/test_code_wait_quarantine.py`). Found by the static code map made for this review |
 | C6 (answer-bank scope) | Done | `b6e4cf4` (D51; the narrowing-only check, 1,315,200 form resolutions with 0 violations; the wording table of 1,037 rows; the five race tests failing against `3af29f0`'s code as described; the full results in `docs/implementation-status.md`); new `backend/app/modules/preparation/bankscope.py`, `backend/migrations/versions/b29cba6e1f6e_answer_bank_help_text.py`, `backend/tests/test_bank_scope.py`, `backend/tests/test_bank_scope_api.py`, `backend/tests/test_bank_races.py`; `backend/tests/test_migrations.py::test_c6_saved_answers_keep_their_key_and_gain_no_help_text` |
 | S2 (outcome integrity and funnel) | Done | D53; `backend/tests/test_funnel.py`, `test_outcome_races.py`, `test_application_events_db.py`, migration `e3a91c5d7b20`; results in `docs/implementation-status.md` |
+| S4 (legacy collision corpus and static guards) | Done | D54; `backend/tests/legacy_collisions.json` (244 rows) driven by `test_resolver.py::test_a_legacy_collision_gets_only_its_safe_outcome`, `backend/tests/test_forbidden_capabilities.py`; the rows that resolved wrongly became checkpoints in `classify.py`/`resolver.py` (narrowing only); results in `docs/implementation-status.md` |
 | C7-C18 | Not started | "Remaining preparation steps" below |
 | Live discovery | Blocked (code refuses non-fixture base URLs; owner decisions) | `freehire-first-architecture.md` §11 |
 | Live execution | Blocked (pilot permissions 1-4; admission capped at `rehearsal_ready`) | `docs/live-pilot-gate.md:22-35`; `admission.py:86-87` |
@@ -165,7 +166,7 @@ capability).
 - **Blockers:** owner decision "warn or block" for possible duplicates (`freehire-first-architecture.md` §12, item 5).
 - **Size:** M.
 
-### S4. T1 legacy collision corpus and static guards (tests first)
+### S4. T1 legacy collision corpus and static guards (tests first) — **done** (D54)
 
 - **Goal:** the wording traps the legacy bot fell into are permanent regression tests, plus guards
   for capabilities NoEfforts must never gain.
@@ -177,9 +178,14 @@ capability).
   no execution or browser code calls `screenshot(`, `tracing.start` or `record_video` (R11.4).
   Any row that fails is fixed only by turning the wrong resolution into a checkpoint.
 - **Files:** tests only, unless a row fails (then `preparation/classify.py`/`resolver.py`, narrowing).
-- **Proves:** LD-23 to LD-27, LD-47, LD-48 (answer side), U1, U11 guards.
+- **Status:** done (D54). Rows failed on the previous resolver (47 of the first 164; 104 of the
+  final 244, the rest pinning behaviour that already held), so `classify.py` and `resolver.py`
+  changed, each change a checkpoint where an answer was given; the guards cover the whole
+  repository outside the frontend, not only `backend/app` and execution. Results in
+  `docs/implementation-status.md`.
+- **Proves:** LD-23 to LD-28, LD-30, LD-47, LD-48 (answer side), U8, U9; U1, U11 guards.
 - **Blockers:** none. Run after S1 so the C6 tables are not edited twice.
-- **Size:** S.
+- **Size:** S as planned; M as built (the failing rows).
 
 ### S5. X1 fixture variants from legacy hints (admission framework)
 
@@ -260,7 +266,7 @@ capability).
 | Step | What | Size | Depends on | Placement and note |
 |---|---|---|---|---|
 | C11 | Protected-fact choice dead ends: a "State" select with the profile's state maps by unique exact option; otherwise a per-application answer that is never banked | S | C6 (bank refusals) | Early: blocks any required US state select today; honest UI wording |
-| C10 | Fact values must fit the field (length, email, URL scheme; one candidate link) | S | — | Early; fails before disclosure instead of at readback |
+| C10 | Fact values must fit the field (length, email, URL scheme; one candidate link) | S | — | Partly done in S4 (D54): a fact answer that fails `validate_value` (shape, length, email, URL scheme) is never sent and becomes the user's answer for this application. Left: one candidate link when the profile has several of a kind (today the first is used), and the review page saying why |
 | C7 | Consents and answers tied to the field fingerprint and a keyed value digest | M | C6 | After C10/C11 |
 | C8 | Disclose path end to end with the receiver ledger; "decline to self-identify" mapping | M | C7 | Closes R3.4 |
 | C9 | Salary and relocation period and currency | S | C6 (they are no longer bankable) | The `version` key fix is [shape] → C18 |
@@ -289,9 +295,9 @@ capability).
 ## 3. Order
 
 ```
-done: C1 C2 → C3-C5 → Q1 (D50) → S1 (C6, D51) → S2 (outcome integrity, D53)
-now:  S4 (corpus + guards)
-next: C11 → C10
+done: C1 C2 → C3-C5 → Q1 (D50) → S1 (C6, D51) → S2 (outcome integrity, D53) → S4 (D54)
+now:  C11
+next: C10 (its fit check done in S4; the link choice left)
 then: S3 (job state, duplicates) → C7 → C8 → S5 (fixture variants)
 then: C9 → C12 → C13 → C14 → S6 (Freehire hardening; its doc refresh is done)
 then: C15 → C16 → C17 → C18 (one schema bump) → S7 (live-read readiness, still off)
@@ -316,14 +322,20 @@ gives, "assessment received" exists, an outcome before any known submission is r
 funnel counts the user's own applications with denominators and no rate. It gives future
 diagnostics trustworthy inputs for new applications only (`outcome-diagnostics.md` §3-§4).
 
-**Recommended next: S4 (legacy collision corpus and static guards).** Tests first, size S, no
-external access and no package change; it turns the wording traps the legacy bot fell into into
-permanent resolver tests, and adds static guards against a mailbox client and against tracing
-or screenshots in execution. Any row that fails is fixed only by narrowing (a checkpoint).
+**S4 (legacy collision corpus and static guards, D54) is done.** The wording traps the legacy bot
+fell into are permanent resolver tests (244 rows); those that still resolved wrongly are
+checkpoints now (someone else's details, preferences read as residence, residence and
+nationality in other words, placed or negated relocation, a negated right to work, consent
+options under a neutral label, facts that do not fit the field); static guards refuse a mailbox
+client and page capture anywhere outside the frontend.
 
-**Runner-up: C11 (protected-fact choice dead ends).** Size S; a required US "State" select blocks
-preparation today. It ranks second because S4's corpus should pin the resolver's behaviour
-before C11 changes it.
+**Recommended next: C11 (protected-fact choice dead ends).** Size S; a required US "State"
+select, or a residence City select, blocks preparation today: the profile's value is not mapped
+to the form's own option and the user may not answer it. S4's corpus now pins the
+resolver around it (`r8_3_*`, `r8_6_*`), so C11 can change it safely.
+
+**Runner-up: C10 (the rest of "facts must fit").** Size S; S4 already refuses a fact that does
+not fit; left is choosing among several links of one kind and saying why on the review page.
 
 ## 5. Never in any slice
 

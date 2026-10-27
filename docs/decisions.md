@@ -1050,3 +1050,137 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Rejected:** a separate outcome endpoint (PATCH already carried outcomes); storing the
   submission basis (it is derived from attempts and events); back-filling sources or typed values
   into rows written before S2 (unknown stays unknown); a NOT VALID constraint; percentages.
+
+## D54 — The legacy collisions are permanent tests; each that still resolved is a checkpoint; no mailbox client and no page capture (S4, 2026-10-27)
+
+- **The corpus.** `backend/tests/legacy_collisions.json`: 244 synthetic rows for reliability
+  plan R8.1-R8.11, R8.16 and the R2.9 resolver row, each naming the legacy finding it
+  reproduces, traps and controls (a control pins an answer that must stay, so a fix cannot
+  over-narrow it). A row is one field resolved through `package.resolve_answers` (the loop that
+  builds packages) against "rich" facts whose values are sentinels (a wrong mapping shows up as
+  a sentinel in the answer) or no facts, with saved answers stored as `_save_to_bank` stores
+  them and an optional explicit choice. `expect` is the safe outcome, never what a matcher
+  happens to do. Driven by `test_resolver.py::test_a_legacy_collision_gets_only_its_safe_outcome`,
+  with sockets refused while it resolves (the resolver stays LLM-free).
+- **The previous resolver gave a wrong answer on 47 of the first 164 rows, and on 104 of the
+  final 244** (the others pin behaviour that already held). Each is now a checkpoint
+  (`docs/answer-policy.md`, the S4 rules):
+  1. someone else's name, email, phone or link (an emergency contact, a reference, a referee, a
+     recommender, a manager, a parent, an agency, an employer) filled from the profile: now asked
+     and never saved, by section or by help text naming them or an organisation's own;
+  2. a preference read as residence (a City field with help "Where would you like to work?");
+  3. residence or nationality in other words ("Are you Portugal-based?", "Portugal resident?",
+     "Are you a US resident?", "Are you in Lisbon?", "Are you Portuguese?", "Are you an EU/EEA
+     national?") answered from a saved answer or drafted as long text, and the same wordings on a
+     single box (with or without a preamble, or in a heading's help) ticked on agree against the
+     residence fact: now protected questions and never-checked statements;
+  4. relocation answered from the general preference when negated ("Are you not willing to
+     relocate?" was answered Yes), placed, timed, costed or conditional, in the label or the
+     help: now only the plain question with no help beyond an answering instruction (closed
+     forms, as C4 did for authorization);
+  5. a right to work stated negatively ("I cannot / am unable to / would not be able to work in
+     Portugal", "ineligible for employment in …") ticked on agree: never checked now, and
+     protected as a question;
+  6. agree/decline options under a neutral label ("I do not agree" / "I agree", "Yes, I agree",
+     "Agreed", "I affirm", "I understand") answered from a saved answer: never saved now, and a
+     stored consent does not pick one (no new automatic path);
+  7. a fact answer that does not fit its field ("Yes" typed into a long answer or several boxes,
+     a country as text into a multi-select, a link into a choice): never sent now (any fact
+     answer that fails `validate_value`); the user answers it for this application, no saved
+     answer takes its place, nothing is saved, and the row keeps the fact it was about, so
+     changing that fact invalidates the approval of what was typed (`_does_not_fit`);
+     `validate_value` requires a non-empty set with no option twice, as `normalize_input`
+     already did; a typed number is shown with every digit (`:g` kept six);
+  8. a saved answer naming an option that two current options share after normalising, or the
+     same option twice: refused.
+- **Kept, by the answer policy:** a box no profile fact records ("I am unable to travel", "I am
+  not willing to relocate") is still checked on the user's explicit agree, with no fact behind it
+  (row 1, D49). Reliability plan R8.10 first said such statements need an approved fact; that
+  wording contradicted row 1 and is corrected. Narrowing it would be one rule; it is the owner's
+  call, not a defect. Citizenship statements keep C3's rule ("I am a U.S. citizen" is checked on
+  agree unless the authorization facts contradict it), and "Do you have a passport?" stays a
+  reusable question (C6's table).
+- **Adversarial review, three rounds (5 reviewers, then 3, then 3; each checked by a skeptic).** Round 1
+  (47 findings, 2 refuted) found that the first other-person rule kept those fields bankable, so
+  someone else's details could be saved and reused (a widening; the narrowing sweep showed it as
+  answers moving from the profile to the bank), that a refused fact answer fell through to a
+  saved answer and kept the profile as its source, so the router refused the user's own typed
+  answer, many variants of each trap and some over-narrowing ("US-based hours", "a medical
+  resident", a language row named "Portuguese", Workday's "My Experience", "a recruiter will
+  call you", a rating scale, now control rows); and in the guards, code inside strings, a JS
+  comment stripper that ate code, the compose form `DEBUG: pw:api`, installs over several lines,
+  CI workflows, list-form `addopts` (a crash), more mail APIs and import forms, and self-tests
+  that did not prove their scope. Round 2 (32 findings, 1 refuted) found that a typed answer to a
+  protected fact that did not fit was tied to no fact (it survived a profile change with the
+  approval still valid), residence questions as text boxes being drafted, residence statements
+  behind a preamble or in help text, a "not" anywhere in help text reopening the other-person
+  rule, relocation help still a denylist, more variants, and in the guards f-string scripts,
+  regex literals defeating the comment stripper (comments are no longer stripped), inline code
+  and mail hosts in compose and CI files, JS imports of mail packages, more capture APIs
+  (a browser CDP session, `page.pdf()`, cookie export) and fourteen rule mutations no
+  self-test caught. Round 3 (widening, slow paths and CI only; 6 findings, 0 refuted, after
+  the sweep below had passed) found two widenings the sweep's generated forms did not reach: narrowing
+  HEAD's "would like" to "would you like" let a City or Country field with help or a section
+  such as "the team would like you to work from" be filled from residence again, and the
+  negated right-to-work rule ran before C5's help, option and section signals, so "Is there
+  anything that would prevent you from working in Portugal?" with help naming a disability lost
+  its sensitivity (a typed answer went without a disclose choice and a Country follow-up was
+  filled from residence). Both are fixed ("would like" is back; the rule runs after the C5
+  signals) with corpus rows and a follow-up test that fail without the fix. It also found three
+  slow paths on untrusted page text (an "Are you in A/B/…?" list read part by part, up to 60 s
+  for a 300-field form; a help-text negation searched over the whole prefix; a saved answer
+  matched against every option pair): a list of more than ten places is now read as residence
+  (narrowing), the negation is searched in its 42-character window (identical on 200,000
+  random texts) and options are indexed once. All confirmed findings are fixed; a mutation
+  check of the guard file now kills every single-rule mutation but one equivalent one.
+- **What remains, by construction:** the classifier reads lists of wordings, and wordings none
+  of its rules reads are still ordinary questions. The cost is bounded: such a question is
+  answered only by a saved answer the user chose to keep for that exact wording, help text and
+  options (row 5), never from a fact. The corpus is the place to add the next one. The static
+  guards are tripwires for capabilities added by accident; code written to evade them (a name
+  built from data outside the code that drives a page, a mail protocol over a raw socket) is not
+  seen, and the test says so.
+- **Only narrowing, verified** against the previous commit's resolver with the same package
+  loop, with scratch scripts (not in the repository), on the final code: 16,359 synthetic forms
+  (every wording in the corpus, the C3-C6 tables and the vocabulary tests, each also as text,
+  Yes/No, a single box, a set, optional, under a reference step, under an application step and
+  with place or preference help, plus the two fixture forms) x 432 contexts (four profiles,
+  three sets of authorization facts, three preferences, no consent, agree or decline, with and
+  without saved answers, with and without typed answers), 7,080,048 rows: 0 newly answered
+  automatically (a typed answer or an accepted draft is the user's own), 0 newly bankable, 0
+  newly draftable; the fixture forms (32 fields, 13,824 rows) unchanged. Every change is an
+  answer that became a checkpoint or the user's input, or one no longer saved or drafted. Round
+  3's reviewers' probe forms (543) give the same result.
+- **The guards** (`backend/tests/test_forbidden_capabilities.py`; R7.5, R11.4): read with `ast`,
+  never imported; every Python, JavaScript and shell file outside the frontend, the images,
+  compose files, CI workflows, every dependency manifest and the pytest configuration; for mail,
+  the frontend's own source too. Mail: no mail module or SDK (or one whose name says mail), no
+  mail host, API, scope or protocol, no mail program, no mail package installed or imported by a
+  script, and no import named at run time in `backend/app`. Capture: no screenshot, video,
+  trace, HAR, PDF, CDP session or captured session (storage state, a persistent profile, cookie
+  export), no capture keyword or Chromium flag, no in-page capture, no Playwright debug logging;
+  where a page runs, no attribute or code named at run time. Each rule has planted samples that
+  must be caught and prose that must not be.
+- **Unchanged:** `SCHEMA_VERSION` 2 (no content key added), `RESOLVER_VERSION` (a bump would
+  invalidate every approval for nothing), no migration, no saved answer deleted or re-keyed,
+  execution unchanged. Packages with a narrowed row get a new version at their next rebuild and
+  their approval is invalidated; a queued attempt is refused at the gate before anything is
+  disclosed (as in D49). So do packages holding a number with more than six significant digits:
+  its shown value is part of the hashed content, so the new version's reason is "metadata
+  changed" (nothing new is answered).
+- **C10 is partly done:** a fact that does not fit its field is refused here; choosing among
+  several links of one kind (the first is used) and saying why on the review page remain C10's.
+- **Known gap, before S4:** C4's affirmative right-to-work wordings ("Can you legally work in
+  Portugal?") are read before C5's help, option and section signals, as at the previous commit:
+  with help naming a disability such a question is a protected legal question, not a sensitive
+  one, and a fact-kind follow-up of it can be filled from the profile. S4 did not change it
+  (only the negated wordings it added run after the signals); making it sensitive is a separate
+  narrowing with its own tests.
+- **Known gap, out of scope:** the fixture adapter fills and reads back a number with `:g`
+  (`execution/adapters/fixture_ats.py:110,144`), which keeps six significant digits, so a typed
+  1,234,567 would be filled as "1.23457e+06" and read back the same way. Fixture-only (no real
+  destination); it belongs with C10 or a small execution change with its own receiver test.
+- **Rejected:** answering the narrowed rows from a different fact (that would widen); turning
+  agree/decline options into acknowledgments (a stored consent would then answer them, a new
+  automatic path); a denylist for relocation (closed forms instead); stripping JavaScript
+  comments (a stripper can be fooled; a comment naming a capture call fails instead).

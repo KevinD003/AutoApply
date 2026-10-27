@@ -1,0 +1,6078 @@
+{
+ "about": "S4 legacy collision corpus (docs/reliability-test-plan.md R8.1-R8.11, R8.16 and the R2.9 resolver row; traps from docs/legacy-audit.md). Synthetic wordings only. Each row is one field, resolved against named facts ('rich': every fact approved, with sentinel values; 'none': nothing), optional saved answers and an optional explicit choice. 'expect' is the safe outcome, never what a matcher happens to do: 'status' lists the statuses allowed; 'uses' names the only sentinel facts the answer may contain. Driven by tests/test_resolver.py::test_a_legacy_collision_gets_only_its_safe_outcome. A row that fails is fixed only by turning the wrong resolution into a checkpoint.",
+ "rows": [
+  {
+   "id": "r8_1_embrace_ambiguity_textarea_saved_essay_ignored",
+   "plan": "R8.1",
+   "legacy": "LD-23",
+   "label": "How do you embrace ambiguity?",
+   "type": "textarea",
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "How do you embrace ambiguity?",
+     "type": "textarea",
+     "value": {
+      "text": "Synthetic saved essay"
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent": "long_form",
+    "intent_not": [
+     "demographic",
+     "sensitive_topic",
+     "eligibility"
+    ]
+   },
+   "why": "Legacy matched 'race' inside 'embrace' and filled an EEO answer; long-form is never a demographic and a saved essay is never reused (answer-policy row 5), so the user or a draft answers it."
+  },
+  {
+   "id": "r8_1_relocate_please_explain_textarea",
+   "plan": "R8.1",
+   "legacy": "LD-23",
+   "label": "Are you willing to relocate? Please explain.",
+   "type": "textarea",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "An unanchored 'willing to relocate' on a textarea types a bare preference 'Yes' into a long-form box; a textarea asking for an explanation is long-form, so only the user or a reviewed draft may answer."
+  },
+  {
+   "id": "r8_1_trace_variance_textarea_optional",
+   "plan": "R8.1",
+   "legacy": "LD-23",
+   "label": "Describe how you trace a variance",
+   "type": "textarea",
+   "required": false,
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "blank_optional"
+    ],
+    "intent": "long_form",
+    "intent_not": [
+     "demographic",
+     "sensitive_topic",
+     "eligibility"
+    ]
+   },
+   "why": "'trace' contains 'race'; an optional long-form question is left blank for the user or a draft, never filled with a demographic or profile value."
+  },
+  {
+   "id": "r8_1_relocate_plain_question_as_textarea",
+   "plan": "R8.1",
+   "legacy": "LD-23",
+   "label": "Are you willing to relocate?",
+   "type": "textarea",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "The plain relocation question asked as a long answer: a bare 'Yes' from Preferences does not answer a text box; the user writes it."
+  },
+  {
+   "id": "r8_2_current_role_textarea_saved_text_ignored",
+   "plan": "R8.2",
+   "legacy": "LD-23",
+   "label": "Tell us about your current role",
+   "type": "textarea",
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Tell us about your current role",
+     "type": "textarea",
+     "value": {
+      "text": "Synthetic current role text"
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent": "long_form",
+    "intent_not": [
+     "demographic",
+     "sensitive_topic",
+     "eligibility"
+    ]
+   },
+   "why": "Legacy typed the current job title here; this is time-bound long-form text, so a saved answer for the same wording is not reused."
+  },
+  {
+   "id": "r8_2_history_with_spreadsheets_textarea",
+   "plan": "R8.2",
+   "legacy": "LD-23",
+   "label": "Describe your history with spreadsheets",
+   "type": "textarea",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent": "long_form",
+    "intent_not": [
+     "demographic",
+     "sensitive_topic",
+     "eligibility"
+    ]
+   },
+   "why": "Legacy read 'history with' as employment history; no employment value is ever typed into an essay."
+  },
+  {
+   "id": "r8_2_learn_about_our_products_text_saved_ignored",
+   "plan": "R8.2",
+   "legacy": "LD-23",
+   "label": "What did you learn about our products?",
+   "type": "text",
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "What did you learn about our products?",
+     "type": "text",
+     "value": {
+      "text": "Synthetic referral source"
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent_not": [
+     "demographic",
+     "sensitive_topic",
+     "eligibility"
+    ]
+   },
+   "why": "Legacy read 'learn about' as the referral source; 'our products' is about this employer (C6 employer scope), so even a saved answer to the same wording is not reused."
+  },
+  {
+   "id": "r8_2_major_accomplishment_textarea",
+   "plan": "R8.2",
+   "legacy": "LD-23",
+   "label": "What is your major accomplishment?",
+   "type": "textarea",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent": "long_form",
+    "intent_not": [
+     "demographic",
+     "sensitive_topic",
+     "eligibility"
+    ]
+   },
+   "why": "Legacy routed 'major' to field of study; there is no education fact for an essay, so only the user or a draft answers it."
+  },
+  {
+   "id": "r8_2_to_what_degree_scale_radio",
+   "plan": "R8.2",
+   "legacy": "LD-23",
+   "label": "To what degree do you enjoy fieldwork?",
+   "type": "radio",
+   "options": [
+    "A great deal",
+    "Somewhat",
+    "Not at all"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent_not": [
+     "demographic",
+     "sensitive_topic",
+     "eligibility"
+    ]
+   },
+   "why": "Legacy routed 'to what degree' to the degree field; no fact answers a preference scale and the first option is never a default."
+  },
+  {
+   "id": "r8_2_days_a_week_onsite_select",
+   "plan": "R8.2",
+   "legacy": "LD-23",
+   "label": "How many days a week can you work onsite?",
+   "type": "select",
+   "options": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Legacy routed 'days a week' to a fixed schedule value; no fact answers it, and the first or lowest option is never a default."
+  },
+  {
+   "id": "r8_3_ctrl_location_bare_text",
+   "plan": "R8.3",
+   "legacy": "LD-24",
+   "label": "Location",
+   "type": "text",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "residence_city",
+    "value": {
+     "text": "Lisbon"
+    },
+    "uses": [
+     "city"
+    ]
+   },
+   "why": "Positive control: a bare residence label is answered from the approved residence city, which proves the sentinel check sees a city when it is used."
+  },
+  {
+   "id": "r8_3_capital_allocation_text",
+   "plan": "R8.3",
+   "legacy": "LD-24",
+   "label": "Describe your approach to capital allocation",
+   "type": "text",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent_not": [
+     "residence_city"
+    ]
+   },
+   "why": "'allocation' contains 'location'; the residence city (Lisbon sentinel) in an essay field is the legacy bug. Long-form or unknown, needs_user."
+  },
+  {
+   "id": "r8_3_capital_allocation_textarea",
+   "plan": "R8.3",
+   "legacy": "LD-24",
+   "label": "Describe your approach to capital allocation",
+   "type": "textarea",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent": "long_form",
+    "intent_not": [
+     "residence_city"
+    ]
+   },
+   "why": "'allocation' contains 'location'; legacy typed the home city into the essay. The city sentinel must not appear."
+  },
+  {
+   "id": "r8_3_city_help_would_like_to_work",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "City",
+   "type": "text",
+   "help_text": "Where would you like to work?",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Help text asks where the user would like to work, a preference; answering with the residence city mixes a fact into a preference question."
+  },
+  {
+   "id": "r8_3_city_help_would_most_like_to_work",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "City",
+   "type": "text",
+   "help_text": "The city you would most like to work in",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Help text turns the bare 'City' label into a preference (where you want to work); answering with the residence city mixes facts and preferences."
+  },
+  {
+   "id": "r8_3_city_help_team_would_like",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "City",
+   "type": "text",
+   "help_text": "The city the hiring team would like you to work from.",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "A preference in the third person (the team would like): review round 3 found it answered with the residence city after 'would like' was narrowed to 'would you like'."
+  },
+  {
+   "id": "r8_3_country_select_help_hope_to_work",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "Country",
+   "type": "select",
+   "options": [
+    "Spain",
+    "Portugal",
+    "France"
+   ],
+   "help_text": "Which country do you hope to work in?",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Help text makes 'Country' a target-country preference; picking the residence country Portugal reads a preference as a fact."
+  },
+  {
+   "id": "r8_3_country_select_step_we_would_like",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "Country",
+   "type": "select",
+   "options": [
+    "Spain",
+    "Portugal",
+    "France"
+   ],
+   "step": "Where we would like you based",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "A section saying where the employer would like you based is a target, not residence; picking Portugal from the residence fact reads a preference as a fact."
+  },
+  {
+   "id": "r8_3_location_radio_residence_first_optional",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "Location",
+   "type": "radio",
+   "options": [
+    "Lisbon",
+    "Porto"
+   ],
+   "required": false,
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "blank_optional"
+    ]
+   },
+   "why": "Optional, residence city is the FIRST option: a first-option or residence-equality matcher ticks Lisbon; an optional unknown stays blank."
+  },
+  {
+   "id": "r8_3_where_do_you_see_yourself_text",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "Where do you see yourself in five years?",
+   "type": "text",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent_not": [
+     "residence_city",
+     "residence_country"
+    ]
+   },
+   "why": "Ashby typed the home city into any label containing 'where do you'."
+  },
+  {
+   "id": "r8_3_work_from_home_or_office_radio",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "Do you prefer to work from home or the office?",
+   "type": "radio",
+   "options": [
+    "Home",
+    "Office",
+    "Hybrid"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent_not": [
+     "residence_city"
+    ]
+   },
+   "why": "'work from' reached the home city in legacy; a work-mode preference is never residence and never the first option."
+  },
+  {
+   "id": "r8_3_relocation_bare_text",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "Relocation",
+   "type": "text",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent_not": [
+     "residence_city",
+     "relocation"
+    ]
+   },
+   "why": "'relocation' contains 'location'; neither the city nor a bare preference 'Yes' is an answer to an open 'Relocation' box."
+  },
+  {
+   "id": "r8_3_evidence_based_text",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "What evidence-based methods do you use?",
+   "type": "text",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent_not": [
+     "residence_city",
+     "legal_status"
+    ]
+   },
+   "why": "'based' sent legacy to the home city; '-based' here is not about a place."
+  },
+  {
+   "id": "r8_3_preferred_office_select_residence_option",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "Preferred office location",
+   "type": "select",
+   "options": [
+    "Lisbon",
+    "Porto"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent": "location_preference"
+   },
+   "why": "Legacy filled every combobox with the home city; the residence city (Lisbon) is an option, but a preference is never answered from residence."
+  },
+  {
+   "id": "r8_3_city_step_emergency_contact",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "City",
+   "type": "text",
+   "step": "Emergency contact",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Load-bearing at HEAD for the bare-residence context check: in an emergency-contact section 'City' is another person's city, so the residence city (Lisbon) must not appear. No corpus row passes through that check today."
+  },
+  {
+   "id": "r8_3_location_help_willing_to_work",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "Location",
+   "type": "text",
+   "help_text": "Where are you willing to work?",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "'Where are you willing to work?' is a preference; F_PREF_HELP knows like/want/wish/hope/plan to work but not 'willing to work'."
+  },
+  {
+   "id": "r8_3_city_help_youd_like_to_be_based",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "City",
+   "type": "text",
+   "help_text": "The city where you'd like to be based",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "\"you'd like\" is the contraction of 'you would like'; F_PREF_HELP only matches 'would ( word) like'."
+  },
+  {
+   "id": "r8_3_city_help_plan_to_move_to",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "City",
+   "type": "text",
+   "help_text": "City you plan to move to",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "A destination the user plans to move to is not where they live."
+  },
+  {
+   "id": "r8_3_city_help_targeting",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "City",
+   "type": "text",
+   "help_text": "The city you are targeting",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "_NOT_RESIDENCE_CTX has 'target' as a whole word only, so 'targeting' slips through and the residence city answers a target-city question."
+  },
+  {
+   "id": "r8_3_city_help_interested_in",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "City",
+   "type": "text",
+   "help_text": "Which city are you interested in?",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "A city the user is interested in is a preference, never the residence fact."
+  },
+  {
+   "id": "r8_3_city_help_ideal_work_location",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "City",
+   "type": "text",
+   "help_text": "Your ideal work location",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "An ideal work location is a preference."
+  },
+  {
+   "id": "r8_3_country_select_help_hoping_to_work",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "Country",
+   "type": "select",
+   "options": [
+    "Spain",
+    "Portugal",
+    "France"
+   ],
+   "help_text": "Where are you hoping to work?",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Where the user hopes to work is a preference; the residence country is not chosen for it."
+  },
+  {
+   "id": "r8_3_ctrl_city_help_we_would_like_to_know_where_you_live",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "City",
+   "type": "text",
+   "help_text": "We'd like to know where you live",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "residence_city",
+    "value": {
+     "text": "Lisbon"
+    },
+    "uses": [
+     "city"
+    ]
+   },
+   "why": "Control: help asking where the user lives is the residence question; the approved city answers it."
+  },
+  {
+   "id": "r8_3_city_help_where_would_you_be_based",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "City",
+   "type": "text",
+   "help_text": "Where would you be based?",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Where the user would be based for the job is a preference, not the residence fact."
+  },
+  {
+   "id": "r8_4_ctrl_email_benign_help",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Email",
+   "type": "email",
+   "help_text": "We will send interview invitations here",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "email",
+    "value": {
+     "text": "sentinelle.quorra@example.com"
+    },
+    "uses": [
+     "email"
+    ]
+   },
+   "why": "Positive control: help text that does not change who the address belongs to keeps the approved email."
+  },
+  {
+   "id": "r8_4_ctrl_full_name_bare",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Full name",
+   "type": "text",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "full_name",
+    "value": {
+     "text": "Sentinelle Quorra"
+    },
+    "uses": [
+     "full_name"
+    ]
+   },
+   "why": "Positive control for the help-text trap: the same label without the other-person help resolves to the approved full name."
+  },
+  {
+   "id": "r8_4_ctrl_linkedin_not_github",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "LinkedIn profile",
+   "type": "url",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "linkedin",
+    "value": {
+     "text": "https://www.linkedin.com/in/sentinel-example"
+    },
+    "uses": [
+     "linkedin"
+    ]
+   },
+   "why": "Positive control: LinkedIn picks the linkedin.com link, never the GitHub link that is listed alongside it."
+  },
+  {
+   "id": "r8_4_ctrl_phone_bare",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Phone",
+   "type": "tel",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "phone",
+    "value": {
+     "text": "+1 555 0142"
+    },
+    "uses": [
+     "phone"
+    ]
+   },
+   "why": "Positive control: a bare applicant phone label resolves to exactly the approved phone and nothing else, so the trap rows above are not passing vacuously."
+  },
+  {
+   "id": "r8_4_ctrl_phone_number_caps_punct",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "PHONE NUMBER *",
+   "type": "tel",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "phone",
+    "value": {
+     "text": "+1 555 0142"
+    },
+    "uses": [
+     "phone"
+    ]
+   },
+   "why": "Positive control: capitals and a trailing required-marker do not change the meaning; the approved phone fact answers it."
+  },
+  {
+   "id": "r8_4_ctrl_preferred_name_not_given_name",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Preferred name",
+   "type": "text",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "preferred_name",
+    "value": {
+     "text": "Elle"
+    },
+    "uses": [
+     "preferred_name"
+    ]
+   },
+   "why": "Preferred name must come from preferred_name ('Elle'), never from given_name or full_name; distinct sentinels make a wrong attribute visible."
+  },
+  {
+   "id": "r8_4_contact_by_email_other_roles_radio",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "May we contact you by email about other roles?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user",
+     "needs_consent"
+    ],
+    "intent_not": [
+     "email"
+    ]
+   },
+   "why": "Legacy wrote the email address; this is a permission for this employer, never the address and never an automatic 'Yes'."
+  },
+  {
+   "id": "r8_4_email_help_manager",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Email address",
+   "type": "email",
+   "help_text": "Your manager's email address",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Help text asks for the manager's address; the user's approved email is not the manager's, so a checkpoint is the only true outcome."
+  },
+  {
+   "id": "r8_4_email_step_reference",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Email",
+   "type": "email",
+   "step": "Reference 1",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Same bare 'Email' label inside a references step: it asks for the referee's address, never the applicant's."
+  },
+  {
+   "id": "r8_4_full_name_help_emergency_contact",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Full name",
+   "type": "text",
+   "help_text": "Full name of your emergency contact",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "The bare label looks like the applicant's name but the help text asks for another person; the sentinel full name in the answer would be a wrong person's name."
+  },
+  {
+   "id": "r8_4_full_name_help_referrer",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Full name",
+   "type": "text",
+   "help_text": "Full name of the person who referred you",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Help text changes 'Full name' to the referrer's name; the applicant's own name would be a false statement about who referred them."
+  },
+  {
+   "id": "r8_4_phone_help_emergency_contact",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Phone",
+   "type": "tel",
+   "help_text": "Phone number of your emergency contact",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "The anchored 'Phone' label with help naming another person: the applicant's own phone would be filed as the emergency contact's."
+  },
+  {
+   "id": "r8_4_phone_interview_availability_text",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Phone interview availability",
+   "type": "text",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent_not": [
+     "phone"
+    ]
+   },
+   "why": "Legacy typed the phone number because the label starts with 'Phone'; availability is not a profile fact."
+  },
+  {
+   "id": "r8_4_phone_step_emergency_contact",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Phone",
+   "type": "tel",
+   "step": "Emergency contact",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "A bare 'Phone' inside an Emergency contact section is another person's number; the sentinel phone must not be typed there."
+  },
+  {
+   "id": "r8_4_referrers_full_name_text",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Referrer's full name",
+   "type": "text",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent_not": [
+     "given_name",
+     "family_name",
+     "full_name",
+     "preferred_name"
+    ]
+   },
+   "why": "Legacy typed the candidate's own name into the referrer field; the referrer is another person, so none of the user's name sentinels may appear."
+  },
+  {
+   "id": "r8_4_website_help_employer",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Website",
+   "type": "url",
+   "help_text": "Your current employer's website",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Help text asks for the employer's website; the user's own approved link (GitHub sentinel) is not it."
+  },
+  {
+   "id": "r8_4_first_name_step_emergency_contact",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "First name",
+   "type": "text",
+   "step": "Emergency contact",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "given_name has no trap row; a fix that guards only full_name/phone/email would pass the corpus while typing the user's first name into the emergency contact."
+  },
+  {
+   "id": "r8_4_last_name_step_reference",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Last name",
+   "type": "text",
+   "step": "Reference 2",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "family_name in a references section is the referee's surname."
+  },
+  {
+   "id": "r8_4_preferred_name_help_referee",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Preferred name",
+   "type": "text",
+   "help_text": "Name of your referee",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "preferred_name with help naming another person; 'Elle' would be filed as the referee's name."
+  },
+  {
+   "id": "r8_4_linkedin_help_referee",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "LinkedIn profile",
+   "type": "url",
+   "help_text": "Your referee's LinkedIn profile",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "linkedin has no trap row: the user's own LinkedIn link is not the referee's."
+  },
+  {
+   "id": "r8_4_ctrl_phone_step_apply_for_this_job",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Phone",
+   "type": "tel",
+   "step": "Apply for this job",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "phone",
+    "value": {
+     "text": "+1 555 0142"
+    },
+    "uses": [
+     "phone"
+    ]
+   },
+   "why": "Positive control for F_IDENTITY: a step about the job ('Apply for this job') is about the applicant. Reusing _NOT_RESIDENCE_CTX (job/role/applying) would break this."
+  },
+  {
+   "id": "r8_4_ctrl_first_name_step_personal_information",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "First name",
+   "type": "text",
+   "step": "Personal information",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "given_name",
+    "value": {
+     "text": "Sentinelle"
+    },
+    "uses": [
+     "given_name"
+    ]
+   },
+   "why": "Positive control: a 'Personal information' step keeps the approved given name."
+  },
+  {
+   "id": "r8_4_ctrl_email_help_hiring_manager",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Email",
+   "type": "email",
+   "help_text": "The hiring manager will contact you at this address.",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "email",
+    "value": {
+     "text": "sentinelle.quorra@example.com"
+    },
+    "uses": [
+     "email"
+    ]
+   },
+   "why": "Control for the other-person rule: 'hiring manager' in help text is who writes to the user, not whose address it is; the approved email answers it."
+  },
+  {
+   "id": "r8_4_ctrl_phone_step_employment_application",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Phone",
+   "type": "tel",
+   "step": "Employment application",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "phone",
+    "value": {
+     "text": "+1 555 0142"
+    },
+    "uses": [
+     "phone"
+    ]
+   },
+   "why": "Control for the organisation-section rule: a form titled 'Employment application' asks for the user's own phone; only an employer or work-history section makes it someone else's."
+  },
+  {
+   "id": "r8_4_phone_step_previous_employer",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Phone",
+   "type": "tel",
+   "step": "Previous employer",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "A phone number in a section about a previous employer is the employer's; the user's own number is never typed there."
+  },
+  {
+   "id": "r8_4_email_step_referee_saved_bare_email",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Email",
+   "type": "email",
+   "step": "Referee details",
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Email",
+     "type": "email",
+     "value": {
+      "text": "sentinelle.quorra@example.com"
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "A referee's email in a 'Referee details' section: neither the user's email nor a saved answer to a bare 'Email' answers it, and what is typed is never saved."
+  },
+  {
+   "id": "r8_4_email_help_managers_saved_from_earlier",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Email address",
+   "type": "email",
+   "help_text": "Your manager's email address",
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Email address",
+     "type": "email",
+     "help_text": "Your manager's email address",
+     "value": {
+      "text": "old.manager@example.org"
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "A manager's email saved at an earlier employer is never reused: other people's details are never saved (C5)."
+  },
+  {
+   "id": "r8_4_email_step_recommender",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Email",
+   "type": "email",
+   "step": "Recommender 1",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "A recommender's email, not the user's."
+  },
+  {
+   "id": "r8_4_email_help_hiring_managers",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Email",
+   "type": "email",
+   "help_text": "Hiring manager's email, if known",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "The hiring manager's own email, asked by possessive: not the user's."
+  },
+  {
+   "id": "r8_4_website_help_of_your_employer",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Website",
+   "type": "url",
+   "help_text": "Website of your employer",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "An employer's website asked as 'of your employer': not the user's link."
+  },
+  {
+   "id": "r8_4_phone_step_staffing_agency",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Phone",
+   "type": "tel",
+   "step": "Staffing agency",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "A staffing agency's phone, not the user's."
+  },
+  {
+   "id": "r8_4_full_name_help_who_should_we_call",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Full name",
+   "type": "text",
+   "help_text": "Who should we call if something happens to you?",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "The person to call in an emergency, not the user."
+  },
+  {
+   "id": "r8_4_ctrl_linkedin_step_my_experience",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "LinkedIn profile",
+   "type": "url",
+   "step": "My Experience",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "linkedin",
+    "value": {
+     "text": "https://www.linkedin.com/in/sentinel-example"
+    },
+    "uses": [
+     "linkedin"
+    ]
+   },
+   "why": "Control: Workday asks for the applicant's own links in 'My Experience'; the approved LinkedIn link answers it."
+  },
+  {
+   "id": "r8_4_ctrl_email_help_not_your_employers",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Email",
+   "type": "email",
+   "help_text": "Please use a personal email, not your current employer's.",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "email",
+    "value": {
+     "text": "sentinelle.quorra@example.com"
+    },
+    "uses": [
+     "email"
+    ]
+   },
+   "why": "Control: help that says the address is not the employer's is about the user's own email."
+  },
+  {
+   "id": "r8_4_ctrl_phone_help_recruiter_will_call",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Phone",
+   "type": "tel",
+   "help_text": "A recruiter will contact you at this number.",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "phone",
+    "value": {
+     "text": "+1 555 0142"
+    },
+    "uses": [
+     "phone"
+    ]
+   },
+   "why": "Control: 'a recruiter will call you' is who calls the user, not whose number it is."
+  },
+  {
+   "id": "r8_4_email_help_not_applicable_then_supervisors",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Email",
+   "type": "email",
+   "help_text": "Leave blank if not applicable. Your supervisor's email address.",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "A 'not' earlier in the help ('if not applicable') does not make a supervisor's email the user's."
+  },
+  {
+   "id": "r8_4_phone_help_mothers_or_fathers",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Phone",
+   "type": "tel",
+   "help_text": "Your mother's or father's phone number",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "A parent's phone number, not the user's."
+  },
+  {
+   "id": "r8_4_ctrl_email_help_we_recommend_personal",
+   "plan": "R8.4",
+   "legacy": "LD-24",
+   "label": "Email",
+   "type": "email",
+   "help_text": "We recommend using a personal email address.",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "email",
+    "value": {
+     "text": "sentinelle.quorra@example.com"
+    },
+    "uses": [
+     "email"
+    ]
+   },
+   "why": "Control: 'we recommend' is advice to the user, not a recommender."
+  },
+  {
+   "id": "r8_5_five_years_skill_held_reversed_optional",
+   "plan": "R8.5",
+   "legacy": "LD-25",
+   "label": "Do you have 5+ years of experience in Python?",
+   "type": "radio",
+   "options": [
+    "No",
+    "Yes"
+   ],
+   "required": false,
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "blank_optional"
+    ]
+   },
+   "why": "The profile lists the skill Python but no duration; 'No' is first and 'Yes' would be a skill-to-years inference. Optional, so blank."
+  },
+  {
+   "id": "r8_5_five_years_yes_no_none",
+   "plan": "R8.5",
+   "legacy": "LD-25",
+   "label": "Do you have 5+ years of experience in Python?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "none",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent_not": [
+     "demographic",
+     "sensitive_topic",
+     "eligibility"
+    ]
+   },
+   "why": "With no facts at all legacy still answered 'No'; unknown stays unknown."
+  },
+  {
+   "id": "r8_5_five_years_yes_no_rich_saved_no_ignored",
+   "plan": "R8.5",
+   "legacy": "LD-25",
+   "label": "Do you have 5+ years of experience in Python?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Do you have 5+ years of experience in Python?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "No"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent_not": [
+     "demographic",
+     "sensitive_topic",
+     "eligibility"
+    ]
+   },
+   "why": "Legacy snapped to 'No'; the skills list (Python) is not a years fact, and a saved 'No' to the same wording is time-bound (C6 time scope), so it is a checkpoint."
+  },
+  {
+   "id": "r8_5_years_ranges_reversed",
+   "plan": "R8.5",
+   "legacy": "LD-25",
+   "label": "Years of experience with Python",
+   "type": "radio",
+   "options": [
+    "6+",
+    "3-5",
+    "0-2"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Ranges in reverse order: a lowest-range or first-option fallback picks '0-2' or '6+'; no approved fact holds years of experience."
+  },
+  {
+   "id": "r8_5_years_ranges_select_optional",
+   "plan": "R8.5",
+   "legacy": "LD-25",
+   "label": "Years of experience with Python",
+   "type": "select",
+   "options": [
+    "0-2",
+    "3-5",
+    "6+"
+   ],
+   "required": false,
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "blank_optional"
+    ],
+    "intent_not": [
+     "demographic",
+     "sensitive_topic",
+     "eligibility"
+    ]
+   },
+   "why": "Legacy snapped a numeric value to the lowest range '0-2'; an optional range with no years fact is left blank, never the first or lowest option."
+  },
+  {
+   "id": "r8_6_ctrl_country_select_residence",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Country",
+   "type": "select",
+   "options": [
+    "Spain",
+    "Portugal",
+    "France"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "residence_country",
+    "value": {
+     "option": "1",
+     "label": "Portugal"
+    },
+    "uses": [
+     "country"
+    ]
+   },
+   "why": "Positive control: the exact residence country, not the first option, from the approved residence fact."
+  },
+  {
+   "id": "r8_6_ctrl_relocate_no_first",
+   "plan": "R8.6",
+   "legacy": "LD-27",
+   "label": "Are you willing to relocate?",
+   "type": "radio",
+   "options": [
+    "No",
+    "Yes"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "relocation",
+    "value": {
+     "option": "1",
+     "label": "Yes"
+    }
+   },
+   "why": "Positive control: the exact 'Yes' option (second in page order) from the relocation preference."
+  },
+  {
+   "id": "r8_6_based_in_portugal_matching_residence",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you based in Portugal?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user",
+     "resolved"
+    ],
+    "intent_not": [
+     "relocation"
+    ],
+    "value": {
+     "option": "0",
+     "label": "Yes"
+    }
+   },
+   "why": "Plan: resolved only from the approved residence fact for that exact country (PT -> 'Yes'), else a checkpoint; today a protected residence checkpoint, also safe. Never 'No'."
+  },
+  {
+   "id": "r8_6_based_in_portugal_none",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you based in Portugal?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "none",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "No residence fact: legacy snapped to 'No'; unknown residence stays unknown."
+  },
+  {
+   "id": "r8_6_based_in_spain_no_first",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you based in Spain?",
+   "type": "radio",
+   "options": [
+    "No",
+    "Yes"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "'No' is first and the profile says Portugal; answering 'No' infers non-residence (people can hold two homes); only a checkpoint is safe."
+  },
+  {
+   "id": "r8_6_based_in_united_states_other_residence",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you based in the United States?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent_not": [
+     "relocation"
+    ]
+   },
+   "why": "The approved residence is for another country (PT), so there is no fact for this exact country; the plan's 'else a checkpoint' applies and legacy's 'No' is never derived."
+  },
+  {
+   "id": "r8_6_country_hyphen_based_saved_answer",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you Portugal-based?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you Portugal-based?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Hyphenated variant of 'based in Portugal' escapes the residence check and is reused from a saved 'Yes'; residence comes only from the approved fact, never the bank."
+  },
+  {
+   "id": "r8_6_country_of_citizenship_not_residence",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Country of citizenship",
+   "type": "select",
+   "options": [
+    "Spain",
+    "Portugal",
+    "France"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent_not": [
+     "residence_country"
+    ]
+   },
+   "why": "Same options as the control, but citizenship is never inferred from residence; 'Portugal' here would be an inference."
+  },
+  {
+   "id": "r8_6_not_willing_to_relocate_negated",
+   "plan": "R8.6",
+   "legacy": "LD-23",
+   "label": "Are you not willing to relocate?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Negated wording: the generic preference 'willing = yes' maps to 'Yes', which asserts the opposite; negation must become a checkpoint."
+  },
+  {
+   "id": "r8_6_onsite_at_our_lisbon_location",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Can you work onsite at our Lisbon location?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent_not": [
+     "residence_city",
+     "residence_country",
+     "relocation"
+    ]
+   },
+   "why": "Onsite is a preference about this job: the residence city (Lisbon), the relocation preference (yes) and the target locations never answer it; legacy answered 'No'."
+  },
+  {
+   "id": "r8_6_onsite_lisbon_no_first_optional",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Can you work onsite at our Lisbon location?",
+   "type": "radio",
+   "options": [
+    "No",
+    "Yes"
+   ],
+   "required": false,
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "blank_optional"
+    ],
+    "intent_not": [
+     "residence_city",
+     "residence_country",
+     "relocation"
+    ]
+   },
+   "why": "The residence city equals the onsite city and 'No' is first: onsite is a preference, never derived from residence or defaulted to 'No'."
+  },
+  {
+   "id": "r8_6_relocate_to_residence_city",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you willing to relocate to Lisbon?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "A place-qualified relocation question (to the city the applicant already lives in) gets the generic relocation 'Yes'; the preference does not cover a named destination."
+  },
+  {
+   "id": "r8_6_are_you_in_portugal_saved_answer",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you in Portugal?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you in Portugal?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user",
+     "needs_consent"
+    ],
+    "bankable": false
+   },
+   "why": "Residence asked as 'are you in <Country>': a bankable unknown today, so a saved 'Yes' is reused. Residence comes only from the approved fact (answer-policy 2a)."
+  },
+  {
+   "id": "r8_6_country_space_based_saved_answer",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you Portugal based?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you Portugal based?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user",
+     "needs_consent"
+    ],
+    "bankable": false
+   },
+   "why": "Without the hyphen the merged F_HYPHEN ('-based') misses it; the saved 'Yes' is reused."
+  },
+  {
+   "id": "r8_6_country_resident_bare_saved_answer",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Portugal resident?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Portugal resident?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user",
+     "needs_consent"
+    ],
+    "bankable": false
+   },
+   "why": "A bare '<Country> resident?' is residence; reused from the bank today."
+  },
+  {
+   "id": "r8_6_demonym_resident_saved_answer",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you a Portuguese resident?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you a Portuguese resident?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user",
+     "needs_consent"
+    ],
+    "bankable": false
+   },
+   "why": "Demonym + 'resident' is residence; reused from the bank today."
+  },
+  {
+   "id": "r8_6_us_resident_saved_answer",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you a US resident?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you a US resident?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user",
+     "needs_consent"
+    ],
+    "bankable": false
+   },
+   "why": "Residence in the US, where the approved facts are the opposite of PT; reused from the bank today."
+  },
+  {
+   "id": "r8_6_local_to_city_saved_answer",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you local to Lisbon?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you local to Lisbon?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user",
+     "needs_consent"
+    ],
+    "bankable": false
+   },
+   "why": "City-level residence ('local to'); reused from the bank today."
+  },
+  {
+   "id": "r8_6_from_country_saved_answer",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you from Portugal?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you from Portugal?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user",
+     "needs_consent"
+    ],
+    "bankable": false
+   },
+   "why": "Origin or nationality, never inferred and never reused (answer-policy rows 2 and 2a); reused from the bank today."
+  },
+  {
+   "id": "r8_6_nationality_demonym_saved_answer",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you Portuguese?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you Portuguese?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user",
+     "needs_consent"
+    ],
+    "bankable": false
+   },
+   "why": "Nationality asked by demonym; answer-policy row 2a: never saved or reused."
+  },
+  {
+   "id": "r8_6_relocate_help_names_destination",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you willing to relocate?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "help_text": "This role is based in Osaka, Japan.",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Help text names the destination (here the target city); as in r8_6_relocate_to_residence_city, the generic preference does not cover a named place. The merged F_RELOC reads the label only, so it still answers 'Yes'."
+  },
+  {
+   "id": "r8_6_ctrl_relocate_for_this_role",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you willing to relocate for this role?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "relocation",
+    "value": {
+     "option": "0",
+     "label": "Yes"
+    }
+   },
+   "why": "Control for the placed-relocation rule: 'for this role' names no place, time or cost, so the approved preference (willing to relocate) answers it."
+  },
+  {
+   "id": "r8_6_ctrl_residents_textarea_stays_long_form",
+   "plan": "R8.6",
+   "legacy": "LD-28",
+   "label": "Describe your experience supporting residents in Portugal",
+   "type": "textarea",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent": "long_form",
+    "draftable": true
+   },
+   "why": "Control for the residence-words rule: it applies only where a question would be 'unknown'; an essay about care-home residents stays long-form and draftable, never a residence question."
+  },
+  {
+   "id": "r8_6_relocate_for_position_to_country",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you willing to relocate for this position to Japan?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Relocation to a named country: the general preference does not answer it."
+  },
+  {
+   "id": "r8_6_relocate_if_offered_in_city",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you willing to relocate if offered a position in Lisbon?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Relocation with a condition and a place."
+  },
+  {
+   "id": "r8_6_relocate_help_no_assistance",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you willing to relocate?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "help_text": "No relocation assistance is offered.",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Relocation at the user's own cost is a different question from general willingness."
+  },
+  {
+   "id": "r8_6_portuguese_national_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you a Portuguese national?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you a Portuguese national?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Nationality: a protected question, never answered from a saved answer."
+  },
+  {
+   "id": "r8_6_eu_resident_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you an EU resident?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you an EU resident?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Residence in the EU: never from a saved answer."
+  },
+  {
+   "id": "r8_6_city_based_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you Lisbon-based?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you Lisbon-based?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Residence in a city written as a name: never from a saved answer."
+  },
+  {
+   "id": "r8_6_in_city_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you in Lisbon?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you in Lisbon?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Where the user is: never from a saved answer."
+  },
+  {
+   "id": "r8_6_state_resident_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you a California resident?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you a California resident?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Residence in a state: never from a saved answer."
+  },
+  {
+   "id": "r8_6_country_residency_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Do you have Portuguese residency?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Do you have Portuguese residency?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Residency in a country: never from a saved answer."
+  },
+  {
+   "id": "r8_6_nationality_or_list_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you Portuguese or Spanish?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you Portuguese or Spanish?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Nationality among several: never from a saved answer."
+  },
+  {
+   "id": "r8_6_nationality_yes_no_suffix_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you Portuguese (yes/no)?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you Portuguese (yes/no)?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "The yes/no suffix does not hide the nationality question."
+  },
+  {
+   "id": "r8_6_passport_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Do you hold a Portuguese passport?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Do you hold a Portuguese passport?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Citizenship by its document: never from a saved answer."
+  },
+  {
+   "id": "r8_6_nonbreaking_hyphen_based_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you UK‑based?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you UK‑based?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "A non-breaking hyphen does not hide the residence question."
+  },
+  {
+   "id": "r8_6_ctrl_us_based_hours_saved",
+   "plan": "R8.6",
+   "legacy": "LD-28",
+   "label": "Can you work US-based hours?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Can you work US-based hours?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "source": "answer_bank",
+    "value": {
+     "option": "0",
+     "label": "Yes"
+    }
+   },
+   "why": "Control: hours are not where the user lives; the exact saved answer is reused."
+  },
+  {
+   "id": "r8_6_ctrl_language_grid_saved",
+   "plan": "R8.6",
+   "legacy": "LD-28",
+   "label": "Portuguese",
+   "type": "select",
+   "options": [
+    "Native",
+    "Fluent",
+    "Basic",
+    "None"
+   ],
+   "step": "Languages",
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Portuguese",
+     "type": "select",
+     "options": [
+      "Native",
+      "Fluent",
+      "Basic",
+      "None"
+     ],
+     "value": {
+      "labels": [
+       "Fluent"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "source": "answer_bank",
+    "value": {
+     "option": "1",
+     "label": "Fluent"
+    }
+   },
+   "why": "Control: a language-proficiency row named after a language is not a nationality question; the exact saved answer is reused."
+  },
+  {
+   "id": "r8_6_ctrl_medical_resident_saved",
+   "plan": "R8.6",
+   "legacy": "LD-28",
+   "label": "Are you a medical resident?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you a medical resident?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "source": "answer_bank",
+    "value": {
+     "option": "0",
+     "label": "Yes"
+    }
+   },
+   "why": "Control: a medical resident is a training grade, not residence; the exact saved answer is reused."
+  },
+  {
+   "id": "r8_6_us_resident_statement_agree",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "I am a US resident",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "fact_statement"
+   },
+   "why": "A residence statement in words the grammar does not read is never checked on agree, here against a PT residence (answer-policy row 1a)."
+  },
+  {
+   "id": "r8_6_us_resident_heading_agree",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "US resident",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "fact_statement"
+   },
+   "why": "The same as a heading."
+  },
+  {
+   "id": "r8_6_nationality_statement_agree",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "I am Portuguese",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "fact_statement"
+   },
+   "why": "Nationality stated on a box: never checked from agree alone."
+  },
+  {
+   "id": "r8_6_relocate_help_headquartered_in",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you willing to relocate?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "help_text": "We are headquartered in Lisbon.",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Help text naming where the job is: any help but an answering instruction makes it more than the plain question."
+  },
+  {
+   "id": "r8_6_relocate_help_start_date",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you willing to relocate?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "help_text": "Start date is January 2027.",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Help text adding a time: not the plain question."
+  },
+  {
+   "id": "r8_6_ctrl_relocate_able_and_willing",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you able and willing to relocate?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "relocation",
+    "value": {
+     "option": "0",
+     "label": "Yes"
+    }
+   },
+   "why": "Control: the plain question in either word order is answered from the preference."
+  },
+  {
+   "id": "r8_6_ctrl_relocate_help_select_one",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Are you willing to relocate?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "help_text": "Select one.",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "relocation",
+    "value": {
+     "option": "0",
+     "label": "Yes"
+    }
+   },
+   "why": "Control: an answering instruction adds nothing; the plain question is answered from the preference."
+  },
+  {
+   "id": "r8_6_eu_eea_national_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you an EU/EEA national?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you an EU/EEA national?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Nationality written with a slash: never from a saved answer."
+  },
+  {
+   "id": "r8_6_bare_national_yes_no_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Portuguese national (Y/N)",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Portuguese national (Y/N)",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "A bare nationality label: never from a saved answer."
+  },
+  {
+   "id": "r8_6_based_candidate_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you a US-based candidate?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you a US-based candidate?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Residence with a trailing noun: never from a saved answer."
+  },
+  {
+   "id": "r8_6_currently_based_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you currently US-based?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you currently US-based?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Residence with a time word: never from a saved answer."
+  },
+  {
+   "id": "r8_6_in_the_city_area_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you in the Lisbon area?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you in the Lisbon area?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Residence in an area: never from a saved answer."
+  },
+  {
+   "id": "r8_6_in_two_cities_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you in Lisbon or Porto?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you in Lisbon or Porto?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Residence in one of two places: never from a saved answer."
+  },
+  {
+   "id": "r8_6_from_europe_saved",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you from Europe?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you from Europe?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Origin in a region: never from a saved answer."
+  },
+  {
+   "id": "r8_6_nationality_as_textarea",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Are you Portuguese?",
+   "type": "textarea",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent": "legal_status",
+    "draftable": false,
+    "bankable": false
+   },
+   "why": "A nationality question asked as a text box is protected, not long-form: never drafted."
+  },
+  {
+   "id": "r8_6_ctrl_all_caps_in_employment_saved",
+   "plan": "R8.6",
+   "legacy": "LD-28",
+   "label": "ARE YOU IN EMPLOYMENT?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "ARE YOU IN EMPLOYMENT?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "source": "answer_bank",
+    "value": {
+     "option": "0",
+     "label": "Yes"
+    }
+   },
+   "why": "Control: capitals in an all-caps label say nothing about a place name; the exact saved answer is reused."
+  },
+  {
+   "id": "r8_6_preamble_nationality_statement_agree",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "I certify that I am Portuguese",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "fact_statement"
+   },
+   "why": "A preamble does not hide a nationality statement: never checked."
+  },
+  {
+   "id": "r8_6_help_confirm_based_heading_agree",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "Location",
+   "type": "checkbox",
+   "help_text": "Check this box to confirm that you are Portugal-based.",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "fact_statement"
+   },
+   "why": "A heading whose help asks to confirm residence in other words: never checked."
+  },
+  {
+   "id": "r8_6_passport_statement_agree",
+   "plan": "R8.6",
+   "legacy": "LD-24",
+   "label": "I hold a Portuguese passport",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "fact_statement"
+   },
+   "why": "Citizenship by its document, stated on a box: never checked."
+  },
+  {
+   "id": "r8_7_affiliated_government_agency_saved_no_ignored",
+   "plan": "R8.7",
+   "legacy": "LD-26",
+   "label": "Are you affiliated with any government agency?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you affiliated with any government agency?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "No"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Legacy hard-coded 'No'; affiliation is employer-relative (C6 employer scope), so a saved 'No' to the same wording is not reused."
+  },
+  {
+   "id": "r8_7_previously_worked_in_healthcare_rich",
+   "plan": "R8.7",
+   "legacy": "LD-26",
+   "label": "Have you previously worked in healthcare?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Legacy hard-coded 'No' to anything about prior work; there is no employment fact in Context and no saved answer, so it is a checkpoint."
+  },
+  {
+   "id": "r8_7_list_affiliations_text",
+   "plan": "R8.7",
+   "legacy": "LD-26",
+   "label": "List any affiliations with professional bodies",
+   "type": "text",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Legacy hard-coded 'No' also into list questions in text inputs; nothing in Context answers it, so it is a checkpoint, never 'No' or 'None'."
+  },
+  {
+   "id": "r8_8_ctrl_auth_us_true_no_first",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Are you legally authorized to work in the United States?",
+   "type": "radio",
+   "options": [
+    "No",
+    "Yes"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "work_authorization",
+    "value": {
+     "option": "0",
+     "label": "No"
+    }
+   },
+   "why": "Positive control: 'No' here comes from the approved US fact (authorized = no), not a default; the other country's 'yes' must not leak."
+  },
+  {
+   "id": "r8_8_ctrl_sponsor_pt_caps_no_first",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Will you now or in the future require sponsorship to work in Portugal?",
+   "type": "radio",
+   "options": [
+    "NO",
+    "YES"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "sponsorship",
+    "value": {
+     "option": "0",
+     "label": "NO"
+    }
+   },
+   "why": "Positive control: capitals and reversed order still form exactly one yes and one no; approved PT facts (now no, future no) make 'NO' true."
+  },
+  {
+   "id": "r8_8_ctrl_sponsor_us_dotted_no_first",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Do you require sponsorship to work in the United States?",
+   "type": "radio",
+   "options": [
+    "No.",
+    "Yes."
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "sponsorship",
+    "value": {
+     "option": "1",
+     "label": "Yes."
+    }
+   },
+   "why": "Positive control: trailing dots and reversed order; approved US fact (sponsorship now yes) gives the exact 'Yes.' option."
+  },
+  {
+   "id": "r8_8_ctrl_us_sponsorship_order_no_yes_rich",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Will you now or in the future require sponsorship to work in the United States?",
+   "type": "radio",
+   "options": [
+    "No",
+    "Yes"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "sponsorship",
+    "value": {
+     "option": "1",
+     "label": "Yes"
+    }
+   },
+   "why": "Positive control: order is irrelevant; the exact 'Yes' option from the approved US sponsorship fact (now yes, future yes)."
+  },
+  {
+   "id": "r8_8_auth_germany_not_held_optional",
+   "plan": "R8.8",
+   "legacy": "LD-20",
+   "label": "Are you legally authorized to work in Germany?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "required": false,
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "blank_optional"
+    ]
+   },
+   "why": "No approved fact for Germany: one country's answer is never reused for another, and an optional unknown is blank, never 'No'."
+  },
+  {
+   "id": "r8_8_auth_pt_empty_context_optional",
+   "plan": "R8.8",
+   "legacy": "LD-20",
+   "label": "Are you legally authorized to work in Portugal?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "required": false,
+   "facts": "none",
+   "expect": {
+    "status": [
+     "blank_optional"
+    ]
+   },
+   "why": "Empty context: unknown stays unknown; optional, so blank and never 'No'."
+  },
+  {
+   "id": "r8_8_auth_pt_help_names_other_country",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Are you legally authorized to work in Portugal?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "help_text": "Answer for the country where this role is based: the United States.",
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Help text redirects the question to the US, where the approved answer is the opposite; answering from the label's country would be false."
+  },
+  {
+   "id": "r8_8_auth_us_abbrev_trailing_dot",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Are you legally authorized to work in the U.S.?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user",
+     "resolved"
+    ],
+    "value": {
+     "option": "1",
+     "label": "No"
+    }
+   },
+   "why": "Punctuation variant of the US question: either the US fact ('No') or a checkpoint; never the Portugal 'Yes'."
+  },
+  {
+   "id": "r8_8_duplicate_normalized_option_labels_saved",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Which tool do you use most?",
+   "type": "select",
+   "options": [
+    "Other",
+    "Spreadsheets",
+    "Other "
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Which tool do you use most?",
+     "type": "select",
+     "options": [
+      "Other",
+      "Spreadsheets",
+      "Other "
+     ],
+     "value": {
+      "labels": [
+       "Other"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Two options normalize to 'other'; reuse silently picks the last one; which 'Other' the user meant is unknowable, so a checkpoint."
+  },
+  {
+   "id": "r8_8_sponsor_pt_none_of_the_above_first",
+   "plan": "R8.8",
+   "legacy": "LD-22",
+   "label": "Will you now or in the future require sponsorship to work in Portugal?",
+   "type": "radio",
+   "options": [
+    "None of the above",
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "'None of the above' contains 'no' and comes first: a substring matcher ticks it; not a clean pair, so a checkpoint."
+  },
+  {
+   "id": "r8_8_us_sponsorship_i_do_not_know_no_rich",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Will you now or in the future require sponsorship to work in the United States?",
+   "type": "radio",
+   "options": [
+    "I do not know",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "'I do not know' contains 'no'; the true answer (Yes) is not an exact option, so a checkpoint."
+  },
+  {
+   "id": "r8_8_us_sponsorship_none_of_the_above_no_none",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Will you now or in the future require sponsorship to work in the United States?",
+   "type": "radio",
+   "options": [
+    "None of the above",
+    "No"
+   ],
+   "facts": "none",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "No facts: legacy picked 'None of the above' (contains 'no'); unknown stays unknown."
+  },
+  {
+   "id": "r8_8_us_sponsorship_not_sure_no_rich",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Will you now or in the future require sponsorship to work in the United States?",
+   "type": "radio",
+   "options": [
+    "Not sure",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "US sponsorship is approved yes/yes, so 'No' is false and legacy's first option containing 'no' ('Not sure') is a guess; the true answer is not offered exactly."
+  },
+  {
+   "id": "r8_8_us_sponsorship_order_no_not_sure_none",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Will you now or in the future require sponsorship to work in the United States?",
+   "type": "radio",
+   "options": [
+    "No",
+    "Not sure"
+   ],
+   "facts": "none",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Option-order row: with 'No' first legacy's first-contains pick lands on 'No' with no fact behind it; still a checkpoint."
+  },
+  {
+   "id": "r8_8_us_sponsorship_yes_long_wording_no_rich",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Will you now or in the future require sponsorship to work in the United States?",
+   "type": "radio",
+   "options": [
+    "Yes, I now or in the future will need sponsorship",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "The first option contains 'no' (in 'now') and 'Yes'; it is not an exact yes word, so the user picks; never 'No' (false) and never a substring pick."
+  },
+  {
+   "id": "r8_8_pt_sponsorship_not_sure_no_rich",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Will you now or in the future require sponsorship to work in Portugal?",
+   "type": "radio",
+   "options": [
+    "Not sure",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "The legacy trap proper: the true answer (PT now no, future no) is 'No', and legacy's first option containing 'no' is 'Not sure'. Answer-policy: eligibility options must be exactly one yes and one no, else ask; so a checkpoint, never 'Not sure'."
+  },
+  {
+   "id": "r8_8_pt_sponsorship_yes_long_wording_no_rich",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Will you now or in the future require sponsorship to work in Portugal?",
+   "type": "radio",
+   "options": [
+    "Yes, I now or in the future will need sponsorship",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "The true answer is 'No'; the first option contains 'no' (in 'now') and says the opposite ('Yes, ... will need sponsorship'). A substring pick turns a no into a yes."
+  },
+  {
+   "id": "r8_8_pt_sponsorship_i_do_not_know_no_rich",
+   "plan": "R8.8",
+   "legacy": "LD-27",
+   "label": "Will you now or in the future require sponsorship to work in Portugal?",
+   "type": "radio",
+   "options": [
+    "I do not know",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "The true answer is 'No' and is offered exactly; 'I do not know' comes first and contains 'no'. Not one yes and one no, so a checkpoint (answer-policy), never the first containing option."
+  },
+  {
+   "id": "r8_9_ctrl_consent_first_agree",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Do you consent to a background check?",
+   "type": "radio",
+   "options": [
+    "I consent",
+    "I do not consent"
+   ],
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "acknowledgment",
+    "value": {
+     "option": "0",
+     "label": "I consent"
+    }
+   },
+   "why": "Order row: with the affirmative first the explicit agree still selects exactly 'I consent'."
+  },
+  {
+   "id": "r8_9_ctrl_do_not_agree_first_agree",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Do you consent to a background check?",
+   "type": "radio",
+   "options": [
+    "I do not agree",
+    "I agree"
+   ],
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "acknowledgment",
+    "value": {
+     "option": "1",
+     "label": "I agree"
+    }
+   },
+   "why": "The explicit agree selects exactly 'I agree', never the earlier 'I do not agree' that also contains 'agree'."
+  },
+  {
+   "id": "r8_9_ctrl_marketing_option_first_agree",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Do you consent to a background check?",
+   "type": "radio",
+   "options": [
+    "I agree to marketing emails",
+    "I agree",
+    "I do not agree"
+   ],
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "acknowledgment",
+    "value": {
+     "option": "1",
+     "label": "I agree"
+    }
+   },
+   "why": "Positive control: explicit agree selects the exact 'I agree', not the first option that starts with it (which adds a marketing consent)."
+  },
+  {
+   "id": "r8_9_do_not_agree_agree_no_choice_saved_ignored",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Do you consent to a background check?",
+   "type": "radio",
+   "options": [
+    "I do not agree",
+    "I agree"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Do you consent to a background check?",
+     "type": "radio",
+     "options": [
+      "I do not agree",
+      "I agree"
+     ],
+     "value": {
+      "labels": [
+       "I agree"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "acknowledgment"
+   },
+   "why": "Legacy fell back to an option or ticked consents automatically; a consent is never taken from a saved answer or a default, only from this application's choice."
+  },
+  {
+   "id": "r8_9_do_not_consent_consent_decline_required",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Do you consent to a background check?",
+   "type": "radio",
+   "options": [
+    "I do not consent",
+    "I consent"
+   ],
+   "facts": "none",
+   "consent": "decline",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "acknowledgment"
+   },
+   "why": "A required consent the user declined blocks approval; it is never flipped to 'I consent' and never submitted silently."
+  },
+  {
+   "id": "r8_9_neutral_label_consent_options_saved",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Data processing",
+   "type": "select",
+   "options": [
+    "I do not agree",
+    "I agree"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Data processing",
+     "type": "select",
+     "options": [
+      "I do not agree",
+      "I agree"
+     ],
+     "value": {
+      "labels": [
+       "I agree"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_consent",
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "The consent wording is only in the options, so the label is 'unknown' and a saved 'I agree' is reused across employers; consents are never banked."
+  },
+  {
+   "id": "r8_9_ctrl_do_not_consent_consent_agree",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Do you consent to a background check?",
+   "type": "radio",
+   "options": [
+    "I do not consent",
+    "I consent"
+   ],
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "acknowledgment",
+    "value": {
+     "option": "1",
+     "label": "I consent"
+    }
+   },
+   "why": "The plan's own order (negative first) for the consent pair: an explicit agree gives exactly 'I consent', never the earlier 'I do not consent' that also contains 'consent'."
+  },
+  {
+   "id": "r8_9_ctrl_agree_first_decline_optional",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Do you consent to a background check?",
+   "type": "radio",
+   "options": [
+    "I agree",
+    "I do not agree"
+   ],
+   "required": false,
+   "facts": "rich",
+   "consent": "decline",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "acknowledgment",
+    "value": {
+     "option": "1",
+     "label": "I do not agree"
+    }
+   },
+   "why": "Order row for decline: 'I agree' comes first and is contained in 'I do not agree'; an explicit decline on an optional consent question selects exactly 'I do not agree'."
+  },
+  {
+   "id": "r8_9_privacy_checkbox_saved_checked_ignored",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "I agree to the privacy policy",
+   "type": "checkbox",
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "I agree to the privacy policy",
+     "type": "checkbox",
+     "value": {
+      "checked": true
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "acknowledgment",
+    "bankable": false
+   },
+   "why": "Legacy ticked consent boxes automatically; a saved {'checked': true} for the same wording is never a consent for this application."
+  },
+  {
+   "id": "r8_9_marketing_checkbox_optional_no_choice",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "I agree to receive marketing emails",
+   "type": "checkbox",
+   "required": false,
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "acknowledgment"
+   },
+   "why": "Ashby ticked every consent-worded box. An optional consent with no choice is never ticked and never silently left blank: it waits for agree or decline."
+  },
+  {
+   "id": "r8_9_terms_select_saved_accept",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Terms",
+   "type": "select",
+   "options": [
+    "I do not accept",
+    "I accept"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Terms",
+     "type": "select",
+     "options": [
+      "I do not accept",
+      "I accept"
+     ],
+     "value": {
+      "labels": [
+       "I accept"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_consent",
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Consent worded only in the options ('I accept'): a saved 'I accept' is reused today from another application. Consents are never banked (answer-policy rows 1 and 5)."
+  },
+  {
+   "id": "r8_9_acknowledgement_saved",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Acknowledgement",
+   "type": "radio",
+   "options": [
+    "Acknowledged",
+    "Not acknowledged"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Acknowledgement",
+     "type": "radio",
+     "options": [
+      "Acknowledged",
+      "Not acknowledged"
+     ],
+     "value": {
+      "labels": [
+       "Acknowledged"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_consent",
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "'Acknowledgement' is not an _ACK label and the options carry the consent; a saved 'Acknowledged' is reused today."
+  },
+  {
+   "id": "r8_9_certification_saved",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Certification",
+   "type": "radio",
+   "options": [
+    "I certify the above is true",
+    "I do not certify"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Certification",
+     "type": "radio",
+     "options": [
+      "I certify the above is true",
+      "I do not certify"
+     ],
+     "value": {
+      "labels": [
+       "I certify the above is true"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_consent",
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "A certification worded only in the options; legacy ticked certifications, and a saved 'I certify ...' is reused today. Never from a saved answer."
+  },
+  {
+   "id": "r8_9_talent_community_my_data_saved",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Talent community",
+   "type": "radio",
+   "options": [
+    "Yes, keep my data for future roles",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Talent community",
+     "type": "radio",
+     "options": [
+      "Yes, keep my data for future roles",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes, keep my data for future roles"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_consent",
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "A data-retention consent for this employer, worded only in an option ('keep my data'). The merged F_CONSENT_OPTS regex does not cover it; a saved 'Yes, keep my data' would be given to every employer."
+  },
+  {
+   "id": "r8_9_agree_options_with_explicit_choice_never_saved",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Data processing",
+   "type": "select",
+   "options": [
+    "I do not agree",
+    "I agree"
+   ],
+   "facts": "none",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Agree/decline options under a neutral label are answered by the user each time: a stored consent does not choose an option of a question that is not an acknowledgment (no new automatic path), and nothing is saved."
+  },
+  {
+   "id": "r8_9_yes_i_agree_options_saved",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Data processing",
+   "type": "radio",
+   "options": [
+    "Yes, I agree",
+    "No, I do not agree"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Data processing",
+     "type": "radio",
+     "options": [
+      "Yes, I agree",
+      "No, I do not agree"
+     ],
+     "value": {
+      "labels": [
+       "Yes, I agree"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "The commonest consent pair ('Yes, I agree' / 'No, I do not agree') under a neutral label: never from a saved answer."
+  },
+  {
+   "id": "r8_9_give_consent_options_saved",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Future opportunities",
+   "type": "radio",
+   "options": [
+    "Yes, I give my consent",
+    "No, I don't give my consent"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Future opportunities",
+     "type": "radio",
+     "options": [
+      "Yes, I give my consent",
+      "No, I don't give my consent"
+     ],
+     "value": {
+      "labels": [
+       "Yes, I give my consent"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "Consent given in other words: never from a saved answer."
+  },
+  {
+   "id": "r8_9_understand_options_saved",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Declaration",
+   "type": "radio",
+   "options": [
+    "I understand",
+    "I do not understand"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Declaration",
+     "type": "radio",
+     "options": [
+      "I understand",
+      "I do not understand"
+     ],
+     "value": {
+      "labels": [
+       "I understand"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "An 'I understand' declaration: never from a saved answer."
+  },
+  {
+   "id": "r8_9_ctrl_rating_scale_saved",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "I enjoy solving problems",
+   "type": "radio",
+   "options": [
+    "Strongly agree",
+    "Agree",
+    "Neutral",
+    "Disagree",
+    "Strongly disagree"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "I enjoy solving problems",
+     "type": "radio",
+     "options": [
+      "Strongly agree",
+      "Agree",
+      "Neutral",
+      "Disagree",
+      "Strongly disagree"
+     ],
+     "value": {
+      "labels": [
+       "Agree"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "source": "answer_bank",
+    "value": {
+     "option": "1",
+     "label": "Agree"
+    }
+   },
+   "why": "Control: a rating scale is not a consent; the exact saved answer is reused."
+  },
+  {
+   "id": "r8_9_agreed_not_agreed_saved",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Privacy",
+   "type": "radio",
+   "options": [
+    "Agreed",
+    "Not agreed"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Privacy",
+     "type": "radio",
+     "options": [
+      "Agreed",
+      "Not agreed"
+     ],
+     "value": {
+      "labels": [
+       "Agreed"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "'Agreed' / 'Not agreed': never from a saved answer."
+  },
+  {
+   "id": "r8_9_affirm_options_saved",
+   "plan": "R8.9",
+   "legacy": "U8",
+   "label": "Attestation",
+   "type": "radio",
+   "options": [
+    "I affirm",
+    "I do not affirm"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Attestation",
+     "type": "radio",
+     "options": [
+      "I affirm",
+      "I do not affirm"
+     ],
+     "value": {
+      "labels": [
+       "I affirm"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false
+   },
+   "why": "'I affirm' / 'I do not affirm': never from a saved answer."
+  },
+  {
+   "id": "r8_10_ctrl_authorized_portugal_agree",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I am authorized to work in Portugal",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "fact_statement",
+    "value": {
+     "checked": true
+    }
+   },
+   "why": "Positive control: agree plus the approved PT authorization (yes) makes the affirmative statement true, so it is ticked."
+  },
+  {
+   "id": "r8_10_auth_pt_help_requires_us_permit",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I am authorized to work in Portugal",
+   "type": "checkbox",
+   "help_text": "Tick only if you hold a United States work permit.",
+   "required": false,
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ]
+   },
+   "why": "Help text changes the condition to a US permit, which the facts deny; the label alone would tick it."
+  },
+  {
+   "id": "r8_10_cannot_work_in_portugal_agree",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I cannot work in Portugal",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent",
+     "needs_user"
+    ]
+   },
+   "why": "The approved PT fact says authorized=yes, so the statement is false; even with agree a negated fact statement must never be ticked."
+  },
+  {
+   "id": "r8_10_not_authorized_portugal_agree_fact_contradicts",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I am not authorized to work in Portugal",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent",
+     "needs_user"
+    ]
+   },
+   "why": "PT authorized is approved 'yes', so ticking it would be false; legacy ticked lone statement boxes with no negation check."
+  },
+  {
+   "id": "r8_10_not_authorized_us_agree_fact_agrees",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I am not authorized to work in the United States",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent",
+     "needs_user"
+    ]
+   },
+   "why": "US authorized is approved 'no', so the statement happens to be true, but the plan says negations become checkpoints: it is never ticked even with agree."
+  },
+  {
+   "id": "r8_10_unable_to_travel_agree_rich",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I am unable to travel",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "acknowledgment",
+    "value": {
+     "checked": true
+    }
+   },
+   "why": "Answer-policy row 1 and D49: a statement no profile fact records (travel, relocation willingness) is the user's own choice for this application: ticked only on an explicit agree, with no fact behind it, never automatically. Reliability plan R8.10 is corrected to say so (D54)."
+  },
+  {
+   "id": "r8_10_unable_to_travel_no_choice_none",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I am unable to travel",
+   "type": "checkbox",
+   "facts": "none",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ]
+   },
+   "why": "Never ticked automatically: no choice and no facts."
+  },
+  {
+   "id": "r8_10_unable_to_work_in_portugal_agree",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I am unable to work in Portugal",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent",
+     "needs_user"
+    ]
+   },
+   "why": "Negated work-authorization statement the approved PT fact contradicts (authorized = yes). Answer-policy row 1a: a negated statement is never checked. Ticked on agree today, and still ticked under the merged F_CANNOT_WORK."
+  },
+  {
+   "id": "r8_10_not_able_to_work_in_us_agree",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I am not able to work in the United States",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent",
+     "needs_user"
+    ]
+   },
+   "why": "US authorized is 'no', so it happens to be true, but it is a negated work statement: never checked even with agree (plan R8.10, answer-policy row 1a)."
+  },
+  {
+   "id": "r8_10_cant_work_in_portugal_agree",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I can't work in Portugal",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent",
+     "needs_user"
+    ]
+   },
+   "why": "Contraction of 'I cannot work in Portugal': _AUTH_LIKE_PLACE and the merged _CLAIM addition only know 'cannot|can not', so it is ticked on agree against the PT fact."
+  },
+  {
+   "id": "r8_10_not_willing_to_relocate_agree_rich",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I am not willing to relocate",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "acknowledgment",
+    "value": {
+     "checked": true
+    }
+   },
+   "why": "Answer-policy row 1 and D49: a statement no profile fact records (travel, relocation willingness) is the user's own choice for this application: ticked only on an explicit agree, with no fact behind it, never automatically. Reliability plan R8.10 is corrected to say so (D54)."
+  },
+  {
+   "id": "r8_10_ctrl_authorized_portugal_decline_optional",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I am authorized to work in Portugal",
+   "type": "checkbox",
+   "required": false,
+   "facts": "rich",
+   "consent": "decline",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "fact_statement",
+    "value": {
+     "checked": false
+    }
+   },
+   "why": "Positive control for the decline side: an optional fact statement the user declines is left unchecked, never 'No' and never checked from the true PT fact."
+  },
+  {
+   "id": "r8_10_unable_to_work_in_portugal_question_saved",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "Are you unable to work in Portugal?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you unable to work in Portugal?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "No"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent": "legal_status",
+    "bankable": false
+   },
+   "why": "The question form of a negated right to work: a protected question answered for each application, never from a saved answer (D49 C4), not an unknown that reuses one."
+  },
+  {
+   "id": "r8_10_prevent_work_help_disability",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "Is there anything that would prevent you from working in Portugal?",
+   "type": "radio",
+   "options": [
+    "No",
+    "Yes"
+   ],
+   "help_text": "For example a disability or a health condition.",
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Is there anything that would prevent you from working in Portugal?",
+     "type": "radio",
+     "options": [
+      "No",
+      "Yes"
+     ],
+     "help_text": "For example a disability or a health condition.",
+     "value": {
+      "labels": [
+       "No"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent": "demographic",
+    "bankable": false,
+    "draftable": false
+   },
+   "why": "Help naming a disability keeps the question a sensitive one (C5), as before S4: the negated right-to-work rule must not turn it into a non-sensitive legal question (review round 3), and no saved answer is used."
+  },
+  {
+   "id": "r8_10_would_not_be_able_to_work_agree",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I would not be able to work in Portugal",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "fact_statement"
+   },
+   "why": "A negated right to work in any words: never checked (answer-policy row 1a)."
+  },
+  {
+   "id": "r8_10_wont_be_able_to_work_agree",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I won't be able to work in Portugal",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "fact_statement"
+   },
+   "why": "The same with a contraction."
+  },
+  {
+   "id": "r8_10_lack_right_to_work_agree",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I lack the right to work in Portugal",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "fact_statement"
+   },
+   "why": "The same with 'lack'."
+  },
+  {
+   "id": "r8_10_heading_help_cannot_work_agree",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "Eligibility",
+   "type": "checkbox",
+   "help_text": "Check this box to confirm that you cannot work in Portugal",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "fact_statement"
+   },
+   "why": "A heading whose help asks to confirm the user cannot work in a country: never checked."
+  },
+  {
+   "id": "r8_10_may_not_work_select_saved",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I may not work in Portugal",
+   "type": "select",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "I may not work in Portugal",
+     "type": "select",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent": "legal_status",
+    "bankable": false
+   },
+   "why": "A negated right to work on a yes/no choice: protected, never from a saved answer."
+  },
+  {
+   "id": "r8_10_ctrl_unable_to_work_weekends_agree",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I am unable to work weekends",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "acknowledgment",
+    "value": {
+     "checked": true
+    }
+   },
+   "why": "Control: availability is not a right to work; the user's explicit agree checks it (answer-policy row 1)."
+  },
+  {
+   "id": "r8_10_ctrl_teamwork_options_saved",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "Teamwork",
+   "type": "radio",
+   "options": [
+    "I can work in a team",
+    "I am unable to work in a team"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Teamwork",
+     "type": "radio",
+     "options": [
+      "I can work in a team",
+      "I am unable to work in a team"
+     ],
+     "value": {
+      "labels": [
+       "I can work in a team"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "source": "answer_bank",
+    "value": {
+     "option": "0",
+     "label": "I can work in a team"
+    }
+   },
+   "why": "Control: 'unable to work in a team' names no place; the exact saved answer is reused."
+  },
+  {
+   "id": "r8_10_ineligible_for_employment_agree",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I am ineligible for employment in Portugal",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "fact_statement"
+   },
+   "why": "A right to work denied in other words, against the approved PT fact: never checked."
+  },
+  {
+   "id": "r8_10_cannot_work_in_city_agree",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I cannot work in Lisbon",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "needs_consent"
+    ],
+    "intent": "fact_statement"
+   },
+   "why": "A right to work denied for a place written as a name: never checked."
+  },
+  {
+   "id": "r8_10_ctrl_unable_shifts_including_nights_agree",
+   "plan": "R8.10",
+   "legacy": "U9",
+   "label": "I am unable to work in shifts, including nights",
+   "type": "checkbox",
+   "facts": "rich",
+   "consent": "agree",
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "acknowledgment",
+    "value": {
+     "checked": true
+    }
+   },
+   "why": "Control: availability with 'including' names no place; the user's explicit agree checks it (row 1)."
+  },
+  {
+   "id": "r8_11_ctrl_caps_and_option_order",
+   "plan": "R8.11",
+   "legacy": "LD-30",
+   "label": "DO YOU HOLD A FORKLIFT OPERATOR CERTIFICATE",
+   "type": "radio",
+   "options": [
+    "No",
+    "Yes"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Do you hold a forklift operator certificate?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "value": {
+     "option": "1",
+     "label": "Yes"
+    },
+    "source": "answer_bank"
+   },
+   "why": "Positive control: case, missing '?' and option order are normalized; exact saved answer for the same wording, shape and option set."
+  },
+  {
+   "id": "r8_11_ctrl_exact_same_wording_reused",
+   "plan": "R8.11",
+   "legacy": "LD-30",
+   "label": "Do you hold a forklift operator certificate?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Do you hold a forklift operator certificate?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "value": {
+     "option": "0",
+     "label": "Yes"
+    },
+    "source": "answer_bank"
+   },
+   "why": "Positive control: the exact wording, shape, help and options of the saved answer reuse it."
+  },
+  {
+   "id": "r8_11_auth_portugal_saved_not_used_for_us",
+   "plan": "R8.11",
+   "legacy": "LD-30",
+   "label": "Are you authorized to work in the United States?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you authorized to work in Portugal?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "work_authorization",
+    "value": {
+     "option": "1",
+     "label": "No"
+    },
+    "source": "deterministic_mapping"
+   },
+   "why": "The approved US fact says authorized=no; the saved PT 'Yes' must not leak. 'No' here comes from the approved US fact, not from a default."
+  },
+  {
+   "id": "r8_11_authorized_canada_vs_saved_portugal",
+   "plan": "R8.11",
+   "legacy": "LD-30",
+   "label": "Are you authorized to work in Canada?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Are you authorized to work in Portugal?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Country B (no CA fact) is never answered from country A's saved answer or from the PT fact."
+  },
+  {
+   "id": "r8_11_five_years_vs_saved_three_years",
+   "plan": "R8.11",
+   "legacy": "LD-30",
+   "label": "Do you have 5 years of experience with SQL?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Do you have 3 years of experience with SQL?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "'3 years' and '5 years' differ by one digit; legacy reused across them. No reuse."
+  },
+  {
+   "id": "r8_11_help_text_added",
+   "plan": "R8.11",
+   "legacy": "LD-30",
+   "label": "Do you hold a forklift operator certificate?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "help_text": "Only certificates issued in Portugal count",
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Do you hold a forklift operator certificate?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Same label but help text that narrows the question; the saved answer did not consider it, so the key differs and the user answers again."
+  },
+  {
+   "id": "r8_11_negated_near_duplicate",
+   "plan": "R8.11",
+   "legacy": "LD-30",
+   "label": "Do you not hold a forklift operator certificate?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Do you hold a forklift operator certificate?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "One inserted 'not' inverts the meaning; legacy fuzzy reuse (0.90) would give the saved 'Yes', which is the opposite answer."
+  },
+  {
+   "id": "r8_11_not_require_sponsorship_vs_saved_require",
+   "plan": "R8.11",
+   "legacy": "LD-30",
+   "label": "Do you not require sponsorship?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Do you require sponsorship?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Legacy fuzzy-matched at 0.90; the negation flips the meaning, and with no country named the US (yes) and PT (no) facts disagree, so a checkpoint."
+  },
+  {
+   "id": "r8_11_not_speak_spanish_vs_saved_speak_spanish",
+   "plan": "R8.11",
+   "legacy": "LD-30",
+   "label": "Do you not speak Spanish?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Do you speak Spanish?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "A reusable (bankable) near-duplicate: the saved 'Yes' to 'Do you speak Spanish?' is live for its own wording but never answers the negated sibling (different key)."
+  },
+  {
+   "id": "r8_11_options_grew",
+   "plan": "R8.11",
+   "legacy": "LD-30",
+   "label": "Do you hold a forklift operator certificate?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No",
+    "In progress"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Do you hold a forklift operator certificate?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "The employer added 'In progress'; the saved Yes/No choice was made against a different option set, so it is not reused."
+  },
+  {
+   "id": "r8_11_same_wording_as_checkbox",
+   "plan": "R8.11",
+   "legacy": "LD-30",
+   "label": "Do you hold a forklift operator certificate?",
+   "type": "checkbox",
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Do you hold a forklift operator certificate?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_consent",
+     "needs_user"
+    ]
+   },
+   "why": "Same label as a checkbox: a saved radio 'Yes' must not tick a box (different shape and a statement-like control)."
+  },
+  {
+   "id": "r8_11_saved_auth_answer_without_fact",
+   "plan": "R8.11",
+   "legacy": "LD-30",
+   "label": "Are you authorized to work in Portugal?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "none",
+   "bank": [
+    {
+     "label": "Are you authorized to work in Portugal?",
+     "type": "radio",
+     "options": [
+      "Yes",
+      "No"
+     ],
+     "value": {
+      "labels": [
+       "Yes"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "A saved 'Yes' under the exact same wording is still not a fact: with no approved work authorization row, eligibility stays a checkpoint and the bank is never read."
+  },
+  {
+   "id": "r8_11_text_answer_never_answers_radio",
+   "plan": "R8.11",
+   "legacy": "LD-30",
+   "label": "Do you hold a forklift operator certificate?",
+   "type": "radio",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Do you hold a forklift operator certificate?",
+     "type": "text",
+     "value": {
+      "text": "Yes"
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "A saved free-text 'Yes' for the text version is a different answer shape; it must not be mapped onto a radio option."
+  },
+  {
+   "id": "r8_16_ctrl_exact_saved_label",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Highest level of education completed",
+   "type": "select",
+   "options": [
+    "Bachelor’s Degree",
+    "Master’s Degree",
+    "Doctorate"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Highest level of education completed",
+     "type": "select",
+     "options": [
+      "Bachelor’s Degree",
+      "Master’s Degree",
+      "Doctorate"
+     ],
+     "value": {
+      "labels": [
+       "Master’s Degree"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "value": {
+     "option": "1",
+     "label": "Master’s Degree"
+    },
+    "source": "answer_bank"
+   },
+   "why": "Positive control: the exact saved option for the same wording and options is reused."
+  },
+  {
+   "id": "r8_16_ctrl_options_reordered",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Highest level of education completed",
+   "type": "select",
+   "options": [
+    "Doctorate",
+    "Master's Degree",
+    "Bachelor's Degree"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Highest level of education completed",
+     "type": "select",
+     "options": [
+      "Bachelor's Degree",
+      "Master's Degree",
+      "Doctorate"
+     ],
+     "value": {
+      "labels": [
+       "Master's Degree"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "value": {
+     "option": "1",
+     "label": "Master's Degree"
+    },
+    "source": "answer_bank"
+   },
+   "why": "Positive control: options reordered, identical set; the exact saved label, never by prefix."
+  },
+  {
+   "id": "r8_16_ctrl_straight_apostrophe_lowercase",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Highest level of education completed",
+   "type": "select",
+   "options": [
+    "Bachelor’s Degree",
+    "Master’s Degree",
+    "Doctorate"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Highest level of education completed",
+     "type": "select",
+     "options": [
+      "Bachelor's Degree",
+      "Master's Degree",
+      "Doctorate"
+     ],
+     "value": {
+      "labels": [
+       "Master's Degree"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "value": {
+     "option": "1",
+     "label": "Master’s Degree"
+    },
+    "source": "answer_bank"
+   },
+   "why": "Control: the earlier form wrote the apostrophe straight; the same labels after normalising are the same options, so the exact saved answer is reused."
+  },
+  {
+   "id": "r8_16_degree_option_suffixed",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Highest level of education completed",
+   "type": "select",
+   "options": [
+    "Bachelor's Degree",
+    "Master's Degree (MSc)",
+    "Doctorate"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Highest level of education completed",
+     "type": "select",
+     "options": [
+      "Bachelor's Degree",
+      "Master's Degree",
+      "Doctorate"
+     ],
+     "value": {
+      "labels": [
+       "Master's Degree"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "'Master's Degree' is a prefix of the new option; a prefix matcher would reuse it although the option set changed."
+  },
+  {
+   "id": "r8_16_options_without_degree_suffix",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Highest level of education completed",
+   "type": "select",
+   "options": [
+    "Bachelor’s",
+    "Master’s",
+    "Doctorate"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Highest level of education completed",
+     "type": "select",
+     "options": [
+      "Bachelor’s Degree",
+      "Master’s Degree",
+      "Doctorate"
+     ],
+     "value": {
+      "labels": [
+       "Master’s Degree"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "The employer's options changed to 'Bachelor’s / Master’s / Doctorate'; the saved 'Master’s Degree' was chosen against another list, so a checkpoint."
+  },
+  {
+   "id": "r8_16_profile_degree_strings_ignored",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Highest level of education completed",
+   "type": "select",
+   "options": [
+    "Bachelor's Degree",
+    "Master's Degree",
+    "Doctorate"
+   ],
+   "facts": "rich",
+   "profile_extra": {
+    "education": [
+     {
+      "degree": "BA (Hons)",
+      "field": "History"
+     },
+     {
+      "degree": "MA in History",
+      "field": "History"
+     }
+    ]
+   },
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Degree strings in the profile ('BA (Hons)', 'MA in History') are never mapped by prefix; there is no education resolver, so a checkpoint."
+  },
+  {
+   "id": "r8_16_saved_ba_hons",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Highest level of education completed",
+   "type": "select",
+   "options": [
+    "Bachelor’s Degree",
+    "Master’s Degree",
+    "Doctorate"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Highest level of education completed",
+     "type": "select",
+     "options": [
+      "BA (Hons)",
+      "MA",
+      "PhD"
+     ],
+     "value": {
+      "labels": [
+       "BA (Hons)"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Starts with 'ba'; it may well be a bachelor's, but only the exact option label may be reused, so the user chooses; the saved answer comes from an earlier form whose options included it, so it is never mapped by prefix onto a different option."
+  },
+  {
+   "id": "r8_16_saved_ma_in_history",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Highest level of education completed",
+   "type": "select",
+   "options": [
+    "Bachelor’s Degree",
+    "Master’s Degree",
+    "Doctorate"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Highest level of education completed",
+     "type": "select",
+     "options": [
+      "BA in History",
+      "MA in History",
+      "PhD in History"
+     ],
+     "value": {
+      "labels": [
+       "MA in History"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Legacy mapped 'ma*' to Master's; the saved text is not an offered option, so a checkpoint; the saved answer comes from an earlier form whose options included it, so it is never mapped by prefix onto a different option."
+  },
+  {
+   "id": "r8_16_saved_masters_without_degree",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Highest level of education completed",
+   "type": "select",
+   "options": [
+    "Bachelor’s Degree",
+    "Master’s Degree",
+    "Doctorate"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Highest level of education completed",
+     "type": "select",
+     "options": [
+      "Bachelor’s",
+      "Master’s",
+      "Doctorate"
+     ],
+     "value": {
+      "labels": [
+       "Master’s"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "A shortened label is not the option 'Master’s Degree'; no prefix or substring match; the saved answer comes from an earlier form whose options included it, so it is never mapped by prefix onto a different option."
+  },
+  {
+   "id": "r8_16_saved_maths_bsc",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Highest level of education completed",
+   "type": "select",
+   "options": [
+    "Bachelor’s Degree",
+    "Master’s Degree",
+    "Doctorate"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Highest level of education completed",
+     "type": "select",
+     "options": [
+      "Maths BSc",
+      "Maths MSc",
+      "Maths PhD"
+     ],
+     "value": {
+      "labels": [
+       "Maths BSc"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Starts with 'ma' but is a bachelor's; a prefix map would claim a master's degree; the saved answer comes from an earlier form whose options included it, so it is never mapped by prefix onto a different option."
+  },
+  {
+   "id": "r8_16_saved_maths_bsc_from_older_options",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Highest level of education completed",
+   "type": "select",
+   "options": [
+    "Bachelor's Degree",
+    "Master's Degree",
+    "Doctorate"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Highest level of education completed",
+     "type": "select",
+     "options": [
+      "MA in History",
+      "Maths BSc",
+      "MS Office certificate",
+      "BA (Hons)"
+     ],
+     "value": {
+      "labels": [
+       "Maths BSc"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Same wording saved against an older option list (MA in History, Maths BSc, MS Office certificate, BA (Hons)); 'Maths BSc' would prefix-map to Master's. Options changed: a checkpoint."
+  },
+  {
+   "id": "r8_16_saved_ms_office_certificate",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Highest level of education completed",
+   "type": "select",
+   "options": [
+    "Bachelor’s Degree",
+    "Master’s Degree",
+    "Doctorate"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Highest level of education completed",
+     "type": "select",
+     "options": [
+      "MS Office certificate",
+      "Excel certificate",
+      "None"
+     ],
+     "value": {
+      "labels": [
+       "MS Office certificate"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Starts with 'ms' and is not a degree at all; any degree option would misstate education; the saved answer comes from an earlier form whose options included it, so it is never mapped by prefix onto a different option."
+  },
+  {
+   "id": "r8_16_text_saved_never_answers_select",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Highest level of education completed",
+   "type": "select",
+   "options": [
+    "Bachelor’s Degree",
+    "Master’s Degree",
+    "Doctorate"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Highest level of education completed",
+     "type": "text",
+     "value": {
+      "text": "MA in History"
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "A free-text 'MA in History' saved for the text version is another answer shape and never picks a select option."
+  },
+  {
+   "id": "r8_16_ctrl_exact_short_label_among_prefixed",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Degree",
+   "type": "select",
+   "options": [
+    "MArch",
+    "MAT",
+    "MA"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Degree",
+     "type": "select",
+     "options": [
+      "MA",
+      "MAT",
+      "MArch"
+     ],
+     "value": {
+      "labels": [
+       "MA"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "value": {
+     "option": "2",
+     "label": "MA"
+    },
+    "source": "answer_bank"
+   },
+   "why": "Positive control: saved 'MA' is a prefix of 'MArch' and 'MAT', which come first; only the exact option 'MA' is chosen."
+  },
+  {
+   "id": "r8_16_options_grew_saved_label_still_offered",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Highest level of education completed",
+   "type": "select",
+   "options": [
+    "Associate's Degree",
+    "Bachelor's Degree",
+    "Master's Degree",
+    "Doctorate"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Highest level of education completed",
+     "type": "select",
+     "options": [
+      "Bachelor's Degree",
+      "Master's Degree",
+      "Doctorate"
+     ],
+     "value": {
+      "labels": [
+       "Master's Degree"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "The saved 'Master's Degree' is still offered, but the employer added an option; the choice was made against another list. Only the option-snapshot check refuses it (no R8.16 row exercised that check alone)."
+  },
+  {
+   "id": "r8_16_saved_msc_starts_with_option_ms",
+   "plan": "R8.16",
+   "legacy": "LD-47",
+   "label": "Degree",
+   "type": "select",
+   "options": [
+    "BA",
+    "BS",
+    "MA",
+    "MS",
+    "MBA",
+    "PhD"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Degree",
+     "type": "select",
+     "options": [
+      "BA",
+      "BS",
+      "MA",
+      "MSc",
+      "MBA",
+      "PhD"
+     ],
+     "value": {
+      "labels": [
+       "MSc"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Saved 'MSc' starts with the offered option 'MS' (a startswith(option) matcher picks it); not an offered option, so a checkpoint."
+  },
+  {
+   "id": "r2_9_ctrl_exact_saved_set",
+   "plan": "R2.9",
+   "legacy": "LD-48",
+   "label": "Which programming languages do you use at work?",
+   "type": "checkbox_group",
+   "options": [
+    "Python",
+    "Go",
+    "Rust"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Which programming languages do you use at work?",
+     "type": "checkbox_group",
+     "options": [
+      "Python",
+      "Go",
+      "Rust"
+     ],
+     "value": {
+      "labels": [
+       "Python",
+       "Rust"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "value": {
+     "options": [
+      {
+       "option": "0",
+       "label": "Python"
+      },
+      {
+       "option": "2",
+       "label": "Rust"
+      }
+     ]
+    },
+    "source": "answer_bank"
+   },
+   "why": "Positive control: the exact saved two-option set for the same wording and options is reused as that set, not as one tick."
+  },
+  {
+   "id": "r2_9_ctrl_reordered_options_same_set",
+   "plan": "R2.9",
+   "legacy": "LD-48",
+   "label": "Which programming languages do you use at work?",
+   "type": "checkbox_group",
+   "options": [
+    "Rust",
+    "Python",
+    "Go"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Which programming languages do you use at work?",
+     "type": "checkbox_group",
+     "options": [
+      "Python",
+      "Go",
+      "Rust"
+     ],
+     "value": {
+      "labels": [
+       "Python",
+       "Rust"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "value": {
+     "options": [
+      {
+       "option": "1",
+       "label": "Python"
+      },
+      {
+       "option": "0",
+       "label": "Rust"
+      }
+     ]
+    },
+    "source": "answer_bank"
+   },
+   "why": "Positive control: the same option set in another page order is the same question; the saved set maps by label to the new option values."
+  },
+  {
+   "id": "r2_9_country_of_residence_multiselect",
+   "plan": "R2.9",
+   "legacy": "LD-48",
+   "label": "Country of residence",
+   "type": "multiselect",
+   "options": [
+    "Spain",
+    "Portugal",
+    "France"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "The residence fact is one country, not an approved option set; a text 'Portugal' on a multi field is the wrong shape and would fail at fill."
+  },
+  {
+   "id": "r2_9_linkedin_profile_select",
+   "plan": "R2.9",
+   "legacy": "LD-48",
+   "label": "LinkedIn profile",
+   "type": "select",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Same label as a Yes/No select: a URL is not an option; resolving it leaks the link into a choice field that cannot hold it."
+  },
+  {
+   "id": "r2_9_no_saved_answer_skills_not_used",
+   "plan": "R2.9",
+   "legacy": "LD-48",
+   "label": "Which programming languages do you use at work?",
+   "type": "checkbox_group",
+   "options": [
+    "Python",
+    "Go",
+    "Rust"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "The skills list (Python) is not an approved answer set; with no saved set it is a checkpoint, never a single inferred option."
+  },
+  {
+   "id": "r2_9_options_grew_never_subset",
+   "plan": "R2.9",
+   "legacy": "LD-48",
+   "label": "Which programming languages do you use at work?",
+   "type": "checkbox_group",
+   "options": [
+    "Python",
+    "Go",
+    "Rust",
+    "Kotlin"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Which programming languages do you use at work?",
+     "type": "checkbox_group",
+     "options": [
+      "Python",
+      "Go",
+      "Rust"
+     ],
+     "value": {
+      "labels": [
+       "Python",
+       "Rust"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "A new option was added; the saved set was chosen without it, so reusing it (a subset of what is now possible) is not exact."
+  },
+  {
+   "id": "r2_9_options_shrank_never_single",
+   "plan": "R2.9",
+   "legacy": "LD-48",
+   "label": "Which programming languages do you use at work?",
+   "type": "checkbox_group",
+   "options": [
+    "Python",
+    "Go"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Which programming languages do you use at work?",
+     "type": "checkbox_group",
+     "options": [
+      "Python",
+      "Go",
+      "Rust"
+     ],
+     "value": {
+      "labels": [
+       "Python",
+       "Rust"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "'Rust' is no longer offered; ticking only 'Python' would be a single option the user never approved as the whole answer."
+  },
+  {
+   "id": "r2_9_relocate_checkbox_group_optional",
+   "plan": "R2.9",
+   "legacy": "LD-48",
+   "label": "Are you willing to relocate?",
+   "type": "checkbox_group",
+   "options": [
+    "Yes",
+    "No"
+   ],
+   "required": false,
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "blank_optional"
+    ]
+   },
+   "why": "Same label as a checkbox group: {'text': 'Yes'} is not an option set and breaks the fill after approval."
+  },
+  {
+   "id": "r2_9_relocation_checkbox_group",
+   "plan": "R2.9",
+   "legacy": "LD-48",
+   "label": "Are you willing to relocate?",
+   "type": "checkbox_group",
+   "options": [
+    "Yes, within Portugal",
+    "Yes, anywhere",
+    "No"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "A preference yes/no must not become a free-text 'Yes' on a multi field; no option set was approved, so a checkpoint."
+  },
+  {
+   "id": "r2_9_saved_duplicate_labels",
+   "plan": "R2.9",
+   "legacy": "LD-48",
+   "label": "Which programming languages do you use at work?",
+   "type": "multiselect",
+   "options": [
+    "Python",
+    "Go",
+    "Rust"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Which programming languages do you use at work?",
+     "type": "multiselect",
+     "options": [
+      "Python",
+      "Go",
+      "Rust"
+     ],
+     "value": {
+      "labels": [
+       "Python",
+       "Python"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "A saved set that names one option twice is not an exact approved set (entering it is refused); reuse must stop at a checkpoint, never tick 'Python, Python' or guess the de-duplicated set."
+  },
+  {
+   "id": "r2_9_saved_set_asked_as_select",
+   "plan": "R2.9",
+   "legacy": "LD-48",
+   "label": "Which programming languages do you use at work?",
+   "type": "select",
+   "options": [
+    "Python",
+    "Go",
+    "Rust"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Which programming languages do you use at work?",
+     "type": "checkbox_group",
+     "options": [
+      "Python",
+      "Go",
+      "Rust"
+     ],
+     "value": {
+      "labels": [
+       "Python",
+       "Rust"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "Same wording as a single select: a saved set must never collapse to its first label."
+  },
+  {
+   "id": "r2_9_saved_set_from_older_options",
+   "plan": "R2.9",
+   "legacy": "LD-48",
+   "label": "Which programming languages do you use at work?",
+   "type": "checkbox_group",
+   "options": [
+    "Python",
+    "Go",
+    "Rust"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Which programming languages do you use at work?",
+     "type": "checkbox_group",
+     "options": [
+      "Python",
+      "Java",
+      "Rust"
+     ],
+     "value": {
+      "labels": [
+       "Python",
+       "Java"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "The saved set (Python, Java) was approved against older options; a partial set is never sent."
+  },
+  {
+   "id": "r2_9_ctrl_single_option_saved_set",
+   "plan": "R2.9",
+   "legacy": "LD-48",
+   "label": "Which programming languages do you use at work?",
+   "type": "checkbox_group",
+   "options": [
+    "Python",
+    "Go",
+    "Rust"
+   ],
+   "facts": "rich",
+   "bank": [
+    {
+     "label": "Which programming languages do you use at work?",
+     "type": "checkbox_group",
+     "options": [
+      "Python",
+      "Go",
+      "Rust"
+     ],
+     "value": {
+      "labels": [
+       "Go"
+      ]
+     }
+    }
+   ],
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "value": {
+     "options": [
+      {
+       "option": "1",
+       "label": "Go"
+      }
+     ]
+    },
+    "source": "answer_bank"
+   },
+   "why": "Positive control: 'never a single option' means never collapsing a set; an exact saved one-option set for the same wording and options is still reused."
+  },
+  {
+   "id": "r2_9_website_checkbox_group",
+   "plan": "R2.9",
+   "legacy": "LD-48",
+   "label": "Website",
+   "type": "checkbox_group",
+   "options": [
+    "Portfolio",
+    "Blog"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ]
+   },
+   "why": "The link resolver on a multi field gives {'text': url} (KeyError at fill); the corpus only has the choice shape (LinkedIn select). F_SHAPE must cover MULTI_TYPES in _link."
+  }
+ ]
+}

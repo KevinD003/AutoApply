@@ -527,7 +527,12 @@ def _reuse_refusal(db: Session, app: Application, entry: dict, f: FormField) -> 
         )
     if code in REUSE_REFUSED:
         return REUSE_REFUSED[code] + NOT_SAVED
-    return "This answer depends on the specific job and cannot be reused."
+    # S4 (D54): also someone else's details, and a fact that does not fit this field.
+    return (
+        "This answer is for this application only (it depends on the job, is about someone other "
+        "than you, or replaces a profile fact this field cannot take), so it is never saved for "
+        "reuse." + NOT_SAVED
+    )
 
 
 def _save_to_bank(db, user, app, f, value, sensitive: bool) -> None:

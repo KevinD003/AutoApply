@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-27 (tracking: a submission says what it rests on (an employer receipt, your statement, or nothing known), a confirmation by you needs what you checked, outcomes are dated, sourced and audited, assessment received exists, an outcome before any known submission is refused, events are insert-only in the database, and a per-user funnel counts with denominators and no rate; earlier: documentation: the Freehire-first review published, with the Freehire re-check of 2026-10-26, an amendment to D34 and D52; earlier: preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-27 (preparation: the legacy collision corpus (244 wording traps) is a permanent test; someone else's details, preferences read as residence, residence and nationality in other words, any relocation question but the plain one, a negated right to work, agree/decline options under a neutral label and facts that do not fit their field are checkpoints; static guards refuse a mailbox client and page capture; earlier: tracking: a submission says what it rests on (an employer receipt, your statement, or nothing known), a confirmation by you needs what you checked, outcomes are dated, sourced and audited, assessment received exists, an outcome before any known submission is refused, events are insert-only in the database, and a per-user funnel counts with denominators and no rate; earlier: documentation: the Freehire-first review published, with the Freehire re-check of 2026-10-26, an amendment to D34 and D52; earlier: preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,97 @@ Last updated: 2026-10-27 (tracking: a submission says what it rests on (an emplo
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Legacy collision corpus and static guards (S4, 2026-10-27; local only, no external request)
+
+- **Scope:** plan slice S4 (`docs/implementation-plan.md`), decision D54; evidence:
+  `docs/evidence-matrix.md` ("Legacy collision corpus and static guards"). Tests first; the
+  rows that failed were fixed only by turning the wrong resolution into a checkpoint. Nothing
+  contacted; no support state, capability level, real destination, pilot-gate or execution
+  change (`git diff --stat -- backend/app/modules/execution` is empty).
+- **Found (each reproduced by a corpus row on the previous resolver first) and fixed:** someone
+  else's name, email, phone or link filled from the profile; a City or Country field asking for
+  a preference answered from residence; residence and nationality in other words reused from a
+  saved answer, or ticked on agree on a single box; relocation answered "Yes" when negated or tied
+  to a place, a time or a cost; "I cannot / am unable to work in ‹country›" ticked on agree;
+  agree/decline options under a neutral label reused from a saved answer; "Yes" typed into a long
+  answer or several boxes, a country as text into a multi-select, a link into a choice; a
+  user's own answer to such a field tied to no fact, so it survived a change of that fact with
+  the approval still valid; a saved label mapped onto one of two options that share it; a typed
+  number shown with six significant digits.
+- **Now:** `backend/tests/legacy_collisions.json` (244 rows) driven by
+  `test_resolver.py::test_a_legacy_collision_gets_only_its_safe_outcome`; the narrowing rules in
+  `classify.py` (other-person sections and help, preference help, residence and nationality
+  forms, the plain relocation form, a negated right to work, consent options) and `resolver.py`
+  (`_does_not_fit`: a fact that does not fit is the user's answer for this application, never
+  sent, never replaced by a saved answer, never saved; exact-one option for a saved label;
+  `validate_value` refuses an empty or repeated set; the row keeps the fact it was about, so a
+  change of it invalidates the approval, `tests/test_answers_that_do_not_fit.py`);
+  `backend/tests/test_forbidden_capabilities.py` (R7.5, R11.4). Policy text: `docs/answer-policy.md` (rows 1a, 2a, 3, 4 and the S4 rules).
+- **Kept, by the answer policy:** a box no profile fact records ("I am unable to travel") is
+  still checked on the user's explicit agree (row 1, D49); the reliability plan's R8.10 wording
+  that said otherwise is corrected. Narrowing it is a one-rule owner choice.
+- **Unchanged:** `SCHEMA_VERSION` (2), `RESOLVER_VERSION`, no migration, no saved answer deleted
+  or re-keyed, every retry rule, route reason codes. Packages with a narrowed row get a new
+  version at their next rebuild, their approval is invalidated, and a queued attempt is refused at
+  the gate before anything is disclosed (as in D49).
+- **Design and review:** three mappers (the resolver, existing coverage, the legacy traps and the
+  guard targets), three independent corpus designs run against the real resolver, a merge and a
+  completeness critic (61 corrections); then three adversarial reviews of the code, each
+  finding checked by a skeptic: round 1 (5 reviewers) 47 findings, 2 refuted; round 2 (3
+  reviewers, on the round-1 fixes) 32 findings, 1 refuted; round 3 (3 reviewers: widening, slow
+  paths, CI; after the sweep had passed) 6 findings, 0 refuted (one only partly: a docs note), the
+  CI lens none. The rest were confirmed or partly confirmed and
+  fixed (D54 lists them; the first other-person rule had kept those fields bankable, a widening;
+  round 2 found a typed answer to a protected fact that did not fit tied to no fact; round 3
+  found two widenings the sweep's generated forms did not reach, a third-person "would like"
+  read as residence and a negated right to work that lost C5's sensitivity). A mutation
+  check of the guard file (44 single-rule mutations, each run against every guard test) then
+  killed 43 of the 44; the survivor (a list-form `addopts` not joined before the search) is
+  equivalent, since the flag is still found in the list's text.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - before any fix (the corpus and its driver on the unchanged code, alone on `noefforts_test`):
+    164 rows, 47 failed, 117 passed; each failure was a wrong answer (listed in D54);
+  - after the first fixes: `test_resolver.py` 190 passed; the preparation files (11, including
+    `test_question_safety.py`, `test_bank_scope.py` and the API tests) 1704 passed, exit 0;
+    `test_resolver.py`, `test_classify_vocabulary.py`, `test_forbidden_capabilities.py`,
+    `test_repo_hygiene.py`, `test_doc_references.py` 379 passed, exit 0;
+  - the first narrowing sweep (15,678 forms x 432 contexts, 6,785,856 rows, against the previous
+    commit's resolver) showed 1,593 rows answered from a saved answer where the profile answered
+    before: 945 were someone else's details (a widening, fixed by never saving them) and 648 an
+    invalid answer replaced by a saved one (fixed by `_does_not_fit`);
+  - after the round-1 review fixes, the 11 preparation files: 2002 passed, 4 failed, all my
+    regression (three C3 citizenship statements and C6's "Do you have a passport?" row, caught by
+    the new statement and passport rules), fixed by keeping C3's citizenship rule and requiring a
+    country for a passport;
+  - after the round-2 review fixes: `test_question_safety.py`, `test_bank_scope.py`,
+    `test_classify_vocabulary.py`, `test_resolver.py`, `test_answers_that_do_not_fit.py`,
+    `test_question_safety_api.py`, `test_bank_scope_api.py` 1904 passed, exit 0, 5 min 8 s; the
+    narrowing sweep (16,335 forms x 432 contexts, 7,069,680 rows) 0 violations;
+  - round 3's two widenings, reproduced first: the three new corpus rows failed on the round-2
+    code (3 of 244) and the follow-up test failed there; on the final tree both pass; the
+    reviewer's four probe sets (543 forms) give nothing newly answered automatically, bankable
+    or draftable against the previous commit;
+  - after the round-3 fixes, on the final application code: the same seven files plus
+    `test_forbidden_capabilities.py` 2048 passed, exit 0, 6 min 43 s;
+  - corpus on the previous resolver: 244 rows, 104 failed; on the final tree: 0 failed; every
+    control row passes on both;
+  - narrowing sweep on the final application code (against the previous commit's resolver):
+    16,359 forms x 432 contexts, 7,080,048 rows, 0 violations (nothing newly answered
+    automatically, bankable or draftable); the two fixture forms unchanged;
+  - full backend on the final tree: 3094 passed, exit 0, 44 min 25 s (a first run was stopped
+    by the sandbox's 30-minute background limit before reporting, so it counts as not run);
+  - full Playwright: 38 passed, 2 skipped, exit 0, 6.6 min;
+  - `ruff check`, `ruff format --check`, `npx tsc --noEmit`, `npm run lint`: all exit 0;
+  - sabotage checks: 47 cases on the round-2 code, 46 caught; the one missed (the refusal for a
+    fact that does not fit no longer saying why) showed the API test checked only "never saved
+    for reuse", so it now checks each refusal's reason, and the case is caught; on the final code
+    50 cases (three more for the round-3 fixes: third-person "would like" not read, the negated
+    right-to-work rule before the C5 signals, a long place list read part by part), 50 caught,
+    every file restored (116 checksums compared).
+- **CI for the previous change:** **CI #104**
+  ([40532442772](https://github.com/KevinD003/AutoApply/actions/runs/40532442772)) (`9f4ffa3`,
+  S2): passed (all four jobs).
 
 ## Outcome integrity and funnel (S2, 2026-10-27; local only, no external request)
 

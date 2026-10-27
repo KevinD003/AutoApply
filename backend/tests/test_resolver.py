@@ -1,14 +1,27 @@
 """Unit tests for deterministic question resolution. Synthetic facts; no database, no LLM."""
 
+import json
+import re
+import socket
+from pathlib import Path
 from types import SimpleNamespace as NS
 
 import pytest
 
+from app.modules.preparation import package as pk
 from app.modules.preparation.classify import classify
 from app.modules.preparation.fixtures_registry import fixture_html
 from app.modules.preparation.forms import FieldType, FormField, Option, extract_form_schema
-from app.modules.preparation.resolver import Context, question_key, resolve_field
-from app.modules.profiles.models import Approval, TriState
+from app.modules.preparation.resolver import (
+    NO_BANK,
+    Context,
+    answer_shape,
+    option_labels,
+    question_key,
+    resolve_field,
+    validate_value,
+)
+from app.modules.profiles.models import Approval, SalaryPeriod, TriState
 
 YES_NO = [Option(value="1", label="Yes"), Option(value="0", label="No")]
 
@@ -350,3 +363,324 @@ def test_fixture_classification_table():
     assert got["background_check"][0] == "acknowledgment"
     assert got["veteran"][0] == "demographic"
     assert got["residence_country"] == ("residence_country", False)
+
+
+# ---------------------------------------------------------------------------------------------
+# S4: the legacy collision corpus (tests/legacy_collisions.json). Each row is a wording trap the
+# legacy bot fell into (docs/legacy-audit.md), resolved through the loop that builds packages
+# against facts whose values are sentinels, so a wrong mapping shows up in the answer.
+
+CORPUS = json.loads(Path(__file__).with_name("legacy_collisions.json").read_text())["rows"]
+CORPUS_PLAN_ROWS = (
+    *(f"R8.{n}" for n in range(1, 12)),
+    "R8.16",
+    "R2.9",
+)
+CHOICE_KINDS = {"radio", "select", "checkbox_group", "multiselect"}
+RICH_WORK_AUTH = {
+    "PT": auth("PT", authorized="yes", now="no", future="no"),
+    "US": auth("US", authorized="no", now="yes", future="yes"),
+}
+RICH_PREFS = NS(
+    id="pr-rich",
+    titles=["Synthetic analyst"],
+    work_modes=["hybrid"],
+    target_locations=[{"city": "Osaka", "region": None, "country": "JP"}],
+    willing_to_relocate=TriState.yes,
+    salary_min=85000,
+    salary_max=95000,
+    salary_currency="EUR",
+    salary_period=SalaryPeriod.year,
+)
+TOKEN = r"(?<![A-Za-z0-9]){}(?![A-Za-z0-9])"
+SENTINELS = {
+    "full_name": [re.compile(r"sentinelle\s+quorra", re.I)],
+    "email": [re.compile(r"sentinelle\.quorra@example\.com", re.I)],
+    "linkedin": [re.compile(r"linkedin\.com/in/sentinel-example", re.I)],
+    "github": [re.compile(r"github\.com/sentinel-example", re.I)],
+    "summary": [re.compile(r"synthetic summary sentinel", re.I)],
+    "given_name": [re.compile(TOKEN.format("sentinelle"), re.I)],
+    "family_name": [re.compile(TOKEN.format("quorra"), re.I)],
+    "preferred_name": [re.compile(TOKEN.format("elle"), re.I)],
+    "phone": [re.compile(r"555\D{0,3}0\D{0,2}1\D{0,2}4\D{0,2}2")],
+    "city": [re.compile(TOKEN.format(x), re.I) for x in ("lisbon", "lisboa")],
+    "country": [re.compile(TOKEN.format(x), re.I) for x in ("portugal", "portuguese", "pt")],
+    # Never allowed: a preference never answers a fact question, nor the other way round.
+    "target_city": [re.compile(TOKEN.format("osaka"), re.I)],
+    "target_country": [re.compile(TOKEN.format(x), re.I) for x in ("japan", "jp")],
+    "salary": [re.compile(r"(?<!\d)(85|95)([.,\s]?000|k)(?!\d)", re.I)],
+}
+NEVER_USED = {"target_city", "target_country", "salary"}
+IMPLIED = {"full_name": {"given_name", "family_name"}}
+
+
+def corpus_field(d, key="q"):
+    return FormField(
+        key=key,
+        label=d["label"],
+        type=FieldType(d["type"]),
+        options=[Option(value=str(i), label=x) for i, x in enumerate(d.get("options", []))]
+        if d["type"] in CHOICE_KINDS
+        else [],
+        help_text=d.get("help_text"),
+        step=d.get("step"),
+        required=d.get("required", True),
+    )
+
+
+def corpus_ctx(row, f):
+    """The row's saved answers are stored as the app stores them: under the question key of
+    the field they answered, with its option labels and help text."""
+    bank = {}
+    for i, b in enumerate(row.get("bank", [])):
+        bf = corpus_field(b, key=f"bank{i}")
+        if b["type"] in CHOICE_KINDS:  # as _save_to_bank stores it: labels of its own options
+            assert set(b["value"]["labels"]) <= set(b["options"]), row["id"]
+        bank[question_key(bf)] = NS(
+            id=f"b-{i}",
+            version=1,
+            approval_status=Approval.approved,
+            value=b["value"],
+            options_snapshot=option_labels(bf),
+            sensitive=False,
+            help_text=(b.get("help_text") or "").strip(),
+        )
+    consents = {f.key: row["consent"]} if row.get("consent") else {}
+    if row["facts"] == "none":
+        return Context(bank=bank, consents=consents)
+    rich = profile(
+        id="p-rich",
+        given_name="Sentinelle",
+        family_name="Quorra",
+        full_name="Sentinelle Quorra",
+        preferred_name="Elle",
+        contact_email="sentinelle.quorra@example.com",
+        phone="+1 555 0142",
+        residence_city="Lisbon",
+        residence_country="PT",
+        links=[
+            "https://www.linkedin.com/in/sentinel-example",
+            "https://github.com/sentinel-example",
+        ],
+        skills=["Python"],
+        summary="Synthetic summary sentinel",
+        **row.get("profile_extra", {}),
+    )
+    return Context(
+        profile=rich, work_auth=RICH_WORK_AUTH, prefs=RICH_PREFS, bank=bank, consents=consents
+    )
+
+
+def leaked(r, uses) -> list[str]:
+    """The sentinel facts in an answer that its row does not allow."""
+    allowed = set(uses).union(*(IMPLIED.get(u, set()) for u in uses))
+    hay = json.dumps(r.value, ensure_ascii=False) + " " + (r.display or "")
+    for k in allowed:  # what may appear is removed first, so overlapping sentinels count once
+        for p in SENTINELS[k]:
+            hay = p.sub(" ", hay)
+    return sorted(
+        k for k, ps in SENTINELS.items() if k not in allowed and any(p.search(hay) for p in ps)
+    )
+
+
+def test_the_corpus_covers_each_plan_row_and_names_its_legacy_finding():
+    ids = [r["id"] for r in CORPUS]
+    assert len(ids) == len(set(ids))
+    docs = Path(__file__).resolve().parents[2] / "docs"
+    audit = (docs / "legacy-audit.md").read_text()
+    plan = {
+        m.group(1): m.group(0)
+        for m in re.finditer(
+            r"^\| (R\d+\.\d+) \|.*$", (docs / "reliability-test-plan.md").read_text(), re.M
+        )
+    }
+    for r in CORPUS:
+        assert r["plan"] in CORPUS_PLAN_ROWS and r["id"].startswith(
+            r["plan"].lower().replace(".", "_") + "_"
+        ), r["id"]
+        assert re.search(rf"^\| {re.escape(r['legacy'])} \|", audit, re.M), r["id"]
+        # the finding is one its plan row names
+        assert re.search(rf"\b{re.escape(r['legacy'])}\b", plan[r["plan"]].rsplit("|", 2)[-2]), r[
+            "id"
+        ]
+        assert r["facts"] in ("rich", "none") and r["why"], r["id"]
+        assert set(r["expect"].get("uses", [])) <= set(SENTINELS) - NEVER_USED, r["id"]
+    for plan in CORPUS_PLAN_ROWS:
+        assert sum(r["plan"] == plan for r in CORPUS) >= 2, plan
+    # Each reuse row has a positive control: the exact wording and options are reused.
+    for plan in ("R8.11", "R8.16", "R2.9"):
+        assert any(
+            r["plan"] == plan
+            and r.get("bank")
+            and r["expect"]["status"] == ["resolved"]
+            and r["expect"].get("source") == "answer_bank"
+            for r in CORPUS
+        ), plan
+
+
+def test_the_sentinel_check_sees_a_leak():
+    city = corpus_field({"label": "Location", "type": "text"})
+    [(_, r)] = pk.resolve_answers([city], corpus_ctx({"facts": "rich"}, city))
+    assert (r.status, leaked(r, [])) == ("resolved", ["city"])
+    assert leaked(r, ["city"]) == []
+    name = corpus_field({"label": "Full name", "type": "text"})
+    [(_, r)] = pk.resolve_answers([name], corpus_ctx({"facts": "rich"}, name))
+    assert leaked(r, []) == ["family_name", "full_name", "given_name"]
+    email = corpus_field({"label": "Email", "type": "email"})
+    [(_, r)] = pk.resolve_answers([email], corpus_ctx({"facts": "rich"}, email))
+    assert leaked(r, ["email"]) == []  # the address holds both name tokens: no false leak
+
+
+@pytest.mark.parametrize("row", CORPUS, ids=[r["id"] for r in CORPUS])
+def test_a_legacy_collision_gets_only_its_safe_outcome(row, monkeypatch):
+    def refuse(*a, **k):
+        raise AssertionError("the resolver opened a network connection")
+
+    for name in ("connect", "connect_ex", "sendto"):  # the resolver stays LLM-free
+        monkeypatch.setattr(socket.socket, name, refuse)
+    f = corpus_field(row)
+    [(_, r)] = pk.resolve_answers([f], corpus_ctx(row, f))
+    exp = row["expect"]
+    got = (r.status, r.source, r.intent, r.value)
+    assert r.status in exp["status"], got
+    for key in ("intent", "source"):
+        if key in exp:
+            assert getattr(r, key) == exp[key], got
+    assert r.intent not in exp.get("intent_not", []), got
+    for flag in ("bankable", "draftable"):
+        if flag in exp:
+            assert getattr(r, flag) is exp[flag], got
+    assert leaked(r, exp.get("uses", [])) == [], got
+    if r.status != "resolved":
+        assert r.value is None, got
+        return
+    if "value" in exp:
+        assert r.value == exp["value"], got
+    assert validate_value(f, r.value) is None, got
+    if answer_shape(f) == "multi":  # an exact set: no option twice, never empty
+        chosen = [o["option"] for o in r.value["options"]]
+        assert chosen and len(set(chosen)) == len(chosen), got
+    # Resolved only from what the row provides; a saved answer never answers a question that is
+    # never saved.
+    provided = {
+        "profile_fact": row["facts"] == "rich",
+        "deterministic_mapping": row["facts"] == "rich",
+        "answer_bank": bool(row.get("bank")),
+        "consent": bool(row.get("consent")),
+    }
+    assert provided.get(r.source), got
+    if r.source == "answer_bank":
+        assert r.bankable and not (r.protected or r.acknowledgment or r.intent in NO_BANK), got
+
+
+def test_a_fact_answer_that_does_not_fit_its_field_is_never_resolved(monkeypatch):
+    """S4 (D54): whatever a fact resolver returns, an answer that fails validate_value (text
+    into a list, an empty set) is never sent. The user answers it for this application (the
+    router accepts a typed answer: the row is not a profile or preference answer), a saved
+    answer never takes its place, and it is never saved. The row keeps the facts it was about, so
+    changing them invalidates the approval of what the user typed."""
+    from app.modules.preparation import resolver as R
+
+    def careless(f, r, ctx, intent):
+        r.status, r.source, r.value, r.display = "resolved", "profile_fact", {"text": "x"}, "x"
+        r.fact_refs = [{"type": "profile", "id": "p1", "field": "links"}]
+        return r
+
+    monkeypatch.setitem(R.FACT_RESOLVERS, "website", careless)
+    for typ in (FieldType.select, FieldType.checkbox_group):
+        f = FormField(key="w", label="Website", type=typ, required=True, options=YES_NO)
+        saved = NS(
+            id="b1",
+            version=1,
+            approval_status=Approval.approved,
+            value={"labels": ["Yes"]},
+            options_snapshot=option_labels(f),
+        )
+        r = resolve_field(f, ctx(profile=profile(), bank={question_key(f): saved}))
+        assert (r.status, r.source, r.value) == ("needs_user", "unresolved", None)
+        assert r.fact_refs == [{"type": "profile", "id": "p1", "field": "links"}]
+        assert (r.user_input_allowed, r.bankable) == (True, False), typ
+        typed = (
+            {"option": "1", "label": "Yes"}
+            if typ == FieldType.select
+            else {"options": [{"option": "1", "label": "Yes"}]}
+        )
+        inp = NS(value=typed, provenance="user_entered", meta=None)
+        r = resolve_field(f, ctx(profile=profile(), inputs={"w": inp}))
+        assert (r.status, r.source, r.bankable) == ("resolved", "user_entered", False), typ
+    url = FormField(key="w", label="Website", type=FieldType.url, required=True)
+    assert resolve_field(url, ctx(profile=profile())).status == "needs_user"  # not a web address
+    # A protected fact (the country of residence on a multi-select) is answered the same way.
+    many = FormField(
+        key="c",
+        label="Country of residence",
+        type=FieldType.multiselect,
+        required=True,
+        options=[Option(value="pt", label="Portugal"), Option(value="es", label="Spain")],
+    )
+    r = resolve_field(many, ctx(profile=profile(residence_country="PT")))
+    assert (r.status, r.source, r.user_input_allowed, r.bankable) == (
+        "needs_user",
+        "unresolved",
+        True,
+        False,
+    )
+    assert [x["field"] for x in r.fact_refs] == ["residence_country"]
+    inp = NS(value={"options": [{"option": "pt", "label": "Portugal"}]}, provenance="user_entered")
+    r = resolve_field(many, ctx(profile=profile(residence_country="PT"), inputs={"c": inp}))
+    assert (r.status, r.source) == ("resolved", "user_entered")
+    assert [x["field"] for x in r.fact_refs] == ["residence_country"]  # a profile edit re-asks
+    optional = many.model_copy(update={"required": False})
+    r = resolve_field(optional, ctx(profile=profile(residence_country="PT")))
+    assert (r.status, r.explanation.endswith("Left blank.")) == ("blank_optional", True)
+
+
+def test_a_negated_right_to_work_with_a_sensitive_signal_stays_sensitive():
+    """Review round 3 (D54): the negated right-to-work rule runs after the C5 signals, so a
+    question whose help, options or section names a sensitive topic stays sensitive: a typed
+    answer waits for a disclose choice, and a follow-up is never answered from a fact."""
+    from app.modules.preparation.forms import Condition
+
+    label = "Is there anything that would prevent you from working in Portugal?"
+    yes_no = [Option(value="0", label="No"), Option(value="1", label="Yes")]
+    disabled = [Option(value="0", label="No"), Option(value="1", label="Yes - I have a disability")]
+    for extra in (
+        {"help_text": "For example a disability or a health condition."},
+        {"step": "Voluntary self-identification"},
+        {"options": disabled},
+    ):
+        p = FormField(key="p", label=label, type=FieldType.radio, **({"options": yes_no} | extra))
+        assert classify(p).sensitive, extra
+        c = FormField(
+            key="c",
+            label="Country",
+            type=FieldType.select,
+            required=True,
+            options=[Option(value="pt", label="Portugal"), Option(value="es", label="Spain")],
+            condition=Condition(key="p", any_of=["1"]),
+        )
+        typed = NS(value={"option": "1", "label": p.options[1].label}, provenance="user_entered")
+        c_ = ctx(profile=profile(residence_country="PT"), inputs={"p": typed})
+        (_, rp), (_, rc) = pk.resolve_answers([p, c], c_)
+        assert (rp.status, rp.source) == ("needs_consent", "user_entered"), extra
+        assert (rc.status, rc.source, rc.value) == ("needs_user", "unresolved", None), extra
+    plain = FormField(key="p", label=label, type=FieldType.radio, options=yes_no)
+    assert (classify(plain).kind, classify(plain).sensitive) == ("legal_status", False)
+
+
+def test_a_typed_number_is_shown_with_every_digit():
+    f = FormField(key="n", label="Years", type=FieldType.number)
+    from app.modules.preparation.resolver import display_value
+
+    assert display_value(f, {"number": 912345678.0}) == "912345678"
+    assert display_value(f, {"number": 2.5}) == "2.5"
+
+
+def test_a_multi_answer_is_a_non_empty_set_of_offered_options():
+    f = FormField(key="m", label="Tools", type=FieldType.checkbox_group, options=YES_NO)
+    one = {"option": "1", "label": "Yes"}
+    assert validate_value(f, {"options": [one]}) is None
+    assert validate_value(f, {"text": "Yes"})
+    assert validate_value(f, {"options": []})
+    assert validate_value(f, {"options": [one, one]}) == "an option is chosen twice"
+    assert validate_value(f, {"options": [{"option": "9", "label": "Maybe"}]})

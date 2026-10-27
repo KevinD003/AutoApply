@@ -8,6 +8,12 @@ C3-C5 (docs/answer-policy.md, D49) only narrow: a statement of a profile fact is
 a closed grammar; an eligibility question today's rules would answer passes a veto that can only
 add an ambiguity; sensitive topics are found in the wording, help text, options and section, and
 legal-status wording becomes a protected checkpoint that is never saved for reuse.
+
+S4 (D54) only narrows too: the legacy collisions (tests/legacy_collisions.json) that still
+resolved become checkpoints: a name, email, phone or link that belongs to someone else (never
+saved), a preference read as residence, residence or nationality in words no rule read, any
+relocation question but the plain one, a statement that you cannot work somewhere, and
+agree/decline options under a neutral label (never saved).
 """
 
 import re
@@ -561,6 +567,21 @@ def _classify_statement(f: FormField, label: str, help_: str) -> Intent:
             why = "its help text changes or adds to the statement"
     elif help_claim:
         source, why = "help", "its help text states something about your eligibility or residence"
+    elif _negated_work(label, f.label) or (heading and help_ and _negated_work(help_, f.help_text)):
+        source, why = "label", "it states that you cannot work somewhere"  # S4 (D54)
+    elif not _CITIZEN_CLAIM.search(label) and (
+        _residence_or_origin(label, f.label, statement=True)
+        or _residence_or_origin(core, f.label, statement=True)
+        or (
+            heading
+            and confirm
+            and _residence_or_origin(
+                _statement_core(_you_to_i(confirm.group("stmt"))), f.help_text, statement=True
+            )
+        )
+    ):
+        # (citizenship keeps C3's rule: agree, unless the authorization facts contradict it)
+        source, why = "label", "it states where you live or your nationality in other words"
     if source is not None:
         if why is None and sens:
             why = "it combines a sensitive topic with a fact from your profile"
@@ -641,11 +662,129 @@ _GENERIC_RESIDENCE = re.compile(
 _NOT_RESIDENCE_CTX = re.compile(
     r"\b(education|school|universit\w*|college|degree|employer|employment|work history|"
     r"experience|previous|former|past|references?|referee|emergency|next of kin|contact person|"
-    r"preferences?|preferred|prefer|desired|target|want|would like|relocat\w*|office|citizenship|"
+    r"preferences?|preferred|prefer|desired|target\w*|want|would like|"
+    r"would you( \w+)? (like|love|prefer|work)|you('d| would)( \w+)? (like|love|prefer)|"
+    r"(like|love|want|wish|hope|hoping|plan|planning|willing|open|prepared|looking) to (work|"
+    r"live|move|relocate|be based)|mov(e|ing) to|"
+    r"interest\w*|ideal|seek\w*|consider\w*|thinking of|work location|for this application|"
+    r"(would|will|'d|'ll)( you)?( be)? (based|located|start\w*|relocate|move|live)|open to|"
+    r"relocat\w*|office|citizenship|"
     r"nationality|birth|passport|issu\w*|billing|mailing|shipping|licen[cs]e|"
     r"authori[sz]\w*|eligib\w*|right to work|visas?|sponsor\w*|permit\w*|"
     r"job|role|position|working|applying|vacancy)\b"
 )
+# S4 (D54). Someone other than the applicant: a name, email, phone or link asked in such a
+# section, or with such help text, is theirs, never the user's, and is never saved for reuse.
+_PEOPLE = (
+    r"emergency|in case of (an )?emergenc(y|ies)|next of kin|ice contact|references?|referees?|"
+    r"referr(er|al|ed|ing)|recommend(er|ers|ation|ations)|who recommended you|supervisor|"
+    r"spouse|partner|parent|guardian|relative|family member|"
+    r"contact person|person to (notify|contact)|who (should|can) we (call|contact)|colleague|"
+    r"landlord|beneficiar(y|ies)|witness|nominee|mentor|guarantor|advis[eo]rs?|interviewer|"
+    r"mother|father|sibling|household|dependents?|co-?signer|vouch for you|point of contact|"
+    r"hr contact|line manager|professional contacts?"
+)
+# A section about such a person or an organisation (a recruiter or an agency included).
+_OTHER_SECTION = re.compile(
+    rf"\b({_PEOPLE}|recruiters?|agen(t|ts|cy|cies)|employers?|(work|employment) history|"
+    r"(previous|former|past|current|most recent) (employer|employment|job|role|position)|"
+    r"company (details|information)|organi[sz]ation details)\b"
+)
+# Help text: the people above, or someone's or an organisation's own (possessive, "of your").
+_OTHER_HELP = re.compile(
+    rf"\b({_PEOPLE})\b|"
+    r"\b(manager|supervisor|recruiter|employer|school|universit(y|ies)|college|agen(t|cy))'s\b|"
+    r"\b(your|their) (line |direct |current |previous |former )?(manager|supervisor)\b|"
+    r"\bof (your|the|their) (current |previous |former |past |most recent )?(employer|company|"
+    r"organi[sz]ation|school|universit(y|ies)|college|hiring manager|manager|recruiter)\b|"
+    r"\b(current|previous|former|past) (employer|company|organi[sz]ation|school)\b|"
+    r"\b(employer|company) (phone|email|website|name|address)\b"
+)
+_IDENTITY = {
+    "given_name",
+    "family_name",
+    "full_name",
+    "preferred_name",
+    "email",
+    "phone",
+    "linkedin",
+    "website",
+}
+# Relocation: only the plain question is answered from the preference; one tied to a place, a
+# time, a cost or a condition is asked (a closed form, as for authorization in C4).
+_RELOC_PLAIN = re.compile(
+    r"((relocation|willing to relocate)( ?[:-] ?| ))?((are|would|will) you( be)?( currently)? )?"
+    r"(willing|able|open|prepared)( and (able|willing))? to relocate"
+    r"( for (this|the) (role|position|job|opportunity))?"
+)
+_RELOC_HELP_OK = re.compile(
+    r"((please )?(select|choose|pick|tick|check) (one|yes or no|an option|the option that "
+    r"applies))?"
+)
+DEMONYMS = {
+    "us": "US", "u.s": "US", "u.s.": "US", "usa": "US", "u.s.a": "US", "u.s.a.": "US",
+    "american": "US", "canadian": "CA", "british": "GB", "uk": "GB", "irish": "IE",
+    "indian": "IN", "australian": "AU", "new zealand": "NZ", "german": "DE", "french": "FR",
+    "dutch": "NL", "spanish": "ES", "italian": "IT", "swedish": "SE", "swiss": "CH",
+    "singaporean": "SG", "emirati": "AE", "mexican": "MX", "brazilian": "BR", "filipino": "PH",
+    "nigerian": "NG", "south african": "ZA", "japanese": "JP", "polish": "PL",
+    "portuguese": "PT",
+}  # fmt: skip
+_DEMONYM = "|".join(re.escape(d) for d in sorted(DEMONYMS, key=len, reverse=True))
+_BLOC = r"eu|e\.u\.?|eea|european union|european|non-eu|non-eea|schengen"
+_PEOPLE_OF = rf"{_DEMONYM}|{_BLOC}"
+# Residence or nationality in words no earlier rule reads, the applicant being the subject.
+# Matched on the label as a question: "i am" reads "are you", the yes/no suffix and Unicode
+# dashes are removed first.
+_NATIONALITY_Q = re.compile(
+    rf"are you (an? )?({_PEOPLE_OF})((,|,? or|,? and) (an? )?({_PEOPLE_OF})| ?/ ?({_PEOPLE_OF}))*"
+    r"( citizen| nationals?)?"
+)
+_NATIONAL_BARE = re.compile(
+    rf"(an? )?({_PEOPLE_OF})((,|,? or|,? and) ({_PEOPLE_OF})| ?/ ?({_PEOPLE_OF}))* nationals?"
+)  # the whole label
+_NATIONAL_Q = re.compile(r"are you (an? )?[a-z./-]+( [a-z./-]+)? nationals?( of .+)?")  # whole
+_FROM_Q = re.compile(r"\bare you (originally )?from\b")
+_US_PERSON = re.compile(r"\b(us|u\.s\.) persons?\b")
+_PASSPORT = re.compile(r"\bpassports?\b")  # a nationality's or a country's, not any passport
+_RESIDENT_Q = re.compile(
+    r"(are you (currently |presently |now )?(an? )?)?(?P<place>[a-z.-]+( [a-z.-]+)?)[- ]"
+    r"(residents?|based)"
+    r"( (candidate|applicant|employee|contractor|worker|professional)s?)?"
+)  # whole label; without "are you", the place must be a country, a nationality or the EU
+_IN_Q = re.compile(
+    r"are you (currently |physically |presently |now )?(present |located |living |residing )?"
+    r"in (?P<place>.+)"
+)  # whole label
+_LOCAL_Q = re.compile(r"^are you (a )?local( candidate)?$|\b(local to|live locally|a local "
+                      r"candidate)\b")  # fmt: skip
+_RESIDENCY = re.compile(r"\bresidency\b")
+_DASHES = re.compile("[\u2010-\u2015\u2212]")
+# A statement or question that you cannot work somewhere ("I would not be able to work in
+# Portugal"): never checked, never answered from a saved answer.
+_WORK_IN = re.compile(
+    r"\b(work|be employed|for employment|working)( legally| lawfully)?( anywhere)? (in|within)\b|"
+    r"\bright to work\b"
+)
+_PREVENT_WORK = re.compile(
+    r"\b(prevent\w*|stop\w*|restrict\w*|limit\w*) (you|me) from (legally |lawfully )?"
+    r"(working|being "
+    r"employed) (in|within)\b|\brestrictions? on (your|my) (ability|right|eligibility) to work "
+    r"(in|within)\b"
+)
+# Options that agree or decline to something: never saved for reuse, whatever the label says;
+# a rating scale ("Strongly agree" ... "Disagree") is not one.
+_CONSENT_OPTION = re.compile(
+    r"^((yes|no)[,:;.!-]* )?(i )?(do not |don't |dont |will not |won't )?(agree|disagree|accept|"
+    r"consent|authori[sz]e|certify|acknowledge|confirm|understand|affirm)\b|"
+    r"^(not )?(agreed|accepted)$|"
+    r"\bi (do not |don't )?(agree|disagree|accept|consent|authori[sz]e|certify|acknowledge|"
+    r"confirm|understand)\b|^(not )?acknowledged$|\bgive (my |your )?consent\b|"
+    r"\bmy (personal )?(data|information|details|cv|resume)\b|"
+    r"\b(keep|retain|store|share|process)\w* (my|your) (personal )?(data|information|details)\b|"
+    r"\bkeep me (informed|updated|in mind)\b"
+)
+_RATING = re.compile(r"\b(strongly|somewhat|neutral|neither)\b")
 _LEGAL_WHY = {
     "status": "Asks about citizenship, a visa or an immigration status, which your profile does "
     "not record.",
@@ -669,6 +808,119 @@ def _legal(topic: str) -> Intent:
         protected=True,
         ambiguity=f"{_LEGAL_WHY[topic]} Answer it yourself for this application; it is never "
         "saved for reuse.",
+    )
+
+
+def _as_question(label: str) -> str:
+    s = _DASHES.sub("-", _YES_NO_SUFFIX.sub("", label)).strip(" ?.")
+    return re.sub(r"^(i am|i'm) ", "are you ", s)
+
+
+def _a_place(place: str) -> bool:
+    return bool(
+        find_countries(place)
+        or re.fullmatch(rf"(the )?({_PEOPLE_OF})", place)
+        or re.fullmatch(_DEMONYM, place)
+    )
+
+
+def _proper_noun(raw: str, place: str) -> bool:
+    """The place is written as a name in the page's own text ("Lisbon", "New York"), so "Are you
+    in employment?" or "a medical resident" is not read as a place."""
+    raw = _DASHES.sub("-", raw or "")
+    if not any(w[0].islower() for w in re.findall(r"[^\W\d_][\w'.-]*", raw)):
+        return False  # all capitals or Title Case: capitals say nothing about a name
+    m = re.search(rf"(?i)(?<!\w){re.escape(place)}(?!\w)", raw)
+    return bool(m) and all(w[:1].isupper() for w in re.split(r"[\s-]+", m.group(0)) if w)
+
+
+def _residence_or_origin(label: str, raw: str | None = None, statement: bool = False) -> str | None:
+    """S4 (D54): residence or nationality asked or stated in words no earlier rule reads:
+    "Are you Portugal-based?", "Portugal resident?", "Are you a California resident?", "Are you
+    in Lisbon?", "Are you local to Lisbon?", "Do you have Portuguese residency?" (residence);
+    "Are you Portuguese?", "Are you an EU national?", "Are you from Portugal?", "Do you hold a
+    Portuguese passport?" (status). The applicant is the subject ("US-based hours" is not), and a
+    place that is not a country, a nationality or the EU must be written as a name."""
+    q = _as_question(label)
+    if (
+        _NATIONALITY_Q.fullmatch(q)
+        or _NATIONAL_Q.fullmatch(q)
+        or _NATIONAL_BARE.fullmatch(q)
+        or (_FROM_Q.search(q) and (find_countries(q) or re.search(rf"\b({_BLOC}|europe)\b", q)))
+        or _US_PERSON.search(q)
+        or (
+            _PASSPORT.search(q)
+            and (find_countries(q) or re.search(rf"(?<![a-z])({_PEOPLE_OF})(?![a-z])", q))
+        )
+    ):
+        return "status"
+    m = _RESIDENT_Q.fullmatch(q)
+    if m and (
+        _a_place(m.group("place"))
+        or (q.startswith("are you") and _proper_noun(raw, m.group("place")))
+    ):
+        return "residence"
+    m = _IN_Q.fullmatch(q)
+    if m:
+        p = re.sub(r"^the ", "", m.group("place"))
+        p = re.sub(
+            r"( (greater|metro|metropolitan))? (area|region|metro area|metropolitan area)$", "", p
+        )
+        parts = [x for x in re.split(r",? or |, | and |/", p) if x]
+        if len(parts) > 10:  # a long list of places (page text is untrusted: bounded work)
+            return "residence"
+        if parts and all(_a_place(x) or _proper_noun(raw, x) for x in parts):
+            return "residence"
+    if _LOCAL_Q.search(q):
+        return "residence"
+    if _RESIDENCY.search(q) and (find_countries(q) or re.search(rf"\b({_PEOPLE_OF})\b", q)):
+        return "residence"
+    return None
+
+
+# The places of _PLACE_TRAP, without its connectives ("including", "outside", "other than").
+_GEO_TRAP = re.compile(
+    r"\b(latin|north|south|central) america(n|ns)?\b|\bthe americas\b|\bnorthern ireland\b|"
+    r"\b(dach|benelux|nordics?|scandinavia\w*|baltics?|balkans?|middle east|caribbean|"
+    r"gulf (region|states)|asia\w*|oceania)\b|(?<!south )\bafrica\w*|\bnew mexico\b|"
+    r"\bnew england\b|\bpuerto rico\b|\b(eu|e\.u|european union|europe|eea|schengen|apac|emea|"
+    r"latam)\b|\b(abroad|overseas|anywhere|elsewhere|worldwide|internationally)\b|"
+    r"\b(any|other|another) countr(y|ies)\b"
+)
+
+
+def _negated_work(label: str, raw: str | None = None) -> bool:
+    """S4 (D54): "I cannot work in Portugal", "I would not be able to work in Portugal", "I lack
+    the right to work in the EU", "Are you unable to work in Spain?" (a country or a region)."""
+    if _PREVENT_WORK.search(label) and (find_countries(label) or _GEO_TRAP.search(label)):
+        return True
+    m = re.search(r"\b(?:in|within) (?:the )?([a-z.-]+(?: [a-z.-]+)?)", label)
+    return bool(
+        _WORK_IN.search(label)
+        and (_NEG.search(label) or _NEG_EXTRA.search(label))
+        and (
+            find_countries(label)
+            or _GEO_TRAP.search(label)
+            or (raw and m and _proper_noun(raw, m.group(1).split()[0]))
+        )
+    )
+
+
+def _other_in_help(help_: str):
+    """Someone else named in help text, unless the text says it is not theirs ("not your
+    employer's")."""
+    for m in _OTHER_HELP.finditer(help_):
+        # The longest negation it reads is 41 characters, and one more decides its \b.
+        near = help_[max(0, m.start() - 42) : m.start()]
+        if not re.search(r"\b(not|rather than|instead of)\b[^.;:!?]{0,30}$", near):
+            return m
+    return None
+
+
+def _consent_options(f: FormField) -> bool:
+    labels = [normalize(o.label) for o in f.options]
+    return any(_CONSENT_OPTION.search(x) for x in labels) and not any(
+        _RATING.search(x) for x in labels
     )
 
 
@@ -764,6 +1016,25 @@ def classify(f: FormField) -> Intent:
                         ambiguity="This may not be about where you live (its section or help "
                         f"text mentions '{hit.group(0)}'). Answer it yourself.",
                     )
+            # S4: a name, email, phone or link of someone else, or of an organisation.
+            other = kind in _IDENTITY and (_OTHER_SECTION.search(step) or _other_in_help(help_))
+            if other:
+                return Intent(
+                    kind,
+                    no_bank=True,
+                    ambiguity="This may be about someone else (its section or help text "
+                    f"mentions '{other.group(0)}'). Answer it yourself; it is never saved.",
+                )
+            # S4: only the plain relocation question; never with a place, a time or a cost.
+            if kind == "relocation" and (
+                not _RELOC_PLAIN.fullmatch(_as_question(label))
+                or (help_ and not _RELOC_HELP_OK.fullmatch(help_))
+            ):
+                return Intent(
+                    kind,
+                    ambiguity="Not the plain question (negated, or about a particular place, "
+                    "time, cost or condition): your preference to relocate does not answer it.",
+                )
             if kind == "salary_expectation":
                 return Intent(kind, {"currencies": re.findall(r"\b[a-z]{3}\b", label)})
             return Intent(kind)
@@ -780,15 +1051,29 @@ def classify(f: FormField) -> Intent:
     hs = _help_sensitive(help_)
     if hs:
         return Intent(hs[0], {"topic": hs[1]}, sensitive=True, no_bank=True)
+    # S4: a negated right to work, after the C5 signals so that a sensitive one stays sensitive.
+    if _negated_work(label, f.label):
+        return _legal("auth")
     if any(
         _fact_words(normalize(o.label)) or _IMMIGRATION.search(normalize(o.label))
         for o in f.options
     ):
         return _legal("options")
 
-    if f.type == FieldType.textarea or _LONG_FORM.search(label):
-        return Intent("long_form")
-    return Intent("unknown")
+    kind = "long_form" if f.type == FieldType.textarea or _LONG_FORM.search(label) else "unknown"
+    # 10. S4 (D54): residence or nationality in other words; agree/decline options.
+    asked = kind == "unknown" or (f.type == FieldType.textarea and not _LONG_FORM.search(label))
+    origin = _residence_or_origin(label, f.label) if asked else None  # never drafted either
+    if origin:
+        return _legal(origin)
+    if _consent_options(f):
+        return Intent(
+            kind,
+            no_bank=True,
+            ambiguity="Its options agree or decline to something (terms, a certification, your "
+            "data). Choose for this application; it is never saved for reuse.",
+        )
+    return Intent(kind)
 
 
 def _c4_veto(f: FormField, label: str, help_: str, intent: Intent) -> Intent:

@@ -27,8 +27,10 @@ from app.modules.preparation import bankscope
 from app.modules.preparation.classify import (
     _CITIZEN_CLAIM,
     _CLAIM,
+    _DEMONYM,
     _NEG_EXTRA,
     COUNTRIES,
+    DEMONYMS,
     GENERIC_LABEL,
     NO_WORDS,
     YES_WORDS,
@@ -226,6 +228,18 @@ def _unresolved(r: Resolution, f: FormField, why: str) -> Resolution:
     return r
 
 
+def _does_not_fit(r: Resolution, f: FormField, why: str) -> Resolution:
+    """S4 (D54): the fact cannot go into this field as it is. Nothing is sent, no saved answer
+    takes its place and nothing is saved; you answer it for this application (as for a fact
+    question NoEfforts cannot read, C4). The row keeps the facts it was about, so changing them
+    invalidates the approval of what you answered."""
+    r.value = r.display = None
+    r.source = "unresolved"
+    r.user_input_allowed, r.bankable, r.draftable = True, False, False
+    then = "Answer it yourself for this application." if f.required else "Left blank."
+    return _unresolved(r, f, f"{why} {then}")
+
+
 def resolve_field(
     f: FormField, ctx: Context, parent: Resolution | None = None, repeated: bool = False
 ) -> Resolution:
@@ -256,7 +270,10 @@ def resolve_field(
 
     if intent.ambiguity is None and intent.kind in FACT_RESOLVERS:
         out = FACT_RESOLVERS[intent.kind](f, r, ctx, intent)
-        if out.status == "resolved" or intent.kind in PROFILE_ONLY:
+        err = validate_value(f, out.value) if out.status == "resolved" else None
+        if err:  # S4 (D54): a fact answer that does not fit the field is never sent as is
+            out = _does_not_fit(out, f, f"Your profile's answer does not fit this field ({err}).")
+        if out.status == "resolved" or (intent.kind in PROFILE_ONLY and not out.user_input_allowed):
             return out
         r = out  # fact missing for a non-protected intent: fall through to input / bank
 
@@ -360,6 +377,10 @@ def _residence_country(f, r, ctx, intent):
             "Add it in Profile (it is never inferred).",
         )
     r.fact_refs = [_ref(p, "profile", "residence_country")]
+    if f.type in MULTI_TYPES:  # S4: one country is not a set of options
+        return _does_not_fit(
+            r, f, "The form asks for several countries, not your country of residence."
+        )
     if f.type in CHOICE_TYPES:
         opt = map_country(f, code)
         if opt is None:
@@ -408,9 +429,11 @@ def _yes_no_answer(f, r, answer: bool, explanation: str, refs: list) -> Resoluti
     elif f.type == FieldType.checkbox:
         r.status, r.source = "resolved", "deterministic_mapping"
         r.value, r.display = {"checked": answer}, "Checked" if answer else "Unchecked"
-    else:
+    elif f.type == FieldType.text:
         r.status, r.source = "resolved", "deterministic_mapping"
         r.value, r.display = {"text": "Yes" if answer else "No"}, "Yes" if answer else "No"
+    else:  # S4 (D54): a long answer, several boxes, a number: a bare yes/no does not fit
+        return _does_not_fit(r, f, "This field does not take a plain yes or no.")
     r.explanation = explanation
     return r
 
@@ -603,6 +626,11 @@ def _link(kind: str):
         if not pick:
             r.explanation = f"No {kind} link in your profile."
             return _unresolved(r, f, r.explanation)
+        r.fact_refs = [_ref(p, "profile", "links")]
+        if f.type in CHOICE_TYPES | MULTI_TYPES:  # S4: a link is not one of the form's options
+            return _does_not_fit(
+                r, f, f"The form offers options, not a place for your {kind} link."
+            )
         r.status, r.source, r.value, r.display = (
             "resolved",
             "profile_fact",
@@ -701,19 +729,8 @@ def _statement_shaped(f, intent: Intent) -> bool:
     )
 
 
-_DEMONYMS = {
-    "us": "US", "u.s": "US", "u.s.": "US", "usa": "US", "u.s.a": "US", "u.s.a.": "US",
-    "american": "US", "canadian": "CA", "british": "GB", "uk": "GB", "irish": "IE",
-    "indian": "IN", "australian": "AU", "new zealand": "NZ", "german": "DE", "french": "FR",
-    "dutch": "NL", "spanish": "ES", "italian": "IT", "swedish": "SE", "swiss": "CH",
-    "singaporean": "SG", "emirati": "AE", "mexican": "MX", "brazilian": "BR", "filipino": "PH",
-    "nigerian": "NG", "south african": "ZA", "japanese": "JP", "polish": "PL",
-    "portuguese": "PT",
-}  # fmt: skip
 _DEMONYM_STATUS = re.compile(
-    r"(?<![a-z])("
-    + "|".join(re.escape(d) for d in sorted(_DEMONYMS, key=len, reverse=True))
-    + r") (citizen|national|permanent resident|green card)"
+    rf"(?<![a-z])({_DEMONYM}) (citizen|national|permanent resident|green card)"
 )
 _STATUS_OF = re.compile(r"\b(citizen|national|permanent resident) of (?P<place>[a-z .']+)")
 
@@ -722,7 +739,7 @@ def _status_countries(label: str) -> set[str]:
     """The countries a citizenship or permanent-residence statement names: by name, by its
     adjective ("a US citizen", "a Canadian citizen", "citizen of the U.S."), or a green card."""
     found = set(find_countries(label))
-    found |= {_DEMONYMS[m.group(1)] for m in _DEMONYM_STATUS.finditer(label)}
+    found |= {DEMONYMS[m.group(1)] for m in _DEMONYM_STATUS.finditer(label)}
     found |= {c for m in _STATUS_OF.finditer(label) if (c := exact_country(m.group("place")))}
     if re.search(r"\bgreen card\b", label):
         found.add("US")
@@ -950,9 +967,18 @@ def _from_bank(f: FormField, r: Resolution, ctx: Context) -> Resolution | None:
                 "employer's options have changed. Choose again.",
             )
         labels = entry.value.get("labels", [])
-        by_label = {normalize(o.label): o for o in f.options}
-        opts = [by_label.get(normalize(lbl)) for lbl in labels]
-        if not opts or None in opts or (shape == "choice" and len(opts) != 1):
+        # S4 (D54): each saved label names exactly one current option, and no option twice.
+        by_label: dict[str, list] = {}
+        for o in f.options:
+            by_label.setdefault(normalize(o.label), []).append(o)
+        hits = [by_label.get(normalize(lbl), []) for lbl in labels]
+        opts = [h[0] for h in hits if len(h) == 1]
+        if (
+            not opts
+            or len(opts) != len(hits)
+            or len({o.value for o in opts}) != len(opts)
+            or (shape == "choice" and len(opts) != 1)
+        ):
             return _unresolved(r, f, "Your saved answer does not match the current options.")
         value = _choice(opts[0]) if shape == "choice" else {"options": [_choice(o) for o in opts]}
     else:
@@ -1034,9 +1060,14 @@ def validate_value(f: FormField, value: dict | None) -> str | None:
         ):
             return "the chosen option is no longer offered"
     elif shape == "multi":
+        chosen = value.get("options")
+        if not isinstance(chosen, list) or not chosen:  # S4: never a text, never an empty set
+            return "expected one or more of the form's options"
         current = {(o.value, o.label) for o in f.options}
-        if any((x.get("option"), x.get("label")) not in current for x in value.get("options", [])):
+        if any((x.get("option"), x.get("label")) not in current for x in chosen):
             return "a chosen option is no longer offered"
+        if len({x.get("option") for x in chosen}) != len(chosen):
+            return "an option is chosen twice"
     elif shape == "boolean":
         if not isinstance(value.get("checked"), bool):
             return "expected checked/unchecked"
@@ -1075,7 +1106,7 @@ def display_value(f: FormField, value: dict | None) -> str | None:
             return str(value[k])
     if "number" in value:
         n = value["number"]
-        return f"{n:g}"
+        return f"{n:.15g}"  # S4: every digit a person types (":g" kept six)
     return None
 
 

@@ -9,6 +9,25 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Legacy collision corpus and static guards (S4, 2026-10-27; local only)
+
+Synthetic wordings and facts with sentinel values; no legacy data. Decision D54; rules in
+`docs/answer-policy.md` (rows 1a, 2a, 3, 4 and the S4 rules). "Before" is the previous commit's
+resolver on the same rows.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Each legacy wording trap gets only its safe outcome | `tests/test_resolver.py::test_a_legacy_collision_gets_only_its_safe_outcome` (244 rows of `tests/legacy_collisions.json`, each run through `package.resolve_answers` with sockets refused) | before: 104 of 244 rows wrong (47 of the first 164); now 0. Every control row passes on both |
+| The corpus covers each plan row and its legacy finding; the sentinel check sees a leak | `::test_the_corpus_covers_each_plan_row_and_names_its_legacy_finding`, `::test_the_sentinel_check_sees_a_leak` | R8.1-R8.11, R8.16, R2.9 each have rows; the reuse rows have an exact-reuse control |
+| A fact that does not fit its field is never sent, and becomes the user's answer | `::test_a_fact_answer_that_does_not_fit_its_field_is_never_resolved`, `::test_a_multi_answer_is_a_non_empty_set_of_offered_options`, `tests/test_answers_that_do_not_fit.py::test_a_fact_that_does_not_fit_is_the_users_answer_never_saved_and_tied_to_the_fact` | before: a link typed into a Yes/No choice, a country as text into a multi-select, "Yes" into a long answer. Now the user answers it for this application only (saving it for reuse is a 400 and writes nothing), and changing the fact it was about invalidates the approval |
+| Each new pattern matches what it is for and nothing else | `tests/test_classify_vocabulary.py::test_each_pattern_added_for_the_legacy_corpus_matches_what_it_is_for`, `::test_residence_nationality_and_a_negated_right_to_work_are_protected`, `::test_a_statement_that_names_no_fact_the_grammar_reads_is_never_checked`, `::test_a_statement_about_no_profile_fact_stays_your_consent_choice` | over-narrowing found by the review ("US-based hours", a language row, Workday's "My Experience", a rating scale) pinned as controls |
+| A negated right to work with a sensitive help, option or section stays sensitive (review round 3) | `tests/test_resolver.py::test_a_negated_right_to_work_with_a_sensitive_signal_stays_sensitive`; corpus row `r8_10_prevent_work_help_disability`; the third-person preference rows `r8_3_city_help_team_would_like`, `r8_3_country_select_step_we_would_like` | before the round-3 fix: a typed answer resolved with no disclose choice and a Country follow-up filled from residence; a City or Country field whose help says the team would like you somewhere filled from residence. Both as at the previous commit now |
+| Page text cannot make one field slow (review round 3) | `tests/test_classify_vocabulary.py::test_residence_nationality_and_a_negated_right_to_work_are_protected` (a list of eleven places); equivalence and timing checked with scratch scripts | before: up to 215 ms for one field and about 60 s for a 300-field form; now about 1.5 ms per field. The windowed negation search equals the old one on 200,000 random help texts |
+| A typed number is shown with every digit | `tests/test_resolver.py::test_a_typed_number_is_shown_with_every_digit` | before: 912345678 was shown as "9.12346e+08" (six significant digits) |
+| Only narrowing | the sweep in D54 (scratch harness, not in the repository) | 16,359 forms x 432 contexts, 7,080,048 rows against the previous commit's resolver: 0 newly answered automatically, bankable or draftable; the fixture forms unchanged |
+| No mailbox client, mail host, mail API or mail program; none as a dependency (R7.5) | `tests/test_forbidden_capabilities.py::test_no_mailbox_client_is_imported_or_addressed_anywhere`, `::test_no_mail_or_capture_package_is_a_dependency_or_installed_by_an_image`, `::test_the_mail_guard_catches_each_sample`, `::test_the_dependency_guard_reads_every_manifest_and_pytest_setting` | clean on the tree; every planted sample caught |
+| No screenshot, video, trace, HAR or captured session where a page runs (R11.4) | `::test_no_screenshot_video_trace_har_or_captured_session_in_python`, `::test_no_capture_in_the_browser_runner`, `::test_the_capture_guard_catches_each_sample`, `::test_the_runner_guard_catches_each_sample`, `::test_the_infrastructure_guard_catches_each_sample`, `::test_the_guards_leave_prose_and_ordinary_code_alone`, `::test_the_scanned_tree_is_the_repository` | clean on the tree; every planted sample caught, prose and ordinary code left alone |
+
 ## Outcome integrity and funnel (S2, 2026-10-27; local only)
 
 Synthetic applications and the local receiver; its ledger is the oracle for what the employer
