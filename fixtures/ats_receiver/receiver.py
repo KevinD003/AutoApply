@@ -33,6 +33,17 @@ create table if not exists requests (id integer primary key, method text, path t
 REQUIRED = ["first_name", "last_name", "email", "phone", "country", "city", "work_auth_us",
             "sponsorship_us", "hear_about", "privacy_ack"]
 
+# C6 (D51): mode "bank_question" adds this required, stable question to the "Questions" section:
+# the question every saved-answer test reuses (how you heard about a job is never reused).
+EDUCATION = (
+    "<label for='education'>Highest level of education completed</label>"
+    "<select id='education' name='education' required aria-describedby='education_help'>"
+    "<option value=''>Select...</option><option value='hs'>High school diploma</option>"
+    "<option value='assoc'>Associate degree</option><option value='ba'>Bachelor's degree</option>"
+    "<option value='ma'>Master's degree or higher</option><option value='other'>Other</option>"
+    "</select><p id='education_help'>Choose the highest level you have finished.</p>"
+)
+
 
 class Ledger:
     def __init__(self, path: str) -> None:
@@ -168,6 +179,8 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
         missing = [k for k in REQUIRED if not fields.get(k)]
         if mode == "conditional_field" and not fields.get("clearance"):
             missing.append("clearance")
+        if mode == "bank_question" and not fields.get("education"):
+            missing.append("education")
         if not fields.get("resume_upload_id"):
             missing.append("resume")
         if mode == "validation_fail" or missing:
@@ -253,6 +266,8 @@ def page_form(slug, token, cfg):
     if cfg["mode"] == "conditional_field":
         extra = ("<label for='clearance'>Do you hold an active security clearance?</label>"
                  "<input id='clearance' name='clearance' type='text' required>")
+    if cfg["mode"] == "bank_question":  # C6 (D51): a stable required question for bank tests
+        extra = EDUCATION
     tamper = cfg.get("tamper")
     js_extra = ""
     if cfg.get("autosave"):

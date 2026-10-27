@@ -73,6 +73,18 @@ deliberately tricky questions (negation, tense, mismatched options) to test NoEf
       <label><input type="checkbox" name="shifts" value="night"> Night</label>
     </fieldset>
   </section>
+  <section data-step="Education">
+    <label for="education">Highest level of education completed</label>
+    <select id="education" name="education" required aria-describedby="education_help">
+      <option value="">Select...</option>
+      <option value="hs">High school diploma</option>
+      <option value="assoc">Associate degree</option>
+      <option value="ba">Bachelor's degree</option>
+      <option value="ma">Master's degree or higher</option>
+      <option value="other">Other</option>
+    </select>
+    <p id="education_help">Choose the highest level you have finished.</p>
+  </section>
   <section data-step="Consents and self-identification">
     <fieldset required>
       <legend>Do you consent to a background check?</legend>

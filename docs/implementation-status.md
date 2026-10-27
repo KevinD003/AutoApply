@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-27 (execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-27 (preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,74 @@ Last updated: 2026-10-27 (execution: an unknown outcome in the verification-code
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Bank scope: a saved answer is reused only where it stays true (C6, 2026-10-27; local only, no external request)
+
+- **Scope:** step C6 of the preparation platform, and the first slice of the plan from the
+  Freehire-first and legacy-repository review (the legacy project reused fixed employer-relative
+  and time-bound answers everywhere). Decision D51; rules in `docs/answer-policy.md` row 5;
+  evidence: `docs/evidence-matrix.md` ("Preparation: bank scope"). Nothing contacted; no
+  support state, capability level, real destination or Path A change.
+- **Found (each reproduced first) and fixed:** answers about the employer, the job or the date
+  (how you heard about the job, previously worked here, relevant experience, start date,
+  availability, notice, relocation, salary) were saved and reused for other employers; an
+  answer was reused for a question with other help text; concurrent saves returned 500 and lost
+  the typed answer, a save racing a delete returned 500, two updates lost a version, a second
+  delete returned 204.
+- **Design:** three independent designs and a judge (a read-only workflow with mapping probes;
+  two container restarts interrupted the judge, which resumed from its files); ported verbatim
+  from the judge's verified prototype, renumbered D51. `bankscope.py` (pure) decides; the
+  resolver only clears `bankable`; the key adds help text only when a question has help text
+  (no row re-keyed); one nullable column, one upsert, one DELETE … RETURNING.
+- **Unchanged:** `SCHEMA_VERSION` (2), `RESOLVER_VERSION`; no bank row deleted or re-keyed.
+  Packages of the basic, tricky, receiver, greenhouse_like 4012001 and greenhouse_v2 5020001
+  forms get a new version at their next rebuild (`bankable` false on the narrowed rows), so
+  their approvals are invalidated; a queued attempt is refused at the gate before disclosure.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - new: `tests/test_bank_scope.py` with `tests/bank_scope_wordings.json` (1,037 rows),
+    `tests/test_bank_scope_api.py`, `tests/test_bank_races.py`, the migration test in
+    `tests/test_migrations.py`; moved off "How did you hear about this job?" to the education
+    question: `test_preparation.py`, `test_resolver.py`, `test_package_contract.py`,
+    `test_question_safety.py` (`C6_DELTA`), `test_question_safety_api.py`, `execution_harness.py`,
+    `test_execution_validation.py`, `frontend/e2e/phase-b.spec.ts`;
+  - the race and API tests run against the previous code (`3af29f0`, a temporary worktree):
+    11 failed, 2 passed; the five race tests failed exactly as described (two IntegrityError
+    23505, version 2 instead of 3, StaleDataError, no 404);
+  - focused files on the C6 tree: 1644 passed, 1 failed (`test_sending.py`: its resolver stub
+    lacked the new `repeated` argument, a test defect; the stub now forwards it), then
+    `test_sending.py` 20 passed;
+  - narrowing on the working tree against `7669c61`'s resolver: 1,315,200 form resolutions,
+    1,424,000 rows, 0 violations;
+  - full backend (`pytest tests`): 2616 passed, exit 0, in 28 min 30 s (1491 at Q1; the
+    wording table runs one test per row). An earlier full run was stopped as contaminated
+    (below);
+  - full Playwright: 36 passed, 2 skipped (the desktop-only log checks on mobile), exit 0, 5.4 min;
+  - `ruff check`, `ruff format --check`, `npx tsc --noEmit`, `npm run lint`: clean, each exit 0;
+  - adversarial review: 5 reviewers (wordings, storage and the API, the resolver, the pages and
+    documents, the tests), each finding checked by a skeptic. Fixed, each with a test or table
+    rows: missed wordings (the job applied for, what made you apply, a rate or total comp, years
+    of experience written differently, trailing "(optional)", a recruiter by name, "submitted an
+    application here", "unavailable", class standing, Unicode dashes; a degree's length in its
+    options no longer counts as time); 500s on a NUL in page text or an answer, on a stored
+    option label too long to rebuild, and on NaN or infinity as a number (the last older than
+    C6); a follow-up in a package built before C6 trusting its parent's stored row; a repeated
+    sensitive question refused with the sensitive message; three page wording faults. Refuted:
+    two documentation items and one explanation-wording item. Accepted, not changed: some stable
+    wordings are refused (over-narrowing only costs a re-answer);
+  - after the fixes: the narrowing check re-run (1,315,200 form resolutions, 0 violations); the
+    review's scenarios probed one by one;
+  - sabotage checks: 20, each caught (9 for the review fixes, 9 for the database design: no
+    upsert, version always bumped, help text not copied on update, delete without user scope,
+    no "not reused" flag, the package row trusted, a non-nullable column, no repeat check, no
+    receiver mode; 2 for the pure rules); the source compared identical to the backup
+    afterwards. One was invalid at first (a missing import) and was re-run correctly;
+  - infrastructure interruption (mine): the first full run was contaminated because review
+    agents ran "pure" test files at the same time, and the conftest of every pytest run drops
+    and recreates the shared `noefforts_test` database. It was stopped, not counted, and re-run
+    with nothing else on the database (the 2616 above).
+- **CI for the previous change:** **CI #101**
+  ([40431426083](https://github.com/KevinD003/AutoApply/actions/runs/40431426083)) (`3af29f0`,
+  Q1): passed (all four jobs).
 
 ## Verification-code outcomes quarantined; the sweeper recovers each attempt alone (Q1, 2026-10-27; local only, no external request)
 
@@ -1783,7 +1851,7 @@ employer.
 | Residence / target location / authorization / sponsorship now / later kept separate | complete | resolver tests |
 | Negation, future tense, vague wording, missing country, compound questions | complete for the patterns listed in `docs/answer-policy.md`; anything else becomes a checkpoint | resolver tests |
 | Changed options and wording | complete | `test_answer_bank_reuse_across_jobs_and_wording_changes`, `test_form_option_change_invalidates_saved_choice` |
-| Answer bank with provenance, approval, version, timestamps | partial: an answer is approved when saved (the approval status is nominal); edit-in-place UI not built (delete and re-save); help text, employer-relative and time-bound wording are not yet kept out (C6) | `test_answer_bank_*` |
+| Answer bank with provenance, approval, version, timestamps | partial: an answer is approved when saved (the approval status is nominal); edit-in-place UI not built (delete and re-save); bound to its help text; answers that depend on the employer, the job or the date (employer, time, pay, place, fact, section, follow-up, repeated wording) are never saved or reused; concurrent saves and deletes serialize (C6, D51) | `test_answer_bank_*` |
 | Acknowledgments never auto-checked; sensitive answers need consent | partial: never auto-checked and consent required; a statement of a profile fact checked only with a true approved fact (C3); sensitive detection covers more topics and the help text, options, section and follow-ups (C5); consent is tied to the question key, not its wording or value (C7); the disclose path has no end-to-end ledger test yet (C8) | `test_question_safety.py`, `test_question_safety_api.py`, resolver + API tests |
 | Missing facts park the application; profile fix resolves | complete | `test_missing_fact_parks_application_and_profile_fix_resolves` |
 | Immutable package versions; approval bound to content hash | complete | `test_package_versions_are_immutable` |

@@ -40,11 +40,16 @@ class JobForm(Base):
 
 
 class AnswerBankEntry(Base, FactMixin):
-    """A reusable answer, bound to the exact wording it was given for.
+    """A reusable answer, bound to the exact question it was given for.
 
-    `question_key` hashes the normalized wording and answer shape, so a reworded question never
-    silently reuses an answer. Choice answers store option *labels* plus the option set seen at
-    the time, so a changed option list is detected instead of mapped blindly.
+    `question_key` hashes the normalized wording and answer shape, plus the normalized help text
+    when the question has help text (bankscope.question_key, D51): a reworded question, or the
+    same wording with other help text, never silently reuses an answer, and a question without
+    help text keeps the key it had before C6, so no row is ever re-keyed. `help_text` is the help
+    text as shown when saved: NULL = saved before C6 (not recorded; by its key such a row answers
+    only a question without help text), "" = the question had none. Choice answers store option
+    *labels* plus the option set seen at the time, so a changed option list is detected instead
+    of mapped blindly.
     """
 
     __tablename__ = "answer_bank"
@@ -56,6 +61,7 @@ class AnswerBankEntry(Base, FactMixin):
     )
     question_key: Mapped[str] = mapped_column(String(64))
     question_text: Mapped[str] = mapped_column(Text)
+    help_text: Mapped[str | None] = mapped_column(Text)  # C6 (D51)
     answer_shape: Mapped[str] = mapped_column(String(20))
     value: Mapped[dict] = mapped_column(JSON)
     options_snapshot: Mapped[list] = mapped_column(JSON, default=list)

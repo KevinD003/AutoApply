@@ -18,11 +18,12 @@ Order, per field:
 Facts that are unknown, not approved, or only proposed (e.g. from resume parsing) never resolve.
 """
 
-import hashlib
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import date
 
+from app.modules.preparation import bankscope
 from app.modules.preparation.classify import (
     _CITIZEN_CLAIM,
     _CLAIM,
@@ -74,6 +75,29 @@ NO_BANK = PROFILE_ONLY | {
     "legal_status",
     "sensitive_topic",
     "references",
+    # C6 (D51): preferences that Preferences holds; never from a saved answer
+    "relocation",
+    "salary_expectation",
+}
+SCOPE_EXPLANATION = {
+    "employer": "Answer it for this application: it refers to the employer or the job (how you "
+    "heard about it, a referral, working or applying there before, its requirements or terms), so "
+    "a saved answer is never used.",
+    "time": "Answer it for this application: it depends on when you apply (a start date, "
+    "availability, a schedule, a length of time, or something current or valid now), so a saved "
+    "answer is never used.",
+    "pay": "Answer it for this application: pay is never taken from a saved answer (keep your "
+    "salary expectation in Preferences).",
+    "place": "Answer it for this application: relocation, commuting, travel, work location and "
+    "address are never taken from a saved answer.",
+    "fact": "Answer it for this application: it is about work authorization, sponsorship, "
+    "citizenship, immigration status or residence, so a saved answer is never used.",
+    "section": "Answer it for this application: its section is about the job, pay, availability, "
+    "your work history or other people, so a saved answer is never used.",
+    "repeated": "Answer it for this application: the same question appears more than once on this "
+    "form, so a saved answer is never used.",
+    "followup": "Answer it for this application: it follows a question whose answer is never "
+    "saved, so a saved answer is never used.",
 }
 # Shown as a protected fact: never answered from the bank, never drafted.
 PROTECTED = PROFILE_ONLY | {"eligibility", "authorization_status", "fact_statement", "legal_status"}
@@ -122,7 +146,7 @@ def answer_shape(f: FormField) -> str:
 
 
 def question_key(f: FormField) -> str:
-    return hashlib.sha256(f"{normalize(f.label)}|{answer_shape(f)}".encode()).hexdigest()
+    return bankscope.question_key(f, answer_shape(f))
 
 
 def option_labels(f: FormField) -> list[str]:
@@ -202,9 +226,15 @@ def _unresolved(r: Resolution, f: FormField, why: str) -> Resolution:
     return r
 
 
-def resolve_field(f: FormField, ctx: Context, parent: Resolution | None = None) -> Resolution:
+def resolve_field(
+    f: FormField, ctx: Context, parent: Resolution | None = None, repeated: bool = False
+) -> Resolution:
     intent = _inherit(f, classify(f), parent)
     r = _base(f, intent)
+    # C6 (D51): only narrows; `scope` is set only on a row that was bankable until now.
+    scope = bankscope.reason(f, intent, parent=parent, repeated=repeated) if r.bankable else None
+    if scope is not None:
+        r.bankable = False
 
     if f.type == FieldType.unsupported:
         # Nothing to map and nothing to type: a required one is a checkpoint (apply manually).
@@ -280,6 +310,8 @@ def resolve_field(f: FormField, ctx: Context, parent: Resolution | None = None) 
         )
     if r.explanation:
         return _unresolved(r, f, r.explanation)
+    if scope is not None:
+        return _unresolved(r, f, SCOPE_EXPLANATION[scope])
     return _unresolved(r, f, "No verified fact or saved answer matches this question.")
 
 
@@ -896,6 +928,8 @@ def _from_bank(f: FormField, r: Resolution, ctx: Context) -> Resolution | None:
     entry = ctx.bank.get(question_key(f))
     if entry is None or not _approved(entry):
         return None
+    if not bankscope.help_matches(getattr(entry, "help_text", None), f):
+        return None  # defense in depth: the key already binds the help text (D51)
     if getattr(entry, "sensitive", False) and not r.sensitive:
         return _unresolved(
             r,
@@ -957,9 +991,12 @@ def normalize_input(f: FormField, raw: dict) -> dict:
         return {"checked": raw["checked"]}
     if shape == "number":
         try:
-            return {"number": float(raw.get("number"))}
+            n = float(raw.get("number"))
         except (TypeError, ValueError):
             raise ValueError("expected a number") from None
+        if not math.isfinite(n):  # NaN or infinity: JSON cannot store it (review, D51)
+            raise ValueError("expected a number")
+        return {"number": n}
     if shape == "date":
         try:
             return {"date": date.fromisoformat(str(raw.get("date"))).isoformat()}
@@ -1040,3 +1077,41 @@ def display_value(f: FormField, value: dict | None) -> str | None:
         n = value["number"]
         return f"{n:g}"
     return None
+
+
+_SHAPE_TYPE = {
+    "choice": FieldType.select,
+    "multi": FieldType.checkbox_group,
+    "boolean": FieldType.checkbox,
+    "number": FieldType.number,
+    "date": FieldType.date,
+}
+
+
+def saved_answer_scope(entry) -> str | None:
+    """Why a saved answer can no longer answer its own wording, judged from what was stored
+    (wording, help text, answer shape, options): a bankscope category, "other", or None (it may
+    still be reused where a form asks exactly this question). A stored row has no form, so the
+    section, repeated and follow-up rules cannot be judged here."""
+    typ = _SHAPE_TYPE.get(entry.answer_shape, FieldType.text)
+    labels = list(entry.options_snapshot or [])
+    if typ in CHOICE_TYPES | MULTI_TYPES and not labels:
+        typ = FieldType.text
+    try:  # stored text may no longer fit a field (an option longer after lower()): no claim
+        options = (
+            [Option(value=str(i), label=x) for i, x in enumerate(labels)]
+            if typ in CHOICE_TYPES | MULTI_TYPES
+            else []
+        )
+        f = FormField(
+            key="saved",
+            label=entry.question_text,
+            help_text=entry.help_text or None,
+            type=typ,
+            options=options,
+        )
+    except ValueError:  # not a question NoEfforts can rebuild: make no claim about it
+        return None
+    if resolve_field(f, Context()).bankable:
+        return None
+    return bankscope.refusal_code(f, classify(f)) or "other"

@@ -38,10 +38,14 @@ export default function AnswersPage() {
     <>
       <h1 className="text-xl font-semibold">Saved answers</h1>
       <p className="text-sm text-slate-600">
-        Answers you chose to reuse. Each is tied to the exact wording of the question and, for multiple-choice questions, to the options
-        the employer offered. If either changes, NoEfforts asks you again instead of guessing. Questions NoEfforts recognises as
-        work authorization, sponsorship, residence, legal statements or job-specific are not offered for saving; it recognises
-        known wordings only, so check what you save.
+        Answers you chose to reuse. Each is tied to the exact wording of the question, its help text and, for multiple-choice
+        questions, the options the employer offered. If any of these changes, NoEfforts asks you again instead of guessing. Answers
+        that depend on the employer, the job or the date are never offered for saving: how you heard about a job, referrals, working
+        for or applying to an employer before, relevant experience and a job&apos;s requirements, start dates, availability,
+        schedules, notice periods, years of experience, anything current or valid now, pay and salary, relocation, commuting,
+        travel, work location and addresses. Neither are work authorization, sponsorship, residence, legal statements and sensitive
+        topics. NoEfforts recognises known wordings only, so check what you save. Answers saved before a rule was added stay
+        listed here, marked “Not reused”, and answer nothing.
       </p>
       <Card>
         <ErrorBox error={error} />
@@ -59,6 +63,16 @@ export default function AnswersPage() {
                     Answer: <span className="font-medium">{show(e)}</span>
                   </p>
                   {e.options_snapshot.length > 0 && <p className="text-xs text-slate-500">Options when saved: {e.options_snapshot.join(" · ")}</p>}
+                  {e.help_text ? (
+                    <p className="line-clamp-3 text-xs text-slate-500">Help text when saved: {e.help_text}</p>
+                  ) : e.help_text === null && !e.not_reused ? (
+                    <p className="text-xs text-slate-500">Saved before NoEfforts recorded help text: reused only where the question has none.</p>
+                  ) : null}
+                  {e.not_reused && (
+                    <p className="text-xs text-slate-600">
+                      <Badge tone="amber">Not reused</Badge> {e.not_reused} You can delete it.
+                    </p>
+                  )}
                   <p className="text-xs text-slate-500">
                     v{e.version} · updated {new Date(e.updated_at).toLocaleString()} {e.sensitive && <Badge tone="amber">Sensitive</Badge>}
                   </p>

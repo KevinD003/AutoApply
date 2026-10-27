@@ -258,31 +258,53 @@ def test_sensitive_needs_answer_and_disclosure_consent():
 
 def test_answer_bank_reuse_requires_same_wording_and_options():
     q = FormField(
+        key="e",
+        label="Highest level of education completed",
+        type=FieldType.select,
+        required=True,
+        options=[
+            Option(value="1", label="High school diploma"),
+            Option(value="2", label="Bachelor's degree"),
+        ],
+    )
+    entry = NS(
+        id="b1",
+        version=1,
+        approval_status=Approval.approved,
+        value={"labels": ["Bachelor's degree"]},
+        options_snapshot=["bachelor's degree", "high school diploma"],
+    )
+    r = resolve_field(q, ctx(bank={question_key(q): entry}))
+    assert (r.source, r.display) == ("answer_bank", "Bachelor's degree")
+    reworded = q.model_copy(
+        update={"label": "What is the highest level of education you have completed?"}
+    )
+    assert resolve_field(reworded, ctx(bank={question_key(q): entry})).status == "needs_user"
+    changed = q.model_copy(update={"options": q.options + [Option(value="3", label="Doctorate")]})
+    r = resolve_field(changed, ctx(bank={question_key(changed): entry}))
+    assert r.status == "needs_user" and "options have changed" in r.explanation
+    # C6 (D51): a question about the employer or the job never takes a saved answer.
+    hear = FormField(
         key="h",
         label="How did you hear about this job?",
         type=FieldType.select,
         required=True,
         options=[Option(value="1", label="Referral"), Option(value="2", label="Job board")],
     )
-    entry = NS(
-        id="b1",
+    saved = NS(
+        id="b3",
         version=1,
         approval_status=Approval.approved,
         value={"labels": ["Referral"]},
         options_snapshot=["job board", "referral"],
     )
-    r = resolve_field(q, ctx(bank={question_key(q): entry}))
-    assert (r.source, r.display) == ("answer_bank", "Referral")
-    reworded = q.model_copy(update={"label": "How did you hear about us?"})
-    assert resolve_field(reworded, ctx(bank={question_key(q): entry})).status == "needs_user"
-    changed = q.model_copy(update={"options": q.options + [Option(value="3", label="Other")]})
-    r = resolve_field(changed, ctx(bank={question_key(changed): entry}))
-    assert r.status == "needs_user" and "options have changed" in r.explanation
+    r = resolve_field(hear, ctx(bank={question_key(hear): saved}))
+    assert (r.status, r.source, r.bankable) == ("needs_user", "unresolved", False)
 
 
 def test_yes_no_bank_answers_are_bound_to_their_question():
     """A saved 'Yes' to one question is never reused for a differently worded one."""
-    asked = radio("Do you have a valid driver's license?", key="dl")
+    asked = radio("Do you have a driver's license?", key="dl")
     entry = NS(
         id="b2",
         version=1,
@@ -292,8 +314,12 @@ def test_yes_no_bank_answers_are_bound_to_their_question():
     )
     bank = {question_key(asked): entry}
     assert resolve_field(asked, ctx(bank=bank)).display == "Yes"
-    negated = radio("Do you not have a valid driver's license?", key="dl2")
+    negated = radio("Do you not have a driver's license?", key="dl2")
     assert resolve_field(negated, ctx(bank=bank)).status == "needs_user"
+    # C6 (D51): "valid" is about now, so the answer is never reused, even under its own key.
+    valid = radio("Do you have a valid driver's license?", key="dl3")
+    r = resolve_field(valid, ctx(bank={question_key(valid): entry}))
+    assert (r.status, r.source, r.bankable) == ("needs_user", "unresolved", False)
 
 
 def test_names_are_not_split_from_full_name():

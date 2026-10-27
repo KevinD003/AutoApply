@@ -89,10 +89,12 @@ def test_full_workflow_with_zero_llm_calls(api, no_llm):
     assert a["work_auth_us"]["display"] == "Yes"
     assert a["sponsorship_us"]["display"] == "No"
     assert a["relocate"]["display"] == "No"
+    assert not a["relocate"]["bankable"]  # C6: from Preferences, never from a saved answer
     assert a["linkedin"]["source"] == "profile_fact"
     assert a["resume"]["source"] == "document"
     # Checkpoints: no fact for these, and the acknowledgment is never auto-checked.
     assert a["hear_about"]["status"] == "needs_user"
+    assert not a["hear_about"]["bankable"]  # C6: about the employer or the job (D51)
     assert a["privacy_ack"]["status"] == "needs_consent"
     assert a["gender"]["status"] == "blank_optional" and a["gender"]["sensitive"]
     assert a["why_us"]["status"] == "blank_optional" and a["why_us"]["draftable"]
@@ -107,10 +109,17 @@ def test_full_workflow_with_zero_llm_calls(api, no_llm):
     )
     assert r.status_code == 409
 
-    # User corrections.
-    v = api.put(
+    # User corrections. How you heard about this job is never saved for reuse (D51): the
+    # request is refused and stores nothing; the same answer for this application is saved.
+    r = api.put(
         f"/applications/{app['id']}/answers",
         json={"key": "hear_about", "value": {"label": "Referral"}, "save_to_bank": True},
+    )
+    assert r.status_code == 400 and "about the employer or the job" in r.json()["detail"]
+    assert api.get("/answer-bank").json() == []
+    v = api.put(
+        f"/applications/{app['id']}/answers",
+        json={"key": "hear_about", "value": {"label": "Referral"}},
     ).json()
     assert answers(v)["hear_about"]["source"] == "user_entered"
     v = api.put(
@@ -279,52 +288,77 @@ def test_missing_fact_parks_application_and_profile_fix_resolves(api):
 
 
 def test_answer_bank_reuse_across_jobs_and_wording_changes(api):
+    """A saved answer is reused for the same wording, help text and options on another job, and
+    for nothing else (D51). The question is tricky.html's "Highest level of education completed"
+    (with help text): how you heard about a job is never saved for reuse."""
     setup_candidate(api)
-    _, app1 = new_application(api)
-    api.put(
+    _, app1 = new_application(api, fixture="tricky")
+    r = api.put(
         f"/applications/{app1['id']}/answers",
-        json={"key": "hear_about", "value": {"label": "Company website"}, "save_to_bank": True},
+        json={"key": "education", "value": {"label": "Bachelor's degree"}, "save_to_bank": True},
     )
+    assert r.status_code == 200, r.text
     bank = api.get("/answer-bank").json()
-    assert len(bank) == 1 and bank[0]["value"] == {"labels": ["Company website"]}
+    assert len(bank) == 1 and bank[0]["value"] == {"labels": ["Bachelor's degree"]}
+    assert bank[0]["help_text"] == "Choose the highest level you have finished."
 
-    _, app2 = new_application(api, title="Receptionist", employer="Other Clinic")
+    _, app2 = new_application(api, fixture="tricky", title="Dispatcher", employer="Other Logistics")
     a = answers(api.get(f"/applications/{app2['id']}/package").json())
-    assert (a["hear_about"]["source"], a["hear_about"]["display"]) == (
+    assert (a["education"]["source"], a["education"]["display"]) == (
         "answer_bank",
-        "Company website",
+        "Bachelor's degree",
     )
 
-    # Same employer form, reworded question -> no reuse.
-    job3 = api.post("/jobs", json={"title": "Aide", "employer": "Third Clinic"}).json()["job"]
-    html = (
-        __import__("app.modules.preparation.fixtures_registry", fromlist=["x"])
-        .fixture_html("basic")
-        .replace(
-            "How did you hear about this job?", "Where did you first learn about this opening?"
-        )
+    from app.modules.preparation.fixtures_registry import fixture_html
+
+    tricky = fixture_html("tricky")
+
+    def education_on(html, employer):
+        job = api.post("/jobs", json={"title": "Dispatcher", "employer": employer}).json()["job"]
+        assert api.post(f"/jobs/{job['id']}/form", json={"html": html}).status_code == 201
+        app = api.post("/applications", json={"job_id": job["id"]}).json()
+        return answers(api.get(f"/applications/{app['id']}/package").json())["education"]
+
+    # Reworded question -> no reuse.
+    a = education_on(
+        tricky.replace(
+            "Highest level of education completed",
+            "What is the highest level of education you have completed?",
+        ),
+        "Third Logistics",
     )
-    api.post(f"/jobs/{job3['id']}/form", json={"html": html})
-    app3 = api.post("/applications", json={"job_id": job3["id"]}).json()
-    a = answers(api.get(f"/applications/{app3['id']}/package").json())
-    assert a["hear_about"]["status"] == "needs_user"
+    assert (a["status"], a["source"]) == ("needs_user", "unresolved")
 
     # Options changed -> explicit checkpoint, not a silent mapping.
-    job4 = api.post("/jobs", json={"title": "Aide", "employer": "Fourth Clinic"}).json()["job"]
-    html4 = (
-        __import__("app.modules.preparation.fixtures_registry", fromlist=["x"])
-        .fixture_html("basic")
-        .replace(
-            '<option value="other">Other</option>\n    </select>\n    <label for="why_us">',
-            '<option value="other">Other</option>\n      <option value="fair">Career fair</option>'
-            '\n    </select>\n    <label for="why_us">',
-        )
+    a = education_on(
+        tricky.replace(
+            '<option value="other">Other</option>\n    </select>\n    <p id="education_help">',
+            '<option value="other">Other</option>\n      <option value="phd">Doctorate</option>'
+            '\n    </select>\n    <p id="education_help">',
+        ),
+        "Fourth Logistics",
     )
-    api.post(f"/jobs/{job4['id']}/form", json={"html": html4})
-    app4 = api.post("/applications", json={"job_id": job4["id"]}).json()
-    a = answers(api.get(f"/applications/{app4['id']}/package").json())
-    assert a["hear_about"]["status"] == "needs_user"
-    assert "options have changed" in a["hear_about"]["explanation"]
+    assert a["status"] == "needs_user"
+    assert "options have changed" in a["explanation"]
+
+    # Other help text -> no reuse (D51).
+    a = education_on(
+        tricky.replace(
+            "Choose the highest level you have finished.",
+            "Choose the highest level you have started.",
+        ),
+        "Fifth Logistics",
+    )
+    assert (a["status"], a["source"]) == ("needs_user", "unresolved")
+
+    # How you heard about a job is never saved for reuse; the saved answer above is untouched.
+    _, basic = new_application(api, title="Clinic Assistant")
+    r = api.put(
+        f"/applications/{basic['id']}/answers",
+        json={"key": "hear_about", "value": {"label": "Company website"}, "save_to_bank": True},
+    )
+    assert r.status_code == 400 and "about the employer or the job" in r.json()["detail"]
+    assert api.get("/answer-bank").json() == bank
 
 
 def test_form_option_change_invalidates_saved_choice(api):
@@ -362,6 +396,20 @@ def test_job_specific_answers_cannot_go_to_bank(api):
         json={"key": "eligible_here", "value": {"label": "Yes"}},
     )
     assert answers(r.json())["eligible_here"]["source"] == "user_entered"
+    # C6 (D51): relevant experience, a start date, pay and shifts are never saved for reuse
+    # (setup_candidate sets no salary expectation, so the salary is the user's to answer).
+    for key, value, phrase in (
+        ("years", {"number": 3}, "about the employer or the job"),
+        ("start_date", {"date": "2026-11-02"}, "depends on when you apply"),
+        ("salary", {"number": 50000}, "Pay is never saved for reuse"),
+        ("shifts", {"labels": ["Day"]}, "depends on when you apply"),
+    ):
+        body = {"key": key, "value": value, "save_to_bank": True}
+        r = api.put(f"/applications/{app['id']}/answers", json=body)
+        assert r.status_code == 400 and phrase in r.json()["detail"], (key, r.text)
+        r = api.put(f"/applications/{app['id']}/answers", json=body | {"save_to_bank": False})
+        assert answers(r.json())[key]["source"] == "user_entered", key
+    assert api.get("/answer-bank").json() == []
 
 
 def test_input_validation(api):
@@ -496,14 +544,17 @@ def test_tenant_isolation_for_preparation(api, other_api):
     # Owner cannot attach someone else's document either.
     r = api.put(f"/applications/{aid}/documents", json={"resume_document_id": other_doc["id"]})
     assert r.status_code == 404
-    # Answer bank is per user.
-    api.put(
-        f"/applications/{aid}/answers",
-        json={"key": "hear_about", "value": {"label": "Referral"}, "save_to_bank": True},
+    # Answer bank is per user (a stable question: how you heard about a job is never saved).
+    _, tricky = new_application(api, fixture="tricky", title="Dispatcher")
+    r = api.put(
+        f"/applications/{tricky['id']}/answers",
+        json={"key": "education", "value": {"label": "Bachelor's degree"}, "save_to_bank": True},
     )
+    assert r.status_code == 200, r.text
     assert other_api.get("/answer-bank").json() == []
     entry = api.get("/answer-bank").json()[0]
     assert other_api.delete(f"/answer-bank/{entry['id']}").status_code == 404
+    assert api.get("/answer-bank").json() == [entry]  # the owner's saved answer is untouched
 
 
 def test_tenant_isolation_for_revoke_documents_drafts_and_the_bank(api, other_api, monkeypatch):
@@ -513,8 +564,8 @@ def test_tenant_isolation_for_revoke_documents_drafts_and_the_bank(api, other_ap
     setup_candidate(api)
     _, app = new_application(api)
     aid = app["id"]
-    saved = {"key": "hear_about", "value": {"label": "Referral"}, "save_to_bank": True}
-    api.put(f"/applications/{aid}/answers", json=saved)
+    saved = {"key": "hear_about", "value": {"label": "Referral"}}  # never saved for reuse (D51)
+    assert api.put(f"/applications/{aid}/answers", json=saved).status_code == 200
     p = api.put(f"/applications/{aid}/consents",
                 json={"key": "privacy_ack", "choice": "agree"}).json()["package"]  # fmt: skip
     r = api.post(f"/applications/{aid}/package/approve",
@@ -528,6 +579,9 @@ def test_tenant_isolation_for_revoke_documents_drafts_and_the_bank(api, other_ap
     own_doc = api.get("/documents").json()[0]
     _, other_app = new_application(other_api, title="Their own role")
     _, second = new_application(api, title="Second role")
+    _, saved_from = new_application(api, fixture="tricky", title="Dispatcher")
+    edu = {"key": "education", "value": {"label": "Bachelor's degree"}, "save_to_bank": True}
+    assert api.put(f"/applications/{saved_from['id']}/answers", json=edu).status_code == 200
 
     assert other_api.post(f"/applications/{aid}/package/revoke").status_code == 404
     for body in ({"resume_document_id": other_doc["id"]}, {"resume_document_id": own_doc["id"]}):
@@ -552,6 +606,12 @@ def test_tenant_isolation_for_revoke_documents_drafts_and_the_bank(api, other_ap
     other_view = other_api.get(f"/applications/{other_app['id']}/package").json()
     assert answers(other_view)["hear_about"]["status"] == "needs_user"
     assert answers(other_view)["hear_about"]["source"] == "unresolved"
+    _, their_tricky = new_application(other_api, fixture="tricky", title="Their dispatcher")
+    theirs = answers(other_api.get(f"/applications/{their_tricky['id']}/package").json())
+    assert (theirs["education"]["status"], theirs["education"]["source"]) == (
+        "needs_user",
+        "unresolved",
+    )
 
 
 class _CountingProvider:

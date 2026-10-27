@@ -823,3 +823,75 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Unchanged:** no re-send path, no retry after disclosure or the final click, the gates, the
   lock order (D46; the savepoint takes the same locks in the same order), `SCHEMA_VERSION`,
   reason codes, migrations, support states. Fixtures only; nothing contacted.
+
+## D51 — A saved answer is reused only where it stays true; saves never fail (C6, 2026-10-27)
+
+- **Why.** Risk H (truthfulness): answers that depend on the employer, the job or the date were
+  reused from the answer bank ("How did you hear about this job?" → a referral claimed for
+  another employer; "previously worked for this company", "relevant experience", start date,
+  availability, notice, relocation and salary all resolved from a saved answer), and the bank
+  key ignored help text (an answer given for help text H1 was reused for H2). The legacy
+  project made the same class of mistake at scale (fixed employer-relative and time-bound
+  answers reused everywhere; see the legacy audit). Concurrent saves returned 500: two first
+  saves of one question from two applications (unique violation, the second typed answer lost),
+  a save racing the deletion of its entry (StaleDataError); two concurrent updates lost a
+  version increment and a double delete returned 204 twice. The wording cases were reproduced
+  with pure probes against `7669c61`; the five race tests, run against `3af29f0`'s code, fail
+  exactly as described (two IntegrityError 23505, version 2 instead of 3, StaleDataError, no 404).
+- **Scope rules** (`preparation/bankscope.py`, pure, no LLM): `reason()` returns fact, pay,
+  place, employer, time, section, repeated or followup, read from the normalized label (the raw
+  label only to tell "us" from "US"), the help text (minus pronoun, "here", willingness, "now",
+  history-noun and date families, which are boilerplate there), the option labels (a closed
+  subset), the step heading, a date answer, the parent row (a follow-up of a question that is
+  not reused) and the form (the same question twice). `resolve_field` clears `bankable` right
+  after `_base()`; it never sets it. Relocation and salary join `NO_BANK`. Exempt: the identity
+  kinds skip the label families (anchored labels); the legacy EEO topics keep their bank policy
+  until C8 (D49). Accepted over-narrowing (8 wordings) and known misses (a named employer
+  without deixis) are listed in the test table.
+- **Help text in the key without re-keying.** `question_key` keeps the old formula for a
+  question without help text and uses `sha256(json.dumps(["c6", label, shape, help]))` for one
+  with help text. So no row is re-keyed or deleted, and a row saved before C6 answers only a
+  question without help text. `answer_bank.help_text` (nullable; NULL = saved before C6, '' =
+  none) is a second check in `_from_bank` and is shown on the Saved answers page. A legacy
+  Gender entry is no longer proposed for Gender questions with equal-opportunity help text (the
+  policy, proposed and consent each time, is unchanged; only the matching narrows).
+- **Saves and deletes.** One `INSERT … ON CONFLICT (user_id, question_key) DO UPDATE …
+  RETURNING`, version bumped in SQL only when the value or options change (compared as the
+  stored JSON text: `json` has no `=` and `jsonb` refuses a `\u0000`);
+  `DELETE … WHERE id AND user_id RETURNING id`, so a second delete is 404 and recorded once.
+  The refusal is decided before the typed answer is written, so a refused save changes nothing.
+  Lock order (D46) item 6: a bank row after the application and its input, or alone. Rejected:
+  select-then-insert, FOR UPDATE alone (no row to lock on a first save), advisory or per-user
+  locks, catching IntegrityError and retrying.
+- **Tests moved off "How did you hear about this job?"** to "Highest level of education
+  completed" (a required select with help text) in `tricky.html` and in the receiver's new mode
+  `bank_question`; `basic.html` and the receiver's default form are unchanged.
+- **Only narrowing, verified** on the working tree against `7669c61`'s resolver (read with
+  `git show`) with scratch scripts: 2,055 forms × 640 contexts = 1,315,200 form resolutions,
+  1,424,000 rows, 0 violations (nothing newly bankable, resolved, proposed or draftable; intent,
+  sensitivity, protection, acknowledgment, input and drafting unchanged; 192 follow-ups of a
+  required trigger that lost its saved answer show their own typed answer while the package
+  stays blocked, as for any unanswered trigger); the wording table (975 rows from the design, 1,037 after the review); 9 of the 46 pinned
+  controls change, each only by losing reuse (`C6_DELTA`).
+- **Unchanged:** `SCHEMA_VERSION` (2: no content key added), `RESOLVER_VERSION`; no bank row
+  deleted or re-keyed. A package containing a narrowed row (`bankable` and, for rows without a
+  more specific explanation, `explanation` change) gets a new version at its next rebuild and
+  its approval is invalidated; a queued attempt is refused at the gate before anything is
+  disclosed. Fixture packages that change: basic, tricky, the receiver (both modes),
+  greenhouse_like 4012001, greenhouse_v2 5020001; 4012002 and 5020002 keep their hash.
+- **Found by the adversarial review** (5 reviewers, each verified by a skeptic) and fixed:
+  - wordings C6 meant to cover but missed: the job applied for ("Position applied for",
+    "Which role are you applying to?", "Position sought"), what made you apply (a single-line
+    field), a rate or "total comp", years of experience written differently ("Years
+    experience", "two years' experience"), labels ending in "(optional)" or "(if applicable)",
+    the recruiter or hiring manager by name, "submitted an application here", "unavailable",
+    class standing, and Unicode dashes; a degree's length in its options ("4 Year Degree") no
+    longer counts as time;
+  - a NUL in page text or an answer, a stored option label too long to rebuild, and NaN or
+    infinity as a number returned 500 (the last was older than C6);
+  - a follow-up in a package built before C6 trusted its parent's stored row; a repeated
+    sensitive question was refused with the sensitive message;
+  - the Saved answers page repeated "Not reused", showed a contradicting line on old rows and
+    said the profile holds citizenship (it does not).
+  - Accepted, not changed: some stable wordings are refused (over-narrowing only costs a
+    re-answer); refuted: two documentation items and one explanation-wording item.

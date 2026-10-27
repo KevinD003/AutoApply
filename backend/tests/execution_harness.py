@@ -111,14 +111,17 @@ def prepared_application(
     *,
     slug="clinic",
     why_text=None,
-    hear_about="input",
+    bank_question=None,
     scope=None,
     url_suffix="",
     approve=True,
 ) -> str:
     """Synthetic candidate + approved package for the receiver's form. Returns app id.
     `scope`: the approval's scope; None sends none (the default, submit). `url_suffix`: e.g.
-    "?posting=2", another posting on the same form. `approve`: False leaves it unapproved."""
+    "?posting=2", another posting on the same form. `approve`: False leaves it unapproved.
+    `bank_question` (the receiver in mode "bank_question" only): "input" or "save_to_bank"
+    answers "Highest level of education completed"; "bank" relies on a saved answer. How you
+    heard about the job is always answered for this application: never saved (D51)."""
     synthetic_candidate(api)
     job = api.post(
         "/jobs",
@@ -132,16 +135,21 @@ def prepared_application(
     r = api.post(f"/jobs/{job_id}/form", json={"html": receiver.form_html(slug)})
     assert r.status_code in (200, 201), r.text
     app_id = api.post("/applications", json={"job_id": job_id}).json()["id"]
-    if hear_about in ("input", "save_to_bank"):
-        api.put(
+    api.put(
+        f"/applications/{app_id}/answers",
+        json={"key": "hear_about", "value": {"label": "Referral"}},
+    )
+    if bank_question in ("input", "save_to_bank"):
+        r = api.put(
             f"/applications/{app_id}/answers",
             json={
-                "key": "hear_about",
-                "value": {"label": "Referral"},
-                "save_to_bank": hear_about == "save_to_bank",
+                "key": "education",
+                "value": {"label": "Bachelor's degree"},
+                "save_to_bank": bank_question == "save_to_bank",
             },
         )
-    # hear_about == "bank": rely on an existing saved answer for the same wording
+        assert r.status_code == 200, r.text
+    # bank_question == "bank": rely on an existing saved answer for the same wording
     if why_text:
         api.put(
             f"/applications/{app_id}/answers", json={"key": "why_us", "value": {"text": why_text}}

@@ -155,10 +155,13 @@ def _contents(api, receiver, monkeypatch) -> list[dict]:
     for fixture in ("basic", "tricky"):
         _, app = new_application(api, fixture=fixture, title=f"Role {fixture}")
         out.append(api.get(f"/applications/{app['id']}/package").json()["package"]["content"])
-    # Answered, consented, saved to the bank, a sensitive answer disclosed, a draft accepted.
+    # Saved to the bank (a stable question: how you heard about a job is never saved, D51).
+    edu = {"key": "education", "value": {"label": "Bachelor's degree"}, "save_to_bank": True}
+    assert api.put(f"/applications/{app['id']}/answers", json=edu).status_code == 200
+    # Answered, consented, a sensitive answer disclosed, a draft accepted.
     _, app = new_application(api, title="Answered")
     aid = app["id"]
-    saved = {"key": "hear_about", "value": {"label": "Referral"}, "save_to_bank": True}
+    saved = {"key": "hear_about", "value": {"label": "Referral"}}
     api.put(f"/applications/{aid}/answers", json=saved)
     api.put(f"/applications/{aid}/consents", json={"key": "privacy_ack", "choice": "agree"})
     gender = next(a for a in out[0]["answers"] if a["key"] == "gender")
@@ -172,7 +175,7 @@ def _contents(api, receiver, monkeypatch) -> list[dict]:
         api.post(f"/applications/{aid}/drafts/{d['id']}/accept").json()["package"]["content"]
     )
     # From the bank, on another job.
-    _, app = new_application(api, title="From the bank")
+    _, app = new_application(api, fixture="tricky", title="From the bank")
     out.append(api.get(f"/applications/{app['id']}/package").json()["package"]["content"])
     # The receiver's form (conditions), and a manual form with an unsupported control.
     app_id = prepared_application(api, receiver, approve=False)

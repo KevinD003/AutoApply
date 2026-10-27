@@ -278,6 +278,10 @@ export interface BankEntry {
   sensitive: boolean;
   version: number;
   updated_at: string;
+  /** null: saved before NoEfforts recorded help text (C6); "": the question had none. */
+  help_text: string | null;
+  /** Why this saved answer no longer answers its own question (D51), or null. */
+  not_reused: string | null;
 }
 
 export type ApprovalScope = "submit" | "disclose_only";

@@ -3,8 +3,10 @@
 1. empty -> head
 2. populated Phase A snapshot -> head, data preserved
 3. disposable downgrade-to-base and re-upgrade
+4. C6: answer_bank.help_text added without touching a saved answer
 """
 
+import hashlib
 import os
 import uuid
 
@@ -116,4 +118,54 @@ def test_disposable_downgrade_and_reupgrade(disposable):
             )
         )
         assert enums.scalar() == 0
+    command.upgrade(_cfg(), "head")
+
+
+BEFORE_C6 = "33c1622938ba"
+
+
+def test_c6_saved_answers_keep_their_key_and_gain_no_help_text(disposable):
+    """C6 (D51) adds answer_bank.help_text without touching a row: same id, key, value and
+    version, help_text NULL (saved before help text was recorded); a downgrade drops only the
+    column."""
+    command.upgrade(_cfg(), BEFORE_C6)
+    uid, bid = uuid.uuid4(), uuid.uuid4()
+    key = hashlib.sha256(b"highest level of education completed|choice").hexdigest()
+    with disposable.begin() as c:
+        c.execute(
+            text(
+                "insert into users (id,email,password_hash,created_at,updated_at) "
+                "values (:u,'synthetic@example.com','x',now(),now())"
+            ),
+            {"u": uid},
+        )
+        c.execute(
+            text(
+                "insert into answer_bank (id,user_id,question_key,question_text,answer_shape,"
+                "value,options_snapshot,sensitive,provenance,approval_status,version,updated_at) "
+                "values (:b,:u,:k,'Highest level of education completed','choice',"
+                "'{\"labels\": [\"Bachelor''s degree\"]}','[\"bachelor''s degree\"]',false,"
+                "'user_entered','approved',3,now())"
+            ),
+            {"b": bid, "u": uid, "k": key},
+        )
+    row_sql = text("select question_key, value::text, version from answer_bank where id=:b")
+    with disposable.connect() as c:
+        before = tuple(c.execute(row_sql, {"b": bid}).one())
+    command.upgrade(_cfg(), "head")
+    with disposable.connect() as c:
+        assert tuple(c.execute(row_sql, {"b": bid}).one()) == before
+        assert before[0] == key and before[2] == 3
+        help_ = c.execute(text("select help_text from answer_bank where id=:b"), {"b": bid})
+        assert help_.scalar() is None
+    command.downgrade(_cfg(), BEFORE_C6)
+    with disposable.connect() as c:
+        assert tuple(c.execute(row_sql, {"b": bid}).one()) == before
+        cols = c.execute(
+            text(
+                "select count(*) from information_schema.columns "
+                "where table_name='answer_bank' and column_name='help_text'"
+            )
+        )
+        assert cols.scalar() == 0
     command.upgrade(_cfg(), "head")

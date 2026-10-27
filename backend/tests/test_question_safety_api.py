@@ -64,13 +64,23 @@ def test_sensitive_and_legal_answers_are_never_saved_for_reuse(api):
             "label": "I declare my current country of residence",
             "type": "text",
         },
-    }
-    controls = {
+        # C6 (D51): how you heard about the employer is never saved for reuse either.
         "hear": {
             "key": "hear",
             "label": "How did you hear about us?",
             "type": "select",
             "options": [{"value": "r", "label": "Referral"}, {"value": "j", "label": "Job board"}],
+        },
+    }
+    controls = {
+        "education": {
+            "key": "education",
+            "label": "Highest level of education completed",
+            "type": "select",
+            "options": [
+                {"value": "a", "label": "Associate degree"},
+                {"value": "b", "label": "Bachelor's degree"},
+            ],
         },
         "gender": {
             "key": "gender",
@@ -85,7 +95,8 @@ def test_sensitive_and_legal_answers_are_never_saved_for_reuse(api):
     for key in never:
         row = rows(v)[key]
         assert not row["bankable"] and row["user_input_allowed"], key
-    value = {"radio": {"label": "No"}, "text": {"text": "Synthetic answer"}}
+    value = {"radio": {"label": "No"}, "text": {"text": "Synthetic answer"},
+             "select": {"label": "Referral"}}  # fmt: skip
     me = api.get("/auth/me").json()["user_id"]
     for key, f in never.items():
         body = {"key": key, "value": value[f["type"]], "save_to_bank": True}
@@ -93,6 +104,8 @@ def test_sensitive_and_legal_answers_are_never_saved_for_reuse(api):
         assert r.status_code == 400, (key, r.text)
         if key in ("citizen", "felony", "salary_now", "permit", "declare"):
             assert "never saved for reuse" in r.json()["detail"], key
+        if key == "hear":
+            assert "about the employer or the job" in r.json()["detail"], key
         assert bank_count(me) == 0, key
         r = api.put(f"/applications/{app_id}/answers", json=body | {"save_to_bank": False})
         assert r.status_code == 200, (key, r.text)
@@ -100,7 +113,7 @@ def test_sensitive_and_legal_answers_are_never_saved_for_reuse(api):
     # A sensitive answer typed by the user still needs a choice to include it.
     assert rows(package(api, app_id))["felony"]["status"] == "needs_consent"
     # Controls: an ordinary question is saved; the legacy EEO label keeps today's policy (C8).
-    for key, label in (("hear", "Referral"), ("gender", "Woman")):
+    for key, label in (("education", "Bachelor's degree"), ("gender", "Woman")):
         body = {"key": key, "value": {"label": label}, "save_to_bank": True}
         assert api.put(f"/applications/{app_id}/answers", json=body).status_code == 200, key
     assert bank_count(me) == 2

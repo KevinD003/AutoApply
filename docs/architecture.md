@@ -111,7 +111,8 @@ Module `app/modules/preparation/`:
 | `resolver.py` | Resolution order and value validation — see `docs/answer-policy.md`. |
 | `package.py` | Builds package content, hashes it, writes immutable versions, binds and invalidates approvals, and moves the application between `preparing`, `needs_user_action`, `awaiting_approval` and back out of `queued` when content changes. |
 | `drafting.py` | Optional `DraftProvider` interface with grounding validation; `get_provider()` returns `None` (no provider configured). |
-| `router.py` | Form capture, package review, answers, consents, document selection, approve/revoke, drafts, answer bank. |
+| `router.py` | Form capture, package review, answers, consents, document selection, approve/revoke, drafts, answer bank (one upsert per save, D51). |
+| `bankscope.py` | Which answers are never saved to or reused from the answer bank, and why (D51); the bank key. Pure. |
 
 New tables: `job_forms` (versioned schemas per job), `answer_bank`, `application_inputs`
 (per-application answers, consent choices, document selections), `application_packages`
@@ -173,6 +174,9 @@ Every transaction that locks more than one of these rows takes them in this orde
 4. the application's inputs (answers and consents: saved, and cleared, after the application);
 5. what the rehearsal prerequisite relies on: a rehearsal record or a receipt (FOR SHARE in the
    gates; FOR UPDATE or DELETE by a withdrawal or an evidence deletion).
+6. a saved answer (`answer_bank` row): after the application and its input when an answer is
+   saved for reuse (one upsert), or alone when it is deleted (one DELETE). Package rebuilds and
+   the gates read the bank without locking it (D51).
 
 Inserting a row that references an application (evidence, events) key-share locks the
 application too; that happens after the attempt, in the same order. Paths that never lock an

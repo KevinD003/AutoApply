@@ -9,6 +9,22 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Preparation: bank scope (C6, 2026-10-27; local only)
+
+Synthetic facts and wordings; fictional employers. Decision D51; rules in
+`docs/answer-policy.md` row 5.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Answers that depend on the employer, the job or the date are never reused | `tests/test_bank_scope.py::test_bank_scope_table` (1,037 rows), `test_no_c6_row_is_ever_answered_from_the_bank`, `tests/test_bank_scope_api.py::test_answers_that_depend_on_the_employer_the_job_or_the_date_are_never_saved` | before: "this company", "previously worked for", "relevant experience", start date, availability, notice, relocation and salary resolved from a saved answer (reproduced against the previous commit). Now never bankable; saving returns 400 with the reason and stores nothing |
+| A saved answer is bound to its help text | `test_question_key_*`, `test_a_saved_answer_needs_the_same_help_text`, `test_from_bank_checks_the_stored_help_text`, `test_a_saved_answer_is_reused_only_for_the_same_help_text` | before: reused for other help text or none. Now only for the same normalized help text |
+| Saved answers from before C6 are kept, not re-keyed | `test_an_entry_saved_before_c6_answers_only_a_question_without_help_text`, `test_saved_answers_from_before_c6_are_kept_and_answer_only_a_question_without_help_text`, `tests/test_migrations.py::test_c6_saved_answers_keep_their_key_and_gain_no_help_text` | same id, key, value and version; answer only questions without help text; out-of-scope ones listed as "Not reused" |
+| Follow-ups, repeated wording, sections | `test_a_follow_up_of_a_question_that_is_not_reused_is_not_reused`, `test_the_same_wording_twice_on_one_form_is_never_answered_from_the_bank`, `test_a_follow_up_or_a_repeated_question_is_never_saved` | never reused, 400 on save |
+| Concurrent saves and deletes never fail | `tests/test_bank_races.py` (5 tests, 6 cases; deterministic: a barrier and lock waiters, no sleeps) | run against the previous code: two IntegrityError 23505 (a 500), a lost version increment, StaleDataError, a second delete not refused. Now serialized; the second delete is 404 |
+| Only narrowing | `test_positive_controls_behave_exactly_as_before_c3_c5` with `C6_DELTA` (9 controls), `test_each_c6_delta_only_narrows`, the property tests | verified on the working tree against `7669c61` with scratch scripts: 1,315,200 form resolutions, 0 violations |
+| Review findings fixed (D51) | `tests/test_bank_scope_api.py::test_saving_and_listing_never_fail_on_unusual_text`, `::test_a_follow_up_in_a_package_built_before_c6_checks_its_parent_again`, 62 more table rows in `tests/bank_scope_wordings.json`, the `E_APPLY` family in `test_every_family_use_is_load_bearing` | a NUL in help text or an answer, a long stored option and NaN no longer return 500; a frozen package's follow-up checks its parent; the missed wordings are refused; 20 deliberate breaks, each caught |
+| The stable reuse question reaches the employer | `tests/test_execution_validation.py` (`answer_bank_delete`, receiver mode `bank_question`), `frontend/e2e/phase-b.spec.ts` | a saved education answer is reused for a second application, and deleting it after approval stops the running attempt (receiver ledger); the review page offers the reuse box on the education question and not on "How did you hear about this job?" or Gender, and the Saved answers page shows the help text |
+
 ## Preparation: statements, legal facts and sensitive topics (C3-C5, 2026-10-26; local only)
 
 Synthetic facts and wordings; pure resolver tests run the package loop

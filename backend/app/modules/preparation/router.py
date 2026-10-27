@@ -1,14 +1,16 @@
 import uuid
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
-from sqlalchemy import select
+from sqlalchemy import Text, case, cast, delete, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.db import get_db
+from app.core.db import get_db, new_id, utcnow
 from app.core.errors import bad_request, conflict, not_found
 from app.modules.applications.models import Application
 from app.modules.audit.service import record, ref
@@ -18,14 +20,16 @@ from app.modules.execution.models import AttemptState, ExecutionAttempt
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
 from app.modules.jobs.models import Job
-from app.modules.preparation import drafting
+from app.modules.preparation import bankscope, drafting
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation import package as pk
+from app.modules.preparation.classify import classify
 from app.modules.preparation.fixtures_registry import FIXTURES, fixture_html
 from app.modules.preparation.forms import (
     EXTRACTION_VERSION,
     KEY_PATTERN,
     ExtractionError,
+    FieldType,
     FormField,
     FormSchema,
     extract_form_schema,
@@ -45,6 +49,7 @@ from app.modules.preparation.resolver import (
     normalize_input,
     option_labels,
     question_key,
+    saved_answer_scope,
 )
 from app.modules.profiles.models import (
     Approval,
@@ -439,29 +444,99 @@ def put_answer(
         "deterministic_mapping",
     ):
         raise bad_request(
-            "This answer comes from your verified profile. Update your profile "
+            "This answer comes from your verified profile or your preferences. Update them "
             "instead, so every application stays consistent."
         )
     try:
         value = normalize_input(f, body.value)
     except ValueError as e:
         raise bad_request(str(e)) from None
+    if body.save_to_bank:
+        # Checked before anything is written: a refused request changes nothing (D51).
+        refusal = _reuse_refusal(db, app, entry, f)
+        if refusal:
+            raise bad_request(refusal)
     _upsert_input(db, app, "answer", key, value)
     if body.save_to_bank:
-        if not entry["bankable"] and (entry["sensitive"] or entry["protected"]):
-            raise bad_request(
-                "Sensitive and protected answers are never saved for reuse; answer them for each "
-                "application."
-            )
-        if not entry["bankable"]:
-            raise bad_request("This answer depends on the specific job and cannot be reused.")
+        db.flush()  # the input row before the saved answer (lock order, D46 item 6)
         _save_to_bank(db, user, app, f, value, sensitive=entry["sensitive"])
     record(db, user.id, "application.answer", "application", app.id, field_ref=ref(key, user.id))
     db.flush()
     return _package_view(db, app, _current(db, app))
 
 
+# Why an answer is not saved for reuse (D51), by bankscope category. The 400 aborts the request,
+# so the typed answer is not saved either.
+REUSE_REFUSED = {
+    "fact": "This is about work authorization, sponsorship, citizenship, immigration status or "
+    "residence, so its answer is never saved for reuse.",
+    "employer": "This question is about the employer or the job (how you heard about it, a "
+    "referral, working or applying there before, its requirements or terms), so its answer is "
+    "never saved for reuse.",
+    "time": "This answer depends on when you apply (a start date, availability, a schedule, a "
+    "length of time, or something current or valid now), so it is never saved for reuse.",
+    "pay": "Pay is never saved for reuse: keep your salary expectation in Preferences, or answer "
+    "it for each application.",
+    "place": "Relocation, commuting, travel, work location and address are never saved for "
+    "reuse: keep relocation in Preferences, or answer it for each application.",
+    "section": "This question is in a section about the job, pay, availability, your work history "
+    "or other people, so its answer is never saved for reuse.",
+    "repeated": "The same question appears more than once on this form, so its answer is never "
+    "saved for reuse.",
+    "followup": "This follow-up depends on a question whose answer is never saved, so it is not "
+    "saved either.",
+}
+NOT_SAVED = (
+    " Nothing was saved: save your answer again without \u201cReuse for this exact question\u201d."
+)
+
+
+def _reuse_refusal(db: Session, app: Application, entry: dict, f: FormField) -> str | None:
+    """The 400 detail when this answer may not be saved for reuse, else None (D51). The package
+    row decides, and the wording is checked again: a package built before C6 and not rebuilt
+    since (its application is past preparation) cannot save what C6 never reuses."""
+    pkg = pk.latest_package(db, app.id)
+    fields = [FormField.model_validate(x) for x in pk.latest_form(db, app.job_id).schema["fields"]]
+    keys = [question_key(x) for x in fields if x.type != FieldType.file]
+    parent = next(
+        (a for a in pkg.content["answers"] if f.condition and a["key"] == f.condition.key), None
+    )
+    parent_bankable = None
+    if parent is not None:
+        # A stored row may predate C6 too: its own wording is checked again (review, D51).
+        pf = next((x for x in fields if x.key == parent["key"]), None)
+        parent_bankable = parent["bankable"] and (
+            pf is None
+            or bankscope.refusal_code(pf, classify(pf), repeated=keys.count(question_key(pf)) > 1)
+            is None
+        )
+    code = bankscope.refusal_code(
+        f,
+        classify(f),
+        parent=SimpleNamespace(bankable=parent_bankable) if parent is not None else None,
+        repeated=keys.count(question_key(f)) > 1,
+    )
+    if entry["bankable"] and code is None:
+        return None
+    if code in ("repeated", "followup"):  # true whatever the topic (a repeated Gender question)
+        return REUSE_REFUSED[code] + NOT_SAVED
+    if entry["sensitive"] or entry["protected"]:
+        return (
+            "Sensitive and protected answers are never saved for reuse; answer them for each "
+            "application."
+        )
+    if code in REUSE_REFUSED:
+        return REUSE_REFUSED[code] + NOT_SAVED
+    return "This answer depends on the specific job and cannot be reused."
+
+
 def _save_to_bank(db, user, app, f, value, sensitive: bool) -> None:
+    """Insert or update this user's saved answer for this exact question in one statement
+    (D51): two first saves from two applications, or a save racing the deletion of the entry,
+    never fail. PostgreSQL inserts, or waits for the row's other writer and then updates the
+    row, or inserts again if that writer deleted it. The version counts changes of the value or
+    the options only. Lock order (D46): the application (taken by _upsert_input), then this
+    row."""
     shape = answer_shape(f)
     stored = (
         {"labels": [value["label"]]}
@@ -470,21 +545,54 @@ def _save_to_bank(db, user, app, f, value, sensitive: bool) -> None:
         if shape == "multi"
         else value
     )
-    qk = question_key(f)
-    entry = db.scalar(
-        select(AnswerBankEntry).where(
-            AnswerBankEntry.user_id == user.id, AnswerBankEntry.question_key == qk
-        )
+    t = AnswerBankEntry.__table__
+    ins = pg_insert(AnswerBankEntry).values(
+        id=new_id(),
+        user_id=user.id,
+        question_key=question_key(f),
+        # PostgreSQL text cannot hold NUL; page text can (the key keeps it, so nothing re-keys).
+        question_text=f.label.replace("\x00", ""),
+        help_text=(f.help_text or "").replace("\x00", "").strip(),  # "": none; NULL: before C6
+        answer_shape=shape,
+        value=stored,
+        options_snapshot=option_labels(f),
+        sensitive=sensitive,
+        source_application_id=app.id,
+        provenance=Provenance.user_entered,
+        approval_status=Approval.approved,
+        version=1,
+        updated_at=utcnow(),  # onupdate= is not applied to ON CONFLICT DO UPDATE
     )
-    if entry is None:
-        entry = AnswerBankEntry(user_id=user.id, question_key=qk, version=1)
-        db.add(entry)
-    elif entry.value != stored or entry.options_snapshot != option_labels(f):
-        entry.version += 1
-    entry.question_text, entry.answer_shape, entry.value = f.label, shape, stored
-    entry.options_snapshot, entry.sensitive = option_labels(f), sensitive
-    entry.provenance, entry.approval_status = Provenance.user_entered, Approval.approved
-    entry.source_application_id = app.id
+    ex = ins.excluded
+    # json has no "=" operator, and jsonb refuses a \u0000 that json accepts: compare the text,
+    # which the same serializer wrote both times (a difference only costs a version number).
+    changed = or_(
+        cast(t.c.value, Text) != cast(ex["value"], Text),
+        cast(t.c.options_snapshot, Text) != cast(ex["options_snapshot"], Text),
+    )
+    copied = (
+        "question_text",
+        "help_text",
+        "answer_shape",
+        "value",
+        "options_snapshot",
+        "sensitive",
+        "source_application_id",
+        "provenance",
+        "approval_status",
+        "updated_at",
+    )
+    stmt = (
+        ins.on_conflict_do_update(
+            index_elements=[t.c.user_id, t.c.question_key],  # answer_bank_user_id_question_key_key
+            set_={"version": case((changed, t.c.version + 1), else_=t.c.version)}
+            | {c: ex[c] for c in copied},
+        )
+        .returning(AnswerBankEntry)
+        # This session loaded the row unlocked while rebuilding the package: refresh it.
+        .execution_options(populate_existing=True)
+    )
+    db.scalars(stmt).one()
 
 
 @router.post("/applications/{app_id}/answers/clear")
@@ -764,24 +872,51 @@ class BankOut(BaseModel):
     approval_status: Approval
     version: int
     updated_at: datetime
+    help_text: str | None  # None: saved before NoEfforts recorded help text (C6); "": none
+    not_reused: str | None = None  # why this entry no longer answers its own wording (D51)
+
+
+NOT_REUSED = {
+    # Shown after a "Not reused" badge (review, D51).
+    "fact": "It is about work authorization, sponsorship, citizenship, immigration status or "
+    "residence.",
+    "employer": "It is about one employer or job.",
+    "time": "Its answer depends on when you apply.",
+    "pay": "Pay comes from your Preferences or is answered for each application.",
+    "place": "Relocation comes from your Preferences; travel, work location and address are "
+    "answered for each application.",
+    "other": "NoEfforts asks this in each application.",
+}
 
 
 @router.get("/answer-bank", response_model=list[BankOut])
 def list_bank(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    return db.scalars(
+    entries = db.scalars(
         select(AnswerBankEntry)
         .where(AnswerBankEntry.user_id == user.id)
         .order_by(AnswerBankEntry.updated_at.desc())
     ).all()
+    return [
+        BankOut.model_validate(e).model_copy(
+            update={"not_reused": NOT_REUSED.get(saved_answer_scope(e))}
+        )
+        for e in entries
+    ]
 
 
 @router.delete("/answer-bank/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_bank(
     entry_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> None:
-    e = db.get(AnswerBankEntry, entry_id)
-    if e is None or e.user_id != user.id:
+    # One statement scoped by user (D51): another user's entry, one that never existed and one
+    # deleted meanwhile (a second tab: it waits for the first deletion) are all 404, and a
+    # deletion is recorded once. Locks only this row.
+    gone = db.scalar(
+        delete(AnswerBankEntry)
+        .where(AnswerBankEntry.id == entry_id, AnswerBankEntry.user_id == user.id)
+        .returning(AnswerBankEntry.id)
+    )
+    if gone is None:
         raise not_found("Saved answer")
-    db.delete(e)
     record(db, user.id, "answer_bank.delete", "answer_bank", entry_id)
     db.commit()

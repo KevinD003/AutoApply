@@ -10,10 +10,13 @@ export default function AnswerInput({
   q,
   onSave,
   busy,
+  offerReuse = false,
 }: {
   q: PackageAnswer;
   onSave: (value: Record<string, unknown>, saveToBank: boolean) => void;
   busy?: boolean;
+  /** Show "Reuse for this exact question" (only where the caller sends save_to_bank). */
+  offerReuse?: boolean;
 }) {
   const current = q.value ?? {};
   const [text, setText] = useState<string>(
@@ -94,7 +97,7 @@ export default function AnswerInput({
         <Button type="button" disabled={!value || busy} onClick={() => value && onSave(value, bank)} className="!min-h-9 !py-1.5">
           Save answer
         </Button>
-        {q.bankable && (
+        {offerReuse && q.bankable && (
           <label className="flex items-center gap-2 text-sm text-slate-600">
             <input type="checkbox" checked={bank} onChange={(e) => setBank(e.target.checked)} />
             Reuse for this exact question in future applications

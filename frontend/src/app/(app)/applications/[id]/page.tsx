@@ -268,6 +268,7 @@ export default function ReviewPage() {
                   <AnswerInput
                     q={q}
                     busy={busy}
+                    offerReuse
                     onSave={(value, save_to_bank) => call(`/applications/${id}/answers`, "PUT", { key: q.key, value, save_to_bank }, "Answer saved.")}
                   />
                 ) : (

@@ -277,16 +277,18 @@ MUTATIONS = {
 def test_every_protected_mutation_stops_a_running_attempt(api, receiver, monkeypatch, name):
     """Real worker process paused after filling; the mutation goes through the public API."""
     if name == "answer_bank_delete":
-        prepared_application(api, receiver, hear_about="save_to_bank")
+        # A stable required question (how you heard about a job is never saved, D51).
+        receiver.config(mode="bank_question")
+        prepared_application(api, receiver, bank_question="save_to_bank")
         # Different job (slug) so this is a second application whose answer comes from the bank.
-        app_id = prepared_application(api, receiver, slug="clinic2", hear_about="bank")
+        app_id = prepared_application(api, receiver, slug="clinic2", bank_question="bank")
         assert (
             next(
                 a
                 for a in api.get(f"/applications/{app_id}/package").json()["package"]["content"][
                     "answers"
                 ]
-                if a["key"] == "hear_about"
+                if a["key"] == "education"
             )["source"]
             == "answer_bank"
         )

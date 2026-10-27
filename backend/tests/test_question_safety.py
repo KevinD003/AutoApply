@@ -18,7 +18,12 @@ import pytest
 
 from app.modules.preparation import package as pk
 from app.modules.preparation.forms import Condition, FieldType, FormField, Option
-from app.modules.preparation.resolver import Context, option_labels, question_key
+from app.modules.preparation.resolver import (
+    SCOPE_EXPLANATION,
+    Context,
+    option_labels,
+    question_key,
+)
 from app.modules.profiles.models import Approval, SalaryPeriod, TriState
 
 T = FieldType
@@ -134,6 +139,7 @@ def bank_entry(f, value, sensitive=False):
             options_snapshot=option_labels(f),
             value=value,
             sensitive=sensitive,
+            help_text=(f.help_text or "").strip(),  # as the save path stores it (C6, D51)
         )
     }
 
@@ -1335,6 +1341,17 @@ row(
         help_text="We are an equal opportunity employer and do not discriminate on the basis of "
         "race, gender or disability.",
     ),
+    "needs_user val=None sens=0 bank=0 intent=unknown",  # C6: "us" is the employer (D51)
+)
+row(  # C6 (D51): the same boilerplate on a stable question keeps it reusable
+    "c6.help.boilerplate_lang",
+    fld(
+        "Which languages can you use with patients?",
+        T.checkbox_group,
+        O("English", "Spanish"),
+        help_text="We are an equal opportunity employer and do not discriminate on the basis of "
+        "race, gender or disability.",
+    ),
     "needs_user val=None sens=0 bank=1 intent=unknown",
 )
 row(
@@ -1347,6 +1364,13 @@ row(
 row(
     "c5.hear.sens_entry",
     fld("How did you hear about this job?", S, O("Referral", "Job board")),
+    "needs_user val=None src=unresolved bank=0",  # C6: about the employer or the job (D51)
+    bank_value=True,
+    bank_sensitive=True,
+)
+row(  # C6 (D51): a sensitive saved entry is still refused on a stable question
+    "c6.lang.sens_entry",
+    fld("Which languages can you use with patients?", T.checkbox_group, O("English", "Spanish")),
     "needs_user val=None src=unresolved bank=1",
     bank_value=True,
     bank_sensitive=True,
@@ -1450,6 +1474,8 @@ row(
     "blank_optional intent=long_form dr=1 sens=0",
     today="same",
 )
+# C6 (D51): the controls C6 narrows answer nothing from a saved answer any more (C6_DELTA).
+C6_NARROWED = {"hear", "dl", "10y", "probationary", "jobref", "clearance", "relocation_accom"}
 for rid, lbl, typ in [
     ("hear", "How did you hear about this job?", S),
     ("dl", "Do you have a valid driver's license?", R),
@@ -1466,9 +1492,26 @@ for rid, lbl, typ in [
     row(
         f"c5.ctrl.{rid}",
         fld(lbl, typ, opts),
-        "resolved src=answer_bank sens=0 bank=1",
+        "needs_user val=None src=unresolved sens=0 bank=0"
+        if rid in C6_NARROWED
+        else "resolved src=answer_bank sens=0 bank=1",
         bank_value=True,
         today="same",
+    )
+# C6 (D51): stable questions stay reusable (not pinned: the pin file records the resolver
+# before C3).
+EDU_O, LANG_O = O("Associate degree", "Bachelor's degree"), O("English", "Spanish")
+for rid, lbl, typ, opts in [
+    ("education", "Highest level of education completed", S, EDU_O),
+    ("languages", "Which languages can you use with patients?", T.checkbox_group, LANG_O),
+    ("driver", "Do you have a driver's license?", R, None),
+    ("cpr", "Are you CPR certified?", R, None),
+]:
+    row(
+        f"c6.ctrl.{rid}",
+        fld(lbl, typ, opts),
+        "resolved src=answer_bank sens=0 bank=1",
+        bank_value=True,
     )
 row(
     "c5.ctrl.salary",
@@ -1479,7 +1522,7 @@ row(
 row(
     "c5.ctrl.expected_ctc",
     fld("Expected CTC", TX),
-    "needs_user intent=unknown bank=1",
+    "needs_user intent=unknown bank=0",  # C6: pay is never reused (D51)
     today="same",
 )
 
@@ -1736,14 +1779,53 @@ def test_question_safety_table(rid, f, kw, exp, parent):
     assert problems(r, exp) == [], (r.status, r.source, r.intent, r.explanation)
 
 
+# C6 (D51): what C6 changes in the pinned controls, attribute by attribute. The pin file stays
+# the record of the resolver before C3; every other attribute, and every other control, is
+# still compared with it.
+LOST = {"status": "needs_user", "source": "unresolved", "value": None, "display": None,
+        "fact_refs": [], "bankable": False}  # fmt: skip
+C6_DELTA = {
+    "c5.ctrl.hear": LOST | {"explanation": SCOPE_EXPLANATION["employer"]},
+    "c5.ctrl.dl": LOST | {"explanation": SCOPE_EXPLANATION["time"]},
+    "c5.ctrl.10y": LOST | {"explanation": SCOPE_EXPLANATION["time"]},
+    "c5.ctrl.probationary": LOST | {"explanation": SCOPE_EXPLANATION["employer"]},
+    "c5.ctrl.jobref": LOST | {"explanation": SCOPE_EXPLANATION["employer"]},
+    "c5.ctrl.clearance": LOST | {"explanation": SCOPE_EXPLANATION["time"]},
+    "c5.ctrl.relocation_accom": LOST | {"explanation": SCOPE_EXPLANATION["place"]},
+    "c5.ctrl.salary": {"bankable": False},
+    "c5.ctrl.expected_ctc": {"bankable": False, "explanation": SCOPE_EXPLANATION["pay"]},
+}
+
+
 def test_positive_controls_behave_exactly_as_before_c3_c5():
     """Pinned from the resolver before C3-C5 (same synthetic facts): every attribute, the
-    explanation included, so nothing a control row sends or shows changed."""
+    explanation included, so nothing a control row sends or shows changed, except what C6
+    narrows (C6_DELTA, D51)."""
     pinned = json.loads(CONTROLS.read_text())
     same = {rid: (f, kw, parent) for rid, f, kw, exp, parent in ROWS if kw.get("today") == "same"}
     assert set(pinned) == set(same)
+    assert set(C6_DELTA) <= set(same)
     for rid, (f, kw, parent) in same.items():
-        assert dataclasses.asdict(resolve(f, kw, parent)) == pinned[rid], rid
+        want = pinned[rid] | C6_DELTA.get(rid, {})
+        assert dataclasses.asdict(resolve(f, kw, parent)) == want, rid
+
+
+def test_each_c6_delta_only_narrows():
+    """A C6 change to a pinned control takes reuse away and answers nothing new: bankable goes
+    from true to false, and a row is resolved only if it was, with the same value and source."""
+    pinned = json.loads(CONTROLS.read_text())
+    for rid, delta in C6_DELTA.items():
+        before, after = pinned[rid], pinned[rid] | delta
+        assert before["bankable"] and not after["bankable"], rid
+        assert after["source"] not in ("answer_bank", "profile_fact"), rid
+        if after["status"] == "resolved":
+            assert (before["status"], before["value"], before["source"]) == (
+                "resolved",
+                after["value"],
+                after["source"],
+            ), rid
+        assert set(delta) <= {"status", "source", "value", "display", "fact_refs", "bankable",
+                              "explanation"}, rid  # fmt: skip
 
 
 CONSENTS = (None, "agree", "decline", "disclose", "withhold")

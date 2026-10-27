@@ -13,6 +13,7 @@ referenced fact, a document, an answer, the destination or a consent produces a 
 import hashlib
 import json
 import uuid
+from collections import Counter
 from datetime import timedelta
 from urllib.parse import urljoin, urlsplit
 
@@ -37,7 +38,7 @@ from app.modules.preparation.models import (
     JobForm,
     PackageApproval,
 )
-from app.modules.preparation.resolver import Context, Resolution, resolve_field
+from app.modules.preparation.resolver import Context, Resolution, question_key, resolve_field
 from app.modules.profiles.models import CandidateProfile, JobPreferences, WorkAuthorization
 
 # Bumped to 2 (Phase C hardening): the manifest now binds owner, destination origin and submit
@@ -144,10 +145,12 @@ def resolve_answers(fields: list, ctx: Context) -> list[tuple]:
     statuses: dict[str, str] = {}
     resolved: dict[str, Resolution] = {}
     out = []
+    # C6 (D51): the same question twice on one form never takes a saved answer.
+    counts = Counter(question_key(f) for f in fields if f.type != FieldType.file)
     for f in fields:
         # A follow-up takes its trigger's sensitivity (N6): see resolver._inherit.
         parent = resolved.get(f.condition.key) if f.condition else None
-        r = resolve_field(f, ctx, parent=parent)
+        r = resolve_field(f, ctx, parent=parent, repeated=counts[question_key(f)] > 1)
         trigger = statuses.get(f.condition.key) if f.condition else None
         if f.condition and f.condition.key not in statuses:
             # Depends on a question that is missing, later in the form, or circular: when it

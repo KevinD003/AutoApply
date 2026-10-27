@@ -1,0 +1,11601 @@
+[
+ [
+  "employer.how_did_you_hear_about_this_job",
+  "How did you hear about this job?",
+  "select",
+  [
+   "Job board",
+   "Referral",
+   "Company website",
+   "Other"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.how_did_you_hear_about_us",
+  "How did you hear about us?",
+  "select",
+  [
+   "Job board",
+   "Referral",
+   "Company website",
+   "Other"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.how_did_you_hear_about_northwind_e",
+  "How did you hear about Northwind Example?",
+  "select",
+  [
+   "Job board",
+   "Referral",
+   "Company website",
+   "Other"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.where_did_you_first_learn_about_th",
+  "Where did you first learn about this opening?",
+  "select",
+  [
+   "Job board",
+   "Referral",
+   "Company website",
+   "Other"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.how_did_you_find_us",
+  "How did you find us?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.source",
+  "Source",
+  "select",
+  [
+   "Job board",
+   "Referral",
+   "Company website",
+   "Other"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.application_source",
+  "Application source",
+  "select",
+  [
+   "Job board",
+   "Referral",
+   "Company website",
+   "Other"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.who_referred_you",
+  "Who referred you?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.were_you_referred_by_a_current_emp",
+  "Were you referred by a current employee?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.referral_code",
+  "Referral code",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_previously_worked_for_thi",
+  "Have you previously worked for this company?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_worked_for_us_before",
+  "Have you worked for us before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_worked_for_northwind_exam",
+  "Have you worked for Northwind Example before?",
+  "select",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_ever_been_employed_by_exa",
+  "Have you ever been employed by Example Health Network?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_applied_here_before",
+  "Have you applied here before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_previously_applied_to_exa",
+  "Have you previously applied to Example Health Clinic?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_interviewed_with_us_in_th",
+  "Have you interviewed with us in the past?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_a_current_or_former_employ",
+  "Are you a current or former employee of Example Health Network?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_eligible_for_rehire",
+  "Are you eligible for rehire?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_currently_employed_by_exam",
+  "Are you currently employed by Example Health Network or one of its affiliates?",
+  "select",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_have_any_relatives_who_work",
+  "Do you have any relatives who work for the company?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_know_anyone_who_works_here",
+  "Do you know anyone who works here?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_have_any_conflicts_of_inter",
+  "Do you have any conflicts of interest?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_bound_by_a_non_compete_agr",
+  "Are you bound by a non-compete agreement?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_have_relevant_experience",
+  "Do you have relevant experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_hold_a_relevant_certificati",
+  "Do you hold a relevant certification?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_meet_the_minimum_qualificat",
+  "Do you meet the minimum qualifications?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_possess_the_required_certif",
+  "Do you possess the required certification?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_have_the_skills_listed_abov",
+  "Do you have the skills listed above?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "head.why_are_you_a_good_fit",
+  "Why are you a good fit?",
+  "text",
+  [],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "employer.job_reference_number",
+  "Job reference number",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.requisition_id",
+  "Requisition ID",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.reference_code",
+  "Reference code",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_willing_to_complete_a_90_d",
+  "Are you willing to complete a 90-day probationary period?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "place.are_you_available_for_an_in_person",
+  "Are you available for an in-person interview?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "employer.would_you_like_to_receive_text_mes",
+  "Would you like to receive text messages about your application?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.anything_else_you_want_us_to_know",
+  "Anything else you want us to know?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.which_of_our_values_matters_most_t",
+  "Which of our values matters most to you?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_understand_the_physical_dem",
+  "Do you understand the physical demands of the role?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "head.which_location_are_you_applying_to",
+  "Which location are you applying to?",
+  "select",
+  [
+   "North",
+   "South"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "employer.do_you_have_experience_with_patien",
+  "Do you have experience with patients?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Answer for the role you are applying to.",
+  null,
+  "employer"
+ ],
+ [
+  "employer.would_you_like_to_opt_in_to_text_m",
+  "Would you like to opt in to text messages?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.preferred_department",
+  "Preferred department",
+  "select",
+  [
+   "Cardiology",
+   "Oncology"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_an_internal_candidate",
+  "Are you an internal candidate?",
+  "select",
+  [
+   "Yes, I am a current employee",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.earliest_start_date",
+  "Earliest start date",
+  "date",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.when_can_you_start",
+  "When can you start?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.can_you_start_immediately",
+  "Can you start immediately?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_soon_could_you_join",
+  "How soon could you join?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.what_is_your_availability",
+  "What is your availability?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.date_available",
+  "Date available",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.notice_period",
+  "Notice period",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_much_notice_do_you_need_to_giv",
+  "How much notice do you need to give your current employer?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.which_shifts_can_you_work",
+  "Which shifts can you work?",
+  "checkbox_group",
+  [
+   "Day",
+   "Evening",
+   "Night"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.can_you_work_weekends",
+  "Can you work weekends?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_able_to_work_nights",
+  "Are you able to work nights?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.can_you_work_over_20_hours_per_wee",
+  "Can you work over 20 hours per week?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_many_hours_can_you_work",
+  "How many hours can you work?",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_looking_for_full_time_work",
+  "Are you looking for full-time work?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_able_to_be_on_call",
+  "Are you able to be on-call?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.can_you_work_overtime",
+  "Can you work overtime?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.preferred_contact_time",
+  "Preferred contact time",
+  "select",
+  [
+   "Morning",
+   "Afternoon",
+   "Evening",
+   "Any time"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.years_of_experience",
+  "Years of experience",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.years_of_relevant_experience",
+  "Years of relevant experience",
+  "number",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.do_you_have_at_least_10_years_of_e",
+  "Do you have at least 10 years of experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_have_at_least_18_months_of_",
+  "Do you have at least 18 months of experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_long_have_you_worked_as_a_medi",
+  "How long have you worked as a medical assistant?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.experience_level",
+  "Experience level",
+  "select",
+  [
+   "Entry",
+   "Mid",
+   "Senior"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.clinical_experience",
+  "Clinical experience",
+  "select",
+  [
+   "0-1 years",
+   "2-5 years",
+   "5+ years"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.who_is_your_current_employer",
+  "Who is your current employer?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.current_job_title",
+  "Current job title",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.most_recent_employer",
+  "Most recent employer",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.what_was_your_last_job_title",
+  "What was your last job title?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_currently_employed",
+  "Are you currently employed?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.employment_status",
+  "Employment status",
+  "select",
+  [
+   "Employed",
+   "Not employed"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_still_hold_your_nursing_lic",
+  "Do you still hold your nursing license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_have_a_valid_driver_s_licen",
+  "Do you have a valid driver's license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_hold_an_active_security_cle",
+  "Do you hold an active security clearance?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_hold_a_current_forklift_cer",
+  "Do you hold a current forklift certification?",
+  "select",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.is_your_license_in_good_standing",
+  "Is your license in good standing?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.license_expiration_date",
+  "License expiration date",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_have_an_unexpired_passport",
+  "Do you have an unexpired passport?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_cpr_certified",
+  "Are you CPR certified?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Your certification must be valid on your first day.",
+  null,
+  "time"
+ ],
+ [
+  "time.expected_graduation_date",
+  "Expected graduation date",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.have_you_graduated",
+  "Have you graduated?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_currently_enrolled_in_a_de",
+  "Are you currently enrolled in a degree program?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_a_student",
+  "Are you a student?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.will_you_complete_your_training_in",
+  "Will you complete your training in 2027?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_plan_to_pursue_further_stud",
+  "Do you plan to pursue further study next year?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.date",
+  "Date",
+  "date",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.today_s_date",
+  "Today's date",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.when_would_you_be_available_for_a_",
+  "When would you be available for a call?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "pay.desired_annual_salary_usd",
+  "Desired annual salary (USD)",
+  "number",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.desired_salary",
+  "Desired salary",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.what_are_your_salary_expectations",
+  "What are your salary expectations?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.expected_ctc",
+  "Expected CTC",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.what_is_your_desired_hourly_rate",
+  "What is your desired hourly rate?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.pay_range",
+  "Pay range",
+  "select",
+  [
+   "$15-$18",
+   "$18-$22",
+   "$22+"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.compensation_expectations",
+  "Compensation expectations",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.what_range_are_you_targeting",
+  "What range are you targeting?",
+  "select",
+  [
+   "$40,000-$50,000",
+   "$50,000-$60,000"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.do_you_expect_a_sign_on_bonus",
+  "Do you expect a sign-on bonus?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.are_you_expecting_stock_options",
+  "Are you expecting stock options?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.how_much_do_you_want_to_earn",
+  "How much do you want to earn?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.expected_package_lpa",
+  "Expected package (LPA)",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.expectations",
+  "Expectations",
+  "text",
+  [],
+  "Your expected salary in USD.",
+  null,
+  "pay"
+ ],
+ [
+  "section.amount",
+  "Amount",
+  "number",
+  [],
+  null,
+  "Compensation",
+  "section"
+ ],
+ [
+  "place.are_you_willing_to_relocate",
+  "Are you willing to relocate?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.would_you_relocate_for_this_positi",
+  "Would you relocate for this position?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.will_you_need_relocation_accommoda",
+  "Will you need relocation accommodation?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.do_you_require_relocation_assistan",
+  "Do you require relocation assistance?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.are_you_able_to_commute_to_the_off",
+  "Are you able to commute to the office daily?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.how_long_is_your_commute",
+  "How long is your commute?",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.are_you_willing_to_travel_up_to_25",
+  "Are you willing to travel up to 25% of the time?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.can_you_travel_overnight",
+  "Can you travel overnight?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.do_you_opt_for_remote_work",
+  "Do you opt for remote work?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.work_arrangement",
+  "Work arrangement",
+  "select",
+  [
+   "Remote",
+   "Hybrid",
+   "On-site"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "head.how_many_miles_do_you_live_from_th",
+  "How many miles do you live from the clinic?",
+  "number",
+  [],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "place.country_where_you_want_to_work",
+  "Country where you want to work",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.which_states_are_you_licensed_in",
+  "Which states are you licensed in?",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.which_time_zone_do_you_work_in",
+  "Which time zone do you work in?",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.mailing_address",
+  "Mailing address",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "fact.i_am_permitted_to_work_in_germany",
+  "I am permitted to work in Germany",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "fact"
+ ],
+ [
+  "fact.i_am_based_in_the_u_s",
+  "I am based in the U.S.",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "fact"
+ ],
+ [
+  "ok.do_you_have_a_driver_s_license",
+  "Do you have a driver's license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Answer for the United States.",
+  null,
+  null
+ ],
+ [
+  "time.company",
+  "Company",
+  "text",
+  [],
+  null,
+  "Work history",
+  "time"
+ ],
+ [
+  "time.title",
+  "Title",
+  "text",
+  [],
+  null,
+  "Employment history",
+  "time"
+ ],
+ [
+  "time.which_days",
+  "Which days?",
+  "checkbox_group",
+  [
+   "Monday",
+   "Tuesday"
+  ],
+  null,
+  "Availability",
+  "time"
+ ],
+ [
+  "ok.which_languages_can_you_use_with_p",
+  "Which languages can you use with patients?",
+  "checkbox_group",
+  [
+   "English",
+   "Spanish",
+   "Vietnamese",
+   "Other"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_working_wit",
+  "Do you have experience working with children?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_worked_with_children_befo",
+  "Have you worked with children before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_as_a_nurse",
+  "Have you ever worked as a nurse?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_in_a_hospital",
+  "Have you ever worked in a hospital?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_for_a_hospita",
+  "Have you ever worked for a hospital?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_used_ehr_systems_before",
+  "Have you used EHR systems before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_driver_s_license_2",
+  "Do you have a driver's license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_certified_in_managing_card",
+  "Are you certified in managing cardiac arrest?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_hold_a_cna_certification",
+  "Do you hold a CNA certification?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_a_member_of_a_trade_associ",
+  "Are you a member of a trade association?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_able_to_work_in_a_team",
+  "Are you able to work in a team?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_lift_over_20_lbs",
+  "Can you lift over 20 lbs?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_type_over_20_words_per_min",
+  "Can you type over 20 words per minute?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_speak_spanish",
+  "Do you speak Spanish?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.highest_level_of_education_complet",
+  "Highest level of education completed",
+  "select",
+  [
+   "High school diploma",
+   "Associate degree",
+   "Bachelor's degree",
+   "Other"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_hold_a_graduate_degree",
+  "Do you hold a graduate degree?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_bachelor_s_degree",
+  "Do you have a bachelor's degree?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_us_gaa",
+  "Do you have experience with US GAAP?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_cad_so",
+  "Do you have experience with CAD software?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.did_you_earn_a_certification_in_ph",
+  "Did you earn a certification in phlebotomy?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_prepared_for_a_accreditat",
+  "Have you prepared for a accreditation commission survey?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_pay_attention_to_detail",
+  "Do you pay attention to detail?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.spreadsheets_skill_level",
+  "Spreadsheets skill level",
+  "select",
+  [
+   "Basic",
+   "Good",
+   "Expert"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_health_e",
+  "Do you have experience in health equity?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_mentoring_u",
+  "Do you have experience mentoring underrepresented students?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_living_abro",
+  "Do you have experience living abroad?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.github_profile",
+  "GitHub profile",
+  "url",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.what_is_your_typing_speed_in_words",
+  "What is your typing speed in words per minute?",
+  "number",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_ehr_systems_have_you_used",
+  "Which EHR systems have you used?",
+  "checkbox_group",
+  [
+   "EHR systems",
+   "Charting tool B",
+   "Other"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_languages_can_you_use_with_p_2",
+  "Which languages can you use with patients?",
+  "checkbox_group",
+  [
+   "English",
+   "Spanish"
+  ],
+  "We are an equal opportunity employer and do not discriminate on the basis of race, gender or disability.",
+  null,
+  null
+ ],
+ [
+  "ok.do_you_speak_spanish_2",
+  "Do you speak Spanish?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  "Questions",
+  null
+ ],
+ [
+  "ok.last_name",
+  "Last Name",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.email_address",
+  "Email address",
+  "email",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.gender",
+  "Gender",
+  "select",
+  [
+   "Woman",
+   "Man"
+  ],
+  "Completion is voluntary and will not affect your application.",
+  null,
+  null
+ ],
+ [
+  "time.signed_on",
+  "Signed on",
+  "date",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.date_2",
+  "Date",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "ok.do_you_hold_a_forklift_licence",
+  "Do you hold a forklift licence?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Answer for Canada.",
+  null,
+  null
+ ],
+ [
+  "employer.is_a_job_here_your_first_choice",
+  "Is a job here your first choice?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_any_of_your_relatives_work_for_",
+  "Do any of your relatives work for Example Health Network?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.can_you_attend_an_orientation_sess",
+  "Can you attend an orientation session?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.employment_type",
+  "Employment type",
+  "select",
+  [
+   "Full-time",
+   "Part-time"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.channel",
+  "Channel",
+  "select",
+  [
+   "Employee referral",
+   "Job board"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.timing",
+  "Timing",
+  "select",
+  [
+   "Available immediately",
+   "Available in a month"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "ok.preferred_first_name",
+  "Preferred First Name",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.date_of_birth",
+  "Date of birth",
+  "date",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.i_confirm_i_am_18_years_of_age_or_",
+  "I confirm I am 18 years of age or older",
+  "checkbox",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "employer.have_you_ever_been_employed_by_thi",
+  "Have you ever been employed by this organization?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_worked_for_us_before_2",
+  "HAVE YOU WORKED FOR US BEFORE?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_ever_worked_here_before",
+  "Have you ever worked here before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_worked_for_northwind_exam_2",
+  "Have you worked for Northwind Example before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_applied_to_example_health",
+  "Have you applied to Example Health Clinic before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_previously_applied_for_a_",
+  "Have you previously applied for a position with us?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_a_former_employee",
+  "Are you a former employee?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_a_current_employee_of_exam",
+  "Are you a current employee of Example Health Network?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_employed_by_one_of_our_aff",
+  "Are you employed by one of our affiliates?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.which_example_health_network_site_",
+  "Which Example Health Network site do you work at?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.which_team_did_you_work_in",
+  "Which team did you work in?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.how_did_you_hear_about_the_positio",
+  "How did you hear about the position?",
+  "select",
+  [
+   "Job board",
+   "Referral",
+   "Company website",
+   "Other"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.how_did_you_find_out_about_this_va",
+  "How did you find out about this vacancy?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.were_you_referred_by_an_employee",
+  "Were you referred by an employee?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_have_relatives_who_work_for",
+  "Do you have relatives who work for Example Health Clinic?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.list_your_relevant_certifications",
+  "List your relevant certifications",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_meet_the_minimum_requiremen",
+  "Do you meet the minimum requirements for this role?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_meet_all_the_listed_qualifi",
+  "Do you meet all the listed qualifications?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_available_for_an_interview",
+  "Are you available for an interview next week?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.preferred_interview_format",
+  "Preferred interview format",
+  "select",
+  [
+   "Video",
+   "Phone"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_willing_to_wear_protective",
+  "Are you willing to wear protective equipment?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.would_you_like_to_opt_in_to_text_m_2",
+  "Would you like to opt in to text messages from our recruiters?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.anything_we_should_know",
+  "Anything we should know?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.your_relationship_to_example_healt",
+  "Your relationship to Example Health",
+  "select",
+  [
+   "Current employee",
+   "Former employee",
+   "None"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.experience",
+  "Experience",
+  "text",
+  [],
+  "Describe experience relevant to this role.",
+  null,
+  "employer"
+ ],
+ [
+  "employer.code",
+  "Code",
+  "text",
+  [],
+  "Enter the job reference code from the posting.",
+  null,
+  "employer"
+ ],
+ [
+  "employer.is_this_position_your_first_choice",
+  "Is this position your first choice?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.is_anyone_in_your_household_employ",
+  "Is anyone in your household employed here?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.earliest_start_date_2",
+  "Earliest start date",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_soon_could_you_start",
+  "How soon could you start?",
+  "select",
+  [
+   "Immediately",
+   "2 weeks",
+   "1 month"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.notice_period_2",
+  "Notice period",
+  "select",
+  [
+   "None",
+   "2 weeks",
+   "1 month"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_much_notice_do_you_need_to_giv_2",
+  "How much notice do you need to give?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_many_hours_per_week_can_you_wo",
+  "How many hours per week can you work?",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.best_time_to_contact_you",
+  "Best time to contact you",
+  "select",
+  [
+   "Morning",
+   "Afternoon"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.years_of_experience_2",
+  "Years of experience",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_have_at_least_3_years_of_nu",
+  "Do you have at least 3 years of nursing experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_long_have_you_worked_as_a_disp",
+  "How long have you worked as a dispatcher?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.experience_with_patient_intake",
+  "Experience with patient intake",
+  "select",
+  [
+   "Less than 1 year",
+   "1-3 years",
+   "3+ years"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.current_employer",
+  "Current employer",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.current_company",
+  "Current company",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.job_title",
+  "Job title",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.previous_employer",
+  "Previous employer",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.most_recent_job_title",
+  "Most recent job title",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_hold_an_active_nursing_lice",
+  "Do you hold an active nursing license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.when_does_your_certification_expir",
+  "When does your certification expire?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_currently_a_student",
+  "Are you currently a student?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.expected_graduation_year",
+  "Expected graduation year",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_enrolled_in_a_degree_progr",
+  "Are you enrolled in a degree program?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.will_you_be_available_in_summer_20",
+  "Will you be available in summer 2027?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.when_did_you_last_work_in_a_hospit",
+  "When did you last work in a hospital?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.your_timing",
+  "Your timing",
+  "select",
+  [
+   "Immediately",
+   "Within 2 weeks"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.when_did_you_complete_your_trainin",
+  "When did you complete your training?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "pay.what_hourly_rate_are_you_looking_f",
+  "What hourly rate are you looking for?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.minimum_acceptable_pay",
+  "Minimum acceptable pay",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.which_range_fits_you",
+  "Which range fits you?",
+  "select",
+  [
+   "$40,000-$50,000",
+   "$50,000-$60,000"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.expectation",
+  "Expectation",
+  "text",
+  [],
+  "Your expected base salary in USD.",
+  null,
+  "pay"
+ ],
+ [
+  "place.would_you_consider_relocating_to_s",
+  "Would you consider relocating to Springfield?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.will_you_need_relocation_assistanc",
+  "Will you need relocation assistance?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.can_you_commute_to_our_springfield",
+  "Can you commute to our Springfield office?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.do_you_prefer_remote_hybrid_or_on_",
+  "Do you prefer remote, hybrid or on-site work?",
+  "select",
+  [
+   "Remote",
+   "Hybrid",
+   "On-site"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "head.do_you_live_within_30_miles_of_the",
+  "Do you live within 30 miles of the clinic?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "place.street_address",
+  "Street address",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.zip_code",
+  "Zip code",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.which_time_zone_are_you_in",
+  "Which time zone are you in?",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.your_setup",
+  "Your setup",
+  "select",
+  [
+   "Remote",
+   "Hybrid",
+   "On-site"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.work_arrangement_2",
+  "Work arrangement",
+  "select",
+  [
+   "Remote",
+   "Hybrid"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "fact.i_am_eligible_for_employment_in_th",
+  "I am eligible for employment in the US",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "fact"
+ ],
+ [
+  "fact.i_reside_in_new_mexico",
+  "I reside in New Mexico",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "fact"
+ ],
+ [
+  "place.do_you_have_reliable_transportatio",
+  "Do you have reliable transportation?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  "Availability",
+  "place"
+ ],
+ [
+  "section.anything_about_your_expectations",
+  "Anything about your expectations?",
+  "text",
+  [],
+  null,
+  "Compensation",
+  "section"
+ ],
+ [
+  "section.reason_for_leaving",
+  "Reason for leaving",
+  "text",
+  [],
+  null,
+  "Employment history",
+  "section"
+ ],
+ [
+  "section.phone",
+  "Phone",
+  "tel",
+  [],
+  null,
+  "Emergency contact",
+  "section"
+ ],
+ [
+  "section.do_you_have_a_car",
+  "Do you have a car?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  "Questions about this role",
+  "section"
+ ],
+ [
+  "ok.highest_level_of_education_complet_2",
+  "Highest level of education completed",
+  "select",
+  [
+   "High school diploma or equivalent",
+   "Associate degree",
+   "Bachelor's degree",
+   "Master's degree",
+   "Doctorate",
+   "Other"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.highest_level_of_education_complet_3",
+  "Highest level of education completed",
+  "select",
+  [
+   "High school diploma or equivalent",
+   "Bachelor's degree",
+   "Other"
+  ],
+  "Choose the highest you have finished.",
+  "Education",
+  null
+ ],
+ [
+  "ok.which_languages_do_you_speak",
+  "Which languages do you speak?",
+  "multiselect",
+  [
+   "English",
+   "Spanish"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.languages",
+  "Languages",
+  "multiselect",
+  [
+   "English",
+   "Spanish"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_for_a_nonprof",
+  "Have you ever worked for a nonprofit?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_hold_cpr_certification",
+  "Do you hold CPR certification?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_lift_over_20_kg",
+  "Can you lift over 20 kg?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_type_over_40_words_per_min",
+  "Can you type over 40 words per minute?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_a_member_of_a_professional",
+  "Are you a member of a professional association?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_charting_systems_have_you_us",
+  "Which charting systems have you used?",
+  "checkbox_group",
+  [
+   "EHR systems",
+   "Charting tool B",
+   "Other"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_software_do_you_know",
+  "Which software do you know?",
+  "multiselect",
+  [
+   "Spreadsheets",
+   "Word processing"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.field_of_study",
+  "Field of study",
+  "text",
+  [],
+  null,
+  "Education",
+  null
+ ],
+ [
+  "ok.school_or_university",
+  "School or university",
+  "text",
+  [],
+  null,
+  "Education",
+  null
+ ],
+ [
+  "ok.experience_with_cpt_coding",
+  "Experience with CPT coding?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_mental",
+  "Do you have experience with mental health patients?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_administeri",
+  "Do you have experience administering medication?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.how_do_you_pronounce_your_name",
+  "How do you pronounce your name?",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.first_name",
+  "First Name",
+  "text",
+  [],
+  null,
+  "Personal information",
+  null
+ ],
+ [
+  "ok.email",
+  "Email",
+  "email",
+  [],
+  null,
+  "Personal information",
+  null
+ ],
+ [
+  "ok.phone",
+  "Phone",
+  "tel",
+  [],
+  null,
+  "Personal information",
+  null
+ ],
+ [
+  "ok.linkedin_profile",
+  "LinkedIn Profile",
+  "url",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.gender_2",
+  "Gender",
+  "select",
+  [
+   "Woman",
+   "Man"
+  ],
+  null,
+  "Voluntary self-identification",
+  null
+ ],
+ [
+  "ok.veteran_status",
+  "Veteran status",
+  "select",
+  [
+   "I am not a protected veteran",
+   "Decline"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_infusi",
+  "Do you have experience with infusion pumps?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  "Experience",
+  null
+ ],
+ [
+  "ok.do_you_have_a_us_nursing_license",
+  "Do you have a US nursing license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.typing_speed",
+  "Typing speed",
+  "text",
+  [],
+  "Words per minute, e.g. 45.",
+  null,
+  null
+ ],
+ [
+  "employer.how_did_you_hear_about_us_2",
+  "HOW DID YOU HEAR ABOUT US?",
+  "select",
+  [
+   "Job board",
+   "Referral",
+   "Company website",
+   "Other"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.how_did_you_hear_about_us_3",
+  "How Did You Hear About Us?",
+  "select",
+  [
+   "Job board",
+   "Referral",
+   "Company website",
+   "Other"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.how_did_you_find_out_about_this_po",
+  "How did you find out about this position?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.referral_source",
+  "Referral source",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_a_current_or_former_employ_2",
+  "Are you a current or former employee?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.do_you_currently_work_at_northwind",
+  "Do you currently work at Northwind Example?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.do_you_have_any_relatives_who_work_2",
+  "Do you have any relatives who work for this organization?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.would_you_like_to_opt_in_to_text_m_3",
+  "Would you like to opt in to text messages about your application?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "place.which_of_our_locations_are_you_int",
+  "Which of our locations are you interested in?",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "employer.which_example_health_network_site__2",
+  "Which Example Health Network site do you work at?",
+  "text",
+  [],
+  "For example: Riverside Clinic.",
+  null,
+  "employer"
+ ],
+ [
+  "employer.is_this_role_your_first_choice",
+  "Is this role your first choice?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.languages",
+  "Languages",
+  "checkbox_group",
+  [
+   "English",
+   "Spanish"
+  ],
+  "Which languages would you use in this role?",
+  null,
+  "employer"
+ ],
+ [
+  "time.date_available_2",
+  "Date available",
+  "date",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.graduation_date_by_design_every_da",
+  "Graduation date (by design: every date answer)",
+  "date",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_available_to_work_weekends",
+  "Are you available to work weekends?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.notice_period_3",
+  "Notice period",
+  "select",
+  [
+   "Immediately",
+   "2 weeks",
+   "1 month",
+   "More than 3 months"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_looking_for_full_time_or_p",
+  "Are you looking for full-time or part-time work?",
+  "select",
+  [
+   "Full-time",
+   "Part-time"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_many_years_of_nursing_experien",
+  "How many years of nursing experience do you have?",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.do_you_have_experience_in_a_simila",
+  "Do you have experience in a similar role?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.experience",
+  "Experience",
+  "text",
+  [],
+  "How many years of clinical experience do you have?",
+  null,
+  "time"
+ ],
+ [
+  "pay.desired_hourly_rate",
+  "Desired hourly rate",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.what_pay_are_you_looking_for",
+  "What pay are you looking for?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.which_range_fits_your_expectations",
+  "Which range fits your expectations?",
+  "select",
+  [
+   "$40,000–$50,000",
+   "$50,000–$60,000",
+   "$60,000+"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.are_you_comfortable_with_the_pay_f",
+  "Are you comfortable with the pay for this position?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "place.are_you_able_to_commute_to_springf",
+  "Are you able to commute to Springfield?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.are_you_willing_to_travel_up_to_25_2",
+  "Are you willing to travel up to 25%?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.are_you_comfortable_working_on_sit",
+  "Are you comfortable working on-site five days a week?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.are_you_open_to_remote_work",
+  "Are you open to remote work?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "employer.where_would_you_like_to_work",
+  "Where would you like to work?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "fact.have_you_been_sponsored_before",
+  "Have you been sponsored before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "fact"
+ ],
+ [
+  "ok.highest_level_of_education_complet_4",
+  "Highest level of education completed",
+  "select",
+  [
+   "High school diploma or equivalent",
+   "Associate degree",
+   "Bachelor's degree",
+   "Master's degree or higher"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_ehr_so",
+  "Do you have experience with EHR software?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_sponsored_any_events",
+  "Have you sponsored any events?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "time.is_your_portfolio_available_online",
+  "Is your portfolio available online?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "ok.do_you_have_experience_with_remote",
+  "Do you have experience with remote patient monitoring?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_hybrid",
+  "Do you have experience with hybrid cloud?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_working_in_a_f",
+  "Are you comfortable working in a fast-paced environment?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_worked_in_a_hospital_befo",
+  "Have you worked in a hospital before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_worked_at_a_hospital_befo",
+  "Have you worked at a hospital before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_with_children",
+  "Have you ever worked with children before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "time.have_you_ever_worked_at_night",
+  "Have you ever worked at night?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "ok.please_rate_your_proficiency_in_sp",
+  "Please rate your proficiency in spreadsheet software",
+  "select",
+  [
+   "Basic",
+   "Intermediate",
+   "Advanced"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_processing_",
+  "Do you have experience processing patient referrals?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_familiar_with_accreditatio",
+  "Are you familiar with accreditation commission standards?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_healthcare_related_exp",
+  "Do you have healthcare-related experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_health_e_2",
+  "Do you have experience in health equity programs?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_cpr_certified",
+  "Are you CPR certified?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.typing_speed_words_per_minute",
+  "Typing speed (words per minute)",
+  "number",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "place.do_you_have_reliable_transportatio_2",
+  "Do you have reliable transportation?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "ok.do_you_have_experience_with_pay_pe",
+  "Do you have experience with pay-per-click advertising?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_scheduling_",
+  "Do you have experience scheduling appointments?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "time.graduation_year",
+  "Graduation year",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "ok.highest_degree_earned",
+  "Highest degree earned",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_languages_do_you_speak_fluen",
+  "Which languages do you speak fluently?",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_working_with_p",
+  "Are you comfortable working with patients?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.languages_2",
+  "Languages",
+  "checkbox_group",
+  [
+   "English",
+   "Spanish"
+  ],
+  "Tell us which languages you speak.",
+  null,
+  null
+ ],
+ [
+  "ok.gender_3",
+  "Gender",
+  "select",
+  [
+   "Woman",
+   "Man"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "employer.have_you_ever_been_an_employee_of_",
+  "Have you ever been an employee of Northwind Example?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.did_someone_refer_you_to_this_posi",
+  "Did someone refer you to this position?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.name_of_the_employee_who_referred_",
+  "Name of the employee who referred you",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_related_to_anyone_who_work",
+  "Are you related to anyone who works at Example Health Clinic?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.how_did_you_learn_about_example_he",
+  "How did you learn about Example Health Clinic?",
+  "select",
+  [
+   "Job board",
+   "Friend",
+   "Other"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_a_returning_applicant",
+  "Are you a returning applicant?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_held_a_position_with_exam",
+  "Have you held a position with Example Health Clinic in the past?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "head.are_you_able_to_perform_the_essent",
+  "Are you able to perform the essential functions of the job?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "employer.can_you_meet_the_physical_requirem",
+  "Can you meet the physical requirements of this position?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "head.which_office_are_you_applying_for",
+  "Which office are you applying for?",
+  "select",
+  [
+   "North",
+   "South"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "employer.recruiter_name",
+  "Recruiter name",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_applying_for_other_positio",
+  "Are you applying for other positions with us?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_have_a_non_solicitation_agr",
+  "Do you have a non-solicitation agreement with your current employer?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_currently_work_for_a_compet",
+  "Do you currently work for a competitor?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_willing_to_sign_a_confiden",
+  "Are you willing to sign a confidentiality agreement?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.can_you_pass_a_drug_screening_for_",
+  "Can you pass a drug screening for this role?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.where_did_you_see_this_posting",
+  "Where did you see this posting?",
+  "select",
+  [
+   "Social media",
+   "Job board",
+   "Other"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.can_you_begin_work_on_monday",
+  "Can you begin work on Monday?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.what_is_your_expected_joining_date",
+  "What is your expected joining date?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_many_days_notice_do_you_need",
+  "How many days notice do you need?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_available_to_work_holidays",
+  "Are you available to work holidays?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.can_you_work_a_rotating_schedule",
+  "Can you work a rotating schedule?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_many_years_have_you_worked_in_",
+  "How many years have you worked in healthcare?",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.years_in_current_role",
+  "Years in current role",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_currently_licensed_in_texa",
+  "Are you currently licensed in Texas?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_hold_a_valid_food_handler_s",
+  "Do you hold a valid food handler's card?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.will_you_be_available_for_the_summ",
+  "Will you be available for the summer?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_able_to_work_12_hour_shift",
+  "Are you able to work 12-hour shifts?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.date_you_can_start",
+  "Date you can start",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.earliest_availability",
+  "Earliest availability",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_have_a_current_cpr_card",
+  "Do you have a current CPR card?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.is_your_certification_up_to_date",
+  "Is your certification up to date?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.name_of_your_current_supervisor",
+  "Name of your current supervisor",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.reason_for_leaving_your_current_jo",
+  "Reason for leaving your current job",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_still_employed_at_your_las",
+  "Are you still employed at your last job?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.graduation_date",
+  "Graduation date",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_a_current_student",
+  "Are you a current student?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "pay.salary_expectations",
+  "Salary expectations",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.what_is_your_expected_hourly_wage",
+  "What is your expected hourly wage?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.expected_compensation_annual",
+  "Expected compensation (annual)",
+  "number",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.minimum_acceptable_salary",
+  "Minimum acceptable salary",
+  "number",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.what_base_pay_are_you_seeking",
+  "What base pay are you seeking?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.are_you_open_to_commission_based_p",
+  "Are you open to commission-based pay?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.is_the_posted_pay_range_acceptable",
+  "Is the posted pay range acceptable?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "head.current_ctc",
+  "Current CTC",
+  "text",
+  [],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "head.do_you_live_within_commuting_dista",
+  "Do you live within commuting distance?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "place.are_you_open_to_working_on_site",
+  "Are you open to working on-site?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.can_you_work_in_person_at_the_down",
+  "Can you work in person at the downtown office?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "employer.would_you_move_for_this_job",
+  "Would you move for this job?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.preferred_work_setting",
+  "Preferred work setting",
+  "select",
+  [
+   "Remote",
+   "Hybrid",
+   "Onsite"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "place.home_address",
+  "Home address",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.postal_code",
+  "Postal code",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.are_you_able_to_travel_overnight_f",
+  "Are you able to travel overnight for training?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.willing_to_work_remotely",
+  "Willing to work remotely?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "head.have_you_been_sponsored_for_a_visa",
+  "Have you been sponsored for a visa before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "time.which_shift_do_you_prefer",
+  "Which shift do you prefer?",
+  "select",
+  [
+   "Day",
+   "Night"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_comfortable_with_the_poste",
+  "Are you comfortable with the posted schedule?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_many_hours_a_week_are_you_look",
+  "How many hours a week are you looking for?",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.hiring_manager_s_name",
+  "Hiring manager's name",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.your_relationship_to_us",
+  "Your relationship to us",
+  "select",
+  [
+   "None",
+   "Former employee",
+   "Referral"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.what_is_your_availability_for_an_i",
+  "What is your availability for an interview?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.do_you_currently_hold_an_rn_licens",
+  "Do you currently hold an RN license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_presently_employed",
+  "Are you presently employed?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.have_you_applied_to_northwind_exam",
+  "Have you applied to Northwind Example in the last 12 months?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.when_are_you_able_to_join",
+  "When are you able to join?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "ok.do_you_speak_french",
+  "Do you speak French?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_languages_are_you_fluent_in",
+  "Which languages are you fluent in?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.highest_degree_earned_2",
+  "Highest degree earned",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.field_of_study_2",
+  "Field of study",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.name_of_school",
+  "Name of school",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_bachelor_s_degree_in",
+  "Do you have a bachelor's degree in nursing?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_a_registered_nurse",
+  "Are you a registered nurse?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_certified_in_bls",
+  "Are you certified in BLS?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_phlebotomy_experience",
+  "Do you have phlebotomy experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_managed_a_team",
+  "Have you ever managed a team?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_in_retail",
+  "Have you ever worked in retail?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_for_a_startup",
+  "Have you ever worked for a startup?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_previously_worked_in_a_ho",
+  "Have you previously worked in a hospital setting?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_lift_50_pounds",
+  "Can you lift 50 pounds?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_stand_for_long_periods",
+  "Can you stand for long periods?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_own_a_car",
+  "Do you own a car?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_ehr_sy",
+  "Do you have experience with EHR systems?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_use_spreadsheet_software",
+  "Can you use spreadsheet software?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_medica",
+  "Do you have experience with Medicare billing?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_customer_service_exper",
+  "Do you have customer service experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_dement",
+  "Do you have experience with dementia patients?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_worked_with_patients_with",
+  "Have you worked with patients with dementia before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_nursing_degree",
+  "Do you have a nursing degree?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.how_do_you_pronounce_your_name_2",
+  "How do you pronounce your name?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_electr",
+  "Do you have experience with electronic charting?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_with_needles",
+  "Are you comfortable with needles?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_work_independently",
+  "Can you work independently?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_bilingual",
+  "Are you bilingual?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_administeri_2",
+  "Do you have experience administering vaccines?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_completed_a_phlebotomy_co",
+  "Have you completed a phlebotomy course?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.what_is_your_highest_level_of_educ",
+  "What is your highest level of education?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_hipaa_",
+  "Do you have experience with HIPAA compliance?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_sterile_",
+  "Do you have experience in sterile processing?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_used_a_cash_register",
+  "Have you ever used a cash register?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_food_handler_s_certi",
+  "Do you have a food handler's certificate?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_infect",
+  "Do you have experience with infection control?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_trained_in_de_escalation_t",
+  "Are you trained in de-escalation techniques?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_pediat",
+  "Do you have experience with pediatric patients?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_know_sign_language",
+  "Do you know sign language?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_data_e",
+  "Do you have experience with data entry?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_payrol",
+  "Do you have experience with payroll?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_accoun",
+  "Do you have experience with accounts payable?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_medica_2",
+  "Do you have experience with medical billing and coding?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_managed_a_budget",
+  "Have you managed a budget?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_teleheal",
+  "Do you have experience in telehealth?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_working_with_c",
+  "Are you comfortable working with computers?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_worked_in_an_emergency_ro",
+  "Have you worked in an emergency room?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_schedu",
+  "Do you have experience with scheduling software?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_trained_new_staff",
+  "Have you trained new staff?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_supervising",
+  "Do you have experience supervising staff?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_volunteered",
+  "Have you ever volunteered?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_event_",
+  "Do you have experience with event planning?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_project_management_exp",
+  "Do you have project management experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_operating_systems_are_you_fa",
+  "Which operating systems are you familiar with?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_commercial_driver_s_",
+  "Do you have a commercial driver's license (CDL)?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_certified_in_acls",
+  "Are you certified in ACLS?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_completed_osha_10_trainin",
+  "Have you completed OSHA 10 training?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_a_crm_",
+  "Do you have experience with a CRM system?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_bookke",
+  "Do you have experience with bookkeeping software?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_python",
+  "Do you have experience with Python?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_familiar_with_travel_nursi",
+  "Are you familiar with travel nursing?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_certifications_do_you_hold",
+  "Which certifications do you hold?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_the_hosp",
+  "Do you have experience in the hospitality industry?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_working_in_a_t",
+  "Are you comfortable working in a team?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_programming_languages_do_you",
+  "Which programming languages do you know?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_hold_a_food_handler_certifi",
+  "Do you hold a food handler certificate?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_completed_any_paid_intern",
+  "Have you completed any paid internships?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_patien",
+  "Do you have experience with patient intake?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_wound_",
+  "Do you have experience with wound care?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_type_at_least_40_words_per",
+  "Can you type at least 40 words per minute?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_trained_in_cpr",
+  "Are you trained in CPR?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_office",
+  "Do you have experience with office software?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_held_a_supervisory_role",
+  "Have you held a supervisory role?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_completed_the_cna_program",
+  "Have you completed the CNA program?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_the_icu_",
+  "Do you have experience in the ICU unit?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_worked_in_the_emergency_d",
+  "Have you worked in the emergency department?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_infusi_2",
+  "Do you have experience with infusion pumps?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "employer.have_you_worked_at_northwind_examp",
+  "Have you worked at Northwind Example in any capacity?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_ever_been_on_the_payroll_",
+  "Have you ever been on the payroll of Example Health Network?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.is_anyone_in_your_family_employed_",
+  "Is anyone in your family employed by Example Health Clinic?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.who_told_you_about_this_opportunit",
+  "Who told you about this opportunity?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.which_job_board_did_you_use_to_fin",
+  "Which job board did you use to find this role?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.employee_referral_name",
+  "Employee referral name",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_meet_the_education_requirem",
+  "Do you meet the education requirements for this position?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_comfortable_with_the_dutie",
+  "Are you comfortable with the duties described?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.can_you_attend_a_working_interview",
+  "Can you attend a working interview?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_open_to_a_6_month_contract",
+  "Are you open to a 6-month contract?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.are_you_available_to_start_within_",
+  "Are you available to start within two weeks?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.which_days_of_the_week_can_you_wor",
+  "Which days of the week can you work?",
+  "select",
+  [
+   "Weekdays",
+   "Weekends",
+   "Both"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.can_you_work_every_other_weekend",
+  "Can you work every other weekend?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_many_years_of_supervisory_expe",
+  "How many years of supervisory experience do you have?",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.total_years_of_experience",
+  "Total years of experience",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.is_your_nursing_license_currently_",
+  "Is your nursing license currently active?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.when_does_your_license_expire",
+  "When does your license expire?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_currently_enrolled_in_scho",
+  "Are you currently enrolled in school?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.most_recent_position_held",
+  "Most recent position held",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.name_of_last_employer",
+  "Name of last employer",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "pay.what_hourly_rate_do_you_expect",
+  "What hourly rate do you expect?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.what_is_your_target_base_salary",
+  "What is your target base salary?",
+  "number",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.annual_compensation_expectation_us",
+  "Annual compensation expectation (USD)",
+  "number",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.pay_expectations",
+  "Pay expectations",
+  "select",
+  [
+   "$15-$18/hr",
+   "$18-$22/hr",
+   "$22+/hr"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "place.are_you_willing_to_commute_45_minu",
+  "Are you willing to commute 45 minutes?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.can_you_report_to_the_clinic_in_pe",
+  "Can you report to the clinic in person daily?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "head.how_far_do_you_live_from_springfie",
+  "How far do you live from Springfield?",
+  "text",
+  [],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "employer.are_you_open_to_working_from_our_d",
+  "Are you open to working from our Denver office?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "place.street_address_line_1",
+  "Street address line 1",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.do_you_need_relocation_support",
+  "Do you need relocation support?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.are_you_able_to_travel_to_other_si",
+  "Are you able to travel to other sites?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "time.notice_required_by_your_current_em",
+  "Notice required by your current employer",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.can_you_start_on_short_notice",
+  "Can you start on short notice?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_have_weekend_availability",
+  "Do you have weekend availability?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_looking_for_permanent_or_t",
+  "Are you looking for permanent or temporary work?",
+  "select",
+  [
+   "Permanent",
+   "Temporary"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.desired_employment_type",
+  "Desired employment type",
+  "select",
+  [
+   "Full-time",
+   "Part-time",
+   "Per diem"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.how_did_you_come_across_this_role",
+  "How did you come across this role?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_agree_to_the_90_day_trial_p",
+  "Do you agree to the 90-day trial period?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.what_is_your_current_job_title",
+  "What is your current job title?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_currently_working",
+  "Are you currently working?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "ok.do_you_speak_mandarin",
+  "Do you speak Mandarin?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_master_s_degree",
+  "Do you have a master's degree?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_certified_as_a_medical_ass",
+  "Are you certified as a medical assistant?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_ekg_experience",
+  "Do you have EKG experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_in_long_term_",
+  "Have you ever worked in long-term care?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_dialysis_experience",
+  "Do you have dialysis experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_read_and_write_english",
+  "Can you read and write English?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_iv_ins",
+  "Do you have experience with IV insertion?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_hold_a_phlebotomy_certifica",
+  "Do you hold a phlebotomy certification?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_a_licensed_practical_nurse",
+  "Are you a licensed practical nurse?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_medica_3",
+  "Do you have experience with medical terminology?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_with_children_2",
+  "Have you ever worked with children with autism?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_a_labora",
+  "Do you have experience in a laboratory?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_know_how_to_use_word_proces",
+  "Do you know how to use word processing software?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_operate_a_forklift",
+  "Can you operate a forklift?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_invent",
+  "Do you have experience with inventory management?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_supervised_employees",
+  "Have you ever supervised employees?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_confli",
+  "Do you have experience with conflict resolution?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_home_hea",
+  "Do you have experience in home health care?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_trained_in_first_aid",
+  "Are you trained in first aid?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_blood_",
+  "Do you have experience with blood draws?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_taken_a_medical_coding_co",
+  "Have you taken a medical coding course?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_claims",
+  "Do you have experience with claims processing?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_medical_specialties_have_you",
+  "Which medical specialties have you worked in?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_proficient_in_spanish",
+  "Are you proficient in Spanish?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_case_m",
+  "Do you have experience with case management?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_take_vital_signs",
+  "Can you take vital signs?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_handling_ca",
+  "Do you have experience handling cash?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_in_a_call_cen",
+  "Have you ever worked in a call center?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_social",
+  "Do you have experience with social media?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_familiar_with_osha_standar",
+  "Are you familiar with OSHA standards?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_patien_2",
+  "Do you have experience with patient education?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_work_with_minimal_supervis",
+  "Can you work with minimal supervision?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_physical",
+  "Do you have experience in physical therapy?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_speaking_in_pu",
+  "Are you comfortable speaking in public?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_grant_",
+  "Do you have experience with grant writing?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_as_a_team_l",
+  "Do you have experience as a team lead?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_design_tools_do_you_use",
+  "Which design tools do you use?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_quality_",
+  "Do you have experience in quality assurance?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_in_a_pharmacy",
+  "Have you ever worked in a pharmacy?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "employer.have_you_ever_worked_for_example_h",
+  "Have you ever worked for Example Health Clinic or any of its subsidiaries?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_currently_an_employee_of_n",
+  "Are you currently an employee of Northwind Example?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.were_you_referred_to_this_position",
+  "Were you referred to this position by a current team member?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.please_enter_the_name_of_your_refe",
+  "Please enter the name of your referrer",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_have_family_members_current",
+  "Do you have family members currently employed here?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.how_did_you_first_hear_about_north",
+  "How did you first hear about Northwind Example?",
+  "select",
+  [
+   "Job board",
+   "Friend",
+   "Other"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.is_this_your_first_application_to_",
+  "Is this your first application to Example Health Clinic?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_interviewed_for_a_role_at",
+  "Have you interviewed for a role at Northwind Example before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.did_a_recruiter_contact_you_about_",
+  "Did a recruiter contact you about this role?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_agree_to_work_the_schedule_",
+  "Do you agree to work the schedule listed in the job posting?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_meet_all_of_the_qualificati",
+  "Do you meet all of the qualifications listed in the job description?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_read_the_job_description",
+  "Have you read the job description?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_possess_the_skills_required",
+  "Do you possess the skills required for this role?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.which_of_our_clinics_are_you_inter",
+  "Which of our clinics are you interested in?",
+  "select",
+  [
+   "North",
+   "South"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_a_former_northwind_example",
+  "Are you a former Northwind Example contractor?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.employee_id_if_internal",
+  "Employee ID (if internal)",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_previously_been_employed_",
+  "Have you previously been employed at Example Health Network?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_know_someone_who_works_at_n",
+  "Do you know someone who works at Northwind Example?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.would_you_accept_a_temporary_assig",
+  "Would you accept a temporary assignment first?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.can_you_attend_a_skills_assessment",
+  "Can you attend a skills assessment next week?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.what_date_are_you_available_to_sta",
+  "What date are you available to start?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_soon_can_you_start_working",
+  "How soon can you start working?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_able_to_start_in_the_next_",
+  "Are you able to start in the next 30 days?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.what_notice_period_does_your_curre",
+  "What notice period does your current employer require?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_able_to_work_on_saturdays_",
+  "Are you able to work on Saturdays and Sundays?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.can_you_work_early_mornings",
+  "Can you work early mornings?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.what_hours_are_you_available_to_wo",
+  "What hours are you available to work?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_willing_to_work_split_shif",
+  "Are you willing to work split shifts?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_available_for_on_call_duty",
+  "Are you available for on call duty?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.number_of_years_of_experience_in_p",
+  "Number of years of experience in patient care",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_many_months_of_retail_experien",
+  "How many months of retail experience do you have?",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_have_5_years_of_experience_",
+  "Do you have 5+ years of experience in billing?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.is_your_cna_certification_current",
+  "Is your CNA certification current?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.does_your_license_expire_within_th",
+  "Does your license expire within the next six months?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_presently_enrolled_in_a_nu",
+  "Are you presently enrolled in a nursing program?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.when_will_you_complete_your_degree",
+  "When will you complete your degree?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_working_right_now",
+  "Are you working right now?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_currently_have_a_valid_pass",
+  "Do you currently have a valid passport?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.is_your_driver_s_license_currently",
+  "Is your driver's license currently suspended?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_available_to_work_during_t",
+  "Are you available to work during the holidays?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.reason_for_leaving_your_last_posit",
+  "Reason for leaving your last position",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.name_of_your_previous_supervisor",
+  "Name of your previous supervisor",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "pay.what_are_your_compensation_require",
+  "What are your compensation requirements?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.desired_pay_rate",
+  "Desired pay rate",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.expected_annual_salary_in_eur",
+  "Expected annual salary in EUR",
+  "number",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.what_is_your_minimum_hourly_rate",
+  "What is your minimum hourly rate?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.salary_range_you_are_seeking",
+  "Salary range you are seeking",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.are_you_comfortable_with_a_startin",
+  "Are you comfortable with a starting wage of $18 per hour?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.expected_monthly_stipend",
+  "Expected monthly stipend",
+  "number",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "place.are_you_willing_to_relocate_to_spr",
+  "Are you willing to relocate to Springfield?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.would_you_consider_relocating_for_",
+  "Would you consider relocating for this position?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.how_long_is_your_commute_to_the_do",
+  "How long is your commute to the downtown clinic?",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.can_you_travel_up_to_50_of_the_tim",
+  "Can you travel up to 50% of the time?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.are_you_able_to_work_onsite_five_d",
+  "Are you able to work onsite five days a week?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.do_you_prefer_remote_hybrid_or_in_",
+  "Do you prefer remote, hybrid or in-office work?",
+  "select",
+  [
+   "Remote",
+   "Hybrid",
+   "In-office"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.zip_postal_code",
+  "Zip/Postal code",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.mailing_address_line_2",
+  "Mailing address line 2",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "head.what_time_zone_are_you_located_in",
+  "What time zone are you located in?",
+  "text",
+  [],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "employer.are_you_open_to_working_in_another",
+  "Are you open to working in another state?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "section.start",
+  "Start",
+  "text",
+  [],
+  null,
+  "Availability",
+  "section"
+ ],
+ [
+  "time.expected",
+  "Expected",
+  "number",
+  [],
+  null,
+  "Compensation",
+  "time"
+ ],
+ [
+  "section.phone_number",
+  "Phone number",
+  "tel",
+  [],
+  null,
+  "Emergency contact",
+  "section"
+ ],
+ [
+  "time.employer_name",
+  "Employer name",
+  "text",
+  [],
+  null,
+  "Employment history",
+  "time"
+ ],
+ [
+  "head.additional_details",
+  "Additional details",
+  "text",
+  [],
+  "Tell us why you are interested in this role.",
+  null,
+  "head"
+ ],
+ [
+  "time.certification",
+  "Certification",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Must be current on your start date.",
+  null,
+  "time"
+ ],
+ [
+  "pay.rate",
+  "Rate",
+  "text",
+  [],
+  "Your desired hourly pay in USD.",
+  null,
+  "pay"
+ ],
+ [
+  "time.your_situation",
+  "Your situation",
+  "select",
+  [
+   "Currently employed",
+   "Not employed"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "pay.range",
+  "Range",
+  "select",
+  [
+   "$50k-$60k",
+   "$60k-$70k"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "time.experience_2",
+  "Experience",
+  "select",
+  [
+   "Less than 1 year",
+   "1-3 years",
+   "3+ years"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "place.setup",
+  "Setup",
+  "select",
+  [
+   "Fully remote",
+   "Hybrid",
+   "On-site"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "ok.do_you_speak_portuguese",
+  "Do you speak Portuguese?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_languages_do_you_read_and_wr",
+  "Which languages do you read and write?",
+  "checkbox_group",
+  [
+   "English",
+   "Spanish",
+   "Other"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_high_school_diploma_",
+  "Do you have a high school diploma or GED?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.what_is_your_highest_completed_deg",
+  "What is your highest completed degree?",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.what_was_your_major",
+  "What was your major?",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_a_certified_pharmacy_techn",
+  "Are you a certified pharmacy technician?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_hold_a_basic_life_support_c",
+  "Do you hold a Basic Life Support certification?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_in_a_dental_o",
+  "Have you ever worked in a dental office?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_worked_as_a_receptionist",
+  "Have you worked as a receptionist?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_scheduling__2",
+  "Do you have experience scheduling patient appointments?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_lift_and_carry_up_to_25_po",
+  "Can you lift and carry up to 25 pounds?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_know_how_to_use_a_multi_lin",
+  "Do you know how to use a multi-line phone system?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_used_an_email_client",
+  "Have you ever used an email client?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_insura",
+  "Do you have experience with insurance verification?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_worked_with_elderly_patie",
+  "Have you worked with elderly patients?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_steril",
+  "Do you have experience with sterilization procedures?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_familiar_with_medical_term",
+  "Are you familiar with medical terminology?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_completed_a_medical_assis",
+  "Have you completed a medical assistant program?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_forklift_operator_ce",
+  "Do you have a forklift operator certificate?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_drive_a_manual_transmissio",
+  "Can you drive a manual transmission vehicle?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_working_with_b",
+  "Are you comfortable working with blood?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_online",
+  "Do you have experience with online office suites?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_able_to_communicate_in_ame",
+  "Are you able to communicate in American Sign Language?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_customer",
+  "Do you have experience in customer support?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_supervised_a_team_before",
+  "Have you supervised a team before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_in_a_fast_pac",
+  "Have you ever worked in a fast-paced environment?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_phlebotomy_training",
+  "Do you have phlebotomy training?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_been_trained_in_hipaa",
+  "Have you been trained in HIPAA?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_using_a_comput",
+  "Are you comfortable using a computer for most of the day?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_cash_h",
+  "Do you have experience with cash handling?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_word_processing_programs_can",
+  "Which word processing programs can you use?",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_cpr_and_first_aid_certifie",
+  "Are you CPR and First Aid certified?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_medica_4",
+  "Do you have experience with medication administration?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_used_an_ehr_system",
+  "Have you used an EHR system?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_bookkeeping_experience",
+  "Do you have bookkeeping experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_accounting_software_do_you_k",
+  "Which accounting software do you know?",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_writing_rep",
+  "Do you have experience writing reports?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_able_to_follow_written_ins",
+  "Are you able to follow written instructions?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_a_labora_2",
+  "Do you have experience in a laboratory setting?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_type_accurately",
+  "Can you type accurately?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_with_special_",
+  "Have you ever worked with special needs children?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_hold_a_security_guard_licen",
+  "Do you hold a security guard license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_a_notary_public",
+  "Are you a notary public?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_class_b_cdl",
+  "Do you have a Class B CDL?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_industries_have_you_worked_i",
+  "Which industries have you worked in?",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_taught_a_class_before",
+  "Have you taught a class before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_giving_injecti",
+  "Are you comfortable giving injections?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_invent_2",
+  "Do you have experience with inventory counts?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_for_a_nonprof_2",
+  "Have you ever worked for a nonprofit organization?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_at_a_hospital",
+  "Have you ever worked at a hospital?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_working_in_",
+  "Do you have experience working in a team environment?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.languages_spoken",
+  "Languages spoken",
+  "checkbox_group",
+  [
+   "English",
+   "Spanish",
+   "French"
+  ],
+  "Select all that apply.",
+  null,
+  null
+ ],
+ [
+  "ok.highest_level_of_education",
+  "Highest level of education",
+  "select",
+  [
+   "High school",
+   "Bachelor's",
+   "Master's"
+  ],
+  "Choose one.",
+  "Education",
+  null
+ ],
+ [
+  "ok.do_you_have_a_nursing_license",
+  "Do you have a nursing license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  "Licenses and certifications",
+  null
+ ],
+ [
+  "employer.do_you_have_experience_with_patien_2",
+  "Do you have experience with patients?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Answer for the position you are applying to.",
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_have_a_driver_s_license",
+  "Do you have a driver's license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "This position requires a valid license.",
+  null,
+  "employer"
+ ],
+ [
+  "time.experience_3",
+  "Experience",
+  "text",
+  [],
+  "How many years have you worked in this field?",
+  null,
+  "time"
+ ],
+ [
+  "head.notes",
+  "Notes",
+  "text",
+  [],
+  "When would you be able to begin?",
+  null,
+  "head"
+ ],
+ [
+  "time.shift",
+  "Shift",
+  "select",
+  [
+   "Days",
+   "Evenings",
+   "Nights"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "pay.pay",
+  "Pay",
+  "select",
+  [
+   "$15/hr",
+   "$18/hr",
+   "$20/hr"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "place.arrangement",
+  "Arrangement",
+  "select",
+  [
+   "Remote",
+   "Hybrid",
+   "Office"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "section.contact",
+  "Contact",
+  "text",
+  [],
+  null,
+  "References",
+  "section"
+ ],
+ [
+  "section.name",
+  "Name",
+  "text",
+  [],
+  null,
+  "Emergency contact",
+  "section"
+ ],
+ [
+  "time.company_2",
+  "Company",
+  "text",
+  [],
+  null,
+  "Previous employment",
+  "time"
+ ],
+ [
+  "time.days_available",
+  "Days available",
+  "checkbox_group",
+  [
+   "Weekdays",
+   "Weekends"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.referral",
+  "Referral",
+  "select",
+  [
+   "Employee",
+   "Friend",
+   "None"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.any_comments",
+  "Any comments?",
+  "text",
+  [],
+  "Tell us if you have worked for Example Health Clinic before.",
+  null,
+  "employer"
+ ],
+ [
+  "time.expected_2",
+  "Expected",
+  "number",
+  [],
+  "Your expected salary in USD.",
+  null,
+  "time"
+ ],
+ [
+  "ok.which_languages_do_you_speak_2",
+  "Which languages do you speak?",
+  "checkbox_group",
+  [
+   "English",
+   "Spanish",
+   "Other"
+  ],
+  "Select all that apply.",
+  null,
+  null
+ ],
+ [
+  "ok.do_you_speak_spanish_3",
+  "Do you speak Spanish?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Your answer will not affect your application.",
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_bachelor_s_degree_2",
+  "Do you have a bachelor's degree?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "This information will be kept confidential.",
+  "Education",
+  null
+ ],
+ [
+  "ok.are_you_cpr_certified_2",
+  "Are you CPR certified?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "If you are unsure, select No.",
+  "Licenses and certifications",
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_ehr_sy_2",
+  "Do you have experience with EHR systems?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Please answer honestly.",
+  "Skills",
+  null
+ ],
+ [
+  "ok.highest_level_of_education_complet_5",
+  "Highest level of education completed",
+  "select",
+  [
+   "High school",
+   "Bachelor's degree",
+   "Master's degree"
+  ],
+  "Choose the option that best describes you.",
+  "Education",
+  null
+ ],
+ [
+  "ok.which_ehr_systems_have_you_used_2",
+  "Which EHR systems have you used?",
+  "checkbox_group",
+  [
+   "EHR systems",
+   "Charting tool B",
+   "Other"
+  ],
+  "Select all that apply.",
+  "Experience",
+  null
+ ],
+ [
+  "ok.do_you_have_a_driver_s_license_3",
+  "Do you have a driver's license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Required for all applicants.",
+  "Additional questions",
+  null
+ ],
+ [
+  "ok.can_you_lift_50_pounds_2",
+  "Can you lift 50 pounds?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Applicants must be able to lift 50 lbs.",
+  "Questions",
+  null
+ ],
+ [
+  "ok.do_you_hold_a_cna_certification_2",
+  "Do you hold a CNA certification?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Include your certification number if you have one.",
+  null,
+  null
+ ],
+ [
+  "ok.name_of_school_2",
+  "Name of school",
+  "text",
+  [],
+  "Enter the full name of the institution.",
+  "Education",
+  null
+ ],
+ [
+  "ok.field_of_study_3",
+  "Field of study",
+  "text",
+  [],
+  "For example: Nursing, Biology.",
+  "Education",
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_medica_5",
+  "Do you have experience with medical billing?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Answer Yes only if you have hands-on experience.",
+  "Experience",
+  null
+ ],
+ [
+  "ok.are_you_bilingual_2",
+  "Are you bilingual?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Optional.",
+  "Languages",
+  null
+ ],
+ [
+  "ok.do_you_have_a_nursing_license_2",
+  "Do you have a nursing license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Completion is voluntary.",
+  "Licenses and certifications",
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_in_a_hospital_2",
+  "Have you ever worked in a hospital?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Any role counts, paid or volunteer.",
+  "Experience",
+  null
+ ],
+ [
+  "ok.which_certifications_do_you_hold_2",
+  "Which certifications do you hold?",
+  "text",
+  [],
+  "List each certification on its own line.",
+  "Licenses and certifications",
+  null
+ ],
+ [
+  "ok.typing_speed_words_per_minute_2",
+  "Typing speed (words per minute)",
+  "number",
+  [],
+  "An estimate is fine.",
+  "Skills",
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_childr",
+  "Do you have experience with children?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  "Additional information",
+  null
+ ],
+ [
+  "ok.do_you_speak_french_2",
+  "Do you speak French?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  "Personal information",
+  null
+ ],
+ [
+  "ok.do_you_have_customer_service_exper_2",
+  "Do you have customer service experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Max 500 characters.",
+  "Experience",
+  null
+ ],
+ [
+  "ok.are_you_comfortable_with_needles_2",
+  "Are you comfortable with needles?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  "Screening questions",
+  null
+ ],
+ [
+  "employer.have_you_ever_been_employed_by_nor",
+  "Have you ever been employed by Northwind Example under a different name?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_related_to_anyone_currentl",
+  "Are you related to anyone currently employed by Example Health Clinic?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.did_someone_at_northwind_example_e",
+  "Did someone at Northwind Example encourage you to apply?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.have_you_submitted_an_application_",
+  "Have you submitted an application to Northwind Example in the last 12 months?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_currently_working_at_any_e",
+  "Are you currently working at any Example Health Network facility?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.please_list_any_current_northwind_",
+  "Please list any current Northwind Example employees you know",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "head.do_you_understand_this_position_re",
+  "Do you understand this position requires a background check?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "place.are_you_comfortable_with_the_trave",
+  "Are you comfortable with the travel requirements of the position?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "head.do_you_agree_to_the_terms_of_the_o",
+  "Do you agree to the terms of the offer if selected?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "employer.were_you_introduced_to_us_through_",
+  "Were you introduced to us through an agency?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.recruiting_agency_name",
+  "Recruiting agency name",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.are_you_a_returning_seasonal_assoc",
+  "Are you a returning seasonal associate?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.event_where_you_met_our_recruiter",
+  "Event where you met our recruiter",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.which_career_fair_did_you_meet_us_",
+  "Which career fair did you meet us at?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_completed_our_online_asse",
+  "Have you completed our online assessment?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_have_a_non_disclosure_agree",
+  "Do you have a non-disclosure agreement with a competitor?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.does_your_current_employer_know_yo",
+  "Does your current employer know you are applying?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.are_you_comfortable_with_the_dress",
+  "Are you comfortable with the dress code?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "head.why_do_you_want_to_join_northwind_",
+  "Why do you want to join Northwind Example?",
+  "text",
+  [],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "employer.have_you_ever_held_a_position_at_n",
+  "Have you ever held a position at Northwind Example?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.what_is_your_expected_date_of_grad",
+  "What is your expected date of graduation?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_many_weeks_notice_must_you_giv",
+  "How many weeks' notice must you give?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_available_to_work_12_hour_",
+  "Are you available to work 12-hour shifts?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.which_days_of_the_week_are_you_una",
+  "Which days of the week are you unavailable?",
+  "checkbox_group",
+  [
+   "Monday",
+   "Saturday",
+   "Sunday"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_able_to_work_during_school",
+  "Are you able to work during school holidays?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.total_years_in_a_leadership_role",
+  "Total years in a leadership role",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_many_years_have_you_been_a_lic",
+  "How many years have you been a licensed electrician?",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.is_your_cdl_currently_active",
+  "Is your CDL currently active?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_currently_hold_an_unrestric",
+  "Do you currently hold an unrestricted RN license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_currently_on_a_leave_of_ab",
+  "Are you currently on a leave of absence?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_a_recent_graduate",
+  "Are you a recent graduate?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.desired_start_date",
+  "Desired start date",
+  "date",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.date_you_can_begin_work",
+  "Date you can begin work",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_many_hours_per_week_are_you_lo",
+  "How many hours per week are you looking for?",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_seeking_a_permanent_or_tem",
+  "Are you seeking a permanent or temporary position?",
+  "select",
+  [
+   "Permanent",
+   "Temporary"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.can_you_commit_to_a_minimum_of_6_m",
+  "Can you commit to a minimum of 6 months?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.reason_for_leaving_your_last_job",
+  "Reason for leaving your last job",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.name_of_current_supervisor",
+  "Name of current supervisor",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "head.may_we_contact_your_current_employ",
+  "May we contact your current employer?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "time.will_you_be_available_for_the_full",
+  "Will you be available for the full internship period?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.can_you_work_the_evening_shift",
+  "Can you work the evening shift?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "pay.what_is_your_minimum_acceptable_ho",
+  "What is your minimum acceptable hourly wage?",
+  "number",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.expected_annual_compensation_eur",
+  "Expected annual compensation (EUR)",
+  "number",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.are_you_comfortable_with_a_commiss",
+  "Are you comfortable with a commission-based role?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.do_you_require_a_sign_on_bonus",
+  "Do you require a sign-on bonus?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.pay_expectations_per_hour",
+  "Pay expectations per hour",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.desired_monthly_stipend",
+  "Desired monthly stipend",
+  "number",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "employer.are_you_open_to_working_at_multipl",
+  "Are you open to working at multiple sites?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "place.do_you_have_reliable_transportatio_3",
+  "Do you have reliable transportation to the job site?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "employer.how_far_are_you_willing_to_drive_t",
+  "How far are you willing to drive to work?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "place.are_you_comfortable_working_fully_",
+  "Are you comfortable working fully remote?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "employer.preferred_work_setting_2",
+  "Preferred work setting",
+  "select",
+  [
+   "Remote",
+   "Hybrid",
+   "On-site"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_willing_to_work_overseas",
+  "Are you willing to work overseas?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "place.can_you_travel_internationally_on_",
+  "Can you travel internationally on short notice?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "head.do_you_currently_live_within_30_mi",
+  "Do you currently live within 30 miles of the facility?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "place.can_you_reliably_get_to_work_in_sp",
+  "Can you reliably get to work in Springfield?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "time.employer_name_2",
+  "Employer name",
+  "text",
+  [],
+  null,
+  "Previous employment",
+  "time"
+ ],
+ [
+  "time.start_date",
+  "Start date",
+  "date",
+  [],
+  null,
+  "Employment history",
+  "time"
+ ],
+ [
+  "section.relationship",
+  "Relationship",
+  "text",
+  [],
+  null,
+  "Emergency contact",
+  "section"
+ ],
+ [
+  "pay.minimum_rate",
+  "Minimum rate",
+  "number",
+  [],
+  null,
+  "Pay expectations",
+  "pay"
+ ],
+ [
+  "employer.experience_2",
+  "Experience",
+  "text",
+  [],
+  "Tell us about experience that matches this posting.",
+  null,
+  "employer"
+ ],
+ [
+  "time.certification_number",
+  "Certification number",
+  "text",
+  [],
+  "Must be current at the time of hire.",
+  null,
+  "time"
+ ],
+ [
+  "time.timeline",
+  "Timeline",
+  "select",
+  [
+   "Immediately",
+   "Within 2 weeks",
+   "Within a month"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "head.status",
+  "Status",
+  "select",
+  [
+   "Currently employed",
+   "Not currently employed"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "place.arrangement_2",
+  "Arrangement",
+  "select",
+  [
+   "Fully remote",
+   "In office"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "pay.band",
+  "Band",
+  "select",
+  [
+   "$60,000-$70,000",
+   "$70,000-$80,000"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "employer.affiliation",
+  "Affiliation",
+  "select",
+  [
+   "Current employee",
+   "Former employee",
+   "None"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "ok.which_programming_languages_are_yo",
+  "Which programming languages are you proficient in?",
+  "checkbox_group",
+  [
+   "Python",
+   "Java",
+   "Other"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_using_a_cash_r",
+  "Are you comfortable using a cash register?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_hold_a_bachelor_s_degree_in",
+  "Do you hold a bachelor's degree in nursing?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_forklift_certificati",
+  "Do you have a forklift certification?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.what_is_your_highest_degree",
+  "What is your highest degree?",
+  "select",
+  [
+   "Associate",
+   "Bachelor's",
+   "Master's"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.field_of_study_4",
+  "Field of study",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_erp_systems_have_you_used",
+  "Which ERP systems have you used?",
+  "checkbox_group",
+  [
+   "ERP system A",
+   "ERP system B",
+   "Other"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_speak_french_fluently",
+  "Do you speak French fluently?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_able_to_stand_for_long_per",
+  "Are you able to stand for long periods?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_spread",
+  "Do you have experience with spreadsheet software?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_culinary_degree",
+  "Do you have a culinary degree?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_managing_a_",
+  "Do you have experience managing a team?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_worked_in_a_warehouse_env",
+  "Have you worked in a warehouse environment?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_working_with_a",
+  "Are you comfortable working with animals?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_design_tools_do_you_use_2",
+  "Which design tools do you use?",
+  "checkbox_group",
+  [
+   "Design tool A",
+   "Design tool B",
+   "Other"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.typing_speed_wpm",
+  "Typing speed (WPM)",
+  "number",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_it_support_certifica",
+  "Do you have a IT support certification?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_managed_a_budget",
+  "Have you ever managed a budget?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_food_handler_s_card",
+  "Do you have a food handler's card?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.github_username",
+  "GitHub username",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_teaching_ad",
+  "Do you have experience teaching adults?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_hvac_s",
+  "Do you have experience with HVAC systems?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_proficient_in_american_sig",
+  "Are you proficient in American Sign Language?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "head.have_you_completed_a_background_ch",
+  "Have you completed a background check before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "ok.have_you_taken_any_accounting_cour",
+  "Have you taken any accounting courses?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.level_of_spanish_proficiency",
+  "Level of Spanish proficiency",
+  "select",
+  [
+   "Basic",
+   "Intermediate",
+   "Fluent"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_passport",
+  "Do you have a passport?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_retail_s",
+  "Do you have experience in retail sales?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_payrol_2",
+  "Do you have experience with payroll processing?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_accounts_payable_exper",
+  "Do you have accounts payable experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_processing__2",
+  "Do you have experience processing payments?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_travel",
+  "Do you have experience with travel booking systems?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_worked_in_hospitality",
+  "Have you worked in hospitality?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_used_remote_desktop_tools",
+  "Have you used remote desktop tools?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_drive_a_manual_transmissio_2",
+  "Can you drive a manual transmission?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "time.do_you_have_experience_with_night_",
+  "Do you have experience with night audits?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "ok.do_you_know_how_to_use_a_pallet_ja",
+  "Do you know how to use a pallet jack?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_volunteered_in_a_hospital",
+  "Have you volunteered in a hospital?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_data_ent",
+  "Do you have experience in data entry?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_with_public_sp",
+  "Are you comfortable with public speaking?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_teaching_credential",
+  "Do you have a teaching credential?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_instruments_do_you_play",
+  "Which instruments do you play?",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_security_guard_licen",
+  "Do you have a security guard license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.what_certifications_do_you_hold",
+  "What certifications do you hold?",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.languages_spoken_2",
+  "Languages spoken",
+  "checkbox_group",
+  [
+   "English",
+   "Spanish",
+   "Other"
+  ],
+  "Select all that apply.",
+  null,
+  null
+ ],
+ [
+  "ok.highest_degree",
+  "Highest degree",
+  "select",
+  [
+   "Associate",
+   "Bachelor's",
+   "Master's"
+  ],
+  "If you have more than one, choose the highest.",
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_driver_s_license_4",
+  "Do you have a driver's license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Some roles involve driving.",
+  null,
+  null
+ ],
+ [
+  "ok.skills",
+  "Skills",
+  "text",
+  [],
+  "Separate skills with commas.",
+  null,
+  null
+ ],
+ [
+  "ok.do_you_speak_spanish_4",
+  "Do you speak Spanish?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  "Skills",
+  null
+ ],
+ [
+  "ok.highest_level_of_education_complet_6",
+  "Highest level of education completed",
+  "select",
+  [
+   "High school",
+   "Bachelor's degree"
+  ],
+  null,
+  "Education and training",
+  null
+ ],
+ [
+  "ok.certifications",
+  "Certifications",
+  "text",
+  [],
+  null,
+  "Qualifications",
+  null
+ ],
+ [
+  "ok.have_you_ever_worked_with_dementia",
+  "Have you ever worked with dementia patients?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_social_2",
+  "Do you have experience with social media marketing?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_class_a_license",
+  "Do you have a Class A license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_operating_systems_are_you_fa_2",
+  "Which operating systems are you familiar with?",
+  "checkbox_group",
+  [
+   "Windows",
+   "macOS",
+   "Linux"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "employer.is_anyone_in_your_household_employ_2",
+  "Is anyone in your household employed by Example Health Clinic?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "place.which_of_our_locations_are_you_app",
+  "Which of our locations are you applying for?",
+  "select",
+  [
+   "North",
+   "South"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "employer.have_you_received_an_offer_from_us",
+  "Have you received an offer from us before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_currently_work_for_a_compet_2",
+  "Do you currently work for a competitor of Northwind Example?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.has_a_current_employee_recommended",
+  "Has a current employee recommended you?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.are_you_applying_through_a_staffin",
+  "Are you applying through a staffing agency?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_meet_the_experience_require",
+  "Do you meet the experience requirements for this role?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "pay.have_you_reviewed_the_benefits_pac",
+  "Have you reviewed the benefits package?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "employer.are_you_able_to_meet_the_physical_",
+  "Are you able to meet the physical requirements of the job?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.which_shift_are_you_applying_for",
+  "Which shift are you applying for?",
+  "select",
+  [
+   "Day",
+   "Night"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.did_you_attend_one_of_our_hiring_e",
+  "Did you attend one of our hiring events?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.promo_code",
+  "Promo code",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.internal_transfer",
+  "Internal transfer?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.were_you_previously_employed_under",
+  "Were you previously employed under another name?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.can_you_work_christmas_day",
+  "Can you work Christmas Day?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_available_to_work_the_nigh",
+  "Are you available to work the night shift?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.can_you_start_on_monday",
+  "Can you start on Monday?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.when_are_you_available_for_an_inte",
+  "When are you available for an interview?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.what_is_the_earliest_date_you_coul",
+  "What is the earliest date you could start?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_currently_have_a_job_offer_",
+  "Do you currently have a job offer from another company?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.how_long_have_you_been_unemployed",
+  "How long have you been unemployed?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.months_of_experience_in_phlebotomy",
+  "Months of experience in phlebotomy",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_have_2_years_of_retail_expe",
+  "Do you have 2+ years of retail experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.has_your_license_ever_been_suspend",
+  "Has your license ever been suspended?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_currently_pursuing_a_degre",
+  "Are you currently pursuing a degree?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.year_of_expected_graduation",
+  "Year of expected graduation",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_able_to_work_every_other_w",
+  "Are you able to work every other weekend?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.can_you_work_40_hours_a_week",
+  "Can you work 40 hours a week?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.your_current_title",
+  "Your current title",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.most_recent_employer_s_phone_numbe",
+  "Most recent employer's phone number",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.what_is_your_availability_for_trai",
+  "What is your availability for training next month?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_plan_to_continue_your_educa",
+  "Do you plan to continue your education?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_have_a_vacation_planned_in_",
+  "Do you have a vacation planned in the next 3 months?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "pay.total_compensation_expected",
+  "Total compensation expected",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.would_a_salary_of_45_000_be_accept",
+  "Would a salary of $45,000 be acceptable?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.are_you_comfortable_with_a_base_pl",
+  "Are you comfortable with a base plus commission structure?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.desired_pay",
+  "Desired pay",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.what_are_your_earnings_expectation",
+  "What are your earnings expectations?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "place.are_you_able_to_relocate_within_60",
+  "Are you able to relocate within 60 days?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.which_region_would_you_like_to_wor",
+  "Which region would you like to work in?",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "time.how_long_is_your_drive_to_springfi",
+  "How long is your drive to Springfield?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "head.do_you_live_in_the_area",
+  "Do you live in the area?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "employer.are_you_willing_to_work_in_a_diffe",
+  "Are you willing to work in a different state?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "place.can_you_work_outside_of_the_countr",
+  "Can you work outside of the country?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "place.commute_time_in_minutes",
+  "Commute time in minutes",
+  "number",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "pay.hourly",
+  "Hourly",
+  "number",
+  [],
+  null,
+  "Compensation details",
+  "pay"
+ ],
+ [
+  "time.dates",
+  "Dates",
+  "text",
+  [],
+  null,
+  "Work history",
+  "time"
+ ],
+ [
+  "section.phone_2",
+  "Phone",
+  "tel",
+  [],
+  null,
+  "References",
+  "section"
+ ],
+ [
+  "head.notes_2",
+  "Notes",
+  "text",
+  [],
+  "Tell us anything about your availability.",
+  null,
+  "head"
+ ],
+ [
+  "employer.preference",
+  "Preference",
+  "select",
+  [
+   "Day shift",
+   "Night shift"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.experience_band",
+  "Experience band",
+  "select",
+  [
+   "Less than 1 year",
+   "1-3 years",
+   "3+ years"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.situation",
+  "Situation",
+  "select",
+  [
+   "Employed full-time",
+   "Unemployed",
+   "Student"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.answer",
+  "Answer",
+  "text",
+  [],
+  "Enter the requisition number from the posting.",
+  null,
+  "employer"
+ ],
+ [
+  "head.comments",
+  "Comments",
+  "text",
+  [],
+  "Explain why you are interested in this position.",
+  null,
+  "head"
+ ],
+ [
+  "ok.which_cuisines_can_you_cook",
+  "Which cuisines can you cook?",
+  "checkbox_group",
+  [
+   "Italian",
+   "Mexican",
+   "Thai"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_commercial_driver_s__2",
+  "Do you have a commercial driver's license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_operated_heavy_machi",
+  "Have you ever operated heavy machinery?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_working_at_hei",
+  "Are you comfortable working at heights?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_read_blueprints",
+  "Can you read blueprints?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_hold_a_real_estate_license",
+  "Do you hold a real estate license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_welding_certification",
+  "Do you have welding certification?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_languages_can_you_read_and_w",
+  "Which languages can you read and write?",
+  "checkbox_group",
+  [
+   "English",
+   "Spanish",
+   "Other"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_trained_new_employee",
+  "Have you ever trained new employees?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_use_a_multi_line_phone_sys",
+  "Can you use a multi-line phone system?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_familiar_with_lean_manufac",
+  "Are you familiar with lean manufacturing?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_a_call_c",
+  "Do you have experience in a call center?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_handling_cash",
+  "Are you comfortable handling cash?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_first_aid_certificat",
+  "Do you have a first aid certificate?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_payment_terminals_have_you_u",
+  "Which payment terminals have you used?",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_patien_3",
+  "Do you have experience with patient scheduling?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_trained_in_food_safety",
+  "Are you trained in food safety?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_phone_",
+  "Do you have experience with phone triage?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.what_is_your_proficiency_in_writte",
+  "What is your proficiency in written English?",
+  "select",
+  [
+   "Basic",
+   "Fluent"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_hold_a_tefl_certificate",
+  "Do you hold a TEFL certificate?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_type_60_words_per_minute",
+  "Can you type 60 words per minute?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_pharmacy_technician_",
+  "Do you have a pharmacy technician license?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_led_a_project",
+  "Have you ever led a project?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_able_to_work_independently",
+  "Are you able to work independently?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_sales_experience",
+  "Do you have sales experience?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_with_heavy_lif",
+  "Are you comfortable with heavy lifting?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.highest_education_level",
+  "Highest education level",
+  "select",
+  [
+   "High school",
+   "Bachelor's degree"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.major",
+  "Major",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.university_attended",
+  "University attended",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_childr_2",
+  "Do you have experience with children under 5?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_used_a_point_of_sale_syst",
+  "Have you used a point-of-sale system?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_in_elder_ca",
+  "Do you have experience in elder care?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.can_you_swim",
+  "Can you swim?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_an_associate_degree",
+  "Do you have an associate degree?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_certifications_do_you_have",
+  "Which certifications do you have?",
+  "checkbox_group",
+  [
+   "CPR",
+   "BLS",
+   "ACLS"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.areas_of_expertise",
+  "Areas of expertise",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_volunteered_before",
+  "Have you volunteered before?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_social_3",
+  "Do you have experience with social work case management?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.skills_2",
+  "Skills",
+  "text",
+  [],
+  "List tools you use daily.",
+  null,
+  null
+ ],
+ [
+  "ok.do_you_speak_portuguese_2",
+  "Do you speak Portuguese?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  "Language skills",
+  null
+ ],
+ [
+  "ok.certifications_2",
+  "Certifications",
+  "text",
+  [],
+  "Include the issuing body.",
+  null,
+  null
+ ],
+ [
+  "ok.typing_speed_2",
+  "Typing speed",
+  "number",
+  [],
+  "Words per minute.",
+  null,
+  null
+ ],
+ [
+  "ok.proficiency",
+  "Proficiency",
+  "select",
+  [
+   "Beginner",
+   "Intermediate",
+   "Advanced"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "place.do_you_hold_a_forklift_licence",
+  "Do you hold a forklift licence?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "You will need it for the daily commute.",
+  null,
+  "place"
+ ],
+ [
+  "employer.relationship",
+  "Relationship",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Select Yes if you have previously worked for Example Health Clinic.",
+  null,
+  "employer"
+ ],
+ [
+  "employer.your_status",
+  "Your status",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Select Yes if you are a current or former employee.",
+  null,
+  "employer"
+ ],
+ [
+  "employer.channel_2",
+  "Channel",
+  "text",
+  [],
+  "Tell us how you found out about us.",
+  null,
+  "employer"
+ ],
+ [
+  "employer.connections",
+  "Connections",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Do any of your relatives work for Example Health Clinic?",
+  null,
+  "employer"
+ ],
+ [
+  "employer.experience_3",
+  "Experience",
+  "text",
+  [],
+  "Only list relevant experience.",
+  null,
+  "employer"
+ ],
+ [
+  "employer.code_2",
+  "Code",
+  "text",
+  [],
+  "Enter the promo code you received.",
+  null,
+  "employer"
+ ],
+ [
+  "employer.format",
+  "Format",
+  "select",
+  [
+   "Video",
+   "Phone"
+  ],
+  "Choose how you would like to be interviewed.",
+  null,
+  "employer"
+ ],
+ [
+  "time.timing_2",
+  "Timing",
+  "text",
+  [],
+  "When can you start?",
+  null,
+  "time"
+ ],
+ [
+  "time.days",
+  "Days",
+  "checkbox_group",
+  [
+   "Monday",
+   "Tuesday"
+  ],
+  "Select the shifts you can work.",
+  null,
+  "time"
+ ],
+ [
+  "time.education",
+  "Education",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Have you graduated? Select Yes or No.",
+  null,
+  "time"
+ ],
+ [
+  "employer.relationship_2",
+  "Relationship",
+  "select",
+  [
+   "Former employee",
+   "Rehire",
+   "None"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.license",
+  "License",
+  "select",
+  [
+   "Active",
+   "Expired",
+   "None"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.student",
+  "Student",
+  "select",
+  [
+   "Currently studying",
+   "Not studying"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "ok.are_you_familiar_with_the_project_",
+  "Are you familiar with the project lifecycle?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "time.pattern",
+  "Pattern",
+  "text",
+  [],
+  "Tell us which shifts you can work.",
+  null,
+  "time"
+ ],
+ [
+  "ok.have_you_used_the_clinic_s_ehr_sys",
+  "Have you used the clinic's EHR system?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_using_the_phon",
+  "Are you comfortable using the phone?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_the_ac",
+  "Do you have experience with the accreditation commission?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "employer.are_you_able_to_work_as_part_of_th",
+  "Are you able to work as part of the team?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.can_you_work_from_the_office_three",
+  "Can you work from the office three days a week?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.are_you_physically_active",
+  "Are you physically active?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "ok.do_you_know_how_to_use_a_cash_regi",
+  "Do you know how to use a cash register?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.are_you_comfortable_lifting_50_lbs",
+  "Are you comfortable lifting 50 lbs?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "head.do_you_have_experience_with_electr",
+  "Do you have experience with electronic health records?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "ok.do_you_have_experience_in_a_fast_p",
+  "Do you have experience in a fast-paced environment?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_speak_a_second_language",
+  "Do you speak a second language?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.how_many_languages_do_you_speak",
+  "How many languages do you speak?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "place.which_countries_have_you_lived_in",
+  "Which countries have you lived in?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "time.do_you_have_experience_with_night__2",
+  "Do you have experience with night shift nursing?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_you_an_active_member_of_a_prof",
+  "Are you an active member of a professional body?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "head.which_city_did_you_study_in",
+  "Which city did you study in?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "employer.what_should_we_call_you",
+  "What should we call you?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "ok.do_you_have_experience_in_customer_2",
+  "Do you have experience in customer service?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.what_is_your_typing_speed",
+  "What is your typing speed?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_hold_a_food_handler_s_card",
+  "Do you hold a food handler's card?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_state_boards_are_you_license",
+  "Which state boards are you licensed with?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_with_time_m",
+  "Do you have experience with time management?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_leading_tea",
+  "Do you have experience leading teams?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "employer.terminated_from_named",
+  "Have you ever been terminated from Northwind Example?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "ok.terminated_from_a_job",
+  "Have you ever been terminated from a job?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.terminated_from_employment",
+  "Have you ever been terminated from employment?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "time.unrestricted_license",
+  "Do you hold an unrestricted license to practice in Ohio?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.unencumbered_license",
+  "Is your RN license unencumbered?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "ok.license_to_practice",
+  "Do you hold a license to practice in Ohio?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "employer.position_applied_for",
+  "Position applied for",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.which_position_are_you_applying_fo",
+  "Which position are you applying for?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.role_applied_for",
+  "Role applied for",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.what_job_are_you_applying_for",
+  "What job are you applying for?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "pay.what_is_your_rate",
+  "What is your rate?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.rate_2",
+  "Rate",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.total_comp_expectations",
+  "Total comp expectations",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.how_much_are_you_looking_to_make",
+  "How much are you looking to make?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.comp_expectations",
+  "Comp expectations",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "time.years_experience",
+  "Years experience",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.experience_years",
+  "Experience (years)",
+  "number",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.yrs_of_experience",
+  "Yrs. of experience",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "head.how_would_you_rate_your_english_pr",
+  "How would you rate your English proficiency?",
+  "select",
+  [
+   "Basic",
+   "Fluent"
+  ],
+  null,
+  null,
+  "head"
+ ],
+ [
+  "ok.have_you_applied_for_a_patent",
+  "Have you applied for a patent?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_a_comptia_certificatio",
+  "Do you have a CompTIA certification?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.experience_with_python",
+  "Experience with Python",
+  "text",
+  [],
+  null,
+  null,
+  null
+ ],
+ [
+  "employer.position_you_are_applying_for",
+  "Position you are applying for",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.role_you_re_applying_for",
+  "Role you're applying for",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.which_role_are_you_applying_to",
+  "Which role are you applying to?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.applying_for",
+  "Applying for",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.requested_position",
+  "Requested position",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.position_sought",
+  "Position sought",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.position_of_interest",
+  "Position of interest",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.title_of_position",
+  "Title of position",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.vacancy_applied_for",
+  "Vacancy applied for",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.department_applying_to",
+  "Department applying to",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.which_internship_are_you_applying_",
+  "Which internship are you applying for?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.which_store_are_you_applying_to",
+  "Which store are you applying to?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.what_role_are_you_seeking",
+  "What role are you seeking?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.what_motivated_you_to_apply",
+  "What motivated you to apply?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.what_makes_you_want_to_join",
+  "What makes you want to join?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.what_attracted_you_to_apply",
+  "What attracted you to apply?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "pay.what_is_your_asking_rate",
+  "What is your asking rate?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.rate_expectations",
+  "Rate expectations",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.what_are_your_rate_requirements",
+  "What are your rate requirements?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.how_much_do_you_make",
+  "How much do you make?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.what_is_your_gross_annual_expectat",
+  "What is your gross annual expectation?",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "pay.rate_usd",
+  "Rate (USD)",
+  "text",
+  [],
+  null,
+  null,
+  "pay"
+ ],
+ [
+  "time.do_you_have_five_years_experience_",
+  "Do you have five years experience in retail?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_have_two_years_experience_a",
+  "Do you have two years' experience as a barista?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.do_you_have_a_minimum_of_one_year_",
+  "Do you have a minimum of one year's experience?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.source_optional",
+  "Source (optional)",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.source_required",
+  "Source - required",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.agency_name_if_applicable",
+  "Agency name (if applicable)",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.recruiter_optional",
+  "Recruiter (optional)",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.employer_optional",
+  "Employer (optional)",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.job_title_optional",
+  "Job title (optional)",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "employer.name_of_recruiter",
+  "Name of recruiter",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.name_of_hiring_manager",
+  "Name of hiring manager",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.who_is_your_recruiter",
+  "Who is your recruiter?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.recruiter_you_spoke_with",
+  "Recruiter you spoke with",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_ever_submitted_an_applica",
+  "Have you ever submitted an application here?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "time.what_days_are_you_unavailable_to_w",
+  "What days are you unavailable to work?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.are_there_days_you_cannot_work",
+  "Are there days you cannot work?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.what_is_your_class_standing",
+  "What is your class standing?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.what_year_are_you_in_school",
+  "What year are you in school?",
+  "text",
+  [],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "place.are_you_able_to_work_on_site",
+  "Are you able to work on–site?",
+  "text",
+  [],
+  null,
+  null,
+  "place"
+ ],
+ [
+  "employer.are_you_a_re_hire",
+  "Are you a re‑hire?",
+  "text",
+  [],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "ok.highest_level_of_education_complet_7",
+  "Highest level of education completed",
+  "select",
+  [
+   "High school diploma",
+   "2 Year Degree",
+   "4 Year Degree"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.highest_level_of_education_complet_8",
+  "Highest level of education completed",
+  "select",
+  [
+   "Associate's (2 years)",
+   "Bachelor's (4 years)"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.have_you_ever_applied_for_a_securi",
+  "Have you ever applied for a security clearance?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.which_languages_do_you_speak_3",
+  "Which languages do you speak?",
+  "checkbox_group",
+  [
+   "English",
+   "Spanish"
+  ],
+  null,
+  null,
+  null
+ ]
+]
