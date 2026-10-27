@@ -22,6 +22,7 @@ evidence deletion) start at the application. A checkpoint row is locked only alo
 entering a code) or while holding its attempt (the worker).
 """
 
+import logging
 import re
 import uuid
 from datetime import timedelta
@@ -58,6 +59,7 @@ from app.modules.execution.policy import (
 from app.modules.preparation import package as pk
 from app.modules.preparation.models import ApplicationPackage, ApprovalScope, PackageApproval
 
+log = logging.getLogger("noefforts.execution")
 S = AttemptState
 TOPIC_EXECUTE = "execute_attempt"
 LOCK_NOT_AVAILABLE = "55P03"  # PostgreSQL: NOWAIT found the row locked
@@ -859,9 +861,10 @@ def cancel(db: Session, app: Application) -> str:
 
 
 def sweep(publish_new: bool = True) -> dict:
-    """Recover attempts whose worker vanished. Never takes over a possibly-submitting attempt."""
-    s = get_settings()
-    out = {"repended": 0, "abandoned": 0, "unknown": 0, "failed": 0}
+    """Recover attempts whose worker vanished. Never takes over a possibly-submitting attempt.
+    Each attempt is recovered in its own savepoint: one that cannot be (counted in `errors`)
+    stays as it was for the next sweep and never stops the others."""
+    out = {"repended": 0, "abandoned": 0, "unknown": 0, "failed": 0, "errors": 0}
     with SessionLocal() as db:
         stale = db.scalars(
             select(ExecutionAttempt)
@@ -872,40 +875,52 @@ def sweep(publish_new: bool = True) -> dict:
             .with_for_update(skip_locked=True)
         ).all()
         for att in stale:
-            app = pk.lock_application(db, att.application_id)
-            att.lease_owner, att.lease_expires_at = None, None
-            if att.state in (S.sending, S.awaiting_code):
-                att.state, att.finished_at = S.unknown, utcnow()
-                att.outcome_detail = "Worker stopped after the submit step began; outcome unknown."
-                if app.state in (AppState.submitting, AppState.needs_user_action):
-                    _app_to(
-                        db, app, AppState.submitted_unconfirmed, Actor.system, att.outcome_detail
-                    )
-                event(db, att, "swept_unknown")
-                out["unknown"] += 1
-            elif att.disclosure_started_at is not None:
-                att.state, att.finished_at = S.abandoned, utcnow()
-                att.outcome_detail = (
-                    "Worker stopped after entering data but before "
-                    "submitting. Not retried automatically."
-                )
-                _app_to(db, app, AppState.needs_user_action, Actor.system, att.outcome_detail)
-                event(db, att, "swept_abandoned")
-                out["abandoned"] += 1
-            elif att.retry_count < s.max_safe_retries:
-                att.state, att.retry_count = S.pending, att.retry_count + 1
-                event(db, att, "swept_repended", retry=att.retry_count)
-                if publish_new:
-                    db.add(OutboxMessage(topic=TOPIC_EXECUTE, attempt_id=att.id))
-                out["repended"] += 1
-            else:
-                att.state, att.finished_at = S.failed_safe, utcnow()
-                att.outcome_detail = "Worker kept stopping before sending anything."
-                _app_to(db, app, AppState.failed_retryable, Actor.system, att.outcome_detail)
-                event(db, att, "swept_failed")
-                out["failed"] += 1
+            att_id = att.id
+            try:
+                with db.begin_nested():
+                    out[_sweep_one(db, att, publish_new)] += 1
+            except Exception as e:  # noqa: BLE001
+                log.warning("sweep: attempt %s not recovered (%s)", att_id, type(e).__name__)
+                out["errors"] += 1
         db.commit()
     return out
+
+
+def _sweep_one(db: Session, att: ExecutionAttempt, publish_new: bool) -> str:
+    app = pk.lock_application(db, att.application_id)
+    att.lease_owner, att.lease_expires_at = None, None
+    if att.state in (S.sending, S.awaiting_code):
+        att.state, att.finished_at = S.unknown, utcnow()
+        att.outcome_detail = "Worker stopped after the submit step began; outcome unknown."
+        # A code typed for the dead worker is erased, and the checkpoint takes no more.
+        db.execute(
+            update(Checkpoint)
+            .where(Checkpoint.attempt_id == att.id, Checkpoint.status.in_(("open", "submitted")))
+            .values(status="expired", code=None)
+        )
+        if app.state in (AppState.submitting, AppState.needs_user_action):
+            _app_to(db, app, AppState.submitted_unconfirmed, Actor.system, att.outcome_detail)
+        event(db, att, "swept_unknown")
+        return "unknown"
+    if att.disclosure_started_at is not None:
+        att.state, att.finished_at = S.abandoned, utcnow()
+        att.outcome_detail = (
+            "Worker stopped after entering data but before submitting. Not retried automatically."
+        )
+        _app_to(db, app, AppState.needs_user_action, Actor.system, att.outcome_detail)
+        event(db, att, "swept_abandoned")
+        return "abandoned"
+    if att.retry_count < get_settings().max_safe_retries:
+        att.state, att.retry_count = S.pending, att.retry_count + 1
+        event(db, att, "swept_repended", retry=att.retry_count)
+        if publish_new:
+            db.add(OutboxMessage(topic=TOPIC_EXECUTE, attempt_id=att.id))
+        return "repended"
+    att.state, att.finished_at = S.failed_safe, utcnow()
+    att.outcome_detail = "Worker kept stopping before sending anything."
+    _app_to(db, app, AppState.failed_retryable, Actor.system, att.outcome_detail)
+    event(db, att, "swept_failed")
+    return "failed"
 
 
 # --------------------------------------------------------------------------------------------

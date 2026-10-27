@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-26 (preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-27 (execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,42 @@ Last updated: 2026-10-26 (preparation: a statement of a profile fact is checked 
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Verification-code outcomes quarantined; the sweeper recovers each attempt alone (Q1, 2026-10-27; local only, no external request)
+
+- **Scope:** a defect in uncertain-outcome quarantine, found by the static map made for the
+  Freehire-first and legacy-repository review (that review is in progress; C6 is paused for it).
+  Decision D50. Nothing contacted; no support state, capability level, real destination or Path
+  A change.
+- **Found and reproduced first** (5 new tests failing before the fix, the worker and sweeper
+  ones with `IllegalTransition`): `needs_user_action -> submitted_unconfirmed` was listed twice
+  in the transition table and only the user's entry survived.
+  - The employer accepted the verification code but its reply was lost: the worker crashed, the
+    receiver's ledger showed 1 accepted, and the application stayed "needs your action".
+  - A worker died in the code wait: the sweep raised and rolled back every stale attempt in its
+    batch, other users' included, on every run.
+- **Now:** the move is allowed for the worker, the system and the user; the sweeper recovers
+  each attempt in its own savepoint (a failure is counted in `errors`, logged with the attempt id
+  and exception type only, and retried by the next sweep); a code wait it quarantines expires its
+  checkpoint and erases a code typed for the dead worker. The receiver gains `verify_drop` (the
+  code accepted, the reply never sent). A test refuses any repeated key in a dict literal in
+  `app/` (one existed; ruff checks literal keys only).
+- **Unchanged:** no re-send or retry path, gates, lock order, `SCHEMA_VERSION`, reason codes,
+  migrations, frontend.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `tests/test_code_wait_quarantine.py` (5): before the fix 5 failed; after it 4 passed and 1
+    failed on the test's own assumption (an illegal re-queue answers 400, not 409), corrected in
+    the test; then 5 passed;
+  - with `test_execution_security.py`, `test_execution_failures.py`, `test_applications.py`,
+    `test_lock_order.py`: 84 passed, exit 0;
+  - full backend (`pytest tests`): 1491 passed, exit 0 (first run on the final tree);
+  - `ruff check`, `ruff format --check`: clean (the frontend is unchanged);
+  - sabotage checks: 7, each caught; one ("no savepoint per row") was missed at first because
+    the injected failure fired before the row changed anything; the test now injects a database
+    error after the row's changes and catches it. Source compared identical afterwards.
+- **CI for the previous change:** **CI #100**
+  ([40397484524](https://github.com/KevinD003/AutoApply/actions/runs/40397484524)) (`7669c61`,
+  C3-C5): passed (all four jobs).
 
 ## Statements, legal facts and sensitive topics (C3-C5, 2026-10-26; local only, no external request)
 

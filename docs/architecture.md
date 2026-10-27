@@ -68,9 +68,11 @@ Defined in `app/modules/applications/states.py`. Each transition lists who may p
 draft → preparing → awaiting_approval → queued → running → ready_to_submit → submitting
                          ↑    │                     │  ↕                          │
                          └────┘ (package changed)   needs_user_action             ├→ submitted_confirmed
-                                                                                  ├→ submitted_unconfirmed ─(user reconciles)→ queued / confirmed / failed
+                                                                                  ├→ submitted_unconfirmed ─(user reconciles)→ confirmed / failed_retryable / failed_terminal
                                                                                   └→ failed_terminal (only if nothing was sent)
-plus: failed_retryable → queued, cancelled, expired (terminal)
+plus: needs_user_action → submitted_unconfirmed (an unknown outcome in the verification-code
+step, recorded by the worker or the sweeper; or the user applied by hand);
+failed_retryable → queued (the user, with a valid approval), cancelled, expired (terminal)
 ```
 
 Rules that matter:
@@ -147,9 +149,12 @@ relay ── publishes attempt id ──> Redis ──> Celery task ──> clai
     unmet rehearsal prerequisite (E6) → attempt `sending` (prerequisite recorded), app
     `submitting`
   → click submit → classify: receipt → confirmed | code requested → checkpoint
-    | refusal → rejected | timeout/error/unrecognised → unknown (submitted_unconfirmed)
+    | refusal → rejected | timeout/error/unrecognised → unknown (submitted_unconfirmed);
+    after a code: accepted → confirmed | unknown → unknown (submitted_unconfirmed)
 sweeper (beat): expired leases → claimed & nothing disclosed: re-pend (≤2) |
-  claimed & disclosed: abandoned | sending/awaiting_code: unknown. Never re-sends.
+  claimed & disclosed: abandoned | sending/awaiting_code: unknown (its open checkpoint expires,
+  a held code is erased). Each attempt in its own savepoint: one that fails is counted
+  (`errors`), stays for the next sweep and never stops the others (D50). Never re-sends.
 ```
 
 Key properties and their limits are in the `service.py` docstring. In short: one active

@@ -54,7 +54,7 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
     cfg = {"mode": "normal", "delay_s": 0.0, "idempotent": True, "canary": None,
            "token_ttl_s": 3600, "autosave": False, "tamper": None, "form_delay_s": 0.0,
            "fh_mode": "normal", "fh_rate_limit": 1000, "upload_fail_field": None,
-           "upload_delay_s": 0.0}
+           "upload_delay_s": 0.0, "verify_drop": False}
 
     def admin(tok: str | None):
         if tok != admin_token:
@@ -100,7 +100,8 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
             ledger.run(f"delete from {t}")
         cfg.update({"mode": "normal", "delay_s": 0.0, "idempotent": True, "autosave": False,
                     "tamper": None, "form_delay_s": 0.0, "fh_mode": "normal",
-                    "fh_rate_limit": 1000, "upload_fail_field": None, "upload_delay_s": 0.0})
+                    "fh_rate_limit": 1000, "upload_fail_field": None, "upload_delay_s": 0.0,
+                    "verify_drop": False})
         return {"ok": True}
 
     @app.get("/apply/{slug}", response_class=HTMLResponse)
@@ -206,7 +207,10 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
             ledger.run("update challenges set attempts=attempts+1 where id=?", (cid,))
             return HTMLResponse(page_otp(slug, cid, "Incorrect code. Try again."), 401)
         ledger.run("update challenges set done=1 where id=?", (cid,))
-        return HTMLResponse(page_receipt(_accept(slug, token, json.loads(fields))))
+        receipt = _accept(slug, token, json.loads(fields))
+        if cfg["verify_drop"]:
+            await asyncio.sleep(3600)  # the code was accepted, but the reply never arrives in time
+        return HTMLResponse(page_receipt(receipt))
 
     @app.get("/redirect-chain")
     def redirect_chain():

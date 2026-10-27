@@ -72,11 +72,13 @@ TRANSITIONS: dict[AppState, dict[AppState, set[Actor]]] = {
         S.running: {U, W},
         S.submitting: {W},  # verification code supplied; same attempt continues
         S.submitted_confirmed: {W},
-        S.submitted_unconfirmed: {W, SY},
+        # W, SY: the outcome after a verification code is unknown (the worker, or the sweeper
+        # for a worker that died waiting); U: the user applied by hand. Listed once: a dict
+        # keeps only the last of two equal keys (tests/test_code_wait_quarantine.py).
+        S.submitted_unconfirmed: {W, SY, U},
         S.preparing: {U, SY},
         S.cancelled: {U},
         S.expired: {SY},
-        S.submitted_unconfirmed: {U},
     },
     S.ready_to_submit: {S.submitting: {W}, S.needs_user_action: {W}, S.cancelled: {U}},
     S.submitting: {

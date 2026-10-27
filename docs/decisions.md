@@ -797,3 +797,29 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   migration, no bank row deleted or re-keyed. Packages with a changed row get a new version at
   their next rebuild and their approval is invalidated; a queued attempt is refused at the gate
   before anything is disclosed.
+
+## D50 — An unknown outcome in the verification-code step is quarantined; the sweeper recovers each attempt alone (2026-10-27)
+
+- **Found** by the static map of the Freehire-first review (not by a test, a user or CI):
+  `TRANSITIONS[needs_user_action]` listed `submitted_unconfirmed` twice, `{worker, system}`
+  (durable execution, `8fdeef0`) and `{user}` (Phase A, `37e6646`). A dict literal keeps only
+  the last of two equal keys, so only the user could make the move. Reproduced with the receiver
+  before the fix:
+  - the employer accepted the code but its reply never arrived: the worker's `unknown()` was
+    refused (`IllegalTransition`), its error handler was refused again and the worker crashed.
+    The receiver's ledger showed the application accepted while NoEfforts showed "needs your
+    action", which invites the user to apply again (a duplicate);
+  - a worker died while waiting for the code: the sweeper's recovery was refused, and because
+    the sweep was one transaction, every stale attempt in its batch (other users' included) was
+    rolled back, every 15 seconds.
+  - Nothing was ever sent twice by NoEfforts; the failure was a quarantine that never happened.
+- **Now:** the move is listed once, for the worker, the system and the user. The sweeper
+  recovers each attempt in its own savepoint: one that fails is rolled back alone, counted in
+  `errors`, logged with the attempt id and the exception type only, and tried again by the next
+  sweep. A code wait quarantined by the sweeper expires its open checkpoint and erases a code
+  that was typed for the dead worker (codes are held only until a worker reads them).
+- **Guard:** a test parses every dict literal in `app/` and refuses a repeated key (ruff checks
+  literal keys only, not `S.x` attributes).
+- **Unchanged:** no re-send path, no retry after disclosure or the final click, the gates, the
+  lock order (D46; the savepoint takes the same locks in the same order), `SCHEMA_VERSION`,
+  reason codes, migrations, support states. Fixtures only; nothing contacted.
