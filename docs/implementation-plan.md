@@ -274,7 +274,7 @@ capability).
 |---|---|---|---|---|
 | C11 | Protected-fact choice dead ends: a "State" select with the profile's state maps by unique exact option; otherwise a per-application answer that is never banked | S | C6 (bank refusals) | **Done (D57, 2026-10-28):** only a list naming every US state is mapped, for a US residence; a City list is never picked from the profile; any other State, City or Country list is the user's answer for this application, never saved, tied to the fact |
 | C10 | Fact values must fit the field (length, email, URL scheme; one candidate link) | S | — | **Done (D54, D58, 2026-10-28):** a fact answer that fails `validate_value` is never sent (S4); a link question gets the profile's link only when exactly one is of its kind, read from the host; several are the user's to give; the review page shows why |
-| C7 | Consents and answers tied to the field fingerprint and a keyed value digest | M | C6 | After C10/C11 |
+| C7 | Consents and answers tied to the field fingerprint and a keyed value digest | M | C6 | **Done (D60, 2026-10-28):** each answer and consent stores its question's fingerprint; a changed question asks again; "disclose" covers a keyed digest of the exact answer |
 | C8 | Disclose path end to end with the receiver ledger; "decline to self-identify" mapping | M | C7 | Closes R3.4 |
 | C9 | Salary and relocation period and currency | S | C6 (they are no longer bankable) | The `version` key fix is [shape] → C18 |
 | C12 | Review UI edit, clear, optional answers, cover-letter selection, destination shown | M | C10, C11 | High user value |

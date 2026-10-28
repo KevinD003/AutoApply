@@ -115,6 +115,11 @@ class Context:
     inputs: dict = field(default_factory=dict)  # field_key -> ApplicationInput (answers)
     consents: dict = field(default_factory=dict)  # field_key -> choice str
     documents: dict = field(default_factory=dict)  # role -> Document
+    # C7 (D60): the user the inputs belong to, the questions whose answer or choice was given for
+    # another wording (left out of inputs and consents), and each consent's disclose digest.
+    owner: str | None = None
+    changed: set = field(default_factory=set)
+    consent_digests: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -331,8 +336,24 @@ def _does_not_fit(r: Resolution, f: FormField, why: str) -> Resolution:
     return _unresolved(r, f, f"{why} {then}")
 
 
+CHANGED_QUESTION = (
+    "This question changed since you answered it (its wording, options or whether it is "
+    "required), so your earlier answer or choice no longer applies."
+)
+CHANGED_ANSWER = "Your answer changed since you chose to include it: confirm it again."
+
+
 def resolve_field(
     f: FormField, ctx: Context, parent: Resolution | None = None, repeated: bool = False
+) -> Resolution:
+    r = _resolve_field(f, ctx, parent, repeated)
+    if f.key in ctx.changed and r.status != "resolved":  # C7 (D60): say why it asks again
+        r.explanation = f"{CHANGED_QUESTION} {r.explanation}".strip()
+    return r
+
+
+def _resolve_field(
+    f: FormField, ctx: Context, parent: Resolution | None, repeated: bool
 ) -> Resolution:
     intent = _inherit(f, classify(f), parent)
     r = _base(f, intent)
@@ -1059,6 +1080,14 @@ def _resolve_sensitive(f, r, ctx) -> Resolution:
         hit = _from_bank(f, Resolution(key=f.key, status="", source="", sensitive=True), ctx)
         if hit is not None and hit.status == "resolved":
             proposed, source, r.fact_refs = hit.value, "answer_bank", hit.fact_refs
+    if choice == "disclose" and not _disclose_covers(ctx, f.key, proposed):
+        # C7 (D60): a "disclose" covers the exact answer it was given for, and no other.
+        choice = None
+        if proposed is not None:
+            r.status, r.source, r.value = "needs_consent", source, proposed
+            r.display = display_value(f, proposed)
+            r.explanation = f"{CHANGED_ANSWER} Sensitive: confirm you want to disclose it."
+            return r
     if choice == "withhold":
         if f.required:
             return _unresolved(
@@ -1088,6 +1117,15 @@ def _resolve_sensitive(f, r, ctx) -> Resolution:
     r.display = display_value(f, proposed)
     r.explanation = "Sensitive disclosure you chose to include for this application."
     return r
+
+
+def _disclose_covers(ctx, key: str, proposed: dict | None) -> bool:
+    stored = ctx.consent_digests.get(key)
+    if stored is None or ctx.owner is None:
+        return ctx.owner is None  # a context without an owner (unit tests, saved-answer checks)
+    from app.modules.preparation.binding import value_digest
+
+    return stored == value_digest(ctx.owner, key, proposed)
 
 
 def _resolve_document(f, r, ctx, role: str) -> Resolution:

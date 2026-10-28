@@ -28,7 +28,7 @@ from app.modules.applications.states import Actor, AppState
 from app.modules.audit.service import record
 from app.modules.documents.models import Document, DocumentKind
 from app.modules.jobs.models import Job
-from app.modules.preparation import drafting, sending
+from app.modules.preparation import binding, drafting, sending
 from app.modules.preparation.forms import FieldType, FormSchema
 from app.modules.preparation.models import (
     AnswerBankEntry,
@@ -113,6 +113,13 @@ def load_context(db: Session, app: Application) -> Context:
                 now = drafting.grounding_hash([f for f in used if f is not None])
                 # Flag only; the resolver turns a stale draft into a checkpoint.
                 i.stale = None in used or now != i.meta.get("grounding_hash")
+    # C7 (D60): an answer or a choice given for another wording of its question never carries
+    # over: it is left out, and the question says why.
+    changed = _changed_questions(db, app, [i for i in inputs if i.kind in ("answer", "consent")])
+    answer_inputs = {k: i for k, i in answer_inputs.items() if (k, "answer") not in changed}
+    consents = [
+        i for i in inputs if i.kind == "consent" and (i.field_key, "consent") not in changed
+    ]
     return Context(
         profile=db.scalar(select(CandidateProfile).where(CandidateProfile.user_id == uid)),
         work_auth={
@@ -125,9 +132,39 @@ def load_context(db: Session, app: Application) -> Context:
             for e in db.scalars(select(AnswerBankEntry).where(AnswerBankEntry.user_id == uid))
         },
         inputs=answer_inputs,
-        consents={i.field_key: i.value.get("choice") for i in inputs if i.kind == "consent"},
+        consents={i.field_key: i.value.get("choice") for i in consents},
         documents=docs,
+        owner=str(uid),
+        changed={k for k, _ in changed},
+        consent_digests={i.field_key: (i.meta or {}).get("value_digest") for i in consents},
     )
+
+
+def _changed_questions(db: Session, app: Application, inputs: list) -> set[tuple[str, str]]:
+    """(field key, kind) of each answer or consent whose question is not, now, the one it was
+    given for. A row saved before C7 has no fingerprint: the form version current when it was
+    last saved stands in."""
+    form = latest_form(db, app.job_id)
+    if form is None or not inputs:
+        return set()
+    now = {f.key: binding.question_fp(f) for f in FormSchema.model_validate(form.schema).fields}
+    versions = None
+    out = set()
+    for i in inputs:
+        fp = (i.meta or {}).get("field_fp")
+        if fp is None:
+            if versions is None:
+                versions = db.scalars(
+                    select(JobForm).where(JobForm.job_id == app.job_id).order_by(JobForm.version)
+                ).all()
+            then = [v for v in versions if v.captured_at <= i.updated_at]
+            if not then:
+                continue  # older than every capture: nothing to compare with
+            fields = FormSchema.model_validate(then[-1].schema).fields
+            fp = next((binding.question_fp(f) for f in fields if f.key == i.field_key), "")
+        if now.get(i.field_key) != fp:
+            out.add((i.field_key, i.kind))
+    return out
 
 
 def _condition_met(cond, value: dict | None) -> bool:

@@ -21,7 +21,7 @@ from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
 from app.modules.jobs import signals
 from app.modules.jobs.models import Job
-from app.modules.preparation import bankscope, drafting
+from app.modules.preparation import bankscope, binding, drafting
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation import package as pk
 from app.modules.preparation.classify import classify
@@ -459,7 +459,7 @@ def put_answer(
         refusal = _reuse_refusal(db, app, entry, f)
         if refusal:
             raise bad_request(refusal)
-    _upsert_input(db, app, "answer", key, value)
+    _upsert_input(db, app, "answer", key, value, meta=binding.input_meta(f))  # C7: bound
     if body.save_to_bank:
         db.flush()  # the input row before the saved answer (lock order, D46 item 6)
         _save_to_bank(db, user, app, f, value, sensitive=entry["sensitive"])
@@ -640,7 +640,7 @@ def put_consent(
 ) -> dict:
     app = _owned_app(db, user, app_id)
     key = body.key
-    entry, _ = _field(db, app, key)
+    entry, f = _field(db, app, key)
     allowed = (
         {"agree", "decline"}
         if entry["acknowledgment"]
@@ -666,7 +666,11 @@ def put_consent(
         if row is not None:
             db.delete(row)
     else:
-        _upsert_input(db, app, "consent", key, {"choice": body.choice})
+        # C7 (D60): bound to the question as shown, and a "disclose" to the exact answer shown.
+        meta = binding.input_meta(f)
+        if body.choice == "disclose":
+            meta["value_digest"] = binding.value_digest(user.id, key, entry["value"])
+        _upsert_input(db, app, "consent", key, {"choice": body.choice}, meta=meta)
     record(db, user.id, "application.consent", "application", app.id, field_ref=ref(key, user.id),
            choice=body.choice)  # fmt: skip
     db.flush()
@@ -853,11 +857,14 @@ def accept_draft(
         d.field_key,
         normalize_input(f, {"text": d.text}),
         provenance="draft_accepted",
-        meta={
-            "draft_id": str(d.id),
-            "evidence": list(d.evidence),
-            "grounding_hash": drafting.grounding_hash(used),
-        },
+        meta=binding.input_meta(
+            f,
+            {
+                "draft_id": str(d.id),
+                "evidence": list(d.evidence),
+                "grounding_hash": drafting.grounding_hash(used),
+            },
+        ),
     )
     d.status = "accepted"
     db.flush()

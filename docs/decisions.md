@@ -1391,3 +1391,32 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Rejected:** writing a closed flag onto the job (discovery never edits a tracker job);
   merging or auto-linking duplicates; matching roles by similarity; counting a draft
   application as applied.
+
+## D60 — Answers and consents apply only to the question they were given for (C7, 2026-10-28)
+- **Problem:** an answer or a consent was stored by the question's key alone. When an
+  employer's form was captured again with the same key and other wording (an acknowledgment
+  that now also lets the employer share data, a question about other experience, a choice with
+  new options that kept the old one), the earlier answer or "I agree" carried over unasked. A
+  "disclose" choice covered whatever answer the field held later, not the one the user saw.
+- **What changed (`preparation/binding.py`, `package.load_context`, `resolver.resolve_field`):**
+  - each answer and consent stores the fingerprint of the question as it was shown
+    (`forms.field_fingerprint`: wording, help text, type, requirement, options, condition) in
+    `application_inputs.meta.field_fp`; an accepted draft keeps its evidence beside it;
+  - when the question's current fingerprint differs, the answer or choice is left out (it is
+    kept in the database, never sent) and the question says why ("This question changed since
+    you answered it …"); the user answers or chooses again;
+  - a "disclose" choice stores a keyed digest of the exact answer it covered
+    (`meta.value_digest`: HMAC-SHA-256 under the server's reference key, domain-separated,
+    scoped to the user and the question; never a copy of the answer); a changed answer, typed or
+    saved, needs "Include this answer" again ("Your answer changed since you chose to include
+    it …"); "Don't disclose" is not tied to the answer;
+  - rows saved before C7 have no fingerprint: the form version current when the row was last
+    saved stands in, so an unchanged question keeps its answer; a "disclose" saved before C7 has
+    no digest and is asked again once.
+- **Effect on approvals:** a recaptured form already gives a new package version (the form is
+  part of the destination); now the changed question is unresolved, so the package cannot be
+  approved until it is answered again. No change in package shape: `SCHEMA_VERSION` (2) and
+  `RESOLVER_VERSION` stay; no migration (the binding lives in the existing `meta` column).
+- **Rejected:** keeping the answer when only the wording "looks similar" (not deterministic);
+  storing the disclosed answer beside the choice (a second copy of sensitive data); tying
+  "Don't disclose" to the answer (withholding stays right whatever the answer is).

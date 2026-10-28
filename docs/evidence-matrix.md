@@ -9,6 +9,18 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Answers and consents bound to their question (C7, 2026-10-28; local only)
+
+A fictional manual form recaptured with other wording. Decision D60. No external request.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| An answer for another wording is asked again | `tests/test_input_binding.py::test_an_answer_for_another_wording_is_asked_again`, `::test_a_choice_answer_for_other_options_is_asked_again` | the same question recaptured keeps the answer; other wording or options: unanswered, with the reason |
+| Agreeing to one statement never agrees to another | `::test_agreeing_to_one_statement_never_agrees_to_another` | the reworded acknowledgment is unanswered and blocks approval until agreed again |
+| "Include this answer" covers only the answer it was given for | `::test_a_disclose_choice_covers_only_the_answer_it_was_given_for`, `::test_the_digest_is_scoped_to_the_user_and_the_question` | a changed answer needs the choice again; the row holds a keyed digest, never the answer; "Don't disclose" is kept |
+| Rows saved before C7 | `::test_rows_saved_before_binding_use_the_form_version_they_were_saved_against` | compared with the form version current when saved; a "disclose" without a digest asked again |
+| Approval | `::test_a_changed_question_invalidates_the_approval_of_its_answer` | invalidated; the changed question unresolved |
+
 ## Job signals (S3, 2026-10-28; local only)
 
 The local stand-in of Freehire's documented API plays the source; synthetic jobs and
