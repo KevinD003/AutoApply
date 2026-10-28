@@ -1224,3 +1224,49 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   after a failed run (that would be an automatic re-run); a looser match than the exact search
   (the approval names what is read); approving from the same web session that runs the import
   (for now the approval is a separate act on the backend host).
+
+## D56 — Watched Freehire searches for the owner, checked as often as once a minute; deleted postings stay deleted (S8, 2026-10-28)
+- **Owner direction (2026-10-28):** "Make the pulling from freehire on live. As soon as the
+  freehire receives the job posting in his portal it should be om our portal too", then "Get
+  the new job posting within a minute", after being told that Freehire offers no push or
+  webhook (its change feed is announced as "the next thing we are building"), so the only way
+  is to check it, and that showing the postings to anyone else needs a Freehire plan.
+  Recorded as: a standing approval per watched search replaces D55's one approval per run for
+  those searches, for the owner's own use only (D34).
+- **What changed:**
+  - table `discovery_watches` (migration `29588d78e7e1`): the exact search, an interval of 60 s
+    to a day, an end date at most 90 days on, the retention statement, and the bookkeeping
+    (next check, last outcome, failures in a row, the pause reason, found postings, requests
+    per UTC day); recorded, listed and stopped with `python -m app.modules.discovery.watch`;
+    listed and stopped on `GET /api/discovery/watches` and `POST .../{id}/stop` (the owner's
+    only; another user's is 404);
+  - the worker task `noefforts.check_discovery_watches` runs every 10 s and does nothing unless
+    Freehire is an enabled provider. Each due watch is locked with SKIP LOCKED (never checked
+    twice at once) and checked in order: the account is an owner (else paused), the address
+    is the live origin or a fixture (else paused), the daily cap
+    (`NOEFFORTS_FREEHIRE_DAILY_REQUEST_BUDGET`, default 1,440: one request a minute for a day,
+    and under Freehire's pending strict mode of 2,000 a day per address) leaves room for a
+    check (else it waits for the next UTC day), the address resolves to public hosts only; then
+    at most two requests, newest first (`sort=created_at&order=desc`, documented), stopping at
+    the first page holding a posting already stored;
+  - a failure (a 429, an outage, a refused address, anything unexpected) is never retried
+    inside the check: the next check waits the interval doubled per failure in a row, at most
+    an hour, and at least the 429's Retry-After; ten in a row pause the watch; an exhausted
+    `X-RateLimit-Remaining` waits at least a minute;
+  - deleting a discovered posting (`DELETE /api/discovery/jobs/{id}`) erases its content and
+    keeps only its id (status `dismissed`), so no import or watch adds it again; its tracker
+    job goes too when discovery created it, nothing else links to it and it has no
+    application (otherwise the answer says why it stays). The Discover page lists the watches,
+    stops them, deletes postings and reloads every 20 s while a watch is active;
+  - audit events `discovery.watch.create`, `.found` (only when a check added postings),
+    `.pause`, `.stop` and `discovery.job.delete` (counts, reasons and the provider key only).
+- **Timing, honestly:** a posting reaches the job list within about a minute of appearing in
+  Freehire's search (the interval plus up to 10 s), not of appearing on the employer's site:
+  Freehire crawls job boards on its own schedule. Only while NoEfforts and its worker run.
+- **Not done here:** no request to Freehire was made (the sandbox refuses `freehire.me`);
+  multi-user use and showing postings to others (a Freehire plan and its own statement);
+  any application (D55, the live-pilot gate).
+- **Rejected:** checking more often than once a minute (the budget, and no faster source
+  exists); following the employers' boards directly (not this decision, and the boards' own
+  terms); retrying a failed check sooner than its backoff; deleting a posting's id with its
+  content (it would come back on the next check).

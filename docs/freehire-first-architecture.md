@@ -267,8 +267,9 @@ Legacy lessons guarded: LD-40 (any host, any "Apply" link, any page with two ide
 - **Stored:** normalized fields and a summary of at most 500 characters, copied into
   `Job.description` when linked (`M/discovery/service.py:195`); no raw payload, HTML, enrichment
   summary or counters. CONFIRMED.
-- **Not implemented:** a TTL or purge for discovered rows; a delete endpoint for discovered rows
-  or tracker jobs; account deletion (`D/implementation-status.md`, row "Account deletion / data export: not started"). CONFIRMED.
+- **Not implemented:** a TTL or purge for discovered rows; a delete endpoint for tracker jobs
+  (a discovered row can be deleted, with the job it created when nothing depends on it, D56);
+  account deletion (`D/implementation-status.md`, row "Account deletion / data export: not started"). CONFIRMED.
 - **Freehire terms (2026-10-26):** the 30-day deletion after a plan ends was removed; a plan holder
   must stop *showing* postings when the plan ends and may keep stored data for internal analysis.
   The terms are silent on storage under keyless personal use. CONFIRMED (fetched page).
@@ -317,8 +318,8 @@ Personal-prototype live read:
    approved import, by an account in `NOEFFORTS_DISCOVERY_OWNER_EMAILS`, after
    `resolve_public_destination` (§6.6) passes; refreshes and health checks stay fixture-only.
 3. **Decided (D55):** the owner's statement on the competitor rule (§10).
-4. **Per run:** the retention statement is part of each approval (§8). A delete control for
-   discovered rows is still S6.
+4. **Per run or per watch:** the retention statement is part of each approval and each watched
+   search (§8). A per-user delete of discovered rows exists (D56): content erased, id kept.
 5. **Reachability:** the cloud sandbox proxy refused `freehire.me` again on 2026-10-28
    (`connect_rejected`), so a run needs the host allowed in the environment's network settings
    or a local run.

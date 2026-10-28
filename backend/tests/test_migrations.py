@@ -5,6 +5,7 @@
 3. disposable downgrade-to-base and re-upgrade
 4. C6: answer_bank.help_text added without touching a saved answer
 5. S7: discovery_run_approvals added, bounded by its checks, dropped on downgrade
+6. S8: discovery_watches added, bounded by its checks, dropped on downgrade
 """
 
 import hashlib
@@ -346,3 +347,44 @@ def test_s7_adds_bounded_run_approvals_and_downgrade_drops_only_them(disposable)
     with disposable.connect() as c:
         assert c.execute(text("select to_regclass('discovery_run_approvals')")).scalar() is None
         assert c.execute(text("select version_num from alembic_version")).scalar() == S2
+
+
+S7 = "4bc9c342d34c"
+
+
+def test_s8_adds_bounded_watches_and_downgrade_drops_only_them(disposable):
+    """S8 (D56): a new table only. Its checks refuse an interval under a minute or over a day,
+    a watch longer than 90 days, an empty search or retention statement and negative counts;
+    deleting the account deletes its watches; a downgrade drops the table and nothing else."""
+    from sqlalchemy.exc import IntegrityError
+
+    command.upgrade(_cfg(), S7)
+    uid = uuid.uuid4()
+    with disposable.begin() as c:
+        c.execute(
+            text(
+                "insert into users (id,email,password_hash,created_at,updated_at) "
+                "values (:u,'owner.synthetic@example.com','x',now(),now())"
+            ),
+            {"u": uid},
+        )
+    command.upgrade(_cfg(), "head")
+    insert = text(
+        "insert into discovery_watches (id,user_id,provider,query,interval_seconds,not_before,"
+        "not_after,retention,created_at,next_check_at,failures,found_total,requests_on_day) "
+        "values (:i,:u,'freehire',:q,:s,now(),now() + make_interval(days => :d),:r,now(),now(),"
+        ":f,0,0)"
+    )
+    good = {"u": uid, "q": "financial analyst", "s": 60, "d": 30, "r": "kept until deleted", "f": 0}
+    for bad in ({"s": 59}, {"s": 86401}, {"d": 91}, {"q": " "}, {"r": ""}, {"f": -1}):
+        with pytest.raises(IntegrityError), disposable.begin() as c:
+            c.execute(insert, {**good, **bad, "i": uuid.uuid4()})
+    with disposable.begin() as c:
+        c.execute(insert, {**good, "i": uuid.uuid4()})
+        c.execute(text("delete from users where id=:u"), {"u": uid})
+        assert c.execute(text("select count(*) from discovery_watches")).scalar() == 0
+    command.downgrade(_cfg(), S7)
+    with disposable.connect() as c:
+        assert c.execute(text("select to_regclass('discovery_watches')")).scalar() is None
+        assert c.execute(text("select to_regclass('discovery_run_approvals')")).scalar()
+        assert c.execute(text("select version_num from alembic_version")).scalar() == S7

@@ -160,6 +160,27 @@ export interface DiscoveryImportResult {
   stale: number;
   linked_new_jobs: number;
   linked_existing_jobs: number;
+  deleted_by_you: number;
+}
+
+// A watched search (D56): the owner's standing approval, recorded on the backend host.
+export interface DiscoveryWatch {
+  id: string;
+  provider: string;
+  query: string;
+  interval_seconds: number;
+  not_after: string;
+  stopped: boolean;
+  paused_reason: string | null;
+  last_checked_at: string | null;
+  next_check_at: string;
+  last_outcome: string | null;
+  found_total: number;
+}
+
+export interface DiscoveryDeleteResult {
+  job_deleted: boolean;
+  job_kept_because: string | null;
 }
 
 export type Outcome =

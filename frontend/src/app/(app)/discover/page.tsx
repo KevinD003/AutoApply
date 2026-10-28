@@ -4,7 +4,14 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, Credit, Empty, ErrorBox, Field, inputCls, Loading, Notice, splitList } from "@/components/ui";
-import { api, DiscoveredJob, DiscoveryImportResult, DiscoveryProviderInfo } from "@/lib/api";
+import {
+  api,
+  DiscoveredJob,
+  DiscoveryDeleteResult,
+  DiscoveryImportResult,
+  DiscoveryProviderInfo,
+  DiscoveryWatch,
+} from "@/lib/api";
 
 const LINK_TEXT: Record<string, string> = {
   new_job: "added to your jobs",
@@ -16,20 +23,28 @@ const LINK_TEXT: Record<string, string> = {
 
 const SPONSORSHIP_TEXT = { yes: "says yes", no: "says no", unknown: "not stated" } as const;
 
+// While a watched search is active the list reloads on its own (D56): new postings appear
+// without a page reload, within about a minute of reaching Freehire.
+const REFRESH_MS = 20_000;
+
 export default function DiscoverPage() {
   const [providers, setProviders] = useState<DiscoveryProviderInfo[] | null>(null);
   const [rows, setRows] = useState<DiscoveredJob[] | null>(null);
+  const [watches, setWatches] = useState<DiscoveryWatch[]>([]);
   const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [p, r] = await Promise.all([
+      const [p, r, w] = await Promise.all([
         api<DiscoveryProviderInfo[]>("/discovery/providers"),
         api<DiscoveredJob[]>("/discovery/jobs"),
+        api<DiscoveryWatch[]>("/discovery/watches"),
       ]);
       setProviders(p);
       setRows(r);
+      setWatches(w);
     } catch (e) {
       setError(e);
       setProviders([]);
@@ -40,6 +55,36 @@ export default function DiscoverPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const watching = watches.some((w) => !w.stopped && !w.paused_reason);
+  useEffect(() => {
+    if (!watching) return;
+    const t = setInterval(load, REFRESH_MS);
+    return () => clearInterval(t);
+  }, [watching, load]);
+
+  async function remove(r: DiscoveredJob) {
+    setNotice(null);
+    try {
+      const out = await api<DiscoveryDeleteResult>(`/discovery/jobs/${r.id}`, { method: "DELETE" });
+      setNotice(
+        `Deleted “${r.title ?? "listing"}”; it will not be added again. ` +
+          (out.job_deleted ? "Its job was removed too." : `Its job stays: ${out.job_kept_because}.`),
+      );
+      load();
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  async function stop(w: DiscoveryWatch) {
+    try {
+      await api(`/discovery/watches/${w.id}/stop`, { method: "POST" });
+      load();
+    } catch (e) {
+      setError(e);
+    }
+  }
 
   const enabled = providers?.filter((p) => p.enabled) ?? [];
   return (
@@ -67,7 +112,9 @@ export default function DiscoverPage() {
           </ul>
         </Card>
       )}
+      {watches.length > 0 && <Watches watches={watches} onStop={stop} />}
       {enabled.length > 0 && <RunDiscovery providers={enabled} onDone={load} />}
+      {notice && <Notice>{notice}</Notice>}
       <Card title={`Discovered (${rows?.length ?? 0})`}>
         {rows === null ? (
           <Loading />
@@ -76,12 +123,44 @@ export default function DiscoverPage() {
         ) : (
           <ul className="divide-y divide-slate-100">
             {rows.map((r) => (
-              <DiscoveredRow key={r.id} r={r} />
+              <DiscoveredRow key={r.id} r={r} onDelete={() => remove(r)} />
             ))}
           </ul>
         )}
       </Card>
     </>
+  );
+}
+
+function Watches({ watches, onStop }: { watches: DiscoveryWatch[]; onStop: (w: DiscoveryWatch) => void }) {
+  return (
+    <Card title="Watched searches">
+      <p className="mb-2 text-xs text-slate-500">
+        Checked automatically, newest postings first; new ones are added to your jobs. Recorded with{" "}
+        <code>python -m app.modules.discovery.watch</code>.
+      </p>
+      <ul className="space-y-2 text-sm">
+        {watches.map((w) => {
+          const state = w.stopped ? "stopped" : w.paused_reason ? `paused: ${w.paused_reason}` : "active";
+          return (
+            <li key={w.id} className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">“{w.query}”</span>
+              <Badge tone={state === "active" ? "green" : state === "stopped" ? "slate" : "amber"}>{state}</Badge>
+              <span className="text-slate-600">
+                every {w.interval_seconds < 120 ? `${w.interval_seconds} s` : `${Math.round(w.interval_seconds / 60)} min`} until{" "}
+                {new Date(w.not_after).toLocaleDateString()} · found {w.found_total}
+                {w.last_checked_at ? ` · last check ${new Date(w.last_checked_at).toLocaleTimeString()} (${w.last_outcome})` : ""}
+              </span>
+              {state === "active" && (
+                <Button variant="secondary" onClick={() => onStop(w)}>
+                  Stop watching
+                </Button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
   );
 }
 
@@ -173,7 +252,7 @@ function RunDiscovery({ providers, onDone }: { providers: DiscoveryProviderInfo[
   );
 }
 
-function DiscoveredRow({ r }: { r: DiscoveredJob }) {
+function DiscoveredRow({ r, onDelete }: { r: DiscoveredJob; onDelete: () => void }) {
   const sponsorship = r.source_facts.sponsorship_offered;
   return (
     <li className="space-y-1 py-3 text-sm">
@@ -215,6 +294,9 @@ function DiscoveredRow({ r }: { r: DiscoveredJob }) {
             Original listing
           </a>
         )}
+        <button type="button" className="text-red-700 underline" onClick={onDelete}>
+          Delete
+        </button>
       </div>
     </li>
   );

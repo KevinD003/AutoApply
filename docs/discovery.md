@@ -42,6 +42,7 @@ made.
 | `NOEFFORTS_FREEHIRE_API_KEY` | empty | Optional. Sent as `Authorization: Bearer` by the backend only. |
 | `NOEFFORTS_FREEHIRE_PAGE_SIZE` / `_MAX_PAGES` | 50 / 5 | Bounded paging. |
 | `NOEFFORTS_FREEHIRE_TIMEOUT_SECONDS` | 10 | Request timeout. |
+| `NOEFFORTS_FREEHIRE_DAILY_REQUEST_BUDGET` | 1440 | Requests watched searches may make per UTC day, across all watches (D56). |
 
 There is no request-rate setting. The API reference gives no keyless figure; the Jobs API
 and pricing pages state 600 requests a minute per address (2026-10-26), and Freehire's code
@@ -80,8 +81,42 @@ The key lives in settings only.
    record or a health check makes no request (403 or 409). A run that fails (a 429, an outage)
    has used its approval; approve again for another try. Nothing runs on its own.
 
-Deleting discovered records is not built yet (plan S6), so the retention statement should
-describe what you will do by hand, or wait for that control.
+## Watched searches (D56, owner only)
+
+Freehire offers no push or webhook, so new postings are found by checking. A watch is a standing
+approval for one search; the worker checks it as often as once a minute.
+
+```bash
+cd backend
+uv run python -m app.modules.discovery.watch create --email <your login> \
+    --query "financial analyst" --every 60 --days 30 \
+    --retention "Discovered postings are kept until I delete them."
+uv run python -m app.modules.discovery.watch list --email <your login>
+uv run python -m app.modules.discovery.watch stop --id <watch id>
+```
+
+- The worker (`celery -A app.worker worker --beat`) must run, with the settings of "Live read"
+  above. Every 10 s it checks each watch that is due: newest postings first, at most two
+  requests, stopping at a posting it already has. New ones are added to your jobs, credited
+  "via freehire.me".
+- Timing: about a minute after a posting appears in Freehire's search. Freehire crawls the
+  employers' boards on its own schedule, so it can lag the employer's own site.
+- Budget: `NOEFFORTS_FREEHIRE_DAILY_REQUEST_BUDGET` (default 1,440 requests per UTC day across
+  all watches; one watch at 60 s uses about that). A check that could pass it waits for the
+  next UTC day. Freehire's pending strict mode would allow 2,000 a day per address.
+- Failures: never retried inside a check. The next check waits the interval doubled per failure
+  in a row (at most an hour), and at least a 429's Retry-After; ten in a row pause the watch.
+  A watch also pauses for an account that is not an owner, or an address other than
+  `https://freehire.me`.
+- Discover lists your watches (with "Stop watching") and reloads every 20 s while one is
+  active. `GET /api/discovery/watches`, `POST /api/discovery/watches/{id}/stop`.
+
+## Deleting a discovered posting (D56)
+
+"Delete" on Discover (`DELETE /api/discovery/jobs/{id}`) erases the posting's content and keeps
+only its id, so no search or watch adds it again. The job it created in your tracker is deleted
+too, unless you added that job yourself, another posting links to it, or it has an application;
+the answer says which.
 
 ## Freehire contract (public documentation as reviewed on 2026-10-21, re-checked 2026-10-26)
 
@@ -223,6 +258,8 @@ unchanged). Only what the documentation states is relied on.
 | `POST /api/discovery/import` | run one import; 409 when disabled or the address is refused, 403 when a live read has no owner or no run approval for the exact search (D55), 503 on a provider failure (nothing changed) |
 | `GET /api/discovery/jobs`, `GET /api/discovery/jobs/{id}` | the user's discovered records. The detail includes the application route with its reason code, grant state and evidence level: a manual handoff until a form is captured, or, without a tracker job, `source_record_incomplete` or `source_posting_closed`. Viewing a linked record records its job's route decision as the job page does (changes only) |
 | `POST /api/discovery/jobs/{id}/refresh` | re-read one record (`get_job`); fixture only: a live record is never re-read (D55) |
+| `DELETE /api/discovery/jobs/{id}` | delete a record: content erased, id kept so it is never added again; its job too when discovery created it and nothing depends on it (D56) |
+| `GET /api/discovery/watches`, `POST /api/discovery/watches/{id}/stop` | your watched searches; stop one (D56) |
 
 All of these are user-scoped: another user's record returns 404. The job detail
 (`GET /api/jobs/{id}`) lists the discovery sources of a job (`discovered_from`).

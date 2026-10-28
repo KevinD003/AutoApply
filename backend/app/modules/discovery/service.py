@@ -19,15 +19,16 @@
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, time, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.db import utcnow
+from app.core.db import SessionLocal, utcnow
 from app.core.urlsafety import UnsafeURL, check_url_syntax
 from app.modules.audit.service import record
-from app.modules.discovery.models import DiscoveredJob, DiscoveryRunApproval
+from app.modules.discovery.models import DiscoveredJob, DiscoveryRunApproval, DiscoveryWatch
 from app.modules.discovery.provider import (
     PROVIDERS,
     DiscoveryError,
@@ -36,6 +37,7 @@ from app.modules.discovery.provider import (
     MalformedRecord,
     NormalizedJob,
 )
+from app.modules.identity.models import User
 from app.modules.jobs.canonical import canonicalize_url, dedupe_key, employer_key, normalize_text
 from app.modules.jobs.models import Job, JobSource
 from app.modules.jobs.service import upsert_job
@@ -75,6 +77,7 @@ class ImportResult:
     stale: int = 0
     linked_new_jobs: int = 0
     linked_existing_jobs: int = 0
+    deleted_by_you: int = 0  # D56: records you deleted; kept deleted, never imported again
     ids: list[str] = field(default_factory=list)
     records: list[dict] = field(default_factory=list)  # per record: ids and outcomes only
 
@@ -227,6 +230,9 @@ def _store(
         )
     )
     outcome = "unchanged"
+    if row is not None and row.status == "dismissed":
+        res.deleted_by_you += 1  # D56: only its id is kept, so that it stays deleted
+        return row
     if row is None:
         row = DiscoveredJob(
             user_id=user_id,
@@ -364,7 +370,8 @@ def import_from(
             if not filters.include_insufficient:
                 continue
         row = _store(db, user_id, provider, n, now, res, filt)
-        res.ids.append(str(row.id))
+        if row.status != "dismissed":
+            res.ids.append(str(row.id))
     complete = (
         provider.provider_capabilities().get("complete_listing")
         and not res.truncated
@@ -440,3 +447,164 @@ def application_route(db: Session, row: DiscoveredJob):
                                      "Import this job manually.",
                                      "source_record_incomplete")  # fmt: skip
     return routing.route_for_job(db, db.get(Job, row.job_id))
+
+
+# -- D56: watched searches ------------------------------------------------------------------------
+
+WATCH_PAGES = 2  # requests a check may make: newest first, it stops at a posting already stored
+WATCH_PAUSE_AFTER = 10  # failures in a row
+WATCH_MAX_BACKOFF = 3600  # seconds
+
+
+def owners() -> set[str]:
+    return {e.strip().lower() for e in get_settings().discovery_owner_emails if e.strip()}
+
+
+def check_due_watches(now: datetime | None = None, limit: int = 20) -> int:
+    """The worker task (every 10 s): each due watch is checked once, in its own transaction,
+    locked with SKIP LOCKED so that two workers never check one watch at the same time. Returns
+    how many watches were checked or paused. Nothing runs while Freehire is not an enabled
+    discovery provider."""
+    if "freehire" not in get_settings().discovery_providers:
+        return 0
+    now = now or utcnow()
+    with SessionLocal() as db:
+        due = db.scalars(
+            select(DiscoveryWatch.id)
+            .where(
+                DiscoveryWatch.revoked_at.is_(None),
+                DiscoveryWatch.paused_reason.is_(None),
+                DiscoveryWatch.not_before <= now,
+                DiscoveryWatch.not_after > now,
+                DiscoveryWatch.next_check_at <= now,
+            )
+            .order_by(DiscoveryWatch.next_check_at)
+            .limit(limit)
+        ).all()
+    done = 0
+    for watch_id in due:
+        with SessionLocal() as db:
+            w = db.scalar(
+                select(DiscoveryWatch)
+                .where(DiscoveryWatch.id == watch_id)
+                .with_for_update(skip_locked=True)
+            )
+            if w is None or w.revoked_at or w.paused_reason or w.next_check_at > now:
+                continue  # another worker has it, or it changed since
+            _check_watch(db, w, now)
+            db.commit()
+            done += 1
+    return done
+
+
+def _pause(db: Session, w: DiscoveryWatch, reason: str) -> None:
+    w.paused_reason = w.last_outcome = reason
+    record(db, w.user_id, "discovery.watch.pause", "discovery_watch", w.id, reason=reason)
+
+
+def _check_watch(db: Session, w: DiscoveryWatch, now: datetime) -> None:
+    """One check of one watch: who and where first (nothing requested before), then the daily
+    cap, then the newest postings until a known one. Never retried inside a check."""
+    s = get_settings()
+    user = db.get(User, w.user_id)
+    if user is None or user.email.lower() not in owners():
+        _pause(db, w, "not_owner")
+        return
+    p = PROVIDERS[w.provider]()
+    if not p.wants_live() and not _fixture(p):
+        _pause(db, w, "address_refused")
+        return
+    today = now.date()
+    if w.budget_day != today:
+        w.budget_day, w.requests_on_day = today, 0
+    used = db.scalar(
+        select(func.coalesce(func.sum(DiscoveryWatch.requests_on_day), 0)).where(
+            DiscoveryWatch.budget_day == today
+        )
+    )
+    if used + WATCH_PAGES > s.freehire_daily_request_budget:
+        w.last_outcome = "daily_budget"
+        w.next_check_at = datetime.combine(today + timedelta(days=1), time(0), tzinfo=now.tzinfo)
+        return
+    w.last_checked_at = now
+    try:
+        # A savepoint: a failed check keeps none of its rows, while the watch stays locked.
+        with db.begin_nested():
+            if p.wants_live():
+                p.check_live_destination()
+                p.live = True
+            p.newest_first = True
+            p.stop_at = set(
+                db.scalars(
+                    select(DiscoveredJob.source_job_id).where(
+                        DiscoveredJob.user_id == w.user_id, DiscoveredJob.provider == w.provider
+                    )
+                )
+            )
+            res = import_from(db, w.user_id, p, DiscoveryFilters(query=w.query), WATCH_PAGES)
+    except Exception as e:  # a provider failure, or anything unexpected: back off, never loop
+        if not isinstance(e, DiscoveryError):
+            log.exception("discovery watch check failed watch=%s", w.id)
+        w.requests_on_day += p.requests
+        w.failures += 1
+        kind = getattr(e, "kind", "error")
+        kind = "address_refused" if kind == "disabled" else kind
+        w.last_outcome = kind
+        wait = min(w.interval_seconds * 2 ** (w.failures - 1), WATCH_MAX_BACKOFF)
+        if kind == "rate_limited":
+            wait = max(wait, p.retry_after or 300)
+        w.next_check_at = now + timedelta(seconds=wait)
+        if w.failures >= WATCH_PAUSE_AFTER:
+            _pause(db, w, kind)
+        return
+    w.requests_on_day += p.requests
+    w.failures, w.last_outcome = 0, "ok"
+    w.found_total += res.created
+    wait = w.interval_seconds
+    if p.rate.get("remaining") == "0":
+        wait = max(wait, 60)  # Freehire's budget is used up for now: never sooner than a minute
+    w.next_check_at = now + timedelta(seconds=wait)
+    if res.created:
+        record(
+            db, w.user_id, "discovery.watch.found", "discovery_watch", w.id,
+            provider=w.provider, created=res.created,
+        )  # fmt: skip
+
+
+def _fixture(p) -> bool:
+    from app.modules.discovery import provider as fh
+
+    return bool(getattr(p, "base", "")) and fh.is_fixture_origin(p.base)
+
+
+# -- D56: deleting a discovered posting ----------------------------------------------------------
+
+
+def dismiss(db: Session, row: DiscoveredJob) -> dict:
+    """Erase a discovered posting and keep only its id, so that no import or watch brings it
+    back. Its tracker job is deleted too when discovery created it, nothing else links to it and
+    it has no application; otherwise the job stays and the answer says why."""
+    from app.modules.applications.models import Application
+
+    out = {"job_deleted": False, "job_kept_because": None}
+    job = db.get(Job, row.job_id) if row.job_id else None
+    if job is not None:
+        others = db.scalar(
+            select(func.count(DiscoveredJob.id)).where(
+                DiscoveredJob.job_id == job.id, DiscoveredJob.id != row.id
+            )
+        )
+        applied = db.scalar(select(func.count(Application.id)).where(Application.job_id == job.id))
+        if job.source != JobSource.discovery:
+            out["job_kept_because"] = "you added it yourself"
+        elif applied:
+            out["job_kept_because"] = "it has an application"
+        elif others:
+            out["job_kept_because"] = "another discovered posting links to it"
+        else:
+            db.delete(job)
+            out["job_deleted"] = True
+    row.status, row.job_id, row.link_basis = "dismissed", None, None
+    row.normalized, row.source_facts, row.raw_ref, row.filter_result = {}, {}, None, None
+    row.changed_fields, row.changed_at, row.stale, row.stale_reason = [], None, False, None
+    return out

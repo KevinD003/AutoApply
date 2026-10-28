@@ -13,11 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.db import get_db
+from app.core.db import get_db, utcnow
 from app.core.errors import not_found
 from app.modules.audit.service import record
 from app.modules.discovery import service
-from app.modules.discovery.models import DiscoveredJob
+from app.modules.discovery.models import DiscoveredJob, DiscoveryWatch
 from app.modules.discovery.provider import PROVIDERS, DiscoveryError, DiscoveryFilters, enabled
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
@@ -122,8 +122,8 @@ def _attribution(provider: str) -> dict:
 
 def _owned(db: Session, user: User, row_id: uuid.UUID) -> DiscoveredJob:
     row = db.get(DiscoveredJob, row_id)
-    if row is None or row.user_id != user.id:
-        raise not_found("Discovered job")
+    if row is None or row.user_id != user.id or row.status == "dismissed":
+        raise not_found("Discovered job")  # a deleted record keeps only its id (D56)
     return row
 
 
@@ -216,7 +216,9 @@ def list_rows(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    q = select(DiscoveredJob).where(DiscoveredJob.user_id == user.id)
+    q = select(DiscoveredJob).where(
+        DiscoveredJob.user_id == user.id, DiscoveredJob.status != "dismissed"
+    )
     if provider:
         q = q.where(DiscoveredJob.provider == provider)
     return [_row(r) for r in db.scalars(q.order_by(DiscoveredJob.last_seen_at.desc()).limit(500))]
@@ -250,3 +252,62 @@ def refresh_row(
         raise _fail(e) from None
     db.commit()
     return {"outcome": outcome, "job": _row(row)}
+
+
+@router.delete("/jobs/{row_id}")
+def delete_row(
+    row_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    """D56: erase a discovered posting (its id is kept so that it is never imported again), and
+    its tracker job when discovery created it and nothing depends on it."""
+    row = _owned(db, user, row_id)
+    db.execute(select(DiscoveredJob.id).where(DiscoveredJob.id == row.id).with_for_update())
+    out = service.dismiss(db, row)
+    record(
+        db,
+        user.id,
+        "discovery.job.delete",
+        "discovered_job",
+        row.id,
+        provider=row.provider,
+        job_deleted=out["job_deleted"],
+    )
+    db.commit()
+    return out
+
+
+def _watch(w: DiscoveryWatch) -> dict:
+    return {
+        "id": str(w.id),
+        "provider": w.provider,
+        "query": w.query,
+        "interval_seconds": w.interval_seconds,
+        "not_after": w.not_after.isoformat(),
+        "stopped": w.revoked_at is not None,
+        "paused_reason": w.paused_reason,
+        "last_checked_at": w.last_checked_at.isoformat() if w.last_checked_at else None,
+        "next_check_at": w.next_check_at.isoformat(),
+        "last_outcome": w.last_outcome,
+        "found_total": w.found_total,
+    }
+
+
+@router.get("/watches")
+def list_watches(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[dict]:
+    """D56: your watched searches (recorded with `python -m app.modules.discovery.watch`)."""
+    q = select(DiscoveryWatch).where(DiscoveryWatch.user_id == user.id)
+    return [_watch(w) for w in db.scalars(q.order_by(DiscoveryWatch.created_at.desc()))]
+
+
+@router.post("/watches/{watch_id}/stop")
+def stop_watch(
+    watch_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    w = db.scalar(select(DiscoveryWatch).where(DiscoveryWatch.id == watch_id).with_for_update())
+    if w is None or w.user_id != user.id:
+        raise not_found("Watched search")
+    if w.revoked_at is None:
+        w.revoked_at = utcnow()
+        record(db, user.id, "discovery.watch.stop", "discovery_watch", w.id, provider=w.provider)
+    db.commit()
+    return _watch(w)

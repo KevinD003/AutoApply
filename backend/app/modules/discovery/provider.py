@@ -298,6 +298,13 @@ class FreehireApiProvider(DiscoveryProvider):
         self.rate: dict[str, str] = {}  # the last X-RateLimit-* values, as sent (digits only)
         self._pages_seen: set[tuple] = set()
         self.live = False  # set only by the service, after it used a run approval (D55)
+        # D56 (watched searches): newest postings first, and stop at the first page holding a
+        # posting already stored. `requests` counts requests made; `retry_after` keeps a
+        # 429's Retry-After in seconds when it is a number.
+        self.newest_first = False
+        self.stop_at: set[str] = set()
+        self.requests = 0
+        self.retry_after: int | None = None
 
     def provider_capabilities(self) -> dict:
         return {
@@ -352,6 +359,7 @@ class FreehireApiProvider(DiscoveryProvider):
     def _get(self, path: str, params: dict | None = None):
         self._check_base()
         url = f"{self.base}/api/v1{path}" + (f"?{urlencode(params)}" if params else "")
+        self.requests += 1
         headers = {"Accept": "application/json", "User-Agent": "NoEfforts-discovery/1"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -371,6 +379,7 @@ class FreehireApiProvider(DiscoveryProvider):
             if status == 429:
                 after = (e.headers.get("Retry-After") or "").strip() if e.headers else ""
                 if after.isdigit():
+                    self.retry_after = int(after)
                     hint = f" (Retry-After: {int(after)} s)"
                 elif after and re.fullmatch(r"[A-Za-z0-9 ,:+-]{1,40}", after):
                     hint = f" (Retry-After: {after})"
@@ -412,6 +421,8 @@ class FreehireApiProvider(DiscoveryProvider):
         params = {"limit": self.page_size, "offset": offset}
         if filters.query:
             params["q"] = filters.query[:200]
+        if self.newest_first:  # documented: sort=created_at (first seen by Freehire), order
+            params |= {"sort": "created_at", "order": "desc"}
         _, body = self._get("/jobs/search", params)
         if not isinstance(body, dict) or not isinstance(body.get("data"), list):
             raise DiscoveryError("bad_response", "Freehire's job list had an unexpected shape.")
@@ -427,6 +438,8 @@ class FreehireApiProvider(DiscoveryProvider):
             )
         self._pages_seen.add(ids)
         data = body["data"]
+        if self.stop_at and self.stop_at.intersection(ids):
+            return Page(data, None)  # newest first: everything after this is already known
         total = meta.get("total") if isinstance(meta.get("total"), int) else None
         more = len(data) == self.page_size and (total is None or offset + len(data) < total)
         if more and self.rate.get("remaining") == "0":

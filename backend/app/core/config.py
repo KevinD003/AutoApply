@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     freehire_page_size: int = 50
     freehire_max_pages: int = 5
     freehire_timeout_seconds: int = 10
+    # D56: requests that watched searches may make per UTC day, across all watches. 1,440 is one
+    # request a minute for a day; it also stays under Freehire's pending strict mode (2,000 a
+    # day per address). A check that could pass it waits for the next UTC day instead.
+    freehire_daily_request_budget: int = 1440
     # TEST ONLY: turn off the worker's in-process request interception so a test can show
     # that the container boundary (runner launch settings + session proxy) alone holds.
     # Refused outside development/test.

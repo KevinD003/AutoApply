@@ -9,6 +9,20 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Watched Freehire searches (S8, 2026-10-28; local only)
+
+The local stand-in of Freehire's documented API plays the live origin; its request table is the
+oracle. Decision D56. Nothing contacted Freehire.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| A new posting reaches the job list at the next check, with one request | `tests/test_freehire_watch.py::test_a_new_posting_reaches_the_job_list_at_the_next_check`, `::test_a_check_asks_for_the_newest_postings_first` | the first check reads two pages; the next reads one page, newest first, and stops at a known posting |
+| Never more often than the interval; never two checks of one watch at once | `::test_a_watch_is_checked_no_sooner_than_its_interval`, `::test_one_watch_is_never_checked_twice_at_once` | no request inside the interval; a locked watch is skipped |
+| Only an owner's active watch reads | `::test_only_an_active_watch_of_an_owner_reads`, `::test_discovery_off_means_no_check`, `::test_another_address_pauses_the_watch`, `::test_the_address_is_checked_before_every_check` | another account or another address: paused, no request; stopped or ended watches: never checked |
+| Bounded by Freehire's answers and the daily cap; never retried inside a check | `::test_a_429_waits_for_retry_after_and_nothing_is_retried_inside_a_check`, `::test_a_longer_retry_after_than_the_interval_is_honoured`, `::test_failures_back_off_and_ten_in_a_row_pause_the_watch`, `::test_the_daily_request_cap_is_never_passed` | waits 60, 120 … 3,600 s; at least Retry-After; paused after ten; the cap defers to the next UTC day |
+| Watches are the owner's to see and stop; the command bounds them | `::test_watches_are_listed_and_stopped_only_by_their_owner`, `::test_the_watch_command_records_a_bounded_standing_approval`; `tests/test_migrations.py::test_s8_adds_bounded_watches_and_downgrade_drops_only_them` | another user: empty list, 404; 60 s to a day, at most 90 days |
+| A deleted posting stays deleted | `::test_a_deleted_posting_is_erased_and_never_pulled_again`, `::test_deleting_a_posting_keeps_a_job_you_applied_to`; `frontend/e2e/discovery.spec.ts` | content erased, id kept, its job removed unless it has an application; a later search does not add it back |
+
 ## Owner-approved live Freehire read (S7, 2026-10-28; local only)
 
 The local stand-in of Freehire's documented API plays the live origin; its request table is the

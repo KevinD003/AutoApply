@@ -58,6 +58,8 @@ celery_app.conf.update(
         },
         "sweep-attempts": {"task": "noefforts.sweep_attempts", "schedule": 15.0},
         "purge-expired-evidence": {"task": "noefforts.purge_expired_evidence", "schedule": 86400.0},
+        # D56: watched Freehire searches; does nothing unless Freehire is an enabled provider.
+        "check-discovery-watches": {"task": "noefforts.check_discovery_watches", "schedule": 10.0},
     },
 )
 
@@ -98,6 +100,13 @@ def sweep_attempts() -> dict:
     out = sweep()
     out["stale_workdirs_removed"] = cleanup_stale_workdirs()  # this host's crashed workers
     return out
+
+
+@celery_app.task(name="noefforts.check_discovery_watches")
+def check_discovery_watches() -> int:
+    from app.modules.discovery.service import check_due_watches
+
+    return check_due_watches()
 
 
 @celery_app.task(name="noefforts.purge_expired_sessions")

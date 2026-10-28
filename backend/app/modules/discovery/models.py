@@ -1,10 +1,11 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -82,3 +83,44 @@ class DiscoveryRunApproval(Base):
     retention: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DiscoveryWatch(Base):
+    """The owner's standing approval to check one search again and again (D56): the exact
+    search, how often (at least once a minute), until when (at most 90 days) and the retention
+    statement, recorded with `python -m app.modules.discovery.watch create`. A worker task checks
+    a due watch, newest postings first, and stops at the first posting it already has. Stopped
+    (`revoked_at`) by the owner at any time; paused (`paused_reason`) when it may not run, or
+    after ten failures in a row. `requests_on_day` counts this watch's requests on `budget_day`
+    (UTC) for the daily cap."""
+
+    __tablename__ = "discovery_watches"
+    __table_args__ = (
+        CheckConstraint("interval_seconds BETWEEN 60 AND 86400", name="ck_watch_interval"),
+        CheckConstraint("not_after > not_before", name="ck_watch_window"),
+        CheckConstraint("not_after <= not_before + interval '90 days'", name="ck_watch_length"),
+        CheckConstraint("length(trim(query)) > 0", name="ck_watch_query"),
+        CheckConstraint("length(trim(retention)) > 0", name="ck_watch_retention"),
+        CheckConstraint("failures >= 0 AND requests_on_day >= 0", name="ck_watch_counts"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[str] = mapped_column(String(50))
+    query: Mapped[str] = mapped_column(String(200))
+    interval_seconds: Mapped[int] = mapped_column(Integer)
+    not_before: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    not_after: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    retention: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    paused_reason: Mapped[str | None] = mapped_column(String(40))
+    next_check_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_outcome: Mapped[str | None] = mapped_column(String(40))
+    failures: Mapped[int] = mapped_column(Integer, default=0)
+    found_total: Mapped[int] = mapped_column(Integer, default=0)
+    budget_day: Mapped[date | None] = mapped_column(Date)
+    requests_on_day: Mapped[int] = mapped_column(Integer, default=0)

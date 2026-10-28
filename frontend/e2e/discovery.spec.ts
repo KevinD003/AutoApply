@@ -43,6 +43,15 @@ test("discover jobs: source, import result, duplicates, incomplete fields, outag
   await expect(page.getByText(/sponsorship: source says yes \(provider enrichment\)/).first()).toBeVisible();
   await expect(page.getByText(/sponsorship: source not stated/).first()).toBeVisible();
 
+  // Deleting a listing (D56) removes it and the job it created; a later search never adds it back.
+  await page.locator("li", { hasText: "Data Analyst" }).getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByText("Deleted “Data Analyst”; it will not be added again. Its job was removed too.")).toBeVisible();
+  await expect(page.getByText("Discovered (4)")).toBeVisible();
+  await page.getByRole("button", { name: "Find jobs" }).click();
+  await expect(page.getByText(/5 listings read/)).toBeVisible();
+  await expect(page.getByText("Discovered (4)")).toBeVisible();
+  await expect(page.locator("li", { hasText: "Data Analyst" })).toHaveCount(0); // no listing row
+
   // The already-tracked job is linked as it is, and shows its source.
   await expect(page.getByRole("link", { name: "already in your jobs (same job link)" }).first()).toBeVisible();
   await page.goto(`/jobs/${(await mine.json()).job.id}`);
@@ -55,11 +64,46 @@ test("discover jobs: source, import result, duplicates, incomplete fields, outag
   await page.goto("/discover");
   await page.getByRole("button", { name: "Find jobs" }).click();
   await expect(page.getByText("Freehire is unavailable (HTTP 503). Nothing was changed.")).toBeVisible();
-  await expect(page.getByText("Discovered (5)")).toBeVisible();
+  await expect(page.getByText("Discovered (4)")).toBeVisible();
   await fhMode(page.request, "normal");
   await page.goto("/jobs");
   await page.getByLabel("Title").fill("Hand-entered role");
   await page.getByLabel("Employer").fill("Example Co (fictional)");
   await page.getByRole("button", { name: "Add job" }).click();
   await expect(page.getByText("Job added.")).toBeVisible();
+});
+
+test("watched searches are listed and can be stopped", async ({ page }, info) => {
+  // The watch itself is recorded by the owner on the backend host (D56); this checks the page.
+  const reg = await page.request.post("/api/auth/register", {
+    data: { email: `watch.${info.project.name}.${Date.now()}@example.com`, password: "synthetic-password-1" },
+  });
+  expect(reg.status()).toBe(201);
+  let stopped = false;
+  const watch = () => ({
+    id: "11111111-1111-4111-8111-111111111111",
+    provider: "freehire",
+    query: "financial analyst",
+    interval_seconds: 60,
+    not_after: "2026-12-31T00:00:00Z",
+    stopped,
+    paused_reason: null,
+    last_checked_at: "2026-10-28T01:00:00Z",
+    next_check_at: "2026-10-28T01:01:00Z",
+    last_outcome: "ok",
+    found_total: 3,
+  });
+  await page.route("**/api/discovery/watches", (route) => route.fulfill({ json: [watch()] }));
+  await page.route("**/api/discovery/watches/*/stop", (route) => {
+    stopped = true;
+    return route.fulfill({ json: watch() });
+  });
+  await page.goto("/discover");
+  const card = page.locator("section", { has: page.getByRole("heading", { name: "Watched searches" }) });
+  await expect(card.getByText("“financial analyst”")).toBeVisible();
+  await expect(card.getByText("active", { exact: true })).toBeVisible();
+  await expect(card.getByText(/every 60 s until .* · found 3/)).toBeVisible();
+  await card.getByRole("button", { name: "Stop watching" }).click();
+  await expect(card.getByText("stopped", { exact: true })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Stop watching" })).toHaveCount(0);
 });

@@ -15,8 +15,10 @@ fh_bad_json, fh_loop (the server ignores offset and keeps returning the first pa
 fh_changed (one posting changed at the source), fh_closed_now (one posting closed since: gone
 from search, served by the detail endpoint with closed_at), fh_malformed (two broken records),
 fh_legacy_shape (work mode only under `enrichment`, the old assumption), fh_no_rate_headers,
-fh_slow, fh_gone (single-job lookups return 404). cfg["fh_rate_limit"] sets the per-window
-request budget the headers report (default 1000; reset with the receiver).
+fh_slow, fh_gone (single-job lookups return 404), fh_new_posting (a posting that arrived since,
+listed first, as a newest-first search lists it). cfg["fh_rate_limit"] sets the per-window
+request budget the headers report (default 1000; reset with the receiver). cfg["fh_retry_after"] sets the
+Retry-After seconds of fh_rate_limited (default 30).
 Each request is recorded in its own table (offset, limit, whether an Authorization header was
 present; never the header itself)."""
 
@@ -112,6 +114,12 @@ def mount(app, ledger, cfg) -> None:
         if mode == "fh_legacy_shape":
             jobs[0] = {**jobs[0], "work_mode": None,
                        "enrichment": {**jobs[0]["enrichment"], "work_mode": "hybrid"}}
+        if mode == "fh_new_posting":
+            new = copy.deepcopy(jobs[2])
+            new.update(public_slug="fx-contoso-finance-liaison-88", title="Finance Liaison",
+                       url="https://jobs.example.test/contoso/finance-liaison-88",
+                       external_id="88", created_at="2026-10-28T01:00:00Z")  # fmt: skip
+            jobs = [new, *jobs]
         if mode == "fh_malformed":
             jobs = [jobs[0], "not-a-record", {"title": "No slug at all"}, *jobs[1:]]
         return jobs
@@ -120,7 +128,7 @@ def mount(app, ledger, cfg) -> None:
         if mode == "fh_rate_limited":
             return JSONResponse({"error": "rate limited"}, 429,
                                 {**rate_headers(), "X-RateLimit-Remaining": "0",
-                                 "Retry-After": "30"})  # fmt: skip
+                                 "Retry-After": str(cfg.get("fh_retry_after", 30))})  # fmt: skip
         if mode == "fh_outage":
             return JSONResponse({"error": "search temporarily unavailable"}, 503)
         if mode == "fh_bad_json":

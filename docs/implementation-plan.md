@@ -25,7 +25,8 @@ committed).
 | S4 (legacy collision corpus and static guards) | Done | D54; `backend/tests/legacy_collisions.json` (244 rows) driven by `test_resolver.py::test_a_legacy_collision_gets_only_its_safe_outcome`, `backend/tests/test_forbidden_capabilities.py`; the rows that resolved wrongly became checkpoints in `classify.py`/`resolver.py` (narrowing only); results in `docs/implementation-status.md` |
 | C7-C18 | Not started | "Remaining preparation steps" below |
 | S7 (live-read gate) | Done in code, not yet run | D55; `backend/app/modules/discovery/approve.py`, migration `4bc9c342d34c`, `backend/tests/test_freehire_live_read.py`; owner statement on the competitor rule recorded |
-| Live discovery | Possible for the owner with a run approval (D55); not yet run (the sandbox proxy refuses `freehire.me`) | `freehire-first-architecture.md` §11; `docs/discovery.md` "Live read" |
+| S8 (watched searches, delete) | Done in code, not yet run against Freehire | D56; `backend/app/modules/discovery/watch.py`, migration `29588d78e7e1`, `backend/tests/test_freehire_watch.py`; the worker task `noefforts.check_discovery_watches` |
+| Live discovery | Possible for the owner: one approved run (D55) or a watched search checked as often as once a minute (D56); not yet run (the sandbox proxy refuses `freehire.me`) | `freehire-first-architecture.md` §11; `docs/discovery.md` "Live read", "Watched searches" |
 | Live execution | Blocked (pilot permissions 1-4; admission capped at `rehearsal_ready`) | `docs/live-pilot-gate.md:22-35`; `admission.py:86-87` |
 
 **Coordination (done).** The C6 spec cited decision D50, which Q1 took. C6 is recorded as
@@ -265,6 +266,7 @@ capability).
   the competitor-rule statement; each run's approval names its retention statement. Left to
   run it: reachability (the cloud sandbox refuses `freehire.me`) and the same-day terms
   re-read. From S6, only the owner allow-list for *live* reads was taken; S6 is otherwise open.
+  S8 (D56) then added watched searches and, from S6, the per-user delete of discovered rows.
 
 ### Remaining preparation steps (critic C7-C18), placed
 
@@ -302,6 +304,7 @@ capability).
 ```
 done: C1 C2 → C3-C5 → Q1 (D50) → S1 (C6, D51) → S2 (outcome integrity, D53) → S4 (D54)
       → S7 in code (live-read gate, D55, at the owner's request; not yet run)
+      → S8 in code (watched searches and delete, D56, at the owner's request; not yet run)
 now:  C11
 next: C10 (its fit check done in S4; the link choice left)
 then: S3 (job state, duplicates) → C7 → C8 → S5 (fixture variants)

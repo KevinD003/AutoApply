@@ -80,6 +80,11 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `discovery.import` | `discovery` | `created`, `fetched`, `provider`, `updated` | counts; the discovery provider key |
 | `discovery.run_approval.create` | `discovery_run_approval` | `hours`, `max_pages`, `provider` | the owner recorded one live-read approval (D55); its search and retention statement stay in `discovery_run_approvals`, never here |
 | `discovery.run_approval.use` | `discovery_run_approval` | `max_pages`, `provider` | an import used that approval, before its first request |
+| `discovery.job.delete` | `discovered_job` | `job_deleted`, `provider` | the user deleted a discovered posting (D56): its content erased, its id kept so that it is never imported again; whether its tracker job was deleted too |
+| `discovery.watch.create` | `discovery_watch` | `days`, `interval_seconds`, `provider` | the owner recorded a watched search (D56); its search and retention statement stay in `discovery_watches`, never here |
+| `discovery.watch.found` | `discovery_watch` | `created`, `provider` | a check of a watched search added postings (written only when it found new ones) |
+| `discovery.watch.pause` | `discovery_watch` | `reason` | a watched search was paused: not an owner, a refused address, or ten failures in a row (the failure kind) |
+| `discovery.watch.stop` | `discovery_watch` | `provider` | the owner stopped a watched search |
 | `job.form_captured` | `job` | `source`, `version` | a fixed form-source name; form version number |
 | `route.decision` | `job` | `adapter_version`, `api_grant`, `evidence`, `provider`, `reason_code`, `route` | see "Route decisions" below |
 | `application.create` | `application` | - | |
