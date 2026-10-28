@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-27 (preparation: the legacy collision corpus (244 wording traps) is a permanent test; someone else's details, preferences read as residence, residence and nationality in other words, any relocation question but the plain one, a negated right to work, agree/decline options under a neutral label and facts that do not fit their field are checkpoints; static guards refuse a mailbox client and page capture; earlier: tracking: a submission says what it rests on (an employer receipt, your statement, or nothing known), a confirmation by you needs what you checked, outcomes are dated, sourced and audited, assessment received exists, an outcome before any known submission is refused, events are insert-only in the database, and a per-user funnel counts with denominators and no rate; earlier: documentation: the Freehire-first review published, with the Freehire re-check of 2026-10-26, an amendment to D34 and D52; earlier: preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-28 (discovery: a live Freehire read is possible for the owner's account only, one approved run at a time, D55; none made, the cloud sandbox refuses freehire.me; earlier: preparation: the legacy collision corpus (244 wording traps) is a permanent test; someone else's details, preferences read as residence, residence and nationality in other words, any relocation question but the plain one, a negated right to work, agree/decline options under a neutral label and facts that do not fit their field are checkpoints; static guards refuse a mailbox client and page capture; earlier: tracking: a submission says what it rests on (an employer receipt, your statement, or nothing known), a confirmation by you needs what you checked, outcomes are dated, sourced and audited, assessment received exists, an outcome before any known submission is refused, events are insert-only in the database, and a per-user funnel counts with denominators and no rate; earlier: documentation: the Freehire-first review published, with the Freehire re-check of 2026-10-26, an amendment to D34 and D52; earlier: preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,48 @@ Last updated: 2026-10-27 (preparation: the legacy collision corpus (244 wording 
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Owner-approved live Freehire read (S7, 2026-10-28; local only, no external request)
+
+- **Scope:** plan slice S7 (`docs/implementation-plan.md`), decision D55, at the owner's request
+  ("Go ahead, because I want to fetch the job postings from the freehire"); evidence:
+  `docs/evidence-matrix.md` ("Owner-approved live Freehire read"). NoEfforts made no request to
+  Freehire: the sandbox's network proxy refused `freehire.me` (`connect_rejected`), so the
+  installer the owner pointed to could not be read and was not run. Separately, through the
+  Freehire MCP connector the owner then connected, the assistant ran one search for the owner
+  (20 of 5,679 results shown; nothing from the profile sent, nothing stored in NoEfforts). No support state,
+  capability level, real employer destination, pilot-gate or execution change.
+- **Now:** `NOEFFORTS_DISCOVERY_OWNER_EMAILS`; table `discovery_run_approvals` (migration
+  `4bc9c342d34c`); `python -m app.modules.discovery.approve` records one approval (exact search,
+  1-5 pages, at most 24 hours, retention statement); an import with base
+  `https://freehire.me` checks the owner, then the approval, then the public address, marks the
+  approval used and commits before the first request, and reads at most the approved pages;
+  refresh and health check never read live; audit events `discovery.run_approval.create` and
+  `.use`; `docs/discovery.md` "Live read" gives the steps.
+- **Unchanged:** fixture imports, the existing discovery API for fixtures, `SCHEMA_VERSION`,
+  `RESOLVER_VERSION`, every execution rule.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - before the change: `tests/test_freehire_live_read.py` could not be collected (no approval
+    model or command);
+  - after: `test_freehire_live_read.py` 13 passed; with `test_audit_inventory.py`,
+    `test_freehire_discovery.py`, `test_migrations.py`, `test_discovery.py`,
+    `test_doc_references.py` 63 passed (one test file added since); first run of the wider set
+    3 failed, each expected: the audit inventory lacked the two new events (documented), the
+    old "live base refused" test expected 409 and the old message (now 403 with no owner or
+    approval; it also now forbids a name lookup, which caught my own first ordering, where the
+    address was looked up before the owner and approval checks), and the S2 migration test
+    pinned the head revision (now pinned to S2's own revision);
+  - migration: upgrade, `alembic check` (no difference), downgrade, upgrade;
+  - sabotage: 10 cases (owner check, approval marked used, exact search, window, commit before
+    the run, lookup order, address check, live flag, page limit, other live origin), 9 caught on
+    the first run; the miss (any address once the flag is set, unreachable today) now has its
+    own test, and is caught;
+  - full backend: 3108 passed, exit 0, 30 min 42 s;
+  - full Playwright: 38 passed, 2 skipped, exit 0, 5.7 min;
+  - `ruff check`, `ruff format --check`, `npx tsc --noEmit`, `npm run lint`: all exit 0.
+- **CI for the previous change:** **CI #105**
+  ([40605713542](https://github.com/KevinD003/AutoApply/actions/runs/40605713542)) (`a1b086c`,
+  S4): passed (all four jobs).
 
 ## Legacy collision corpus and static guards (S4, 2026-10-27; local only, no external request)
 

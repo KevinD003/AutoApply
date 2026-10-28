@@ -1184,3 +1184,43 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   agree/decline options into acknowledgments (a stored consent would then answer them, a new
   automatic path); a denylist for relocation (closed forms instead); stripping JavaScript
   comments (a stripper can be fooled; a comment naming a capture call fails instead).
+
+## D55 — A live Freehire read for the owner only, one approved run at a time (S7, 2026-10-28)
+- **Owner statement (2026-10-28):** "Go ahead, because I want to fetch the job postings from the
+  freehire", after being told that Freehire sells auto-apply and that CLAUDE.md forbids
+  automated access to competitor APIs. Recorded as: reading postings through Freehire's
+  documented API for the owner's own job search is allowed under that rule. Personal use only
+  (D34): showing Freehire postings to anyone else still needs a Freehire plan and its own
+  statement.
+- **What changed:**
+  - `NOEFFORTS_DISCOVERY_OWNER_EMAILS` names the accounts that may read live (empty: nobody);
+  - table `discovery_run_approvals` (migration `4bc9c342d34c`): one approval per run, naming the
+    exact search, the page limit (1 to 5), the window (at most 24 hours) and the retention
+    statement, recorded by the owner on the backend host with
+    `python -m app.modules.discovery.approve`;
+  - an import whose base URL is exactly `https://freehire.me` checks, in this order and with
+    nothing looked up or requested before the first two: the account is an owner (else 403);
+    an unused approval for this exact search is inside its window (locked; else 403);
+    `freehire.me` resolves to public addresses only (`resolve_public_destination`, else 409).
+    It then marks the approval used and commits before the first request, and reads at most
+    the approved pages. A failed run (429, outage) has used its approval; nothing re-runs;
+  - any other non-fixture base URL stays refused, even with an approval; refreshes and health
+    checks never read live;
+  - audit events `discovery.run_approval.create` and `.use` (counts and the provider key only;
+    the search and the retention statement stay in the approval row).
+- **Not done here:** no request to Freehire was made. The sandbox's network proxy refused
+  `freehire.me` (`connect_rejected`), so the installer the owner pointed to
+  (`https://freehire.me/install.sh`) could not be read, and it is never run unread; the
+  `freehire` CLI and the MCP endpoint (`https://freehire.me/api/v1/mcp`) are not used by
+  NoEfforts, which reads the same documented API with its own client (no Freehire code is
+  installed or ported, `THIRD_PARTY_NOTICES.md`). Separately, after the owner connected
+  Freehire's MCP connector to the assistant session, the assistant ran one search through it
+  for the owner (titles "financial analyst", "finance analyst", "FP&A", last 30 days; 20 of
+  5,679 results shown to the owner, nothing sent from the profile, nothing stored in NoEfforts).
+- **Still open:** a per-user delete of discovered rows and the owner allow-list for fixture
+  imports (S6); multi-user use, scheduled runs and live refreshes (each needs its own
+  decision); the terms re-read on the day of each run.
+- **Rejected:** a standing permission (each run is approved separately); reusing an approval
+  after a failed run (that would be an automatic re-run); a looser match than the exact search
+  (the approval names what is read); approving from the same web session that runs the import
+  (for now the approval is a separate act on the backend host).

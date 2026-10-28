@@ -78,6 +78,8 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `job.update` | `job` | `fields` | names of the job fields the user changed, never their values |
 | `jobs.import` | `import_batch` | `created`, `duplicates`, `errors` | row counts |
 | `discovery.import` | `discovery` | `created`, `fetched`, `provider`, `updated` | counts; the discovery provider key |
+| `discovery.run_approval.create` | `discovery_run_approval` | `hours`, `max_pages`, `provider` | the owner recorded one live-read approval (D55); its search and retention statement stay in `discovery_run_approvals`, never here |
+| `discovery.run_approval.use` | `discovery_run_approval` | `max_pages`, `provider` | an import used that approval, before its first request |
 | `job.form_captured` | `job` | `source`, `version` | a fixed form-source name; form version number |
 | `route.decision` | `job` | `adapter_version`, `api_grant`, `evidence`, `provider`, `reason_code`, `route` | see "Route decisions" below |
 | `application.create` | `application` | - | |

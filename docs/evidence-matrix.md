@@ -9,6 +9,19 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Owner-approved live Freehire read (S7, 2026-10-28; local only)
+
+The local stand-in of Freehire's documented API plays the live origin; its request table is the
+oracle for what was asked. Decision D55. Nothing contacted Freehire.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| No live read without the owner's approval for the exact search | `tests/test_freehire_live_read.py::test_a_live_read_without_an_approval_is_refused_and_asks_nothing`, `::test_the_approval_binds_the_exact_search`, `::test_an_approval_outside_its_window_is_refused` | 403, no request, the approval left unused |
+| One approval, one run, before the first request | `::test_with_its_approval_the_owner_reads_live_once`, `::test_a_failed_run_used_its_approval_and_is_never_rerun`, `::test_the_approved_page_limit_holds` | the second run is refused; a failed run is not re-run; at most the approved pages |
+| Owner account only | `::test_only_the_owner_account_reads_live`; `tests/test_freehire_discovery.py::test_a_live_base_url_is_refused_before_any_request` | another account, or no owner configured: 403, nothing looked up or requested |
+| The address is public before any request; no other address | `::test_the_live_address_is_checked_before_the_approval_is_used`, `::test_any_other_address_stays_refused_with_an_approval`, `::test_the_live_flag_opens_only_the_live_origin`, `::test_refresh_and_healthcheck_never_read_live` | refused before a request, the approval left unused |
+| The approval command records one bounded run | `::test_the_approval_command_records_one_bounded_run`, `::test_the_approval_command_refuses_an_account_that_does_not_exist`; `tests/test_migrations.py::test_s7_adds_bounded_run_approvals_and_downgrade_drops_only_them` | 1-5 pages, 1-24 hours, a search and a retention statement; database checks refuse the rest |
+
 ## Legacy collision corpus and static guards (S4, 2026-10-27; local only)
 
 Synthetic wordings and facts with sentinel values; no legacy data. Decision D54; rules in

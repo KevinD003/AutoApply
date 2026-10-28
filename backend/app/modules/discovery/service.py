@@ -23,9 +23,11 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.db import utcnow
 from app.core.urlsafety import UnsafeURL, check_url_syntax
-from app.modules.discovery.models import DiscoveredJob
+from app.modules.audit.service import record
+from app.modules.discovery.models import DiscoveredJob, DiscoveryRunApproval
 from app.modules.discovery.provider import (
     PROVIDERS,
     DiscoveryError,
@@ -278,6 +280,55 @@ def _store(
         }
     )
     return row
+
+
+def use_live_approval(db: Session, user, provider_name: str, query: str | None, preflight) -> int:
+    """D55: before a live read, the owner's unused run approval for this exact search, inside
+    its window, is marked used and committed, so a run that then fails needs a new approval and
+    nothing re-runs on its own. Returns the approved page limit. In order, with nothing
+    looked up or requested before the first two: the account must be named in
+    NOEFFORTS_DISCOVERY_OWNER_EMAILS; such an approval must exist (locked); `preflight` (the
+    public-address check) must pass. A refusal at any step uses nothing."""
+    owners = {e.strip().lower() for e in get_settings().discovery_owner_emails if e.strip()}
+    if user.email.lower() not in owners:
+        raise DiscoveryError(
+            "not_authorized",
+            "Live Freehire reads are limited to the owner's account; nothing was requested.",
+        )
+    now = utcnow()
+    approval = db.scalar(
+        select(DiscoveryRunApproval)
+        .where(
+            DiscoveryRunApproval.user_id == user.id,
+            DiscoveryRunApproval.provider == provider_name,
+            DiscoveryRunApproval.query == (query or ""),
+            DiscoveryRunApproval.consumed_at.is_(None),
+            DiscoveryRunApproval.not_before <= now,
+            DiscoveryRunApproval.not_after > now,
+        )
+        .order_by(DiscoveryRunApproval.created_at)
+        .limit(1)
+        .with_for_update()
+    )
+    if approval is None:
+        raise DiscoveryError(
+            "not_authorized",
+            "No unused run approval covers this exact search now; nothing was requested. The "
+            "owner records one with `python -m app.modules.discovery.approve`.",
+        )
+    preflight()
+    approval.consumed_at = now
+    record(
+        db,
+        user.id,
+        "discovery.run_approval.use",
+        "discovery_run_approval",
+        approval.id,
+        provider=provider_name,
+        max_pages=approval.max_pages,
+    )
+    db.commit()
+    return approval.max_pages
 
 
 def import_from(

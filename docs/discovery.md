@@ -11,31 +11,34 @@ on a provider and keep working during a provider outage. This is tested.
 
 | Provider | Implemented locally | External API configured | External API tested | Production-ready |
 |---|---|---|---|---|
-| `freehire`: client for Freehire's documented public read API | yes (fixture of the documented API) | **no** | **no** | **no** |
+| `freehire`: client for Freehire's documented public read API | yes (fixture of the documented API) | **no** (possible for the owner, with a run approval, D55) | **no** | **no** |
 | `freehire_mock`: local mock file | yes (invented record shape) | n/a | n/a | no (refused in production) |
 
-Freehire: **Potential future discovery provider; not yet connected or validated.**
+Freehire: **Not yet validated against Freehire.** A live read is possible for the owner's
+account only, with the owner's single-use run approval (D55, "Live read" below); none has been
+made.
 
 - **Product model:** personal prototype only (D34). Freehire's terms allow keyless use for
   "your own job search, research, or a tool you run for yourself". Showing postings to other
   people needs a Freehire API plan. Multi-user behaviour (a plan, and no longer showing
   Freehire postings when it ends) is **not implemented** and waits on a plan or written
   clarification from Freehire.
-- **No live access:** no request to freehire.me's API was made while building or testing
-  this. The client refuses any base URL that is not a local fixture origin, so it cannot
-  reach Freehire until that check is changed in a reviewed commit.
-- **Before any live test:** it needs its own approval naming the exact query, page limit,
-  time window and data-retention statement, and an owner statement on whether Freehire, which
-  sells auto-apply (its Pro plan), still counts as a discovery provider under the rule against
-  automated access to competitor APIs (D34). The terms changed three times in ten
-  days: re-read them on the day of the run.
+- **Live access only by approval (D55):** no request to freehire.me's API was made while
+  building or testing this. The client refuses any base URL other than a local fixture origin
+  or exactly `https://freehire.me`, and the latter only for an import by an account named in
+  `NOEFFORTS_DISCOVERY_OWNER_EMAILS` that uses that account's run approval for the exact
+  search. The owner stated on 2026-10-28 that reading postings through Freehire's documented
+  API for their own job search is allowed under the rule against automated access to
+  competitor APIs (D55). The terms changed three times in ten days: re-read them on the day of
+  each run.
 
 ## Configuration (server-side only; everything off by default)
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `NOEFFORTS_DISCOVERY_PROVIDERS` | `[]` | Feature flag. A provider runs only if it is listed. |
-| `NOEFFORTS_FREEHIRE_BASE_URL` | empty | Must be a fixture origin in this version. |
+| `NOEFFORTS_DISCOVERY_OWNER_EMAILS` | `[]` | The only accounts that may read Freehire live, each run with its own approval (D55). Empty: nobody. |
+| `NOEFFORTS_FREEHIRE_BASE_URL` | empty | A fixture origin, or `https://freehire.me` for the owner's approved runs (D55). Anything else is refused. |
 | `NOEFFORTS_FREEHIRE_API_KEY` | empty | Optional. Sent as `Authorization: Bearer` by the backend only. |
 | `NOEFFORTS_FREEHIRE_PAGE_SIZE` / `_MAX_PAGES` | 50 / 5 | Bounded paging. |
 | `NOEFFORTS_FREEHIRE_TIMEOUT_SECONDS` | 10 | Request timeout. |
@@ -52,6 +55,33 @@ Where the key is never exposed:
 - API responses, logs and test output (tested).
 
 The key lives in settings only.
+
+## Live read (D55, owner only)
+
+1. Re-read Freehire's terms (https://freehire.me/terms) on the day.
+2. Configure the backend: `NOEFFORTS_DISCOVERY_PROVIDERS=["freehire"]`,
+   `NOEFFORTS_FREEHIRE_BASE_URL=https://freehire.me`,
+   `NOEFFORTS_DISCOVERY_OWNER_EMAILS=["<your login>"]`, and restart the API.
+3. Approve one run (nothing is requested by this):
+
+   ```bash
+   cd backend
+   uv run python -m app.modules.discovery.approve --email <your login> \
+       --query "financial analyst" --pages 1 --hours 2 \
+       --retention "Discovered postings are kept until I delete them."
+   ```
+
+   At most 5 pages and 24 hours. The query must match, exactly, what you type in Discover's
+   search box.
+4. On Discover, search for exactly that query. The import first checks the account and the
+   approval, then that `freehire.me` resolves to public addresses only (`urlsafety`), then
+   marks the approval used (committed) and reads at most the approved pages.
+5. A second search, a different search, an expired approval, another account, a refresh of a
+   record or a health check makes no request (403 or 409). A run that fails (a 429, an outage)
+   has used its approval; approve again for another try. Nothing runs on its own.
+
+Deleting discovered records is not built yet (plan S6), so the retention statement should
+describe what you will do by hand, or wait for that control.
 
 ## Freehire contract (public documentation as reviewed on 2026-10-21, re-checked 2026-10-26)
 
@@ -190,9 +220,9 @@ unchanged). Only what the documentation states is relied on.
 |---|---|
 | `GET /api/discovery/providers` | name, label, enabled, capabilities, configured flags (no values), status table |
 | `POST /api/discovery/providers/{name}/healthcheck` | `{ok, detail}`; 409 when disabled. For Freehire, configuration only: no request is made |
-| `POST /api/discovery/import` | run one import; 409 when disabled, 503 on a provider failure (nothing changed) |
+| `POST /api/discovery/import` | run one import; 409 when disabled or the address is refused, 403 when a live read has no owner or no run approval for the exact search (D55), 503 on a provider failure (nothing changed) |
 | `GET /api/discovery/jobs`, `GET /api/discovery/jobs/{id}` | the user's discovered records. The detail includes the application route with its reason code, grant state and evidence level: a manual handoff until a form is captured, or, without a tracker job, `source_record_incomplete` or `source_posting_closed`. Viewing a linked record records its job's route decision as the job page does (changes only) |
-| `POST /api/discovery/jobs/{id}/refresh` | re-read one record (`get_job`) |
+| `POST /api/discovery/jobs/{id}/refresh` | re-read one record (`get_job`); fixture only: a live record is never re-read (D55) |
 
 All of these are user-scoped: another user's record returns 404. The job detail
 (`GET /api/jobs/{id}`) lists the discovery sources of a job (`discovered_from`).

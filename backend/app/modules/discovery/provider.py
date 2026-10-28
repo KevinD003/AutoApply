@@ -28,10 +28,12 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from app.core.config import get_settings
-from app.core.urlsafety import is_fixture_origin
+from app.core.urlsafety import UnsafeURL, is_fixture_origin, resolve_public_destination
 from app.modules.jobs.canonical import canonicalize_url, detect_ats
 
 WORKPLACE = ("remote", "hybrid", "onsite", "unknown")
+# The one live origin a run approval can open (D55). Any other non-fixture base URL is refused.
+LIVE_ORIGIN = "https://freehire.me"
 SUMMARY_CHARS = 500
 
 
@@ -265,8 +267,10 @@ class FreehireApiProvider(DiscoveryProvider):
     [&q] and GET {base}/api/v1/jobs/{slug}. Public reads need no key; a personal key, if
     configured, is sent as a bearer token from the server only.
 
-    Live access is NOT enabled: the base URL must be a local fixture origin. Pointing it at
-    freehire.me is refused until a live call is separately authorized.
+    Live access only with an approval (D55): a base URL that is not a local fixture origin is
+    refused unless it is exactly https://freehire.me and the service has used the owner's
+    single-use run approval for this exact search (`live` is then set), and the address resolves
+    to public hosts only. Refreshes and health checks never read live.
 
     Personal prototype only: Freehire's terms allow keyless use for personal, non-commercial
     use; showing postings to others needs a plan (D34). Every listing carries the credit
@@ -293,6 +297,7 @@ class FreehireApiProvider(DiscoveryProvider):
         self.timeout = s.freehire_timeout_seconds
         self.rate: dict[str, str] = {}  # the last X-RateLimit-* values, as sent (digits only)
         self._pages_seen: set[tuple] = set()
+        self.live = False  # set only by the service, after it used a run approval (D55)
 
     def provider_capabilities(self) -> dict:
         return {
@@ -306,18 +311,35 @@ class FreehireApiProvider(DiscoveryProvider):
             "health": "no request (Freehire documents no API health endpoint)",
             "attribution": self.ATTRIBUTION["text"],
             "submits_applications": False,
-            "live_access": "not enabled (fixture only)",
+            "live_access": "only with the owner's single-use run approval (D55)",
         }
+
+    def wants_live(self) -> bool:
+        """The configured base is the live origin (not a fixture), so a run needs an approval."""
+        return bool(self.base) and not is_fixture_origin(self.base) and self.base == LIVE_ORIGIN
+
+    def check_live_destination(self) -> None:
+        """The live address resolves to public hosts only (urlsafety), before any request."""
+        try:
+            resolve_public_destination(self.base)
+        except UnsafeURL:
+            raise DiscoveryError(
+                "disabled",
+                "Freehire's address did not resolve to public hosts only; nothing was requested.",
+            ) from None
 
     def _check_base(self) -> None:
         if not self.base:
             raise DiscoveryError("disabled", "Freehire has no base URL configured.")
-        if not is_fixture_origin(self.base):
+        if is_fixture_origin(self.base):
+            return
+        if not (self.live and self.base == LIVE_ORIGIN):
             raise DiscoveryError(
                 "disabled",
-                "Live Freehire access is not enabled: only a local fixture can be used until a "
-                "live call is separately authorized.",
+                "Live Freehire access is not enabled for this request: a live read needs the "
+                "owner's single-use run approval for that exact search (D55).",
             )
+        self.check_live_destination()
 
     def _read_rate(self, headers) -> None:
         self.rate = {}

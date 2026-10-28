@@ -32,9 +32,10 @@ STATUS = {
         "external_api_configured": False,
         "external_api_tested": False,
         "production_ready": False,
-        "note": "Potential future discovery provider; not yet connected or validated. Personal "
-        "prototype only: built to Freehire's documented public API (documentation reviewed "
-        "2026-10-21) and tested only against a local fixture. Listings are credited "
+        "note": "Not yet validated against Freehire: built to its documented public API "
+        "(documentation reviewed 2026-10-21) and tested only against a local fixture. Personal "
+        "prototype only: a live read is limited to the owner's account and needs the owner's "
+        "single-use run approval for the exact search (D55). Listings are credited "
         '"via freehire.me".',
     },
     "freehire_mock": {
@@ -69,6 +70,8 @@ def _provider(name: str):
 def _fail(e: DiscoveryError) -> HTTPException:
     if e.kind == "disabled":
         return HTTPException(status.HTTP_409_CONFLICT, str(e))
+    if e.kind == "not_authorized":
+        return HTTPException(status.HTTP_403_FORBIDDEN, str(e))
     return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"{e} Nothing was changed.")
 
 
@@ -178,8 +181,15 @@ def run_import(body: ImportIn, user: User = Depends(current_user), db: Session =
                 if isinstance(loc, dict) and loc.get("city")
             ]
             f.workplaces = f.workplaces or list(prefs.work_modes or [])
+    max_pages = get_settings().freehire_max_pages
     try:
-        res = service.import_from(db, user.id, p, f, max_pages=get_settings().freehire_max_pages)
+        if p.name == "freehire" and p.wants_live():
+            # D55: the owner and the approval for this exact search, then the address, are
+            # checked; the approval is used (and committed) before the first request.
+            used = service.use_live_approval(db, user, p.name, f.query, p.check_live_destination)
+            max_pages = min(max_pages, used)
+            p.live = True
+        res = service.import_from(db, user.id, p, f, max_pages=max_pages)
     except DiscoveryError as e:
         db.rollback()
         raise _fail(e) from None

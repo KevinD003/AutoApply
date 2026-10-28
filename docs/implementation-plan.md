@@ -24,7 +24,8 @@ committed).
 | S2 (outcome integrity and funnel) | Done | D53; `backend/tests/test_funnel.py`, `test_outcome_races.py`, `test_application_events_db.py`, migration `e3a91c5d7b20`; results in `docs/implementation-status.md` |
 | S4 (legacy collision corpus and static guards) | Done | D54; `backend/tests/legacy_collisions.json` (244 rows) driven by `test_resolver.py::test_a_legacy_collision_gets_only_its_safe_outcome`, `backend/tests/test_forbidden_capabilities.py`; the rows that resolved wrongly became checkpoints in `classify.py`/`resolver.py` (narrowing only); results in `docs/implementation-status.md` |
 | C7-C18 | Not started | "Remaining preparation steps" below |
-| Live discovery | Blocked (code refuses non-fixture base URLs; owner decisions) | `freehire-first-architecture.md` §11 |
+| S7 (live-read gate) | Done in code, not yet run | D55; `backend/app/modules/discovery/approve.py`, migration `4bc9c342d34c`, `backend/tests/test_freehire_live_read.py`; owner statement on the competitor rule recorded |
+| Live discovery | Possible for the owner with a run approval (D55); not yet run (the sandbox proxy refuses `freehire.me`) | `freehire-first-architecture.md` §11; `docs/discovery.md` "Live read" |
 | Live execution | Blocked (pilot permissions 1-4; admission capped at `rehearsal_ready`) | `docs/live-pilot-gate.md:22-35`; `admission.py:86-87` |
 
 **Coordination (done).** The C6 spec cited decision D50, which Q1 took. C6 is recorded as
@@ -248,7 +249,7 @@ capability).
   (working notes, not committed) and must be re-checked on the day of any live run.
 - **Size:** M.
 
-### S7. F2 live-read readiness (code ready, still off)
+### S7. F2 live-read readiness — **done in code** (D55); no live read made yet
 
 - **Goal:** everything a single approved live read needs, except the approval.
 - **Changes:** call `resolve_public_destination` before any non-fixture fetch (R10.5); a
@@ -260,6 +261,10 @@ capability).
   reachability and a same-day terms re-read (`freehire-first-architecture.md` §11). Writing the code needs none of them, but
   the change to the base-URL check must be reviewed.
 - **Size:** M.
+- **Status (D55, 2026-10-28):** done in code, ahead of S6 at the owner's request. The owner gave
+  the competitor-rule statement; each run's approval names its retention statement. Left to
+  run it: reachability (the cloud sandbox refuses `freehire.me`) and the same-day terms
+  re-read. From S6, only the owner allow-list for *live* reads was taken; S6 is otherwise open.
 
 ### Remaining preparation steps (critic C7-C18), placed
 
@@ -296,11 +301,12 @@ capability).
 
 ```
 done: C1 C2 → C3-C5 → Q1 (D50) → S1 (C6, D51) → S2 (outcome integrity, D53) → S4 (D54)
+      → S7 in code (live-read gate, D55, at the owner's request; not yet run)
 now:  C11
 next: C10 (its fit check done in S4; the link choice left)
 then: S3 (job state, duplicates) → C7 → C8 → S5 (fixture variants)
 then: C9 → C12 → C13 → C14 → S6 (Freehire hardening; its doc refresh is done)
-then: C15 → C16 → C17 → C18 (one schema bump) → S7 (live-read readiness, still off)
+then: C15 → C16 → C17 → C18 (one schema bump)
 later: L1-L4; live steps only with the owner's recorded permissions
 ```
 

@@ -7,9 +7,10 @@ Finding ids (gh-/la-/ans-/pl-/sec-), "map Qn" and "critic Gn/Ln/Cn" refer to the
 A design for the workflow Freehire discovery → normalized records →
 dedup and eligibility → match and rank → preparation → provider routing → execution →
 confirmation → outcomes. It describes NoEfforts at `3af29f0` (C3-C5 at `7669c61`, then the Q1 quarantine fix), the Freehire refresh of 2026-10-26, and the gaps.
-Nothing here is live: the Freehire client refuses every non-fixture base URL
-(`backend/app/modules/discovery/provider.py:312-320`) and every real employer destination is
-refused (`backend/app/modules/execution/policy.py:214-215`).
+Nothing here is live: the Freehire client refuses every non-fixture base URL except
+`https://freehire.me` for the owner's account with a single-use run approval (D55, added
+2026-10-28; none used yet), and every real employer destination is refused
+(`backend/app/modules/execution/policy.py:214-215`).
 
 Labels: **CONFIRMED** (code, a fetched page or Freehire source at `ab47628` shows it),
 **HYPOTHESIS**, **UNKNOWN**, **NEW** (proposed, not built). Paths: `M/` =
@@ -19,7 +20,7 @@ Labels: **CONFIRMED** (code, a fetched page or Freehire source at `ab47628` show
 
 ```
  Freehire documented read API (keyless, or a plan key held server-side)
-        |  GET /jobs, GET /jobs/{public_slug}           [discovery: off by default; fixture-only today]
+        |  GET /jobs, GET /jobs/{public_slug}           [discovery: off by default; live only per D55]
         v
  (1) M/discovery/provider.py  FreehireApiProvider     header-only pacing; 429 reported, never retried;
         |                     normalize_job()          documented fields only; tri-state source facts
@@ -303,21 +304,24 @@ Legacy lessons guarded: LD-40 (any host, any "Apply" link, any page with two ide
 | End of plan | n/a | Stop showing Freehire-sourced postings (NEW); whether tracker jobs created from postings count as "showing" is UNKNOWN (needs Freehire's written answer) |
 | Upstream rights | Same caveat | Freehire "do[es] not grant rights an employer or original source has not given us"; its own per-source terms check is still open; some sources are fetched with fingerprint spoofing or account harvesting (Freehire `fingerprinthttp.go`, `cmd/harvest-linkedin`). Legal review needed before commercial display |
 | Porting Freehire code | If Freehire's ATS host table (`atsboard/board.go`, MIT) were ever ported, `THIRD_PARTY_NOTICES.md:3` ("No third-party source code has been copied") would become false and an MIT notice would be required (`legacy-audit.md` §7). Not proposed | Same |
-| Competitor rule | CLAUDE.md forbids automated access to competitor dashboards and APIs; Freehire now sells consumer auto-apply. Whether the documented, licensed public read API is still allowed under that rule needs an explicit owner statement | Same, with more weight |
+| Competitor rule | CLAUDE.md forbids automated access to competitor dashboards and APIs; Freehire now sells consumer auto-apply. Whether the documented, licensed public read API is still allowed under that rule needed an explicit owner statement: given on 2026-10-28 for the owner's own job search (D55) | Not covered by D55: needs its own statement |
 
 ## 11. Live-access blockers (exact)
 
 Personal-prototype live read:
 
-1. **No approval for a live call exists.** Each run needs its own approval naming the query, page
-   limit, time window and retention statement (`D/discovery.md:27-28`; D34).
-2. **Code refuses non-fixture base URLs** (`M/discovery/provider.py:312-320`); a reviewed change is
-   needed, which must also call `resolve_public_destination` (§6.6) and restrict imports to the
-   owner's account (§10).
-3. **Owner decision on the competitor rule** (§10).
-4. **Owner retention statement** under keyless use (§8).
-5. **Reachability:** the cloud sandbox proxy returned 403 for Freehire on 2026-10-19 (D7);
-   not re-tested. UNKNOWN; a local run may be needed.
+1. **Done in code (D55, 2026-10-28):** each run needs the owner's single-use approval naming the
+   exact query, page limit, time window and retention statement
+   (`python -m app.modules.discovery.approve`; `D/discovery.md` "Live read"). None recorded yet.
+2. **Done in code (D55):** the base URL check accepts `https://freehire.me` only for that
+   approved import, by an account in `NOEFFORTS_DISCOVERY_OWNER_EMAILS`, after
+   `resolve_public_destination` (§6.6) passes; refreshes and health checks stay fixture-only.
+3. **Decided (D55):** the owner's statement on the competitor rule (§10).
+4. **Per run:** the retention statement is part of each approval (§8). A delete control for
+   discovered rows is still S6.
+5. **Reachability:** the cloud sandbox proxy refused `freehire.me` again on 2026-10-28
+   (`connect_rejected`), so a run needs the host allowed in the environment's network settings
+   or a local run.
 6. **Re-read the terms on the day of the run** (three revisions in ten days).
 
 Multi-user: all of the above, plus an API plan, Freehire's written clarifications (§10), the
@@ -332,9 +336,10 @@ the Greenhouse terms review is unrecorded. CONFIRMED.
 
 ## 12. Open owner decisions
 
-1. Competitor rule and Freehire (§10).
-2. Retention statement for discovered rows (§8).
+1. Competitor rule and Freehire (§10): decided by the owner for personal use, D55.
+2. Retention statement for discovered rows (§8): named in each run approval, D55.
 3. Whether to display Freehire's documented `reality` signals (display-only) (§2.2).
 4. Whether a job-level eligibility view is wanted, and its exact wording (§5.4).
 5. Whether "possible duplicate" should block preparation or only warn (§5.2).
-6. Personal-prototype restriction in code: owner-only discovery (§10).
+6. Personal-prototype restriction in code: owner-only discovery (§10): live reads are owner-only
+   (D55); fixture imports are not restricted.

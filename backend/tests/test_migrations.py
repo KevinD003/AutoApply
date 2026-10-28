@@ -4,6 +4,7 @@
 2. populated Phase A snapshot -> head, data preserved
 3. disposable downgrade-to-base and re-upgrade
 4. C6: answer_bank.help_text added without touching a saved answer
+5. S7: discovery_run_approvals added, bounded by its checks, dropped on downgrade
 """
 
 import hashlib
@@ -176,6 +177,7 @@ def test_c6_saved_answers_keep_their_key_and_gain_no_help_text(disposable):
 
 
 BEFORE_S2 = "b29cba6e1f6e"
+S2 = "e3a91c5d7b20"
 OUTCOMES = [
     "none",
     "assessment_received",
@@ -246,7 +248,7 @@ def test_s2_adds_assessment_received_and_outcome_fields_without_rewriting_a_row(
     )
     with disposable.connect() as c:
         before = [tuple(r) for r in c.execute(rows, {"a": aid})]
-    command.upgrade(_cfg(), "head")
+    command.upgrade(_cfg(), S2)  # S2's own revision: later migrations do not change this test
     with disposable.connect() as c:
         assert [tuple(r) for r in c.execute(rows, {"a": aid})] == before
         assert all(tuple(r) == (None,) * 5 for r in c.execute(new_cols, {"a": aid}))
@@ -280,7 +282,7 @@ def test_s2_adds_assessment_received_and_outcome_fields_without_rewriting_a_row(
     with pytest.raises(RuntimeError, match="1 application"):
         command.downgrade(_cfg(), BEFORE_S2)
     with disposable.connect() as c:
-        assert c.execute(text("select version_num from alembic_version")).scalar() == "e3a91c5d7b20"
+        assert c.execute(text("select version_num from alembic_version")).scalar() == S2
     with disposable.begin() as c:
         c.execute(text("update applications set outcome='interviewing' where id=:a"), {"a": aid})
     command.downgrade(_cfg(), BEFORE_S2)
@@ -308,3 +310,39 @@ def test_s2_adds_assessment_received_and_outcome_fields_without_rewriting_a_row(
         )
         assert "assessment_received" in labels  # PostgreSQL cannot drop an enum value
     command.upgrade(_cfg(), "head")
+
+
+def test_s7_adds_bounded_run_approvals_and_downgrade_drops_only_them(disposable):
+    """S7 (D55): a new table only. Its checks refuse a run of more than five pages, an empty
+    search, an empty retention statement and a window that ends before it starts; deleting the
+    account deletes its approvals; a downgrade drops the table and nothing else."""
+    from sqlalchemy.exc import IntegrityError
+
+    command.upgrade(_cfg(), S2)
+    uid = uuid.uuid4()
+    with disposable.begin() as c:
+        c.execute(
+            text(
+                "insert into users (id,email,password_hash,created_at,updated_at) "
+                "values (:u,'owner.synthetic@example.com','x',now(),now())"
+            ),
+            {"u": uid},
+        )
+    command.upgrade(_cfg(), "head")
+    insert = text(
+        "insert into discovery_run_approvals (id,user_id,provider,query,max_pages,not_before,"
+        "not_after,retention,created_at) values (:i,:u,'freehire',:q,:p,now(),"
+        "now() + make_interval(hours => :h),:r,now())"
+    )
+    good = {"u": uid, "q": "financial analyst", "p": 1, "h": 2, "r": "kept until deleted"}
+    for bad in ({"p": 6}, {"p": 0}, {"q": " "}, {"r": ""}, {"h": -1}):
+        with pytest.raises(IntegrityError), disposable.begin() as c:
+            c.execute(insert, {**good, **bad, "i": uuid.uuid4()})
+    with disposable.begin() as c:
+        c.execute(insert, {**good, "i": uuid.uuid4()})
+        c.execute(text("delete from users where id=:u"), {"u": uid})
+        assert c.execute(text("select count(*) from discovery_run_approvals")).scalar() == 0
+    command.downgrade(_cfg(), S2)
+    with disposable.connect() as c:
+        assert c.execute(text("select to_regclass('discovery_run_approvals')")).scalar() is None
+        assert c.execute(text("select version_num from alembic_version")).scalar() == S2

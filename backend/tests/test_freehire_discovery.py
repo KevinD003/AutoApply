@@ -122,9 +122,10 @@ def test_a_live_base_url_is_refused_before_any_request(api, monkeypatch):
         raise AssertionError("a request was attempted")
 
     monkeypatch.setattr("urllib.request.OpenerDirector.open", no_network)
+    monkeypatch.setattr("socket.getaddrinfo", no_network)  # not even a name lookup
     monkeypatch.setattr(get_settings(), "freehire_base_url", "https://freehire.me")
-    r = run(api)
-    assert r.status_code == 409 and "Live Freehire access is not enabled" in r.json()["detail"]
+    r = run(api)  # D55: no owner is configured and no run approval exists
+    assert r.status_code == 403 and "nothing was requested" in r.json()["detail"], r.text
     health = api.post("/discovery/providers/freehire/healthcheck").json()
     assert health["ok"] is False and "not enabled" in health["detail"]
     assert counts(me(api)) == (0, 0)

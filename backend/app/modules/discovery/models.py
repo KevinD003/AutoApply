@@ -1,7 +1,17 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, UniqueConstraint, text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, new_id, utcnow
@@ -44,3 +54,31 @@ class DiscoveredJob(Base):
     changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # A reference for debugging, never the raw payload: provider, id, fingerprint, field names.
     raw_ref: Mapped[dict | None] = mapped_column(JSON)
+
+
+class DiscoveryRunApproval(Base):
+    """The owner's approval of one live discovery run (D55): the exact search, the page limit,
+    the time window and the retention statement, recorded by the owner with
+    `python -m app.modules.discovery.approve`. Used once, before the first request, so a run that
+    fails needs a new approval; nothing re-runs on its own."""
+
+    __tablename__ = "discovery_run_approvals"
+    __table_args__ = (
+        CheckConstraint("max_pages BETWEEN 1 AND 5", name="ck_run_approval_pages"),
+        CheckConstraint("not_after > not_before", name="ck_run_approval_window"),
+        CheckConstraint("length(trim(query)) > 0", name="ck_run_approval_query"),
+        CheckConstraint("length(trim(retention)) > 0", name="ck_run_approval_retention"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[str] = mapped_column(String(50))
+    query: Mapped[str] = mapped_column(String(200))
+    max_pages: Mapped[int] = mapped_column(Integer)
+    not_before: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    not_after: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    retention: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
