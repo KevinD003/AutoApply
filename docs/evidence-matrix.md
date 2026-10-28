@@ -9,6 +9,18 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## One link of a kind (C10, 2026-10-28; local only)
+
+Resolver tests with synthetic links, and one fictional manual form in the browser. Decision D58.
+No external request.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| The one link of its kind is the answer, the same address spelled twice being one | `tests/test_resolver.py::test_the_one_link_of_its_kind_is_the_answer` (8 cases: another kind beside it, `www.`, a trailing slash, a LinkedIn subdomain, `/pub/`, a company page beside a profile) | Profile fact, the links fact recorded |
+| Several links of one kind are never chosen between | `::test_several_links_of_one_kind_are_never_chosen_between` (4 cases) | nothing sent; the user's typed answer or a saved answer to this exact question; the links fact kept on a typed answer |
+| The host decides the kind | `::test_a_link_of_another_kind_is_never_the_answer` (7 cases: a company or jobs page, look-alike hosts, a query string, a LinkedIn link for a website question) | no answer from the profile |
+| The review page says why | `frontend/e2e/review-reasons.spec.ts` | the count of LinkedIn profile links and S4's "not a web address" shown under each question, with its answer box |
+
 ## State, City and Country lists (C11, 2026-10-28; local only)
 
 Resolver tests with synthetic facts, and one fictional manual form through the API. Decision

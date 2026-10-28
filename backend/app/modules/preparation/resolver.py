@@ -22,6 +22,7 @@ import math
 import re
 from dataclasses import dataclass, field
 from datetime import date
+from urllib.parse import urlsplit
 
 from app.modules.preparation import bankscope
 from app.modules.preparation.classify import (
@@ -758,11 +759,34 @@ def _salary(f, r, ctx, intent):
     return r
 
 
+def _link_key(link: str) -> tuple[str, str]:
+    """C10 (D58): the host (without "www.") and path of a profile link, read as a URL even when
+    it has no scheme; the same address spelled twice has one key."""
+    u = urlsplit(link.strip() if "://" in link else "https://" + link.strip())
+    host = (u.hostname or "").lower()
+    return host.removeprefix("www."), u.path.rstrip("/")
+
+
+def _link_kind(link: str) -> str | None:
+    """C10 (D58): "linkedin" for a LinkedIn member profile (/in/, /pub/), None for any other
+    LinkedIn page, "website" for any other address. The host decides, never a substring."""
+    host, path = _link_key(link)
+    if host == "linkedin.com" or host.endswith(".linkedin.com"):
+        return "linkedin" if re.match(r"^/(in|pub)/[^/]", path) else None
+    return "website"
+
+
+_LINK_NAME = {"linkedin": "LinkedIn profile", "website": "website"}
+
+
 def _link(kind: str):
     def resolver(f, r, ctx, intent):
         p = ctx.profile
         links = list(p.links or []) if _approved(p) else []
-        pick = [x for x in links if ("linkedin.com" in x) == (kind == "linkedin")]
+        pick: dict[tuple[str, str], str] = {}
+        for x in links:
+            if _link_kind(x) == kind:
+                pick.setdefault(_link_key(x), x)
         if not pick:
             r.explanation = f"No {kind} link in your profile."
             return _unresolved(r, f, r.explanation)
@@ -771,13 +795,15 @@ def _link(kind: str):
             return _does_not_fit(
                 r, f, f"The form offers options, not a place for your {kind} link."
             )
-        r.status, r.source, r.value, r.display = (
-            "resolved",
-            "profile_fact",
-            {"text": pick[0]},
-            pick[0],
-        )
-        r.explanation, r.fact_refs = "From your profile links.", [_ref(p, "profile", "links")]
+        if len(pick) > 1:  # C10 (D58): never the first of several
+            r.explanation = (
+                f"Your profile has {len(pick)} {_LINK_NAME[kind]} links, so NoEfforts does not "
+                "choose one. Give the one for this question here, or keep only one in Profile."
+            )
+            return _unresolved(r, f, r.explanation)
+        [link] = pick.values()
+        r.status, r.source, r.value, r.display = "resolved", "profile_fact", {"text": link}, link
+        r.explanation = "From your profile links."
         return r
 
     return resolver

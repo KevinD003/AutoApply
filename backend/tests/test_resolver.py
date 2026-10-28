@@ -844,3 +844,84 @@ def test_a_country_list_without_one_option_for_your_country_is_answered_for_this
         answered_here(resolve_field(place("Country", labels), ctx(profile=p)), "residence_country")
     r = resolve_field(place("Country", ["Spain", "Portugal"]), ctx(profile=p))
     assert (r.status, r.source, r.display) == ("resolved", "deterministic_mapping", "Portugal")
+
+
+# ---------------------------------------------------------------------------------------------
+# C10 (D58): a link question gets the profile's link only when exactly one link is of its kind.
+
+LI = FormField(key="li", label="LinkedIn profile", type=FieldType.url, required=True)
+WEB = FormField(key="web", label="Website", type=FieldType.url, required=True)
+
+
+@pytest.mark.parametrize(
+    "f,links,want",
+    [
+        (LI, ["https://github.com/sam", "https://www.linkedin.com/in/sam"], 1),
+        (LI, ["https://www.linkedin.com/in/sam", "https://linkedin.com/in/sam/"], 0),  # one, twice
+        (LI, ["https://www.linkedin.com/in/sam", "https://www.linkedin.com/company/acme"], 0),
+        (LI, ["https://uk.linkedin.com/in/sam"], 0),
+        (LI, ["https://www.linkedin.com/pub/sam/1/2/3"], 0),
+        (WEB, ["https://www.linkedin.com/in/sam", "https://sam.example.com"], 1),
+        (WEB, ["https://sam.example.com", "https://sam.example.com/"], 0),
+        (WEB, ["https://www.linkedin.com/company/acme", "https://sam.example.com"], 1),
+    ],
+)
+def test_the_one_link_of_its_kind_is_the_answer(f, links, want):
+    r = resolve_field(f, ctx(profile=profile(links=links)))
+    assert (r.status, r.source, r.value) == ("resolved", "profile_fact", {"text": links[want]})
+    assert [x["field"] for x in r.fact_refs] == ["links"]
+
+
+@pytest.mark.parametrize(
+    "f,links,n",
+    [
+        (LI, ["https://www.linkedin.com/in/sam", "https://www.linkedin.com/in/sam-two"], 2),
+        (WEB, ["https://github.com/sam", "https://sam.example.com"], 2),
+        (WEB, ["https://www.linkedin.com/in/sam", "https://a.example", "https://b.example"], 2),
+        (WEB, ["https://a.example", "https://b.example", "https://c.example/"], 3),
+    ],
+)
+def test_several_links_of_one_kind_are_never_chosen_between(f, links, n):
+    """C10 (D58): until now the first link was sent. The user chooses for this question (typed
+    here, or a saved answer to this exact question); keeping one link of the kind in Profile
+    answers it again."""
+    p = profile(links=links)
+    r = resolve_field(f, ctx(profile=p))
+    assert (r.status, r.source, r.value) == ("needs_user", "unresolved", None)
+    assert r.user_input_allowed and [x["field"] for x in r.fact_refs] == ["links"]
+    assert f"has {n} " in r.explanation and "does not choose" in r.explanation
+    typed = NS(value={"text": links[-1]}, provenance="user_entered", meta=None)
+    r = resolve_field(f, ctx(profile=p, inputs={f.key: typed}))
+    assert (r.status, r.source, r.value) == ("resolved", "user_entered", {"text": links[-1]})
+    assert [x["field"] for x in r.fact_refs] == ["links"]  # editing the links asks again
+    saved = NS(
+        id="b1",
+        version=1,
+        approval_status=Approval.approved,
+        value={"text": links[-1]},
+        options_snapshot=[],
+        sensitive=False,
+        help_text="",
+    )
+    r = resolve_field(f, ctx(profile=p, bank={question_key(f): saved}))
+    assert (r.status, r.source, r.value) == ("resolved", "answer_bank", {"text": links[-1]})
+    optional = f.model_copy(update={"required": False})
+    assert resolve_field(optional, ctx(profile=p)).status == "blank_optional"
+
+
+@pytest.mark.parametrize(
+    "f,links",
+    [
+        (LI, ["https://www.linkedin.com/company/acme"]),  # a page, not your profile
+        (LI, ["https://www.linkedin.com/jobs/view/123"]),
+        (LI, ["https://notlinkedin.com/in/sam"]),  # the host decides, not a substring
+        (LI, ["https://linkedin.com.example.org/in/sam"]),
+        (LI, ["https://example.org/?u=linkedin.com/in/sam"]),
+        (WEB, ["https://www.linkedin.com/in/sam"]),  # a LinkedIn link is never your website
+        (WEB, ["https://www.linkedin.com/company/acme"]),
+    ],
+)
+def test_a_link_of_another_kind_is_never_the_answer(f, links):
+    r = resolve_field(f, ctx(profile=profile(links=links)))
+    assert (r.status, r.source, r.value) == ("needs_user", "unresolved", None)
+    assert r.explanation.startswith("No ")

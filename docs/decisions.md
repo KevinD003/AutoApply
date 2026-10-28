@@ -1319,3 +1319,34 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   fuzzy matching; picking a city from the profile; letting the user answer a protected fact the
   profile already answers on a field it fits (unchanged: fix the profile); asking the user to add
   a city to the profile first for a list that never uses it.
+
+## D58 — A link question gets the profile's link only when exactly one is of its kind (C10, 2026-10-28)
+- **Problem:** a LinkedIn question took the first profile link containing "linkedin.com"
+  anywhere, and a website question the first link that did not. So a second LinkedIn profile,
+  or a portfolio after a GitHub link, was never offered and the first was sent unasked; a
+  LinkedIn company or jobs page answered "LinkedIn profile"; and an address that only mentions
+  "linkedin.com" (another host, a query string) counted as LinkedIn and was never a website.
+- **What changed (`resolver.py`, `_link`, `_link_kind`, `_link_key`):**
+  - the kind is read from the host, never from a substring: a LinkedIn member profile is a
+    `linkedin.com` host (or a subdomain such as `uk.linkedin.com`) with an `/in/` or `/pub/`
+    path; any other LinkedIn page is neither kind; every other address is a website;
+  - the same address spelled twice (with or without `www.`, a trailing slash or a scheme) is
+    one link;
+  - exactly one link of the kind is answered from the profile, as before; **several are never
+    chosen between**: the row says how many there are and that NoEfforts does not choose, and
+    the user gives the one for this question (typed here, or a saved answer to this exact
+    question); the row keeps the links fact, so editing the links asks again; keeping one link
+    of the kind in Profile answers it from the profile again.
+- **The review page says why:** the row's explanation is shown under the question, with the
+  answer box (`frontend/e2e/review-reasons.spec.ts`: two LinkedIn profiles, and a website with
+  no scheme in a web-address field, S4's fit check).
+- **Effect on approvals:** rows change only for profiles with several links of one kind, a
+  LinkedIn page that is not a profile, or an address that merely mentions LinkedIn; such a
+  package gets a new version when it is rebuilt, and its approval is invalidated. No change in
+  package shape: `SCHEMA_VERSION` (2) and `RESOLVER_VERSION` stay.
+- **Evidence:** `tests/test_resolver.py` (C10 section: one link of its kind, several, another
+  kind), the Playwright spec above, and the sweep against `f377276` in
+  `docs/implementation-status.md`.
+- **Rejected:** choosing by order, by words in the question ("Portfolio" → GitHub) or by
+  recency; matching hosts by substring or by similarity; asking for a "primary" link flag in
+  the profile (a shape change, left to C18 if ever wanted).
