@@ -11,7 +11,9 @@ part of the product and must never be deployed.
   `normal`, `delay`, `drop_after_accept`, `validation_fail`, `error_before_accept`,
   `error_after_accept`, `expired_session`, `upload_fail`, `conditional_field`, `otp`, `hostile`,
   `hog` (the page tries to exhaust memory), `bank_question` (adds the required, stable question
-  "Highest level of education completed", which the saved-answer tests reuse; D51). Option
+  "Highest level of education completed", which the saved-answer tests reuse; D51),
+  `required_eeo` (the Gender self-identification question becomes required, as some boards make
+  it; D61). Option
   `verify_drop=true` (with `otp`): the code is accepted but the reply never arrives (D50).
 - `idempotent=true` makes repeated submissions of the same form token return the original
   receipt; `idempotent=false` accepts every POST, so duplicate-send bugs are visible.

@@ -319,7 +319,7 @@ function SignalsCard({ job, onChange, onError }: { job: JobDetail; onChange: () 
       )}
       {s.possible_duplicates.length > 0 && (
         <div className="mt-3 text-sm">
-          <p className="font-medium">Looks like a role you already applied to</p>
+          <p className="font-medium">Looks like a role you already have an application for</p>
           <ul className="mt-1 space-y-1">
             {s.possible_duplicates.map((d) => (
               <li key={d.application_id}>

@@ -37,7 +37,7 @@ answering it never changes the package or its hash.
 | `job_excluded` | You excluded this job. Change its status on the job page before approving an application to it. |
 | `job_closed_by_you` | You marked this job closed. Change its status on the job page before approving an application to it. |
 | `job_source_closed` | Its source says this posting is closed or gone. If it is still open, say so on the job page, then approve. |
-| `job_possible_duplicate` | It looks like a role you already applied to (same employer and title). If it is a different role, say so on the job page, then approve. |
+| `job_possible_duplicate` | It looks like a role you already have an application for (same employer and title). If it is a different role, say so on the job page, then approve. |
 
 ## Not covered yet
 

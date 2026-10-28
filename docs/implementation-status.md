@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-28 (jobs: a posting its source says is closed, a job you excluded or closed, and a role that looks like one you already applied to wait for your statement before approval, D59; earlier: preparation: a LinkedIn or website question gets the profile's link only when exactly one is of its kind, read from the host, D58; earlier: a State list naming every US state gets the profile's state; a City list is never picked from the profile; any other State, City or Country list is your answer for this application, never saved, D57; earlier: discovery: watched Freehire searches for the owner, checked as often as once a minute, and a delete for discovered postings that keeps them deleted, D56; a live Freehire read for the owner, one approved run at a time, D55; none made, the cloud sandbox refuses freehire.me; earlier: preparation: the legacy collision corpus (244 wording traps) is a permanent test; someone else's details, preferences read as residence, residence and nationality in other words, any relocation question but the plain one, a negated right to work, agree/decline options under a neutral label and facts that do not fit their field are checkpoints; static guards refuse a mailbox client and page capture; earlier: tracking: a submission says what it rests on (an employer receipt, your statement, or nothing known), a confirmation by you needs what you checked, outcomes are dated, sourced and audited, assessment received exists, an outcome before any known submission is refused, events are insert-only in the database, and a per-user funnel counts with denominators and no rate; earlier: documentation: the Freehire-first review published, with the Freehire re-check of 2026-10-26, an amendment to D34 and D52; earlier: preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-28 (preparation: a sensitive answer reaches the employer only as you chose, shown by the receiver's ledger; "Don't disclose" on a required question sends the form's one decline option, D61; an answer or a choice applies only to the question as shown, and "Include this answer" only to the answer shown, D60; jobs: a posting its source says is closed, a job you excluded or closed, and a role that looks like one you already have an application for wait for your statement before approval, D59; earlier: preparation: a LinkedIn or website question gets the profile's link only when exactly one is of its kind, read from the host, D58; earlier: a State list naming every US state gets the profile's state; a City list is never picked from the profile; any other State, City or Country list is your answer for this application, never saved, D57; earlier: discovery: watched Freehire searches for the owner, checked as often as once a minute, and a delete for discovered postings that keeps them deleted, D56; a live Freehire read for the owner, one approved run at a time, D55; none made, the cloud sandbox refuses freehire.me; earlier: preparation: the legacy collision corpus (244 wording traps) is a permanent test; someone else's details, preferences read as residence, residence and nationality in other words, any relocation question but the plain one, a negated right to work, agree/decline options under a neutral label and facts that do not fit their field are checkpoints; static guards refuse a mailbox client and page capture; earlier: tracking: a submission says what it rests on (an employer receipt, your statement, or nothing known), a confirmation by you needs what you checked, outcomes are dated, sourced and audited, assessment received exists, an outcome before any known submission is refused, events are insert-only in the database, and a per-user funnel counts with denominators and no rate; earlier: documentation: the Freehire-first review published, with the Freehire re-check of 2026-10-26, an amendment to D34 and D52; earlier: preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -37,6 +37,57 @@ Last updated: 2026-10-28 (jobs: a posting its source says is closed, a job you e
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## The disclose path, counted by the receiver (C8, 2026-10-28; local only, no external request)
+
+- **Scope:** plan step C8, decision D61; evidence: `docs/evidence-matrix.md` ("The disclose
+  path"). Closes R3.4. No support state, real employer destination, pilot-gate, execution or
+  package-shape change (`SCHEMA_VERSION` 2).
+- **Now:** "Don't disclose" on a required select, radio or multi-choice sensitive question
+  selects the form's one decline option (exact wording from a fixed list), shown with its
+  reason and never saved; no such option, two, a looser wording or a text question stay a
+  checkpoint; an optional question is still left blank. One bank policy for the
+  equal-opportunity topics: a saved answer is proposed and sent only after "Include this
+  answer" on that form. Receiver mode `required_eeo`.
+- **Also in this commit (S3 follow-up):** the possible-duplicate wording and the test harness
+  titles (see the S3 entry).
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - with the mapping removed (the previous behaviour), 7 of the 19 first ledger and resolver
+    tests failed;
+  - after: the rehearsal, lock-order, sending, code-wait, execution-validation, job-signal and
+    ledger files 158 passed, 1 failed after the harness fix (the saved-answer ledger test: its
+    second application rightly waits for a choice the harness does not give; rewritten with
+    its own helper); then `tests/test_disclosure_ledger.py` 20 passed. One first version of the
+    required-without-a-choice test passed for the wrong reason (a refused consent call) and was
+    rewritten to check the approval refusal itself;
+  - Playwright `submission.spec.ts` "a sensitive answer is sent only as chosen" 2 passed
+    (desktop and mobile; the ledger holds `w`, then `decline`);
+  - sabotage: 5 cases (no mapping, the first of several options, optional questions too, a
+    substring match, saved for reuse); 5 caught; checksum matched after each restore;
+  - C7's 12 sabotage cases run again on this tree: 12 caught;
+  - full backend (S3, C7 and C8 together): 3231 passed, exit 0, 46 min 36 s;
+  - full Playwright (S3, C7 and C8 together): 48 passed, 2 skipped, exit 0, 6.5 min;
+  - `ruff check`, `ruff format --check`, `npx tsc --noEmit`, `npm run lint`: all exit 0.
+- **CI for the previous change:** CI #109 (`cad4e7d`, C10) passed (in the S3 entry).
+
+## Answers and consents bound to their question (C7, 2026-10-28; local only, no external request)
+
+- **Scope:** plan step C7, decision D60; evidence: `docs/evidence-matrix.md` ("Answers and
+  consents bound to their question"). No support state, execution or package-shape change; no
+  migration (the binding lives in `application_inputs.meta`).
+- **Now:** each answer and consent stores its question's fingerprint (wording, help text,
+  type, requirement, options, condition); a changed question asks again, with the reason; an
+  "Include this answer" choice stores a keyed digest of the exact answer it covered (HMAC under
+  the server's reference key, scoped to the user and the question; never the answer); rows
+  saved before C7 are compared with the form version current when they were saved.
+- **Tests run locally (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - `tests/test_input_binding.py` 7 passed;
+  - sabotage: 12 cases (changed answers or consents still used, no fingerprint stored, no
+    digest stored or checked, a missing digest accepted, legacy rows never compared or
+    compared with the latest form, the digest not scoped to the user or to the question, the
+    answer stored with the choice, no reason shown); 12 caught, run again on the C8 tree;
+    checksums matched after each restore;
+  - full backend, full Playwright and lint: one run for S3, C7 and C8 together (C8 entry).
+
 ## Job signals before approval (S3, 2026-10-28; local only, no external request)
 
 - **Scope:** plan slice S3, decision D59; evidence: `docs/evidence-matrix.md` ("Job signals");
@@ -64,8 +115,23 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     15 caught; checksums matched after each restore;
   - Playwright `e2e/job-signals.spec.ts` 2 passed (desktop and mobile; one first failure was my
     text match catching two lines);
-  - full backend, full Playwright and lint: one run for S3, C7 and C8 together, recorded in
-    the C8 commit's status entries.
+  - a full backend run of the S3 commit alone, in a second checkout, failed 33 of 3204. 13
+    were real: tests that apply twice for one user to the receiver's forms, which share one
+    synthetic employer and title, so the new check refused the second approval as a possible
+    duplicate. Fixed in the C8 commit: the test harness gives each form or posting other than
+    the default its own title (no assertion changed), and the reason now says "a role you
+    already have an application for", since an application past draft need not have been
+    submitted. The other 20 (container runner, browser isolation, four discovery tests, one
+    reason-code test) pass in this checkout and in the full run below; they were specific to
+    the second checkout;
+  - full backend for S3, C7 and C8 together (one run, this tree): 3231 passed, exit 0,
+    46 min 36 s;
+  - full Playwright: S3 alone 46 passed, 2 skipped, exit 0, 6.1 min; S3, C7 and C8 together:
+    in the C8 entry;
+  - `ruff check`, `ruff format --check`, `npx tsc --noEmit`, `npm run lint`: in the C8 entry.
+- **CI for the previous change:** **CI #109**
+  ([40768810295](https://github.com/KevinD003/AutoApply/actions/runs/40768810295)) (`cad4e7d`,
+  C10): passed (all four jobs).
 
 ## One link of a kind (C10, 2026-10-28; local only)
 

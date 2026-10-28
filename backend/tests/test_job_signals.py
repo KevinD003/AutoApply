@@ -1,6 +1,6 @@
 """S3 (D59): a job its source says is closed, a job you excluded or closed, and a role that looks
-like one you already applied to are shown before any disclosure, and approval waits for your
-statement. Discovery runs against the local stand-in of Freehire's documented API
+like one you already have an application for are shown before any disclosure, and approval waits
+for your statement. Discovery runs against the local stand-in of Freehire's documented API
 (fixtures/ats_receiver/freehire_fixture.py); nothing contacts Freehire or an employer. Synthetic
 data only."""
 

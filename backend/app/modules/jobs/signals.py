@@ -30,8 +30,8 @@ REASONS = {
     "approving an application to it.",
     "job_source_closed": "Its source says this posting is closed or gone. If it is still open, "
     "say so on the job page, then approve.",
-    "job_possible_duplicate": "It looks like a role you already applied to (same employer and "
-    "title). If it is a different role, say so on the job page, then approve.",
+    "job_possible_duplicate": "It looks like a role you already have an application for (same "
+    "employer and title). If it is a different role, say so on the job page, then approve.",
 }
 CLOSED_REASONS = ("closed at source", "no longer at the source")
 

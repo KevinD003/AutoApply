@@ -149,6 +149,40 @@ test("reload during execution keeps state and creates no second attempt", async 
   expect((await ledger(request, slug)).accepted).toBe(1);
 });
 
+test("a sensitive answer is sent only as chosen: Include, then Don't disclose on a required question", async ({ page, request }, info) => {
+  // C8 (D61): the receiver's ledger shows what the employer got.
+  const fields = async (slug: string) => {
+    const l = await admin(request, "ledger");
+    const got = l.acceptances.filter((a: { slug: string }) => a.slug === slug);
+    expect(got.length).toBe(1);
+    return got[0].fields as Record<string, string>;
+  };
+  const gender = (p: Page) => p.locator("li", { has: p.getByRole("combobox", { name: "Gender" }) });
+  const include = `eeo-in-${info.project.name}-${RUN}`;
+  let { appId } = await setup(page, include);
+  await page.goto(`/applications/${appId}`);
+  await gender(page).getByRole("combobox", { name: "Gender" }).selectOption({ label: "Woman" });
+  await gender(page).getByRole("button", { name: "Save answer" }).click();
+  await expect(gender(page)).toContainText("confirm you want to disclose");
+  await expect(page.getByRole("button", { name: /Approve package v\d+/ })).toBeDisabled();
+  await gender(page).getByRole("button", { name: "Include this answer" }).click();
+  await expect(gender(page).getByRole("button", { name: "Include this answer" })).toHaveAttribute("aria-pressed", "true");
+  await approveAndSubmit(page, appId);
+  await expect(badge(page, "Employer receipt received")).toBeVisible({ timeout: 60_000 });
+  expect((await fields(include)).gender).toBe("w");
+
+  await admin(request, "config", { mode: "required_eeo" });
+  const decline = `eeo-decline-${info.project.name}-${RUN}`;
+  ({ appId } = await setup(page, decline));
+  await page.goto(`/applications/${appId}`);
+  await expect(page.getByRole("button", { name: /Approve package v\d+/ })).toBeDisabled();
+  await gender(page).getByRole("button", { name: "Don't disclose" }).click();
+  await expect(gender(page)).toContainText("the form's own option 'Decline to self-identify' says so");
+  await approveAndSubmit(page, appId);
+  await expect(badge(page, "Employer receipt received")).toBeVisible({ timeout: 60_000 });
+  expect((await fields(decline)).gender).toBe("decline");
+});
+
 test("revoked and expired approvals cannot be submitted", async ({ page }, info) => {
   const { appId, csrf } = await setup(page, `revoke-${info.project.name}-${RUN}`);
   await page.goto(`/applications/${appId}`);

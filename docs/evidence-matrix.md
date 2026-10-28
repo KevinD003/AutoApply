@@ -9,6 +9,22 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## The disclose path, counted by the receiver (C8, 2026-10-28; local only)
+
+The synthetic receiver's own ledger is the oracle; a synthetic candidate. Decision D61. No
+external request.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| "Include this answer" sends the answer | `tests/test_disclosure_ledger.py::test_include_sends_your_answer` | the ledger holds `gender=w` |
+| "Don't disclose" on an optional question sends nothing | `::test_dont_disclose_on_an_optional_question_sends_nothing` | no value in the ledger |
+| An answer without a choice is never sent | `::test_an_answer_without_a_choice_is_never_sent`, `::test_a_required_question_without_a_choice_blocks_approval` | approval refused (409); nothing accepted |
+| "Don't disclose" on a required question | `::test_dont_disclose_on_a_required_question_sends_the_forms_decline_option`, `::test_the_decline_option_is_shown_for_review_and_never_saved` (receiver mode `required_eeo`) | the ledger holds `gender=decline`; the row says why; never saved |
+| Only one exact decline option is used | `::test_the_one_decline_option_is_the_answer`, `::test_without_exactly_one_decline_option_a_required_question_stays_a_checkpoint`, `::test_the_decline_option_is_never_picked_without_dont_disclose`, `::test_an_optional_question_is_left_blank_even_with_a_decline_option`, `::test_a_multi_choice_decline_is_one_selected_option`, `::test_a_text_question_has_no_decline_option` | no option, two, or a looser wording: checkpoint |
+| A saved answer needs "Include" on each form | `::test_a_saved_answer_is_proposed_and_sent_only_after_include` | proposed, then sent after the choice |
+| In the browser | `frontend/e2e/submission.spec.ts` "a sensitive answer is sent only as chosen" (desktop, mobile) | the ledger holds `w`, then `decline` |
+| Sabotage | removing the mapping, taking the first of several, applying it to optional questions, a substring match, saving it | each caught (7, 1, 2, 5 and 5 failures) |
+
 ## Answers and consents bound to their question (C7, 2026-10-28; local only)
 
 A fictional manual form recaptured with other wording. Decision D60. No external request.

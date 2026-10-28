@@ -115,19 +115,24 @@ def prepared_application(
     scope=None,
     url_suffix="",
     approve=True,
+    sensitive=None,
 ) -> str:
     """Synthetic candidate + approved package for the receiver's form. Returns app id.
     `scope`: the approval's scope; None sends none (the default, submit). `url_suffix`: e.g.
     "?posting=2", another posting on the same form. `approve`: False leaves it unapproved.
     `bank_question` (the receiver in mode "bank_question" only): "input" or "save_to_bank"
     answers "Highest level of education completed"; "bank" relies on a saved answer. How you
-    heard about the job is always answered for this application: never saved (D51)."""
+    heard about the job is always answered for this application: never saved (D51).
+    `sensitive` (C8): {"gender": (answer value or None, "disclose" | "withhold" | None)}.
+    Each form or posting other than the default is another role, with its own title: one
+    employer and one title would be a possible duplicate (S3, D59)."""
     synthetic_candidate(api)
     job = api.post(
         "/jobs",
         json={
             "url": f"{BASE}/apply/{slug}{url_suffix}",
-            "title": "Clinic Assistant",
+            "title": "Clinic Assistant"
+            + ("" if (slug, url_suffix) == ("clinic", "") else f" ({slug}{url_suffix})"),
             "employer": "Example Health Clinic (fictional)",
         },
     ).json()
@@ -154,6 +159,13 @@ def prepared_application(
         api.put(
             f"/applications/{app_id}/answers", json={"key": "why_us", "value": {"text": why_text}}
         )
+    for key, (value, choice) in (sensitive or {}).items():
+        if value is not None:
+            r = api.put(f"/applications/{app_id}/answers", json={"key": key, "value": value})
+            assert r.status_code == 200, r.text
+        if choice is not None:
+            r = api.put(f"/applications/{app_id}/consents", json={"key": key, "choice": choice})
+            assert r.status_code == 200, r.text
     v = api.put(
         f"/applications/{app_id}/consents", json={"key": "privacy_ack", "choice": "agree"}
     ).json()

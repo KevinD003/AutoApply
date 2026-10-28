@@ -1420,3 +1420,39 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Rejected:** keeping the answer when only the wording "looks similar" (not deterministic);
   storing the disclosed answer beside the choice (a second copy of sensitive data); tying
   "Don't disclose" to the answer (withholding stays right whatever the answer is).
+
+## D61 — "Don't disclose" on a required question sends the form's own decline option (C8, 2026-10-28)
+- **Problem:** R3.4 had no end-to-end evidence: nothing showed, from the employer's side, that a
+  withheld sensitive answer stays out and an included one goes in. "Don't disclose" on a
+  required self-identification question was a dead end even when the form offered its own
+  "Decline to self-identify", and the bank policy for the equal-opportunity topics was left to
+  this step (D49).
+- **What changed (`resolver.map_decline`, `_resolve_sensitive`):**
+  - "Don't disclose" on a **required** select, radio or multi-choice sensitive question is the
+    form's one option whose normalized label is in a fixed list of decline wordings
+    (`DECLINE_WORDS`: "Decline to self-identify", "I don't wish to answer", "Prefer not to
+    say" …, exact after normalization). It is shown on the review page with its reason, sent as
+    that option, and never saved. Your typed answer is kept for review and is not sent;
+  - no such option, two of them, a looser wording ("Decline", "Other / decline") or a text
+    question: the checkpoint stays ("Pick an answer …"); NoEfforts never chooses between
+    two decline options;
+  - an **optional** question is still left blank, even when it offers a decline option: no
+    answer discloses least.
+- **One bank policy for the equal-opportunity topics:** unchanged and now the policy. An answer
+  you saved for one of the original topics, found in the wording, is proposed on a later form
+  and is sent only after "Include this answer" there, for that exact answer (C7's digest). A
+  decline option chosen by "Don't disclose" is never saved. Narrowing further would re-hash
+  every package with a gender or veteran question and would not change what is sent: nothing
+  reaches an employer without the per-application choice.
+- **Evidence:** `tests/test_disclosure_ledger.py` counts with the receiver's own ledger:
+  "Include" sends the answer, "Don't disclose" sends nothing on the optional question and
+  `decline` on the required one (receiver mode `required_eeo`), an answer without a choice
+  blocks approval, a saved answer is sent only after "Include". The Playwright test
+  `submission.spec.ts` clicks both buttons on desktop and mobile and reads the ledger.
+- **Effect on approvals:** only packages that could not be approved before change (a required
+  sensitive question with "Don't disclose" now resolves). No new content key: `SCHEMA_VERSION`
+  (2) and `RESOLVER_VERSION` stay; no migration.
+- **Rejected:** choosing the decline option on an optional question (it discloses a choice the
+  form does not need); matching any label containing "decline" (an "Other / decline" option is
+  not clearly a refusal); choosing between two decline options; sending a required question
+  blank (the employer's form refuses it, or worse, reads it as an answer).

@@ -1,6 +1,6 @@
 import { expect, Page, test } from "@playwright/test";
 
-// S3 (D59) in the UI: a role that looks like one you already applied to is shown on the job page
+// S3 (D59) in the UI: a role that looks like one you already have an application for is shown on the job page
 // and the review page, and approval waits until you say it is a different role. Two fictional
 // postings of one role (two URLs), the local basic test form; synthetic data only.
 const PDF = Buffer.from("%PDF-1.4\n% synthetic e2e resume\n");
@@ -34,13 +34,13 @@ test("a possible duplicate waits for your statement", async ({ page }, info) => 
   const { first, second } = await setup(page, `${info.project.name}-${Date.now()}`);
   await page.goto(`/applications/${second.appId}`);
   const about = page.getByRole("group", { name: "About this job" });
-  await expect(about.getByText(/It looks like a role you already applied to/)).toBeVisible();
+  await expect(about.getByText(/It looks like a role you already have an application for/)).toBeVisible();
   await expect(about.getByText("job_possible_duplicate")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Approve package v\d+$/ })).toBeDisabled();
 
   await about.getByRole("link", { name: "Open the job page" }).click();
   const card = page.locator("section", { has: page.getByRole("heading", { name: "Before you apply" }) });
-  await expect(card.getByText("Looks like a role you already applied to", { exact: true })).toBeVisible();
+  await expect(card.getByText("Looks like a role you already have an application for", { exact: true })).toBeVisible();
   await expect(card.getByRole("link", { name: /Data Analyst · Contoso Example \(fictional\)/ })).toHaveAttribute("href", `/jobs/${first.jobId}`);
   await expect(card.getByText("awaiting_approval")).toBeVisible();
   await card.getByRole("button", { name: "This is a different role" }).click();

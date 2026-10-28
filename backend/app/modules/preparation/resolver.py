@@ -288,6 +288,40 @@ def map_region(f: FormField, region: str, country: str | None) -> Option | None:
     return hits[0] if len(hits) == 1 else None
 
 
+# C8 (D61): option labels that say the applicant declines to answer, exactly (normalized).
+DECLINE_WORDS = frozenset(
+    {
+        "decline to self-identify",
+        "decline to self identify",
+        "i decline to self-identify",
+        "i decline to self identify",
+        "decline to answer",
+        "i decline to answer",
+        "decline to state",
+        "i decline to state",
+        "prefer not to say",
+        "i prefer not to say",
+        "prefer not to answer",
+        "i prefer not to answer",
+        "i don't wish to answer",
+        "i do not wish to answer",
+        "i don't wish to disclose",
+        "i do not wish to disclose",
+        "i choose not to disclose",
+        "i don't want to answer",
+        "i do not want to answer",
+    }
+)
+
+
+def map_decline(f: FormField) -> Option | None:
+    """The form's one option that declines to answer; none when there are two or none."""
+    if f.type not in CHOICE_TYPES | MULTI_TYPES:
+        return None
+    hits = [o for o in f.options if normalize(o.label) in DECLINE_WORDS]
+    return hits[0] if len(hits) == 1 else None
+
+
 def country_name(code: str) -> str:
     return COUNTRIES[code][0].title().replace(" Of ", " of ") if code in COUNTRIES else code
 
@@ -1089,6 +1123,19 @@ def _resolve_sensitive(f, r, ctx) -> Resolution:
             r.explanation = f"{CHANGED_ANSWER} Sensitive: confirm you want to disclose it."
             return r
     if choice == "withhold":
+        decline = map_decline(f) if f.required else None
+        if decline is not None:
+            # C8 (D61): "Don't disclose" on a required question is the form's own one option
+            # that says so; nothing about you is disclosed.
+            r.status, r.source = "resolved", "consent"
+            r.value = {"options": [_choice(decline)]} if f.type in MULTI_TYPES else _choice(decline)
+            r.display = decline.label
+            r.explanation = (
+                f"Sensitive: you chose not to disclose; the form's own option '{decline.label}' "
+                "says so."
+            )
+            r.bankable = False
+            return r
         if f.required:
             return _unresolved(
                 r,

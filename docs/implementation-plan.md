@@ -275,7 +275,7 @@ capability).
 | C11 | Protected-fact choice dead ends: a "State" select with the profile's state maps by unique exact option; otherwise a per-application answer that is never banked | S | C6 (bank refusals) | **Done (D57, 2026-10-28):** only a list naming every US state is mapped, for a US residence; a City list is never picked from the profile; any other State, City or Country list is the user's answer for this application, never saved, tied to the fact |
 | C10 | Fact values must fit the field (length, email, URL scheme; one candidate link) | S | — | **Done (D54, D58, 2026-10-28):** a fact answer that fails `validate_value` is never sent (S4); a link question gets the profile's link only when exactly one is of its kind, read from the host; several are the user's to give; the review page shows why |
 | C7 | Consents and answers tied to the field fingerprint and a keyed value digest | M | C6 | **Done (D60, 2026-10-28):** each answer and consent stores its question's fingerprint; a changed question asks again; "disclose" covers a keyed digest of the exact answer |
-| C8 | Disclose path end to end with the receiver ledger; "decline to self-identify" mapping | M | C7 | Closes R3.4 |
+| C8 | Disclose path end to end with the receiver ledger; "decline to self-identify" mapping | M | C7 | **Done (D61, 2026-10-28):** the receiver ledger shows "Include" sends the answer and "Don't disclose" sends nothing (optional) or the form's one decline option (required); one bank policy for the equal-opportunity topics. Closes R3.4 |
 | C9 | Salary and relocation period and currency | S | C6 (they are no longer bankable) | The `version` key fix is [shape] → C18 |
 | C12 | Review UI edit, clear, optional answers, cover-letter selection, destination shown | M | C10, C11 | High user value |
 | C13 | Audit and approval wording, reason codes, revoke-while-queued | M | — | Pairs with S2's audit additions |
@@ -306,10 +306,11 @@ done: C1 C2 → C3-C5 → Q1 (D50) → S1 (C6, D51) → S2 (outcome integrity, D
       → S7 in code (live-read gate, D55, at the owner's request; not yet run)
       → S8 in code (watched searches and delete, D56, at the owner's request; not yet run)
       → C11 (State, City and Country lists, D57) → C10 (one link of a kind, D58)
-      → S3 (job signals, D59)
-now:  C7 (consents and answers tied to the field fingerprint)
-next: C8 → S5 (fixture variants)
-then: C9 → C12 → C13 → C14 → S6 (Freehire hardening; its doc refresh is done)
+      → S3 (job signals, D59) → C7 (answers tied to their question, D60)
+      → C8 (the disclose path, D61)
+now:  S5 (fixture variants)
+next: C9 (salary and relocation period and currency)
+then: C12 → C13 → C14 → S6 (Freehire hardening; its doc refresh is done)
 then: C15 → C16 → C17 → C18 (one schema bump)
 later: L1-L4; live steps only with the owner's recorded permissions
 ```
@@ -349,7 +350,7 @@ profile only when exactly one link is of that kind, read from its host; with sev
 gives the one for that question, and the review page says why.
 
 **S3 (job signals, D59) is done.** A posting its source says is closed, a job you excluded or
-closed, and a role that looks like one you already applied to are shown on the job, Discover and
+closed, and a role that looks like one you already have an application for are shown on the job, Discover and
 review pages, and approval waits for your statement; Greenhouse embed URLs now have their
 board URL's identity.
 

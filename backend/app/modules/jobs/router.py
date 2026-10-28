@@ -349,8 +349,9 @@ def confirm_still_open(
 def confirm_different_role(
     job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
 ):
-    """S3 (D59): your statement that this job is not the role you already applied to. It answers
-    the applications known now; a later application to the same role asks again."""
+    """S3 (D59): your statement that this job is not the role you already have an application
+    for. It answers the applications known now; a later application to the same role asks
+    again."""
     job = _owned(db, user, job_id)
     job.distinct_confirmed_at = utcnow()
     record(db, user.id, "job.confirm_distinct", "job", job.id)

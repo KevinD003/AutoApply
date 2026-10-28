@@ -289,6 +289,8 @@ def page_form(slug, token, cfg):
     if tamper == "checkbox":  # the page unticks the box
         js_extra += ("document.querySelector('[name=privacy_ack]').addEventListener('change', "
                      "e => { e.target.checked = false; });\n")
+    # C8 (D61): the self-identification question required, as some boards make it.
+    eeo_required = " required" if cfg["mode"] == "required_eeo" else ""
     hostile = ""
     if cfg["mode"] == "hostile" and cfg.get("canary"):
         c = cfg["canary"]
@@ -348,7 +350,7 @@ def page_form(slug, token, cfg):
 {extra}
 </section>
 <section data-step="Voluntary self-identification">
-<label for="gender">Gender</label><select id="gender" name="gender" aria-describedby="eeo_help">
+<label for="gender">Gender</label><select id="gender" name="gender" aria-describedby="eeo_help"{eeo_required}>
 <option value="">Select...</option><option value="w">Woman</option><option value="m">Man</option>
 <option value="nb">Non-binary</option><option value="decline">Decline to self-identify</option></select>
 <p id="eeo_help">Completion is voluntary and will not affect your application.</p>
