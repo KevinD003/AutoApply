@@ -9,6 +9,20 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## State, City and Country lists (C11, 2026-10-28; local only)
+
+Resolver tests with synthetic facts, and one fictional manual form through the API. Decision
+D57. No external request.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| A list naming every US state gets the profile's state, by name or postal code, for a US residence | `tests/test_resolver.py::test_a_list_of_every_us_state_gets_the_profiles_state` (13 lists); corpus row `r8_6_ctrl_state_select_every_us_state` | Mapped from profile, the fact recorded, never saved |
+| Any other State list is the user's answer for this application, never a dead end | `::test_any_other_state_list_is_the_users_answer_for_this_application` (16 lists: not offered, twice, name and code, short, incomplete, near match, part of a name, unknown or another country, an Australian or Kenyan list, yes/no), `::test_one_state_is_not_a_set_of_options`; corpus rows `r8_6_state_select_short_list_has_residence`, `r8_6_state_select_code_shared_by_another_country` | nothing sent; the user may answer; a saved answer never takes its place; the answer keeps the fact, so a profile edit asks again |
+| A City list is never picked from the profile | `::test_a_city_list_is_never_picked_from_the_profile`; `frontend/e2e/place-lists.spec.ts` (the review page says why and offers no reuse); corpus rows `r8_3_city_select_residence_offered_required`, `r8_3_location_radio_residence_offered_required` | the offered residence city is not ticked; the user answers it; typed text still gets the profile's city |
+| A Country list without exactly one option for the profile's country is answered by the user | `::test_a_country_list_without_one_option_for_your_country_is_answered_for_this_application`; corpus row `r8_6_country_select_without_residence` | no snapped option; the user may answer |
+| Through the API: refused reuse, the typed answer kept, a move re-maps the state | `tests/test_answers_that_do_not_fit.py::test_state_city_and_country_lists_are_never_a_dead_end` | 400 for reuse and for typing over the mapped state; 200 for the per-application answer; a new version and an invalidated approval after the profile moves |
+| A State list still asks for the state in the profile when there is none | `::test_a_state_list_without_a_verified_state_still_asks_for_it_in_the_profile` | unchanged: no per-application answer for a missing or unapproved state |
+
 ## Watched Freehire searches (S8, 2026-10-28; local only)
 
 The local stand-in of Freehire's documented API plays the live origin; its request table is the

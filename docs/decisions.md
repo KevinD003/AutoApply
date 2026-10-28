@@ -1270,3 +1270,52 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   exists); following the employers' boards directly (not this decision, and the boards' own
   terms); retrying a failed check sooner than its backoff; deleting a posting's id with its
   content (it would come back on the next check).
+
+## D57 — A State, City or Country list is never a dead end; only a list of every US state is mapped (C11, 2026-10-28)
+- **Problem:** residence is a protected fact (PROFILE_ONLY): the user may not answer it per
+  application, so that every application stays consistent with the profile. On a choice field,
+  though, NoEfforts mapped only the country. A required "State" list returned "The form offers
+  fixed options; choose one", a City list did the same, and a Country list without the
+  profile's country said "Choose one": the user was told to choose and was not allowed to, so
+  preparation stopped there for any form asking for a US state.
+- **What changed (`resolver.py`):**
+  - **State:** a list gets the profile's state only when the profile's country of residence is
+    the US, the list names all 50 states (by name or postal code; DC and the territories may be
+    there too, and so may placeholders or Canadian provinces), and exactly one option is the
+    profile's state by name or code (`US_STATES`, `map_region`). Source **Mapped from profile**,
+    the fact recorded.
+  - **Anything else is the user's answer for this application** (`_does_not_fit`, D54): another
+    country, an unknown country, a short or incomplete list, the state twice, a near match, a
+    part of a name, several boxes. Nothing is sent until the user answers; a saved answer never
+    takes its place; it is never saved for reuse; the row keeps the profile fact it was about,
+    so changing that fact invalidates the approval of what was answered.
+  - **City:** a list of cities is never picked from the profile, even when it offers the
+    profile's city: a fixed list of cities is usually where the job is, not where you live
+    (LD-28, R8.3: the legacy bot filled such lists with the home city). Always the user's answer
+    for this application, tied to the profile's city when there is one. Typed text is still the
+    profile's city.
+  - **Country:** a list with exactly one option for the profile's country is mapped as before;
+    otherwise (none, or two) it is the user's answer for this application.
+  - Typed State, City and Country fields are unchanged. A State list with no verified state in
+    the profile still asks for it in Profile.
+- **Why only a full US list:** an exact option is not enough. Another country's list shares
+  names and codes ("WA" is Western Australia; "Central", "Western", "Punjab", "Limburg",
+  "Córdoba" are first-level regions in several countries), and a short list of states is usually
+  where the employer hires. A list naming every US state is an address list, and the US table
+  is closed and exact. Other countries' lists have no table here, so they are the user's.
+- **Effect on approvals:** a rebuilt package differs only on such rows (a newly mapped state,
+  a new explanation), so an approval of a package with such a row is invalidated when the
+  package is rebuilt; nothing approved before could have been sent with a required one (it
+  blocked approval). No change in package shape: `SCHEMA_VERSION` (2) and `RESOLVER_VERSION`
+  stay (a bump would invalidate every approval for nothing).
+- **Evidence:** `tests/test_resolver.py` (C11 section: 13 mapped lists, 16 refused lists, a
+  missing state, several boxes, typed text, city lists, country lists),
+  `tests/legacy_collisions.json` (six rows, `r8_3_*` and `r8_6_*`, with `user_input_allowed`
+  now checked by the corpus loop), `tests/test_answers_that_do_not_fit.py::
+  test_state_city_and_country_lists_are_never_a_dead_end` (through the API: refused reuse, the
+  typed answer kept, a move re-maps the state and invalidates the approval). The narrowing sweep
+  against `ba2a6d4` is in `docs/implementation-status.md`.
+- **Rejected:** mapping exact names on any list (cross-country collisions); prefix, substring or
+  fuzzy matching; picking a city from the profile; letting the user answer a protected fact the
+  profile already answers on a field it fits (unchanged: fix the profile); asking the user to add
+  a city to the profile first for a list that never uses it.

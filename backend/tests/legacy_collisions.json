@@ -640,6 +640,47 @@
    "why": "Where the user would be based for the job is a preference, not the residence fact."
   },
   {
+   "id": "r8_3_city_select_residence_offered_required",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "City",
+   "type": "select",
+   "options": [
+    "Porto",
+    "Lisbon",
+    "Faro"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false,
+    "user_input_allowed": true
+   },
+   "why": "C11 (D57): a fixed list of cities is usually where the job is; a residence-equality matcher ticks Lisbon. The profile's city is never picked from a list; the user answers it for this application and it is never saved."
+  },
+  {
+   "id": "r8_3_location_radio_residence_offered_required",
+   "plan": "R8.3",
+   "legacy": "LD-28",
+   "label": "Location",
+   "type": "radio",
+   "options": [
+    "Lisbon",
+    "Porto"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false,
+    "user_input_allowed": true
+   },
+   "why": "C11 (D57): the required form of r8_3_location_radio_residence_first_optional. The first option is the residence city; it is still never ticked, and the user may answer it here (it is no longer a dead end)."
+  },
+  {
    "id": "r8_4_ctrl_email_benign_help",
    "plan": "R8.4",
    "legacy": "LD-24",
@@ -3078,6 +3119,157 @@
     "intent": "fact_statement"
    },
    "why": "Citizenship by its document, stated on a box: never checked."
+  },
+  {
+   "id": "r8_6_ctrl_state_select_every_us_state",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "State",
+   "type": "select",
+   "options": [
+    "Select one",
+    "Alabama",
+    "Alaska",
+    "Arizona",
+    "Arkansas",
+    "California",
+    "Colorado",
+    "Connecticut",
+    "Delaware",
+    "Florida",
+    "Georgia",
+    "Hawaii",
+    "Idaho",
+    "Illinois",
+    "Indiana",
+    "Iowa",
+    "Kansas",
+    "Kentucky",
+    "Louisiana",
+    "Maine",
+    "Maryland",
+    "Massachusetts",
+    "Michigan",
+    "Minnesota",
+    "Mississippi",
+    "Missouri",
+    "Montana",
+    "Nebraska",
+    "Nevada",
+    "New Hampshire",
+    "New Jersey",
+    "New Mexico",
+    "New York",
+    "North Carolina",
+    "North Dakota",
+    "Ohio",
+    "Oklahoma",
+    "Oregon",
+    "Pennsylvania",
+    "Rhode Island",
+    "South Carolina",
+    "South Dakota",
+    "Tennessee",
+    "Texas",
+    "Utah",
+    "Vermont",
+    "Virginia",
+    "Washington",
+    "West Virginia",
+    "Wisconsin",
+    "Wyoming"
+   ],
+   "facts": "rich",
+   "profile_extra": {
+    "residence_country": "US",
+    "residence_region": "TX"
+   },
+   "expect": {
+    "status": [
+     "resolved"
+    ],
+    "intent": "residence_region",
+    "source": "deterministic_mapping",
+    "value": {
+     "option": "43",
+     "label": "Texas"
+    }
+   },
+   "why": "Positive control (C11, D57): a list of every US state gets the profile's state, by its postal code, as the one exact option; not the first option and not a near match."
+  },
+  {
+   "id": "r8_6_state_select_short_list_has_residence",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "State",
+   "type": "select",
+   "options": [
+    "California",
+    "New York",
+    "Texas"
+   ],
+   "facts": "rich",
+   "profile_extra": {
+    "residence_country": "US",
+    "residence_region": "Texas"
+   },
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false,
+    "user_input_allowed": true
+   },
+   "why": "C11 (D57): a short list of states is usually where the job is, not an address list; the profile's state is never picked from it, and the user answers it for this application."
+  },
+  {
+   "id": "r8_6_state_select_code_shared_by_another_country",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "State",
+   "type": "select",
+   "options": [
+    "NSW",
+    "VIC",
+    "QLD",
+    "WA",
+    "SA",
+    "TAS"
+   ],
+   "facts": "rich",
+   "profile_extra": {
+    "residence_country": "US",
+    "residence_region": "WA"
+   },
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "bankable": false,
+    "user_input_allowed": true
+   },
+   "why": "C11 (D57): an exact option is not enough. 'WA' on an Australian list is Western Australia, not the US resident's Washington; only a list naming every US state is mapped."
+  },
+  {
+   "id": "r8_6_country_select_without_residence",
+   "plan": "R8.6",
+   "legacy": "LD-25",
+   "label": "Country",
+   "type": "select",
+   "options": [
+    "Spain",
+    "France"
+   ],
+   "facts": "rich",
+   "expect": {
+    "status": [
+     "needs_user"
+    ],
+    "intent": "residence_country",
+    "bankable": false,
+    "user_input_allowed": true
+   },
+   "why": "C11 (D57): the residence country (Portugal) is not offered; no option is snapped to, and the user answers it for this application instead of meeting a dead end."
   },
   {
    "id": "r8_7_affiliated_government_agency_saved_no_ignored",

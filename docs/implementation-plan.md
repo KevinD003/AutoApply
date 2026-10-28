@@ -272,7 +272,7 @@ capability).
 
 | Step | What | Size | Depends on | Placement and note |
 |---|---|---|---|---|
-| C11 | Protected-fact choice dead ends: a "State" select with the profile's state maps by unique exact option; otherwise a per-application answer that is never banked | S | C6 (bank refusals) | Early: blocks any required US state select today; honest UI wording |
+| C11 | Protected-fact choice dead ends: a "State" select with the profile's state maps by unique exact option; otherwise a per-application answer that is never banked | S | C6 (bank refusals) | **Done (D57, 2026-10-28):** only a list naming every US state is mapped, for a US residence; a City list is never picked from the profile; any other State, City or Country list is the user's answer for this application, never saved, tied to the fact |
 | C10 | Fact values must fit the field (length, email, URL scheme; one candidate link) | S | — | Partly done in S4 (D54): a fact answer that fails `validate_value` (shape, length, email, URL scheme) is never sent and becomes the user's answer for this application. Left: one candidate link when the profile has several of a kind (today the first is used), and the review page saying why |
 | C7 | Consents and answers tied to the field fingerprint and a keyed value digest | M | C6 | After C10/C11 |
 | C8 | Disclose path end to end with the receiver ledger; "decline to self-identify" mapping | M | C7 | Closes R3.4 |
@@ -305,9 +305,9 @@ capability).
 done: C1 C2 → C3-C5 → Q1 (D50) → S1 (C6, D51) → S2 (outcome integrity, D53) → S4 (D54)
       → S7 in code (live-read gate, D55, at the owner's request; not yet run)
       → S8 in code (watched searches and delete, D56, at the owner's request; not yet run)
-now:  C11
-next: C10 (its fit check done in S4; the link choice left)
-then: S3 (job state, duplicates) → C7 → C8 → S5 (fixture variants)
+      → C11 (State, City and Country lists, D57)
+now:  C10 (its fit check done in S4; the link choice left)
+next: S3 (job state, duplicates) → C7 → C8 → S5 (fixture variants)
 then: C9 → C12 → C13 → C14 → S6 (Freehire hardening; its doc refresh is done)
 then: C15 → C16 → C17 → C18 (one schema bump)
 later: L1-L4; live steps only with the owner's recorded permissions
@@ -338,13 +338,16 @@ nationality in other words, placed or negated relocation, a negated right to wor
 options under a neutral label, facts that do not fit the field); static guards refuse a mailbox
 client and page capture anywhere outside the frontend.
 
-**Recommended next: C11 (protected-fact choice dead ends).** Size S; a required US "State"
-select, or a residence City select, blocks preparation today: the profile's value is not mapped
-to the form's own option and the user may not answer it. S4's corpus now pins the
-resolver around it (`r8_3_*`, `r8_6_*`), so C11 can change it safely.
+**C11 (State, City and Country lists, D57) is done.** A required US "State" list is mapped
+from the profile when it names every state; a City list, another country's list and a Country
+list without the profile's country are the user's answer for this application, never saved and
+tied to the fact, so none is a dead end any more.
 
-**Runner-up: C10 (the rest of "facts must fit").** Size S; S4 already refuses a fact that does
-not fit; left is choosing among several links of one kind and saying why on the review page.
+**Recommended next: C10 (the rest of "facts must fit").** Size S; S4 already refuses a fact that
+does not fit; left is choosing among several links of one kind and saying why on the review
+page.
+
+**Runner-up: S3 (job state and duplicates).** Size M; touches the jobs module only.
 
 ## 5. Never in any slice
 

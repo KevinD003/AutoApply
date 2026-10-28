@@ -192,6 +192,96 @@ def map_country(f: FormField, code: str) -> Option | None:
     return hits[0] if len(hits) == 1 else None
 
 
+# C11 (D57): US states, the District of Columbia and the inhabited territories, by postal code.
+# Used only when the profile's country of residence is US: elsewhere "WA" is not Washington.
+US_STATES = {
+    "AL": "alabama",
+    "AK": "alaska",
+    "AZ": "arizona",
+    "AR": "arkansas",
+    "CA": "california",
+    "CO": "colorado",
+    "CT": "connecticut",
+    "DE": "delaware",
+    "DC": "district of columbia",
+    "FL": "florida",
+    "GA": "georgia",
+    "HI": "hawaii",
+    "ID": "idaho",
+    "IL": "illinois",
+    "IN": "indiana",
+    "IA": "iowa",
+    "KS": "kansas",
+    "KY": "kentucky",
+    "LA": "louisiana",
+    "ME": "maine",
+    "MD": "maryland",
+    "MA": "massachusetts",
+    "MI": "michigan",
+    "MN": "minnesota",
+    "MS": "mississippi",
+    "MO": "missouri",
+    "MT": "montana",
+    "NE": "nebraska",
+    "NV": "nevada",
+    "NH": "new hampshire",
+    "NJ": "new jersey",
+    "NM": "new mexico",
+    "NY": "new york",
+    "NC": "north carolina",
+    "ND": "north dakota",
+    "OH": "ohio",
+    "OK": "oklahoma",
+    "OR": "oregon",
+    "PA": "pennsylvania",
+    "RI": "rhode island",
+    "SC": "south carolina",
+    "SD": "south dakota",
+    "TN": "tennessee",
+    "TX": "texas",
+    "UT": "utah",
+    "VT": "vermont",
+    "VA": "virginia",
+    "WA": "washington",
+    "WV": "west virginia",
+    "WI": "wisconsin",
+    "WY": "wyoming",
+    "AS": "american samoa",
+    "GU": "guam",
+    "MP": "northern mariana islands",
+    "PR": "puerto rico",
+    "VI": "u.s. virgin islands",
+}
+_US_STATE_CODE = {name: code for code, name in US_STATES.items()}
+
+
+_US_STATES_ONLY = set(US_STATES) - {"DC", "AS", "GU", "MP", "PR", "VI"}
+
+
+def _us_state_code(text: str) -> str | None:
+    n = normalize(text)
+    return _US_STATE_CODE.get(n) or (n.upper() if n.upper() in US_STATES else None)
+
+
+def map_region(f: FormField, region: str, country: str | None) -> Option | None:
+    """C11 (D57): the one option that is the profile's US state, by name or postal code. Only for
+    a US residence and a list naming all 50 states (by label): a short list is usually where the
+    job is, and another country's list may share a name or a code ("WA", "Central"). Never a
+    part of a name, a near match or the first option; two hits are no hit."""
+    want = _us_state_code(region) if country == "US" else None
+    if want is None:
+        return None
+    by_code: dict[str, list[Option]] = {}
+    for o in f.options:
+        code = _us_state_code(o.label)
+        if code is not None:
+            by_code.setdefault(code, []).append(o)
+    if not _US_STATES_ONLY <= set(by_code):
+        return None
+    hits = by_code.get(want, [])
+    return hits[0] if len(hits) == 1 else None
+
+
 def country_name(code: str) -> str:
     return COUNTRIES[code][0].title().replace(" Of ", " of ") if code in COUNTRIES else code
 
@@ -383,12 +473,9 @@ def _residence_country(f, r, ctx, intent):
         )
     if f.type in CHOICE_TYPES:
         opt = map_country(f, code)
-        if opt is None:
-            return _unresolved(
-                r,
-                f,
-                f"None of the options clearly matches your country "
-                f"({country_name(code)}). Choose one.",
+        if opt is None:  # C11 (D57): never a dead end
+            return _does_not_fit(
+                r, f, f"None of the options is clearly your country ({country_name(code)})."
             )
         r.status, r.source, r.value, r.display = (
             "resolved",
@@ -402,6 +489,59 @@ def _residence_country(f, r, ctx, intent):
     r.value, r.display = {"text": country_name(code)}, country_name(code)
     r.explanation = "Your country of residence, from your profile."
     return r
+
+
+_REGION = _profile_attr("residence_region", "state/region of residence")
+_CITY = _profile_attr("residence_city", "city of residence")
+
+
+def _residence_region(f, r, ctx, intent):
+    """C11 (D57): typed text is the profile's value; a list gets the one option that is the
+    profile's US state (`map_region`), else it is your answer for this application."""
+    if f.type not in CHOICE_TYPES | MULTI_TYPES:
+        return _REGION(f, r, ctx, intent)
+    p = ctx.profile
+    region = p.residence_region if _approved(p) else None
+    if not region:
+        return _unresolved(
+            r, f, "Your profile has no verified state/region of residence. Add it in Profile."
+        )
+    r.fact_refs = [_ref(p, "profile", "residence_region")]
+    if f.type in MULTI_TYPES:
+        return _does_not_fit(r, f, "The form asks for several places, not where you live.")
+    opt = map_region(f, region, p.residence_country)
+    if opt is None:
+        return _does_not_fit(
+            r,
+            f,
+            f"NoEfforts picks your state ({region}) from a list only when you live in the US and "
+            "the list names every US state, with exactly one option for yours.",
+        )
+    r.status, r.source, r.value, r.display = (
+        "resolved",
+        "deterministic_mapping",
+        _choice(opt),
+        opt.label,
+    )
+    r.explanation = f"Your state of residence ({region}) matched the option '{opt.label}'."
+    return r
+
+
+def _residence_city(f, r, ctx, intent):
+    """C11 (D57): typed text is the profile's value. A list of cities is never picked from the
+    profile, even when it offers yours: a fixed list is usually where the job is, not where you
+    live (R8.3, LD-28). You answer it for this application; changing the city re-asks."""
+    if f.type not in CHOICE_TYPES | MULTI_TYPES:
+        return _CITY(f, r, ctx, intent)
+    p = ctx.profile
+    if _approved(p) and p.residence_city:
+        r.fact_refs = [_ref(p, "profile", "residence_city")]
+    return _does_not_fit(
+        r,
+        f,
+        "The form offers its own list of places. NoEfforts never picks one from your profile's "
+        "city: such a list is usually where the job is, not where you live.",
+    )
 
 
 def _work_auth_row(ctx, country):
@@ -650,8 +790,8 @@ FACT_RESOLVERS = {
     "preferred_name": _profile_attr("preferred_name", "preferred name"),
     "email": _profile_attr("contact_email", "contact email"),
     "phone": _profile_attr("phone", "phone number"),
-    "residence_city": _profile_attr("residence_city", "city of residence"),
-    "residence_region": _profile_attr("residence_region", "state/region of residence"),
+    "residence_city": _residence_city,
+    "residence_region": _residence_region,
     "residence_country": _residence_country,
     "work_authorization": _work_authorization,
     "sponsorship": _sponsorship,

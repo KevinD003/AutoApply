@@ -14,6 +14,7 @@ from app.modules.preparation.fixtures_registry import fixture_html
 from app.modules.preparation.forms import FieldType, FormField, Option, extract_form_schema
 from app.modules.preparation.resolver import (
     NO_BANK,
+    US_STATES,
     Context,
     answer_shape,
     option_labels,
@@ -448,7 +449,7 @@ def corpus_ctx(row, f):
     consents = {f.key: row["consent"]} if row.get("consent") else {}
     if row["facts"] == "none":
         return Context(bank=bank, consents=consents)
-    rich = profile(
+    facts = dict(
         id="p-rich",
         given_name="Sentinelle",
         family_name="Quorra",
@@ -464,8 +465,8 @@ def corpus_ctx(row, f):
         ],
         skills=["Python"],
         summary="Synthetic summary sentinel",
-        **row.get("profile_extra", {}),
     )
+    rich = profile(**(facts | row.get("profile_extra", {})))  # C11: a row may move the residence
     return Context(
         profile=rich, work_auth=RICH_WORK_AUTH, prefs=RICH_PREFS, bank=bank, consents=consents
     )
@@ -547,7 +548,7 @@ def test_a_legacy_collision_gets_only_its_safe_outcome(row, monkeypatch):
         if key in exp:
             assert getattr(r, key) == exp[key], got
     assert r.intent not in exp.get("intent_not", []), got
-    for flag in ("bankable", "draftable"):
+    for flag in ("bankable", "draftable", "user_input_allowed"):
         if flag in exp:
             assert getattr(r, flag) is exp[flag], got
     assert leaked(r, exp.get("uses", [])) == [], got
@@ -684,3 +685,162 @@ def test_a_multi_answer_is_a_non_empty_set_of_offered_options():
     assert validate_value(f, {"options": []})
     assert validate_value(f, {"options": [one, one]}) == "an option is chosen twice"
     assert validate_value(f, {"options": [{"option": "9", "label": "Maybe"}]})
+
+
+# ---------------------------------------------------------------------------------------------
+# C11 (D57): a State, City or Country list is never a dead end. A State list maps the profile's
+# state onto its one exact option (in the US also its postal code); a City list is never picked
+# from the profile; anything else is the user's answer for this application, never saved.
+
+
+def place(label, labels, typ=FieldType.select, required=True):
+    return FormField(
+        key="p",
+        label=label,
+        type=typ,
+        required=required,
+        options=[Option(value=str(i), label=x) for i, x in enumerate(labels)],
+    )
+
+
+def answered_here(r, fact):
+    """The C11 outcome when the profile's value is not exactly one option: nothing sent, the user
+    answers it for this application, never saved, tied to the fact it was about."""
+    assert (r.status, r.source, r.value, r.display) == ("needs_user", "unresolved", None, None)
+    assert (r.user_input_allowed, r.bankable, r.draftable) == (True, False, False)
+    assert r.protected is True
+    assert [x["field"] for x in r.fact_refs] == ([fact] if fact else [])
+    assert r.explanation.endswith("Answer it yourself for this application.")
+
+
+STATES = sorted(n.title() for n in US_STATES.values())
+CODES = sorted(US_STATES)
+FIFTY = [c for c in CODES if c not in ("DC", "AS", "GU", "MP", "PR", "VI")]
+NAMES = [US_STATES[c].title() for c in FIFTY]
+
+
+@pytest.mark.parametrize(
+    "region,labels,want",
+    [
+        ("Texas", STATES, "Texas"),
+        ("texas ", STATES, "Texas"),
+        ("TX", STATES, "Texas"),
+        ("tx", NAMES, "Texas"),
+        ("Texas", CODES, "TX"),
+        ("Texas", FIFTY, "TX"),
+        ("Texas", ["Select a state", *NAMES, "Outside the US"], "Texas"),
+        ("Texas", [*NAMES, "Ontario", "Quebec"], "Texas"),  # a North American list
+        ("Georgia", NAMES, "Georgia"),
+        ("West Virginia", NAMES, "West Virginia"),
+        ("Washington", NAMES, "Washington"),
+        ("District of Columbia", ["DC", *FIFTY], "DC"),
+        ("Puerto Rico", [*NAMES, "Puerto Rico"], "Puerto Rico"),
+    ],
+)
+def test_a_list_of_every_us_state_gets_the_profiles_state(region, labels, want):
+    p = profile(residence_region=region, residence_country="US")
+    for label in ("State", "Province", "State of residence"):
+        for typ in (FieldType.select, FieldType.radio):
+            r = resolve_field(place(label, labels, typ=typ), ctx(profile=p))
+            assert (r.status, r.source, r.display) == ("resolved", "deterministic_mapping", want)
+            assert r.value["label"] == want and r.intent == "residence_region"
+            assert [x["field"] for x in r.fact_refs] == ["residence_region"]
+            assert r.bankable is False and r.protected is True
+
+
+@pytest.mark.parametrize(
+    "region,country,labels",
+    [
+        ("Texas", "US", [x for x in NAMES if x != "Texas"]),  # not offered
+        ("Texas", "US", [*NAMES, "Texas"]),  # twice: not one option
+        ("Texas", "US", [*NAMES, "TX"]),  # the name and the code: not one option
+        ("Texas", "US", ["California", "New York", "Texas"]),  # a short list: where the job is
+        ("Texas", "US", [x for x in NAMES if x != "Utah"]),  # not every state
+        ("Texas", "US", [("Texas (TX)" if x == "Texas" else x) for x in NAMES]),  # a near match
+        ("Virginia", "US", [x for x in NAMES if x != "Virginia"]),  # never a part of a name
+        ("Washington DC", "US", NAMES),  # not a name in the table
+        ("Tex.", "US", NAMES),
+        ("Texas", None, NAMES),  # the residence country unknown: never assumed
+        ("Texas", "MX", NAMES),
+        ("WA", "AU", ["NSW", "VIC", "QLD", "WA", "SA", "TAS"]),  # exact, but not a US list
+        ("Washington", "US", ["NSW", "VIC", "QLD", "WA", "SA", "TAS"]),
+        ("Central", "KE", ["Central", "Coast", "Eastern"]),  # another country's list may share it
+        ("Ontario", "CA", ["Ontario", "Quebec"]),
+        ("Texas", "US", ["Yes", "No"]),
+    ],
+)
+def test_any_other_state_list_is_the_users_answer_for_this_application(region, country, labels):
+    p = profile(residence_region=region, residence_country=country)
+    f = place("State", labels)
+    saved = NS(
+        id="b1",
+        version=1,
+        approval_status=Approval.approved,
+        value={"option": f.options[0].value, "label": f.options[0].label},
+        options_snapshot=option_labels(f),
+        sensitive=False,
+        help_text="",
+    )
+    r = resolve_field(f, ctx(profile=p, bank={question_key(f): saved}))
+    answered_here(r, "residence_region")  # a saved answer never takes its place
+    typed = NS(value={"option": f.options[-1].value, "label": f.options[-1].label})
+    typed.provenance = "user_entered"
+    r = resolve_field(f, ctx(profile=p, inputs={"p": typed}))
+    assert (r.status, r.source, r.value) == ("resolved", "user_entered", typed.value)
+    assert [x["field"] for x in r.fact_refs] == ["residence_region"]  # a profile edit re-asks
+    assert r.bankable is False
+    optional = f.model_copy(update={"required": False})
+    r = resolve_field(optional, ctx(profile=p))
+    assert (r.status, r.value, r.explanation.endswith("Left blank.")) == (
+        "blank_optional",
+        None,
+        True,
+    )
+
+
+def test_a_state_list_without_a_verified_state_still_asks_for_it_in_the_profile():
+    f = place("State", ["California", "Texas"])
+    for p in (profile(), profile(residence_region="Texas", approval_status=Approval.proposed)):
+        r = resolve_field(f, ctx(profile=p))
+        assert (r.status, r.value, r.user_input_allowed) == ("needs_user", None, False)
+        assert "Add it in Profile" in r.explanation
+
+
+def test_one_state_is_not_a_set_of_options():
+    p = profile(residence_region="Texas", residence_country="US")
+    for typ in (FieldType.checkbox_group, FieldType.multiselect):
+        r = resolve_field(place("State", NAMES, typ=typ), ctx(profile=p))
+        answered_here(r, "residence_region")
+        assert "several places" in r.explanation  # its own reason, not only the S4 backstop
+
+
+def test_a_state_text_field_is_still_filled_from_the_profile():
+    f = FormField(key="s", label="State", type=FieldType.text, required=True)
+    r = resolve_field(f, ctx(profile=profile(residence_region="Texas", residence_country="US")))
+    assert (r.status, r.source, r.display) == ("resolved", "profile_fact", "Texas")
+
+
+def test_a_city_list_is_never_picked_from_the_profile():
+    """A fixed list of cities is usually where the job is, not where you live (R8.3, LD-28): the
+    profile's city is never ticked, even when it is offered; you answer it for this application."""
+    for label in ("City", "Location", "Current city"):
+        for typ in (FieldType.select, FieldType.radio, FieldType.multiselect):
+            f = place(label, ["Lisbon", "Porto"], typ=typ)
+            r = resolve_field(f, ctx(profile=profile(residence_city="Lisbon")))
+            answered_here(r, "residence_city")
+            # Without a city in the profile there is nothing to add there first.
+            answered_here(resolve_field(f, ctx(profile=profile())), None)
+    f = place("City", ["Lisbon", "Porto"], required=False)
+    r = resolve_field(f, ctx(profile=profile(residence_city="Lisbon")))
+    assert (r.status, r.value) == ("blank_optional", None)
+    text = FormField(key="c", label="City", type=FieldType.text, required=True)
+    r = resolve_field(text, ctx(profile=profile(residence_city="Lisbon")))
+    assert (r.source, r.display) == ("profile_fact", "Lisbon")  # typed text: still the profile
+
+
+def test_a_country_list_without_one_option_for_your_country_is_answered_for_this_application():
+    p = profile(residence_country="PT")
+    for labels in (["Spain", "France"], ["Portugal", "Portugal"]):
+        answered_here(resolve_field(place("Country", labels), ctx(profile=p)), "residence_country")
+    r = resolve_field(place("Country", ["Spain", "Portugal"]), ctx(profile=p))
+    assert (r.status, r.source, r.display) == ("resolved", "deterministic_mapping", "Portugal")
