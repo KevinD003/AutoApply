@@ -78,6 +78,15 @@ def detect_ats(canonical_url: str) -> AtsIdentity:
     q = dict(parse_qsl(parts.query))
     if parts.hostname and "greenhouse.io" in parts.hostname and "gh_jid" in q:
         return AtsIdentity("greenhouse", q.get("for"), q["gh_jid"])
+    # S3 (D59, R5.10): Greenhouse's embedded form, /embed/job_app?for=<board>&token=<job id>.
+    # The pattern below reads host and path only, so the query was never matched.
+    if (
+        parts.hostname
+        and re.match(r"^(?:job-)?boards(?:\.eu)?\.greenhouse\.io$", parts.hostname)
+        and parts.path == "/embed/job_app"
+        and re.fullmatch(r"\d+", q.get("token", ""))
+    ):
+        return AtsIdentity("greenhouse", (q.get("for") or "").lower() or None, q["token"])
     for provider, pat in _PATTERNS:
         m = pat.match(hostpath)
         if m:
@@ -111,6 +120,12 @@ def _bounded(key: str) -> str:
     return f"{key.split(':', 1)[0]}:h:{hashlib.sha256(key.encode()).hexdigest()[:48]}"
 
 
+def url_key(canonical_url: str) -> str:
+    """The identity of a URL no ATS pattern recognises (and the one a job stored before its ATS
+    was recognised still carries)."""
+    return "url:" + hashlib.sha256(canonical_url.encode()).hexdigest()[:32]
+
+
 def dedupe_key(
     *,
     canonical_url: str | None,
@@ -130,6 +145,6 @@ def dedupe_key(
     if requisition_id and ek:
         return _bounded(f"req:{ek}:{normalize_text(requisition_id)}")
     if canonical_url:
-        return "url:" + hashlib.sha256(canonical_url.encode()).hexdigest()[:32]
+        return url_key(canonical_url)
     raw = "|".join([ek, normalize_text(title), normalize_text(location)])
     return "fp:" + hashlib.sha256(raw.encode()).hexdigest()[:32]

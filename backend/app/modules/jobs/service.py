@@ -13,6 +13,7 @@ from app.modules.jobs.canonical import (
     detect_ats,
     employer_key,
     normalize_text,
+    url_key,
 )
 from app.modules.jobs.models import Job, JobSource, JobStatus
 from app.modules.profiles.models import JobPreferences
@@ -79,9 +80,17 @@ def upsert_job(
         created_at=now,
         updated_at=now,
     )
+    if canonical and key.startswith("ats:"):
+        # S3 (D59): a job stored before its ATS was recognised (a Greenhouse embed URL) keeps
+        # the URL key it was stored under; the same URL finds it, never a second job.
+        legacy = db.scalar(
+            select(Job).where(Job.user_id == user_id, Job.dedupe_key == url_key(canonical))
+        )
+        if legacy is not None:
+            key = legacy.dedupe_key
     stmt = (
         insert(Job)
-        .values(**values)
+        .values(**{**values, "dedupe_key": key})
         .on_conflict_do_nothing(constraint="uq_jobs_user_dedupe")
         .returning(Job.id)
     )

@@ -76,6 +76,8 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `document.upload` | `document` | `version` | document version number |
 | `job.create` / `job.duplicate` | `job` | - | one call site; the action says whether the job was new |
 | `job.update` | `job` | `fields` | names of the job fields the user changed, never their values |
+| `job.confirm_open` | `job` | - | the user stated the posting is still open although its source says it is closed or gone (S3, D59) |
+| `job.confirm_distinct` | `job` | - | the user stated the job is a different role from the possible duplicates known now (S3, D59) |
 | `jobs.import` | `import_batch` | `created`, `duplicates`, `errors` | row counts |
 | `discovery.import` | `discovery` | `created`, `fetched`, `provider`, `updated` | counts; the discovery provider key |
 | `discovery.run_approval.create` | `discovery_run_approval` | `hours`, `max_pages`, `provider` | the owner recorded one live-read approval (D55); its search and retention statement stay in `discovery_run_approvals`, never here |

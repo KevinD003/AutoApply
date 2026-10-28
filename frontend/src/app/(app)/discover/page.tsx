@@ -262,6 +262,13 @@ function DiscoveredRow({ r, onDelete }: { r: DiscoveredJob; onDelete: () => void
         <Credit a={r.attribution} />
         {r.stale && <Badge tone="amber">{r.stale_reason}</Badge>}
         {r.status === "incomplete" && <Badge tone="red">incomplete</Badge>}
+        {r.job_signals?.application && (
+          <Badge tone="indigo">
+            Your application: {r.job_signals.application.state}
+            {r.job_signals.application.outcome !== "none" ? ` · ${r.job_signals.application.outcome}` : ""}
+          </Badge>
+        )}
+        {(r.job_signals?.possible_duplicates ?? 0) > 0 && <Badge tone="amber">Possible duplicate of a role you applied to</Badge>}
       </div>
       <p className="text-slate-600">
         {[r.employer, r.location, r.workplace !== "unknown" ? r.workplace : null, r.employment_type].filter(Boolean).join(" · ") ||

@@ -1350,3 +1350,44 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Rejected:** choosing by order, by words in the question ("Portfolio" → GitHub) or by
   recency; matching hosts by substring or by similarity; asking for a "primary" link flag in
   the profile (a shape change, left to C18 if ever wanted).
+
+## D59 — Closed, excluded and possibly duplicate jobs wait for the user before approval (S3, 2026-10-28)
+- **Problem:** nothing stopped an approval for a posting its source had closed (LD-41's wrong
+  postings), for a job the user had excluded or closed, or for a second copy of a role already
+  applied to (LD-11: a Freehire repost gets a new slug; another board gets another URL).
+- **What changed:**
+  - `backend/app/modules/jobs/signals.py` reads three signals, user-scoped: **source says
+    closed** (a linked discovered posting reported `closed_at`, or gone at its address on a
+    refresh; never a listing that merely left it out), **excluded or closed by you** (the job's
+    status), **possible duplicate** (another of your jobs with the same employer key, the same
+    normalized title, the same location when both have one, and an application past draft);
+  - approval (`package.approve`, every scope) is refused with a fixed reason code
+    (`job_excluded`, `job_closed_by_you`, `job_source_closed`, `job_possible_duplicate`,
+    `docs/job-signals.md`) until the user answers it; preparation is never blocked, and the
+    check is outside the package content, so answering it changes no package;
+  - the user's audited statements: "It is still open" (`POST /api/jobs/{id}/still-open`,
+    `job.confirm_open`) holds until the source reports it closed again after it (the time the
+    source first said so is kept: `discovered_jobs.stale_since`); "This is a different role"
+    (`POST /api/jobs/{id}/different-role`, `job.confirm_distinct`) answers the applications
+    known then, so a later application to the same role asks again; a status is changed on the
+    job page;
+  - shown on the job page ("Before you apply", the other job, its application's state and
+    outcome), on the review page (the message, the reason code, approval disabled) and on each
+    Discover row (your application's state and outcome, "possible duplicate");
+  - migration `269ea4b8bc0c`: the three timestamps; rows already stale get `last_seen_at` as
+    the time their source said so;
+  - Greenhouse embed URLs (`/embed/job_app?for=<board>&token=<id>`, R5.10) are read as the
+    Greenhouse posting, so they have the board URL's identity; without `for=` the employer's
+    name stands in for the board; a job stored before under its URL identity is found again by
+    the same URL instead of adding a second job;
+  - fixture mode `fh_repost` (the same employer and title under a new slug, id and URL).
+- **Owner decision taken as a default (`freehire-first-architecture.md` §12 item 5, "block or
+  warn"):** a possible duplicate never blocks preparation and never merges anything; approval
+  waits for one click ("This is a different role"). This is the plan's own proposal (a
+  checkpoint the user confirms); switching to warn-only is one line in `approval_refusal`.
+- **Not done:** an approval given before a signal appeared is not withdrawn (a new one is
+  refused, and the pages show the signal); Freehire's copy groups (`/jobs/{slug}/copies`) are not
+  fetched; real employer destinations stay refused anyway.
+- **Rejected:** writing a closed flag onto the job (discovery never edits a tracker job);
+  merging or auto-linking duplicates; matching roles by similarity; counting a draft
+  application as applied.

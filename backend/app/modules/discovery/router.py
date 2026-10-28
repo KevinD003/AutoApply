@@ -21,6 +21,8 @@ from app.modules.discovery.models import DiscoveredJob, DiscoveryWatch
 from app.modules.discovery.provider import PROVIDERS, DiscoveryError, DiscoveryFilters, enabled
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
+from app.modules.jobs import signals
+from app.modules.jobs.models import Job
 from app.modules.profiles.models import JobPreferences
 from app.modules.providers import registry, wording
 
@@ -221,7 +223,13 @@ def list_rows(
     )
     if provider:
         q = q.where(DiscoveredJob.provider == provider)
-    return [_row(r) for r in db.scalars(q.order_by(DiscoveredJob.last_seen_at.desc()).limit(500))]
+    found = db.scalars(q.order_by(DiscoveredJob.last_seen_at.desc()).limit(500)).all()
+    # S3 (D59): the linked job's own application and possible duplicates, user-scoped.
+    jobs = db.scalars(
+        select(Job).where(Job.user_id == user.id, Job.id.in_([r.job_id for r in found if r.job_id]))
+    ).all()
+    sig = signals.for_rows(db, user.id, jobs)
+    return [_row(r) | {"job_signals": sig.get(r.job_id)} for r in found]
 
 
 @router.get("/jobs/{row_id}")

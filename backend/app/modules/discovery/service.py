@@ -262,8 +262,11 @@ def _store(
     }
     row.last_seen_at = row.imported_at = now
     row.filter_result = filt
+    if n.closed_at_source and not (row.stale and row.stale_reason == "closed at source"):
+        row.stale_since = now  # S3 (D59): when the source first said so
     row.stale = n.closed_at_source
     row.stale_reason = "closed at source" if n.closed_at_source else None
+    row.stale_since = row.stale_since if row.stale else None
     if n.missing:
         row.status, row.job_id, row.link_basis = "incomplete", None, None
         res.incomplete += 1
@@ -386,6 +389,7 @@ def import_from(
         ):
             if row.source_job_id not in seen and not row.stale:
                 row.stale, row.stale_reason = True, "not in the latest source listing"
+                row.stale_since = utcnow()
     db.flush()  # the session does not autoflush
     res.stale = len(
         db.scalars(
@@ -414,6 +418,8 @@ def refresh(db: Session, row: DiscoveredJob, provider: DiscoveryProvider) -> str
     raw = provider.get_job(row.source_job_id)
     now = utcnow()
     if raw is None:
+        if not (row.stale and row.stale_reason == "no longer at the source"):
+            row.stale_since = now  # S3 (D59)
         row.stale, row.stale_reason, row.last_seen_at = True, "no longer at the source", now
         return "gone"
     try:
@@ -607,4 +613,5 @@ def dismiss(db: Session, row: DiscoveredJob) -> dict:
     row.status, row.job_id, row.link_basis = "dismissed", None, None
     row.normalized, row.source_facts, row.raw_ref, row.filter_result = {}, {}, None, None
     row.changed_fields, row.changed_at, row.stale, row.stale_reason = [], None, False, None
+    row.stale_since = None
     return out

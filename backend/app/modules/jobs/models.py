@@ -63,6 +63,11 @@ class Job(Base, TimestampMixin):
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     seen_count: Mapped[int] = mapped_column(Integer, default=1)
+    # S3 (D59): your own statements, each audited. "Still open" answers a source that says the
+    # posting is closed until the source says so again; "a different role" answers the
+    # possible duplicates known at that moment.
+    open_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    distinct_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ImportBatch(Base):

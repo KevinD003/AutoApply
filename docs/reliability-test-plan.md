@@ -132,9 +132,9 @@ Receiver modes already exist (`fixtures/ats_receiver/receiver.py:163-190` at `3a
 | R5.6 | Unknown outcome is never auto-retried (state machine) | No exit to a retry state | `test_applications.py::test_unknown_submission_outcome_never_auto_retries`, `::test_terminal_states_have_no_exits` | — | LD-03 |
 | R5.7 | Unknown outcome in the verification-code step (worker and sweeper) | `submitted_unconfirmed`, never re-sent; one bad row does not stop the sweep | `test_code_wait_quarantine.py::test_an_unknown_result_after_the_code_is_quarantined_and_never_sent_again`, `::test_the_sweeper_quarantines_a_worker_that_died_waiting_for_the_code`, `::test_one_row_that_cannot_be_recovered_does_not_stop_the_others`, `::test_no_dict_literal_in_the_backend_repeats_a_key` (Q1, `3af29f0`) | — | LD-04, H3 |
 | R5.8 | One job, one application; concurrent job upserts | One row | `test_applications.py::test_create_is_idempotent`; `test_jobs.py::test_concurrent_upserts_create_one_job` | — | LD-07, LD-10 |
-| R5.9 | Same role on two ATSes, or the same employer + title with a different URL | "Possible duplicate" shown before preparation; never auto-merged | — | **NEW** `test_jobs.py` / `test_discovery.py`: two jobs, one with an application in `submitted_confirmed`, the second flagged (slice S3). **NEW** Freehire fixture mode `fh_repost` (same employer and title under a new slug, as Freehire mints for a repost): the second record is flagged as a possible duplicate and never auto-linked | LD-11 |
-| R5.10 | Greenhouse embed URL without `for=` vs the hosted-board URL of the same posting | Same `dedupe_key`, or a documented reason why not | — | **NEW** unit test in `test_jobs.py` (map Q1 hypothesis) | LD-10 |
-| R5.11 | Closed or excluded job reaching approval | Today nothing refuses (documents the gap); after S3, approval refused with a reason code until the user states it is still open | — | **NEW** `test_preparation.py` | LD-41 (wrong postings) |
+| R5.9 | Same role on two ATSes, or the same employer + title with a different URL | "Possible duplicate" shown before preparation; never auto-merged | — | **Done (S3, D59):** `test_job_signals.py::test_a_repost_is_a_possible_duplicate_and_never_merged` (fixture mode `fh_repost`), `::test_the_same_role_is_the_same_employer_title_and_location`, `::test_a_draft_application_is_not_a_prior_application`. **NEW** `test_jobs.py` / `test_discovery.py`: two jobs, one with an application in `submitted_confirmed`, the second flagged (slice S3). **NEW** Freehire fixture mode `fh_repost` (same employer and title under a new slug, as Freehire mints for a repost): the second record is flagged as a possible duplicate and never auto-linked | LD-11 |
+| R5.10 | Greenhouse embed URL without `for=` vs the hosted-board URL of the same posting | Same `dedupe_key`, or a documented reason why not | — | **Done (S3, D59):** `test_job_signals.py::test_a_greenhouse_embed_url_is_the_same_posting_as_its_board_url`, `::test_a_job_stored_under_its_url_key_is_found_again`; embed URLs were not recognised at all before (map Q1 hypothesis) | LD-10 |
+| R5.11 | Closed or excluded job reaching approval | Today nothing refuses (documents the gap); after S3, approval refused with a reason code until the user states it is still open | — | **Done (S3, D59):** `test_job_signals.py::test_approval_waits_while_you_excluded_or_closed_the_job`. **NEW** `test_preparation.py` | LD-41 (wrong postings) |
 
 ### R6. Confirmation and receipt
 
@@ -194,7 +194,7 @@ Existing positive controls must still resolve.
 | R9.5 | Tagged URL (`utm_source`, a referral parameter) | `test_jobs.py::test_canonicalization_and_ats_detection` (generic) | **NEW**: a Freehire-tagged URL and its untagged form give one `dedupe_key`; `ats_provider` unchanged | `freehire-first-architecture.md` §3 |
 | R9.6 | Aggregator URL on an unknown host | — | **NEW**: `ats_provider=unknown`, route manual handoff | `freehire-first-architecture.md` §6 |
 | R9.7 | Undocumented fields present (`last_seen_at`, `ghost`, `auto_apply_available`, `direct_apply`) | `test_freehire_discovery.py::test_undocumented_fields_are_not_read` | Extend with the 2026-10-26 field names | `freehire-first-architecture.md` §2.2 |
-| R9.8 | Linked job closed later | — | **NEW** (with S3): warning on job and review pages; approval refused with a reason code | LD-41 |
+| R9.8 | Linked job closed later | — | **Done (S3, D59):** `test_job_signals.py::test_a_posting_its_source_closed_waits_for_your_statement` (closed and gone), `::test_a_posting_missing_from_a_listing_is_not_a_closed_posting`; warning on the job and review pages (`frontend/e2e/job-signals.spec.ts` shows the duplicate case), approval refused with a reason code | LD-41 |
 | R9.9 | Attribution on every surface showing a Freehire-sourced job (jobs list, export) | `test_freehire_discovery.py::test_every_listing_is_credited_via_freehire` (Discover, job page) | **NEW** for the list and export (only if the owner decides it is required) | `freehire-first-architecture.md` §10 |
 
 ### R10. Destination validation
@@ -229,7 +229,7 @@ Existing positive controls must still resolve.
 | R12.2 | Revocation while a gate waits | `test_gate_snapshot_race.py::test_a_revocation_committed_while_a_gate_waits_is_refused`; `test_execution_failures.py::test_revocation_after_disclosure_stops_before_send` |
 | R12.3 | Edits between review and approve, after approval | `test_approval_hardening.py::test_edit_committed_between_review_and_approve_blocks_approval`, `::test_edit_committed_after_approval_invalidates_before_queue`, `::test_concurrent_rebuilds_write_one_version` |
 | R12.4 | Concurrent bank saves of one key | **C6** (`b6e4cf4`) `test_bank_races.py::test_two_first_saves_of_one_question_from_two_applications_never_fail`, `::test_two_updates_of_one_saved_answer_count_both_changes`, `::test_a_save_waits_for_the_deletion_of_its_saved_answer`, `::test_a_deletion_waits_for_a_save_of_its_saved_answer`, `::test_a_second_deletion_of_one_saved_answer_is_not_found` |
-| R12.5 | Concurrent "possible duplicate" checks for two copies of one role | **NEW (S3)** |
+| R12.5 | Concurrent "possible duplicate" checks for two copies of one role | **Done (S3, D59):** `test_job_signals.py::test_concurrent_approvals_of_two_copies_are_both_refused`. |
 
 ### R13. Cross-tenant (404, never 403, and nothing audited for the other user)
 
@@ -239,7 +239,7 @@ Existing positive controls must still resolve.
 | Preparation, revoke, drafts, bank | `test_preparation.py::test_tenant_isolation_for_preparation`, `::test_tenant_isolation_for_revoke_documents_drafts_and_the_bank` | — |
 | Execution, routes, rehearsals | `test_execution_security.py::test_execution_resources_are_tenant_bound`, `::test_worker_derives_tenant_from_attempt_not_payload`; `test_execution_routing.py::test_another_users_job_route_is_not_found_and_not_audited`; `test_rehearsal_prerequisite.py::test_a_rehearsal_never_counts_for_another_user` | — |
 | Discovery | `test_freehire_discovery.py::test_discovered_jobs_are_user_scoped`; `test_discovery.py::test_discovered_jobs_are_user_scoped` | — |
-| Prior-application signal and "possible duplicate" | — | **NEW (S3)**: user B never sees A's applications in either signal |
+| Prior-application signal and "possible duplicate" | `test_job_signals.py::test_another_users_applications_are_never_a_signal_and_their_jobs_are_not_found` (S3, D59) | — |
 | Outcome events and funnel counts | `test_funnel.py::test_outcome_history_and_the_funnel_are_per_user` | — |
 
 ### R14. Outcome-tracking integrity

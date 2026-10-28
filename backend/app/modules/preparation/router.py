@@ -19,6 +19,7 @@ from app.modules.execution import rehearsal
 from app.modules.execution.models import AttemptState, ExecutionAttempt
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
+from app.modules.jobs import signals
 from app.modules.jobs.models import Job
 from app.modules.preparation import bankscope, drafting
 from app.modules.preparation import greenhouse as gh
@@ -329,6 +330,8 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
         "approval": _approval_view(db, app, pkg, appr, last),
         # E6: whether a submission here needs a rehearsal first, and why (execution/rehearsal.py).
         "rehearsal_prerequisite": rehearsal.view(db, app, pkg, appr),
+        # S3 (D59): what about the job itself holds an approval back (outside the content).
+        "job_signals": signals.view(db, db.get(Job, app.job_id)),
         "history": [
             {
                 "version": h.version,

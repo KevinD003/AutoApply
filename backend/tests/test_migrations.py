@@ -350,6 +350,7 @@ def test_s7_adds_bounded_run_approvals_and_downgrade_drops_only_them(disposable)
 
 
 S7 = "4bc9c342d34c"
+S8 = "29588d78e7e1"
 
 
 def test_s8_adds_bounded_watches_and_downgrade_drops_only_them(disposable):
@@ -368,7 +369,7 @@ def test_s8_adds_bounded_watches_and_downgrade_drops_only_them(disposable):
             ),
             {"u": uid},
         )
-    command.upgrade(_cfg(), "head")
+    command.upgrade(_cfg(), S8)
     insert = text(
         "insert into discovery_watches (id,user_id,provider,query,interval_seconds,not_before,"
         "not_after,retention,created_at,next_check_at,failures,found_total,requests_on_day) "
@@ -388,3 +389,59 @@ def test_s8_adds_bounded_watches_and_downgrade_drops_only_them(disposable):
         assert c.execute(text("select to_regclass('discovery_watches')")).scalar() is None
         assert c.execute(text("select to_regclass('discovery_run_approvals')")).scalar()
         assert c.execute(text("select version_num from alembic_version")).scalar() == S7
+
+
+def test_s3_adds_the_job_signal_times_and_downgrade_drops_only_them(disposable):
+    """S3 (D59): three nullable timestamps. A discovered row already stale gets the time it was
+    last seen as the time its source first said so; a fresh one gets none; the jobs keep every
+    value; a downgrade drops the three columns and nothing else."""
+    command.upgrade(_cfg(), S8)
+    uid, jid = uuid.uuid4(), uuid.uuid4()
+    with disposable.begin() as c:
+        c.execute(
+            text(
+                "insert into users (id,email,password_hash,created_at,updated_at) "
+                "values (:u,'s3.synthetic@example.com','x',now(),now())"
+            ),
+            {"u": uid},
+        )
+        c.execute(
+            text(
+                "insert into jobs (id,user_id,dedupe_key,title,source,status,ats_provider,"
+                "first_seen_at,last_seen_at,seen_count,created_at,updated_at) values (:j,:u,"
+                "'fp:s3','Analyst','manual','new','unknown',now(),now(),1,now(),now())"
+            ),
+            {"j": jid, "u": uid},
+        )
+        for sid, stale in (("closed-1", True), ("open-1", False)):
+            c.execute(
+                text(
+                    "insert into discovered_jobs (id,user_id,provider,source_job_id,fingerprint,"
+                    "normalized,source_facts,status,job_id,stale,first_seen_at,last_seen_at,"
+                    "imported_at,changed_fields) values (:i,:u,'freehire',:s,'f','{}','{}',"
+                    "'linked',:j,:st,now(),'2026-10-20T10:00:00Z',now(),'[]')"
+                ),
+                {"i": uuid.uuid4(), "u": uid, "s": sid, "j": jid, "st": stale},
+            )
+    command.upgrade(_cfg(), "head")
+    with disposable.connect() as c:
+        got = dict(c.execute(text("select source_job_id, stale_since from discovered_jobs")).all())
+        assert got["open-1"] is None and got["closed-1"].isoformat().startswith("2026-10-20T10:00")
+        assert c.execute(
+            text("select open_confirmed_at, distinct_confirmed_at, title from jobs")
+        ).one() == (None, None, "Analyst")
+    command.downgrade(_cfg(), S8)
+    with disposable.connect() as c:
+        cols = {
+            r[0]
+            for r in c.execute(
+                text(
+                    "select column_name from information_schema.columns where table_name in "
+                    "('jobs','discovered_jobs')"
+                )
+            )
+        }
+        assert not cols & {"stale_since", "open_confirmed_at", "distinct_confirmed_at"}
+        assert {"stale", "stale_reason", "employer_key"} <= cols
+        assert c.execute(text("select count(*) from discovered_jobs")).scalar() == 2
+        assert c.execute(text("select version_num from alembic_version")).scalar() == S8

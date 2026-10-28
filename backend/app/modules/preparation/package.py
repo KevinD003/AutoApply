@@ -462,6 +462,13 @@ def approve(
         )
     if pkg.content["unresolved"] or pkg.content["validation_errors"]:
         raise ApprovalError("Resolve every required question before approving.")
+    from app.modules.jobs import signals
+
+    # S3 (D59): a closed, excluded or possibly duplicate job waits for your statement. Read
+    # outside the package content, so answering it never changes the package.
+    code = signals.approval_refusal(db, db.get(Job, app.job_id))
+    if code is not None:
+        raise ApprovalError(signals.refusal(code))
     active = active_approval(db, pkg)
     if active is not None:
         # Same scope: the same approval. Another scope is never swapped in silently.

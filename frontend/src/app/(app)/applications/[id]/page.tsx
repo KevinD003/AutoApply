@@ -154,6 +154,19 @@ export default function ReviewPage() {
         {view.approval.status === "invalidated" && (
           <p className="mt-2 rounded-lg bg-red-50 p-2 text-sm text-red-800">{view.approval.reason}</p>
         )}
+        {view.job_signals.approval_blocked && (
+          <div className="mt-3 rounded-lg bg-amber-50 p-2 text-sm text-amber-900" role="group" aria-label="About this job">
+            <p>{view.job_signals.approval_blocked.message}</p>
+            <p className="mt-1">
+              <Link className="text-indigo-700 underline" href={`/jobs/${c.destination.job_id}`}>
+                Open the job page
+              </Link>{" "}
+              <span className="text-xs text-slate-500">
+                Reason code: <code>{view.job_signals.approval_blocked.code}</code>
+              </span>
+            </p>
+          </div>
+        )}
         <div className="mt-3 rounded-lg border border-slate-200 p-2 text-sm" role="group" aria-label="Before the first submission">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-medium">Before the first submission</span>
@@ -179,7 +192,7 @@ export default function ReviewPage() {
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
-            disabled={!ready || busy || view.approval.status === "approved" || prereq.status === "unmet"}
+            disabled={!ready || busy || view.approval.status === "approved" || prereq.status === "unmet" || !!view.job_signals.approval_blocked}
             onClick={() =>
               call(
                 `/applications/${id}/package/approve`,
@@ -193,7 +206,7 @@ export default function ReviewPage() {
           </Button>
           <Button
             variant="secondary"
-            disabled={!ready || busy || view.approval.status === "approved"}
+            disabled={!ready || busy || view.approval.status === "approved" || !!view.job_signals.approval_blocked}
             onClick={() =>
               call(
                 `/applications/${id}/package/approve`,

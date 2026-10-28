@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, Credit, ErrorBox, Field, inputCls, Loading } from "@/components/ui";
-import { api, ApiError, Application, JobDetail } from "@/lib/api";
+import { api, ApiError, Application, JobDetail, JobSignals } from "@/lib/api";
 
 const KIND_TONE = { match: "green", mismatch: "amber", exclude: "red", info: "slate" } as const;
 
@@ -107,6 +107,7 @@ export default function JobPage() {
           {job.status !== "new" && <Button variant="secondary" onClick={() => patch({ status: "new" })}>Reset to new</Button>}
         </div>
       </Card>
+      <SignalsCard job={job} onChange={load} onError={setError} />
       <RouteCard jobId={id} />
       <FormCard jobId={id} onPrepare={prepare} />
       <Card title="Why this job matches (or doesn't)">
@@ -288,5 +289,51 @@ function Row({ k, v }: { k: string; v: string | null }) {
       <dt className="text-slate-500">{k}</dt>
       <dd className="text-slate-900">{v || "—"}</dd>
     </div>
+  );
+}
+
+// S3: what about this job holds an approval back, with the statements that answer it. All
+// messages come from the API (backend jobs/signals.py).
+function SignalsCard({ job, onChange, onError }: { job: JobDetail; onChange: () => void; onError: (e: unknown) => void }) {
+  const s: JobSignals = job.signals;
+  if (!s.approval_blocked && !s.source_closed && s.possible_duplicates.length === 0) return null;
+  async function state(path: string) {
+    try {
+      await api(`/jobs/${job.id}/${path}`, { method: "POST" });
+      onChange();
+    } catch (e) {
+      onError(e);
+    }
+  }
+  return (
+    <Card title="Before you apply">
+      {s.approval_blocked && <p className="text-sm text-amber-800">{s.approval_blocked.message}</p>}
+      {s.source_closed && (
+        <div className="mt-3 text-sm">
+          <p>
+            <Badge tone="amber">{s.source_closed.provider_label}</Badge> says this posting is {s.source_closed.reason} (since{" "}
+            {new Date(s.source_closed.since).toLocaleString()}).
+          </p>
+          <Button className="mt-2" variant="secondary" onClick={() => state("still-open")}>It is still open</Button>
+        </div>
+      )}
+      {s.possible_duplicates.length > 0 && (
+        <div className="mt-3 text-sm">
+          <p className="font-medium">Looks like a role you already applied to</p>
+          <ul className="mt-1 space-y-1">
+            {s.possible_duplicates.map((d) => (
+              <li key={d.application_id}>
+                <Link className="text-indigo-700 underline" href={`/jobs/${d.job_id}`}>
+                  {d.title ?? "Untitled role"} · {d.employer}
+                  {d.location ? ` · ${d.location}` : ""}
+                </Link>{" "}
+                <Badge>{d.state}</Badge> {d.outcome !== "none" && <Badge tone="indigo">{d.outcome}</Badge>}
+              </li>
+            ))}
+          </ul>
+          <Button className="mt-2" variant="secondary" onClick={() => state("different-role")}>This is a different role</Button>
+        </div>
+      )}
+    </Card>
   );
 }

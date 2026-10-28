@@ -88,6 +88,24 @@ export interface JobDetail extends Job {
     stale_reason: string | null;
     changed_fields: string[];
   }[];
+  signals: JobSignals;
+}
+
+// S3 (backend jobs/signals.py): what about the job holds an approval back. Messages are served.
+export interface JobSignals {
+  source_closed: { provider: string; provider_label: string; reason: string; since: string } | null;
+  possible_duplicates: {
+    job_id: string;
+    title: string | null;
+    employer: string | null;
+    location: string | null;
+    application_id: string;
+    state: string;
+    outcome: string;
+  }[];
+  open_confirmed_at: string | null;
+  distinct_confirmed_at: string | null;
+  approval_blocked: { code: string; message: string } | null;
 }
 
 export interface Attribution {
@@ -141,6 +159,8 @@ export interface DiscoveredJob {
   stale_reason: string | null;
   changed_fields: string[];
   last_seen_at: string;
+  // S3: the linked job's own application and how many possible duplicates it has.
+  job_signals: { application: { state: string; outcome: string } | null; possible_duplicates: number } | null;
 }
 
 export interface DiscoveryImportResult {
@@ -332,6 +352,8 @@ export interface PackageView {
   // All text is served; reason_code is a fixed code (a rehearsal code, or the route's own code
   // when NoEfforts does not submit here at all).
   rehearsal_prerequisite: RehearsalPrerequisite;
+  // S3: the job's own signals (closed, excluded, possible duplicate), outside the package.
+  job_signals: JobSignals;
   drafting_available: boolean;
   drafts: { id: string; field_key: string; text: string; evidence: string[]; provider: string }[];
 }

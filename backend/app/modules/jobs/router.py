@@ -8,13 +8,13 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.db import get_db
+from app.core.db import get_db, utcnow
 from app.core.errors import bad_request, not_found
 from app.core.urlsafety import UnsafeURL
 from app.modules.audit.service import record
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
-from app.modules.jobs import spreadsheet
+from app.modules.jobs import signals, spreadsheet
 from app.modules.jobs.models import ImportBatch, Job, JobSource, JobStatus
 from app.modules.jobs.service import explain, upsert_job
 from app.modules.profiles.models import JobPreferences
@@ -74,6 +74,8 @@ class JobDetail(JobOut):
     explanations: list[dict]
     # Discovery sources that list this job (source attribution only; never verified facts).
     discovered_from: list[dict] = []
+    # S3 (D59): source says closed, possible duplicates, and what holds an approval back.
+    signals: dict = {}
 
 
 class JobCreated(BaseModel):
@@ -287,6 +289,7 @@ def get_job(job_id: uuid.UUID, user: User = Depends(current_user), db: Session =
             }
             for d in sources
         ],
+        signals=signals.view(db, job),
     )
 
 
@@ -323,3 +326,33 @@ def patch_job(
     record(db, user.id, "job.update", "job", job.id, fields=sorted(body.model_fields_set))
     db.commit()
     return job
+
+
+def _job_detail(db: Session, user: User, job: Job) -> JobDetail:
+    return get_job(job.id, user, db)
+
+
+@router.post("/{job_id}/still-open", response_model=JobDetail)
+def confirm_still_open(
+    job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+):
+    """S3 (D59): your statement that the posting is still open, although its source says it is
+    closed or gone. It holds until the source reports it closed again."""
+    job = _owned(db, user, job_id)
+    job.open_confirmed_at = utcnow()
+    record(db, user.id, "job.confirm_open", "job", job.id)
+    db.commit()
+    return _job_detail(db, user, job)
+
+
+@router.post("/{job_id}/different-role", response_model=JobDetail)
+def confirm_different_role(
+    job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+):
+    """S3 (D59): your statement that this job is not the role you already applied to. It answers
+    the applications known now; a later application to the same role asks again."""
+    job = _owned(db, user, job_id)
+    job.distinct_confirmed_at = utcnow()
+    record(db, user.id, "job.confirm_distinct", "job", job.id)
+    db.commit()
+    return _job_detail(db, user, job)

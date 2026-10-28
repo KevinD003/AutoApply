@@ -146,7 +146,7 @@ capability).
   chooses otherwise.
 - **Size:** M. No package content change, no approval invalidation.
 
-### S3. J1 job state and prior-application signals
+### S3. J1 job state and prior-application signals — **done** (D59)
 
 - **Goal:** a job whose source says it is closed, an excluded job, or a role that looks like one
   the user already applied to is visible as such before preparation and approval.
@@ -306,8 +306,9 @@ done: C1 C2 → C3-C5 → Q1 (D50) → S1 (C6, D51) → S2 (outcome integrity, D
       → S7 in code (live-read gate, D55, at the owner's request; not yet run)
       → S8 in code (watched searches and delete, D56, at the owner's request; not yet run)
       → C11 (State, City and Country lists, D57) → C10 (one link of a kind, D58)
-now:  S3 (job state, duplicates)
-next: C7 → C8 → S5 (fixture variants)
+      → S3 (job signals, D59)
+now:  C7 (consents and answers tied to the field fingerprint)
+next: C8 → S5 (fixture variants)
 then: C9 → C12 → C13 → C14 → S6 (Freehire hardening; its doc refresh is done)
 then: C15 → C16 → C17 → C18 (one schema bump)
 later: L1-L4; live steps only with the owner's recorded permissions
@@ -347,11 +348,15 @@ tied to the fact, so none is a dead end any more.
 profile only when exactly one link is of that kind, read from its host; with several the user
 gives the one for that question, and the review page says why.
 
-**Recommended next: S3 (job state and duplicates).** Size M: a job its source says is closed,
-an excluded job, or a role that looks like one already applied to is shown as such, and
-approval waits for the user's confirmation.
+**S3 (job signals, D59) is done.** A posting its source says is closed, a job you excluded or
+closed, and a role that looks like one you already applied to are shown on the job, Discover and
+review pages, and approval waits for your statement; Greenhouse embed URLs now have their
+board URL's identity.
 
-**Runner-up: C7 (consents and answers tied to the field fingerprint).** Size M.
+**Recommended next: C7 (consents and answers tied to the field fingerprint and a keyed value
+digest).** Size M.
+
+**Runner-up: C8 (the disclose path end to end with the receiver ledger).** Size M.
 
 ## 5. Never in any slice
 

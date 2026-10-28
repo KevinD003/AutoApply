@@ -341,6 +341,8 @@ the Greenhouse terms review is unrecorded. CONFIRMED.
 2. Retention statement for discovered rows (§8): named in each run approval, D55.
 3. Whether to display Freehire's documented `reality` signals (display-only) (§2.2).
 4. Whether a job-level eligibility view is wanted, and its exact wording (§5.4).
-5. Whether "possible duplicate" should block preparation or only warn (§5.2).
+5. Whether "possible duplicate" should block preparation or only warn (§5.2): taken as a
+   default in D59 (S3): it never blocks preparation; approval waits for "This is a different
+   role". The owner may switch it to warn-only.
 6. Personal-prototype restriction in code: owner-only discovery (§10): live reads are owner-only
    (D55); fixture imports are not restricted.

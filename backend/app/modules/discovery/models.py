@@ -41,6 +41,9 @@ class DiscoveredJob(Base):
     job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
     stale: Mapped[bool] = mapped_column(Boolean, default=False)
     stale_reason: Mapped[str | None] = mapped_column(String(100))
+    # S3 (D59): when the source first said it was stale; a later report that it is still stale
+    # keeps this time, so a "still open" statement made after it holds.
+    stale_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

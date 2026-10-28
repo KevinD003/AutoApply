@@ -310,3 +310,11 @@ All of these are user-scoped: another user's record returns 404. The job detail
     an execution destination (D34);
   - the fingerprint covers the whole record, including `reality.age_days` and counters that
     change daily, so nearly every refresh would count as "updated" (unmeasured).
+
+## Closed postings and possible duplicates (S3, D59)
+
+A posting its source reports closed, or that is gone at its address on a refresh, is shown on its
+tracker job as "source says closed", and an approval to apply waits for your "It is still open"
+(the job itself is not changed). Each Discover row shows your application to its job, if any,
+and whether the job looks like a role you already applied to (same employer, title and
+location), for example a Freehire repost under a new slug. See `docs/job-signals.md`.

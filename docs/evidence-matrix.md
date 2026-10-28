@@ -9,6 +9,21 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Job signals (S3, 2026-10-28; local only)
+
+The local stand-in of Freehire's documented API plays the source; synthetic jobs and
+applications. Decision D59. Nothing contacted Freehire or an employer.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Approval waits while you excluded or closed the job (R5.11) | `tests/test_job_signals.py::test_approval_waits_while_you_excluded_or_closed_the_job` | 409 with the reason code; no approval row; the review and job pages carry the message |
+| A posting its source closed, or that is gone, waits for "still open" (R9.8) | `::test_a_posting_its_source_closed_waits_for_your_statement` (closed, gone), `::test_a_posting_missing_from_a_listing_is_not_a_closed_posting` | the tracker job unchanged; refused until your statement; the same report repeated keeps it answered; a new closure after it asks again |
+| A repost is a possible duplicate, never merged (R5.9) | `::test_a_repost_is_a_possible_duplicate_and_never_merged` (fixture mode `fh_repost`), `::test_the_same_role_is_the_same_employer_title_and_location` (7 cases), `::test_a_draft_application_is_not_a_prior_application`; `frontend/e2e/job-signals.spec.ts` | a new job; the other job's application state and outcome shown; both copies refused until "a different role"; a later application asks again |
+| Concurrent approvals of two copies (R12.5) | `::test_concurrent_approvals_of_two_copies_are_both_refused` | both refused, no approval row |
+| Another user's applications are never a signal (R13) | `::test_another_users_applications_are_never_a_signal_and_their_jobs_are_not_found` | no duplicate; 404 for their job; nothing audited for them |
+| Greenhouse embed URLs (R5.10) | `::test_a_greenhouse_embed_url_is_the_same_posting_as_its_board_url`, `::test_a_job_stored_under_its_url_key_is_found_again` | same identity as the board URL; a job stored under its old key found again |
+| Reason codes and migration | `::test_the_reason_codes_are_documented_exactly`; `tests/test_migrations.py::test_s3_adds_the_job_signal_times_and_downgrade_drops_only_them` | `docs/job-signals.md` lists exactly the codes; stale rows backfilled; downgrade drops only the three columns |
+
 ## One link of a kind (C10, 2026-10-28; local only)
 
 Resolver tests with synthetic links, and one fictional manual form in the browser. Decision D58.
