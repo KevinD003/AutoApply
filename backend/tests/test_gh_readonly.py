@@ -1,7 +1,9 @@
 """Read-only Greenhouse check (permissions A and B) against the local Greenhouse-like fixture.
 Nothing here contacts Greenhouse; the receiver's ledger shows that nothing was disclosed."""
 
+import io
 import json
+import socket
 import sys
 
 import pytest
@@ -92,6 +94,59 @@ def test_budget_and_host_are_fixed():
     b.used = 1
     with pytest.raises(ro.Stop, match="budget"):
         b.get(f"https://{ro.API_HOST}/robots.txt")
+
+
+class _Opener:
+    """Stands in for the network: records what would have been sent."""
+
+    def __init__(self):
+        self.sent = []
+
+    def open(self, req, timeout):
+        self.sent.append(req.full_url)
+        resp = io.BytesIO(b"User-agent: *\n")
+        resp.status = 200
+        return resp
+
+
+def _resolves_to(ip):
+    def resolver(host, port, type):
+        return [(socket.AF_INET, type, 6, "", (ip, port))]
+
+    return resolver
+
+
+@pytest.mark.parametrize("ip", ["10.0.0.7", "127.0.0.1", "169.254.169.254"])
+def test_the_real_api_host_must_resolve_publicly_before_anything_is_sent(ip):
+    """R10.5: the documented host resolving to a private or metadata address stops the check
+    before the first request; nothing is counted or sent."""
+    opener = _Opener()
+    b = ro.Budget(3, opener=opener, resolver=_resolves_to(ip))
+    with pytest.raises(ro.Stop, match="public"):
+        b.get(f"https://{ro.API_HOST}/robots.txt")
+    assert (opener.sent, b.used, b.log) == ([], 0, [])
+
+
+def test_a_public_api_host_is_checked_before_every_request():
+    seen, opener = [], _Opener()
+    public = _resolves_to("93.184.216.34")
+
+    def resolver(host, port, type):
+        seen.append((host, port))
+        return public(host, port, type)
+
+    b = ro.Budget(2, opener=opener, resolver=resolver)
+    b.get(f"https://{ro.API_HOST}/robots.txt")
+    b.get(f"https://{ro.API_HOST}/v1/boards/x")
+    assert seen == [(ro.API_HOST, 443)] * 2 and len(opener.sent) == 2
+
+
+def test_the_local_fixture_is_not_resolved(tmp_path, receiver):
+    def resolver(*a, **k):
+        raise AssertionError("a fixture origin is never resolved")
+
+    b = ro.Budget(1, API, resolver=resolver)
+    assert b.get(f"{API}/robots.txt") is not None and b.used == 1
 
 
 def test_robots_parsing():

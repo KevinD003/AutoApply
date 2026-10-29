@@ -15,6 +15,7 @@ be published.
 import json
 import os
 import re
+import socket
 import sys
 import threading
 import time
@@ -69,17 +70,22 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class Budget:
-    """GETs to one base URL only, at most `limit` of them, no redirects, size-limited."""
+    """GETs to one base URL only, at most `limit` of them, no redirects, size-limited. Before
+    each request a base that is not a test fixture must resolve to public addresses only
+    (R10.5); otherwise nothing is sent."""
 
-    def __init__(self, limit: int, base: str = f"https://{API_HOST}", opener=None):
+    def __init__(self, limit: int, base: str = f"https://{API_HOST}", opener=None,
+                 resolver=socket.getaddrinfo):  # fmt: skip
         self.limit, self.base, self.used, self.log = limit, base, 0, []
         self.opener = opener or urllib.request.build_opener(_NoRedirect)
+        self.resolver = resolver
 
     def get(self, url: str) -> bytes:
         if not url.startswith(self.base + "/"):
             raise Stop("only the documented API host is allowed")
         if self.used >= self.limit:
             raise Stop("request budget reached")
+        self._check_destination()
         self.used += 1
         path = urlsplit(url).path
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT}, method="GET")
@@ -93,6 +99,17 @@ class Budget:
         if len(data) > MAX_BYTES:
             raise Stop("response larger than the limit")
         return data
+
+    def _check_destination(self) -> None:
+        from app.core.config import get_settings
+        from app.core.urlsafety import UnsafeURL, is_fixture_origin, resolve_public_destination
+
+        if get_settings().env in ("development", "test") and is_fixture_origin(self.base):
+            return
+        try:
+            resolve_public_destination(self.base, self.resolver)
+        except UnsafeURL:
+            raise Stop("the API host does not resolve to public addresses only") from None
 
 
 def robots_allows(text: str, path: str) -> bool:

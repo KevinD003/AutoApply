@@ -240,8 +240,11 @@ CONFIRMED. A future check (NEW, needs a decision) must:
    `identity_stored_unknown_not_redetected`, `identity_variant_unrecognised`
    (`M/providers/admission.py` `KNOWN_GAPS`; `D/provider-admission.md:202-217`). CONFIRMED.
 6. **Before any live server-side fetch** (a live Freehire base URL or a live capture),
-   `resolve_public_destination` (`C/urlsafety.py:93`) must be called; today nothing in `app/` calls
-   it, because every server-side fetch is fixture-gated. CONFIRMED gap, to close before enabling.
+   `resolve_public_destination` (`C/urlsafety.py:93`) must be called. Closed: the Freehire client
+   calls it before a live read uses its approval (S7, D55), and the owner-run read-only Greenhouse
+   check calls it before every request to its API host (R10.5); the in-app capture reads fixtures
+   only and refuses a real post (409). Any new server-side fetch needs the same call and a test
+   with a resolver returning a private address (`D/reliability-test-plan.md` R10.5).
 
 Legacy lessons guarded: LD-40 (any host, any "Apply" link, any page with two identity inputs).
 

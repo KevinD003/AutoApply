@@ -9,6 +9,18 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Public-address check before every real server-side request (R10.5, 2026-10-29; local only)
+
+No request to any real host was made: a stub resolver and a stub opener stand in for the network.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| The read-only check's API host must resolve publicly before anything is sent | `tests/test_gh_readonly.py::test_the_real_api_host_must_resolve_publicly_before_anything_is_sent` (private, loopback, metadata) | stopped; nothing sent, nothing counted |
+| Checked before every request, not only the first | `::test_a_public_api_host_is_checked_before_every_request` | resolved twice for two requests |
+| The local fixture is never resolved | `::test_the_local_fixture_is_not_resolved` and the existing fixture tests | unchanged |
+| The other server-side fetches | `test_freehire_live_read.py::test_the_live_address_is_checked_before_the_approval_is_used` (S7); `test_greenhouse_adapter.py::test_real_greenhouse_posts_are_not_read` (capture reads fixtures only) | already covered |
+| Sabotage | 4 cases (no check, first request only, fixture resolved, unsafe ignored) | 4 caught |
+
 ## Tailored resumes and cover letters (L2, L3, 2026-10-29; local only, no provider)
 
 A labelled test double stands in for the provider; none is configured. Decision D73.
