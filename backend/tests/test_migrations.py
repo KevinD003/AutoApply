@@ -683,3 +683,39 @@ def test_d83_adds_notification_reads_and_downgrade_drops_only_them(disposable):
         tables = set(c.execute(text("select tablename from pg_tables")).scalars())
     assert "notification_reads" not in tables
     assert {"users", "drafting_consents", "execution_attempts"} <= tables
+
+
+D83 = "7d2c4e9a1b60"  # notification reads, before API tokens (D84)
+
+
+def test_d84_adds_api_tokens_and_downgrade_drops_only_them(disposable):
+    """Priority D (D84): tokens by public id (unique) with the token's hash only, deleted with
+    the user; a downgrade drops the table and nothing else (every token stops working)."""
+    command.upgrade(_cfg(), D83)
+    uid = uuid.uuid4()
+    with disposable.begin() as c:
+        c.execute(
+            text(
+                "insert into users (id,email,password_hash,created_at,updated_at) "
+                "values (:u,'d84.synthetic@example.com','x',now(),now())"
+            ),
+            {"u": uid},
+        )
+    command.upgrade(_cfg(), "head")
+    token = (
+        "insert into api_tokens (id,user_id,public_id,secret_hash,label,scopes,created_at,"
+        "expires_at) values (:i,:u,'abcd1234',:h,'t','[\"read\"]',now(),now() + interval '1 day')"
+    )
+    with disposable.begin() as c:
+        c.execute(text(token), {"i": uuid.uuid4(), "u": uid, "h": "0" * 64})
+    with pytest.raises(Exception, match="unique|duplicate"):
+        with disposable.begin() as c:
+            c.execute(text(token), {"i": uuid.uuid4(), "u": uid, "h": "1" * 64})
+    with disposable.begin() as c:
+        c.execute(text("delete from users where id = :u"), {"u": uid})
+        assert c.execute(text("select count(*) from api_tokens")).scalar() == 0
+    command.downgrade(_cfg(), D83)
+    with disposable.connect() as c:
+        tables = set(c.execute(text("select tablename from pg_tables")).scalars())
+    assert "api_tokens" not in tables
+    assert {"users", "notification_reads", "user_sessions"} <= tables

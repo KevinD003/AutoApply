@@ -68,6 +68,8 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `auth.register` | `user` | - | |
 | `auth.login` | `user` | - | |
 | `account.export` | `user` | `documents`, `rows`, `tables` | counts in the export: document files, records, tables (D77); deleted with the account, like every audit event (`docs/account-deletion.md`) |
+| `api_token.create` | `api_token` | `days`, `scopes` | an API token was made: its expiry in days and its scopes; never the token, its secret or its hash (D84, `docs/api-tokens.md`) |
+| `api_token.revoke` | `api_token` | - | an API token was revoked (D84) |
 | `profile.update` | `profile` | `version` | profile version number |
 | `preferences.update` | `preferences` | - | |
 | `{entity}.create` | `{entity}` | - | `entity` is one of `work_authorization`, `employment`, `education`, `credential` |

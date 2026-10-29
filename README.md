@@ -74,6 +74,10 @@ Then open http://localhost:3000. Data lives in the `pgdata` and `storage` volume
 checks, backups, upgrades, rollback and a safe verification run (`./scripts/verify-local.sh`)
 are in [docs/deployment.md](docs/deployment.md). It has been run in CI on Linux, not yet on a Mac.
 
+Your own scripts, the `noefforts` command line and a local MCP client read your data with an
+API token (Account → API tokens): [docs/api-tokens.md](docs/api-tokens.md). Tokens can read,
+or add jobs; they can never answer, approve or submit.
+
 ## Tests
 
 ```bash

@@ -9,6 +9,21 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## API tokens, CLI and MCP (D84, 2026-10-29; local only)
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Displayed once, never stored in plaintext | `apitokens.service.create` keeps the SHA-256 only | `test_a_token_is_shown_once_and_only_its_hash_is_kept`, `api-tokens.spec.ts` (gone after "I have copied it" and a reload) | pass | — |
+| Expires by default | 30 days default, 1-90 enforced | `test_a_token_always_expires_and_has_known_scopes`, `test_expired_revoked_and_unknown_tokens_read_the_same` | pass | — |
+| Revocable, effective at once | `revoked_at`; checked on every request | the same test, `api-tokens.spec.ts` (401 after revoke) | pass | — |
+| Scope enforcement, default deny | allow-list per scope in `current_user` | `test_every_route_outside_a_scope_refuses_the_token_before_doing_anything` (every route, both scopes, nothing audited), `test_no_scope_reaches_review_consent_approval_submission_or_your_facts`, `test_an_import_token_adds_a_job_and_nothing_else` | pass | — |
+| Session-only for management, export, deletion | `session_only` | `test_session_only_routes_refuse_a_token_even_next_to_a_valid_session` | pass | — |
+| Tenant isolation | a token resolves to one user | `test_a_token_reads_its_own_account_only` | pass | — |
+| Log redaction | access log by template; no header logged | `test_no_log_line_carries_a_token`, `test_against_a_real_server_the_cli_and_mcp_work_and_no_output_shows_the_token` (uvicorn, CLI and MCP subprocesses) | pass | — |
+| Your facts stay in the app | job read by token without eligibility | `test_a_token_reads_a_job_without_the_eligibility_that_shows_your_facts` | pass | Match summaries still name your approved skills and licences the job mentions (documented) |
+| No surface bypasses review, consent or approval | no such CLI command or MCP tool; API refuses tokens there | `test_the_mcp_server_offers_read_tools_and_never_a_way_to_apply`, the route sweep | pass | Not tried with a third-party MCP client |
+| Sabotage | 8 guards broken one at a time (scope check, expiry, hash comparison, plaintext stored, rate limit, session-only, cookie fallback, eligibility hiding) | each caught, restored by MD5; the hash comparison was missed at first (the tampered token was a revoked one), and a tampered active token was added | pass | — |
+
 ## In-app notifications (D83, 2026-10-29; local only)
 
 | Requirement | Implementation | Evidence | Result | Gaps |

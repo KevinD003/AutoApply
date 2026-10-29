@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.core.db import engine
 from app.core.errors import ErrorBoundary
 from app.modules.account.router import router as account_router
+from app.modules.apitokens.router import router as apitokens_router
 from app.modules.applications.router import router as applications_router
 from app.modules.audit.service import check_ref_key
 from app.modules.discovery.router import router as discovery_router
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
         providers_router,
         discovery_router,
         notifications_router,
+        apitokens_router,
     ):
         app.include_router(r, prefix=API_PREFIX)
 

@@ -33,8 +33,25 @@ def get_session(request: Request, db: Session = Depends(get_db)) -> UserSession:
     return sess
 
 
-def current_user(sess: UserSession = Depends(get_session), db: Session = Depends(get_db)) -> User:
+def current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    """The signed-in user, by session cookie (and its CSRF token on writes); or, when the request
+    carries an Authorization header, by an API token whose scopes allow this route and nothing
+    else (apitokens/service.py). A request with that header never falls back to the cookie."""
+    if "authorization" in request.headers:
+        from app.modules.apitokens.service import authenticate
+
+        return authenticate(request, db)
+    sess = get_session(request, db)
     user = db.get(User, sess.user_id)
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not signed in")
     return user
+
+
+def session_only(request: Request) -> None:
+    """For what only the app may do (token management, export, deletion): an API token is
+    refused before anything else is looked at, whatever its scopes."""
+    if "authorization" in request.headers:
+        from app.modules.apitokens.service import reason
+
+        raise HTTPException(status.HTTP_403_FORBIDDEN, reason("token_session_only"))

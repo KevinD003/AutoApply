@@ -2201,3 +2201,26 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Migration:** `7d2c4e9a1b60` (one table; downgrade drops it alone). `SCHEMA_VERSION`
   unchanged (3).
 
+## D84 — API tokens, then a CLI and an MCP server, read-only first (priority D, 2026-10-29)
+- **Problem:** your own scripts and an MCP client could reach NoEfforts only by copying a
+  browser session; there was no CLI or MCP surface for an ordinary user.
+- **Decision** (design and threat model in `docs/api-tokens.md`):
+  - Personal access tokens `ne_<public id>_<secret>`: made in Account → API tokens, shown once,
+    stored as a SHA-256 hash, 30 days by default and at most 90, revocable, "last used" to the
+    hour. Read from `Authorization: Bearer` only; a request with that header is decided by the
+    token alone, never by a cookie next to it.
+  - Scopes are allow-lists of (method, route template), checked in `current_user`, default
+    deny: `read` (jobs, a job without its eligibility side by side, applications, the funnel,
+    an application, notifications) and `import:jobs` (add a job, import a file). Any token may
+    read itself (`GET /api/token`). Token management, export and deletion refuse any request
+    with an `Authorization` header. Invalid tokens are rate-limited like logins.
+  - `scripts/noefforts.py` (CLI) and `scripts/noefforts_mcp.py` (MCP over stdio), standard
+    library only, talk to `http://127.0.0.1:8000/api` by default, refuse plain http to any
+    other host, take the token from the environment or a `chmod 600` file only, check ids are
+    UUIDs before putting them in a path, and never echo what was typed.
+  - Nothing reaches review, answers, consent, approval, queueing, submission or codes.
+- **Migration:** `9e1f3a7c2d84` (one table; downgrade drops it alone). `SCHEMA_VERSION`
+  unchanged (3). Audit: `api_token.create` (scopes, days) and `api_token.revoke`.
+- **Not done:** no versioned public API, no third-party clients, nothing exposed beyond this
+  machine.
+

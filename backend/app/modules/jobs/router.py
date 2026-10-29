@@ -2,7 +2,7 @@ import hashlib
 import uuid
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.core.db import get_db, utcnow
 from app.core.errors import bad_request, not_found
 from app.core.urlsafety import UnsafeURL
+from app.modules.apitokens.service import is_token_request
 from app.modules.audit.service import record
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
@@ -296,6 +297,17 @@ def _fit(db: Session, user: User, job: Job, prefs) -> dict:
     )
 
 
+def _for_token(assessment: dict) -> dict:
+    """D84: an API token reads a job's match without the eligibility side by side, which shows
+    your work authorization and sponsorship facts; those stay in the app."""
+    hidden = "You have not recorded work authorization for any country."
+    return assessment | {
+        "eligibility": [],
+        "eligibility_hidden": "Shown in the app only: it sits next to your own facts.",
+        "missing": [m for m in assessment["missing"] if m != hidden],
+    }
+
+
 def _with_match(db: Session, user: User, jobs) -> list[JobOut]:
     """B (D82): each listed job with the summary of its match explanation, from the same
     assessment as the job page, so the two can never disagree."""
@@ -318,8 +330,17 @@ def _with_match(db: Session, user: User, jobs) -> list[JobOut]:
 
 
 @router.get("/{job_id}", response_model=JobDetail)
-def get_job(job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    job = _owned(db, user, job_id)
+def get_job(
+    job_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    return _job_detail(db, user, _owned(db, user, job_id), for_token=is_token_request(request))
+
+
+def _job_detail(db: Session, user: User, job: Job, for_token: bool = False) -> JobDetail:
+    """A job as its page shows it; to an API token, without the eligibility side by side."""
     prefs = db.scalar(select(JobPreferences).where(JobPreferences.user_id == user.id))
     from app.modules.discovery.models import DiscoveredJob
     from app.modules.discovery.provider import PROVIDERS
@@ -329,11 +350,12 @@ def get_job(job_id: uuid.UUID, user: User = Depends(current_user), db: Session =
             DiscoveredJob.user_id == user.id, DiscoveredJob.job_id == job.id
         )
     )
+    assessment = _fit(db, user, job, prefs)
     return JobDetail(
         **JobOut.model_validate(job).model_dump(),
         description=job.description,
         explanations=explain(job, prefs),
-        fit=_fit(db, user, job, prefs),
+        fit=_for_token(assessment) if for_token else assessment,
         discovered_from=[
             {
                 "provider": d.provider,
@@ -388,10 +410,6 @@ def patch_job(
     record(db, user.id, "job.update", "job", job.id, fields=sorted(body.model_fields_set))
     db.commit()
     return job
-
-
-def _job_detail(db: Session, user: User, job: Job) -> JobDetail:
-    return get_job(job.id, user, db)
 
 
 @router.post("/{job_id}/still-open", response_model=JobDetail)

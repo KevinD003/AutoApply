@@ -11,11 +11,12 @@ from app.core.db import get_db, utcnow
 from app.modules.account import deletion, export, policy
 from app.modules.audit.service import record
 from app.modules.documents.storage import Storage, get_storage
-from app.modules.identity.deps import SESSION_COOKIE, current_user
+from app.modules.identity.deps import SESSION_COOKIE, current_user, session_only
 from app.modules.identity.models import User
 from app.modules.identity.security import login_limiter, verify_password
 
-router = APIRouter(prefix="/account", tags=["account"])
+# Export and deletion are the app's only (D84): an API token is refused, whatever its scopes.
+router = APIRouter(prefix="/account", tags=["account"], dependencies=[Depends(session_only)])
 CONFIRMATION = "delete my account"
 
 
