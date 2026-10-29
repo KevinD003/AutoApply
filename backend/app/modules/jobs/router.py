@@ -67,6 +67,8 @@ class JobOut(BaseModel):
     first_seen_at: datetime
     last_seen_at: datetime
     seen_count: int
+    # B (D82): the job page's match explanation, summarised (jobs/fit.py summary); the list only.
+    match: dict | None = None
 
 
 class JobDetail(JobOut):
@@ -139,7 +141,7 @@ def list_jobs(
         )
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
     items = db.scalars(stmt.order_by(Job.last_seen_at.desc()).limit(limit).offset(offset)).all()
-    return JobPage(items=items, total=total or 0)
+    return JobPage(items=_with_match(db, user, items), total=total or 0)
 
 
 @router.get("/export")
@@ -258,27 +260,61 @@ async def import_jobs(
     }
 
 
-def _fit(db: Session, user: User, job: Job, prefs) -> dict:
-    from app.modules.discovery.models import DiscoveredJob
-    from app.modules.jobs import fit
+def _fit_inputs(db: Session, user: User) -> tuple:
+    """The account's own inputs to jobs/fit.py, read once for any number of jobs."""
     from app.modules.profiles.models import CandidateProfile, Credential, WorkAuthorization
 
-    sources = [
-        {"normalized": d.normalized or {}, "source_facts": d.source_facts or {}}
-        for d in db.scalars(
-            select(DiscoveredJob).where(
-                DiscoveredJob.user_id == user.id, DiscoveredJob.job_id == job.id
-            )
-        )
-    ]
-    return fit.assess(
-        job,
-        prefs,
+    return (
+        db.scalar(select(JobPreferences).where(JobPreferences.user_id == user.id)),
         db.scalar(select(CandidateProfile).where(CandidateProfile.user_id == user.id)),
         list(db.scalars(select(WorkAuthorization).where(WorkAuthorization.user_id == user.id))),
         list(db.scalars(select(Credential).where(Credential.user_id == user.id))),
-        sources,
     )
+
+
+def _sources(db: Session, user: User, job_ids: list) -> dict:
+    from app.modules.discovery.models import DiscoveredJob
+
+    out: dict = {}
+    for d in db.scalars(
+        select(DiscoveredJob).where(
+            DiscoveredJob.user_id == user.id, DiscoveredJob.job_id.in_(job_ids)
+        )
+    ):
+        out.setdefault(d.job_id, []).append(
+            {"normalized": d.normalized or {}, "source_facts": d.source_facts or {}}
+        )
+    return out
+
+
+def _fit(db: Session, user: User, job: Job, prefs) -> dict:
+    from app.modules.jobs import fit
+
+    _, profile, auths, creds = _fit_inputs(db, user)
+    return fit.assess(
+        job, prefs, profile, auths, creds, _sources(db, user, [job.id]).get(job.id, [])
+    )
+
+
+def _with_match(db: Session, user: User, jobs) -> list[JobOut]:
+    """B (D82): each listed job with the summary of its match explanation, from the same
+    assessment as the job page, so the two can never disagree."""
+    from app.modules.jobs import fit
+
+    if not jobs:
+        return []
+    prefs, profile, auths, creds = _fit_inputs(db, user)
+    sources = _sources(db, user, [j.id for j in jobs])
+    return [
+        JobOut.model_validate(j).model_copy(
+            update={
+                "match": fit.summary(
+                    fit.assess(j, prefs, profile, auths, creds, sources.get(j.id, []))
+                )
+            }
+        )
+        for j in jobs
+    ]
 
 
 @router.get("/{job_id}", response_model=JobDetail)

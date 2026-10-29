@@ -251,3 +251,20 @@ def assess(job: Job, prefs, profile, work_auths: list, credentials: list, source
         "qualifications": quals,
         "missing": missing,
     }
+
+
+def summary(assessment: dict) -> dict:
+    """B (D82): the jobs list's line for one job, from its full assessment: the preference count,
+    which of your approved qualifications it names (and whether there was text to compare), and
+    how much is unknown. Eligibility is not summarised: side by side is the only honest way to
+    show it (the job page)."""
+    quals = {q["what"]: q["mentioned"] for q in assessment["qualifications"]}
+    return {
+        "preferences_met": assessment["preference_fit"]["met"],
+        "preferences_checked": assessment["preference_fit"]["checked"],
+        "label": assessment["preference_fit"]["label"],
+        "compared": bool(assessment["qualifications"]),
+        "skills_named": quals.get("skills", []),
+        "licences_named": quals.get("licences", []),
+        "unknown": len(assessment["missing"]),
+    }

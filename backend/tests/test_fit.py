@@ -121,14 +121,15 @@ def test_qualifications_are_approved_facts_the_job_names_word_for_word():
                                   "qualif", "guarantee", "interview", "rank"])  # fmt: skip
 def test_no_text_calls_it_a_prediction_a_score_or_a_verdict(word):
     """Every sentence the module can show (its string constants with a space, f-strings
-    included), read from its source; the module docstring is not shown."""
+    included), read from its source; docstrings are not shown."""
     tree = ast.parse((ROOT / "backend/app/modules/jobs/fit.py").read_text())
-    doc = ast.get_docstring(tree)
+    docs = {ast.get_docstring(n, clean=False) for n in ast.walk(tree)
+            if isinstance(n, (ast.Module, ast.FunctionDef))}  # fmt: skip
     shown = [
         n.value.lower()
         for n in ast.walk(tree)
         if isinstance(n, ast.Constant) and isinstance(n.value, str) and " " in n.value
-        and n.value != doc
+        and n.value not in docs
     ]  # fmt: skip
     assert shown and not [t for t in shown if word in t]
 
@@ -161,3 +162,52 @@ def test_the_job_page_carries_the_three_components_for_its_owner_only(api, other
     assert "You have not recorded work authorization for any country." in f["missing"]
     assert detail["explanations"]  # the earlier list stays for existing clients
     assert other_api.get(f"/jobs/{job['id']}").status_code == 404
+
+
+def test_the_jobs_list_summarises_the_same_assessment_and_hides_nothing(api, other_api):
+    """B (D82): each listed job carries the summary of its job page's assessment; a job that
+    matches nothing is still listed, in the same order; another account's facts never count."""
+    api.put("/profile", json={"skills": ["Excel"]})
+    api.put("/profile/preferences", json={"titles": ["Support Specialist"]})
+    other_api.put("/profile", json={"skills": ["Forklift"]})
+    other_api.put("/profile/preferences", json={"titles": ["Forklift Driver"]})
+    ids = []
+    for n, (title, text) in enumerate(
+        [("Support Specialist", "Daily Excel work."), ("Forklift Driver", "Forklift licence.")]
+    ):
+        r = api.post("/jobs", json={"url": f"https://careers.example.com/list/{n}",
+                                    "title": title, "description": text})  # fmt: skip
+        ids.append(r.json()["job"]["id"])
+    items = api.get("/jobs").json()["items"]
+    assert [i["id"] for i in items] == list(reversed(ids))  # newest first, as before; none hidden
+    by_id = {i["id"]: i["match"] for i in items}
+    assert by_id[ids[0]] == {
+        "preferences_met": 1,
+        "preferences_checked": 1,
+        "label": "1 of 1 checked preferences met",
+        "compared": True,
+        "skills_named": ["Excel"],
+        "licences_named": [],
+        "unknown": by_id[ids[0]]["unknown"],
+    }
+    assert by_id[ids[1]]["preferences_met"] == 0 and by_id[ids[1]]["skills_named"] == []
+    for job_id in ids:
+        detail = api.get(f"/jobs/{job_id}").json()["fit"]
+        assert by_id[job_id] == fit.summary(detail)
+        assert by_id[job_id]["unknown"] == len(detail["missing"])
+    assert other_api.get("/jobs").json()["items"] == []
+    assert api.get(f"/jobs/{ids[0]}").json()["match"] is None  # the job page has the full `fit`
+
+
+def test_the_summary_says_nothing_about_eligibility():
+    a = assess(job(description="x"), prefs(titles=["support"]), auths=[wa()],
+               sources=[{"source_facts": {"sponsorship_offered": {"value": "yes"}}}])  # fmt: skip
+    s = fit.summary(a)
+    assert set(s) == {"preferences_met", "preferences_checked", "label", "compared",
+                      "skills_named", "licences_named", "unknown"}  # fmt: skip
+    assert "sponsor" not in str(s).lower() and "eligib" not in str(s).lower()
+
+
+def test_a_job_without_text_is_not_compared_rather_than_naming_nothing():
+    s = fit.summary(assess(job(description=None), prefs(titles=["support"]), auths=[wa()]))
+    assert s["compared"] is False and s["skills_named"] == [] and s["unknown"] >= 1

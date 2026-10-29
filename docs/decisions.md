@@ -2161,3 +2161,20 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   `fixture-ats-1+html-v3`; approvals bound to the earlier version ask again.
 - **Not done:** no Workday or Ashby adapter or receiver route; no request to any vendor host.
 - **Unchanged:** `SCHEMA_VERSION` (3); no migration.
+
+## D82 — The jobs list summarises each job's match explanation (priority B, 2026-10-29)
+- **Problem:** the match explanation (D79) was on the job page only; the list gave no sign of
+  how a job compares with your preferences and approved qualifications.
+- **Decision:**
+  - `GET /api/jobs` gives each listed job a `match`: `jobs/fit.summary` of the very
+    assessment the job page shows (`fit.assess`), so the two cannot disagree. It holds the
+    preference count and its label ("m of n checked preferences met"), which of your approved
+    skills and valid licences the job's text names, whether there was text to compare, and how
+    many things are unknown.
+  - Eligibility is not summarised: shown side by side is the only honest way to show it, on
+    the job page. No score, eligibility verdict or probability, and nothing is filtered,
+    hidden or reordered.
+  - Each row of the jobs list shows that line and links to `/jobs/{id}#match`, the full
+    explanation. The account's inputs are read once per page of jobs, not once per job.
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration.
+

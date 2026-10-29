@@ -73,6 +73,20 @@ export interface Job {
   first_seen_at: string;
   last_seen_at: string;
   seen_count: number;
+  /** B (D82): on the jobs list only, the job page's match explanation summarised. */
+  match?: JobMatch | null;
+}
+
+/** A count of your own targets, your approved qualifications the job names, and how much is
+ * unknown. No score, no eligibility verdict, no probability. */
+export interface JobMatch {
+  preferences_met: number;
+  preferences_checked: number;
+  label: string;
+  compared: boolean;
+  skills_named: string[];
+  licences_named: string[];
+  unknown: number;
 }
 
 export interface FitYours {

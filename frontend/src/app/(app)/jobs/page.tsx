@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, Empty, ErrorBox, Field, inputCls, Loading, Notice } from "@/components/ui";
-import { api, Job } from "@/lib/api";
+import { api, Job, JobMatch } from "@/lib/api";
 
 interface ImportResult {
   total_rows: number;
@@ -76,26 +76,58 @@ export default function JobsPage() {
         ) : (
           <ul className="divide-y divide-slate-100">
             {jobs.map((j) => (
-              <li key={j.id}>
-                <Link href={`/jobs/${j.id}`} className="flex flex-col gap-1 py-3 hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between sm:px-2">
-                  <div>
-                    <p className="font-medium text-slate-900">{j.title ?? "Untitled role"}</p>
-                    <p className="text-sm text-slate-600">
-                      {[j.employer, j.location].filter(Boolean).join(" · ") || "Details not provided"}
-                    </p>
-                    {j.exclusion_reason && <p className="text-xs text-red-700">{j.exclusion_reason}</p>}
-                  </div>
-                  <div className="flex gap-2">
-                    {j.ats_provider !== "unknown" && <Badge>{j.ats_provider}</Badge>}
-                    <Badge tone={STATUS_TONE[j.status]}>{j.status}</Badge>
-                  </div>
-                </Link>
+              <li key={j.id} className="flex flex-col gap-1 py-3 hover:bg-slate-50 sm:flex-row sm:items-start sm:justify-between sm:px-2">
+                <div className="min-w-0">
+                  <Link href={`/jobs/${j.id}`} className="font-medium text-slate-900 hover:underline">
+                    {j.title ?? "Untitled role"}
+                  </Link>
+                  <p className="text-sm text-slate-600">
+                    {[j.employer, j.location].filter(Boolean).join(" · ") || "Details not provided"}
+                  </p>
+                  {j.exclusion_reason && <p className="text-xs text-red-700">{j.exclusion_reason}</p>}
+                  {j.match && <MatchLine jobId={j.id} m={j.match} />}
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  {j.ats_provider !== "unknown" && <Badge>{j.ats_provider}</Badge>}
+                  <Badge tone={STATUS_TONE[j.status]}>{j.status}</Badge>
+                </div>
               </li>
             ))}
           </ul>
         )}
       </Card>
     </>
+  );
+}
+
+function named(what: string, items: string[]): string {
+  const shown = items.slice(0, 3).join(", ");
+  return `${what}: ${shown}${items.length > 3 ? ` and ${items.length - 3} more` : ""}`;
+}
+
+// B (D82): the job page's explanation in one line, from the same assessment. Your own
+// preferences counted, your approved qualifications the job names, and how much is unknown:
+// no score, no eligibility verdict, no probability. Eligibility is shown on the job page only.
+function MatchLine({ jobId, m }: { jobId: string; m: JobMatch }) {
+  const quals = !m.compared
+    ? "Skills and licences not compared"
+    : m.skills_named.length + m.licences_named.length === 0
+      ? "Names none of your approved skills or licences"
+      : [m.skills_named.length && named("Names your skills", m.skills_named), m.licences_named.length && named("licences", m.licences_named)]
+          .filter(Boolean)
+          .join("; ");
+  return (
+    <p className="mt-1 text-xs text-slate-600" data-testid="match-summary">
+      <span>Your preferences: {m.label}</span>
+      <span aria-hidden="true"> · </span>
+      <span>{quals}</span>
+      <span aria-hidden="true"> · </span>
+      <span>{m.unknown ? `${m.unknown} not known` : "Nothing marked unknown"}</span>
+      <span aria-hidden="true"> · </span>
+      <Link href={`/jobs/${jobId}#match`} className="text-indigo-700 underline">
+        Why
+      </Link>
+    </p>
   );
 }
 

@@ -106,6 +106,12 @@ export default function JobPage() {
 
   useEffect(load, [load]);
 
+  // The jobs list links to /jobs/{id}#match: scroll there once the job (and the card) is shown.
+  const loaded = job !== null;
+  useEffect(() => {
+    if (loaded && window.location.hash === "#match") document.getElementById("match")?.scrollIntoView();
+  }, [loaded]);
+
   async function patch(body: object) {
     setError(null);
     try {
@@ -193,7 +199,9 @@ export default function JobPage() {
         onCaptured={() => setFormVersion((v) => v + 1)}
         realDestination={route?.reason === "real_destination_disabled"}
       />
-      <FitCard fit={job.fit} />
+      <div id="match" className="scroll-mt-4">
+        <FitCard fit={job.fit} />
+      </div>
       <Card title="Notes">
         <Field label="Private notes">
           <textarea className={inputCls} rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
