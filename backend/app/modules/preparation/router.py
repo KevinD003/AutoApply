@@ -128,12 +128,12 @@ def attach_form(
             if get_settings().env == "production":
                 raise bad_request("Fixtures are disabled in production")
             schema, source, ref = (
-                extract_form_schema(fixture_html(body.fixture)),
+                extract_form_schema(fixture_html(body.fixture), challenges=True),
                 "fixture",
                 body.fixture,
             )
         elif body.html is not None:
-            schema, source, ref = extract_form_schema(body.html), "html", None
+            schema, source, ref = extract_form_schema(body.html, challenges=True), "html", None
         else:
             schema, source, ref = body.form, "manual", None
     except KeyError:

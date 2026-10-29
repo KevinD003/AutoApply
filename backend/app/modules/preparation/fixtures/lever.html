@@ -1,0 +1,88 @@
+<!doctype html>
+<!-- Lever-shaped synthetic form (docs/research/lever.md section 7). Fictional employer and
+     posting. Field shapes marked (sr) are search-reported, not observed on any real page; the
+     confirmation page and multi-step behaviour are undocumented and not modelled. -->
+<html>
+<head><title>Registered Nurse, Night Shift — Example Health (fictional)</title></head>
+<body>
+<h1>Registered Nurse, Night Shift — Example Health (fictional, Lever-shaped)</h1>
+<form action="/lever/examplehealth/00000000-0000-4000-8000-00000000a001/apply" method="post" enctype="multipart/form-data">
+  <section data-step="Submit your application">
+    <label for="resume">Resume/CV</label>
+    <input id="resume" name="resume" type="file" accept=".pdf,.doc,.docx">
+    <label for="name">Full name</label>
+    <input id="name" name="name" type="text" required>
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" required>
+    <label for="phone">Phone</label>
+    <input id="phone" name="phone" type="tel">
+    <!-- (sr) a location autocomplete, prefilled from a parsed resume; a suspicious session
+         must solve an hCaptcha to use it -->
+    <label for="location">Current location</label>
+    <input id="location" name="location" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false">
+    <div class="h-captcha" data-sitekey="fixture-not-a-key" data-for="location"></div>
+    <label for="org">Current company</label>
+    <input id="org" name="org" type="text">
+  </section>
+  <section data-step="Links">
+    <label for="url_linkedin">LinkedIn URL</label>
+    <input id="url_linkedin" name="urls[LinkedIn]" type="url">
+    <label for="url_github">GitHub URL</label>
+    <input id="url_github" name="urls[GitHub]" type="url">
+    <label for="url_portfolio">Portfolio URL</label>
+    <input id="url_portfolio" name="urls[Portfolio]" type="url">
+  </section>
+  <section data-step="Additional questions">
+    <label for="q0">Nursing licence number</label>
+    <input id="q0" name="cards[q1][field0]" type="text" required>
+    <label for="q1">Why Example Health?</label>
+    <textarea id="q1" name="cards[q1][field1]" maxlength="3000"></textarea>
+    <label for="q2">Preferred shift</label>
+    <select id="q2" name="cards[q1][field2]" required>
+      <option value="">Select...</option>
+      <option value="Nights">Nights</option>
+      <option value="Days">Days</option>
+      <option value="Either">Either</option>
+    </select>
+    <fieldset required>
+      <legend>Are you legally authorized to work in the United States?</legend>
+      <label><input type="radio" name="cards[q1][field3]" value="Yes"> Yes</label>
+      <label><input type="radio" name="cards[q1][field3]" value="No"> No</label>
+    </fieldset>
+    <fieldset>
+      <legend>Certifications</legend>
+      <label><input type="checkbox" name="cards[q1][field4]" value="BLS"> BLS</label>
+      <label><input type="checkbox" name="cards[q1][field4]" value="ACLS"> ACLS</label>
+      <label><input type="checkbox" name="cards[q1][field4]" value="PALS"> PALS</label>
+    </fieldset>
+    <!-- (sr) a university picker: search as you type -->
+    <label for="q6">University</label>
+    <input id="q6" name="cards[q1][field6]" type="text" role="combobox" aria-autocomplete="list">
+    <label for="comments">Additional information</label>
+    <textarea id="comments" name="comments" maxlength="5000"></textarea>
+  </section>
+  <section data-step="U.S. Equal Employment Opportunity information (voluntary)">
+    <label for="eeo_gender">Gender</label>
+    <select id="eeo_gender" name="eeo[gender]">
+      <option value="">Select...</option>
+      <option value="Female">Female</option>
+      <option value="Male">Male</option>
+      <option value="Decline to self-identify">Decline to self-identify</option>
+    </select>
+    <label for="eeo_veteran">Veteran status</label>
+    <select id="eeo_veteran" name="eeo[veteran]">
+      <option value="">Select...</option>
+      <option value="I am a protected veteran">I am a protected veteran</option>
+      <option value="I am not a protected veteran">I am not a protected veteran</option>
+      <option value="Decline to self-identify">Decline to self-identify</option>
+    </select>
+  </section>
+  <section data-step="Consent">
+    <label><input type="checkbox" name="consent[store]" required> I consent to Example Health (fictional) storing my application data.</label>
+    <label><input type="checkbox" name="consent[marketing]"> Send me information about future openings.</label>
+    <p><a href="/privacy">Privacy policy</a></p>
+  </section>
+  <button type="submit">Submit application</button>
+</form>
+</body>
+</html>

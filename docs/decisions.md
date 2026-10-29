@@ -2086,3 +2086,35 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Kept:** the older `explanations` list stays in the API for existing clients; the page shows
   `fit`.
 - **Unchanged:** `SCHEMA_VERSION` (3); no migration; no new data source.
+
+## D80 — A Lever-shaped form, checkpoint-first; the generic extractor never types into a picker or past a bot check (2026-10-29)
+- **Problem:** `docs/research/lever.md` documents traps the generic HTML extractor did not
+  see. The Current location field is a search-as-you-type picker that can raise an hCaptcha,
+  and the university field is a picker too. The extractor read such inputs as text boxes the
+  resolver could fill, and it did not see a CAPTCHA on the page at all.
+- **Decision:**
+  - The generic extractor (`forms.extract_form_schema`, now `html-v2`) reads an input with
+    `role="combobox"` or `aria-autocomplete` as unsupported. A required one blocks approval;
+    an optional one stays blank.
+  - On the generic capture path (fixtures and pasted HTML), a CAPTCHA or bot-check widget
+    found by its vendors' documented markup (`g-recaptcha`, `h-captcha`, `cf-turnstile`, and
+    their script or iframe sources) adds a required unsupported field, "A bot check (CAPTCHA)
+    on this form". Approval then waits, and the user applies on the employer's site.
+  - The Greenhouse paths keep leaving CAPTCHAs to their adapters, which stop when one appears.
+  - A new fixture, `preparation/fixtures/lever.html` ("lever"), carries the search-reported
+    Lever shapes. Its tests check each trap the research lists:
+    - location and university pickers stay blank;
+    - the licence number and preferred shift wait for the user;
+    - both consents need the user's choice;
+    - EEO answers are never inferred;
+    - authorization comes only from an approved fact, and unknown stays unknown;
+    - the bot check blocks approval even with everything else answered;
+    - the route stays a manual handoff ("Lever: planned adapter only").
+- **Deliberate version change:** `forms.EXTRACTION_VERSION` `html-v1` → `html-v2`, and with it
+  the fixture adapter's version (`fixture-ats-1+html-v2`). An approval bound to the earlier
+  version asks again; the historical `LEGACY_VERSIONS` entry is unchanged.
+  `greenhouse-hosted-1+greenhouse-v1` is unchanged: its DOM side can now only refuse more (a
+  picker no longer matches a text field), never accept more.
+- **Not done:** no Lever adapter, no request to any Lever host; the shapes stay search-reported
+  until a real page is observed under the provider-admission rules.
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration.

@@ -13,7 +13,10 @@ from html.parser import HTMLParser
 
 from pydantic import BaseModel, Field, model_validator
 
-EXTRACTION_VERSION = "html-v1"
+# v2 (D80): a search-as-you-type control (role=combobox or aria-autocomplete) is unsupported,
+# never a text box; with `challenges`, a CAPTCHA or bot check on the page is a required
+# unsupported field, so approval waits and the user applies on the employer's site.
+EXTRACTION_VERSION = "html-v2"
 
 
 class FieldType(enum.StrEnum):
@@ -191,7 +194,32 @@ class ExtractionError(ValueError):
     pass
 
 
-def extract_form_schema(html: str) -> FormSchema:
+# CAPTCHA and bot-check widgets, by the markup their vendors document (the execution adapters
+# stop at the same ones: execution/adapters/greenhouse.py).
+_CHALLENGE = re.compile(
+    r"""class\s*=\s*["'][^"']*\b(g-recaptcha|h-captcha|cf-turnstile)\b"""
+    r"""|<(iframe|script)\b[^>]*\bsrc\s*=\s*["'][^"']*(recaptcha|hcaptcha\.com|challenges\.cloudflare\.com)""",
+    re.IGNORECASE,
+)
+BOT_CHECK_KEY = "bot_check"
+_AUTOCOMPLETE = ("list", "both", "inline")
+
+
+def _bot_check() -> "FormField":
+    return FormField(
+        key=BOT_CHECK_KEY,
+        label="A bot check (CAPTCHA) on this form",
+        type=FieldType.unsupported,
+        required=True,
+        unsupported_reason="a CAPTCHA or bot check: NoEfforts never solves one; apply on the "
+        "employer's site yourself",
+    )
+
+
+def extract_form_schema(html: str, *, challenges: bool = False) -> FormSchema:
+    """`challenges`: also report a CAPTCHA or bot check on the page as a required unsupported
+    field (the generic capture path). The Greenhouse paths leave it to their adapters, which
+    stop when one appears."""
     if len(html) > 2_000_000:
         raise ExtractionError("HTML too large")
     b = _TreeBuilder()
@@ -291,6 +319,22 @@ def extract_form_schema(html: str) -> FormSchema:
                 )
             )
             continue
+        if n.tag == "input" and (
+            (n.attrs.get("role") or "").lower() == "combobox"
+            or (n.attrs.get("aria-autocomplete") or "").lower() in _AUTOCOMPLETE
+        ):
+            fields.append(
+                FormField(
+                    label=label_of(n),
+                    help_text=help_of(n),
+                    type=FieldType.unsupported,
+                    required=required,
+                    unsupported_reason="a search-as-you-type control (combobox): NoEfforts "
+                    "does not operate it",
+                    **common,
+                )
+            )
+            continue
         ftype = (
             FieldType.textarea
             if n.tag == "textarea"
@@ -312,6 +356,8 @@ def extract_form_schema(html: str) -> FormSchema:
         )
     if not fields:
         raise ExtractionError("no form fields found")
+    if challenges and _CHALLENGE.search(html) and all(f.key != BOT_CHECK_KEY for f in fields):
+        fields.append(_bot_check())
     form_node = next((n for n in nodes if n.tag == "form"), None)
     return FormSchema(
         title=title_node.all_text() if title_node else None,

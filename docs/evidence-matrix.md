@@ -9,6 +9,15 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Lever-shaped form, checkpoint-first (D80, 2026-10-29; local only)
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| A search-as-you-type picker is never filled as text | `forms.extract_form_schema` (combobox, aria-autocomplete → unsupported) | `test_every_documented_trap_is_a_checkpoint_or_a_blank`, `test_words_alone_are_not_a_bot_check_and_a_plain_input_is_not_a_combobox` | pass | — |
+| A CAPTCHA is never solved; the user applies themselves | bot-check field on the generic capture path | `test_the_bot_check_blocks_approval_even_when_everything_else_is_answered`, `test_a_bot_check_is_found_by_its_documented_markup` (6 markups) | pass | The Greenhouse paths rely on their adapters' stop (unchanged) |
+| Lever traps from the research are checkpoints | `fixtures/lever.html` | `test_lever_fixture.py` | pass | Shapes search-reported, not observed |
+| Unknown authorization stays unknown | resolver (unchanged) | `test_unknown_authorization_stays_unknown` | pass | — |
+
 ## Export, deletion, saved-answer editing, preview, explainable match (D77-D79, 2026-10-29; local only)
 
 | Requirement | Implementation | Evidence | Result | Gaps |

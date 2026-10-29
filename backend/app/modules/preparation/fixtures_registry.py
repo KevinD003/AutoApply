@@ -7,6 +7,8 @@ _DIR = Path(__file__).parent / "fixtures"
 FIXTURES = {
     "basic": "Clinic Assistant — Example Health Clinic (fictional, standard questions)",
     "tricky": "Dispatcher — Northwind Logistics (fictional, negation/tense/option traps)",
+    # D80: shapes from docs/research/lever.md (search-reported); checkpoint-first.
+    "lever": "Registered Nurse — Example Health (fictional, Lever-shaped, search-reported fields)",
 }
 
 
