@@ -31,6 +31,24 @@ CHALLENGE_SELECTORS = (
     ".g-recaptcha, .h-captcha, .cf-turnstile, iframe[src*='recaptcha'], iframe[src*='hcaptcha'],"
     " iframe[title*='captcha' i], iframe[title*='challenge' i]"
 )
+# S5 (D62): fixed reasons for what can follow the final click.
+BOT_CHECK_AFTER_CLICK = (
+    "after the final click the employer's page showed a bot check; NoEfforts never solves "
+    "these, so it does not know whether your application arrived. Check with the employer "
+    "before applying again."
+)
+CODE_ENTRY_UNKNOWN = (
+    "the employer asked for a verification code in a way NoEfforts does not recognise, so it "
+    "entered nothing. Check with the employer whether your application arrived."
+)
+SUBMIT_DISABLED = (
+    "the form's submit button is still disabled after filling: the page needs a step NoEfforts "
+    "does not take. Apply on the employer's site."
+)
+_SUBMIT = "form#application_form #submit_app"
+_CODE_ONE = "form#application_form #security_code"
+# One character per box (a structural signal, never a field name).
+_CODE_BOXES = 'form#application_form input[maxlength="1"]:not([type=hidden])'
 
 
 def approved_fields(content: dict) -> list[FormField]:
@@ -56,6 +74,7 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
     name = "greenhouse_hosted"
     # The hosted confirmation page shows no application id; this is the evidence available.
     confirmation_strength = "employer_confirmation_page"
+    _filled = False  # set once filling starts; the submit button must then be enabled
 
     # -- inspect ----------------------------------------------------------------------------
     def extract(self, page: Page):
@@ -91,12 +110,19 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
         dest = self.content["destination"]
         if not live.action or urljoin(page.url, live.action) != dest["submit_url"]:
             return "the form now submits to a different address"
+        button = page.locator(_SUBMIT)
+        if button.count() != 1:
+            return "the form's submit button cannot be identified"
+        if self._filled and button.is_disabled():
+            return SUBMIT_DISABLED  # S5 (D62): never clicked; nothing else on the page is either
         return None
 
     # -- fill -------------------------------------------------------------------------------
     def fill(self, page: Page) -> list[dict]:
         """In form order, so a conditional question is filled after the answer that shows it.
-        Unanswered and not-applicable questions are left untouched."""
+        Unanswered and not-applicable questions are left untouched. Nothing else on the page is
+        clicked: no cookie banner, no "I agree" button (S5, D62)."""
+        self._filled = True
         disclosures = []
         for a in self.content["answers"]:
             if a["value"] is None or a["type"] == FieldType.unsupported.value:
@@ -165,11 +191,30 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
 
     # -- submit -----------------------------------------------------------------------------
     def submit(self, page: Page, timeout_ms: int) -> Outcome:
-        return self._click(page, page.locator("form#application_form #submit_app"), timeout_ms)
+        return self._click(page, page.locator(_SUBMIT), timeout_ms)
+
+    def _code_entry(self, page: Page) -> str | None:
+        """How the page takes the code: one input, or one box per character (S5, D62)."""
+        if page.locator(_CODE_ONE).count() == 1:
+            return "single"
+        if 4 <= page.locator(_CODE_BOXES).count() <= 12:
+            return "boxes"
+        return None
 
     def enter_code(self, page: Page, code: str, timeout_ms: int) -> Outcome:
-        page.locator("form#application_form #security_code").fill(code)
-        out = self._click(page, page.locator("form#application_form #submit_app"), timeout_ms)
+        """Only the code the user typed at the checkpoint, never one read from anywhere else."""
+        entry = self._code_entry(page)
+        if entry is None:
+            return Outcome("unknown", CODE_ENTRY_UNKNOWN)
+        if entry == "single":
+            page.locator(_CODE_ONE).fill(code)
+        else:
+            boxes, chars = page.locator(_CODE_BOXES), "".join(code.split())
+            if boxes.count() != len(chars):
+                return Outcome("wrong_code", "the code does not fit the employer's code boxes")
+            for i, ch in enumerate(chars):
+                boxes.nth(i).fill(ch)
+        out = self._click(page, page.locator(_SUBMIT), timeout_ms)
         if out.kind == "otp":
             return Outcome("wrong_code", "the employer rejected the security code", None,
                            out.http_status)  # fmt: skip
@@ -183,6 +228,8 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
         except PWTimeout:
             return Outcome("unknown", "no response from the employer within the time limit")
         status = resp.status if resp else None
+        if page.locator(CHALLENGE_SELECTORS).count():  # S5 (D62, R4.9b): never solved or resent
+            return Outcome("unknown", BOT_CHECK_AFTER_CLICK, None, status)
         kind = page.locator("body").get_attribute("data-gh")
         if kind == "confirmation" and page.locator("#application_confirmation").count():
             if not self._ours(resp, page.url):
@@ -193,6 +240,8 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
                     status,
                 )
             return Outcome("accepted", "confirmation page shown", None, status)
+        if kind == "security_code" and self._code_entry(page) is None:
+            return Outcome("unknown", CODE_ENTRY_UNKNOWN, None, status)
         if kind == "security_code":
             return Outcome("otp", "security code requested", None, status)
         if kind == "errors":

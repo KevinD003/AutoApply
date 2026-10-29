@@ -279,9 +279,11 @@ def test_no_takeover_while_old_worker_may_have_disclosed(api, receiver):
 def test_revocation_before_claim(api, receiver):
     app_id, aid = ready(api, receiver)
     api.post(f"/applications/{app_id}/package/revoke")
+    # C13 (D65): stopped at once by the revocation, not later by the gate.
+    assert attempt(aid).state == "cancelled"
     assert runner.run_attempt(aid, "w1") == "ignored"
-    assert attempt(aid).state == "failed_safe"
-    assert receiver.ledger()["accepted"] == 0
+    assert attempt(aid).state == "cancelled"
+    assert receiver.ledger()["accepted"] == 0 and receiver.ledger()["disclosures"] == []
 
 
 def test_revocation_while_preparing_stops_before_disclosure(api, receiver):
@@ -505,3 +507,17 @@ def test_an_application_with_a_recorded_receipt_is_never_queued_again(api, recei
     r = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
     assert r.status_code == 409 and "not sent again" in r.json()["detail"], r.text
     assert receiver.ledger()["accepted"] == 1
+
+
+def test_confirmation_bound_to_attempt(api, receiver):
+    """S5 (D62): a receipt shown on another posting's page, after a redirect, is not this
+    attempt's confirmation: unknown, quarantined, never sent again."""
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    receiver.config(mode="accepted_elsewhere")
+    assert runner.run_attempt(aid, "w1") == "unknown"
+    assert "not for this submission" in attempt(aid).outcome_detail
+    assert receiver.ledger()["accepted"] == 1
+    assert runner.run_attempt(aid, "w2") == "ignored"
+    assert receiver.ledger()["accepted"] == 1
+    assert api.get(f"/applications/{app_id}").json()["state"] == "submitted_unconfirmed"

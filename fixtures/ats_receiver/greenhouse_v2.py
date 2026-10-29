@@ -40,7 +40,9 @@ gh2_widget_variants (cfg variant, delay_ms; see _VARIANTS_JS), gh2_required_unma
 gh2_required_extra, gh2_required_marker_only, gh2_required_answered, gh2_required_group, gh2_required_cover_group,
 gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS), GET /locales/{lang}/{ns}.json,
 gh2_cdn_app (cfg cdn,
-redirect_away), plus the
+redirect_away), S5 variants gh2_phrase_in_body, gh2_phrase_no_confirmation, gh2_option_unlisted,
+gh2_challenge_after_submit, gh2_autofill_overwrite, gh2_two_steps (FIXTURE ASSUMPTIONS from the
+legacy author's notes, legacy-audit.md R7; see fixtures/ats_receiver/README.md), plus the
 receiver-wide upload_fail, error_before_accept, error_after_accept, drop_after_accept.
 All employers, jobs and people are fictional.
 """
@@ -59,6 +61,10 @@ YES_NO = [{"value": 1, "label": "Yes"}, {"value": 0, "label": "No"}]
 COUNTRIES = [{"value": 900 + i, "label": c} for i, c in enumerate(
     ["Argentina", "Australia", "Brazil", "Canada", "France", "Germany", "India", "Japan",
      "Kenya", "Mexico", "Nigeria", "Spain", "United Kingdom", "United States"])]
+# S5 (R6.4): a status message already on the form, worded like a confirmation.
+PHRASE_STATUS = ("Thank you for your interest in Northwind Example. Your application has been "
+                 "received when this message changes after you submit.")
+STEP_ONE = 7  # S5 (R2.10): gh2_two_steps shows the questions before this index first
 AI_NOTICE = ("This employer may use automated tools to help review applications. "
              "You can ask for a human review instead.")
 
@@ -197,6 +203,8 @@ def _render(q, mode) -> str:
         values = f["values"]
         if mode == "gh2_options_changed" and qid == "question_8101":
             values = [{"value": 0, "label": "Yes"}, {"value": 1, "label": "No"}]  # swapped
+        if mode == "gh2_option_unlisted" and qid == "question_8102":  # S5: one option more
+            values = [*values, {"value": 999, "label": "Other / not listed"}]
         opts = "".join(f'<li role="option" id="{qid}-opt-{v["value"]}" data-value="{v["value"]}"'
                        f' aria-selected="false">{html.escape(v["label"])}</li>'
                        for v in values)
@@ -273,6 +281,10 @@ for (const inp of document.querySelectorAll('input[type=file]')) {
       if (!r.ok) throw new Error('upload');
       const j = await r.json(); uploads[inp.id] = j.id;
       st.dataset.attachmentId = j.id; st.textContent = 'Attached: ' + j.filename;
+      if (form.dataset.mode === 'gh2_autofill_overwrite') {  // S5 (R2.7): "autofill from resume"
+        document.getElementById('phone').value = '+1 555 0199';
+        document.getElementById('last_name').value = '';
+      }
     } catch (err) { st.dataset.attachmentError = '1'; st.textContent = 'Upload failed'; }
   });
 }
@@ -289,6 +301,10 @@ form.addEventListener('submit', async (e) => {
     body: JSON.stringify({token: form.dataset.token, fields, attachments: uploads})});
   const body = await r.json().catch(() => ({}));
   if (r.ok && r.headers.get('X-Fixture-No-Confirm')) return;
+  if (body.challenge) {  // S5 (R4.9b): a bot check shown only after the final click
+    form.replaceWith(Object.assign(document.createElement('div'), {className: 'g-recaptcha'}));
+    return;
+  }
   if (r.ok) {
     form.replaceWith(Object.assign(document.createElement('div'), {
       id: 'application-confirmation', role: 'status',
@@ -581,6 +597,9 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
     mode = cfg["mode"]
     base = f"/gh2/{board}/jobs/{job_id}"
     qs = "".join(_render(q, mode) for q in j["questions"] + j["location_questions"])
+    if mode == "gh2_two_steps":  # S5 (R2.10): the rest of the form is on a second page
+        qs = "".join(_render(q, mode) for q in j["questions"][:STEP_ONE])
+        qs += f'<a id="continue" href="{base}/step2?t={token}">Continue</a>'
     if mode == "gh2_attach_group_shared":  # both attachments inside one group: not unique
         files = [q for q in j["questions"] if q["fields"][0]["type"] == "input_file"]
         qs = "".join(_render(q, "normal") for q in j["questions"] + j["location_questions"]
@@ -639,7 +658,9 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
         qs += ('<div class="field"><label for="question_8199">Years of experience</label>'
                '<input type="text" id="question_8199"></div>')
     script = _SCRIPT.replace("%CONDITIONS%", json.dumps(CONDITIONS))
-    body = (f'<main><h1>{html.escape(j["title"])}</h1>'
+    phrase = (f'<div id="application-confirmation" role="status">{html.escape(PHRASE_STATUS)}'
+              '</div>' if mode in ("gh2_phrase_in_body", "gh2_phrase_no_confirmation") else "")
+    body = (f'<main><h1>{html.escape(j["title"])}</h1>{phrase}'
             f'<div role="note" id="ai-disclaimer">{html.escape(AI_NOTICE)} '
             f'<a href="{base.rsplit("/jobs", 1)[0]}/ai-opt-out">Request human review</a></div>'
             f'<form id="application-form" novalidate data-base="{base}" '
@@ -760,6 +781,15 @@ def mount(app, ledger, cfg, accept) -> None:
         ledger.run("insert into tokens (token, issued_at) values (?,?)", (token, time.time()))
         return _form_page(board, job_id, token, cfg)
 
+    @app.get("/gh2/{board}/jobs/{job_id}/step2", response_class=HTMLResponse)
+    async def step_two(board: str, job_id: str, t: str = ""):  # S5: gh2_two_steps' second page
+        job_or_404(board, job_id)
+        qs = "".join(_render(q, "normal") for q in JOBS[(board, job_id)]["questions"][STEP_ONE:])
+        return HTMLResponse(f"<!doctype html><html><body data-gh2='form'><form "
+                            f"id='application-form' data-token='{html.escape(t)}'>{qs}"
+                            "<button type='submit'>Submit application</button></form>"
+                            "</body></html>")
+
     @app.post("/gh2/{board}/jobs/{job_id}/attachments")
     async def attachment(board: str, job_id: str, request: Request):
         job_or_404(board, job_id)
@@ -795,7 +825,11 @@ def mount(app, ledger, cfg, accept) -> None:
                 else fields.get(name)
             if not got:
                 missing.append(q["label"])
-        if cfg["mode"] == "gh2_validation_fail" or missing:
+        if cfg["mode"] == "gh2_challenge_after_submit":  # S5: each final click is recorded
+            ledger.run("insert into disclosures (kind,slug,detail,created_at) values (?,?,?,?)",
+                       ("submit_challenged", f"gh2-{board}-{job_id}", "", time.time()))
+            return JSONResponse({"challenge": True}, status_code=403)
+        if cfg["mode"] in ("gh2_validation_fail", "gh2_phrase_in_body") or missing:
             return JSONResponse({"errors": missing or ["Phone"]}, status_code=422)
         if cfg["mode"] == "error_before_accept":
             return JSONResponse({"error": "server error"}, status_code=500)
@@ -805,6 +839,6 @@ def mount(app, ledger, cfg, accept) -> None:
             return JSONResponse({"error": "server error"}, status_code=500)
         if cfg["mode"] == "drop_after_accept":
             await asyncio.sleep(3600)
-        if cfg["mode"] == "gh2_no_confirmation":
+        if cfg["mode"] in ("gh2_no_confirmation", "gh2_phrase_no_confirmation"):
             return JSONResponse({"status": "received"}, headers={"X-Fixture-No-Confirm": "1"})
         return {"status": "received"}

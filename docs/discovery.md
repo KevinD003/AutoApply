@@ -155,6 +155,10 @@ unchanged). Only what the documentation states is relied on.
     seconds, which is not relied on).
   - NoEfforts never waits and never retries. A `429` ends the run, reports `Retry-After` and
     writes nothing. Without the headers, NoEfforts assumes no rate.
+  - S6 (D67): a `Retry-After` in seconds is kept per user (at most a day). Until then that
+    user's imports and refreshes are refused (`429`, "Nothing was sent.") before any request
+    and before a live run approval is used; nothing re-runs by itself. Other users are not
+    held back.
 - **Pagination:** offset-based. `offset + limit <= 10000`, otherwise 400 "pagination too
   deep".
   - NoEfforts never asks beyond that window, and stops at `MAX_PAGES`.
@@ -206,6 +210,9 @@ unchanged). Only what the documentation states is relied on.
   freehire.me)".
 - **Debugging reference:** `raw_ref` holds the provider, id, fingerprint and field names, never
   the raw payload.
+- **Fingerprint (S6, D67):** only the documented fields NoEfforts reads (`FREEHIRE_READ` and, from
+  `enrichment`, `FREEHIRE_ENRICHMENT_READ`). `reality`, counters, enrichment metadata and
+  undocumented fields never make a record "changed".
 - **No raw payload is kept** (tested). In particular, none of these are stored:
   - the HTML description;
   - the enrichment object;
@@ -257,7 +264,7 @@ unchanged). Only what the documentation states is relied on.
 | `POST /api/discovery/providers/{name}/healthcheck` | `{ok, detail}`; 409 when disabled. For Freehire, configuration only: no request is made |
 | `POST /api/discovery/import` | run one import; 409 when disabled or the address is refused, 403 when a live read has no owner or no run approval for the exact search (D55), 503 on a provider failure (nothing changed) |
 | `GET /api/discovery/jobs`, `GET /api/discovery/jobs/{id}` | the user's discovered records. The detail includes the application route with its reason code, grant state and evidence level: a manual handoff until a form is captured, or, without a tracker job, `source_record_incomplete` or `source_posting_closed`. Viewing a linked record records its job's route decision as the job page does (changes only) |
-| `POST /api/discovery/jobs/{id}/refresh` | re-read one record (`get_job`); fixture only: a live record is never re-read (D55) |
+| `POST /api/discovery/jobs/{id}/refresh` | re-read one record (`get_job`): `unchanged`, `updated` or `gone`; fixture only: a live record is never re-read (D55); 429 while a `Retry-After` runs (D67) |
 | `DELETE /api/discovery/jobs/{id}` | delete a record: content erased, id kept so it is never added again; its job too when discovery created it and nothing depends on it (D56) |
 | `GET /api/discovery/watches`, `POST /api/discovery/watches/{id}/stop` | your watched searches; stop one (D56) |
 
@@ -272,7 +279,9 @@ All of these are user-scoped: another user's record returns 404. The job detail
   - the import result: read, new, changed, unchanged, linked or new jobs, incomplete, filtered
     out, not enough data, unreadable;
   - each record's source, freshness, duplicate result, missing fields, "not enough data"
-    fields, changes at the source, and its sponsorship statement with its basis.
+    fields, changes at the source, and its sponsorship statement with its basis;
+  - "Refresh from source" on each record, which says whether it is unchanged, changed (the
+    user's job is not changed) or no longer at the source (S6, D67).
 - A banner says that listings are not verified and imply no eligibility, sponsorship or
   automatic application.
 - Every listing shows "via freehire.me". The job page names the discovery source with the same
@@ -288,8 +297,9 @@ All of these are user-scoped: another user's record returns 404. The job detail
     on);
   - `work_mode` values outside remote/hybrid/onsite stay unknown;
   - response schemas are examples only (no required or nullable fields are specified).
-- **Imports run inside the request,** bounded by page count and timeout. A background job would
-  be needed for larger imports.
+- **Imports run inside the request,** bounded by page count and timeout (kept so in S6, D67;
+  watched searches run in the background). A background job would be needed for larger
+  imports.
 - **Freehire listings are query-scoped, never complete,** so "missing from the listing" is never
   used to mark a Freehire record stale.
 - **Not implemented** (needs a plan or written clarification from Freehire):
@@ -297,19 +307,18 @@ All of these are user-scoped: another user's record returns 404. The job detail
   - plan-based storage;
   - no longer showing Freehire postings when a plan ends (the terms of October 26, 2026
     replaced the earlier deletion within 30 days).
-- **Data quality seen in the 2026-10-26 re-check, not yet handled** (read from Freehire's
-  source; plan S6 in `docs/implementation-plan.md`):
+- **Data quality seen in the 2026-10-26 re-check** (read from Freehire's source; S6, D67):
   - a non-empty `url` carries `utm_source=freehire.me` with a re-encoded query. The tag is
-    already dropped with the other `utm_*` parameters, and the ATS is identified from host and
-    path only (D35), so the tag does not affect it. Some sources add a referral code; some of
-    these, such as Alignerr's `referral-code`, are not in `TRACKING_PARAMS`, so they survive
-    canonicalization and can defeat URL deduplication. Neither case has a test yet;
+    dropped with the other `utm_*` parameters, and the ATS is identified from host and path
+    only (D35). Referral codes (`referral-code`, `referral_code`) are dropped too since S6.
+    Both have a test; other referral parameters a source may add are not known;
   - for aggregator sources `url` is a tracking redirect, not the employer's page, and which
-    sources are aggregators is not documented;
+    sources are aggregators is not documented. Such an address is an unknown ATS and a manual
+    handoff (tested in S6);
   - a direct-apply job takes applications on Freehire and has an empty `url`; it can never be
     an execution destination (D34);
-  - the fingerprint covers the whole record, including `reality.age_days` and counters that
-    change daily, so nearly every refresh would count as "updated" (unmeasured).
+  - handled in S6: the fingerprint no longer covers `reality.age_days` or counters, which change
+    daily. A record stored before S6 counts once as changed on its next read.
 
 ## Closed postings and possible duplicates (S3, D59)
 

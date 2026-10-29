@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 TRACKING_PARAMS = re.compile(
-    r"^(utm_.*|gh_src|source|src|ref|referrer|lever-source.*|gclid|fbclid)$", re.I
+    r"^(utm_.*|gh_src|source|src|ref|referrer|referral[-_]?code|lever-source.*|gclid|fbclid)$",
+    re.I,
 )
 _SPACE = re.compile(r"\s+")
 _LEGAL_SUFFIX = re.compile(

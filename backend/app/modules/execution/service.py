@@ -95,15 +95,13 @@ def enqueue(db: Session, app: Application) -> ExecutionAttempt:
     pkg = pk.latest_package(db, app.id)
     appr = pk.active_approval(db, pkg)
     if appr is None:
-        raise pk.ApprovalError("Approve the current package version before queueing.")
+        raise pk.refused("approval_needed")
     confirmed_before = select(ExecutionAttempt.id).where(
         ExecutionAttempt.application_id == app.id, ExecutionAttempt.state == S.confirmed
     )
     if db.scalar(confirmed_before.limit(1)) is not None:
         # Whatever the application's state says, the employer's receipt was recorded once.
-        raise pk.ApprovalError(
-            "The employer's confirmation of this application was recorded; it is not sent again."
-        )
+        raise pk.refused("already_confirmed")
     _supersede_stale_attempt(db, app)
     adapter_for(pkg.content["destination"])  # raises if unsupported
     try:
@@ -160,10 +158,7 @@ def _supersede_stale_attempt(db: Session, app: Application) -> None:
     if old is None:
         return
     if old.state != S.pending or _approval_still_valid(db, app, old):
-        raise pk.ApprovalError(
-            "An earlier attempt for this application is still running. Wait for it to "
-            "finish, then queue again."
-        )
+        raise pk.refused("attempt_running")
     try:
         with db.begin_nested():
             locked = db.scalar(
@@ -177,10 +172,7 @@ def _supersede_stale_attempt(db: Session, app: Application) -> None:
             raise
         locked = None
     if locked is None:
-        raise pk.ApprovalError(
-            "An earlier attempt for this application is being picked up by a worker; it will "
-            "stop, because the package changed. Try again in a moment."
-        )
+        raise pk.refused("attempt_being_claimed")
     locked.state, locked.finished_at = S.failed_safe, utcnow()
     locked.outcome_detail = (
         "Stopped before anything was sent: the package changed and was queued again."
@@ -857,6 +849,29 @@ def cancel(db: Session, app: Application) -> str:
         att.outcome_detail = "Cancelled by you before anything was submitted."
         event(db, att, "cancelled")
     transition(db, app, AppState.cancelled, Actor.user, "Cancelled")
+    return "cancelled"
+
+
+def stop_for_revoke(db: Session, app: Application) -> str:
+    """C13 (D65): what revoking does to an attempt in progress, under the cancel lock order (the
+    attempt, then the application). An attempt no worker has taken yet is cancelled at once,
+    and the application waits for an approval again ("cancelled"). One a worker holds before
+    the send gate is left to the gates, which refuse a revoked approval ("stopping"). After the
+    send gate the submission may be in flight: revoking is refused. "none": no attempt."""
+    att = _active_attempt(db, app.id)  # waits for a gate holding the attempt
+    pk.lock_application(db, app.id)
+    db.refresh(app)
+    if att is None:
+        return "none"
+    if att.state in (S.sending, S.awaiting_code):
+        raise pk.refused("revoke_in_flight")
+    if att.state != S.pending:
+        return "stopping"
+    att.cancel_requested = True
+    att.state, att.finished_at = S.cancelled, utcnow()
+    att.outcome_detail = "Approval revoked before a worker picked this up; nothing was sent."
+    event(db, att, "cancelled")
+    _app_to(db, app, AppState.awaiting_approval, Actor.system, "Approval revoked")
     return "cancelled"
 
 

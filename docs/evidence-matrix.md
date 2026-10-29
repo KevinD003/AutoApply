@@ -9,6 +9,96 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Freehire contract hardening (S6, 2026-10-28; fixture only, no Freehire API request)
+
+The local stand-in of Freehire's documented API on the receiver; its request table is the
+oracle for what was asked. Synthetic listings. Decision D67.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Counters and `reality` are not a change (R9.4) | `tests/test_freehire_discovery.py::test_counters_and_reality_ticking_are_not_a_change` (mode `fh_reality_tick`) | import 0 changed, 5 unchanged; refresh `unchanged`; a real change still counted |
+| Tagged and referral URLs (R9.5) | `::test_a_tagged_url_and_its_untagged_form_are_one_posting` | one `dedupe_key`; same ATS |
+| Aggregator address (R9.6) | `::test_an_aggregator_url_is_an_unknown_ats_and_a_manual_handoff` | `unknown`; manual handoff |
+| Undocumented fields (R9.7) | `::test_the_2026_10_26_undocumented_fields_are_not_read` | same record, same fingerprint |
+| Waiting after `Retry-After` (R9.2) | `::test_an_import_before_retry_after_is_refused`, `::test_a_refused_refresh_holds_back_the_next_refresh_and_import`, `::test_without_retry_after_nothing_is_held_back`; `test_freehire_live_read.py::test_a_run_held_back_by_retry_after_does_not_use_its_approval` | 429 with "Nothing was sent", no request in the stand-in's table; another user not held back; no wait without the header; the live approval left unused |
+| Migration | `tests/test_migrations.py::test_s6_adds_the_discovery_backoffs_and_downgrade_drops_only_them` | added; dropped alone on downgrade |
+| In the browser | `frontend/e2e/discovery.spec.ts` "a listing refreshes from its source; a Retry-After holds the next request back" (desktop, mobile) | unchanged, gone, refused with Retry-After, then held back |
+| Sabotage | 8 cases | 8 caught (one after a 429 without `Retry-After` was added) |
+
+## Version diff (C14, 2026-10-28; local only)
+
+The receiver's form and a fictional manual form; synthetic data. Decision D66.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| A changed answer by its label | `tests/test_version_diff.py::test_a_changed_answer_is_shown_by_its_label_and_shown_values` | one row; before and after as shown; no fact references |
+| Since the approved version | `::test_what_changed_since_the_approved_version` | the approved side marked; consent change shown |
+| A new document version | `::test_a_new_document_version_is_shown` | shown by name |
+| A reworded question | `::test_a_reworded_question_is_shown_as_a_changed_question` | question and answer changed |
+| Read-only | `::test_the_diff_is_read_only`, `::test_the_diff_never_builds_a_version` | no package version or audit row added |
+| Unknown version, another user | `::test_unknown_versions_and_other_users_are_404` | 404 |
+| In the browser | `frontend/e2e/review-edit.spec.ts` "after an edit, the page shows what changed since the approved version" | the change listed by label |
+| Sabotage | 6 cases | 6 caught (one after a test was added for a pending version) |
+
+## Approval reasons and revoking (C13, 2026-10-28; local only)
+
+The generic receiver; its ledger is the oracle. Decision D65.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| The document lists exactly the codes | `tests/test_approval_reasons.py::test_the_document_lists_exactly_the_codes` | equal |
+| Each code produced by its path | `::test_approval_refusals_carry_their_codes`, `::test_queueing_refusals_carry_their_codes`, `::test_a_recorded_confirmation_is_never_queued_again_with_its_code` | 409 with `(reason: code)` for all nine |
+| Revoke before a worker takes the attempt | `::test_revoking_before_a_worker_takes_the_attempt_stops_it_at_once` | cancelled at once; waits for approval; a late delivery ignored; nothing disclosed; approving again submits once |
+| Revoke while a worker holds it | `::test_revoking_while_a_worker_holds_the_attempt_leaves_it_to_the_gates`; `test_lock_order.py::test_a_revoke_arriving_while_a_worker_claims_the_attempt_waits_then_leaves_it_to_the_gates` | the gate refuses; nothing disclosed; no deadlock |
+| Revoke after the final click | `::test_revoking_after_the_final_click_is_refused` (sending, awaiting a code); `test_lock_order.py::test_a_revoke_arriving_while_the_send_gate_holds_its_locks_is_refused_after_it` | refused with `revoke_in_flight`; the approval unchanged |
+| Cross-tenant | `::test_another_users_revoke_is_404` | 404 |
+| In the browser | `frontend/e2e/approval-revoke.spec.ts` (desktop, mobile) | the notice says what was stopped; refused while submitting with its code; the ledger counts |
+| Sabotage | 6 cases | 6 caught |
+
+## Review page: change, clear, optional answers, cover letter, destination (C12, 2026-10-28; local only)
+
+The Greenhouse-like fixture form and the generic receiver; synthetic data. Decision D64.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Each question says what the page may offer | `tests/test_review_controls.py::test_each_question_says_what_the_page_may_offer`, `::test_the_page_controls_never_change_the_package` | outside the content; a question not asked, a document, an acknowledgment and a profile fact are not answered here |
+| Clearing an answer | `::test_clearing_an_answer_removes_it_and_is_audited_without_its_key` | needs an answer again; one audit row with a reference, never the key |
+| Cover letter chosen and left out | `::test_an_optional_cover_letter_is_chosen_and_left_out_again` | sent, then not; a resume refused as a cover letter |
+| Cross-tenant | `::test_another_users_application_cannot_be_cleared_or_changed` | 404; nothing changed |
+| Where the form sends | `::test_the_page_says_where_the_form_sends` | fixture or employer label |
+| In the browser | `frontend/e2e/review-edit.spec.ts` (desktop, mobile) | change, clear, answer again, an optional answer; the ledger holds the changed values; a cover letter chosen, then "None" |
+| Sabotage | 6 cases | 6 caught |
+
+## Salary units (C9, 2026-10-28; local only)
+
+Synthetic preferences; no database. Decision D63.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Sent only in units the question allows | `tests/test_resolver.py::test_a_salary_is_sent_only_in_units_the_question_allows` (8 cases) | a number only with both units stated; text with its own units |
+| Other or unstated units are the user's | `::test_a_salary_in_other_or_unstated_units_is_the_users_answer` (15 cases), `::test_a_bare_dollar_sign_is_not_another_currencys_answer` | needs the user; nothing sent |
+| No currency or period in Preferences | `::test_an_expectation_without_its_currency_or_period_is_never_sent` | never sent |
+| Sweep | 805 forms × 32 contexts against the C8 tree | 5,476 withdrawals; the only new values are the user's typed answers |
+| Sabotage | 8 cases | 8 caught |
+
+## Fixture variants from the legacy notes (S5, 2026-10-28; local only)
+
+FIXTURE ASSUMPTIONS from `legacy-audit.md` R7: they show what the adapters do on such a page,
+not that a real page behaves this way. The receiver's ledger is the oracle. Decision D62.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Confirmation bound to the attempt (R6.4, R6.5, §1.0 item 12) | `test_greenhouse_adapter.py::test_confirmation_bound_to_attempt`, `test_greenhouse_dom.py::test_confirmation_bound_to_attempt`, `test_execution_failures.py::test_confirmation_bound_to_attempt`, `test_api_provider.py::test_confirmation_bound_to_attempt` | words on the form, a path saying "confirmation", another posting's page, a message present before the click, another application's acceptance: never confirmed |
+| A box the page unticks (R2.9) | `test_greenhouse_adapter.py::test_readback_mismatch_stops_before_submit_when_the_page_unticks_an_approved_box` | abandoned before the send gate; 0 acceptances |
+| Autofill after an upload (R2.7) | `test_greenhouse_dom.py::test_readback_mismatch_stops_before_submit_when_an_upload_rewrites_fields` | abandoned; 2 fields counted; the upload kept |
+| Code boxes and unknown code steps (R7.4) | `test_greenhouse_adapter.py::test_code_entered_by_user_only_one_character_per_box`, `::test_code_entered_by_user_only_an_unrecognised_code_entry_is_never_filled` | only the user's code; a code that does not fit never typed; unknown code step: nothing typed |
+| Bot check after the click (R4.9b) | `test_greenhouse_adapter.py::test_a_challenge_after_the_final_click_is_never_confirmed_or_clicked_again`, the same in `test_greenhouse_dom.py` | unknown, one click in the ledger, never clicked again |
+| Banners and "I agree" (R11.8) | `test_greenhouse_adapter.py::test_no_cookie_banner_or_i_agree_button_is_ever_clicked`, `::test_a_submit_button_waiting_for_an_unlisted_click_stops_before_the_final_click` | no click recorded; a disabled submit stops before the send gate |
+| A second page (R2.10, §1.0 item 4) | `test_greenhouse_adapter.py::test_each_step_read_back_before_next_a_second_page_stops_before_disclosure`, the same in `test_greenhouse_dom.py` | failed_safe before any disclosure; captured that way, refused |
+| An unlisted option (§1.0 item 6) | `test_greenhouse_dom.py::test_unlisted_option_is_checkpoint` | failed_safe before any disclosure, counted, never named |
+| Admission scenarios (R3.1) | `test_provider_contracts.py::test_every_required_scenario_is_a_ledger_test_or_a_recorded_gap` | every new pair mapped to a ledger test; no gap |
+| Sabotage | 15 cases (each adapter safeguard, the three admission rules) | 15 caught |
+
 ## The disclose path, counted by the receiver (C8, 2026-10-28; local only)
 
 The synthetic receiver's own ledger is the oracle; a synthetic candidate. Decision D61. No

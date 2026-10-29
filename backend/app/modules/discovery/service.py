@@ -28,7 +28,12 @@ from app.core.config import get_settings
 from app.core.db import SessionLocal, utcnow
 from app.core.urlsafety import UnsafeURL, check_url_syntax
 from app.modules.audit.service import record
-from app.modules.discovery.models import DiscoveredJob, DiscoveryRunApproval, DiscoveryWatch
+from app.modules.discovery.models import (
+    DiscoveredJob,
+    DiscoveryBackoff,
+    DiscoveryRunApproval,
+    DiscoveryWatch,
+)
 from app.modules.discovery.provider import (
     PROVIDERS,
     DiscoveryError,
@@ -80,6 +85,35 @@ class ImportResult:
     deleted_by_you: int = 0  # D56: records you deleted; kept deleted, never imported again
     ids: list[str] = field(default_factory=list)
     records: list[dict] = field(default_factory=list)  # per record: ids and outcomes only
+
+
+# S6 (D67, R9.2): the longest wait a provider's Retry-After can set for a user's requests.
+MAX_BACKOFF_S = 86400
+
+
+def check_backoff(db: Session, user_id, provider_name: str) -> None:
+    """Refuse, before any request, while the provider's last Retry-After for this user runs."""
+    row = db.get(DiscoveryBackoff, (user_id, provider_name))
+    if row is not None and utcnow() < row.not_before:
+        label = PROVIDERS[provider_name].label if provider_name in PROVIDERS else provider_name
+        raise DiscoveryError(
+            "rate_limited_wait",
+            f"{label} asked NoEfforts to wait before sending more of your requests; try again "
+            f"after {row.not_before:%H:%M:%S} UTC. Nothing was sent.",
+        )
+
+
+def note_backoff(db: Session, user_id, provider_name: str, retry_after: int | None) -> None:
+    """After a refusal with a Retry-After in seconds: no request for this user before then.
+    Nothing re-runs by itself; without the header nothing is assumed."""
+    if not retry_after:
+        return
+    until = utcnow() + timedelta(seconds=min(max(int(retry_after), 1), MAX_BACKOFF_S))
+    row = db.get(DiscoveryBackoff, (user_id, provider_name))
+    if row is None:
+        db.add(DiscoveryBackoff(user_id=user_id, provider=provider_name, not_before=until))
+    else:
+        row.not_before, row.updated_at = max(row.not_before, until), utcnow()
 
 
 def fetch_all(provider: DiscoveryProvider, filters: DiscoveryFilters, max_pages: int):

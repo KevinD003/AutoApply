@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import hashlib
+import html
 import json
 import secrets
 import sqlite3
@@ -201,7 +202,13 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
             return HTMLResponse(page_msg("Server error", "Try again later.", "error"), 500)
         if mode == "drop_after_accept":
             await asyncio.sleep(3600)  # accepted, but the reply never arrives in time
+        if mode == "accepted_elsewhere":  # S5: the receipt is shown on another posting's page
+            return RedirectResponse(f"/apply/other-posting/receipt?r={receipt}", status_code=303)
         return HTMLResponse(page_receipt(receipt))
+
+    @app.get("/apply/{slug}/receipt", response_class=HTMLResponse)
+    def receipt_page(slug: str, r: str = ""):
+        return HTMLResponse(page_receipt(html.escape(r)))
 
     @app.post("/apply/{slug}/verify", response_class=HTMLResponse)
     async def verify(slug: str, request: Request):

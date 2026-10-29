@@ -58,6 +58,21 @@ FORM_SOURCE_LABELS: dict[str, str | None] = {
     "manual": None,
 }
 
+# C12 (D64): where a package's form sends, shown on its review page.
+DESTINATION_LABELS = {
+    "fixture": "Local test fixture (fictional employer): nothing reaches a real employer",
+    "employer": "The employer's own site",
+}
+
+
+def destination_label(origin: str | None) -> str | None:
+    from app.core.urlsafety import is_fixture_origin
+
+    if not origin:
+        return None
+    return DESTINATION_LABELS["fixture" if is_fixture_origin(origin) else "employer"]
+
+
 # What an attempt's result counts as (one of providers/evidence.py's classes), shown beside it.
 EVIDENCE_CLASS_LABELS = {
     "fixture": "Local test fixture: counts for nothing on a real employer's form",

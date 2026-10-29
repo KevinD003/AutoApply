@@ -189,7 +189,11 @@ capability).
 - **Blockers:** none. Run after S1 so the C6 tables are not edited twice.
 - **Size:** S as planned; M as built (the failing rows).
 
-### S5. X1 fixture variants from legacy hints (admission framework)
+### S5. X1 fixture variants from legacy hints (admission framework) — **done** (D62, 2026-10-28)
+
+Done as planned, with `gh2_option_unlisted`, `gh_security_code_other`, `gh_consent_blocking`,
+`gh2_phrase_no_confirmation`, `fapi_receipt_other` and the generic `accepted_elsewhere` added
+while mapping each scenario to a test; a second page is a stop, not filled.
 
 - **Goal:** turn the legacy author's real-page notes (`legacy-audit.md` R7, HYPOTHESIS) into
   fixture variants that the Greenhouse adapters must handle by stopping or by verified success,
@@ -249,6 +253,11 @@ capability).
 - **Blockers:** none for code; the doc refresh quotes the review's saved page copies
   (working notes, not committed) and must be re-checked on the day of any live run.
 - **Size:** M.
+- **Status (D67, 2026-10-28): done.** The fingerprint reads only the documented fields
+  NoEfforts uses; a `Retry-After` holds the user's next import or refresh back, before any
+  request or approval; referral codes are dropped for deduplication; Discover has a refresh
+  control. Imports stay inside the request (D67 says why); the owner allow-list covers the
+  reads that reach Freehire (S7, S8).
 
 ### S7. F2 live-read readiness — **done in code** (D55); no live read made yet
 
@@ -276,10 +285,10 @@ capability).
 | C10 | Fact values must fit the field (length, email, URL scheme; one candidate link) | S | — | **Done (D54, D58, 2026-10-28):** a fact answer that fails `validate_value` is never sent (S4); a link question gets the profile's link only when exactly one is of its kind, read from the host; several are the user's to give; the review page shows why |
 | C7 | Consents and answers tied to the field fingerprint and a keyed value digest | M | C6 | **Done (D60, 2026-10-28):** each answer and consent stores its question's fingerprint; a changed question asks again; "disclose" covers a keyed digest of the exact answer |
 | C8 | Disclose path end to end with the receiver ledger; "decline to self-identify" mapping | M | C7 | **Done (D61, 2026-10-28):** the receiver ledger shows "Include" sends the answer and "Don't disclose" sends nothing (optional) or the form's one decline option (required); one bank policy for the equal-opportunity topics. Closes R3.4 |
-| C9 | Salary and relocation period and currency | S | C6 (they are no longer bankable) | The `version` key fix is [shape] → C18 |
-| C12 | Review UI edit, clear, optional answers, cover-letter selection, destination shown | M | C10, C11 | High user value |
-| C13 | Audit and approval wording, reason codes, revoke-while-queued | M | — | Pairs with S2's audit additions |
-| C14 | Read-only version diff | M | — | |
+| C9 | Salary and relocation period and currency | S | C6 (they are no longer bankable) | **Done (D63, 2026-10-28):** a salary is sent only in the units the question allows (currency by code, sign or help text; period); a bare number only when both are stated; relocation unchanged (S4). The `version` key fix is [shape] → C18 |
+| C12 | Review UI edit, clear, optional answers, cover-letter selection, destination shown | M | C10, C11 | **Done (D64, 2026-10-28):** change, clear and optional answers where the resolver allows input; cover letter chosen or left out; "Sends to …" with a fixture or employer label; controls outside the package content |
+| C13 | Audit and approval wording, reason codes, revoke-while-queued | M | — | **Done (D65, 2026-10-28):** nine approval reason codes listed in `approval-reasons.md`; revoking cancels an attempt no worker has taken, leaves a held one to the gates, is refused after the send gate, and is audited with what it did |
+| C14 | Read-only version diff | M | — | **Done (D66, 2026-10-28):** two stored versions compared by label and shown value (answer, question or basis changed); on each history row and since the approved version; never builds or records |
 | C15 | Drafting hardening before any provider | M | C4/C5 regexes | Must precede any LLM provider (L4). Includes the job-text rule: job text reaches a prompt only as quoted, untrusted data and never changes which facts are used (`freehire-first-architecture.md` §1; `reliability-test-plan.md` R11.9, written with the first provider) |
 | C16 | Credentials as grounded facts | M | C15 | |
 | C17 | Retention and deletion of documents | M | — | Pairs with S6's discovered-row delete |
@@ -307,11 +316,11 @@ done: C1 C2 → C3-C5 → Q1 (D50) → S1 (C6, D51) → S2 (outcome integrity, D
       → S8 in code (watched searches and delete, D56, at the owner's request; not yet run)
       → C11 (State, City and Country lists, D57) → C10 (one link of a kind, D58)
       → S3 (job signals, D59) → C7 (answers tied to their question, D60)
-      → C8 (the disclose path, D61)
-now:  S5 (fixture variants)
-next: C9 (salary and relocation period and currency)
-then: C12 → C13 → C14 → S6 (Freehire hardening; its doc refresh is done)
-then: C15 → C16 → C17 → C18 (one schema bump)
+      → C8 (the disclose path, D61) → S5 (fixture variants, D62) → C9 (salary units, D63)
+      → C12 (review UI, D64) → C13 (approval reasons and revoking, D65) → C14 (version diff, D66)
+      → S6 (Freehire hardening, D67)
+now:  C15 (drafting hardening before any provider)
+then: C16 → C17 → C18 (one schema bump)
 later: L1-L4; live steps only with the owner's recorded permissions
 ```
 
@@ -350,14 +359,35 @@ profile only when exactly one link is of that kind, read from its host; with sev
 gives the one for that question, and the review page says why.
 
 **S3 (job signals, D59) is done.** A posting its source says is closed, a job you excluded or
-closed, and a role that looks like one you already have an application for are shown on the job, Discover and
-review pages, and approval waits for your statement; Greenhouse embed URLs now have their
-board URL's identity.
+closed, and a role that looks like one you already have an application for are shown on the
+job, Discover and review pages, and approval waits for your statement; Greenhouse embed URLs
+now have their board URL's identity.
 
-**Recommended next: C7 (consents and answers tied to the field fingerprint and a keyed value
-digest).** Size M.
+**C7 (answers tied to their question, D60), C8 (the disclose path, D61) and S5 (fixture
+variants, D62) are done.** An answer or a choice applies only to the question as shown, and
+"Include this answer" only to that answer; the receiver's ledger shows a sensitive answer sent
+only as chosen; the legacy notes' page traps are fixtures each adapter stops on or handles, and
+every provider's confirmation is bound to its own attempt.
 
-**Runner-up: C8 (the disclose path end to end with the receiver ledger).** Size M.
+**C9 (salary units, D63) is done.** A salary is sent only in the currency and period the
+question allows.
+
+**C12 (review UI, D64) is done.** Answers can be changed, cleared and added where the resolver
+allows the user's input, a cover letter chosen or left out, and the page says where the form
+sends.
+
+**C13 (approval reasons and revoking, D65) is done.** Every refusal to approve, queue or revoke
+has a fixed code, and revoking stops a queued submission at once and says what it stopped.
+
+**C14 (version diff, D66) is done.** The review page shows what changed between versions, and
+since the approved one, by label and shown value.
+
+**S6 (Freehire hardening, D67) is done.** Counters no longer count as changes, a source's
+`Retry-After` holds the user's next request back, and each listing can be refreshed.
+
+**Recommended next: C15 (drafting hardening before any provider).** Size M.
+
+**Runner-up: C17 (retention and deletion of documents).** Size M.
 
 ## 5. Never in any slice
 

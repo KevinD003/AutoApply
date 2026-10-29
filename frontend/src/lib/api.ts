@@ -326,6 +326,8 @@ export interface PackageView {
         employer: string | null;
         title: string | null;
         url: string | null;
+        origin: string | null;
+        submit_url: string | null;
         ats_provider: string;
         form_version: number;
         form_source: string;
@@ -347,7 +349,9 @@ export interface PackageView {
     | { status: "not_approved" };
   history: { version: number; created_at: string; change_summary: string[]; was_approved: boolean }[];
   // Served wording (backend providers/wording.py): set when the form's source is a local test stand-in.
-  labels: { form_source: string | null };
+  labels: { form_source: string | null; destination: string | null };
+  // C12: what the review page may offer per question key (outside the package content).
+  review: Record<string, ReviewControls>;
   // Whether a submission here needs a successful rehearsal first (backend execution/rehearsal.py).
   // All text is served; reason_code is a fixed code (a rehearsal code, or the route's own code
   // when NoEfforts does not submit here at all).
@@ -356,6 +360,30 @@ export interface PackageView {
   job_signals: JobSignals;
   drafting_available: boolean;
   drafts: { id: string; field_key: string; text: string; evidence: string[]; provider: string }[];
+}
+
+// C14: what changed between two versions of a package (read-only, the page's own words).
+export interface PackageDiff {
+  from: { version: number; content_hash: string; created_at: string; was_approved: boolean };
+  to: { version: number; content_hash: string; created_at: string; was_approved: boolean };
+  answers: {
+    key: string;
+    label: string;
+    step: string | null;
+    changed: ("value" | "question" | "basis" | "added" | "removed")[];
+    before: { display: string | null; status: string; source: string } | null;
+    after: { display: string | null; status: string; source: string } | null;
+  }[];
+  documents: { field: string; before: string | null; after: string | null }[];
+  consents: { key: string; label: string; before: string | null; after: string | null }[];
+  destination: { field: string; before: unknown; after: unknown }[];
+}
+
+export interface ReviewControls {
+  answer_here: boolean; // answer or change it on this page
+  clear: boolean; // an answer given for this application is stored and can be removed
+  document_role: "resume" | "cover_letter" | null;
+  not_asked: boolean;
 }
 
 export interface BankEntry {

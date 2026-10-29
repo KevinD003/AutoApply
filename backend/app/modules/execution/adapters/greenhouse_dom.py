@@ -31,7 +31,11 @@ from app.modules.execution.adapters.fixture_ats import (
     UploadFailed,
     upload_evidence,
 )
-from app.modules.execution.adapters.greenhouse import CHALLENGE_SELECTORS, approved_fields
+from app.modules.execution.adapters.greenhouse import (
+    BOT_CHECK_AFTER_CLICK,
+    CHALLENGE_SELECTORS,
+    approved_fields,
+)
 from app.modules.preparation import greenhouse_dom as dom
 from app.modules.preparation.forms import FieldType
 
@@ -44,6 +48,11 @@ _SELECTED_JS = """el => { const lb = document.getElementById(el.getAttribute('ar
   return {text: el.value, value: el.dataset.value ?? null,
           selected: sel.map(o => o.dataset.value ?? null)}; }"""
 _FILE_JS = "el => Array.from(el.files || []).map(f => f.name)"
+_CONFIRMATION = "#application-confirmation[role=status]"
+PRE_CONFIRMATION = (
+    "the page showed a confirmation-like message before the final click, so a message after it "
+    "cannot confirm this submission"
+)
 
 
 def _id(key: str) -> str:
@@ -265,6 +274,8 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             q = r.request
             return q.method == "POST" and r.url == submit_url and q.redirected_from is None
 
+        # S5 (D62, R6.4): a confirmation already on the page is never evidence for this click.
+        before = page.locator(_CONFIRMATION).count()
         try:
             with page.expect_response(ours, timeout=timeout_ms) as info:
                 page.locator("form button[type=submit]").click()
@@ -273,9 +284,13 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             return Outcome("unknown", "no response from the employer within the time limit")
         status = resp.status
         if 200 <= status < 300:
+            if before:
+                return Outcome("unknown", PRE_CONFIRMATION, None, status)
             try:
-                page.locator("#application-confirmation[role=status]").wait_for(timeout=5000)
+                page.locator(_CONFIRMATION).wait_for(timeout=5000)
             except PWTimeout:
+                if self._challenge_shown(page):
+                    return Outcome("unknown", BOT_CHECK_AFTER_CLICK, None, status)
                 return Outcome("unknown", "the employer answered but showed no confirmation",
                                None, status)  # fmt: skip
             if not self._same_posting(page.url):
@@ -288,7 +303,16 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 return Outcome("rejected", "the employer's page listed errors", None, status)
             except PWTimeout:
                 pass
+        if self._challenge_shown(page):  # S5 (D62, R4.9b): never solved, never clicked again
+            return Outcome("unknown", BOT_CHECK_AFTER_CLICK, None, status)
         return Outcome("unknown", f"unrecognised response (HTTP {status})", None, status)
+
+    def _challenge_shown(self, page: Page) -> bool:
+        try:
+            page.locator(CHALLENGE_SELECTORS).first.wait_for(state="attached", timeout=2000)
+            return True
+        except PWTimeout:
+            return False
 
     def enter_code(self, page: Page, code: str, timeout_ms: int) -> Outcome:
         return Outcome("unknown", "a security-code step is not supported for this page type")

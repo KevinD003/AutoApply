@@ -751,44 +751,66 @@ def _relocation(f, r, ctx, intent):
     )
 
 
+# C9 (D63): what a salary question says about its units, read from its wording and help text.
+SALARY_CURRENCIES = frozenset(
+    {"usd", "eur", "gbp", "cad", "inr", "aud", "nzd", "chf", "sgd", "aed", "mxn", "brl", "jpy"}
+)
+# Signs naming one currency; a bare "$" names none of the dollar currencies in particular.
+_CURRENCY_SIGNS = (
+    ("us$", "usd"), ("ca$", "cad"), ("c$", "cad"), ("au$", "aud"), ("a$", "aud"),
+    ("nz$", "nzd"), ("s$", "sgd"), ("r$", "brl"), ("€", "eur"), ("£", "gbp"), ("₹", "inr"),
+    ("¥", "jpy"),
+)  # fmt: skip
+_DOLLARS = frozenset({"usd", "cad", "aud", "nzd", "sgd", "mxn"})
+SALARY_PERIODS = {
+    "year": r"\b(annual|annually|yearly|per (year|annum)|a year|each year|p\.a\.)|/ ?(yr|year)\b",
+    "month": r"\b(monthly|per month|a month|each month)\b|/ ?(mo|month)\b",
+    "week": r"\b(weekly|per week|a week)\b|/ ?(wk|week)\b",
+    "day": r"\b(daily|per day|a day|day rate)\b|/ ?day\b",
+    "hour": r"\b(hourly|per hour|an hour)\b|/ ?(hr|hour)\b",
+}
+
+
+def salary_units(f: FormField) -> tuple[set[str], bool, set[str]]:
+    """The currencies the question names, whether it shows a bare "$", and its periods."""
+    text = f"{normalize(f.label)} {normalize(f.help_text)}"
+    named = {c for c in re.findall(r"\b[a-z]{3}\b", text) if c in SALARY_CURRENCIES}
+    for sign, code in _CURRENCY_SIGNS:
+        if sign in text:
+            named.add(code)
+            text = text.replace(sign, " ")
+    periods = {p for p, rx in SALARY_PERIODS.items() if re.search(rx, text)}
+    return named, "$" in text, periods
+
+
 def _salary(f, r, ctx, intent):
     p = ctx.prefs
     if p is None or p.salary_min is None:
         r.explanation = "Your preferences have no salary expectation."
         return _unresolved(r, f, r.explanation)
     cur = (p.salary_currency or "").lower()
-    asked = [
-        c
-        for c in intent.params.get("currencies", [])
-        if c
-        in {
-            "usd",
-            "eur",
-            "gbp",
-            "cad",
-            "inr",
-            "aud",
-            "nzd",
-            "chf",
-            "sgd",
-            "aed",
-            "mxn",
-            "brl",
-            "jpy",
-        }
-    ]
-    if asked and cur not in asked:
+    period = p.salary_period.value if p.salary_period else None
+    if not cur or period is None:
+        # C9 (D63): an amount without its currency and period is never sent.
         r.explanation = (
-            f"The question asks in {asked[0].upper()} but your expectation is in "
-            f"{cur.upper()}; answer it yourself."
+            "Your salary expectation has no currency or no period in Preferences; add both, or "
+            "answer it yourself."
         )
         return _unresolved(r, f, r.explanation)
-    label = normalize(f.label)
-    period = p.salary_period.value if p.salary_period else None
-    if re.search(r"\b(annual|yearly|per year|a year)\b", label) and period != "year":
+    named, dollar, periods = salary_units(f)
+    if len(named) > 1 or (named and cur not in named) or (dollar and cur not in _DOLLARS):
+        asked = sorted(named)[0].upper() if named else "dollars"
         r.explanation = (
-            "The question asks for an annual amount; your expectation is per "
-            f"{period}. Answer it yourself."
+            f"The question asks in {asked} but your expectation is in {cur.upper()}; answer it "
+            "yourself."
+        )
+        return _unresolved(r, f, r.explanation)
+    if len(periods) > 1 or (periods and period not in periods):
+        asked = "an annual amount" if periods == {"year"} else "an amount for another period"
+        if len(periods) == 1 and periods != {"year"}:
+            asked = f"an amount per {next(iter(periods))}"
+        r.explanation = (
+            f"The question asks for {asked}; your expectation is per {period}. Answer it yourself."
         )
         return _unresolved(r, f, r.explanation)
     ref = [
@@ -801,6 +823,15 @@ def _salary(f, r, ctx, intent):
     ]
     amount = float(p.salary_min)
     if f.type == FieldType.number:
+        if named != {cur} or periods != {period}:
+            # C9 (D63): a bare number carries no currency and no period of its own.
+            return _unresolved(
+                r,
+                f,
+                "A number alone does not say its currency or period, and this question does not "
+                f"state both ({cur.upper()} per {period} in your preferences): answer it "
+                "yourself.",
+            )
         r.value, r.display = {"number": amount}, f"{amount:,.0f}"
         r.explanation = f"Your minimum desired salary ({amount:,.0f} {cur.upper()} per {period})."
     elif f.type in TEXT_TYPES:

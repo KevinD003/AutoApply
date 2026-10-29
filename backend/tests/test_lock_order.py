@@ -764,3 +764,49 @@ def test_queueing_again_while_the_earlier_attempt_is_being_claimed_never_deadloc
     no_errors(claim)
     assert claim.result is None and attempt(str(aid)).state == "failed_safe"
     assert receiver.ledger()["disclosures"] == []
+
+
+# ---------------------------------------------------------------- revoking (C13, D65)
+
+
+def revoke_in_own_session(app_id: str) -> str:
+    with SessionLocal() as db:
+        app = db.get(Application, uuid.UUID(app_id))
+        effect = svc.stop_for_revoke(db, app)
+        pk.revoke(db, app, effect)
+        db.commit()
+        return effect
+
+
+def test_a_revoke_arriving_while_a_worker_claims_the_attempt_waits_then_leaves_it_to_the_gates(
+    api, receiver, monkeypatch
+):
+    """The claim holds the attempt and the application; the revoke waits for it, finds the
+    attempt claimed and leaves it to the gates, which refuse the revoked approval."""
+    app_id = prepared_application(api, receiver)
+    aid = uuid.UUID(queue(api, app_id))
+    claim, revoke = race(monkeypatch, "claim", pk, "lock_application",
+                         lambda: svc.claim(aid, "w1"),
+                         lambda: revoke_in_own_session(app_id), after=True)  # fmt: skip
+    no_errors(claim, revoke)
+    assert claim.result is not None and revoke.result == "stopping"
+    with pytest.raises(svc.GateRefused):
+        svc.gate_before_disclosure(aid, "w1", claim.result)
+    assert receiver.ledger()["disclosures"] == []
+
+
+def test_a_revoke_arriving_while_the_send_gate_holds_its_locks_is_refused_after_it(
+    api, receiver, monkeypatch
+):
+    """The send gate authorizes the click first; the revoke that waited for it is refused, and
+    the approval stays as it was: revoking could not stop what may already be in flight."""
+    app_id, aid, gen = claimed(api, receiver)
+    svc.gate_before_disclosure(aid, "w1", gen)
+    gate, revoke = race(monkeypatch, "gate", pk, "lock_application",
+                        lambda: svc.gate_before_send(aid, "w1", gen),
+                        lambda: revoke_in_own_session(app_id))  # fmt: skip
+    no_errors(gate)
+    assert isinstance(revoke.error, pk.ApprovalError) and revoke.error.code == "revoke_in_flight"
+    assert attempt(str(aid)).state == "sending"
+    v = api.get(f"/applications/{app_id}/package").json()
+    assert v["approval"]["status"] == "approved"

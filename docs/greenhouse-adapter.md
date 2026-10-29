@@ -40,8 +40,9 @@ Reading a public post is not permission to submit an application.
 | Conditional questions | evaluated against the answer that shows them. If the condition is not met, the question is "not asked": nothing entered or sent. If it is met, the question is required and resolved normally | `package._condition_met` |
 | Review and approval | unchanged: the exact wording and the source of every answer are shown; approval is bound to the package hash | existing |
 | Execution | in the isolated browser: CAPTCHA or bot check → stop before disclosure. A form changed since approval → stop before disclosure. Fill in form order (conditional after its trigger); attachments upload when chosen and count as disclosures; read every control back; send gate; submit | `execution/adapters/greenhouse.py` |
-| Security code | the "enter the emailed code, then submit again" step uses the existing code checkpoint (wrong code → new round; expiry → abandoned). **Synthetic/unverified:** the step is the fixture's own design; capability flag `unverified.security_code` | `enter_code` |
-| Outcomes | confirmation page → confirmed (evidence strength `employer_confirmation_page`; no application id is shown), **only if** it answers this attempt's own POST to the approved submit URL and is shown on the same origin under the same job path; a confirmation for another posting or origin → unknown; error list → rejected; timeout, 5xx or anything unrecognised → unknown → reconciliation, never resent | `_click`, `_ours` |
+| Security code | the "enter the emailed code, then submit again" step uses the existing code checkpoint (wrong code → new round; expiry → abandoned). Only the code the user typed is entered: into one input, or one character per box (four to twelve one-character inputs); a code that does not fit the boxes is never typed and is asked again; a code step NoEfforts does not recognise is never filled: unknown → reconciliation (S5, D62). **Synthetic/unverified:** the step is the fixture's own design; capability flag `unverified.security_code` | `enter_code`, `_code_entry` |
+| Outcomes | confirmation page → confirmed (evidence strength `employer_confirmation_page`; no application id is shown), **only if** it answers this attempt's own POST to the approved submit URL and is shown on the same origin under the same job path; a confirmation for another posting or origin → unknown; error list → rejected; a bot check shown after the final click → unknown, never solved or clicked again (S5); words on the page ("thank you", "application received") or a posting path containing "confirmation" never confirm; timeout, 5xx or anything unrecognised → unknown → reconciliation, never resent | `_click`, `_ours` |
+| Other controls | nothing outside the approved answers is clicked: no cookie banner, no "I agree" button; a submit button still disabled after filling stops the attempt before the send gate (S5, D62) | `fill`, `schema_matches` |
 | Conditional questions | trigger answered and not matching → not asked; matching → asked; trigger unanswered → still pending (blocks approval if required); trigger missing, later or circular → never filled, required → apply manually | `package.build_content` |
 | Hidden inputs | page-managed (`form_token`, `*_attachment_id`) are protocol, never questions; hidden inputs declared as questions in the job data are unsupported (required → apply manually) | `greenhouse.schema_from_api`, extractor |
 | Capability flags | `inspect, extract, fill, upload, checkpoint, submit, confirm` true; `real_destinations` false | `policy.CAPABILITIES["greenhouse_hosted"]` |
@@ -51,7 +52,9 @@ Reading a public post is not permission to submit an application.
 - Real Greenhouse posts or employers: reading and submitting are both refused.
 - CAPTCHA or bot checks: stop, never solved or bypassed.
 - Location pickers with hidden coordinates: a checkpoint when required.
-- Multi-page or login-gated (MyGreenhouse) applications.
+- Multi-page or login-gated (MyGreenhouse) applications: a form that continues on another
+  page lacks approved questions on its first page and stops before anything is disclosed
+  (fixture mode `gh_two_steps`, S5).
 - Pasting text instead of attaching a document.
 - Employer-authorised API submission.
 - Demographic sections beyond an ordinary sensitive question: these use the existing consent

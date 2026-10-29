@@ -72,9 +72,18 @@ def _provider(name: str):
 def _fail(e: DiscoveryError) -> HTTPException:
     if e.kind == "disabled":
         return HTTPException(status.HTTP_409_CONFLICT, str(e))
+    if e.kind == "rate_limited_wait":  # S6 (D67): nothing was sent
+        return HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(e))
     if e.kind == "not_authorized":
         return HTTPException(status.HTTP_403_FORBIDDEN, str(e))
     return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"{e} Nothing was changed.")
+
+
+def _remember_wait(db: Session, user: User, p, e: DiscoveryError) -> None:
+    """S6 (D67): a provider's Retry-After holds this user's next requests back."""
+    if e.kind == "rate_limited":
+        service.note_backoff(db, user.id, p.name, getattr(p, "retry_after", None))
+        db.commit()
 
 
 def _row(r: DiscoveredJob, detail: bool = False) -> dict:
@@ -185,6 +194,7 @@ def run_import(body: ImportIn, user: User = Depends(current_user), db: Session =
             f.workplaces = f.workplaces or list(prefs.work_modes or [])
     max_pages = get_settings().freehire_max_pages
     try:
+        service.check_backoff(db, user.id, p.name)  # S6 (D67): before any approval is used
         if p.name == "freehire" and p.wants_live():
             # D55: the owner and the approval for this exact search, then the address, are
             # checked; the approval is used (and committed) before the first request.
@@ -194,6 +204,7 @@ def run_import(body: ImportIn, user: User = Depends(current_user), db: Session =
         res = service.import_from(db, user.id, p, f, max_pages=max_pages)
     except DiscoveryError as e:
         db.rollback()
+        _remember_wait(db, user, p, e)
         raise _fail(e) from None
     record(
         db,
@@ -254,9 +265,11 @@ def refresh_row(
     row = _owned(db, user, row_id)
     p = _provider(row.provider)
     try:
+        service.check_backoff(db, user.id, p.name)
         outcome = service.refresh(db, row, p)
     except DiscoveryError as e:
         db.rollback()
+        _remember_wait(db, user, p, e)
         raise _fail(e) from None
     db.commit()
     return {"outcome": outcome, "job": _row(row)}

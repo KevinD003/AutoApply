@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / "fixtures" / "ats_receiver"))
 import greenhouse_like  # noqa: E402
 
 BOARD, JOB, LOCATION_JOB = "examplehealth", "4012001", "4012002"
+THANKS = ("thanks-confirmation", "4012003")  # S5: a posting whose path says "confirmation"
 
 
 @pytest.fixture(scope="module")
@@ -42,21 +43,21 @@ def _reset(receiver):
     receiver.reset()
 
 
-def gh_job(api, job_id=JOB) -> str:
+def gh_job(api, job_id=JOB, board=BOARD) -> str:
     return api.post(
         "/jobs",
         json={
-            "url": f"{BASE}/gh/{BOARD}/jobs/{job_id}",
+            "url": f"{BASE}/gh/{board}/jobs/{job_id}",
             "title": "Patient Services Coordinator",
             "employer": "Example Health Network (fictional)",
         },
     ).json()["job"]["id"]
 
 
-def gh_application(api, *, employed="No", site=None, approve=True) -> str:
+def gh_application(api, *, employed="No", site=None, approve=True, posting=(BOARD, JOB)) -> str:
     """Synthetic candidate, captured form, user answers and consents; approved."""
     synthetic_candidate(api)
-    job_id = gh_job(api)
+    job_id = gh_job(api, posting[1], posting[0])
     r = api.post(f"/jobs/{job_id}/form/greenhouse")
     assert r.status_code == 201, r.text
     app_id = api.post("/applications", json={"job_id": job_id}).json()["id"]
@@ -414,3 +415,131 @@ def test_page_altering_a_filled_value_stops_before_submit(api, receiver):
                                                    Evidence.kind == "readback"))  # fmt: skip
         assert att.adapter == "greenhouse_hosted" and att.send_started_at is None
     assert rb["mismatched"] >= 1 and "first_name" not in str(rb), rb
+
+
+# ------------------------------------------------------------------ S5 fixture variants (D62)
+# FIXTURE ASSUMPTIONS from the legacy author's notes (legacy-audit.md R7): they show how this
+# adapter handles such a page, not that a real page behaves this way.
+
+
+@pytest.mark.parametrize(
+    "posting,mode,expected,accepted",
+    [
+        ((BOARD, JOB), "gh_phrase_in_body", "rejected", 0),  # R6.4: words on the form
+        ((BOARD, JOB), "gh_confirm_other_job", "unknown", 1),  # another posting's page
+        (THANKS, "validation_fail", "rejected", 0),  # R6.5: "confirmation" in the path
+        (THANKS, "error_after_accept", "unknown", 1),
+        (THANKS, "normal", "confirmed", 1),
+    ],
+)
+def test_confirmation_bound_to_attempt(api, receiver, posting, mode, expected, accepted):
+    """Confirmed only by this attempt's own confirmation page: confirmation-like words on the
+    form, a posting path that says "thanks" or "confirmation", or another posting's page never
+    confirm; a page listing errors is a rejection whatever else it says."""
+    aid = queue(api, gh_application(api, posting=posting))
+    receiver.config(mode=mode)
+    assert runner.run_attempt(aid, "w1") == expected
+    assert receiver.ledger()["accepted"] == accepted
+    assert runner.run_attempt(aid, "w2") == "ignored"  # never sent again
+    assert receiver.ledger()["accepted"] == accepted
+
+
+def test_readback_mismatch_stops_before_submit_when_the_page_unticks_an_approved_box(api, receiver):
+    """R2.9: two approved boxes of "select all that apply"; the page unticks one."""
+    aid = queue(api, gh_application(api))
+    receiver.config(mode="gh_group_untick")
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    assert "did not keep their values" in attempt(aid).outcome_detail
+    assert receiver.ledger()["accepted"] == 0
+    assert attempt(aid).send_started_at is None
+
+
+def test_code_entered_by_user_only_one_character_per_box(api, receiver):
+    """R7.4: eight one-character boxes and a disabled button. Filled only with the code the
+    user typed at the checkpoint; a code that does not fit the boxes is never typed or sent."""
+    app_id = gh_application(api)
+    aid = queue(api, app_id)
+    receiver.config(mode="gh_security_code_boxes")
+    w = start_worker(aid, "w-gh")
+    cp = open_checkpoint(api, app_id, 1)
+    assert receiver.ledger()["accepted"] == 0
+    r = api.post(
+        f"/applications/{app_id}/checkpoints/{cp['id']}/code", json={"round": 1, "code": "AB12"}
+    )
+    assert r.status_code == 202
+    cp2 = open_checkpoint(api, app_id, 2)
+    challenge = wait_for(lambda: receiver.ledger()["challenges"])[-1]
+    assert challenge["attempts"] == 0  # the short code was never submitted
+    r = api.post(
+        f"/applications/{app_id}/checkpoints/{cp2['id']}/code",
+        json={"round": 2, "code": challenge["code"]},
+    )
+    assert r.status_code == 202
+    out, err = w.communicate(timeout=60)
+    assert out.strip() == "confirmed", err[-800:]
+    assert receiver.ledger()["accepted"] == 1
+    assert challenge["code"] not in out + err
+
+
+def test_code_entered_by_user_only_an_unrecognised_code_entry_is_never_filled(api, receiver):
+    """R7.4: a code step NoEfforts does not recognise: nothing is typed, nothing is clicked
+    again; the outcome is unknown and reconciled by the user."""
+    app_id = gh_application(api)
+    aid = queue(api, app_id)
+    receiver.config(mode="gh_security_code_other")
+    assert runner.run_attempt(aid, "w1") == "unknown"
+    assert "does not recognise" in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and [c["attempts"] for c in led["challenges"]] == [0]
+    assert runner.run_attempt(aid, "w2") == "ignored"
+    assert api.get(f"/applications/{app_id}").json()["state"] == "submitted_unconfirmed"
+
+
+def test_a_challenge_after_the_final_click_is_never_confirmed_or_clicked_again(api, receiver):
+    """R4.9b: the form loads clean; a bot check shows only after the final click. Never
+    solved, never clicked again; the outcome is unknown and quarantined."""
+    app_id = gh_application(api)
+    aid = queue(api, app_id)
+    receiver.config(mode="gh_challenge_after_submit")
+    assert runner.run_attempt(aid, "w1") == "unknown"
+    assert "bot check" in attempt(aid).outcome_detail
+    assert runner.run_attempt(aid, "w2") == "ignored"
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and kinds(led) == {"upload": 1, "submit_challenged": 1}
+    assert api.get(f"/applications/{app_id}").json()["state"] == "submitted_unconfirmed"
+
+
+def test_no_cookie_banner_or_i_agree_button_is_ever_clicked(api, receiver):
+    """R11.8: a cookie banner and an in-form "I agree" button are left alone."""
+    aid = queue(api, gh_application(api))
+    receiver.config(mode="gh_consent_banner")
+    assert runner.run_attempt(aid, "w1") == "confirmed"
+    led = receiver.ledger()
+    assert "consent_click" not in kinds(led)
+    assert not led["acceptances"][0]["fields"].get("terms_agreed")
+
+
+def test_a_submit_button_waiting_for_an_unlisted_click_stops_before_the_final_click(api, receiver):
+    """R11.8: the submit button stays disabled until "I agree" is clicked: NoEfforts clicks
+    neither and stops before the send gate."""
+    aid = queue(api, gh_application(api))
+    receiver.config(mode="gh_consent_blocking")
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    assert "still disabled" in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and kinds(led) == {"upload": 1}  # no click recorded
+    assert attempt(aid).send_started_at is None
+
+
+def test_each_step_read_back_before_next_a_second_page_stops_before_disclosure(api, receiver):
+    """R2.10: a form that continues on a second page is not filled at all: the first page
+    lacks approved questions, so the attempt stops before anything is disclosed; captured
+    that way, the form is refused."""
+    aid = queue(api, gh_application(api))
+    receiver.config(mode="gh_two_steps")
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert "changed since you approved" in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+    r = api.post(f"/jobs/{gh_job(api)}/form/greenhouse")
+    assert r.status_code == 409 and "(reason: form_sources_disagree)" in r.text

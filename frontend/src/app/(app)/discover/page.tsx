@@ -77,6 +77,29 @@ export default function DiscoverPage() {
     }
   }
 
+  // S6 (D67): re-reads this one record at its source. Never a live read; the linked job is not
+  // changed, only what the source says about it.
+  async function refresh(r: DiscoveredJob) {
+    setNotice(null);
+    setError(null);
+    try {
+      const out = await api<{ outcome: "updated" | "unchanged" | "gone" }>(`/discovery/jobs/${r.id}/refresh`, {
+        method: "POST",
+      });
+      const name = `“${r.title ?? "listing"}”`;
+      setNotice(
+        out.outcome === "gone"
+          ? `${name} is no longer at the source. It stays here, marked as such; your job was not changed.`
+          : out.outcome === "updated"
+            ? `${name} changed at the source. Your job was not changed.`
+            : `${name} is unchanged at the source.`,
+      );
+      load();
+    } catch (e) {
+      setError(e);
+    }
+  }
+
   async function stop(w: DiscoveryWatch) {
     try {
       await api(`/discovery/watches/${w.id}/stop`, { method: "POST" });
@@ -123,7 +146,7 @@ export default function DiscoverPage() {
         ) : (
           <ul className="divide-y divide-slate-100">
             {rows.map((r) => (
-              <DiscoveredRow key={r.id} r={r} onDelete={() => remove(r)} />
+              <DiscoveredRow key={r.id} r={r} onDelete={() => remove(r)} onRefresh={() => refresh(r)} />
             ))}
           </ul>
         )}
@@ -252,7 +275,7 @@ function RunDiscovery({ providers, onDone }: { providers: DiscoveryProviderInfo[
   );
 }
 
-function DiscoveredRow({ r, onDelete }: { r: DiscoveredJob; onDelete: () => void }) {
+function DiscoveredRow({ r, onDelete, onRefresh }: { r: DiscoveredJob; onDelete: () => void; onRefresh: () => void }) {
   const sponsorship = r.source_facts.sponsorship_offered;
   return (
     <li className="space-y-1 py-3 text-sm">
@@ -301,6 +324,9 @@ function DiscoveredRow({ r, onDelete }: { r: DiscoveredJob; onDelete: () => void
             Original listing
           </a>
         )}
+        <button type="button" className="text-indigo-700 underline" onClick={onRefresh}>
+          Refresh from source
+        </button>
         <button type="button" className="text-red-700 underline" onClick={onDelete}>
           Delete
         </button>

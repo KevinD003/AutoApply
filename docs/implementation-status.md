@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-28 (preparation: a sensitive answer reaches the employer only as you chose, shown by the receiver's ledger; "Don't disclose" on a required question sends the form's one decline option, D61; an answer or a choice applies only to the question as shown, and "Include this answer" only to the answer shown, D60; jobs: a posting its source says is closed, a job you excluded or closed, and a role that looks like one you already have an application for wait for your statement before approval, D59; earlier: preparation: a LinkedIn or website question gets the profile's link only when exactly one is of its kind, read from the host, D58; earlier: a State list naming every US state gets the profile's state; a City list is never picked from the profile; any other State, City or Country list is your answer for this application, never saved, D57; earlier: discovery: watched Freehire searches for the owner, checked as often as once a minute, and a delete for discovered postings that keeps them deleted, D56; a live Freehire read for the owner, one approved run at a time, D55; none made, the cloud sandbox refuses freehire.me; earlier: preparation: the legacy collision corpus (244 wording traps) is a permanent test; someone else's details, preferences read as residence, residence and nationality in other words, any relocation question but the plain one, a negated right to work, agree/decline options under a neutral label and facts that do not fit their field are checkpoints; static guards refuse a mailbox client and page capture; earlier: tracking: a submission says what it rests on (an employer receipt, your statement, or nothing known), a confirmation by you needs what you checked, outcomes are dated, sourced and audited, assessment received exists, an outcome before any known submission is refused, events are insert-only in the database, and a per-user funnel counts with denominators and no rate; earlier: documentation: the Freehire-first review published, with the Freehire re-check of 2026-10-26, an amendment to D34 and D52; earlier: preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-29 (discovery: Freehire counters no longer count as changes, a source's Retry-After holds back your next request, each listing can be refreshed, D67; preparation: the review page shows what changed between versions, D66; every refusal to approve, queue or revoke has a reason code, and revoking stops a queued submission at once, D65; answers can be changed, cleared and added on the review page where your input is allowed, with a cover-letter choice and where the form sends, D64; a salary is sent only in the units the question allows, D63; execution: fixture variants for the legacy page traps, and every confirmation bound to its own attempt, D62; earlier: preparation: a sensitive answer reaches the employer only as you chose, shown by the receiver's ledger; "Don't disclose" on a required question sends the form's one decline option, D61; an answer or a choice applies only to the question as shown, and "Include this answer" only to the answer shown, D60; jobs: a posting its source says is closed, a job you excluded or closed, and a role that looks like one you already have an application for wait for your statement before approval, D59; earlier: preparation: a LinkedIn or website question gets the profile's link only when exactly one is of its kind, read from the host, D58; earlier: a State list naming every US state gets the profile's state; a City list is never picked from the profile; any other State, City or Country list is your answer for this application, never saved, D57; earlier: discovery: watched Freehire searches for the owner, checked as often as once a minute, and a delete for discovered postings that keeps them deleted, D56; a live Freehire read for the owner, one approved run at a time, D55; none made, the cloud sandbox refuses freehire.me; earlier: preparation: the legacy collision corpus (244 wording traps) is a permanent test; someone else's details, preferences read as residence, residence and nationality in other words, any relocation question but the plain one, a negated right to work, agree/decline options under a neutral label and facts that do not fit their field are checkpoints; static guards refuse a mailbox client and page capture; earlier: tracking: a submission says what it rests on (an employer receipt, your statement, or nothing known), a confirmation by you needs what you checked, outcomes are dated, sourced and audited, assessment received exists, an outcome before any known submission is refused, events are insert-only in the database, and a per-user funnel counts with denominators and no rate; earlier: documentation: the Freehire-first review published, with the Freehire re-check of 2026-10-26, an amendment to D34 and D52; earlier: preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,107 @@ Last updated: 2026-10-28 (preparation: a sensitive answer reaches the employer o
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Freehire contract hardening (S6, 2026-10-29; fixture only, no Freehire request)
+
+- **Scope:** plan step S6, decision D67; evidence: `docs/evidence-matrix.md` ("Freehire contract
+  hardening"). R9.2, R9.4-R9.7. No live read, live-status, pilot-gate or package-shape change.
+- **Now:** the record fingerprint reads only the documented fields NoEfforts uses, so
+  `reality`, counters and enrichment metadata never count as a change (fixture mode
+  `fh_reality_tick`); a `Retry-After` in seconds holds back that user's next import or
+  refresh (429, "Nothing was sent.") before any request and before a live run approval is
+  used (`discovery_backoffs`, migration `f150c66c69e3`); referral codes are dropped for
+  deduplication; Discover has "Refresh from source" on each listing. Manual imports stay inside
+  the request (D67 says why).
+- **One-time effect:** a record stored before S6 counts once as changed on its next read (test
+  data only).
+- **Tests:** 10 new in `tests/test_freehire_discovery.py` and `tests/test_freehire_live_read.py`,
+  1 migration test; the Freehire files 73 passed; Playwright "a listing refreshes from its
+  source" 2 passed (desktop and mobile). Sabotage 8 cases, 7 caught at first: a 429 without
+  `Retry-After` was not tested; added, then 8 caught. A container restart interrupted the
+  sabotage run once and left one change in place; it was found and restored before anything
+  else ran.
+
+## Version diff (C14, 2026-10-28; local only)
+
+- **Scope:** plan step C14, decision D66. No package-shape change (`SCHEMA_VERSION` 2).
+- **Now:** `GET /applications/{id}/package/diff` compares two stored versions in the review
+  page's words; "What changed in vN" on each history row and "What changed since you approved
+  vN" on an invalidated approval. It never builds, approves or records anything.
+- **Tests:** `tests/test_version_diff.py` 7 passed; `review-edit.spec.ts` "after an edit, the
+  page shows what changed" 2 passed. Sabotage 6 cases, 5 caught at first ("the diff builds the
+  current version" was missed); a test for a pending version was added, then 6 caught.
+
+## Approval reasons and revoking (C13, 2026-10-28; local only)
+
+- **Scope:** plan step C13, decision D65; `docs/approval-reasons.md`. No package-shape change.
+- **Now:** nine fixed reason codes for every refusal to approve, queue or revoke; revoking
+  cancels an attempt no worker has taken (the application waits for approval again), leaves one
+  a worker holds to the gates, is refused after the send gate (`revoke_in_flight`), and is
+  audited with what it did.
+- **Changed test:** `test_execution_failures.py::test_revocation_before_claim` now expects the
+  attempt cancelled by the revocation itself; it still asserts nothing was disclosed or
+  accepted.
+- **Tests:** `tests/test_approval_reasons.py` 9 passed, two new races in
+  `tests/test_lock_order.py`; `approval-revoke.spec.ts` 4 passed (desktop and mobile).
+  Sabotage 6 cases, 6 caught.
+
+## Review page: change, clear, optional answers, cover letter, destination (C12, 2026-10-28; local only)
+
+- **Scope:** plan step C12, decision D64. The controls sit outside the package content
+  (no hash or `SCHEMA_VERSION` change).
+- **Now:** where the resolver allows your input you can change or clear an answer and answer
+  an optional question; a protected fact links to the profile; a cover letter can be chosen or
+  left out; "Where this goes" names the address and whether it is a fixture or the employer's
+  own site. Clearing and document changes are audited by reference.
+- **Tests:** `tests/test_review_controls.py` 6 passed; `review-edit.spec.ts` 6 passed
+  (desktop and mobile; the ledger holds the changed values). Sabotage 7 cases, 6 caught: the
+  acknowledgment rule was redundant (an acknowledgment never allows input) and was removed;
+  then 6 of 6.
+
+## Salary units (C9, 2026-10-28; local only)
+
+- **Scope:** plan step C9, decision D63; `docs/answer-policy.md` row 3. The fact-reference
+  `version` key change is [shape] and waits for C18.
+- **Now:** a salary is sent only in the currency and period the question allows (currency by
+  code, sign or help text; period); a bare number only when both are stated in your
+  Preferences and match; anything else is your answer for this application.
+- **Tests:** 26 new resolver tests (17 fail on the previous code). A sweep of 805 synthetic
+  forms in 32 contexts: 5,476 values withdrawn and nothing new sent except your own typed
+  answers; 1,244 earlier values carried no currency or said "per None". Sabotage 8 cases,
+  8 caught.
+
+## Fixture variants and admission scenarios (S5, 2026-10-28; fixtures only, no external request)
+
+- **Scope:** plan step S5, decision D62. R2.7, R2.9, R2.10, R4.9b, R6.4, R6.5, R7.4, R11.8. No
+  admission stage, live-status or pilot-gate change; the challenge stop is not narrowed.
+- **Now:** fixture modes for the legacy notes' page traps (confirmation words in the page,
+  code boxes, a challenge after the final click, an unticked group, cookie and consent
+  banners, two steps, an unlisted option, an autofill overwrite, a receipt for another
+  posting); each adapter stops on or handles them, and every provider's confirmation is bound
+  to its own attempt. Three capability scenarios and the multi-step trait scenario in
+  admission.
+- **Tests:** 8 new Greenhouse adapter tests, 5 DOM tests, one each in the execution-failure
+  and API-provider files, 6 new scenario entries. Sabotage 15 cases, 15 caught.
+
+- **Tests run locally for S5, C9, C12, C13, C14 and S6 together (cloud sandbox, PostgreSQL 16,
+  Redis 7):**
+  - a first full backend run for S5 and C9 alone was stopped by a container restart at 81 %
+    with no failure so far; it was not repeated on its own;
+  - full backend (all six): 3310 passed, 1 failed, exit 1, 31 min 22 s. The failure was
+    `test_support_wording.py::test_the_api_serves_the_labels`, which pins the labels the review
+    page is served and did not yet list C12's `destination`; the expected labels now include it
+    (and check that a fixture destination is labelled as one); that file then 8 passed;
+  - full Playwright, first run: 52 passed, 4 failed, 4 did not run, 2 skipped, exit 1, 8.0 min.
+    Two causes, both in tests: `phase-b.spec.ts` looked up the "Profile" link by a name that
+    C12's "Change it in your profile" links now also contain (now matched exactly), and the new
+    `review-edit.spec.ts` asserted that First Name offers no change, which was wrong: the
+    resolver lets you give a non-protected fact differently for one application; the rule meant
+    is that a protected fact (work authorization) is changed in the profile, which the test now
+    checks. Those two files then 8 passed (desktop and mobile);
+  - full Playwright again: 60 passed, 2 skipped, exit 0, 7.4 min;
+  - `ruff check`, `ruff format --check`, `npx tsc --noEmit`, `npm run lint`: all exit 0.
+- **CI for the previous change:** CI #110 (run `40785089351`, `38079e6`, C8) passed.
 
 ## The disclose path, counted by the receiver (C8, 2026-10-28; local only, no external request)
 

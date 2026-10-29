@@ -148,6 +148,9 @@ class FakeApiAdapter:
         except (urllib.error.URLError, TimeoutError, ConnectionError):
             return Outcome("unknown", "no response from the API after sending")
         if status == 200 and data.get("status") == "accepted" and data.get("receipt"):
+            if data.get("application") != draft:  # S5 (D62): bound to this attempt's draft
+                return Outcome("unknown", "the API accepted an application, but not the one this "
+                               "attempt created", None, status)  # fmt: skip
             return Outcome("accepted", "the API returned a receipt", data["receipt"], status)
         if status == 422:
             return Outcome("rejected", "the API rejected the application", None, status)

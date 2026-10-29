@@ -127,3 +127,18 @@ class DiscoveryWatch(Base):
     found_total: Mapped[int] = mapped_column(Integer, default=0)
     budget_day: Mapped[date | None] = mapped_column(Date)
     requests_on_day: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class DiscoveryBackoff(Base):
+    """S6 (D67): when a provider refused this user's requests with a Retry-After, the time
+    before which NoEfforts sends it none of this user's imports or refreshes. Never re-run by
+    itself: the user imports again after that time."""
+
+    __tablename__ = "discovery_backoffs"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    provider: Mapped[str] = mapped_column(String(50), primary_key=True)
+    not_before: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

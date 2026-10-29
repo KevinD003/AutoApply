@@ -1456,3 +1456,193 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   form does not need); matching any label containing "decline" (an "Other / decline" option is
   not clearly a refusal); choosing between two decline options; sending a required question
   blank (the employer's form refuses it, or worse, reads it as an answer).
+
+## D62 — Fixture variants from the legacy notes; confirmation bound to the attempt everywhere (S5, 2026-10-28)
+- **Problem:** the legacy author's notes on real pages (`legacy-audit.md` R7, HYPOTHESIS:
+  phrases that look like a confirmation, code boxes, autofill after an upload, bot checks after
+  the click, consent banners, multi-page forms) had no fixture, so nothing showed what the
+  adapters do on such a page. Admission required no scenario for dropdowns, location pickers,
+  confirmation detection or multi-step forms, and two adapters accepted a confirmation without
+  binding it to the attempt (the generic fixture took any page with a receipt; the v2 adapter
+  took a status message even when it was on the page before the click; the API adapter took
+  any acceptance).
+- **What changed (fixtures, FIXTURE ASSUMPTION each, `fixtures/ats_receiver/README.md`):**
+  sixteen modes and a posting path holding "thanks" and "confirmation"; each click on a
+  banner, an "I agree" button or a submit that meets a bot check is recorded in the ledger.
+- **What changed (adapters, fixture-only):**
+  - confirmation is bound to the attempt in every adapter: the generic one now needs its own
+    POST to this posting and the receipt shown on this posting's pages; v2 ignores a
+    confirmation-like message present before the click (unknown); the API adapter needs the
+    reply to name the application this attempt created; words on a page never confirm;
+  - a bot check after the final click is unknown with a fixed reason, never solved or
+    clicked again (`submitted_unconfirmed`, reconciled by the user);
+  - the Greenhouse-like adapter types the user's code into one input or one character per box
+    (four to twelve one-character inputs); a code that does not fit is never typed and is asked
+    again; a code step it does not recognise is unknown, nothing typed;
+  - nothing outside the approved answers is clicked; a submit button still disabled after
+    filling stops before the send gate (abandoned); a form that continues on another page
+    stops before disclosure (its first page lacks approved questions).
+- **What changed (admission):** `CAPABILITY_SCENARIOS` gains `custom_dropdowns` →
+  `unlisted_option_is_checkpoint`, `location_picker` → `location_exact_or_checkpoint`,
+  `confirmation_detection` → `confirmation_bound_to_attempt`; `TRAIT_SCENARIOS` requires
+  `each_step_read_back_before_next` for a `multi_step` trait that is not "no" or "not
+  applicable" (`greenhouse_hosted`, "unknown"). Each required pair has a ledger test; no gap
+  is recorded.
+- **Unchanged:** no admission stage moves (`fixture_only` remains what fixtures prove); the
+  challenge stop is not narrowed (the owner decision in `implementation-plan.md`); filling a
+  second page stays unsupported; real employer destinations stay refused; no package-shape
+  change (`SCHEMA_VERSION` 2).
+- **Rejected:** treating a bot check after the click as a rejection (the data may have
+  arrived); typing part of a code into the boxes; clicking "I agree" or a cookie banner for
+  the user; recording a scenario gap instead of a test.
+
+## D63 — A salary is sent only in the units the question allows (C9, 2026-10-28)
+- **Problem:** the salary expectation was sent whenever a question looked like one: a number
+  field got the bare amount in whatever currency and period the question meant; currency was
+  read only from three-letter words in the label (not "€", "£", "₹", "C$", nor the help text);
+  only an annual period was checked; an expectation with no currency or no period was sent as
+  "85,000–95,000  per year" or "… USD per None".
+- **What changed (`resolver.salary_units`, `_salary`):** the question's currencies (codes,
+  signs; a bare "$" names no particular dollar) and periods (year, month, week, day, hour) are
+  read from its wording and help text. The expectation needs both its currency and its period
+  in Preferences. A question naming another currency, two currencies, another period or two
+  periods is the user's answer for this application. A number field gets the amount only when
+  the question states both the same currency and the same period; a text field gets the range
+  with its own units. Choice lists stay the user's. Never saved (C6).
+- **Relocation:** unchanged; only the plain yes/no question is answered from Preferences (S4);
+  a question with a place, time, cost or condition is the user's.
+- **Sweep (805 forms: the 529 corpus forms with a field about pay, kept to those fields, plus
+  276 generated wordings; × 32 contexts, 25,760 rows, against the C8 tree):** 5,476 rows changed, every one a withdrawal of
+  a preference-derived answer; the only new values are the user's own typed answers (2,738
+  rows); nothing became bankable or draftable. The old code produced 1,244 values with no
+  currency or "per None".
+- **Unchanged:** `SCHEMA_VERSION` (2) and `RESOLVER_VERSION`; the salary fact reference keeps
+  its `version` string (its shape changes once, in C18). Packages with a changed row get a new
+  version at their next rebuild and their approval is invalidated.
+- **Rejected:** converting currencies or periods (an exchange rate or working hours would be a
+  guess); assuming a bare "$" means US dollars; sending a bare number when the question names
+  only one of the two units.
+
+## D64 — The review page can change, clear and add answers, and says where the form sends (C12, 2026-10-28)
+- **Problem:** once an answer was saved it could not be changed or removed from the review
+  page (only answered while unresolved); an optional question nothing in the profile answers
+  could not be answered at all; only a resume could be chosen, though the API already took a
+  cover letter; and the page did not say where the form would send.
+- **What changed:**
+  - the package view gains `review` (outside the content, so no hash or approval changes):
+    per question `answer_here` (the resolver allows the user's input, it is not a document or
+    an unsupported control, and it is asked), `clear` (an answer for this application is
+    stored), `document_role`, `not_asked`; and `labels.destination` (a local test fixture, or
+    the employer's own site);
+  - the page offers "Change answer", "Answer this optional question" and "Clear my answer"
+    where those hold, and "Change it in your profile" for a fact that belongs there; sensitive
+    questions keep their own card (now with "Clear my answer"); a cover letter can be chosen,
+    or "None" for an optional one; the destination card says "Sends to …" and where the form
+    itself is when that differs;
+  - `PUT /applications/{id}/documents` takes `clear` (`resume`, `cover_letter`); clearing an
+    answer and choosing or clearing a document are audited (`application.answer_cleared`
+    with a reference to the question, `application.document` with the role and the change).
+- **Unchanged:** what can be answered (the resolver decides; protected facts stay in the
+  profile), every approval rule (a changed answer is a new package version), `SCHEMA_VERSION`
+  (2), no migration.
+- **Rejected:** editing a protected fact on this page (one profile, every application stays
+  consistent); adding the controls to the package content (a wording change would re-hash
+  every package).
+
+## D65 — Approval refusals carry reason codes; revoking stops what it can and says so (C13, 2026-10-28)
+- **Problem:** refusals to approve or queue were free text with no fixed code (only the job
+  signals and the rehearsal prerequisite had codes). Revoking an approval while its attempt
+  waited for a worker left the application "Approved and queued" until a worker picked the
+  attempt up and the gate failed it safe (and stuck there while no worker ran); revoking after
+  the final click had begun was accepted and recorded as "Revoked by you" on an approval that
+  had already sent; and the page said only "Approval revoked." whatever had happened.
+- **What changed:**
+  - `package.APPROVAL_REASONS`: nine fixed codes (`package_changed`, `package_unresolved`,
+    `approval_other_scope`, `approval_needed`, `already_confirmed`, `submission_in_progress`,
+    `attempt_running`, `attempt_being_claimed`, `revoke_in_flight`), each message ending
+    "(reason: code)"; `docs/approval-reasons.md` lists exactly these (checked by a test);
+  - `execution.service.stop_for_revoke`, under the cancel lock order (the attempt, then the
+    application): an attempt no worker has taken is cancelled at once and the application
+    waits for an approval again; one a worker holds before the send gate is left to the gates,
+    which refuse the revoked approval; after the send gate revoking is refused
+    (`revoke_in_flight`) and the approval stays as it was;
+  - `package.revoke` is audited with `queued_attempt` (`none`, `cancelled`, `stopping`); the
+    revoke reply carries `revoke_effect`, and the page says what was stopped. The approval note
+    says what revoking can and cannot stop.
+- **Evidence:** `tests/test_approval_reasons.py` (each code produced by its path; revoke before
+  a worker, while a worker holds the attempt, after the final click; cross-tenant), two
+  deterministic races in `tests/test_lock_order.py` (a revoke waiting for a claim, and for the
+  send gate), and `frontend/e2e/approval-revoke.spec.ts`.
+- **Changed test:** `test_execution_failures.py::test_revocation_before_claim` now expects the
+  attempt cancelled by the revocation itself rather than failed safe later by the gate; it still
+  asserts that nothing was disclosed or accepted, and now also that a late delivery does nothing.
+- **Unchanged:** the gates and their lock order; nothing after the send gate is ever retried or
+  recalled; `SCHEMA_VERSION` (2); no migration.
+- **Rejected:** letting a revocation cancel an attempt a worker already holds (the worker would
+  lose its fence mid-step; the gates already stop it at the next one); accepting a revocation
+  after the send gate (it would claim to stop what may already have been sent).
+
+## D66 — A read-only diff between package versions (C14, 2026-10-28)
+- **Problem:** the version history listed "answers changed: question_7004" (the posting's own
+  field keys) and an invalidated approval said only why; the user could not see what changed
+  since they approved.
+- **What changed:** `GET /api/applications/{id}/package/diff?from_version=&to_version=` (by
+  default the latest stored version and the one before it) compares two stored versions in the
+  review page's words: each question by its label, with the shown value before and after and
+  what changed (the answer, the question itself, or only the facts behind it; added or
+  removed); documents by their shown name; consent choices; the destination's title, employer,
+  addresses and form version. Fact references, hashes of facts and record versions are never
+  shown. The review page offers "What changed in vN" on each history row and "What changed
+  since you approved vN" on an invalidated approval.
+- **Read-only:** the diff never builds, approves or records anything (tested by counting
+  package versions and audit rows, including when a version is pending); it compares only
+  stored versions, and the review page loads the current one first. Owner-scoped: another
+  user's application is 404.
+- **Unchanged:** the package content and its hash, the history's own summary, approvals.
+- **Rejected:** diffing the raw JSON (fact references and keys are not the user's words);
+  building the current version from the diff endpoint (a read would then write).
+
+## D67 — Freehire contract hardening: what counts as a change, and waiting when asked (S6, 2026-10-28)
+- **Problem:** the record fingerprint covered Freehire's whole response, including `reality`,
+  view and application counters and enrichment metadata that change between reads, so nearly
+  every refresh counted as "updated". A `429` ended a run but nothing stopped the user's next
+  request from arriving before the source's `Retry-After`. A referral code (`referral-code`)
+  survived URL canonicalization and could defeat URL deduplication. Discover had no refresh
+  control.
+- **What changed:**
+  - `provider.freehire_fingerprint` covers only the documented fields NoEfforts reads
+    (`FREEHIRE_READ`, and from `enrichment` only `FREEHIRE_ENRICHMENT_READ`); `reality`,
+    counters, enrichment metadata and undocumented fields (`last_seen_at`, `ghost`,
+    `auto_apply_available`, `direct_apply`) never make a change. The local mock is unchanged.
+  - A per-user "not before" time (`discovery_backoffs`, keyed by user and provider) is stored
+    from a `429`'s `Retry-After` in seconds (at most a day). Until then that user's imports and
+    single-record refreshes are refused with `429` and a typed `rate_limited_wait`
+    ("… Nothing was sent."), before any request and before a live run approval is used. Nothing
+    re-runs by itself; without a `Retry-After` in seconds, or after an outage, no wait is
+    assumed. Other users are not held back. Watches keep their own backoff (D56).
+  - `referral-code` and `referral_code` join the tracking parameters dropped for deduplication;
+    the stored job address keeps them.
+  - Discover offers "Refresh from source" on each listing: it re-reads that one record (never a
+    live read, D55) and says whether it is unchanged, changed (the user's job is not changed) or
+    no longer at the source.
+- **One-time effect:** a record stored before this change carries a whole-record fingerprint, so
+  its first read afterwards counts once as changed (with no changed fields listed). Only test
+  data exists; no record outside tests is affected.
+- **Kept as is:** manual imports stay inside the request, bounded by the page limit and
+  timeout, rather than moving to a background job. Watched searches already run in the
+  background (D56); a background manual import would add a second path to the same budget and
+  approval checks for no gain at the page limits in force.
+- **Discovery access:** the owner allow-list (D55) limits the reads that reach Freehire (live
+  runs and watches). Fixture and mock providers serve local synthetic data and stay available
+  to every account in development and tests.
+- **Evidence:** `tests/test_freehire_discovery.py` (`fh_reality_tick` refresh and import
+  unchanged while a real change is still seen; tagged and referral URLs give one key; an
+  aggregator address is an unknown ATS and a manual handoff; the 2026-10-26 undocumented
+  fields change nothing; an import or refresh before `Retry-After` is refused and sends
+  nothing; no wait without `Retry-After`), `tests/test_freehire_live_read.py` (a held-back run
+  leaves its approval unused), `tests/test_migrations.py` (the table added and dropped alone),
+  `frontend/e2e/discovery.spec.ts` (the refresh control and the wait).
+- **Unchanged:** never waiting or retrying inside a run; the live-read gate (D55); watches (D56);
+  `SCHEMA_VERSION` (2).
+- **Rejected:** sleeping until `Retry-After` and retrying (a retry the user did not ask for);
+  a global backoff shared by all users (one user's refusal would block everyone).

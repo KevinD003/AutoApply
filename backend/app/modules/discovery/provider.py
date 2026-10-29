@@ -106,6 +106,20 @@ def fingerprint(raw: dict) -> str:
     return hashlib.sha256(json.dumps(raw, sort_keys=True, default=str).encode()).hexdigest()
 
 
+# S6 (D67, R9.4): the documented Freehire fields NoEfforts reads. Only these decide whether a
+# record "changed": `reality`, view and application counters, enrichment metadata and the
+# record's own `updated_at` tick without the posting changing.
+FREEHIRE_READ = ("public_slug", "source", "url", "title", "company", "location", "description",
+                 "work_mode", "cities", "posted_at", "closed_at")  # fmt: skip
+FREEHIRE_ENRICHMENT_READ = ("employment_type", "visa_sponsorship")
+
+
+def freehire_fingerprint(raw: dict) -> str:
+    enr = raw.get("enrichment") if isinstance(raw.get("enrichment"), dict) else {}
+    read = {k: raw.get(k) for k in FREEHIRE_READ}
+    return fingerprint(read | {"enrichment": {k: enr.get(k) for k in FREEHIRE_ENRICHMENT_READ}})
+
+
 def tri(value) -> str:
     return "yes" if value is True else "no" if value is False else "unknown"
 
@@ -504,7 +518,7 @@ class FreehireApiProvider(DiscoveryProvider):
                     "basis": "provider enrichment",
                 },
             },
-            raw_fingerprint=fingerprint(raw),
+            raw_fingerprint=freehire_fingerprint(raw),  # S6 (D67)
             raw_keys=sorted(str(k) for k in raw)[:60],
             closed_at_source=bool(raw.get("closed_at")),
             missing=_missing(url, None, title, employer),

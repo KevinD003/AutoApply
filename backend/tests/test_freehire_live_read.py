@@ -207,3 +207,22 @@ def test_the_live_flag_opens_only_the_live_origin(monkeypatch):
     p.live = True
     with pytest.raises(fh.DiscoveryError, match="not enabled"):
         p.list_jobs(fh.DiscoveryFilters(query="i"), None)
+
+
+def test_a_run_held_back_by_retry_after_does_not_use_its_approval(api, receiver):
+    """S6 (D67): the wait is checked before the approval, so the approval survives it."""
+    from app.modules.discovery.models import DiscoveryBackoff
+
+    first = approval(me(api))
+    receiver.config(fh_mode="fh_rate_limited", fh_retry_after=120)
+    assert run(api, query="i").status_code == 503 and used(first)
+    sent = len(fh_requests(receiver))
+    second = approval(me(api))
+    receiver.config(fh_mode="normal")
+    assert run(api, query="i").status_code == 429
+    assert not used(second) and len(fh_requests(receiver)) == sent
+    with SessionLocal() as db:
+        b = db.get(DiscoveryBackoff, (me(api), "freehire"))
+        b.not_before = utcnow() - timedelta(seconds=1)
+        db.commit()
+    assert run(api, query="i").status_code == 200 and used(second)

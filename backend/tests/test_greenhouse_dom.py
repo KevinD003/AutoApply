@@ -336,3 +336,77 @@ def test_full_run_with_group_named_attachments(api, receiver):
     approved = api.get(f"/applications/{app_id}/package").json()["package"]["content"]
     assert up["field"] == "resume" and up["sha256"] == approved["documents"][0]["sha256"]
     assert led["acceptances"][0]["fields"]["resume_attachment_id"] == up["attachment_id"]
+
+
+# ------------------------------------------------------------------ S5 fixture variants (D62)
+# FIXTURE ASSUMPTIONS from the legacy author's notes (legacy-audit.md R7): they show how this
+# adapter handles such a page, not that a real page behaves this way.
+
+
+@pytest.mark.parametrize(
+    "mode,expected,accepted",
+    [
+        ("gh2_phrase_in_body", "rejected", 0),  # R6.4: a confirmation-like status, then errors
+        ("gh2_phrase_no_confirmation", "unknown", 1),  # accepted, but nothing new confirmed it
+        ("gh2_no_confirmation", "unknown", 1),
+    ],
+)
+def test_confirmation_bound_to_attempt(api, receiver, mode, expected, accepted):
+    """A confirmation-like message already on the form never confirms the click: only one shown
+    after this attempt's own POST to this posting does."""
+    aid = queue(api, v2_application(api))
+    receiver.config(mode=mode)
+    assert runner.run_attempt(aid, "w1") == expected
+    assert receiver.ledger()["accepted"] == accepted
+    assert runner.run_attempt(aid, "w2") == "ignored"
+    if mode == "gh2_phrase_no_confirmation":
+        assert "before the final click" in attempt(aid).outcome_detail
+
+
+def test_unlisted_option_is_checkpoint(api, receiver):
+    """A dropdown offering an option the job data does not list is not the approved question:
+    the attempt stops before anything is disclosed, and no option is ever picked by guess."""
+    aid = queue(api, v2_application(api))
+    receiver.config(mode="gh2_option_unlisted")
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    detail = attempt(aid).outcome_detail
+    assert "changed since you approved" in detail and "options" in detail
+    assert "question_" not in detail and "not listed" not in detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+def test_readback_mismatch_stops_before_submit_when_an_upload_rewrites_fields(api, receiver):
+    """R2.7: after the resume upload is acknowledged, the page rewrites the phone and blanks
+    the last name ("autofill from your resume"). The readback catches it; nothing is
+    submitted; the upload is kept as a disclosure."""
+    aid = queue(api, v2_application(api))
+    receiver.config(mode="gh2_autofill_overwrite")
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    assert "2 field(s) did not keep their values" in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and kinds(led) == {"upload": 1}
+    assert attempt(aid).send_started_at is None
+
+
+def test_a_challenge_after_the_final_click_is_never_confirmed_or_clicked_again(api, receiver):
+    """R4.9b on the v2 structure: the form loads clean; a bot check shows after the click."""
+    app_id = v2_application(api)
+    aid = queue(api, app_id)
+    receiver.config(mode="gh2_challenge_after_submit")
+    assert runner.run_attempt(aid, "w1") == "unknown"
+    assert "bot check" in attempt(aid).outcome_detail
+    assert runner.run_attempt(aid, "w2") == "ignored"
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and kinds(led) == {"upload": 1, "submit_challenged": 1}
+    assert api.get(f"/applications/{app_id}").json()["state"] == "submitted_unconfirmed"
+
+
+def test_each_step_read_back_before_next_a_second_page_stops_before_disclosure(api, receiver):
+    """R2.10 on the v2 structure: the rest of the form is on a second page."""
+    aid = queue(api, v2_application(api))
+    receiver.config(mode="gh2_two_steps")
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert "changed since you approved" in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0

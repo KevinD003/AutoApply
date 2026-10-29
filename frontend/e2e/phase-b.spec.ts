@@ -72,7 +72,7 @@ test("phase B preparation and approval", async ({ page }, info) => {
   await page.screenshot({ path: `test-results/phase-b-review-${info.project.name}.png`, fullPage: true });
 
   // Change a protected fact: approval must be invalidated.
-  await page.getByRole("link", { name: "Profile" }).click();
+  await page.getByRole("link", { name: "Profile", exact: true }).click();
   await page.getByLabel("Will need sponsorship later").selectOption("yes");
   await expect(page.getByText(/later Yes · v2/)).toBeVisible();
   await page.getByRole("link", { name: "Tracker" }).click();

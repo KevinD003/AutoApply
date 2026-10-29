@@ -168,6 +168,14 @@ restriction stayed at 1 and no host setting was changed. Highlights from that ru
   the mounted `/run/secrets`, and the open Postgres/Redis;
 - receiver counts per scenario: `docs/evidence-matrix.md` (top section).
 
+## Revoking an approval (C13, D65)
+
+Revoking takes the same locks as a cancel, in the same order (the attempt, then the
+application). An attempt no worker has taken yet is cancelled at once; one a worker holds is
+stopped by the next gate, which refuses the revoked approval; after the send gate the revocation
+is refused (`revoke_in_flight`, `docs/approval-reasons.md`), since the submission may be in
+flight. Nothing is ever recalled or retried.
+
 ## Limits and what is not covered
 
 - **Hosts.** This was verified only on GitHub Actions `ubuntu-24.04` runners, with Docker

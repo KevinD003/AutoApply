@@ -12,7 +12,8 @@ Routes (Bearer token required on every one; cfg["fapi_token"]):
   GET  /fapi/v1/applications?idempotency_key=K          status by key (for reconciliation)
 Modes (cfg["mode"]): fapi_unauthorized, fapi_rate_limited_schema, fapi_rate_limited_submit,
 fapi_reject, fapi_error_before_accept, fapi_drop_after_accept (accepted, then the response is
-held past the client's timeout), fapi_schema_changed.
+held past the client's timeout), fapi_schema_changed, fapi_receipt_other (S5: accepted, but the
+reply names another application).
 Acceptances go to the receiver's own ledger (same `accept`, keyed by the idempotency key, so a
 repeated key never creates a second acceptance)."""
 
@@ -119,7 +120,8 @@ def mount(app, ledger, cfg, accept) -> None:
                          {**d["answers"], **{k: v for k, v in d["documents"].items()}})
         if mode == "fapi_drop_after_accept":
             await asyncio.sleep(float(cfg.get("drop_s", 15)))
-        return {"status": "accepted", "receipt": receipt}
+        named = "D-" + secrets.token_hex(6) if mode == "fapi_receipt_other" else draft
+        return {"status": "accepted", "receipt": receipt, "application": named}
 
     @app.get("/fapi/v1/applications")
     def status(idempotency_key: str, authorization: str | None = Header(None)):

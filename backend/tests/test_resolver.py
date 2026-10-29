@@ -925,3 +925,87 @@ def test_a_link_of_another_kind_is_never_the_answer(f, links):
     r = resolve_field(f, ctx(profile=profile(links=links)))
     assert (r.status, r.source, r.value) == ("needs_user", "unresolved", None)
     assert r.explanation.startswith("No ")
+
+
+# ---------------------------------------------------------------- C9: salary units (D63)
+
+USD_YEAR = NS(
+    id="pr1",
+    version=1,
+    approval_status=Approval.approved,
+    salary_min=85000,
+    salary_max=95000,
+    salary_currency="USD",
+    salary_period=SalaryPeriod.year,
+    willing_to_relocate=None,
+)
+
+
+def salary(label, typ=FieldType.number, help_text=None):
+    return FormField(key="s", label=label, type=typ, required=True, help_text=help_text)
+
+
+@pytest.mark.parametrize(
+    "label,typ,help_text,want",
+    [
+        ("Desired annual salary (USD)", FieldType.number, None, {"number": 85000.0}),
+        ("Desired salary (US$ per year)", FieldType.number, None, {"number": 85000.0}),
+        ("Desired salary", FieldType.number, "Annual amount in USD.", {"number": 85000.0}),
+        ("Salary expectations (USD/yr)", FieldType.number, None, {"number": 85000.0}),
+        # Text carries its own units, so a question naming none still gets a true answer.
+        ("Desired salary", FieldType.text, None, {"text": "85,000–95,000 USD per year"}),
+        ("What are your salary expectations?", FieldType.textarea, None,
+         {"text": "85,000–95,000 USD per year"}),
+        ("Desired salary ($)", FieldType.text, None, {"text": "85,000–95,000 USD per year"}),
+        ("Desired annual salary (USD)", FieldType.text, None,
+         {"text": "85,000–95,000 USD per year"}),
+    ],
+)  # fmt: skip
+def test_a_salary_is_sent_only_in_units_the_question_allows(label, typ, help_text, want):
+    r = resolve_field(salary(label, typ, help_text), ctx(prefs=USD_YEAR))
+    assert (r.status, r.value) == ("resolved", want)
+    assert r.fact_refs[0]["field"] == "salary" and r.bankable is False
+
+
+@pytest.mark.parametrize(
+    "label,typ,help_text,why",
+    [
+        # A bare number says neither its currency nor its period.
+        ("Desired salary", FieldType.number, None, "does not state both"),
+        ("Desired salary (USD)", FieldType.number, None, "does not state both"),
+        ("Desired annual salary", FieldType.number, None, "does not state both"),
+        ("Desired salary ($/yr)", FieldType.number, None, "does not state both"),
+        # Another currency, by code, sign or help text.
+        ("Desired salary (EUR)", FieldType.text, None, "asks in EUR"),
+        ("Desired salary (€)", FieldType.number, None, "asks in EUR"),
+        ("Desired salary (£ per year)", FieldType.text, None, "asks in GBP"),
+        ("Expected salary (₹ per annum)", FieldType.text, None, "asks in INR"),
+        ("Desired salary (C$ per year)", FieldType.text, None, "asks in CAD"),
+        ("Desired salary", FieldType.text, "Please give an annual figure in GBP.", "asks in GBP"),
+        ("Desired salary (USD or EUR)", FieldType.text, None, "asks in"),
+        # Another period.
+        ("Desired hourly salary", FieldType.text, None, "per hour"),
+        ("Desired salary (USD per month)", FieldType.number, None, "per month"),
+        ("Desired salary (weekly)", FieldType.text, None, "per week"),
+        ("Desired salary (USD, hourly or annual)", FieldType.text, None, "another period"),
+    ],
+)  # fmt: skip
+def test_a_salary_in_other_or_unstated_units_is_the_users_answer(label, typ, help_text, why):
+    r = resolve_field(salary(label, typ, help_text), ctx(prefs=USD_YEAR))
+    assert (r.status, r.value) == ("needs_user", None)
+    assert why in r.explanation and r.user_input_allowed is not False
+
+
+def test_a_bare_dollar_sign_is_not_another_currencys_answer():
+    eur = NS(**(vars(USD_YEAR) | {"salary_currency": "EUR"}))
+    r = resolve_field(salary("Desired salary ($)", FieldType.text), ctx(prefs=eur))
+    assert (r.status, r.value) == ("needs_user", None) and "dollars" in r.explanation
+
+
+@pytest.mark.parametrize("change", [{"salary_currency": None}, {"salary_period": None}])
+def test_an_expectation_without_its_currency_or_period_is_never_sent(change):
+    p = NS(**(vars(USD_YEAR) | change))
+    for typ in (FieldType.text, FieldType.number):
+        r = resolve_field(salary("Desired annual salary (USD)", typ), ctx(prefs=p))
+        assert (r.status, r.value) == ("needs_user", None)
+        assert "no currency or no period" in r.explanation

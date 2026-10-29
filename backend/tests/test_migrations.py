@@ -351,6 +351,7 @@ def test_s7_adds_bounded_run_approvals_and_downgrade_drops_only_them(disposable)
 
 S7 = "4bc9c342d34c"
 S8 = "29588d78e7e1"
+S3 = "269ea4b8bc0c"
 
 
 def test_s8_adds_bounded_watches_and_downgrade_drops_only_them(disposable):
@@ -423,7 +424,7 @@ def test_s3_adds_the_job_signal_times_and_downgrade_drops_only_them(disposable):
                 ),
                 {"i": uuid.uuid4(), "u": uid, "s": sid, "j": jid, "st": stale},
             )
-    command.upgrade(_cfg(), "head")
+    command.upgrade(_cfg(), S3)
     with disposable.connect() as c:
         got = dict(c.execute(text("select source_job_id, stale_since from discovered_jobs")).all())
         assert got["open-1"] is None and got["closed-1"].isoformat().startswith("2026-10-20T10:00")
@@ -445,3 +446,33 @@ def test_s3_adds_the_job_signal_times_and_downgrade_drops_only_them(disposable):
         assert {"stale", "stale_reason", "employer_key"} <= cols
         assert c.execute(text("select count(*) from discovered_jobs")).scalar() == 2
         assert c.execute(text("select version_num from alembic_version")).scalar() == S8
+
+
+def test_s6_adds_the_discovery_backoffs_and_downgrade_drops_only_them(disposable):
+    """S6 (D67): one table, one row per user and provider, deleted with the user; a downgrade
+    drops it and nothing else."""
+    command.upgrade(_cfg(), S3)
+    uid = uuid.uuid4()
+    with disposable.begin() as c:
+        c.execute(
+            text(
+                "insert into users (id,email,password_hash,created_at,updated_at) "
+                "values (:u,'s6.synthetic@example.com','x',now(),now())"
+            ),
+            {"u": uid},
+        )
+    command.upgrade(_cfg(), "head")
+    with disposable.begin() as c:
+        c.execute(
+            text(
+                "insert into discovery_backoffs (user_id,provider,not_before,updated_at) "
+                "values (:u,'freehire',now() + interval '1 minute',now())"
+            ),
+            {"u": uid},
+        )
+        c.execute(text("delete from users where id = :u"), {"u": uid})
+        assert c.execute(text("select count(*) from discovery_backoffs")).scalar() == 0
+    command.downgrade(_cfg(), S3)
+    with disposable.connect() as c:
+        tables = set(c.execute(text("select tablename from pg_tables")).scalars())
+    assert "discovery_backoffs" not in tables and {"users", "discovered_jobs"} <= tables

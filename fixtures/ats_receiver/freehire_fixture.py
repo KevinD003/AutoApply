@@ -17,7 +17,9 @@ from search, served by the detail endpoint with closed_at), fh_malformed (two br
 fh_legacy_shape (work mode only under `enrichment`, the old assumption), fh_no_rate_headers,
 fh_slow, fh_gone (single-job lookups return 404), fh_new_posting (a posting that arrived since,
 listed first, as a newest-first search lists it), fh_repost (the Contoso analyst posting again
-under a new slug, id and URL, as Freehire mints for a repost; listed first). cfg["fh_rate_limit"] sets the per-window
+under a new slug, id and URL, as Freehire mints for a repost; listed first), fh_reality_tick
+(S6: only `reality`, the view and application counters and the enrichment metadata change, by
+one per request, as they do between reads). cfg["fh_rate_limit"] sets the per-window
 request budget the headers report (default 1000; reset with the receiver). cfg["fh_retry_after"] sets the
 Retry-After seconds of fh_rate_limited (default 30).
 Each request is recorded in its own table (offset, limit, whether an Authorization header was
@@ -129,6 +131,15 @@ def mount(app, ledger, cfg) -> None:
             jobs = [again, *jobs]
         if mode == "fh_malformed":
             jobs = [jobs[0], "not-a-record", {"title": "No slug at all"}, *jobs[1:]]
+        if mode == "fh_reality_tick":
+            tick = ledger.run("select count(*) from fh_requests")[0][0]
+            for j in jobs:
+                r = j["reality"]
+                j.update(view_count=j["view_count"] + tick, applied_count=j["applied_count"] + tick,
+                         enrichment_version=j["enrichment_version"] + tick,
+                         enriched_at=f"2026-10-{1 + tick % 27:02d}T09:20:00Z",
+                         reality={**r, "age_days": r["age_days"] + tick,
+                                  "class": "fresh" if tick % 2 else "aging"})  # fmt: skip
         return jobs
 
     async def failure(mode):

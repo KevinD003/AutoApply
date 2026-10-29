@@ -349,10 +349,10 @@ def transition_application(
             raise bad_request(str(e)) from None
         db.commit()
         return _out(db, app, detail=True)
-    from app.modules.preparation.package import execution_owns_state
+    from app.modules.preparation.package import execution_owns_state, refused
 
     if execution_owns_state(db, app):
-        raise conflict("A submission is in progress; wait for it to finish or cancel it.")
+        raise conflict(str(refused("submission_in_progress")))
     if body.to == AppState.submitted_confirmed:
         return _confirm_by_user(db, user, app, body.evidence)
     try:

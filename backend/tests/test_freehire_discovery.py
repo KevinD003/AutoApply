@@ -498,3 +498,113 @@ def test_untrusted_markup_becomes_short_plain_text():
     assert plain_summary("<p>a &amp; b</p><script>alert(1)</script><style>x{}</style>") == "a & b"
     assert plain_summary("x" * 900).endswith("…") and len(plain_summary("x" * 900)) == 500
     assert plain_summary(None) is None
+
+
+# -- S6 (D67): contract hardening --------------------------------------------------------------
+
+
+def test_counters_and_reality_ticking_are_not_a_change(api, receiver):
+    """R9.4: between reads only `reality`, the view and application counters and the
+    enrichment metadata change; nothing NoEfforts reads did, so nothing is "updated"."""
+    run(api)
+    receiver.config(fh_mode="fh_reality_tick")
+    res = run(api).json()
+    assert (res["created"], res["updated"], res["unchanged"]) == (0, 0, 5)
+    row = rows(me(api))[SUPPORT]
+    r = api.post(f"/discovery/jobs/{row.id}/refresh")
+    assert r.status_code == 200 and r.json()["outcome"] == "unchanged"
+    receiver.config(fh_mode="fh_changed")  # a real change is still seen
+    assert run(api).json()["updated"] == 1
+
+
+def test_a_tagged_url_and_its_untagged_form_are_one_posting():
+    """R9.5: Freehire's own tag and a referral parameter never make another posting."""
+    from app.modules.jobs.canonical import canonicalize_url, dedupe_key, detect_ats
+
+    plain = "https://boards.greenhouse.io/acme/jobs/4000001"
+    for tagged in (
+        f"{plain}?utm_source=freehire.me",
+        f"{plain}?gh_src=feed&utm_medium=board",
+        f"{plain}?referral-code=SYNTH42",
+        f"{plain}?referral_code=SYNTH42&ref=x",
+    ):
+        c, p = canonicalize_url(tagged), canonicalize_url(plain)
+        key = dict(employer="Acme Example (fictional)", title="Engineer", location=None)
+        assert dedupe_key(canonical_url=c, **key) == dedupe_key(canonical_url=p, **key)
+        assert detect_ats(c).provider == detect_ats(p).provider == "greenhouse"
+
+
+def test_an_aggregator_url_is_an_unknown_ats_and_a_manual_handoff(api):
+    """R9.6: a posting address on a host that is not an ATS NoEfforts knows."""
+    job = api.post("/jobs", json={"url": "https://jobs.aggregator-example.test/listing/77",
+                                  "title": "Data Analyst"}).json()["job"]  # fmt: skip
+    assert job["ats_provider"] == "unknown"
+    route = api.get(f"/jobs/{job['id']}/route").json()
+    assert route["route"] == "manual_handoff", route
+
+
+def test_the_2026_10_26_undocumented_fields_are_not_read():
+    """R9.7: fields seen in Freehire's responses but not documented change nothing NoEfforts
+    keeps or compares."""
+    from app.modules.discovery.provider import freehire_fingerprint
+
+    base = {"public_slug": "a-1", "title": "T", "company": "C", "url": f"{BASE}/x"}
+    extra = {"last_seen_at": "2026-10-20T08:00:00Z", "ghost": True,
+             "auto_apply_available": True, "direct_apply": True}  # fmt: skip
+    p = FreehireApiProvider(base_url=FIXTURE)
+    a, b = p.normalize_job(base), p.normalize_job({**base, **extra})
+    assert dataclasses.replace(b, raw_keys=a.raw_keys) == a
+    assert freehire_fingerprint({**base, **extra}) == freehire_fingerprint(base)
+    assert b.source_last_seen_at is None and set(b.source_facts) == {"sponsorship_offered"}
+
+
+def test_an_import_before_retry_after_is_refused(api, other_api, receiver, no_sleep):
+    """R9.2: after a 429 with Retry-After, this user's next import waits until then: refused
+    with a typed error before any request, and nothing re-runs by itself. Others are not
+    held back."""
+    from datetime import timedelta
+
+    from app.modules.discovery.models import DiscoveryBackoff
+
+    receiver.config(fh_mode="fh_rate_limited", fh_retry_after=120)
+    assert run(api).status_code == 503
+    sent = len(fh_requests(receiver))
+    receiver.config(fh_mode="normal")
+    r = run(api)
+    assert r.status_code == 429 and "Nothing was sent" in r.json()["detail"]
+    assert len(fh_requests(receiver)) == sent  # no request at all
+    assert run(other_api).status_code == 200  # another user's imports are not held back
+    sent = len(fh_requests(receiver))
+    row = rows(me(other_api))[SUPPORT]
+    assert api.post(f"/discovery/jobs/{row.id}/refresh").status_code == 404  # not theirs
+    with SessionLocal() as db:  # the wait ends
+        b = db.get(DiscoveryBackoff, (me(api), "freehire"))
+        b.not_before = b.not_before - timedelta(seconds=121)
+        db.commit()
+    assert run(api).status_code == 200
+    assert len(fh_requests(receiver)) > sent
+
+
+def test_without_retry_after_nothing_is_held_back(api, receiver, no_sleep):
+    """A refusal without a Retry-After in seconds, or an outage, assumes no wait."""
+    for mode, extra in (("fh_outage", {}), ("fh_rate_limited", {"fh_retry_after": ""})):
+        receiver.config(fh_mode=mode, **extra)
+        assert run(api).status_code == 503
+        receiver.config(fh_mode="normal")
+        assert run(api).status_code == 200, mode
+
+
+def test_a_refused_refresh_holds_back_the_next_refresh_and_import(api, receiver, no_sleep):
+    """R9.2: a Retry-After met on a single-record refresh holds back this user's next refresh
+    and import alike; neither sends anything."""
+    run(api)
+    row = rows(me(api))[SUPPORT]
+    receiver.config(fh_mode="fh_rate_limited", fh_retry_after=120)
+    r = api.post(f"/discovery/jobs/{row.id}/refresh")
+    assert r.status_code == 503 and "not retried" in r.json()["detail"]
+    sent = len(fh_requests(receiver))
+    receiver.config(fh_mode="normal")
+    r = api.post(f"/discovery/jobs/{row.id}/refresh")
+    assert r.status_code == 429 and "Nothing was sent" in r.json()["detail"]
+    assert run(api).status_code == 429
+    assert len(fh_requests(receiver)) == sent

@@ -325,8 +325,11 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
         },
         # Outside the content, so wording never changes the package hash.
         "labels": {
-            "form_source": wording.form_source_label(pkg.content["destination"]["form_source"])
+            "form_source": wording.form_source_label(pkg.content["destination"]["form_source"]),
+            "destination": wording.destination_label(pkg.content["destination"]["origin"]),
         },
+        # C12 (D64): what the review page may offer per question (outside the content).
+        "review": pk.review_controls(db, app.id, pkg.content),
         "approval": _approval_view(db, app, pkg, appr, last),
         # E6: whether a submission here needs a rehearsal first, and why (execution/rehearsal.py).
         "rehearsal_prerequisite": rehearsal.view(db, app, pkg, appr),
@@ -623,6 +626,8 @@ def clear_answer(
     )
     if row is not None:
         db.delete(row)
+        record(db, user.id, "application.answer_cleared", "application", app.id,
+               field_ref=ref(body.key, user.id))  # fmt: skip
         db.flush()
     return _package_view(db, app, _current(db, app))
 
@@ -680,6 +685,8 @@ def put_consent(
 class DocumentsIn(BaseModel):
     resume_document_id: uuid.UUID | None = None
     cover_letter_document_id: uuid.UUID | None = None
+    # C12 (D64): send no document of these roles (an optional cover letter left out).
+    clear: list[Literal["resume", "cover_letter"]] = []
 
 
 @router.put("/applications/{app_id}/documents")
@@ -702,6 +709,22 @@ def put_documents(
         if doc.kind != kind:
             raise bad_request(f"That document is not a {role.replace('_', ' ')}.")
         _upsert_input(db, app, "document", role, {"document_id": str(doc.id)})
+        record(db, user.id, "application.document", "application", app.id, role=role,
+               change="chosen")  # fmt: skip
+    if body.clear:
+        pk.lock_application(db, app.id)  # the application, then its inputs (as in clear_answer)
+        for role in sorted(set(body.clear)):
+            row = db.scalar(
+                select(ApplicationInput).where(
+                    ApplicationInput.application_id == app.id,
+                    ApplicationInput.kind == "document",
+                    ApplicationInput.field_key == role,
+                )
+            )
+            if row is not None:
+                db.delete(row)
+                record(db, user.id, "application.document", "application", app.id, role=role,
+                       change="cleared")  # fmt: skip
     db.flush()
     return _package_view(db, app, _current(db, app))
 
@@ -732,14 +755,55 @@ def approve_package(
     return _package_view(db, app, pk.latest_package(db, app.id))
 
 
+@router.get("/applications/{app_id}/package/diff")
+def package_diff(
+    app_id: uuid.UUID,
+    from_version: int | None = None,
+    to_version: int | None = None,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """C14 (D66): what changed between two versions of your package (by default, the latest and
+    the one before it). Read-only: nothing is rebuilt, approved or recorded."""
+    app = _owned_app(db, user, app_id)
+    pkgs = {
+        p.version: p
+        for p in db.scalars(
+            select(ApplicationPackage).where(ApplicationPackage.application_id == app.id)
+        )
+    }
+    to = pkgs.get(to_version if to_version is not None else max(pkgs, default=0))
+    frm = pkgs.get(from_version if from_version is not None else (to.version - 1 if to else 0))
+    if to is None or frm is None:
+        raise not_found("Package version")
+    approved = {
+        a.package_id
+        for a in db.scalars(select(PackageApproval).where(PackageApproval.application_id == app.id))
+    }
+
+    def side(p: ApplicationPackage) -> dict:
+        return {"version": p.version, "content_hash": p.content_hash, "created_at": p.created_at,
+                "was_approved": p.id in approved}  # fmt: skip
+
+    return {"from": side(frm), "to": side(to), **pk.diff_contents(frm.content, to.content)}
+
+
 @router.post("/applications/{app_id}/package/revoke")
 def revoke_package(
     app_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> dict:
     app = _owned_app(db, user, app_id)
-    pk.revoke(db, app)
+    from app.modules.execution import service as execution
+
+    try:
+        effect = execution.stop_for_revoke(db, app)
+    except pk.ApprovalError as e:
+        db.rollback()
+        raise conflict(str(e)) from None
+    pk.revoke(db, app, effect)
     db.flush()
-    return _package_view(db, app, _current(db, app))
+    # C13 (D65): what revoking did to an attempt in progress, for the page to say.
+    return _package_view(db, app, _current(db, app)) | {"revoke_effect": effect}
 
 
 # ---------------------------------------------------------------------------------------------

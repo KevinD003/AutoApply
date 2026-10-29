@@ -39,6 +39,7 @@ from app.modules.providers.model import (
     Operation,
     ProviderSpec,
     SpecError,
+    Trait,
     check_spec,
 )
 
@@ -181,6 +182,14 @@ CAPABILITY_SCENARIOS = {
     C.final_submit: "rejection_is_not_confirmation",
     C.official_api_submission: "no_grant_never_contacted",
     C.reconciliation: "reconcile_never_resends",
+    # S5 (D62): capabilities that change what is sent or what counts as sent.
+    C.custom_dropdowns: "unlisted_option_is_checkpoint",
+    C.location_picker: "location_exact_or_checkpoint",
+    C.confirmation_detection: "confirmation_bound_to_attempt",
+}
+# S5 (D62): a workflow trait that is anything but "no" (or not applicable) needs its scenario.
+TRAIT_SCENARIOS = {
+    Trait.multi_step: "each_step_read_back_before_next",
 }
 # Required scenarios with no ledger test yet (tests/test_provider_contracts.py proves this is
 # exactly what the mapping lacks). Only pre-I2 providers may appear here.
@@ -341,6 +350,8 @@ def track_of(spec: ProviderSpec) -> str:
 
 def required_scenarios(spec: ProviderSpec) -> tuple[str, ...]:
     extra = [s for cap, s in CAPABILITY_SCENARIOS.items() if spec.support(cap).level() != "none"]
+    extra += [s for t, s in TRAIT_SCENARIOS.items()
+              if spec.trait(t).value not in ("no", "not_applicable")]  # fmt: skip
     return (*BASE_SCENARIOS, *extra)
 
 

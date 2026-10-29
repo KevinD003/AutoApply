@@ -255,3 +255,15 @@ def test_api_evidence_and_logs_carry_no_candidate_data_secrets_or_raw_ids(api, r
                    base64.b64encode(PDF).decode()[:40]):  # fmt: skip
         assert marker not in text, marker
     assert any(e.get("receipt_ref_sha256") for e in ev)  # a reference, not the receipt
+
+
+def test_confirmation_bound_to_attempt(api, receiver):
+    """S5 (D62): an acceptance that names another application is not this attempt's: unknown,
+    never sent again, reconciled by its own idempotency key."""
+    aid = queue(api, api_application(api))
+    receiver.config(mode="fapi_receipt_other")
+    assert runner.run_attempt(aid, "w1") == "unknown"
+    assert "not the one this attempt created" in attempt(aid).outcome_detail
+    assert len(acceptances(receiver)) == 1
+    assert len([p for m, p in fapi_requests(receiver) if p.endswith("/submit")]) == 1
+    assert runner.run_attempt(aid, "w2") == "ignored"

@@ -15,6 +15,12 @@ Routes (mounted on the synthetic receiver, whose ledger is the oracle):
   GET  /gh/{board}/jobs/{job_id}                                 hosted application form
   POST /gh/{board}/jobs/{job_id}/attachments                     attachment upload (disclosure)
   POST /gh/{board}/jobs/{job_id}/apply                           submit / security code
+  GET  /gh/{board}/jobs/{job_id}/step2                           second page (gh_two_steps)
+  POST /gh/{board}/jobs/{job_id}/consent-click                   a banner or "I agree" click
+S5 variants (FIXTURE ASSUMPTIONS from the legacy author's notes, legacy-audit.md R7; nothing
+says a real page behaves this way): gh_phrase_in_body, the board "thanks-confirmation",
+gh_security_code_boxes, gh_security_code_other, gh_challenge_after_submit, gh_group_untick,
+gh_consent_banner, gh_consent_blocking, gh_two_steps (see fixtures/ats_receiver/README.md).
 All employers, jobs and people are fictional.
 """
 
@@ -81,6 +87,11 @@ def _jobs() -> dict:
             "title": "Patient Services Coordinator", "company_name": "Example Health Network",
             "location": "Springfield", "questions": standard, "location_questions": [],
             "data_compliance": gdpr},
+        # S5 (R6.5): a posting whose own path holds "thanks" and "confirmation".
+        ("thanks-confirmation", "4012003"): {
+            "title": "Front Desk Associate", "company_name": "Example Health Network",
+            "location": "Springfield", "questions": standard, "location_questions": [],
+            "data_compliance": gdpr},
         # Location picker with hidden coordinates: cannot be filled deterministically.
         ("examplehealth", "4012002"): {
             "title": "Warehouse Associate", "company_name": "Example Health Network",
@@ -95,6 +106,11 @@ def _jobs() -> dict:
 JOBS = _jobs()
 EXTRA = _q("Do you hold a current forklift certification?", "question_7099",
            "multi_value_single_select", True, values=YES_NO)
+# S5 (R6.4): confirmation-like words on the form itself, before any click.
+PHRASE_NOTICE = ("Thank you for your interest in Example Health Network. Application "
+                 "received? We email every applicant once their application has been reviewed.")
+# S5 (R2.10): gh_two_steps shows the questions before this index first, the rest on step 2.
+STEP_ONE = 6
 CONSENT_LABEL = ("I agree to the processing of my personal data for this application as "
                  "described in the privacy notice.")
 
@@ -181,11 +197,33 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
                'title="reCAPTCHA challenge" src="about:blank"></iframe></div>'
                if cfg["mode"] == "captcha" else "")
     base = f"/gh/{board}/jobs/{job_id}"
-    body = f"""<h1>{html.escape(j["title"])}</h1><p>{html.escape(j["company_name"])}</p>
-<form id="application_form" action="{base}/apply" method="post" enctype="multipart/form-data">
+    mode = cfg["mode"]
+    notice = (f'<div class="notice" id="notice">{html.escape(PHRASE_NOTICE)}</div>'
+              if mode == "gh_phrase_in_body" else "")
+    banner = agree = ""
+    disabled = ""
+    if mode in ("gh_consent_banner", "gh_consent_blocking"):
+        # R11.8: a cookie banner and an in-form "I agree" button; clicking either is recorded.
+        banner = ('<div id="cookie-banner" role="dialog" aria-label="Cookies"><p>We use cookies '
+                  'to run this site.</p><button type="button" id="cookie-accept">Accept all '
+                  'cookies</button></div>')
+        agree = ('<div class="terms"><p>By applying you agree to the hiring terms.</p>'
+                 '<button type="button" id="terms-agree">I agree</button>'
+                 '<input type="hidden" name="terms_agreed" id="terms_agreed"></div>')
+        disabled = " disabled" if mode == "gh_consent_blocking" else ""
+    action = "apply"
+    if mode == "gh_two_steps":  # R2.10: the rest of the form is on a second page
+        qs = "".join(_render_question(q) for q in _questions(board, job_id, False)[:STEP_ONE])
+        consent = captcha = ""
+    submit = (f'<button type="button" id="continue" data-next="{base}/step2?t={token}">'
+              'Continue</button>' if mode == "gh_two_steps"
+              else f'<button type="submit" id="submit_app"{disabled}>Submit Application</button>')
+    body = f"""{banner}<h1>{html.escape(j["title"])}</h1><p>{html.escape(j["company_name"])}</p>
+{notice}<form id="application_form" action="{base}/{action}" method="post"
+ enctype="multipart/form-data">
 <input type="hidden" name="form_token" value="{token}">
-{qs}{consent}{captcha}
-<button type="submit" id="submit_app">Submit Application</button>
+{qs}{consent}{captcha}{agree}
+{submit}
 </form>
 <script>
 for (const inp of document.querySelectorAll('input[type=file]')) {{
@@ -210,6 +248,16 @@ for (const wrap of document.querySelectorAll('[data-show-if]')) {{
   }};
   trigger.addEventListener('change', sync); sync();
 }}
+const clicked = (what) => fetch('{base}/consent-click', {{method: 'POST', body: what}});
+const ca = document.getElementById('cookie-accept');
+if (ca) ca.addEventListener('click', () => {{ clicked('cookies'); ca.parentElement.remove(); }});
+const ta = document.getElementById('terms-agree');
+if (ta) ta.addEventListener('click', () => {{
+  clicked('terms'); document.getElementById('terms_agreed').value = '1';
+  document.getElementById('submit_app').disabled = false;
+}});
+const next = document.getElementById('continue');
+if (next) next.addEventListener('click', () => {{ location.href = next.dataset.next; }});
 </script>"""
     if cfg.get("tamper") == "text":  # the page wipes what was typed (readback must catch it)
         body += ("<script>document.querySelector('[name=first_name]').addEventListener('input', "
@@ -219,6 +267,10 @@ for (const wrap of document.querySelectorAll('[data-show-if]')) {{
                 "for (const k of ['first_name', 'last_name', 'email']) {"
                 " const i = document.createElement('input'); i.id = k; a.appendChild(i); }"
                 "</script>")
+    if mode == "gh_group_untick":  # R2.9: the page unticks one approved box after the fill
+        body += ("<script>for (const b of document.querySelectorAll('[name=\"question_7008[]\"]'))"
+                 " b.addEventListener('change', e => { if (e.target.value === '22') "
+                 "e.target.checked = false; });</script>")
     if cfg["mode"] == "gh_post_on_load":  # a page that sends data on its own as soon as it loads
         body += (f"<script>fetch('{base}/telemetry', {{method: 'POST', body: 'loaded'}})"
                  ".catch(() => {});</script>")
@@ -250,6 +302,23 @@ def mount(app, ledger, cfg, accept) -> None:
         ledger.run("insert into disclosures (kind,slug,detail,created_at) values (?,?,?,?)",
                    ("page_post", f"gh-{board}-{job_id}", "", time.time()))
         return {"ok": True}
+
+    @app.post("/gh/{board}/jobs/{job_id}/consent-click")
+    async def consent_click(board: str, job_id: str, request: Request):
+        what = (await request.body()).decode()[:20]  # "cookies" or "terms": never clicked by us
+        ledger.run("insert into disclosures (kind,slug,detail,created_at) values (?,?,?,?)",
+                   ("consent_click", f"gh-{board}-{job_id}", what, time.time()))
+        return {"ok": True}
+
+    @app.get("/gh/{board}/jobs/{job_id}/step2", response_class=HTMLResponse)
+    async def step_two(board: str, job_id: str, t: str = ""):
+        job_or_404(board, job_id)
+        qs = "".join(_render_question(q) for q in _questions(board, job_id, False)[STEP_ONE:])
+        base = f"/gh/{board}/jobs/{job_id}"
+        return _page("Step 2 of 2", f"""<form id="application_form" action="{base}/apply"
+ method="post" enctype="multipart/form-data"><input type="hidden" name="form_token"
+ value="{html.escape(t)}">{qs}<button type="submit" id="submit_app">Submit Application</button>
+</form>""", "form")
 
     @app.get("/gh-api/v1/boards/{board}/jobs/{job_id}")
     def api_job(board: str, job_id: str, request: Request, questions: bool = False):
@@ -305,19 +374,34 @@ def mount(app, ledger, cfg, accept) -> None:
         if cfg["mode"] == "captcha":
             return _page("Verification needed", "<h1>Please complete the challenge.</h1>",
                          "errors", 400)
+        if cfg["mode"] == "gh_challenge_after_submit":
+            # R4.9b: the form loaded clean; the bot check shows only after the final click. The
+            # data reached the page's server, which did not accept it. Each click is recorded.
+            ledger.run("insert into disclosures (kind,slug,detail,created_at) values (?,?,?,?)",
+                       ("submit_challenged", slug, "", time.time()))
+            return _page("Verification needed", '<h1>One more step</h1><div class="g-recaptcha" '
+                         'data-sitekey="fixture-not-real"></div><p>Complete the check to '
+                         'finish your application.</p>', "challenge")
         missing = _missing(board, job_id, fields, cfg["mode"] == "gh_drift")
+        if cfg["mode"] == "gh_consent_blocking" and fields.get("terms_agreed") != "1":
+            missing.append("Hiring terms")
+        if cfg["mode"] == "gh_phrase_in_body":  # R6.4: the errors page keeps the same notice
+            return _page("There were errors", f"<div class='notice'>{html.escape(PHRASE_NOTICE)}"
+                         "</div><div id='error_flash'><h1>There were errors with your "
+                         "application.</h1><ul><li>Phone</li></ul></div>", "errors", 422)
         if cfg["mode"] == "validation_fail" or missing:
             items = "".join(f"<li>{html.escape(m)}</li>" for m in missing or ["Phone"])
             return _page("There were errors", f"<div id='error_flash'><h1>There were errors "
                          f"with your application.</h1><ul>{items}</ul></div>", "errors", 422)
         if cfg["mode"] == "error_before_accept":
             return _page("Error", "<h1>Something went wrong.</h1>", "error", 500)
-        if cfg["mode"] == "gh_security_code":
+        if cfg["mode"] in ("gh_security_code", "gh_security_code_boxes",
+                           "gh_security_code_other"):
             cid = secrets.token_hex(6)
             code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(8))
             ledger.run("insert into challenges (id,token,code,fields,created_at) "
                        "values (?,?,?,?,?)", (cid, token, code, json.dumps(fields), time.time()))
-            return _code_page(board, job_id, cid, None)
+            return _code_page(board, job_id, cid, None, cfg["mode"])
         if cfg["mode"] == "delay":
             await asyncio.sleep(cfg["delay_s"])
         accept(slug, token, fields)
@@ -336,8 +420,10 @@ def mount(app, ledger, cfg, accept) -> None:
         return _confirmation()
 
     def _security_code(slug, form):
-        cid, code = str(form.get("pending")), str(form.get("security_code", ""))
-        board, job_id = slug.split("-", 2)[1:]
+        cid = str(form.get("pending"))
+        boxes = [str(form.get(f"security_code_{i}", "")) for i in range(1, CODE_BOXES + 1)]
+        code = "".join(boxes) if any(boxes) else str(form.get("security_code", ""))
+        board, job_id = slug.removeprefix("gh-").rsplit("-", 1)
         row = ledger.run("select token, code, fields, attempts, done, created_at "
                          "from challenges where id=?", (cid,))
         if not row or row[0][4]:
@@ -349,7 +435,8 @@ def mount(app, ledger, cfg, accept) -> None:
                          "errors", 429)
         if code.strip().upper() != real:
             ledger.run("update challenges set attempts=attempts+1 where id=?", (cid,))
-            return _code_page(board, job_id, cid, "The security code you entered is not valid.")
+            return _code_page(board, job_id, cid, "The security code you entered is not valid.",
+                              cfg["mode"])
         ledger.run("update challenges set done=1 where id=?", (cid,))
         accept(slug, token, json.loads(fields))
         return _confirmation()
@@ -375,15 +462,36 @@ def mount(app, ledger, cfg, accept) -> None:
         return out
 
 
-def _code_page(board, job_id, cid, error) -> HTMLResponse:
+CODE_BOXES = 8
+
+
+def _code_page(board, job_id, cid, error, mode="gh_security_code") -> HTMLResponse:
     err = f"<p class='error' data-error='1'>{html.escape(error)}</p>" if error else ""
+    entry = ('<label for="security_code">Security code</label><input type="text" '
+             'id="security_code" name="security_code" autocomplete="one-time-code" required>')
+    disabled, script = "", ""
+    if mode == "gh_security_code_boxes":  # R7.4: one character per box; submit disabled until full
+        entry = "".join(f'<input type="text" id="security_code_{i}" name="security_code_{i}" '
+                        f'maxlength="1" data-code-box aria-label="Character {i} of {CODE_BOXES}">'
+                        for i in range(1, CODE_BOXES + 1))
+        disabled = " disabled"
+        script = ("<script>const bs = document.querySelectorAll('[data-code-box]');"
+                  "for (const b of bs) b.addEventListener('input', () => {"
+                  " document.getElementById('submit_app').disabled ="
+                  " !Array.from(bs).every(x => x.value.length === 1); });</script>")
+    if mode == "gh_security_code_other":  # R7.4: a code entry NoEfforts does not recognise
+        entry = ('<div id="code-entry" contenteditable="true" role="textbox" '
+                 'aria-label="Security code"></div><input type="hidden" name="security_code" '
+                 'id="code_value">')
+        script = ("<script>const e = document.getElementById('code-entry');"
+                  "e.addEventListener('input', () => {"
+                  " document.getElementById('code_value').value = e.textContent; });</script>")
     body = f"""<h1>Check your email</h1><p>We sent a security code to the email address on your
 application. Enter it below to finish submitting.</p>{err}
 <form id="application_form" action="/gh/{board}/jobs/{job_id}/apply" method="post"
  enctype="multipart/form-data"><input type="hidden" name="pending" value="{cid}">
-<label for="security_code">Security code</label>
-<input type="text" id="security_code" name="security_code" autocomplete="one-time-code" required>
-<button type="submit" id="submit_app">Submit Application</button></form>"""
+{entry}
+<button type="submit" id="submit_app"{disabled}>Submit Application</button></form>{script}"""
     return _page("Security code", body, "security_code", 401 if error else 200)
 
 

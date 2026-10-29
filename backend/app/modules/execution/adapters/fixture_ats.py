@@ -177,6 +177,9 @@ class FixtureAtsAdapter:
         if kind == "accepted":
             r = page.locator("[data-receipt-id]")
             receipt = r.get_attribute("data-receipt-id") if r.count() else None
+            if receipt and not self._bound(resp, page.url):
+                return Outcome("unknown", "a receipt was shown, but not for this submission and "
+                               "posting", None, status)  # fmt: skip
             if receipt:
                 return Outcome("accepted", "receipt shown", receipt, status)
             return Outcome("unknown", "success page without a receipt", None, status)
@@ -185,6 +188,26 @@ class FixtureAtsAdapter:
         if kind in ("validation", "expired"):
             return Outcome("rejected", f"employer page: {kind}", None, status)
         return Outcome("unknown", f"unrecognised response (HTTP {status})", None, status)
+
+    def _bound(self, resp, final_url: str) -> bool:
+        """S5 (D62): a receipt counts only if it answers this attempt's own POST to this
+        posting (its submit or verification step) and is shown on that posting's pages: same
+        origin, same posting path."""
+        if resp is None:
+            return False
+        first = resp.request
+        while first.redirected_from is not None:
+            first = first.redirected_from
+        s = urlsplit(self.content["destination"]["submit_url"])
+        posting = s.path.rsplit("/", 1)[0]
+
+        def on_posting(url: str) -> bool:
+            u = urlsplit(url)
+            return (u.scheme, u.netloc) == (s.scheme, s.netloc) and (
+                u.path == posting or u.path.startswith(posting + "/")
+            )
+
+        return first.method == "POST" and on_posting(first.url) and on_posting(final_url)
 
     def receipt_evidence(self, page: Page, out: Outcome) -> dict:
         p = urlsplit(page.url)

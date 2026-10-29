@@ -128,6 +128,7 @@ SCENARIO_TESTS: dict[tuple[str, str], str] = {
     ("fixture_ats", "rejection_is_not_confirmation"):
         f"{_EF}::test_receiver_failure_modes",  # the validation_fail case
     ("fixture_ats", "reconcile_never_resends"): _RECONCILE,
+    ("fixture_ats", "confirmation_bound_to_attempt"): f"{_EF}::test_confirmation_bound_to_attempt",
     ("greenhouse_hosted", "full_run_matches_ledger"):
         f"{_GH}::test_full_run_is_confirmed_and_sends_exactly_the_approved_values",
     ("greenhouse_hosted", "changed_form_stops_before_disclosure"):
@@ -143,6 +144,10 @@ SCENARIO_TESTS: dict[tuple[str, str], str] = {
         f"{_GH}::test_security_code_wrong_then_right",
     ("greenhouse_hosted", "rejection_is_not_confirmation"): f"{_GH}::test_outcome_classification",
     ("greenhouse_hosted", "reconcile_never_resends"): _RECONCILE,
+    ("greenhouse_hosted", "confirmation_bound_to_attempt"):
+        f"{_GH}::test_confirmation_bound_to_attempt",
+    ("greenhouse_hosted", "each_step_read_back_before_next"):
+        f"{_GH}::test_each_step_read_back_before_next_a_second_page_stops_before_disclosure",
     ("greenhouse_dom", "full_run_matches_ledger"):
         f"{_GD}::test_full_run_sends_exactly_the_approved_values",
     ("greenhouse_dom", "changed_form_stops_before_disclosure"):
@@ -156,6 +161,10 @@ SCENARIO_TESTS: dict[tuple[str, str], str] = {
         f"{_GD}::test_a_captcha_on_the_form_stops_before_anything_is_disclosed",
     ("greenhouse_dom", "rejection_is_not_confirmation"): f"{_GD}::test_outcome_classification",
     ("greenhouse_dom", "reconcile_never_resends"): _RECONCILE,
+    ("greenhouse_dom", "confirmation_bound_to_attempt"):
+        f"{_GD}::test_confirmation_bound_to_attempt",
+    ("greenhouse_dom", "unlisted_option_is_checkpoint"):
+        f"{_GD}::test_unlisted_option_is_checkpoint",
     ("fake_api", "full_run_matches_ledger"):
         f"{_API}::test_authorized_api_submission_sends_exactly_the_approved_package",
     ("fake_api", "changed_form_stops_before_disclosure"):
@@ -169,6 +178,7 @@ SCENARIO_TESTS: dict[tuple[str, str], str] = {
         f"{_API}::test_without_authorization_the_api_is_never_contacted",
     ("fake_api", "reconcile_never_resends"):
         f"{_API}::test_accepted_but_response_lost_is_unknown_and_never_resent",
+    ("fake_api", "confirmation_bound_to_attempt"): f"{_API}::test_confirmation_bound_to_attempt",
 }  # fmt: skip
 # What a scenario test must name to exercise its provider: its builder, or the provider itself.
 BUILDERS = {

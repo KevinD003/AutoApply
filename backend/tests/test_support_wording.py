@@ -145,7 +145,12 @@ def test_the_api_serves_the_labels(api, receiver):
     assert form["source_label"] == wording.FORM_SOURCE_LABELS["greenhouse_api_dom"]
     app_id = api.post("/applications", json={"job_id": job_id}).json()["id"]
     view = api.get(f"/applications/{app_id}/package").json()
-    assert view["labels"] == {"form_source": form["source_label"]}  # the same on both pages
+    origin = view["package"]["content"]["destination"]["origin"]
+    assert view["labels"] == {  # the form source as on the job page; C12: where it sends
+        "form_source": form["source_label"],
+        "destination": wording.destination_label(origin),
+    }
+    assert view["labels"]["destination"].startswith("Local test fixture")
 
 
 def test_wording_never_changes_the_package_or_its_hash(api, receiver, monkeypatch):

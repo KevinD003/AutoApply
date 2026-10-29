@@ -95,13 +95,15 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `application.outcome` | `application` | `source`, `to` | the outcome the user recorded (`applications/states.py` `Outcome`); `user_reported`, the only source of an outcome a user records. Never the date the user gave, their note or the previous outcome, which stay on the application's timeline |
 | `application.answer` | `application` | `field_ref` | reference to the question, never its key or the answer |
 | `application.consent` | `application` | `choice`, `field_ref` | the consent choice; reference to the question |
+| `application.answer_cleared` | `application` | `field_ref` | reference to the question whose answer for this application was removed (C12) |
+| `application.document` | `application` | `change`, `role` | `chosen` or `cleared`; `resume` or `cover_letter` (C12); never the document's id or name |
 | `draft.created` | `application` | `cost_usd`, `field_ref`, `provider` | drafting cost; reference; the drafting provider's name |
 | `draft.rejected` | `application` | `field_ref`, `reason_code` | reference; a fixed rejection code (`empty`, `too_long`, `placeholders`, `uncited_facts`, `invented_numbers`) |
 | `answer_bank.delete` | `answer_bank` | - | |
 | `package.approve` | `application` | `adapter`, `adapter_version`, `content_hash`, `rehearsal_prerequisite`, `scope`, `version` | the adapter and version bound to the approval (`manual_handoff` and no version when the route was a manual handoff); the package's one-way hash; how the rehearsal prerequisite stood for an approval to submit (`met`, `established`, `not_required`; none for a rehearsal or a manual handoff); `submit` or `disclose_only` (a rehearsal); package version |
 | `package.approval_invalidated` | `application` | `version` | the package version that invalidated it |
 | `package.approval_retired` | `application` | `reason_code` | `execution_method_changed`; `rehearsal_completed` (a rehearsal used its approval up); `reconciled_not_received` (the user reconciled an unknown outcome as not received); or `verification_not_completed` (the final click was made and its verification code never completed). After the last two, sending again needs a new approval (D15). Written only when an approval was still live |
-| `package.revoke` | `application` | - | |
+| `package.revoke` | `application` | `queued_attempt` | what revoking did to an attempt in progress: `none`, `cancelled` (no worker had taken it) or `stopping` (the gates stop it); C13 |
 | `api_authorization.grant` | `api_authorization` | `provider` | the API provider key (never its origin or any token) |
 | `api_authorization.revoke` | `api_authorization` | - | |
 | `execution.{state}` | `application` | - | `state` is the attempt state entered (`execution/models.py` `AttemptState`) |

@@ -107,3 +107,41 @@ test("watched searches are listed and can be stopped", async ({ page }, info) =>
   await expect(card.getByText("stopped", { exact: true })).toBeVisible();
   await expect(card.getByRole("button", { name: "Stop watching" })).toHaveCount(0);
 });
+
+test("a listing refreshes from its source; a Retry-After holds the next request back", async ({ page }, info) => {
+  // S6 (D67): one record re-read at the source; the linked job is never changed by it.
+  await fhMode(page.request, "normal");
+  const reg = await page.request.post("/api/auth/register", {
+    data: { email: `refresh.${info.project.name}.${Date.now()}@example.com`, password: "synthetic-password-1" },
+  });
+  expect(reg.status()).toBe(201);
+  await page.goto("/discover");
+  await page.getByRole("button", { name: "Find jobs" }).click();
+  await expect(page.getByText("Discovered (5)")).toBeVisible();
+  const row = (title: string) => page.locator("li", { hasText: title });
+
+  await row("Field Technician").getByRole("button", { name: "Refresh from source" }).click();
+  await expect(page.getByText("“Field Technician” is unchanged at the source.")).toBeVisible();
+
+  await fhMode(page.request, "fh_gone");
+  await row("Office Coordinator").getByRole("button", { name: "Refresh from source" }).click();
+  await expect(page.getByText(/“Office Coordinator” is no longer at the source\. .*your job was not changed\./)).toBeVisible();
+  await expect(row("Office Coordinator").getByText("no longer at the source", { exact: true })).toBeVisible();
+
+  // The source refuses with Retry-After: reported, not retried; then nothing is sent until it runs out.
+  const r = await page.request.post(`${RECEIVER}/_admin/config`, {
+    headers: { "X-Admin-Token": RECEIVER_TOKEN },
+    data: { fh_mode: "fh_rate_limited", fh_retry_after: 600 },
+  });
+  expect(r.ok()).toBeTruthy();
+  await row("Field Technician").getByRole("button", { name: "Refresh from source" }).click();
+  await expect(page.getByText(/Freehire is rate limiting requests \(Retry-After: 600 s\); not retried\. Nothing was changed\./)).toBeVisible();
+  const back = await page.request.post(`${RECEIVER}/_admin/config`, {
+    headers: { "X-Admin-Token": RECEIVER_TOKEN },
+    data: { fh_mode: "normal", fh_retry_after: 30 },
+  });
+  expect(back.ok()).toBeTruthy();
+  await row("Field Technician").getByRole("button", { name: "Refresh from source" }).click();
+  await expect(page.getByText(/Freehire asked NoEfforts to wait before sending more of your requests; try again after \d\d:\d\d:\d\d UTC\. Nothing was sent\./)).toBeVisible();
+  await expect(page.getByText("Discovered (5)")).toBeVisible();
+});

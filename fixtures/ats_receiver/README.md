@@ -24,4 +24,25 @@ part of the product and must never be deployed.
     at load on one real posting. Its widget behaviour is a fixture assumption, listed in the
     file header.
 
+- **S5 variants (D62). FIXTURE ASSUMPTION, every one:** built from the legacy author's notes
+  on real pages (`docs/legacy-audit.md` R7, HYPOTHESIS), they show how the adapters handle
+  such a page (by stopping or by verified success), never that a real page behaves this way.
+  - generic receiver: `accepted_elsewhere` (accepted, then a receipt shown on another
+    posting's page after a redirect);
+  - `greenhouse_like.py`: `gh_phrase_in_body` (confirmation-like words on the form and on its
+    errors page), the board `thanks-confirmation` (a posting path holding both words),
+    `gh_security_code_boxes` (eight one-character boxes, submit disabled until full),
+    `gh_security_code_other` (a code entry with no input), `gh_challenge_after_submit` (the
+    form loads clean; a bot check shows after the final click, which is recorded as
+    `submit_challenged`), `gh_group_untick` (the page unticks one approved box),
+    `gh_consent_banner` and `gh_consent_blocking` (a cookie banner and an in-form "I agree"
+    button, each click recorded as `consent_click`; in the blocking mode the submit button
+    stays disabled until "I agree"), `gh_two_steps` (the rest of the form on a second page);
+  - `greenhouse_v2.py`: `gh2_phrase_in_body` and `gh2_phrase_no_confirmation` (a status
+    message worded like a confirmation already on the form), `gh2_option_unlisted` (a dropdown
+    with one option the job data does not list), `gh2_autofill_overwrite` (after the resume
+    upload is acknowledged, the phone is rewritten and the last name blanked),
+    `gh2_challenge_after_submit`, `gh2_two_steps`;
+  - `fake_api.py`: `fapi_receipt_other` (accepted, but the reply names another application).
+
 Run: `uv run --project backend python fixtures/ats_receiver/receiver.py --port 8765 --ledger /tmp/ledger.db --admin-token secret`

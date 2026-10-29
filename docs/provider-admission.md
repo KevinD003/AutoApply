@@ -229,7 +229,13 @@ reads the receiver's ledger and builds an application for that provider
   `upload_failure_stops_with_evidence`; `captcha_checkpoint` →
   `challenge_stops_before_disclosure`; `email_verification` → `code_entered_by_user_only`;
   `final_submit` → `rejection_is_not_confirmation`; `official_api_submission` →
-  `no_grant_never_contacted`; `reconciliation` → `reconcile_never_resends`.
+  `no_grant_never_contacted`; `reconciliation` → `reconcile_never_resends`;
+  `custom_dropdowns` → `unlisted_option_is_checkpoint`; `location_picker` →
+  `location_exact_or_checkpoint`; `confirmation_detection` → `confirmation_bound_to_attempt`
+  (S5, D62);
+- by workflow trait (S5, D62): `multi_step` anything but "no" or "not applicable" →
+  `each_step_read_back_before_next` (today `greenhouse_hosted`, whose trait is "unknown": a
+  form that continues on another page stops before anything is disclosed).
 
 The check is structural (the test exists, reads the ledger, names the provider or its builder),
 not semantic: what a mapped test asserts was checked by an adversarial review when it was mapped,

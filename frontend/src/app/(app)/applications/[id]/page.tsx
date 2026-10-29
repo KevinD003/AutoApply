@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AnswerInput from "@/components/AnswerInput";
 import ExecutionCard from "@/components/ExecutionCard";
 import { Badge, Button, Card, ErrorBox, inputCls, Loading, Notice } from "@/components/ui";
-import { api, ApiError, Doc, PackageAnswer, PackageView } from "@/lib/api";
+import { api, ApiError, Doc, PackageAnswer, PackageDiff, PackageView, ReviewControls } from "@/lib/api";
 
 const SOURCE: Record<string, { label: string; tone: "green" | "indigo" | "amber" | "slate" | "red" }> = {
   profile_fact: { label: "Profile fact", tone: "green" },
@@ -26,6 +26,14 @@ const PREREQUISITE_TONE: Record<string, "green" | "amber" | "slate"> = {
   unmet: "amber",
   not_required: "slate",
   not_applicable: "slate",
+};
+
+// C13: what revoking did to a submission in progress (backend execution.service.stop_for_revoke).
+const REVOKE_NOTICE: Record<string, string> = {
+  none: "Approval revoked.",
+  cancelled: "Approval revoked. The queued submission was stopped before anything was sent.",
+  stopping:
+    "Approval revoked. The submission in progress stops before the final click; anything already entered on the employer's form stays entered.",
 };
 
 const STATE_LABEL: Record<string, string> = {
@@ -61,13 +69,14 @@ export default function ReviewPage() {
     api<Doc[]>("/documents").then(setDocs).catch(() => undefined);
   }, [load]);
 
-  async function call(path: string, method: string, json: unknown, ok?: string) {
+  async function call(path: string, method: string, json: unknown, ok?: string | ((v: PackageView & { revoke_effect?: string }) => string)) {
     setBusy(true);
     setError(null);
     setNotice("");
     try {
-      setView(await api<PackageView>(path, { method, json }));
-      if (ok) setNotice(ok);
+      const v = await api<PackageView & { revoke_effect?: string }>(path, { method, json });
+      setView(v);
+      if (ok) setNotice(typeof ok === "function" ? ok(v) : ok);
     } catch (e) {
       setError(e);
       if (e instanceof ApiError && e.status === 409) load();
@@ -106,8 +115,16 @@ export default function ReviewPage() {
   const special = answers.filter((a) => a.sensitive || a.acknowledgment);
   const ready = c.unresolved.length === 0 && c.validation_errors.length === 0;
   const resumes = docs.filter((d) => d.kind === "resume");
+  const letters = docs.filter((d) => d.kind === "cover_letter");
+  const rc = (key: string): ReviewControls | undefined => view.review?.[key];
+  const coverQ = answers.find((a) => rc(a.key)?.document_role === "cover_letter");
+  const sendsTo = originOf(c.destination.submit_url);
+  const clear = (key: string) => call(`/applications/${id}/answers/clear`, "POST", { key }, "Your answer for this application was cleared.");
+  const save = (key: string) => (value: Record<string, unknown>, save_to_bank = false) =>
+    call(`/applications/${id}/answers`, "PUT", { key, value, save_to_bank }, "Answer saved.");
   const drafts = Object.fromEntries(view.drafts.map((d) => [d.field_key, d]));
   const prereq = view.rehearsal_prerequisite;
+  const approvedBefore = view.history.find((h) => h.was_approved && h.version < view.package.version)?.version;
 
   return (
     <>
@@ -126,6 +143,26 @@ export default function ReviewPage() {
             <Badge tone="amber">{view.labels.form_source}</Badge>
           </p>
         )}
+        <div className="mt-2 text-sm text-slate-700" role="group" aria-label="Where this goes">
+          {sendsTo ? (
+            <p>
+              Sends to <code>{sendsTo}</code>
+              {c.destination.origin && c.destination.origin !== sendsTo && (
+                <>
+                  {" "}
+                  (the form itself is on <code>{c.destination.origin}</code>)
+                </>
+              )}
+            </p>
+          ) : (
+            <p>The form does not say where it sends: nothing can be submitted from here.</p>
+          )}
+          {view.labels.destination && (
+            <p className="mt-1">
+              <Badge tone={view.labels.destination.startsWith("Local test") ? "slate" : "indigo"}>{view.labels.destination}</Badge>
+            </p>
+          )}
+        </div>
       </Card>
 
       <Card title="Status">
@@ -152,7 +189,12 @@ export default function ReviewPage() {
           </p>
         )}
         {view.approval.status === "invalidated" && (
-          <p className="mt-2 rounded-lg bg-red-50 p-2 text-sm text-red-800">{view.approval.reason}</p>
+          <div className="mt-2 rounded-lg bg-red-50 p-2 text-sm text-red-800">
+            <p>{view.approval.reason}</p>
+            {approvedBefore && approvedBefore < view.package.version && (
+              <DiffToggle appId={id} from={approvedBefore} to={view.package.version} label={`What changed since you approved v${approvedBefore}`} />
+            )}
+          </div>
         )}
         {view.job_signals.approval_blocked && (
           <div className="mt-3 rounded-lg bg-amber-50 p-2 text-sm text-amber-900" role="group" aria-label="About this job">
@@ -219,7 +261,13 @@ export default function ReviewPage() {
             Approve a rehearsal of v{view.package.version} (fill and check, never submit)
           </Button>
           {view.approval.status === "approved" && (
-            <Button variant="secondary" disabled={busy} onClick={() => call(`/applications/${id}/package/revoke`, "POST", {}, "Approval revoked.")}>
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() =>
+                call(`/applications/${id}/package/revoke`, "POST", {}, (v) => REVOKE_NOTICE[v.revoke_effect ?? "none"] ?? REVOKE_NOTICE.none)
+              }
+            >
               Revoke approval
             </Button>
           )}
@@ -227,7 +275,9 @@ export default function ReviewPage() {
         <p className="mt-2 text-xs text-slate-500">
           Approval is tied to this exact content. Changing a fact, document, answer, consent or the job itself creates a new version
           that needs approval again. Approvals also expire after a few days. A rehearsal fills the form and uploads your documents
-          exactly as a submission would, checks them, then stops: nothing is submitted, and the approval is used up.
+          exactly as a submission would, checks them, then stops: nothing is submitted, and the approval is used up. Revoking stops
+          a queued submission before anything is sent, and one in progress before the final click; once the final click has begun it
+          cannot be revoked.
         </p>
       </Card>
 
@@ -262,6 +312,33 @@ export default function ReviewPage() {
             </select>
           </label>
         )}
+        {coverQ &&
+          (letters.length === 0 ? (
+            <p className="mt-3 text-sm">
+              This form asks for a cover letter{coverQ.required ? "" : " (optional)"}. None uploaded:{" "}
+              <Link className="text-indigo-700 underline" href="/documents">upload one</Link>.
+            </p>
+          ) : (
+            <label className="mt-3 block text-sm">
+              <span className="mb-1 block font-medium">Cover letter to send{coverQ.required ? "" : " (optional)"}</span>
+              <select
+                className={inputCls}
+                value={c.documents.find((d) => d.field === coverQ.key)?.document_id ?? ""}
+                onChange={(e) =>
+                  e.target.value
+                    ? call(`/applications/${id}/documents`, "PUT", { cover_letter_document_id: e.target.value }, "Cover letter chosen.")
+                    : call(`/applications/${id}/documents`, "PUT", { clear: ["cover_letter"] }, "No cover letter will be sent.")
+                }
+              >
+                <option value="">{coverQ.required ? "Choose…" : "None"}</option>
+                {letters.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.label} (v{d.version})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
         {c.documents.map((d) => (
           <p key={d.field} className="mt-2 text-sm text-slate-600">
             {d.field}: {d.display}
@@ -278,12 +355,14 @@ export default function ReviewPage() {
               <li key={q.key} className="border-b border-slate-100 pb-4">
                 <QuestionHeader q={q} />
                 {q.user_input_allowed ? (
-                  <AnswerInput
-                    q={q}
-                    busy={busy}
-                    offerReuse
-                    onSave={(value, save_to_bank) => call(`/applications/${id}/answers`, "PUT", { key: q.key, value, save_to_bank }, "Answer saved.")}
-                  />
+                  <>
+                    <AnswerInput q={q} busy={busy} offerReuse onSave={save(q.key)} />
+                    {rc(q.key)?.clear && (
+                      <Button variant="secondary" disabled={busy} className="mt-2 !min-h-9 !py-1.5" onClick={() => clear(q.key)}>
+                        Clear my answer
+                      </Button>
+                    )}
+                  </>
                 ) : (
                   <p className="text-sm">
                     Fix this in your <Link className="text-indigo-700 underline" href="/profile">profile</Link> so every application stays
@@ -315,7 +394,7 @@ export default function ReviewPage() {
                   />
                 ) : (
                   <div className="space-y-2">
-                    <AnswerInput q={q} busy={busy} onSave={(value) => call(`/applications/${id}/answers`, "PUT", { key: q.key, value })} />
+                    <AnswerInput key={`${q.key}-${view.package.version}`} q={q} busy={busy} onSave={(value) => save(q.key)(value)} />
                     <ChoiceRow
                       current={c.consents[q.key]}
                       choices={[
@@ -324,6 +403,11 @@ export default function ReviewPage() {
                       ]}
                       onPick={(choice) => call(`/applications/${id}/consents`, "PUT", { key: q.key, choice })}
                     />
+                    {rc(q.key)?.clear && (
+                      <Button variant="secondary" disabled={busy} className="!min-h-9 !py-1.5" onClick={() => clear(q.key)}>
+                        Clear my answer
+                      </Button>
+                    )}
                   </div>
                 )}
               </li>
@@ -359,9 +443,17 @@ export default function ReviewPage() {
                 )}
                 {q.draftable && q.status !== "resolved" && (
                   <div className="mt-2">
-                    <AnswerInput q={q} busy={busy} onSave={(value) => call(`/applications/${id}/answers`, "PUT", { key: q.key, value }, "Answer saved.")} />
+                    <AnswerInput q={q} busy={busy} onSave={(value) => save(q.key)(value)} />
                   </div>
                 )}
+                <RowActions
+                  key={`${q.key}-${view.package.version}`}
+                  q={q}
+                  controls={rc(q.key)}
+                  busy={busy}
+                  onSave={save(q.key)}
+                  onClear={() => clear(q.key)}
+                />
               </li>
             ))}
           </ul>
@@ -374,11 +466,128 @@ export default function ReviewPage() {
             <li key={h.version}>
               v{h.version} — {new Date(h.created_at).toLocaleString()} — {h.change_summary.join("; ")}
               {h.was_approved && <span className="text-emerald-700"> (was approved)</span>}
+              {h.version > 1 && <DiffToggle appId={id} from={h.version - 1} to={h.version} label={`What changed in v${h.version}`} />}
             </li>
           ))}
         </ol>
       </Card>
     </>
+  );
+}
+
+const CHANGED: Record<string, string> = {
+  value: "answer changed",
+  question: "the question changed",
+  basis: "the facts behind it changed",
+  added: "new question",
+  removed: "question removed",
+};
+
+/** C14: a read-only list of what changed between two package versions. */
+function DiffToggle({ appId, from, to, label }: { appId: string; from: number; to: number; label: string }) {
+  const [diff, setDiff] = useState<PackageDiff | null>(null);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  async function toggle() {
+    if (!open && !diff) {
+      try {
+        setDiff(await api<PackageDiff>(`/applications/${appId}/package/diff?from_version=${from}&to_version=${to}`));
+      } catch (e) {
+        setError(e);
+      }
+    }
+    setOpen(!open);
+  }
+  const shown = (x: { display: string | null; status: string } | null) =>
+    x === null ? "—" : (x.display ?? (x.status === "blank_optional" ? "(left blank)" : "(no answer)"));
+  const empty = diff && !diff.answers.length && !diff.documents.length && !diff.consents.length && !diff.destination.length;
+  return (
+    <div className="mt-1">
+      <button type="button" className="text-xs text-indigo-700 underline" aria-expanded={open} onClick={toggle}>
+        {open ? "Hide changes" : label}
+      </button>
+      <ErrorBox error={error} />
+      {open && diff && (
+        <ul className="mt-1 space-y-1 rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700" aria-label={`Changes from v${diff.from.version} to v${diff.to.version}`}>
+          {empty && <li>Nothing you would see changed (only record versions).</li>}
+          {diff.answers.map((a) => (
+            <li key={a.key}>
+              <span className="font-medium">{a.label}</span>: {shown(a.before)} → {shown(a.after)}{" "}
+              <span className="text-slate-500">({a.changed.map((c) => CHANGED[c] ?? c).join(", ")})</span>
+            </li>
+          ))}
+          {diff.documents.map((d) => (
+            <li key={d.field}>
+              <span className="font-medium">Document ({d.field.replace("_", " ")})</span>: {d.before ?? "none"} → {d.after ?? "none"}
+            </li>
+          ))}
+          {diff.consents.map((c) => (
+            <li key={c.key}>
+              <span className="font-medium">{c.label}</span>: {c.before ?? "no choice"} → {c.after ?? "no choice"}
+            </li>
+          ))}
+          {diff.destination.map((d) => (
+            <li key={d.field}>
+              <span className="font-medium">Destination ({d.field.replace("_", " ")})</span>: {String(d.before ?? "—")} → {String(d.after ?? "—")}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function originOf(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+/** C12: change a resolved answer, answer an optional question, clear an answer given here, or
+ * go to the profile for a fact that belongs there. Questions waiting for an answer, sensitive
+ * questions and acknowledgments have their own cards above. */
+function RowActions({
+  q,
+  controls,
+  busy,
+  onSave,
+  onClear,
+}: {
+  q: PackageAnswer;
+  controls: ReviewControls | undefined;
+  busy: boolean;
+  onSave: (value: Record<string, unknown>, saveToBank: boolean) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (q.sensitive || q.acknowledgment) return null;
+  const editable =
+    !!controls?.answer_here && (q.status === "resolved" || q.status === "blank_optional") && !(q.draftable && q.status !== "resolved");
+  const label = q.status === "blank_optional" ? "Answer this optional question" : "Change answer";
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {editable && (
+          <Button type="button" variant="secondary" aria-expanded={open} className="!min-h-9 !py-1.5" onClick={() => setOpen(!open)}>
+            {open ? "Cancel" : label}
+          </Button>
+        )}
+        {controls?.clear && (
+          <Button type="button" variant="secondary" disabled={busy} className="!min-h-9 !py-1.5" onClick={onClear}>
+            Clear my answer
+          </Button>
+        )}
+        {q.protected && !q.user_input_allowed && q.status === "resolved" && (
+          <Link className="self-center text-sm text-indigo-700 underline" href="/profile">
+            Change it in your profile
+          </Link>
+        )}
+      </div>
+      {editable && open && <AnswerInput q={q} busy={busy} offerReuse onSave={onSave} />}
+    </div>
   );
 }
 

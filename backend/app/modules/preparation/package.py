@@ -58,12 +58,42 @@ REBUILDABLE = {
 SECTIONS = ("destination", "documents", "answers", "consents")
 
 
+NOT_ASKED = "Not asked: this question only appears for a different answer above."
+DOCUMENT_ROLES = {"resume_upload": "resume", "cover_letter_upload": "cover_letter"}
+
+
 class NoForm(LookupError):
     pass
 
 
 class ApprovalError(ValueError):
-    pass
+    def __init__(self, message: str, code: str | None = None):
+        super().__init__(message)
+        self.code = code
+
+
+# C13 (D65): why an approval, a queueing or a revocation is refused, as fixed codes shown after
+# the message ("(reason: code)"). docs/approval-reasons.md lists exactly these.
+APPROVAL_REASONS = {
+    "package_changed": "The package changed since you reviewed it. Review the latest version "
+    "and approve again.",
+    "package_unresolved": "Resolve every required question before approving.",
+    "approval_other_scope": "This package is already approved {scope}. Revoke that approval first.",
+    "approval_needed": "Approve the current package version before queueing.",
+    "already_confirmed": "The employer's confirmation of this application was recorded; it is "
+    "not sent again.",
+    "submission_in_progress": "A submission is in progress; wait for it to finish or cancel it.",
+    "attempt_running": "An earlier attempt for this application is still running. Wait for it "
+    "to finish, then queue again.",
+    "attempt_being_claimed": "An earlier attempt for this application is being picked up by a "
+    "worker; it will stop, because the package changed. Try again in a moment.",
+    "revoke_in_flight": "The submission may already be in flight, so revoking cannot stop it. "
+    "Wait for the outcome, or reconcile it.",
+}
+
+
+def refused(code: str, **words: str) -> ApprovalError:
+    return ApprovalError(f"{APPROVAL_REASONS[code].format(**words)} (reason: {code})", code)
 
 
 def lock_application(db: Session, app_id: uuid.UUID) -> Application:
@@ -214,7 +244,7 @@ def resolve_answers(fields: list, ctx: Context) -> list[tuple]:
         elif f.condition and not _condition_met(f.condition, values.get(f.condition.key)):
             # Not shown for the answers given, so not asked: nothing is entered or sent.
             r.status, r.value, r.display = "blank_optional", None, None
-            r.explanation = "Not asked: this question only appears for a different answer above."
+            r.explanation = NOT_ASKED
         if r.status == "blank_optional":
             # Nothing is sent for it, so it shows nothing (sending.py: only a resolved row is
             # sent; the other two statuses block approval).
@@ -350,6 +380,72 @@ def _summarize(old: dict | None, new: dict) -> list[str]:
         elif old.get(s) != new.get(s):
             out.append(f"{s} changed")
     return out or ["metadata changed"]
+
+
+_QUESTION = ("label", "help_text", "type", "required", "options", "condition")
+_DESTINATION_SHOWN = ("title", "employer", "url", "submit_url", "form_version")
+
+
+def _shown(a: dict | None) -> dict | None:
+    if a is None:
+        return None
+    return {"display": a["display"], "status": a["status"], "source": a["source"]}
+
+
+def diff_contents(old: dict, new: dict) -> dict:
+    """C14 (D66): what changed between two package versions, read-only, in the words the review
+    page uses: labels and shown values, and whether the question itself, the answer, or only
+    the facts behind it changed (never the fact references themselves)."""
+    before = {a["key"]: a for a in old["answers"]}
+    after = {a["key"]: a for a in new["answers"]}
+    order = [a["key"] for a in new["answers"]] + [k for k in before if k not in after]
+    answers = []
+    for k in order:
+        x, y = before.get(k), after.get(k)
+        if x is None or y is None:
+            change = {"added": x is None, "removed": y is None}
+        else:
+            change = {
+                "value": (x["value"], x["status"], x["source"])
+                != (y["value"], y["status"], y["source"]),
+                "question": any(x.get(f) != y.get(f) for f in _QUESTION),
+                "basis": _material(x["fact_refs"]) != _material(y["fact_refs"]),
+            }
+            if not any(change.values()):
+                continue
+        ref = y or x
+        answers.append({"key": k, "label": ref["label"], "step": ref.get("step"),
+                        "changed": sorted(c for c, v in change.items() if v),
+                        "before": _shown(x), "after": _shown(y)})  # fmt: skip
+    docs_before = {d["field"]: d for d in old["documents"]}
+    docs_after = {d["field"]: d for d in new["documents"]}
+
+    def doc(side: dict, f: str) -> dict:
+        return side.get(f) or {}
+
+    documents = [
+        {"field": f, "before": doc(docs_before, f).get("display"),
+         "after": doc(docs_after, f).get("display")}
+        for f in sorted(docs_before.keys() | docs_after.keys())
+        if (doc(docs_before, f).get("document_id"), doc(docs_before, f).get("version"))
+        != (doc(docs_after, f).get("document_id"), doc(docs_after, f).get("version"))
+    ]  # fmt: skip
+    labels = {a["key"]: a["label"] for a in old["answers"]} | {
+        a["key"]: a["label"] for a in new["answers"]
+    }
+    consents = [
+        {"key": k, "label": labels.get(k, k), "before": old["consents"].get(k),
+         "after": new["consents"].get(k)}
+        for k in sorted(old["consents"].keys() | new["consents"].keys())
+        if old["consents"].get(k) != new["consents"].get(k)
+    ]  # fmt: skip
+    destination = [
+        {"field": f, "before": old["destination"].get(f), "after": new["destination"].get(f)}
+        for f in _DESTINATION_SHOWN
+        if old["destination"].get(f) != new["destination"].get(f)
+    ]
+    return {"answers": answers, "documents": documents, "consents": consents,
+            "destination": destination}  # fmt: skip
 
 
 def latest_package(db: Session, app_id: uuid.UUID) -> ApplicationPackage | None:
@@ -493,12 +589,9 @@ def approve(
 ) -> PackageApproval:
     pkg = ensure_current(db, app)
     if pkg.version != version or pkg.content_hash != expected_hash:
-        raise ApprovalError(
-            "The package changed since you reviewed it. Review the latest "
-            "version and approve again."
-        )
+        raise refused("package_changed")
     if pkg.content["unresolved"] or pkg.content["validation_errors"]:
-        raise ApprovalError("Resolve every required question before approving.")
+        raise refused("package_unresolved")
     from app.modules.jobs import signals
 
     # S3 (D59): a closed, excluded or possibly duplicate job waits for your statement. Read
@@ -510,10 +603,7 @@ def approve(
     if active is not None:
         # Same scope: the same approval. Another scope is never swapped in silently.
         if active.scope != scope:
-            raise ApprovalError(
-                f"This package is already approved {SCOPE_WORDS[ApprovalScope(active.scope)]}. "
-                "Revoke that approval first."
-            )
+            raise refused("approval_other_scope", scope=SCOPE_WORDS[ApprovalScope(active.scope)])
         return active
     from app.modules.execution import rehearsal
     from app.modules.execution.policy import MANUAL_BINDING, execution_binding
@@ -567,7 +657,9 @@ def approve(
     return appr
 
 
-def revoke(db: Session, app: Application) -> None:
+def revoke(db: Session, app: Application, queued_attempt: str = "none") -> None:
+    """Invalidate every live approval of the application. `queued_attempt`: what revoking did to
+    an attempt in progress (execution.service.stop_for_revoke): none, cancelled or stopping."""
     lock_application(db, app.id)
     for appr in db.scalars(
         select(PackageApproval).where(
@@ -576,11 +668,39 @@ def revoke(db: Session, app: Application) -> None:
     ):
         appr.invalidated_at = utcnow()
         appr.invalidation_reason = "Revoked by you"
-    record(db, app.user_id, "package.revoke", "application", app.id)
+    record(db, app.user_id, "package.revoke", "application", app.id, queued_attempt=queued_attempt)
 
 
 def require_valid_approval(db: Session, app: Application) -> None:
     """Gate for queueing: the current content must carry a live approval."""
     pkg = ensure_current(db, app)
     if active_approval(db, pkg) is None:
-        raise ApprovalError("Approve the current package version before queueing.")
+        raise refused("approval_needed")
+
+
+def review_controls(db: Session, app_id: uuid.UUID, content: dict) -> dict[str, dict]:
+    """C12 (D64): what the review page may offer for each question. Kept outside the content,
+    so it never changes the package hash. `answer_here`: the user may answer or change it on
+    this page (not a document, an unsupported control, a question not asked, or what the
+    resolver keeps from user input: a fact that belongs in the profile, an acknowledgment);
+    `clear`: an answer given for this application is stored and can be removed;
+    `document_role`: the document this question attaches."""
+    stored = set(
+        db.scalars(
+            select(ApplicationInput.field_key).where(
+                ApplicationInput.application_id == app_id, ApplicationInput.kind == "answer"
+            )
+        )
+    )
+    out = {}
+    for a in content["answers"]:
+        not_asked = a["status"] == "blank_optional" and a["explanation"] == NOT_ASKED
+        out[a["key"]] = {
+            "answer_here": bool(a["user_input_allowed"])
+            and not not_asked
+            and a["type"] not in (FieldType.file.value, FieldType.unsupported.value),
+            "clear": a["key"] in stored,
+            "document_role": DOCUMENT_ROLES.get(a["intent"]),
+            "not_asked": not_asked,
+        }
+    return out
