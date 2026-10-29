@@ -1910,3 +1910,89 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   request may already have been billed); a per-request estimate from the token-counting
   endpoint (a second request that also sends the applicant's facts); multi-user access (D34,
   D55).
+
+## D75 — One synthetic journey through the whole product; a test-only local drafting provider (2026-10-29)
+- **Problem:** each step had its own tests, but nothing showed that the steps join up through
+  the real UI: a broken hand-off between two pages would pass every module test. Tailored
+  documents could not be part of such a journey either, because the only real provider is off
+  (D74) and the e2e server cannot be patched like a backend test.
+- **Decision:**
+  - `frontend/e2e/journey.spec.ts` walks one synthetic journey through the real UI, API, Celery
+    worker and receiver (desktop and mobile):
+    - register;
+    - facts and preferences kept apart;
+    - a TXT resume proposes facts, approved one by one;
+    - Freehire-shaped discovery from the receiver's stand-in, where a listing repeated by the
+      source becomes one job and a second search adds nothing;
+    - the job page explains preferences apart from eligibility;
+    - the form is captured;
+    - the three unknowns become checkpoints and approval is impossible until they are answered;
+    - a tailored resume is read, accepted and chosen;
+    - a disclosure-only rehearsal (one upload, nothing accepted);
+    - a separate approval to submit;
+    - a profile fact changed after that approval invalidates it and shows the change;
+    - approve again, submit, receipt;
+    - the receiver's ledger shows exactly one acceptance, with the changed fact and the tailored
+      DOCX byte for byte;
+    - preparing again opens the same application, and the API refuses to queue it again;
+    - the tracker shows the receipt, links back to the application, and records an outcome on
+      the timeline;
+    - a job on a real Greenhouse host (never contacted) is refused and offered no test-only form
+      control.
+  - `preparation/fixture_provider.py`: a labelled local test double that writes the cited facts'
+    own text, used only when `NOEFFORTS_ENV=test` and the account matches
+    `NOEFFORTS_DRAFTING_TEST_FIXTURE_USERS` (fnmatch; the e2e server sets `journey.*@example.com`).
+    It sends nothing anywhere, and its drafts pass every draft check. The static guard now allows
+    exactly two provider classes: the external one (`external = True`) and this one.
+- **Found by the journey and fixed:**
+  1. After a form was captured, the job page's "How NoEfforts could apply" still said "Capture
+     the application form first" until "Check again" was pressed. It now reloads whenever a form
+     is captured.
+  2. After a tailored resume was accepted, the page said "Choose it above", but the resume
+     choice did not list it until the page was reloaded. Documents are now read again with the
+     package.
+  3. The tracker gave a submitted application no link back to its review page, where the
+     package that was sent and its receipt are. It now links every application past the
+     tracked-only state.
+  4. Also changed: a job on a real employer's site no longer offers the test-only form controls,
+     which could only fail. It says to apply on the employer's site and track it.
+- **Not changed:** an invalidated approval shows "Submit approved package" disabled, not hidden;
+  that is the existing design, and the journey asserts that it is disabled.
+- **Open UX gaps found:** work history, education and licences can be added and removed in the
+  page but not edited (the API can; `docs/remaining-work.md` row 16).
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration.
+
+## D76 — Owner deployment readiness: checked secrets, a health-gated start, a tested backup and restore (priority A, 2026-10-29)
+- **Problem:**
+  - Compose started the worker and the web app as soon as the API container existed, possibly
+    while migrations were still running.
+  - The API had no health check, so "running" did not mean "migrated and answering".
+  - `.env.example` holds placeholder runner and proxy tokens that would start a stack.
+  - There was no written backup, upgrade or rollback procedure. The obvious restore
+    (`pg_restore --clean`) leaves tables that only a newer version had, and the older version's
+    migrations then fail.
+- **Decision:**
+  - `docker-compose.yml`:
+    - The API has a health check (`/api/health`, which reads the database; probed without any
+      proxy so a Docker Desktop proxy setting cannot route it).
+    - The worker and the web app start only once the API is healthy. The API starts only after
+      `alembic upgrade head` succeeds (`backend/Dockerfile`), so healthy implies migrated.
+  - `scripts/check_env.py` (standard library only, so it runs with a Mac's system `python3`):
+    - refuses a missing, empty, placeholder, too short or reused secret;
+    - warns about the default database password and about every switch that contacts an
+      outside service;
+    - prints key names only, never a value.
+  - `scripts/verify-local.sh`: the checker, `docker compose config`, then the smoke test as a
+    throwaway Compose project. It stops if the stack's ports are in use, so the owner's own stack
+    and data are never touched.
+  - `docs/deployment.md`: the owner's guide to start, health, backup, upgrade, rollback, stop
+    and verify. Rollback drops and recreates the database before restoring.
+  - The CI smoke job runs the same backup and restore commands: back up, create a second
+    account, restore, then the first session works and the second account is gone.
+  - `backups/` is git-ignored, and the repository hygiene test refuses a backup folder or a
+    `.dump` file.
+- **Not claimed:** the stack has not been run on the owner's Mac or on arm64. The sandbox did not
+  build images: they need a TLS proxy certificate that the real images must not carry. The CI
+  jobs are the build evidence.
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration; no new outbound path.
+

@@ -162,10 +162,11 @@ function Tracker() {
           <p className="mb-3 text-sm">
             Status: <Badge tone={tone(open)}>{stateLabel(open)}</Badge>
           </p>
-          {!["draft", "submitted_confirmed", "submitted_unconfirmed", "cancelled"].includes(open.state) && (
+          {open.state !== "draft" && (
+            // Also after submitting: the review page holds the package that was sent and its receipt.
             <p className="mb-3 text-sm">
               <Link className="text-indigo-700 underline" href={`/applications/${open.id}`}>
-                Open the application review
+                {open.state.startsWith("submitted") ? "Open the application (what was sent, and its receipt)" : "Open the application review"}
               </Link>
             </p>
           )}

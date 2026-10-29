@@ -25,6 +25,9 @@ const backendEnv = {
   // prerequisite (E6) on the fictional "e6-" fixture forms only. It can only add the rule.
   NOEFFORTS_ENV: "test",
   NOEFFORTS_EXECUTION_TEST_REHEARSAL_RULE_PATHS: JSON.stringify(["fixture_ats:e6-*"]),
+  // Test-only as well: journey.* accounts draft with the labelled local fixture provider
+  // (backend preparation/fixture_provider.py); every other account sees drafting as not configured.
+  NOEFFORTS_DRAFTING_TEST_FIXTURE_USERS: JSON.stringify(["journey.*@example.com"]),
 };
 
 export default defineConfig({

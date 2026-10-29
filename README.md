@@ -65,10 +65,14 @@ supported for automatic submission. See
 ## Run it with Docker
 
 ```bash
-cp .env.example .env   # then set AUDIT_REF_KEY (e.g. `openssl rand -hex 32`); it is required
-docker compose up --build
+cp .env.example .env              # then set AUDIT_REF_KEY, BROWSER_RUNNER_TOKEN and
+                                  # EGRESS_CONTROL_TOKEN, each from `openssl rand -hex 32`
+python3 scripts/check_env.py .env # names any missing or placeholder secret (never prints values)
+docker compose up -d --build
 ```
-Then open http://localhost:3000. Data lives in the `pgdata` and `storage` volumes.
+Then open http://localhost:3000. Data lives in the `pgdata` and `storage` volumes. Health
+checks, backups, upgrades, rollback and a safe verification run (`./scripts/verify-local.sh`)
+are in [docs/deployment.md](docs/deployment.md). It has been run in CI on Linux, not yet on a Mac.
 
 ## Tests
 
@@ -92,8 +96,9 @@ Override test databases with `NOEFFORTS_TEST_DATABASE_URL` / `NOEFFORTS_E2E_DATA
 
 ## Safety defaults
 
-- Nothing is submitted to an employer without your explicit approval (submission is not
-  implemented yet at all).
+- Nothing is submitted without your explicit approval. Submission works only to the local
+  synthetic test receiver; real employer sites are refused (apply there yourself, then record
+  the application with "Track application").
 - Unknown facts stay unknown. NoEfforts never guesses authorization, sponsorship, residence,
   salary or demographic answers.
 - Secrets go in `.env` files, which are git-ignored. Never commit resumes or real candidate data.

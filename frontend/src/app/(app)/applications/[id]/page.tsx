@@ -56,6 +56,9 @@ export default function ReviewPage() {
   const [noForm, setNoForm] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    // The documents are read again with the package: a tailored document accepted below must be
+    // offered in the resume choice at once.
+    api<Doc[]>("/documents").then(setDocs).catch(() => undefined);
     try {
       setView(await api<PackageView>(`/applications/${id}/package`));
     } catch (e) {
@@ -66,7 +69,6 @@ export default function ReviewPage() {
 
   useEffect(() => {
     load();
-    api<Doc[]>("/documents").then(setDocs).catch(() => undefined);
   }, [load]);
 
   async function call(path: string, method: string, json: unknown, ok?: string | ((v: PackageView & { revoke_effect?: string }) => string)) {

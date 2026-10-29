@@ -43,3 +43,6 @@ next-env.d.ts
 test-results/
 playwright-report/
 dump.rdb
+
+# Local backups (docs/deployment.md): your real data
+backups/

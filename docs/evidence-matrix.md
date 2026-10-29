@@ -9,6 +9,38 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Owner deployment readiness (D76, 2026-10-29; sandbox CLI and CI only)
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Compose refuses to start without its secrets | `${VAR:?}` for `AUDIT_REF_KEY`, `BROWSER_RUNNER_TOKEN`, `EGRESS_CONTROL_TOKEN` | `docker compose config` exit 1 without `AUDIT_REF_KEY` (sandbox); `test_every_required_compose_variable_is_in_the_example_and_the_checker` | pass | — |
+| Secrets checked before start, never printed | `scripts/check_env.py` | `test_the_example_file_is_refused_until_its_secrets_are_set`, `test_a_good_file_passes_and_no_value_is_printed`, `test_a_bad_file_fails_without_printing_its_values`, `test_reused_secrets_missing_keys_and_outbound_switches` | pass | Not run on a Mac's system `python3` |
+| Nothing reachable from another machine | every published port on 127.0.0.1 | `test_every_published_port_is_bound_to_this_machine_only`; rendered `docker compose config` | pass | — |
+| Worker and web app never start before migrations finish | API health check; `depends_on: service_healthy`; `alembic upgrade head && uvicorn` | `test_the_worker_and_web_app_start_only_once_the_api_is_healthy`; probe exit 1 with no API, 0 with one, even with a dead proxy configured | pass in the sandbox | CI `docker-smoke` exercises it in real containers |
+| Backup and rollback restore the data from before the backup, and nothing after | `docs/deployment.md` sections 5 and 7 | CI `docker-smoke`: back up, second account, drop and restore, first session works, second login 401 | see implementation-status for the CI run | Not run on the owner's machine |
+| Backups never committed | `.gitignore` `backups/`; hygiene rule for `backups/` and `.dump` | `test_backups_are_never_committed`, `test_the_rules_catch_what_they_are_for` | pass | — |
+| Runs on the owner's Mac | `docs/deployment.md` section 10, `scripts/verify-local.sh` | — | **not run** | Needs the owner to run it |
+
+## One synthetic journey through the whole product (D75, 2026-10-29; local only)
+
+Synthetic data, the receiver's stand-in of Freehire's documented API, and the independent
+receiver; its ledger is the oracle. `frontend/e2e/journey.spec.ts`, desktop and mobile.
+
+| Requirement | Step in `journey.spec.ts` | Result |
+|---|---|---|
+| Facts and preferences apart | "register; facts and preferences are kept apart" | work authorization per country; preferences on their own page |
+| Proposed facts used only once approved | "a resume proposes facts" | 1 work and 1 education entry proposed, approved one by one |
+| Normalization and dedupe | "discovery: normalized, deduplicated, never re-added" | the source's repeated listing links to the same job; a second search adds nothing |
+| Preference review apart from eligibility | "job page: preferences explained apart from eligibility" | title and location reasons; "says nothing about eligibility or sponsorship" |
+| Unknown becomes a checkpoint | "what is unknown is asked" | 3 questions asked; approval disabled until answered |
+| Tailored material reviewed before use | "a tailored resume is read, accepted and chosen" | cited facts shown; offered at once after accepting (fixed) |
+| Disclosure-only rehearsal | "a rehearsal fills and checks, and never submits" | ledger: +1 upload, +0 acceptances |
+| Stale approvals invalidated | "a separate approval to submit; a fact changed after it invalidates it" | "Approval invalidated", the change shown, submit disabled until approved again |
+| Versions consistent | "what arrived is what was approved, exactly once" | ledger: the new phone, the user's answer, the tailored DOCX's SHA-256; attempts `confirmed`, `rehearsed` |
+| No blind resubmission | "no blind resubmission" | the same application reopens; queueing again refused; still 1 acceptance |
+| Receipt, tracker, outcome timeline | "tracker: receipt, timeline and an outcome" | receipt-sourced state; link back to the application (fixed); outcome on the timeline |
+| Fixtures never make a real destination ready | "fixture evidence never makes a real destination ready" | `real_destination_disabled`; no test-only form control (fixed) |
+
 ## Claude as the drafting provider, built and off (L4, 2026-10-29; local only, no request to Anthropic)
 
 A stub SDK client (returning the SDK's own `Message` type) and a stub resolver stand in for

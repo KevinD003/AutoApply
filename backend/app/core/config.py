@@ -111,6 +111,10 @@ class Settings(BaseSettings):
     drafting_timeout_seconds: int = 120
     anthropic_api_key: SecretStr = SecretStr("")
     anthropic_base_url: str = "https://api.anthropic.com"
+    # TEST ONLY (honoured only when env == "test"): fnmatch patterns over account emails that get
+    # the local, labelled fixture drafting provider (preparation/fixture_provider.py), so the
+    # end-to-end journey can exercise drafts and tailored documents. It sends nothing anywhere.
+    drafting_test_fixture_users: list[str] = Field(default_factory=list)
 
 
 @lru_cache

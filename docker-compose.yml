@@ -44,6 +44,15 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
+    # Healthy once migrations have run (they run before the server starts) and the API answers
+    # /api/health, which checks the database. No proxy: a Docker Desktop proxy setting must not
+    # route this local probe.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.build_opener(u.ProxyHandler({})).open('http://127.0.0.1:8000/api/health', timeout=4)"]
+      interval: 5s
+      timeout: 5s
+      start_period: 60s
+      retries: 24
 
   worker:
     build: ./backend
@@ -56,7 +65,8 @@ services:
       NOEFFORTS_EGRESS_CONTROL_TOKEN: ${EGRESS_CONTROL_TOKEN:?set EGRESS_CONTROL_TOKEN in .env}
     volumes: [storage:/data/storage, egress_control:/run/egress-control:ro]
     networks: [default, exec_control]
-    depends_on: [backend]
+    depends_on:
+      backend: { condition: service_healthy }  # never on a database still being migrated
 
   browser-runner:
     build: ./browser
@@ -105,7 +115,8 @@ services:
       context: ./frontend
       args: { NOEFFORTS_BACKEND_URL: "http://backend:8000" }
     ports: ["127.0.0.1:3000:3000"]
-    depends_on: [backend]
+    depends_on:
+      backend: { condition: service_healthy }
 
 networks:
   default: {}

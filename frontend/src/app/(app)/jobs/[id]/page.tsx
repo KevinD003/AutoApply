@@ -16,6 +16,9 @@ export default function JobPage() {
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<unknown>(null);
   const [missing, setMissing] = useState(false);
+  // The route depends on the captured form: it is read again whenever a form is captured.
+  const [route, setRoute] = useState<Route | null>(null);
+  const [formVersion, setFormVersion] = useState(0);
 
   const load = useCallback(() => {
     api<JobDetail>(`/jobs/${id}`)
@@ -108,8 +111,13 @@ export default function JobPage() {
         </div>
       </Card>
       <SignalsCard job={job} onChange={load} onError={setError} />
-      <RouteCard jobId={id} />
-      <FormCard jobId={id} onPrepare={prepare} />
+      <RouteCard jobId={id} refresh={formVersion} onRoute={setRoute} />
+      <FormCard
+        jobId={id}
+        onPrepare={prepare}
+        onCaptured={() => setFormVersion((v) => v + 1)}
+        realDestination={route?.reason === "real_destination_disabled"}
+      />
       <Card title="Why this job matches (or doesn't)">
         <ul className="space-y-2">
           {job.explanations.map((e, i) => (
@@ -157,18 +165,21 @@ type Route = {
   provider_support: string | null; // the provider's support state, worded
 };
 
-function RouteCard({ jobId }: { jobId: string }) {
+function RouteCard({ jobId, refresh, onRoute }: { jobId: string; refresh: number; onRoute: (r: Route) => void }) {
   const [route, setRoute] = useState<Route | null>(null);
   const [error, setError] = useState<unknown>(null);
   const load = useCallback(() => {
     setError(null);
     api<Route>(`/jobs/${jobId}/route`)
-      .then(setRoute)
+      .then((r) => {
+        setRoute(r);
+        onRoute(r);
+      })
       .catch(setError);
-  }, [jobId]);
+  }, [jobId, onRoute]);
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, refresh]);
   return (
     <Card
       title="How NoEfforts could apply"
@@ -197,7 +208,17 @@ function RouteCard({ jobId }: { jobId: string }) {
   );
 }
 
-function FormCard({ jobId, onPrepare }: { jobId: string; onPrepare: () => void }) {
+function FormCard({
+  jobId,
+  onPrepare,
+  onCaptured,
+  realDestination,
+}: {
+  jobId: string;
+  onPrepare: () => void;
+  onCaptured: () => void;
+  realDestination: boolean;
+}) {
   const [form, setForm] = useState<FormInfo | null | undefined>(undefined);
   const [fixtures, setFixtures] = useState<Record<string, string>>({});
   const [pick, setPick] = useState("basic");
@@ -220,6 +241,7 @@ function FormCard({ jobId, onPrepare }: { jobId: string; onPrepare: () => void }
     setError(null);
     try {
       setForm(await api<FormInfo>(`/jobs/${jobId}/form/greenhouse`, { method: "POST" }));
+      onCaptured();
     } catch (e) {
       setError(e);
     }
@@ -229,6 +251,7 @@ function FormCard({ jobId, onPrepare }: { jobId: string; onPrepare: () => void }
     setError(null);
     try {
       setForm(await api<FormInfo>(`/jobs/${jobId}/form`, { json: { fixture: pick } }));
+      onCaptured();
     } catch (e) {
       setError(e);
     }
@@ -239,6 +262,12 @@ function FormCard({ jobId, onPrepare }: { jobId: string; onPrepare: () => void }
       <ErrorBox error={error} />
       {form === undefined ? (
         <Loading />
+      ) : form === null && realDestination ? (
+        // A real employer's site: the test-only controls below could not change that.
+        <p className="text-sm">
+          This posting is on a real employer&apos;s site. NoEfforts does not read or fill real employer forms in this version: apply
+          there, then record it with “Track application”.
+        </p>
       ) : form === null ? (
         <div className="space-y-2 text-sm">
           <p>

@@ -114,8 +114,10 @@ def get_provider() -> DraftProvider | None:
 def provider_for(db, user) -> tuple[DraftProvider | None, str]:
     """The provider `user` may draft with now, and a status code: `available`,
     `not_configured`, `not_for_this_account`, `consent_needed` or `budget_reached`."""
-    from app.modules.preparation import drafting_access
+    from app.modules.preparation import drafting_access, fixture_provider
 
+    if fixture_provider.applies_to(user):
+        return fixture_provider.FixtureDraftProvider(), "available"
     provider = get_provider()
     if provider is None:
         return None, "not_configured"

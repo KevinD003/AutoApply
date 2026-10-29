@@ -10,12 +10,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# Documents, spreadsheets, environment files, keys, browser captures and databases.
+# Documents, spreadsheets, environment files, keys, browser captures, databases and backups.
 FORBIDDEN = re.compile(
-    r"\.(pdf|docx?|rtf|odt|pages|xlsx?|ods|csv|tsv|pem|key|p12|pfx|har|sqlite3?|db)$"
+    r"\.(pdf|docx?|rtf|odt|pages|xlsx?|ods|csv|tsv|pem|key|p12|pfx|har|sqlite3?|db|dump)$"
     r"|(^|/)\.env(\..+)?$"
     r"|(^|[/._-])trace\.zip$"
-    r"|(^|/)(\.auth|captures|playwright-report|test-results)/"
+    r"|(^|/)(\.auth|backups|captures|playwright-report|test-results)/"
     r"|(storage[-_]?state|cookies?)[^/]*\.json$|(^|/)auth[^/]*\.json$",
     re.IGNORECASE,
 )
@@ -71,7 +71,8 @@ def test_the_rules_catch_what_they_are_for():
     for name in ("resume.pdf", "x/Cover Letter.docx", "candidates.xlsx", "export.csv", ".env",
                  "backend/.env.local", "e2e/storage_state.json", "my-storageState.json",
                  "auth.json", "frontend/.auth/user.json", "trace.zip", "test-results/a/trace.zip",
-                 "ledger.sqlite", "run.har", "captures/page.html"):  # fmt: skip
+                 "ledger.sqlite", "run.har", "captures/page.html", "backups/storage-1.tgz",
+                 "noefforts-20261029.dump"):  # fmt: skip
         assert FORBIDDEN.search(name), name
     for name in (".env.example", "docs/answer-policy.md", "backend/app/main.py",
                  "docs/author.md", "frontend/package.json"):  # fmt: skip

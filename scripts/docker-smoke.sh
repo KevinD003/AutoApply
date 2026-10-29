@@ -49,4 +49,31 @@ expect_contains "session after restart" "$email" -b /tmp/smoke-cookies \
   http://127.0.0.1:8000/api/auth/me
 expect_running_services
 echo "Data persisted across a backend restart"
+
+# Back up, change something, restore: the commands in docs/deployment.md (sections 5 and 7).
+bk=$(mktemp -d)
+docker compose exec -T postgres pg_dump -U postgres -Fc noefforts >"$bk/db.dump"
+docker compose exec -T backend tar czf - -C /data/storage . >"$bk/storage.tgz"
+later="smoke.later.$(date +%s)@example.com"
+code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$later\",\"password\":\"synthetic-password-2\"}" \
+  http://127.0.0.1:8000/api/auth/register)
+test "$code" = "201" || { echo "second register returned $code"; exit 1; }
+docker compose stop backend worker frontend
+docker compose exec -T postgres dropdb -U postgres --force noefforts
+docker compose exec -T postgres createdb -U postgres noefforts
+docker compose exec -T postgres pg_restore -U postgres -d noefforts --no-owner <"$bk/db.dump"
+docker compose run --rm --no-deps -T backend \
+  sh -c 'find /data/storage -mindepth 1 -delete && tar xzf - -C /data/storage' <"$bk/storage.tgz"
+docker compose up -d
+wait_http http://127.0.0.1:8000/api/health 60
+expect_contains "session after restore" "$email" -b /tmp/smoke-cookies \
+  http://127.0.0.1:8000/api/auth/me
+code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$later\",\"password\":\"synthetic-password-2\"}" \
+  http://127.0.0.1:8000/api/auth/login)
+test "$code" = "401" || { echo "account made after the backup still logs in ($code)"; exit 1; }
+expect_running_services
+rm -rf "$bk"
+echo "Backup and restore OK (state from before the backup, nothing after it)"
 echo "DOCKER SMOKE PASSED"

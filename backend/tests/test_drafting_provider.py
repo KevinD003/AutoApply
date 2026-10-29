@@ -172,8 +172,9 @@ def test_an_unbound_provider_never_sends(configure):
 
 
 def test_every_provider_class_in_the_app_declares_whether_it_sends_anything_out():
-    """A class with a `draft` method in app/ is a provider; each one sets `external = True`
-    (so drafting.provider_for puts it behind the owner, consent and budget checks)."""
+    """A class with a `draft` method in app/ is a provider; each one that can send anything out
+    sets `external = True` (so drafting.provider_for puts it behind the owner, consent and budget
+    checks)."""
     root = Path(__file__).resolve().parents[1] / "app"
     found = {}
     for path in root.rglob("*.py"):
@@ -189,7 +190,8 @@ def test_every_provider_class_in_the_app_declares_whether_it_sends_anything_out(
                     and getattr(b.value, "value", None) is True
                     for b in node.body
                 )  # fmt: skip
-    assert found == {"AnthropicProvider": True}
+    # The one exception: the labelled local test double, which exists only in env "test".
+    assert found == {"AnthropicProvider": True, "FixtureDraftProvider": False}
 
 
 # -- who may use it --------------------------------------------------------------------------
