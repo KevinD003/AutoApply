@@ -9,6 +9,19 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Export, deletion, saved-answer editing, preview, explainable match (D77-D79, 2026-10-29; local only)
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Export is complete and scoped to the account | `account/export.py` (explicit column lists) | `test_the_export_holds_everything_of_the_account_and_nothing_of_another`, `test_every_table_and_column_has_an_export_decision`, `account.spec.ts` | pass | — |
+| Export holds no secret or keyed material | column and JSON-key exclusions, keyed-reference scrubber | `test_the_export_holds_no_secret_and_no_keyed_material`, `test_the_scrubber_leaves_out_keyed_values_inside_json` | pass | — |
+| Deletion removes every row, file and session of the account only | cascade from `users` (checked in the migrated database), files after commit | `test_every_table_that_names_an_account_is_deleted_with_it`, `test_deletion_removes_every_row_file_and_session_of_the_account_only`, `account.spec.ts` | pass | Not run against a real account (by instruction) |
+| Deletion never causes a resubmission | refused past the send gate; pending work deleted; a holding worker fenced out | `test_deletion_is_refused_while_a_submission_may_be_in_flight`, `test_queued_work_stops_a_pending_attempt_and_its_message_do_nothing`, `test_a_worker_holding_an_attempt_is_fenced_out_and_never_sends`, the two gate races | pass | — |
+| Retention is a decision, not invented policy | `account/policy.py` | `test_the_deletion_document_lists_exactly_the_reason_codes_and_policy` | default: nothing kept | Owner decision open |
+| A saved-answer edit keeps provenance and history and invalidates approvals | `preparation/bank_edit.py` | `test_an_edit_is_a_new_version_and_the_application_asks_for_approval_again`, `test_the_history_keeps_every_version`, `test_every_protected_mutation_stops_a_running_attempt[answer_bank_edit]`, `answers-edit.spec.ts` | pass | — |
+| Preview introduces no external service or active content | text as JSON, shown in a `<pre>` | `test_the_preview_is_the_text_as_data_never_the_file`, `answers-edit.spec.ts` (markup shown, not run; no request off the machine) | pass | — |
+| Match explained by component, unknown stays unknown, never a probability | `jobs/fit.py` | `test_fit.py` (each result, side-by-side eligibility, qualifications from approved facts, the wording scan, the job page API) | pass | No jobs-list summary yet |
+
 ## Owner deployment readiness (D76, 2026-10-29; sandbox CLI and CI only)
 
 | Requirement | Implementation | Evidence | Result | Gaps |

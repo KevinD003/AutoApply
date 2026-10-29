@@ -5,9 +5,84 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, Credit, ErrorBox, Field, inputCls, Loading } from "@/components/ui";
-import { api, ApiError, Application, JobDetail, JobSignals } from "@/lib/api";
+import { api, ApiError, Application, FitYours, JobDetail, JobFit, JobSignals } from "@/lib/api";
 
-const KIND_TONE = { match: "green", mismatch: "amber", exclude: "red", info: "slate" } as const;
+const RESULT = {
+  met: { tone: "green", label: "met" },
+  not_met: { tone: "amber", label: "not met" },
+  not_stated: { tone: "slate", label: "not stated" },
+  not_set: { tone: "slate", label: "not set" },
+} as const;
+
+function yoursLine(y: FitYours, what: string): string {
+  return what === "sponsorship"
+    ? `${y.country}: you need sponsorship now: ${y.sponsorship_now}; later: ${y.sponsorship_later}`
+    : `${y.country}: you are authorized to work: ${y.authorized}`;
+}
+
+// Priority D (D79): three components, never mixed. The only number counts your own preferences
+// that could be checked; eligibility is shown side by side and never decided here.
+function FitCard({ fit }: { fit: JobFit }) {
+  const [skills, licences] = fit.qualifications;
+  return (
+    <Card title="Why this job matches (or doesn't)">
+      <p className="text-sm font-medium text-slate-800">
+        Your preferences: {fit.preference_fit.label}
+        <span className="block text-xs font-normal text-slate-500">
+          A count of your own targets this job could be checked against: not a prediction and not an application-system score.
+        </span>
+      </p>
+      <ul aria-label="Your preferences" className="mt-2 space-y-2">
+        {fit.preferences.map((p) => (
+          <li key={p.what} className="flex items-start gap-2 text-sm">
+            <Badge tone={RESULT[p.result].tone}>{RESULT[p.result].label}</Badge>
+            <span>{p.text}</span>
+          </li>
+        ))}
+      </ul>
+      <h3 className="mt-4 text-sm font-medium text-slate-800">Eligibility, side by side (advisory)</h3>
+      <p className="text-xs text-slate-500">
+        What a source says next to what you recorded. NoEfforts does not decide eligibility; each question is answered from your facts when you prepare.
+      </p>
+      <ul aria-label="Eligibility" className="mt-1 space-y-2 text-sm">
+        {fit.eligibility.map((e) => (
+          <li key={e.what}>
+            <span className="font-medium">{e.what === "sponsorship" ? "Sponsorship offered" : "Job's country"}</span>: source says{" "}
+            {e.source_says}
+            {e.stated_by ? ` (${e.stated_by}${e.basis ? `, ${e.basis}` : ""})` : ""}
+            {e.note ? `. ${e.note}` : ""}
+            <ul className="ml-4 list-disc text-xs text-slate-600">
+              {e.yours.length === 0 ? <li>You have recorded nothing for this.</li> : e.yours.map((y) => <li key={y.country}>{yoursLine(y, e.what)}</li>)}
+            </ul>
+          </li>
+        ))}
+      </ul>
+      {skills && (
+        <>
+          <h3 className="mt-4 text-sm font-medium text-slate-800">Your approved qualifications the job names</h3>
+          <ul aria-label="Qualifications" className="mt-1 space-y-1 text-sm">
+            <li>
+              Skills: {skills.mentioned.length ? skills.mentioned.join(", ") : "none of yours named"} ({skills.mentioned.length} of {skills.of} you listed)
+            </li>
+            <li>
+              Licences: {licences.mentioned.length ? licences.mentioned.join(", ") : "none of yours named"} ({licences.mentioned.length} of {licences.of} valid)
+            </li>
+          </ul>
+        </>
+      )}
+      {fit.missing.length > 0 && (
+        <>
+          <h3 className="mt-4 text-sm font-medium text-slate-800">Not known, so not checked</h3>
+          <ul aria-label="Missing information" className="mt-1 list-disc space-y-1 pl-5 text-sm text-slate-600">
+            {fit.missing.map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+        </>
+      )}
+    </Card>
+  );
+}
 
 export default function JobPage() {
   const { id } = useParams<{ id: string }>();
@@ -118,16 +193,7 @@ export default function JobPage() {
         onCaptured={() => setFormVersion((v) => v + 1)}
         realDestination={route?.reason === "real_destination_disabled"}
       />
-      <Card title="Why this job matches (or doesn't)">
-        <ul className="space-y-2">
-          {job.explanations.map((e, i) => (
-            <li key={i} className="flex items-start gap-2 text-sm">
-              <Badge tone={KIND_TONE[e.kind]}>{e.kind}</Badge>
-              <span>{e.text}</span>
-            </li>
-          ))}
-        </ul>
-      </Card>
+      <FitCard fit={job.fit} />
       <Card title="Notes">
         <Field label="Private notes">
           <textarea className={inputCls} rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />

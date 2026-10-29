@@ -67,6 +67,7 @@ Allowed metadata per event. `-` means the event has no metadata.
 |---|---|---|---|
 | `auth.register` | `user` | - | |
 | `auth.login` | `user` | - | |
+| `account.export` | `user` | `documents`, `rows`, `tables` | counts in the export: document files, records, tables (D77); deleted with the account, like every audit event (`docs/account-deletion.md`) |
 | `profile.update` | `profile` | `version` | profile version number |
 | `preferences.update` | `preferences` | - | |
 | `{entity}.create` | `{entity}` | - | `entity` is one of `work_authorization`, `employment`, `education`, `credential` |
@@ -111,6 +112,7 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `draft.accepted` | `application` | `field_ref` | reference (C15, D68); the draft's text is the answer, recorded as an input, never here |
 | `draft.rejected` | `application` | `field_ref`, `reason_code` | reference; a fixed rejection code (`empty`, `too_long`, `placeholders`, `uncited_facts`, `invented_numbers`, `legal_status`, `sensitive_topic`, `uncited_credential`; `by_user` when the user rejects it, and its text is erased) |
 | `answer_bank.delete` | `answer_bank` | - | |
+| `answer_bank.edit` | `answer_bank` | `version` | the saved answer's new version number (D78); never the answer |
 | `package.approve` | `application` | `adapter`, `adapter_version`, `content_hash`, `rehearsal_prerequisite`, `scope`, `version` | the adapter and version bound to the approval (`manual_handoff` and no version when the route was a manual handoff); the package's one-way hash; how the rehearsal prerequisite stood for an approval to submit (`met`, `established`, `not_required`; none for a rehearsal or a manual handoff); `submit` or `disclose_only` (a rehearsal); package version |
 | `package.approval_invalidated` | `application` | `version` | the package version that invalidated it |
 | `package.approval_retired` | `application` | `reason_code` | `execution_method_changed`; `rehearsal_completed` (a rehearsal used its approval up); `reconciled_not_received` (the user reconciled an unknown outcome as not received); or `verification_not_completed` (the final click was made and its verification code never completed). After the last two, sending again needs a new approval (D15). Written only when an approval was still live |

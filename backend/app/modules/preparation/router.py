@@ -21,7 +21,7 @@ from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
 from app.modules.jobs import signals
 from app.modules.jobs.models import Job
-from app.modules.preparation import bankscope, binding, drafting, generation
+from app.modules.preparation import bank_edit, bankscope, binding, drafting, generation
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation import package as pk
 from app.modules.preparation.classify import classify
@@ -627,7 +627,7 @@ def _save_to_bank(db, user, app, f, value, sensitive: bool) -> None:
         # This session loaded the row unlocked while rebuilding the package: refresh it.
         .execution_options(populate_existing=True)
     )
-    db.scalars(stmt).one()
+    bank_edit.keep_version(db, db.scalars(stmt).one(), bank_edit.SAVED)  # C (D78): history
 
 
 @router.post("/applications/{app_id}/answers/clear")
@@ -1432,6 +1432,56 @@ def list_bank(user: User = Depends(current_user), db: Session = Depends(get_db))
         )
         for e in entries
     ]
+
+
+class BankValueIn(BaseModel):
+    value: dict
+
+
+class BankEditOut(BaseModel):
+    entry: BankOut
+    changed: bool
+    applications_to_approve_again: int
+
+
+class BankVersionOut(BaseModel):
+    version: int
+    value: dict
+    how: str
+    recorded_at: datetime
+
+
+@router.put("/answer-bank/{entry_id}", response_model=BankEditOut)
+def edit_bank(
+    entry_id: uuid.UUID,
+    body: BankValueIn,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """C (D78): a new version of the answer; the question it is bound to is unchanged, and
+    every application that used the earlier version asks for approval again."""
+    try:
+        out = bank_edit.edit(db, user.id, entry_id, body.value)
+    except bank_edit.EditRefused as e:
+        db.rollback()
+        raise bad_request(str(e)) from None
+    if out is None:
+        raise not_found("Saved answer")
+    entry, changed, invalidated = out
+    view = BankOut.model_validate(entry).model_copy(
+        update={"not_reused": NOT_REUSED.get(saved_answer_scope(entry))}
+    )
+    return BankEditOut(entry=view, changed=changed, applications_to_approve_again=invalidated)
+
+
+@router.get("/answer-bank/{entry_id}/history", response_model=list[BankVersionOut])
+def bank_history(
+    entry_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+):
+    out = bank_edit.history(db, user.id, entry_id)
+    if out is None:
+        raise not_found("Saved answer")
+    return out
 
 
 @router.delete("/answer-bank/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)

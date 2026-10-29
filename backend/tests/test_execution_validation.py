@@ -236,6 +236,14 @@ def m_answer_bank(api, app_id, ctx):
     api.delete(f"/answer-bank/{entry['id']}")
 
 
+def m_answer_bank_edit(api, app_id, ctx):
+    # C (D78): editing the saved answer the package uses, to another of its saved options.
+    entry = api.get("/answer-bank").json()[0]
+    new = next(o for o in entry["options_snapshot"] if o != entry["value"]["labels"][0].lower())
+    r = api.put(f"/answer-bank/{entry['id']}", json={"value": {"labels": [new]}})
+    assert r.status_code == 200 and r.json()["changed"], r.text
+
+
 def m_preferences(api, app_id, ctx):
     api.put("/profile/preferences", json={"willing_to_relocate": "yes"})
 
@@ -266,6 +274,7 @@ MUTATIONS = {
     "consent": m_consent,
     "answer": m_answer,
     "answer_bank_delete": m_answer_bank,
+    "answer_bank_edit": m_answer_bank_edit,
     "preferences": m_preferences,
     "job_destination": m_job,
     "form_version": m_form,
@@ -276,7 +285,7 @@ MUTATIONS = {
 @pytest.mark.parametrize("name", sorted(MUTATIONS))
 def test_every_protected_mutation_stops_a_running_attempt(api, receiver, monkeypatch, name):
     """Real worker process paused after filling; the mutation goes through the public API."""
-    if name == "answer_bank_delete":
+    if name in ("answer_bank_delete", "answer_bank_edit"):
         # A stable required question (how you heard about a job is never saved, D51).
         receiver.config(mode="bank_question")
         prepared_application(api, receiver, bank_question="save_to_bank")

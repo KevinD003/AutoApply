@@ -75,9 +75,26 @@ export interface Job {
   seen_count: number;
 }
 
+export interface FitYours {
+  country: string;
+  authorized: string;
+  sponsorship_now: string;
+  sponsorship_later: string;
+}
+
+/** Priority D (D79): preferences, eligibility (advisory, no verdict) and qualifications, apart. */
+export interface JobFit {
+  preference_fit: { met: number; checked: number; label: string };
+  preferences: { what: string; result: "met" | "not_met" | "not_stated" | "not_set"; text: string }[];
+  eligibility: { what: string; source_says: string; stated_by?: string | null; basis?: string | null; note?: string; yours: FitYours[] }[];
+  qualifications: { what: "skills" | "licences"; mentioned: string[]; of: number }[];
+  missing: string[];
+}
+
 export interface JobDetail extends Job {
   description: string | null;
   explanations: { kind: "match" | "mismatch" | "exclude" | "info"; text: string }[];
+  fit: JobFit;
   discovered_from: {
     provider: string;
     label: string;
@@ -448,6 +465,21 @@ export interface BankEntry {
   help_text: string | null;
   /** Why this saved answer no longer answers its own question (D51), or null. */
   not_reused: string | null;
+}
+
+export interface BankEdit {
+  entry: BankEntry;
+  changed: boolean;
+  /** Applications whose package used the earlier version: their approvals were invalidated. */
+  applications_to_approve_again: number;
+}
+
+export interface BankVersion {
+  version: number;
+  value: Record<string, unknown>;
+  /** "saved from an application", "edited by you", or "as first recorded". */
+  how: string;
+  recorded_at: string;
 }
 
 export type ApprovalScope = "submit" | "disclose_only";

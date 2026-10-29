@@ -15,6 +15,7 @@ const NAV = [
   { href: "/answers", label: "Saved answers" },
   { href: "/profile", label: "Profile" },
   { href: "/preferences", label: "Preferences" },
+  { href: "/account", label: "Account" },
 ];
 
 export default function AppShell({ children }: { children: ReactNode }) {

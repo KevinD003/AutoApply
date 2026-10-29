@@ -176,6 +176,35 @@ def download(
     )
 
 
+PREVIEW_CHARS = 20_000
+
+
+@router.get("/{doc_id}/preview")
+def preview(
+    doc_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    storage: Storage = Depends(get_storage),
+):
+    """C (D78): the text NoEfforts reads from the file (extract.py, bounded), as JSON data. The
+    page shows it as plain text: the file is never rendered, and nothing is fetched."""
+    from fastapi.responses import JSONResponse
+
+    from app.modules.documents.extract import ExtractError, extract_text
+
+    doc = _owned(db, user, doc_id)
+    try:
+        text = extract_text(doc.content_type, storage.get(doc.storage_key))
+    except ExtractError as e:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, f"{e} (reason: {e.code})"
+        ) from None
+    return JSONResponse(
+        {"text": text[:PREVIEW_CHARS], "truncated": len(text) > PREVIEW_CHARS},
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
 # C17 (D70): why a document cannot be deleted now; the code is the "(reason: code)" suffix.
 IN_USE = {
     "document_in_approval": "This document is in a package you approved. Revoke that approval "

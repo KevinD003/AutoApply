@@ -47,6 +47,7 @@ interface Education extends Meta {
   field_of_study: string | null;
   start_date: string | null;
   end_date: string | null;
+  completed: TriState;
 }
 interface Credential extends Meta {
   name: string;
@@ -268,15 +269,23 @@ function EmploymentCard() {
   const { items, error, setError, load } = useList<Employment>("/profile/employment");
   const blank = { employer: "", title: "", location: "", start_date: "", end_date: "", is_current: false, description: "" };
   const [form, setForm] = useState(blank);
+  const [editing, setEditing] = useState<string | null>(null);
+
+  function edit(j: Employment) {
+    setEditing(j.id);
+    setForm({ employer: j.employer, title: j.title, location: j.location ?? "", start_date: j.start_date ?? "", end_date: j.end_date ?? "", is_current: j.is_current, description: j.description ?? "" });
+  }
 
   async function add(e: FormEvent) {
     e.preventDefault();
     setError(null);
     try {
-      await api("/profile/employment", {
+      await api(editing ? `/profile/employment/${editing}` : "/profile/employment", {
+        method: editing ? "PUT" : "POST",
         json: { ...form, location: form.location || null, start_date: form.start_date || null, end_date: form.is_current ? null : form.end_date || null, description: form.description || null },
       });
       setForm(blank);
+      setEditing(null);
       load();
     } catch (err) {
       setError(err);
@@ -301,7 +310,10 @@ function EmploymentCard() {
                 {j.description && <p className="whitespace-pre-wrap text-xs text-slate-600">{j.description}</p>}
                 <Proposed m={j} path="/profile/employment" onDone={load} onError={setError} />
               </div>
-              <Button variant="danger" className="!min-h-8 !px-2 !py-1" onClick={() => remove(j.id)}>Remove</Button>
+              <div className="flex shrink-0 gap-2">
+                <Button variant="secondary" className="!min-h-8 !px-2 !py-1" onClick={() => edit(j)}>Edit</Button>
+                <Button variant="danger" className="!min-h-8 !px-2 !py-1" onClick={() => remove(j.id)}>Remove</Button>
+              </div>
             </li>
           ))}
         </ul>
@@ -314,7 +326,10 @@ function EmploymentCard() {
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_current} onChange={(e) => setForm({ ...form, is_current: e.target.checked })} /> I currently work here</label>
         <Field label="Location"><input className={inputCls} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></Field>
         <div className="sm:col-span-2"><Field label="What you did" hint="Facts only — tailoring later may rephrase these but never adds new claims."><textarea className={inputCls} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field></div>
-        <div className="sm:col-span-2"><Button type="submit">Add position</Button></div>
+        <div className="flex gap-2 sm:col-span-2">
+          <Button type="submit">{editing ? "Save changes" : "Add position"}</Button>
+          {editing && <Button type="button" variant="secondary" onClick={() => { setEditing(null); setForm(blank); }}>Cancel</Button>}
+        </div>
       </form>
     </Card>
   );
@@ -324,15 +339,23 @@ function EducationCard() {
   const { items, error, setError, load } = useList<Education>("/profile/education");
   const blank = { institution: "", degree: "", field_of_study: "", start_date: "", end_date: "", completed: "unknown" };
   const [form, setForm] = useState(blank);
+  const [editing, setEditing] = useState<string | null>(null);
+
+  function edit(ed: Education) {
+    setEditing(ed.id);
+    setForm({ institution: ed.institution, degree: ed.degree ?? "", field_of_study: ed.field_of_study ?? "", start_date: ed.start_date ?? "", end_date: ed.end_date ?? "", completed: ed.completed });
+  }
 
   async function add(e: FormEvent) {
     e.preventDefault();
     setError(null);
     try {
-      await api("/profile/education", {
+      await api(editing ? `/profile/education/${editing}` : "/profile/education", {
+        method: editing ? "PUT" : "POST",
         json: { ...form, degree: form.degree || null, field_of_study: form.field_of_study || null, start_date: form.start_date || null, end_date: form.end_date || null },
       });
       setForm(blank);
+      setEditing(null);
       load();
     } catch (err) {
       setError(err);
@@ -356,7 +379,10 @@ function EducationCard() {
                 <p className="text-slate-600">{ed.start_date ?? "?"} → {ed.end_date ?? "?"}</p>
                 <Proposed m={ed} path="/profile/education" onDone={load} onError={setError} />
               </div>
-              <Button variant="danger" className="!min-h-8 !px-2 !py-1" onClick={() => remove(ed.id)}>Remove</Button>
+              <div className="flex shrink-0 gap-2">
+                <Button variant="secondary" className="!min-h-8 !px-2 !py-1" onClick={() => edit(ed)}>Edit</Button>
+                <Button variant="danger" className="!min-h-8 !px-2 !py-1" onClick={() => remove(ed.id)}>Remove</Button>
+              </div>
             </li>
           ))}
         </ul>
@@ -368,7 +394,10 @@ function EducationCard() {
         <Field label="Completed?"><TriSelect value={form.completed} onChange={(v) => setForm({ ...form, completed: v })} /></Field>
         <Field label="Start date"><input className={inputCls} type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></Field>
         <Field label="End date"><input className={inputCls} type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></Field>
-        <div className="sm:col-span-2"><Button type="submit">Add education</Button></div>
+        <div className="flex gap-2 sm:col-span-2">
+          <Button type="submit">{editing ? "Save changes" : "Add education"}</Button>
+          {editing && <Button type="button" variant="secondary" onClick={() => { setEditing(null); setForm(blank); }}>Cancel</Button>}
+        </div>
       </form>
     </Card>
   );
@@ -379,15 +408,23 @@ function CredentialsCard() {
   const { items, error, setError, load } = useList<Credential>("/profile/credentials");
   const blank = { name: "", issuer: "", issued_on: "", expires_on: "" };
   const [form, setForm] = useState(blank);
+  const [editing, setEditing] = useState<string | null>(null);
+
+  function edit(c: Credential) {
+    setEditing(c.id);
+    setForm({ name: c.name, issuer: c.issuer ?? "", issued_on: c.issued_on ?? "", expires_on: c.expires_on ?? "" });
+  }
 
   async function add(e: FormEvent) {
     e.preventDefault();
     setError(null);
     try {
-      await api("/profile/credentials", {
+      await api(editing ? `/profile/credentials/${editing}` : "/profile/credentials", {
+        method: editing ? "PUT" : "POST",
         json: { name: form.name, issuer: form.issuer || null, issued_on: form.issued_on || null, expires_on: form.expires_on || null },
       });
       setForm(blank);
+      setEditing(null);
       load();
     } catch (err) {
       setError(err);
@@ -414,7 +451,10 @@ function CredentialsCard() {
                 </p>
                 <Proposed m={c} path="/profile/credentials" onDone={load} onError={setError} />
               </div>
-              <Button variant="danger" className="!min-h-8 !px-2 !py-1" onClick={() => remove(c.id)}>Remove</Button>
+              <div className="flex shrink-0 gap-2">
+                <Button variant="secondary" className="!min-h-8 !px-2 !py-1" onClick={() => edit(c)}>Edit</Button>
+                <Button variant="danger" className="!min-h-8 !px-2 !py-1" onClick={() => remove(c.id)}>Remove</Button>
+              </div>
             </li>
           ))}
         </ul>
@@ -424,7 +464,10 @@ function CredentialsCard() {
         <Field label="Issued by"><input className={inputCls} value={form.issuer} onChange={(e) => setForm({ ...form, issuer: e.target.value })} /></Field>
         <Field label="Issued on"><input className={inputCls} type="date" value={form.issued_on} onChange={(e) => setForm({ ...form, issued_on: e.target.value })} /></Field>
         <Field label="Expires on"><input className={inputCls} type="date" value={form.expires_on} onChange={(e) => setForm({ ...form, expires_on: e.target.value })} /></Field>
-        <div className="sm:col-span-2"><Button type="submit">Add licence or certification</Button></div>
+        <div className="flex gap-2 sm:col-span-2">
+          <Button type="submit">{editing ? "Save changes" : "Add licence or certification"}</Button>
+          {editing && <Button type="button" variant="secondary" onClick={() => { setEditing(null); setForm(blank); }}>Cancel</Button>}
+        </div>
       </form>
     </Card>
   );

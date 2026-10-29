@@ -72,6 +72,8 @@ class JobOut(BaseModel):
 class JobDetail(JobOut):
     description: str | None
     explanations: list[dict]
+    # D (D79): preferences, eligibility (advisory) and qualifications, kept apart (jobs/fit.py).
+    fit: dict
     # Discovery sources that list this job (source attribution only; never verified facts).
     discovered_from: list[dict] = []
     # S3 (D59): source says closed, possible duplicates, and what holds an approval back.
@@ -256,6 +258,29 @@ async def import_jobs(
     }
 
 
+def _fit(db: Session, user: User, job: Job, prefs) -> dict:
+    from app.modules.discovery.models import DiscoveredJob
+    from app.modules.jobs import fit
+    from app.modules.profiles.models import CandidateProfile, Credential, WorkAuthorization
+
+    sources = [
+        {"normalized": d.normalized or {}, "source_facts": d.source_facts or {}}
+        for d in db.scalars(
+            select(DiscoveredJob).where(
+                DiscoveredJob.user_id == user.id, DiscoveredJob.job_id == job.id
+            )
+        )
+    ]
+    return fit.assess(
+        job,
+        prefs,
+        db.scalar(select(CandidateProfile).where(CandidateProfile.user_id == user.id)),
+        list(db.scalars(select(WorkAuthorization).where(WorkAuthorization.user_id == user.id))),
+        list(db.scalars(select(Credential).where(Credential.user_id == user.id))),
+        sources,
+    )
+
+
 @router.get("/{job_id}", response_model=JobDetail)
 def get_job(job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
     job = _owned(db, user, job_id)
@@ -272,6 +297,7 @@ def get_job(job_id: uuid.UUID, user: User = Depends(current_user), db: Session =
         **JobOut.model_validate(job).model_dump(),
         description=job.description,
         explanations=explain(job, prefs),
+        fit=_fit(db, user, job, prefs),
         discovered_from=[
             {
                 "provider": d.provider,

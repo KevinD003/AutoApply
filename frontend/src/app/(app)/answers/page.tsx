@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Badge, Button, Card, Empty, ErrorBox, Loading } from "@/components/ui";
-import { api, BankEntry } from "@/lib/api";
+import { Badge, Button, Card, Empty, ErrorBox, inputCls, Loading, Notice } from "@/components/ui";
+import { api, BankEdit, BankEntry, BankVersion } from "@/lib/api";
 
 function show(e: BankEntry): string {
   const v = e.value as Record<string, unknown>;
@@ -13,9 +13,114 @@ function show(e: BankEntry): string {
   return JSON.stringify(v);
 }
 
+function showValue(v: Record<string, unknown>): string {
+  return show({ value: v } as BankEntry);
+}
+
+// Priority C (D78): an edit keeps the question it answers, writes a new version (the earlier
+// ones stay in the history), and every application that used the earlier version asks for
+// approval again.
+function Editor({ e, onSaved, onCancel }: { e: BankEntry; onSaved: (r: BankEdit) => void; onCancel: () => void }) {
+  const v = e.value as Record<string, unknown>;
+  const [labels, setLabels] = useState<string[]>(Array.isArray(v.labels) ? (v.labels as string[]).map((l) => l.toLowerCase()) : []);
+  const [text, setText] = useState(String(v.text ?? v.number ?? v.date ?? ""));
+  const [checked, setChecked] = useState(v.checked === true);
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    const value =
+      e.answer_shape === "choice" || e.answer_shape === "multi"
+        ? { labels }
+        : e.answer_shape === "boolean"
+          ? { checked }
+          : e.answer_shape === "number"
+            ? { number: Number(text) }
+            : e.answer_shape === "date"
+              ? { date: text }
+              : { text };
+    try {
+      onSaved(await api<BankEdit>(`/answer-bank/${e.id}`, { method: "PUT", json: { value } }));
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+      {e.answer_shape === "choice" ? (
+        <select aria-label="New answer" className={inputCls} value={labels[0] ?? ""} onChange={(x) => setLabels([x.target.value])}>
+          {e.options_snapshot.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      ) : e.answer_shape === "multi" ? (
+        <fieldset aria-label="New answer" className="space-y-1">
+          {e.options_snapshot.map((o) => (
+            <label key={o} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={labels.includes(o)}
+                onChange={(x) => setLabels((cur) => (x.target.checked ? [...cur, o] : cur.filter((l) => l !== o)))}
+              />
+              {o}
+            </label>
+          ))}
+        </fieldset>
+      ) : e.answer_shape === "boolean" ? (
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={checked} onChange={(x) => setChecked(x.target.checked)} /> Checked
+        </label>
+      ) : e.answer_shape === "number" || e.answer_shape === "date" ? (
+        <input aria-label="New answer" className={inputCls} type={e.answer_shape} value={text} onChange={(x) => setText(x.target.value)} />
+      ) : (
+        <textarea aria-label="New answer" className={inputCls} rows={4} value={text} onChange={(x) => setText(x.target.value)} />
+      )}
+      <ErrorBox error={error} />
+      <div className="flex gap-2">
+        <Button onClick={save} disabled={busy}>
+          {busy ? "Saving…" : "Save new version"}
+        </Button>
+        <Button variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function History({ id }: { id: string }) {
+  const [versions, setVersions] = useState<BankVersion[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  useEffect(() => {
+    api<BankVersion[]>(`/answer-bank/${id}/history`).then(setVersions).catch(setError);
+  }, [id]);
+  if (error) return <ErrorBox error={error} />;
+  if (!versions) return <Loading />;
+  return (
+    <ol aria-label="Versions" className="mt-2 space-y-1 border-l-2 border-slate-200 pl-3 text-xs text-slate-600">
+      {versions.map((h) => (
+        <li key={h.version}>
+          v{h.version}: <span className="font-medium text-slate-800">{showValue(h.value)}</span> · {h.how} ·{" "}
+          {new Date(h.recorded_at).toLocaleString()}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export default function AnswersPage() {
   const [items, setItems] = useState<BankEntry[] | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [history, setHistory] = useState<string | null>(null);
+  const [notice, setNotice] = useState("");
 
   const load = useCallback(() => {
     api<BankEntry[]>("/answer-bank").then(setItems).catch((e) => {
@@ -49,6 +154,7 @@ export default function AnswersPage() {
       </p>
       <Card>
         <ErrorBox error={error} />
+        {notice && <Notice>{notice}</Notice>}
         {items === null ? (
           <Loading />
         ) : items.length === 0 ? (
@@ -76,10 +182,39 @@ export default function AnswersPage() {
                   <p className="text-xs text-slate-500">
                     v{e.version} · updated {new Date(e.updated_at).toLocaleString()} {e.sensitive && <Badge tone="amber">Sensitive</Badge>}
                   </p>
+                  {editing === e.id && (
+                    <Editor
+                      e={e}
+                      onCancel={() => setEditing(null)}
+                      onSaved={(r) => {
+                        setEditing(null);
+                        setNotice(
+                          r.changed
+                            ? `Saved as version ${r.entry.version}.` +
+                                (r.applications_to_approve_again > 0
+                                  ? ` ${r.applications_to_approve_again} application(s) used the earlier answer and need your approval again.`
+                                  : "")
+                            : "Nothing changed.",
+                        );
+                        load();
+                      }}
+                    />
+                  )}
+                  {history === e.id && <History id={e.id} />}
                 </div>
-                <Button variant="danger" className="!min-h-8 !px-2 !py-1" onClick={() => remove(e.id)}>
-                  Delete
-                </Button>
+                <div className="flex shrink-0 gap-2">
+                  {!e.not_reused && (
+                    <Button variant="secondary" className="!min-h-8 !px-2 !py-1" onClick={() => setEditing(editing === e.id ? null : e.id)}>
+                      Edit
+                    </Button>
+                  )}
+                  <Button variant="secondary" className="!min-h-8 !px-2 !py-1" onClick={() => setHistory(history === e.id ? null : e.id)}>
+                    History
+                  </Button>
+                  <Button variant="danger" className="!min-h-8 !px-2 !py-1" onClick={() => remove(e.id)}>
+                    Delete
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>

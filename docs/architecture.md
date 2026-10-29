@@ -211,6 +211,13 @@ application and re-reads it before deciding; a user's confirmation (`/transition
 application (`applications/service.py` `lock_submission`), the order the worker's receipt takes.
 `tests/test_outcome_races.py` races both against the worker.
 
+Account deletion (D77, `account/deletion.py`) locks the account's watches, then all of its
+active attempts by id, then all of its applications by id, and only then deletes the account
+row (whose cascade removes everything else). The account row is never locked first: a worker
+holding an attempt inserts evidence that key-share locks it. A deadlock with a concurrent write
+the order does not cover is retried once, then refused. `tests/test_account.py` races deletion
+against both gates.
+
 Inserting a row that references an application (evidence, events) key-share locks the
 application too; that happens after the attempt, in the same order. Paths that never lock an
 attempt (approve, revoke, answers, consents, withdrawal, evidence deletion) start at the

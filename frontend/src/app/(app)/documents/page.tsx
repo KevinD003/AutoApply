@@ -11,6 +11,7 @@ export default function DocumentsPage() {
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [preview, setPreview] = useState<Record<string, { text: string; truncated: boolean } | { error: unknown }>>({});
 
   const load = useCallback(() => {
     api<Doc[]>("/documents").then(setDocs).catch((e) => {
@@ -26,6 +27,25 @@ export default function DocumentsPage() {
       setVersions((cur) => ({ ...cur, [d.lineage_id]: v }));
     } catch (e) {
       setError(e);
+    }
+  }
+
+  // Priority C (D78): the text NoEfforts reads from the file, shown as plain text only. The file
+  // itself is never rendered here (no PDF viewer, no HTML), and nothing is fetched from elsewhere.
+  async function togglePreview(d: Doc) {
+    if (preview[d.id]) {
+      setPreview((cur) => {
+        const next = { ...cur };
+        delete next[d.id];
+        return next;
+      });
+      return;
+    }
+    try {
+      const p = await api<{ text: string; truncated: boolean }>(`/documents/${d.id}/preview`);
+      setPreview((cur) => ({ ...cur, [d.id]: p }));
+    } catch (e) {
+      setPreview((cur) => ({ ...cur, [d.id]: { error: e } }));
     }
   }
 
@@ -96,6 +116,9 @@ export default function DocumentsPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge>{d.kind.replace("_", " ")}</Badge>
                     <a className="text-sm text-indigo-700 underline" href={`/api/documents/${d.id}/download`}>Download</a>
+                    <button className="text-sm text-indigo-700 underline" aria-expanded={!!preview[d.id]} onClick={() => togglePreview(d)}>
+                      {preview[d.id] ? "Hide text" : "Preview text"}
+                    </button>
                     {d.version > 1 && (
                       <button className="text-sm text-indigo-700 underline" onClick={() => showVersions(d)}>History</button>
                     )}
@@ -122,6 +145,25 @@ export default function DocumentsPage() {
                     )}
                   </div>
                 </div>
+                {preview[d.id] &&
+                  ("error" in preview[d.id] ? (
+                    <div className="mt-2">
+                      <ErrorBox error={(preview[d.id] as { error: unknown }).error} />
+                    </div>
+                  ) : (
+                    <figure className="mt-2">
+                      <pre
+                        aria-label={`Text of ${d.label}`}
+                        className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800"
+                      >
+                        {(preview[d.id] as { text: string }).text}
+                      </pre>
+                      <figcaption className="mt-1 text-xs text-slate-500">
+                        The text NoEfforts reads from this file, as plain text; layout and images are not shown.
+                        {(preview[d.id] as { truncated: boolean }).truncated && " Only the beginning is shown."}
+                      </figcaption>
+                    </figure>
+                  ))}
                 {versions[d.lineage_id] && (
                   <ul className="mt-2 space-y-1 rounded-lg bg-slate-50 p-2 text-sm">
                     {versions[d.lineage_id].map((v) => (

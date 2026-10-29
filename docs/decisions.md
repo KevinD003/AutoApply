@@ -1996,3 +1996,93 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   jobs are the build evidence.
 - **Unchanged:** `SCHEMA_VERSION` (3); no migration; no new outbound path.
 
+## D77 — Full data export and account deletion; the retention decision isolated (priority B, 2026-10-29)
+- **Problem:** the only export was the jobs list, and an account could not be deleted. Deletion
+  touches queued and running submissions, document files, sessions, audit events and backups.
+  Whether anything should be kept afterwards is a policy decision NoEfforts has not been given.
+- **Decision (export):**
+  - `GET /api/account/export` returns one ZIP: every record that names the account, table by
+    table, every document file named by its id, and a README of what was left out and why.
+  - Only columns listed in `account/export.py` are read. A table or column added later is not
+    exported until it is listed or left out with a reason, and a test fails until then.
+  - Left out:
+    - login and session secrets;
+    - keyed references and digests (HMACs under the server's key), also inside JSON values;
+    - worker lease and fencing internals, and a verification code;
+    - where files are stored, and two internal tables.
+  - Scoped to the account; audited as `account.export` with counts only.
+- **Decision (deletion):**
+  - `POST /api/account/delete` needs the password and the phrase "delete my account". It
+    deletes the account row; the cascade, checked in the migrated database, removes every row
+    that names the account. Files are removed after the commit, and the session ends at once.
+  - Lock order (`docs/architecture.md`): the account's watches, then its active attempts, then
+    its applications, and the account row last. A deadlock is retried once.
+  - A submission past the send gate (`sending`, `awaiting_code`) refuses deletion
+    (`deletion_submission_in_flight`) and nothing is deleted. Earlier work is deleted: a queued
+    message finds no attempt, and a worker holding an attempt is fenced out before the send
+    gate. Nothing is retried.
+  - `account/policy.py` isolates the retention decision. Default: nothing kept in the database
+    (not even audit events), no grace period. Outside NoEfforts' reach, and listed before
+    deleting: the employer's copies, backups, logs (no applicant data by design), an AI
+    provider's copies.
+- **Not done:** no deletion was run against a real account; the tests use synthetic accounts. No
+  legal retention policy was written.
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration.
+
+## D78 — Saved answers edited as versions with their history; a document's text previewed as data; profile records edited in place (priority C, 2026-10-29)
+- **Problem:**
+  - A saved answer could only be deleted and saved again from an application, which lost what
+    it had been.
+  - A document could only be downloaded, not checked in the page.
+  - Work history, education and licences could be added and removed, but not edited (D75 gap).
+- **Decision (saved answers):**
+  - `PUT /api/answer-bank/{id}` changes only the answer. The question it is bound to (wording,
+    help text, options seen) stays, so the edit is reused exactly where the saved answer was.
+  - The value is checked against the answer's shape and, for choices, against the options saved
+    with it. A field's own limits are checked when it is reused; if it no longer fits, it
+    becomes a checkpoint there, never a guess.
+  - Each change is a new version, and each version is kept in `fact_versions` (entity
+    `answer_bank`): "saved from an application", "edited by you", or "as first recorded" for a
+    version saved before history was kept. `GET /api/answer-bank/{id}/history` lists them.
+  - Packages cite the saved answer by id and version. After the edit commits, every
+    application whose current package cites it is rebuilt, and its approvals are invalidated
+    with the reason. That keeps the lock order: the saved answer's row is released before any
+    application is locked.
+  - An application that execution owns is not rebuilt; its gates refuse the stale hash
+    (`test_every_protected_mutation_stops_a_running_attempt[answer_bank_edit]`). Audited as
+    `answer_bank.edit` with the version only.
+- **Decision (preview):**
+  - `GET /api/documents/{id}/preview` returns the text NoEfforts reads from the file (the
+    bounded extractor of L1), at most 20,000 characters, as JSON.
+  - The page shows it in a `<pre>` as text. No viewer, no HTML, no external request; a file's
+    markup is shown, never run.
+- **Decision (profile records):** "Edit" loads a work history, education or licence record into
+  its form, and "Save changes" updates it through the existing `PUT`. The record gets a new
+  version and history, and becomes yours (user-entered, approved).
+- **Unchanged:** `SCHEMA_VERSION` (3). A package already citing an answer by version changes
+  hash on an edit, as intended; no migration.
+
+## D79 — Explainable match: preferences, eligibility and qualifications kept apart (priority D, 2026-10-29)
+- **Problem:** the job page listed only title and location checks against preferences. There
+  was no way to see what was checked, what the source says next to your own facts, which of
+  your qualifications a job names, or what is unknown. A single "score" would invite reading it
+  as a prediction, or mixing facts with preferences.
+- **Decision (`jobs/fit.py`, on `GET /api/jobs/{id}` as `fit`):**
+  - **Preferences:** title, location, work mode, employment type and pay, and the excluded
+    employer. Each is met, not met, not stated by the job, or not set by you. Pay is always
+    "not stated": NoEfforts has no pay data and never estimates it. The one number is "m of n
+    checked preferences met": a count of your own targets, not a prediction, an interview
+    probability or an application-system score.
+  - **Eligibility (advisory):** what a source states (sponsorship offered: yes / no / not
+    stated, who said it and on what basis), next to your approved tri-state facts per country.
+    The job's country is never worked out from its text, and nothing is decided or compared.
+    It never changes the preference count (tested).
+  - **Qualifications:** your approved skills and approved, unexpired licences that the job's
+    text names word for word. It says what is mentioned, never that you qualify.
+  - **Missing information** is listed.
+  - Nothing filters, hides, ranks down or submits a job because of this. A test reads every
+    sentence the module can show and refuses words such as probability, chance, likely,
+    eligible, qualified, guarantee or interview.
+- **Kept:** the older `explanations` list stays in the API for existing clients; the page shows
+  `fit`.
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration; no new data source.

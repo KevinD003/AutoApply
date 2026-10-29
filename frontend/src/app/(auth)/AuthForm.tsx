@@ -37,6 +37,11 @@ export default function AuthForm({ mode }: { mode: "login" | "register" }) {
       <p className="mb-6 text-sm text-slate-600">
         {mode === "login" ? "Sign in to your account." : "Create an account. You review everything before it is sent."}
       </p>
+      {mode === "login" && params.get("deleted") === "1" && (
+        <p role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+          Your account and everything in it were deleted.
+        </p>
+      )}
       <form onSubmit={submit} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <Field label="Email">
           <input className={inputCls} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />

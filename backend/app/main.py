@@ -7,6 +7,7 @@ from app.core.access_log import install as install_access_log
 from app.core.config import get_settings
 from app.core.db import engine
 from app.core.errors import ErrorBoundary
+from app.modules.account.router import router as account_router
 from app.modules.applications.router import router as applications_router
 from app.modules.audit.service import check_ref_key
 from app.modules.discovery.router import router as discovery_router
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
 
     for r in (
         auth_router,
+        account_router,
         profile_router,
         jobs_router,
         documents_router,
