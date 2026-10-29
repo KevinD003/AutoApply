@@ -1,6 +1,6 @@
 # Implementation status
 
-Last updated: 2026-10-29 (discovery: Freehire counters no longer count as changes, a source's Retry-After holds back your next request, each listing can be refreshed, D67; preparation: the review page shows what changed between versions, D66; every refusal to approve, queue or revoke has a reason code, and revoking stops a queued submission at once, D65; answers can be changed, cleared and added on the review page where your input is allowed, with a cover-letter choice and where the form sends, D64; a salary is sent only in the units the question allows, D63; execution: fixture variants for the legacy page traps, and every confirmation bound to its own attempt, D62; earlier: preparation: a sensitive answer reaches the employer only as you chose, shown by the receiver's ledger; "Don't disclose" on a required question sends the form's one decline option, D61; an answer or a choice applies only to the question as shown, and "Include this answer" only to the answer shown, D60; jobs: a posting its source says is closed, a job you excluded or closed, and a role that looks like one you already have an application for wait for your statement before approval, D59; earlier: preparation: a LinkedIn or website question gets the profile's link only when exactly one is of its kind, read from the host, D58; earlier: a State list naming every US state gets the profile's state; a City list is never picked from the profile; any other State, City or Country list is your answer for this application, never saved, D57; earlier: discovery: watched Freehire searches for the owner, checked as often as once a minute, and a delete for discovered postings that keeps them deleted, D56; a live Freehire read for the owner, one approved run at a time, D55; none made, the cloud sandbox refuses freehire.me; earlier: preparation: the legacy collision corpus (244 wording traps) is a permanent test; someone else's details, preferences read as residence, residence and nationality in other words, any relocation question but the plain one, a negated right to work, agree/decline options under a neutral label and facts that do not fit their field are checkpoints; static guards refuse a mailbox client and page capture; earlier: tracking: a submission says what it rests on (an employer receipt, your statement, or nothing known), a confirmation by you needs what you checked, outcomes are dated, sourced and audited, assessment received exists, an outcome before any known submission is refused, events are insert-only in the database, and a per-user funnel counts with denominators and no rate; earlier: documentation: the Freehire-first review published, with the Freehire re-check of 2026-10-26, an amendment to D34 and D52; earlier: preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
+Last updated: 2026-10-29 (documents: a resume's work history, education and licences are proposed into your profile and used only once approved, D72; tailored resumes and cover letters are built to be generated only through a drafting provider, none configured, so none is generated, D73; preparation: SCHEMA_VERSION 3, which invalidates every earlier approval: preference facts hashed by value, document provenance and `accept` enforced, an answer awaiting consent never kept in a version, D71; documents can be deleted, one version or all, never while an approval or a submission needs them, D70; a draft names a licence only from an approved, unexpired credential, and licence answers are never saved for reuse, D69; drafts take numbers only from the facts they cite, never state a legal status or a sensitive attribute, quote job text as untrusted data, and are accepted only if nothing they were made from changed, D68; earlier: discovery: Freehire counters no longer count as changes, a source's Retry-After holds back your next request, each listing can be refreshed, D67; preparation: the review page shows what changed between versions, D66; every refusal to approve, queue or revoke has a reason code, and revoking stops a queued submission at once, D65; answers can be changed, cleared and added on the review page where your input is allowed, with a cover-letter choice and where the form sends, D64; a salary is sent only in the units the question allows, D63; execution: fixture variants for the legacy page traps, and every confirmation bound to its own attempt, D62; earlier: preparation: a sensitive answer reaches the employer only as you chose, shown by the receiver's ledger; "Don't disclose" on a required question sends the form's one decline option, D61; an answer or a choice applies only to the question as shown, and "Include this answer" only to the answer shown, D60; jobs: a posting its source says is closed, a job you excluded or closed, and a role that looks like one you already have an application for wait for your statement before approval, D59; earlier: preparation: a LinkedIn or website question gets the profile's link only when exactly one is of its kind, read from the host, D58; earlier: a State list naming every US state gets the profile's state; a City list is never picked from the profile; any other State, City or Country list is your answer for this application, never saved, D57; earlier: discovery: watched Freehire searches for the owner, checked as often as once a minute, and a delete for discovered postings that keeps them deleted, D56; a live Freehire read for the owner, one approved run at a time, D55; none made, the cloud sandbox refuses freehire.me; earlier: preparation: the legacy collision corpus (244 wording traps) is a permanent test; someone else's details, preferences read as residence, residence and nationality in other words, any relocation question but the plain one, a negated right to work, agree/decline options under a neutral label and facts that do not fit their field are checkpoints; static guards refuse a mailbox client and page capture; earlier: tracking: a submission says what it rests on (an employer receipt, your statement, or nothing known), a confirmation by you needs what you checked, outcomes are dated, sourced and audited, assessment received exists, an outcome before any known submission is refused, events are insert-only in the database, and a per-user funnel counts with denominators and no rate; earlier: documentation: the Freehire-first review published, with the Freehire re-check of 2026-10-26, an amendment to D34 and D52; earlier: preparation: a saved answer is reused only where it stays true, bound to its help text, never for answers that depend on the employer, the job or the date, and saves and deletes never fail; execution: an unknown outcome in the verification-code step reaches `submitted_unconfirmed` again, and the sweeper recovers each stale attempt in its own savepoint; earlier: preparation: a statement of a profile fact is checked only with agree and a true approved fact, eligibility misreads and legal-status questions become checkpoints, sensitive topics found in wording, help text, options, sections and follow-ups are never saved, reused or drafted; earlier: only resolved answers are sent, a stale accepted draft is a checkpoint, a document question that is not asked attaches nothing, the package shape pinned, cross-tenant and repository-hygiene guards; earlier: a provider-admission framework: each provider's stage computed from code and recorded evidence, claims bounded by it, owner stops and a cap; a manual-handoff approval and a reconciled-as-not-received approval can no longer send; one lock order for every execution path, gates reading what is committed after their locks, deterministic race tests; a recorded, valid rehearsal is required before the first submission through each employer/provider path, at five layers, fixtures only; the rehearsal stop is a gate and writes a rehearsal record; readiness counts the caller's recorded evidence by class; each gate locks the approval row, so a revocation committed while it waits is refused; upload evidence kept as a digest and a fixed acknowledgement, also for failed uploads; rehearsal results on the review page and tracker; rehearsal: an approval to disclose only, which stops before the send gate; Lever as a planned provider; location design without hidden coordinates; page controls the job data does not list become checkpoints at capture; Greenhouse pilot readiness computed from evidence and the Path A record format; real-destination jobs get the truthful route before any form step; question keys moved out of URL paths; support-state wording derived from evidence and served from one place; route reason-code contract, discovery route explanations, route-audit deduplication and the provider on the route card; earlier: privacy and audit hardening, legacy audit repair, baseline corrections and a documentation-consistency pass; nothing supported for real use; no external request, credential, permission or live-status change). For requirement-by-requirement evidence see
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
@@ -36,6 +36,97 @@ Last updated: 2026-10-29 (discovery: Freehire counters no longer count as change
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## Tailored resumes and cover letters (L2, L3, 2026-10-29; local only, no provider)
+
+- **Scope:** plan steps L2 and L3, decision D73. **Done in code; nothing is generated yet**:
+  generation runs only through the drafting provider, and none is configured (503 "not
+  configured"). L4, a real provider, needs the owner's decisions (server-side credentials, a cost
+  budget, a consent screen showing what leaves NoEfforts) and is not started.
+- **Now:** a tailored resume or a cover letter is written from approved facts and the job's
+  quoted text, checked like every draft, stored as a DOCX for one application (migration
+  `60e18e9115c8`), shown with its cited facts and, for a resume, the lines changed from its
+  base; usable only once accepted, for that application, while its facts are unchanged.
+- **Found by a test and fixed:** when a chosen tailored resume stopped being usable, the
+  package fell back to the user's only uploaded resume, so a document the user had not chosen
+  would have been sent; an unusable choice is now a checkpoint that says why.
+- **Tests:** `tests/test_generated_documents.py` 12 passed; `generated.spec.ts`. Sabotage 9
+  cases, 8 caught at first (accepting a stale document was not tested; added, then 9 caught).
+
+## Facts proposed from a resume (L1, 2026-10-29; local only, no provider)
+
+- **Scope:** plan step L1, decision D72. New dependency `pypdf` (locked at 6.21.4).
+- **Now:** text from a PDF (first 10 pages), DOCX or TXT resume; work entries, education and
+  licences it states in a recognisable layout are proposed into the profile, each used by
+  nothing until approved there; nothing inferred (dates kept as written, completion unknown, an
+  expiry only from a full date); legal-status and sensitive lines skipped and counted. The
+  profile page shows proposals with Approve, and gains the Licences and certifications card.
+- **Tests:** `tests/test_resume_facts.py` 13 passed (synthetic PDF, DOCX and TXT built in the
+  test); `documents.spec.ts` "a resume's facts are proposed". Sabotage 9 cases, 9 caught (one
+  rerun after its first edit was a syntax error, which proves nothing).
+
+## SCHEMA_VERSION 3 (C18, 2026-10-29; local only, no external request)
+
+- **Announced: every approval given before this change is invalidated.** `SCHEMA_VERSION` is
+  3; every package is rebuilt at its next load with a new hash and needs approval again. Only
+  synthetic test data exists. Decision D71.
+- **Now:** preference facts (relocation, salary) are hashed by their value; each package
+  document records its origin and, for a generated one, its base, grounding and acceptance
+  (migration `c14a371a79e8`); a file field's `accept` attribute is enforced (a TXT resume in a
+  ".pdf,.docx" field is a checkpoint); an implicit resume is explained as proposed; a
+  generated document nobody accepted is never used; an answer awaiting consent is never written
+  into a package version (the review page reads it from the live answer).
+- **Changed tests:** `test_package_contract.py` records shape 3 beside shape 2 (unchanged);
+  `test_disclosure_ledger.py` reads the proposed saved answer from the review controls, since
+  the content no longer holds it; the C3-C5 pinned salary control records its reference by
+  value (`C18_DELTA`; the answer sent is unchanged).
+- **Tests:** `tests/test_schema_v3.py` 16 passed. Sabotage 9 cases, 9 caught.
+
+## Deleting documents (C17, 2026-10-29; local only)
+
+- **Now:** a version, or every version, of a document is deleted with its file; refused while a
+  live approval or a running attempt needs it (checked under the application locks, with a race
+  test); an application's choice of it is removed. Retention rows updated. Decision D70.
+- **Tests:** `tests/test_document_deletion.py` 8 passed; `documents.spec.ts` (the delete test).
+  Sabotage 8 cases, 8 caught. Found while writing the browser test: the confirmation counted
+  versions by the latest version number, wrong once a version is deleted; it no longer counts.
+
+## Credentials as grounded facts (C16, 2026-10-29; local only, no provider)
+
+- **Now:** approved, unexpired credentials ground a draft; a draft names a licence or
+  certification only by citing one; licence and certification wording is never saved for
+  reuse (48 rows of the wording table now `credential`; four witness rows added so each other
+  family's use is still proven). Decision D69.
+- **Changed tests:** `test_bank_scope_api.py::test_saving_and_listing_never_fail_on_unusual_text`
+  used a certifications question as its reusable example; it now uses a programming-languages
+  question (its point, unusual characters, is unchanged). A first version of the credential
+  family also caught "accreditation", which is about institutions; it was removed.
+- **Older tests changed, found by the first full run below:** five tests used a licence as a
+  reusable example. The C3-C5 cardiac control now carries a C16 delta beside C6's (checked by
+  the same only-narrows test); the C6 driver's licence and CPR controls are now C16 controls
+  that are never reused; the resolver's bound-to-its-question example and two legacy-corpus
+  controls (R8.11) are reworded to experience questions, keeping what they test.
+- **Tests:** `tests/test_credentials.py` 6 passed. Sabotage 8 cases, 8 caught.
+
+## Drafting hardened before any provider (C15, 2026-10-29; local only, no provider)
+
+- **Now:** numbers only from the facts a draft cites; legal-status and sensitive mentions
+  refused; one prompt shape with employer text quoted as untrusted data (R11.9); accepting
+  compares the cited facts and the whole request, re-checks the question, and answers with
+  reason codes; the user can reject a draft, which erases its text (migration
+  `d1e3ab560050`); an accepted draft asked for again is said to be accepted. Decision D68.
+- **Changed test:** the test double in `test_preparation.py` now cites every fact it was given.
+- **Tests:** `tests/test_drafting.py` 27 passed; `drafts.spec.ts`. Sabotage 17 cases, 17 caught
+  (the order test rewritten so a wrong order is always caught).
+
+- **Tests run locally for C15-C18 and L1-L3 (cloud sandbox, PostgreSQL 16, Redis 7):**
+  - full backend for C15-C18: 3366 passed, 7 failed, exit 1, 33 min 26 s. All seven were older
+    tests holding a licence as a reusable example (C16) or the pinned salary reference (C18),
+    changed as described in those entries; those two files then 731 passed;
+  - full backend for C15-C18 and L1-L3 together: 3399 passed, exit 0, 34 min 56 s;
+  - full Playwright: 68 passed, 2 skipped, exit 0, 7.6 min;
+  - `ruff check`, `ruff format --check`, `npx tsc --noEmit`, `npm run lint`: all exit 0.
+- **CI for the previous change:** CI #111 (run `40796945758`, `3151231`, S5-S6) passed.
 
 ## Freehire contract hardening (S6, 2026-10-29; fixture only, no Freehire request)
 

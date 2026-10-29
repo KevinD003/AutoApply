@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AnswerInput from "@/components/AnswerInput";
 import ExecutionCard from "@/components/ExecutionCard";
 import { Badge, Button, Card, ErrorBox, inputCls, Loading, Notice } from "@/components/ui";
-import { api, ApiError, Doc, PackageAnswer, PackageDiff, PackageView, ReviewControls } from "@/lib/api";
+import { api, ApiError, Doc, GeneratedDoc, PackageAnswer, PackageDiff, PackageDraft, PackageView, ReviewControls } from "@/lib/api";
 
 const SOURCE: Record<string, { label: string; tone: "green" | "indigo" | "amber" | "slate" | "red" }> = {
   profile_fact: { label: "Profile fact", tone: "green" },
@@ -114,8 +114,10 @@ export default function ReviewPage() {
   const pending = answers.filter((a) => a.status === "needs_user" && !a.sensitive && !a.acknowledgment);
   const special = answers.filter((a) => a.sensitive || a.acknowledgment);
   const ready = c.unresolved.length === 0 && c.validation_errors.length === 0;
-  const resumes = docs.filter((d) => d.kind === "resume");
-  const letters = docs.filter((d) => d.kind === "cover_letter");
+  // L2/L3: a generated document is offered only once accepted, and only for its own application.
+  const usable = (d: Doc) => d.origin !== "generated" || (!!d.accepted_at && d.made_for_application_id === id);
+  const resumes = docs.filter((d) => d.kind === "resume" && usable(d));
+  const letters = docs.filter((d) => d.kind === "cover_letter" && usable(d));
   const rc = (key: string): ReviewControls | undefined => view.review?.[key];
   const coverQ = answers.find((a) => rc(a.key)?.document_role === "cover_letter");
   const sendsTo = originOf(c.destination.submit_url);
@@ -346,6 +348,8 @@ export default function ReviewPage() {
         ))}
       </Card>
 
+      <Tailored appId={id} available={view.drafting_available} onChange={load} />
+
       <Card title={`Needs your answer (${pending.length})`}>
         {pending.length === 0 ? (
           <p className="text-sm text-slate-600">Nothing left to answer here.</p>
@@ -380,7 +384,11 @@ export default function ReviewPage() {
           <p className="text-sm text-slate-600">None on this form.</p>
         ) : (
           <ul className="space-y-5">
-            {special.map((q) => (
+            {special.map((q0) => {
+              // C18: what awaits your consent comes from your live answer, not the package.
+              const live = rc(q0.key);
+              const q = live?.proposed_value ? { ...q0, value: live.proposed_value, display: live.proposed ?? null } : q0;
+              return (
               <li key={q.key} className="border-b border-slate-100 pb-4">
                 <QuestionHeader q={q} />
                 {q.acknowledgment ? (
@@ -411,7 +419,8 @@ export default function ReviewPage() {
                   </div>
                 )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </Card>
@@ -431,14 +440,20 @@ export default function ReviewPage() {
                     draft={drafts[q.key]}
                     onRequest={async () => {
                       setError(null);
+                      setNotice("");
                       try {
-                        await api(`/applications/${id}/drafts`, { method: "POST", json: { key: q.key } });
+                        const d = await api<{ status: string }>(`/applications/${id}/drafts`, { method: "POST", json: { key: q.key } });
+                        // C15: the same facts and question give the same draft; one already used is said so.
+                        if (d.status === "accepted") setNotice("You already used this draft for these facts: it is your answer below.");
                         load();
                       } catch (e) {
                         setError(e);
                       }
                     }}
-                    onAccept={(draftId) => call(`/applications/${id}/drafts/${draftId}/accept`, "POST", {})}
+                    onAccept={(draftId) => call(`/applications/${id}/drafts/${draftId}/accept`, "POST", {}, "Draft used as your answer.")}
+                    onReject={(draftId) =>
+                      call(`/applications/${id}/drafts/${draftId}/reject`, "POST", {}, "Draft rejected and deleted. It will not be offered again.")
+                    }
                   />
                 )}
                 {q.draftable && q.status !== "resolved" && (
@@ -622,16 +637,20 @@ function ChoiceRow({ current, choices, onPick }: { current?: string; choices: [s
   );
 }
 
+const FACT_KIND: Record<string, string> = { summary: "Profile summary", skills: "Skills", employment: "Work history", education: "Education" };
+
 function DraftControls({
   available,
   draft,
   onRequest,
   onAccept,
+  onReject,
 }: {
   available: boolean;
-  draft?: { id: string; text: string; provider: string };
+  draft?: PackageDraft;
   onRequest: () => void;
   onAccept: (id: string) => void;
+  onReject: (id: string) => void;
 }) {
   if (!available)
     return <p className="mt-1 text-xs text-slate-500">AI drafting is not configured on this server. Write this answer yourself.</p>;
@@ -641,9 +660,22 @@ function DraftControls({
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
           <p className="mb-1 text-xs font-medium text-amber-900">Draft from {draft.provider} — check every claim before using it</p>
           <p className="whitespace-pre-wrap">{draft.text}</p>
-          <Button className="mt-2 !min-h-9 !py-1.5" variant="secondary" onClick={() => onAccept(draft.id)}>
-            Use this draft
-          </Button>
+          <div className="mt-2 text-xs text-slate-700">
+            <p className="font-medium">Based only on these facts from your profile:</p>
+            <ul className="list-disc pl-5">
+              {draft.cited.map((c, i) => (
+                <li key={i}>{c.text === null ? "A fact that has changed since (request a new draft)" : `${FACT_KIND[c.kind ?? ""] ?? c.kind}: ${c.text}`}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button className="!min-h-9 !py-1.5" variant="secondary" onClick={() => onAccept(draft.id)}>
+              Use this draft
+            </Button>
+            <Button className="!min-h-9 !py-1.5" variant="secondary" onClick={() => onReject(draft.id)}>
+              Reject this draft
+            </Button>
+          </div>
         </div>
       ) : (
         <Button variant="secondary" className="!min-h-9 !py-1.5" onClick={onRequest}>
@@ -651,5 +683,100 @@ function DraftControls({
         </Button>
       )}
     </div>
+  );
+}
+
+// L2/L3 (D73): a resume tailored to this job, or a cover letter, written from your approved facts
+// only. Nothing is used until you accept it, and it stops being usable when a fact it cites changes.
+function Tailored({ appId, available, onChange }: { appId: string; available: boolean; onChange: () => void }) {
+  const [items, setItems] = useState<GeneratedDoc[] | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState("");
+  const load = useCallback(() => {
+    api<GeneratedDoc[]>(`/applications/${appId}/generated-documents`).then(setItems).catch((e) => {
+      setError(e);
+      setItems([]);
+    });
+  }, [appId]);
+  useEffect(load, [load]);
+
+  async function act(path: string, body: unknown, ok: string) {
+    setError(null);
+    setNotice("");
+    try {
+      await api(path, { method: "POST", ...(body ? { json: body } : {}) });
+      setNotice(ok);
+      load();
+      onChange();
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  return (
+    <Card title="Tailored resume and cover letter">
+      <ErrorBox error={error} />
+      {notice && <Notice>{notice}</Notice>}
+      {available ? (
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => act(`/applications/${appId}/generated-documents`, { kind: "resume" }, "A tailored resume was written: read it below.")}>
+            Tailor my resume for this job
+          </Button>
+          <Button variant="secondary" onClick={() => act(`/applications/${appId}/generated-documents`, { kind: "cover_letter" }, "A cover letter was written: read it below.")}>
+            Write a cover letter for this job
+          </Button>
+        </div>
+      ) : (
+        <p className="text-sm text-slate-600">AI drafting is not configured on this server. Upload your own resume or cover letter instead.</p>
+      )}
+      {items && items.length > 0 && (
+        <ul className="mt-3 space-y-4">
+          {items.map((g) => (
+            <li key={g.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{g.label}</span>
+                {g.stale ? (
+                  <Badge tone="red">Facts changed: write a new one</Badge>
+                ) : g.accepted ? (
+                  <Badge tone="green">Accepted: choose it above</Badge>
+                ) : (
+                  <Badge tone="amber">Waiting for you to read it</Badge>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-slate-600">Check every claim. It uses only these facts from your profile:</p>
+              <ul className="list-disc pl-5 text-xs text-slate-700">
+                {g.cited.map((c, i) => (
+                  <li key={i}>{c.text === null ? "A fact that has changed since" : c.text}</li>
+                ))}
+              </ul>
+              {g.diff ? (
+                <div className="mt-2 rounded bg-slate-50 p-2 font-mono text-xs" aria-label={`Changes from ${g.base_label}`}>
+                  <p className="mb-1 font-sans text-slate-600">Changes from {g.base_label}:</p>
+                  {g.diff.map((d, i) => (
+                    <p key={i} className={d.op === "+" ? "text-emerald-800" : d.op === "-" ? "text-red-700 line-through" : "text-slate-600"}>
+                      {d.op === " " ? "\u00a0" : d.op} {d.line}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 whitespace-pre-wrap rounded bg-slate-50 p-2">{g.text}</p>
+              )}
+              {!g.accepted && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {!g.stale && (
+                    <Button className="!min-h-9 !py-1.5" variant="secondary" onClick={() => act(`/applications/${appId}/generated-documents/${g.id}/accept`, null, "Accepted. Choose it above to send it with this application.")}>
+                      Accept
+                    </Button>
+                  )}
+                  <Button className="!min-h-9 !py-1.5" variant="secondary" onClick={() => act(`/applications/${appId}/generated-documents/${g.id}/reject`, null, "Rejected and deleted.")}>
+                    Reject
+                  </Button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }

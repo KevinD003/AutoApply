@@ -74,6 +74,12 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `{entity}.approve` | `{entity}` | `version` | record version number |
 | `{entity}.delete` | `{entity}` | - | |
 | `document.upload` | `document` | `version` | document version number |
+| `document.facts_proposed` | `document` | `credential`, `education`, `employment` | how many records were proposed from this resume (L1, D72); never their content |
+| `document.generated` | `document` | `cost_usd`, `kind`, `provider` | a tailored resume or cover letter written by the drafting provider (L2/L3, D73); never its text |
+| `document.generated_accepted` | `document` | `kind` | you accepted it for its application |
+| `document.generated_rejected` | `application` | `kind` | you rejected it; the document and its file were deleted |
+| `document.generation_rejected` | `application` | `kind`, `reason_code` | the provider's text failed a draft check and was discarded (C15's codes) |
+| `document.delete` | `document` | `scope`, `versions` | `version` or `lineage`; how many versions were deleted with their files (C17, D70); never the name |
 | `job.create` / `job.duplicate` | `job` | - | one call site; the action says whether the job was new |
 | `job.update` | `job` | `fields` | names of the job fields the user changed, never their values |
 | `job.confirm_open` | `job` | - | the user stated the posting is still open although its source says it is closed or gone (S3, D59) |
@@ -98,7 +104,8 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `application.answer_cleared` | `application` | `field_ref` | reference to the question whose answer for this application was removed (C12) |
 | `application.document` | `application` | `change`, `role` | `chosen` or `cleared`; `resume` or `cover_letter` (C12); never the document's id or name |
 | `draft.created` | `application` | `cost_usd`, `field_ref`, `provider` | drafting cost; reference; the drafting provider's name |
-| `draft.rejected` | `application` | `field_ref`, `reason_code` | reference; a fixed rejection code (`empty`, `too_long`, `placeholders`, `uncited_facts`, `invented_numbers`) |
+| `draft.accepted` | `application` | `field_ref` | reference (C15, D68); the draft's text is the answer, recorded as an input, never here |
+| `draft.rejected` | `application` | `field_ref`, `reason_code` | reference; a fixed rejection code (`empty`, `too_long`, `placeholders`, `uncited_facts`, `invented_numbers`, `legal_status`, `sensitive_topic`, `uncited_credential`; `by_user` when the user rejects it, and its text is erased) |
 | `answer_bank.delete` | `answer_bank` | - | |
 | `package.approve` | `application` | `adapter`, `adapter_version`, `content_hash`, `rehearsal_prerequisite`, `scope`, `version` | the adapter and version bound to the approval (`manual_handoff` and no version when the route was a manual handoff); the package's one-way hash; how the rehearsal prerequisite stood for an approval to submit (`met`, `established`, `not_required`; none for a rehearsal or a manual handoff); `submit` or `disclose_only` (a rehearsal); package version |
 | `package.approval_invalidated` | `application` | `version` | the package version that invalidated it |
@@ -196,7 +203,7 @@ event's metadata:
 | Execution evidence | `NOEFFORTS_EVIDENCE_RETENTION_DAYS` (default 365) | purged daily by the `purge-expired-evidence` beat task; the user can delete it (refused while an attempt runs) |
 | Rehearsal records | until their application or user is deleted (`ON DELETE CASCADE`) | counts and fixed values only; revoked, not deleted, when the user deletes the application's evidence; a record whose evidence has been purged no longer holds (`rehearsal_evidence_missing`) |
 | Sessions | until expiry | purged hourly by `purge-expired-sessions` |
-| Uploaded documents | until deleted | stored under `NOEFFORTS_STORAGE_DIR` (default `./var/storage`, ignored by git) |
+| Uploaded documents | until deleted: one version, or every version (C17, D70); refused while a live approval or a running attempt needs it | the row and the file under `NOEFFORTS_STORAGE_DIR` (default `./var/storage`, ignored by git) are deleted, and any application's choice of it; past package versions keep the id, version, size, type, digest and the name they showed |
 | Test database `noefforts_test` | one test run | the schema is dropped and recreated at the start of every run; tables are truncated after each test |
 | Migration test databases (names ending `_migration_test`) | one test | created and dropped by the tests |
 | End-to-end database `noefforts_e2e` | reused across runs | each run creates new synthetic accounts; drop the database to reset it |

@@ -253,6 +253,34 @@ def sensitive_topic(text: str) -> tuple[str, str] | None:
     return None
 
 
+# C15 (D68): a draft describing the candidate this way touches a sensitive topic.
+_SELF_DESCRIBED = re.compile(
+    r"\b(as|being) an? (\w+ )?(woman|man|female|male|mother|father|wife|husband|parent|"
+    r"immigrant|person of colou?r)\b"
+)
+
+
+def mentions_legal_status(text: str) -> bool:
+    """C15 (D68): work authorization, sponsorship or immigration status named anywhere in a
+    text. These are protected facts from the profile, never drafted prose."""
+    t = normalize(text)
+    return any(
+        p.search(t) for p in (_AUTH, _AUTH_LIKE, _AUTH_LIKE_PLACE, _SPONSOR_WORD, _IMMIGRATION)
+    )
+
+
+def mentions_sensitive(text: str) -> bool:
+    """C15 (D68): a demographic or sensitive topic (the C5 vocabulary and the legacy list)
+    named anywhere in a text. Disclosed only by the user's own consented answer."""
+    t = normalize(text)
+    return bool(
+        _SENSITIVE.search(t)
+        or sensitive_topic(t)
+        or _SENSITIVE_OPTION_STRONG.search(t)
+        or _SELF_DESCRIBED.search(t)
+    )
+
+
 def _help_sensitive(help_: str) -> tuple[str, str] | None:
     """(kind, topic) when the help text is about a sensitive topic; EEO boilerplate is not."""
     if not help_ or _EEO_BOILERPLATE.search(help_):

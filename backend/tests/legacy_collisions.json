@@ -4821,7 +4821,7 @@
    "id": "r8_11_ctrl_caps_and_option_order",
    "plan": "R8.11",
    "legacy": "LD-30",
-   "label": "DO YOU HOLD A FORKLIFT OPERATOR CERTIFICATE",
+   "label": "DO YOU HAVE EXPERIENCE OPERATING A FORKLIFT",
    "type": "radio",
    "options": [
     "No",
@@ -4830,7 +4830,7 @@
    "facts": "rich",
    "bank": [
     {
-     "label": "Do you hold a forklift operator certificate?",
+     "label": "Do you have experience operating a forklift?",
      "type": "radio",
      "options": [
       "Yes",
@@ -4853,13 +4853,13 @@
     },
     "source": "answer_bank"
    },
-   "why": "Positive control: case, missing '?' and option order are normalized; exact saved answer for the same wording, shape and option set."
+   "why": "Positive control: case, missing '?' and option order are normalized; exact saved answer for the same wording, shape and option set. (C16, D69: reworded from a certificate question, which is never reused now.)"
   },
   {
    "id": "r8_11_ctrl_exact_same_wording_reused",
    "plan": "R8.11",
    "legacy": "LD-30",
-   "label": "Do you hold a forklift operator certificate?",
+   "label": "Do you have experience operating a forklift?",
    "type": "radio",
    "options": [
     "Yes",
@@ -4868,7 +4868,7 @@
    "facts": "rich",
    "bank": [
     {
-     "label": "Do you hold a forklift operator certificate?",
+     "label": "Do you have experience operating a forklift?",
      "type": "radio",
      "options": [
       "Yes",
@@ -4891,7 +4891,7 @@
     },
     "source": "answer_bank"
    },
-   "why": "Positive control: the exact wording, shape, help and options of the saved answer reuse it."
+   "why": "Positive control: the exact wording, shape, help and options of the saved answer reuse it. (C16, D69: reworded from a certificate question, which is never reused now.)"
   },
   {
    "id": "r8_11_auth_portugal_saved_not_used_for_us",

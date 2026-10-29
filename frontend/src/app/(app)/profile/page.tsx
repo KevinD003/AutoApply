@@ -48,6 +48,12 @@ interface Education extends Meta {
   start_date: string | null;
   end_date: string | null;
 }
+interface Credential extends Meta {
+  name: string;
+  issuer: string | null;
+  issued_on: string | null;
+  expires_on: string | null;
+}
 
 const EMPTY: Profile = {
   full_name: "", given_name: "", family_name: "", preferred_name: "", contact_email: "", phone: "", residence_country: "", residence_region: "", residence_city: "",
@@ -76,6 +82,7 @@ export default function ProfilePage() {
       <WorkAuthCard />
       <EmploymentCard />
       <EducationCard />
+      <CredentialsCard />
     </>
   );
 }
@@ -152,6 +159,23 @@ function ContactCard() {
         </div>
       </form>
     </Card>
+  );
+}
+
+// L1 (D72): a fact proposed from your resume is used by nothing until you approve it here.
+function Proposed({ m, path, onDone, onError }: { m: Meta; path: string; onDone: () => void; onError: (e: unknown) => void }) {
+  if (m.approval_status === "approved") return null;
+  return (
+    <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-amber-800">
+      <Badge tone="amber">{m.provenance === "resume_parse" ? "Proposed from your resume" : m.approval_status}</Badge>
+      Not used until you approve it.
+      <button
+        className="text-indigo-700 underline"
+        onClick={() => api(`${path}/${m.id}/approve`, { method: "POST" }).then(onDone).catch(onError)}
+      >
+        Approve
+      </button>
+    </p>
   );
 }
 
@@ -273,6 +297,8 @@ function EmploymentCard() {
               <div>
                 <p className="font-medium">{j.title} — {j.employer}</p>
                 <p className="text-slate-600">{j.start_date ?? "?"} → {j.is_current ? "present" : j.end_date ?? "?"}{j.location ? ` · ${j.location}` : ""}</p>
+                {j.description && <p className="whitespace-pre-wrap text-xs text-slate-600">{j.description}</p>}
+                <Proposed m={j} path="/profile/employment" onDone={load} onError={setError} />
               </div>
               <Button variant="danger" className="!min-h-8 !px-2 !py-1" onClick={() => remove(j.id)}>Remove</Button>
             </li>
@@ -327,6 +353,7 @@ function EducationCard() {
               <div>
                 <p className="font-medium">{[ed.degree, ed.field_of_study].filter(Boolean).join(", ") || "Studies"} — {ed.institution}</p>
                 <p className="text-slate-600">{ed.start_date ?? "?"} → {ed.end_date ?? "?"}</p>
+                <Proposed m={ed} path="/profile/education" onDone={load} onError={setError} />
               </div>
               <Button variant="danger" className="!min-h-8 !px-2 !py-1" onClick={() => remove(ed.id)}>Remove</Button>
             </li>
@@ -341,6 +368,62 @@ function EducationCard() {
         <Field label="Start date"><input className={inputCls} type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></Field>
         <Field label="End date"><input className={inputCls} type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></Field>
         <div className="sm:col-span-2"><Button type="submit">Add education</Button></div>
+      </form>
+    </Card>
+  );
+}
+
+// C16 (D69): credentials ground a draft only when approved and not expired.
+function CredentialsCard() {
+  const { items, error, setError, load } = useList<Credential>("/profile/credentials");
+  const blank = { name: "", issuer: "", issued_on: "", expires_on: "" };
+  const [form, setForm] = useState(blank);
+
+  async function add(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    try {
+      await api("/profile/credentials", {
+        json: { name: form.name, issuer: form.issuer || null, issued_on: form.issued_on || null, expires_on: form.expires_on || null },
+      });
+      setForm(blank);
+      load();
+    } catch (err) {
+      setError(err);
+    }
+  }
+
+  async function remove(id: string) {
+    await api(`/profile/credentials/${id}`, { method: "DELETE" }).catch(setError);
+    load();
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <Card title="Licences and certifications">
+      <ErrorBox error={error} />
+      {items === null ? <Loading /> : items.length === 0 ? <Empty>No licences or certifications yet.</Empty> : (
+        <ul className="divide-y divide-slate-100">
+          {items.map((c) => (
+            <li key={c.id} className="flex items-start justify-between gap-3 py-2 text-sm">
+              <div>
+                <p className="font-medium">{c.name}{c.issuer ? ` — ${c.issuer}` : ""}</p>
+                <p className="text-slate-600">
+                  {c.expires_on ? (c.expires_on < today ? `Expired ${c.expires_on}: not used` : `Valid until ${c.expires_on}`) : "No expiry date"}
+                </p>
+                <Proposed m={c} path="/profile/credentials" onDone={load} onError={setError} />
+              </div>
+              <Button variant="danger" className="!min-h-8 !px-2 !py-1" onClick={() => remove(c.id)}>Remove</Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form onSubmit={add} className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
+        <Field label="Licence or certification"><input className={inputCls} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+        <Field label="Issued by"><input className={inputCls} value={form.issuer} onChange={(e) => setForm({ ...form, issuer: e.target.value })} /></Field>
+        <Field label="Issued on"><input className={inputCls} type="date" value={form.issued_on} onChange={(e) => setForm({ ...form, issued_on: e.target.value })} /></Field>
+        <Field label="Expires on"><input className={inputCls} type="date" value={form.expires_on} onChange={(e) => setForm({ ...form, expires_on: e.target.value })} /></Field>
+        <div className="sm:col-span-2"><Button type="submit">Add licence or certification</Button></div>
       </form>
     </Card>
   );

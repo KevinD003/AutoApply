@@ -309,14 +309,16 @@ def test_saving_and_listing_never_fail_on_unusual_text(api):
     setup_candidate(api)
     gender = [{"value": "w", "label": "Woman"}, {"value": "m", "label": "Man"}]
     fields = [
-        text("certs", "Which certifications do you hold?") | {"help_text": "List them.\u0000"},
+        # Not a certification question: those are never saved (C16).
+        text("langs", "Which programming languages do you know?")
+        | {"help_text": "List them.\u0000"},
         text("count", "How many languages do you speak?", "number"),
         {"key": "g1", "label": "Gender", "type": "select", "required": False, "options": gender},
         {"key": "g2", "label": "Gender", "type": "select", "required": False, "options": gender},
     ]
     app_id = application(api, fields)
-    for value in ({"text": "CPR\u0000"}, {"text": "CPR\u0000"}, {"text": "BLS"}):
-        assert _put(api, app_id, "certs", value, True).status_code == 200
+    for value in ({"text": "Python\u0000"}, {"text": "Python\u0000"}, {"text": "Go"}):
+        assert _put(api, app_id, "langs", value, True).status_code == 200
     (saved,) = api.get("/answer-bank").json()
     assert saved["help_text"] == "List them." and saved["version"] == 2  # changed once
     for bad in ("nan", "inf", "-inf"):

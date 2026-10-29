@@ -481,7 +481,8 @@ class FakeProvider:
 
     def draft(self, req):
         self.calls += 1
-        ev = self.evidence if self.evidence is not None else [req.facts[0].id]
+        # Cites every fact it was given (C15: numbers come only from cited facts).
+        ev = self.evidence if self.evidence is not None else [f.id for f in req.facts]
         return DraftResult(text=self.text, evidence=ev, provider=self.name)
 
 

@@ -44,7 +44,7 @@ from app.modules.profiles.models import CandidateProfile, JobPreferences, WorkAu
 # Bumped to 2 (Phase C hardening): the manifest now binds owner, destination origin and submit
 # endpoint, explicit document digests, policy versions. Every existing package hash changes,
 # so existing approvals stop matching and must be re-approved. That is intended.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 RESOLVER_VERSION = "deterministic-1"
 # Packages are only rebuilt while nothing has been sent; later states keep their history frozen.
 REBUILDABLE = {
@@ -115,25 +115,48 @@ def latest_form(db: Session, job_id: uuid.UUID) -> JobForm | None:
     )
 
 
+def usable_document(db: Session, doc: Document, app_id: uuid.UUID) -> bool:
+    """C18: an uploaded document, or a generated one the user has accepted; L2/L3 (D73): and
+    written for this application, its cited facts unchanged. Any other generated document is
+    never chosen, proposed or sent (generation.refusal says why)."""
+    from app.modules.preparation import generation
+
+    return generation.refusal(db, doc, app_id) is None
+
+
 def load_context(db: Session, app: Application) -> Context:
     uid = app.user_id
     inputs = db.scalars(
         select(ApplicationInput).where(ApplicationInput.application_id == app.id)
     ).all()
-    docs = {}
+    from app.modules.preparation import generation
+
+    docs, implicit, refused = {}, set(), {}
     for i in inputs:
         if i.kind == "document":
             doc = db.get(Document, uuid.UUID(i.value["document_id"]))
-            if doc is not None and doc.user_id == uid:
+            if doc is None or doc.user_id != uid:
+                continue
+            code = generation.refusal(db, doc, app.id)
+            if code is None:
                 docs[i.field_key] = doc
-    if "resume" not in docs:
+            else:  # L2/L3 (D73): the document you chose, never another one in its place
+                refused[i.field_key] = code
+    if "resume" not in docs and "resume" not in refused:
         # Propose the latest version only when the user has exactly one resume.
-        resumes = db.scalars(
-            select(Document).where(Document.user_id == uid, Document.kind == DocumentKind.resume)
-        ).all()
+        resumes = [
+            d
+            for d in db.scalars(
+                select(Document).where(
+                    Document.user_id == uid, Document.kind == DocumentKind.resume
+                )
+            )
+            if usable_document(db, d, app.id)
+        ]
         lineages = {d.lineage_id for d in resumes}
         if len(lineages) == 1:
             docs["resume"] = max(resumes, key=lambda d: d.version)
+            implicit.add("resume")
     answer_inputs = {i.field_key: i for i in inputs if i.kind == "answer"}
     if any(i.provenance == "draft_accepted" for i in answer_inputs.values()):
         current = {f.id: f for f in drafting.grounding_facts(db, uid)}
@@ -164,6 +187,8 @@ def load_context(db: Session, app: Application) -> Context:
         inputs=answer_inputs,
         consents={i.field_key: i.value.get("choice") for i in consents},
         documents=docs,
+        implicit_documents=frozenset(implicit),
+        refused_documents=refused,
         owner=str(uid),
         changed={k for k, _ in changed},
         consent_digests={i.field_key: (i.meta or {}).get("value_digest") for i in consents},
@@ -265,6 +290,10 @@ def build_content(db: Session, app: Application) -> dict:
     ctx = load_context(db, app)
     answers, unresolved, errors = [], [], []
     for f, r in resolve_answers(schema.fields, ctx):
+        if r.status == "needs_consent":
+            # C18: what awaits your consent is never written into a package version (which is
+            # kept); the review page reads it from your live answer (live_proposals).
+            r.value = r.display = None
         answers.append(
             {
                 "key": f.key,
@@ -316,6 +345,13 @@ def build_content(db: Session, app: Application) -> dict:
                     "size_bytes": doc.size_bytes,
                     "content_type": doc.content_type,
                     "display": a["display"],
+                    # C18: where it came from; a generated one names its base and its grounding.
+                    "origin": doc.origin,
+                    "base_document_id": None
+                    if doc.base_document_id is None
+                    else str(doc.base_document_id),
+                    "grounding_hash": doc.grounding_hash,
+                    "accepted_at": None if doc.accepted_at is None else doc.accepted_at.isoformat(),
                 }
             )
     job_url = job.url or job.canonical_url  # as given; canonical form is for dedupe only
@@ -343,6 +379,20 @@ def build_content(db: Session, app: Application) -> dict:
         "consents": {k: v for k, v in sorted(ctx.consents.items())},
         "unresolved": unresolved,
         "validation_errors": errors,
+    }
+
+
+def live_proposals(db: Session, app: Application) -> dict[str, tuple[dict, str | None]]:
+    """C18: each answer awaiting your consent, as it would be sent if you include it, read now
+    from your own answer or saved answer (never from a package version)."""
+    form = latest_form(db, app.job_id)
+    if form is None:
+        return {}
+    schema = FormSchema.model_validate(form.schema)
+    return {
+        f.key: (r.value, r.display)
+        for f, r in resolve_answers(schema.fields, load_context(db, app))
+        if r.status == "needs_consent" and r.value is not None
     }
 
 

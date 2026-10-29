@@ -84,6 +84,12 @@ calls an LLM; drafting is a separate, explicit, optional action.
 - **Never saved** also covers statements, legal-status questions, references, the topics added
   to row 2, generic wording, and follow-ups of sensitive or protected questions.
 - **Drafting** is never offered for sensitive or legal-status questions or their follow-ups.
+  A draft for any other question is refused when it states work authorization, sponsorship or
+  immigration status, touches a sensitive topic, or uses a number not in a fact it cites
+  (C15, D68). It names a licence or certification only by citing one of the profile's
+  approved, unexpired credentials (C16, D69).
+- **Licences, certifications and credentials** are never saved for reuse: the profile's
+  credentials record when they expire (C16, D69).
 - These rules only narrow (D49): verified once against the previous commit, no question that
   was not answered automatically before is answered now, and nothing became newly reusable or
   draftable.

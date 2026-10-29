@@ -1345,7 +1345,7 @@
   "fact"
  ],
  [
-  "ok.do_you_have_a_driver_s_license",
+  "credential.do_you_have_a_driver_s_license",
   "Do you have a driver's license?",
   "radio",
   [
@@ -1354,7 +1354,7 @@
   ],
   "Answer for the United States.",
   null,
-  null
+  "credential"
  ],
  [
   "time.company",
@@ -1473,7 +1473,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_driver_s_license_2",
+  "credential.do_you_have_a_driver_s_license_2",
   "Do you have a driver's license?",
   "radio",
   [
@@ -1482,10 +1482,10 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
-  "ok.are_you_certified_in_managing_card",
+  "credential.are_you_certified_in_managing_card",
   "Are you certified in managing cardiac arrest?",
   "radio",
   [
@@ -1494,10 +1494,10 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
-  "ok.do_you_hold_a_cna_certification",
+  "credential.do_you_hold_a_cna_certification",
   "Do you hold a CNA certification?",
   "radio",
   [
@@ -1506,7 +1506,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.are_you_a_member_of_a_trade_associ",
@@ -1631,7 +1631,7 @@
   null
  ],
  [
-  "ok.did_you_earn_a_certification_in_ph",
+  "credential.did_you_earn_a_certification_in_ph",
   "Did you earn a certification in phlebotomy?",
   "radio",
   [
@@ -1640,7 +1640,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.have_you_prepared_for_a_accreditat",
@@ -1819,7 +1819,7 @@
   "time"
  ],
  [
-  "ok.do_you_hold_a_forklift_licence",
+  "credential.do_you_hold_a_forklift_licence",
   "Do you hold a forklift licence?",
   "radio",
   [
@@ -1828,7 +1828,7 @@
   ],
   "Answer for Canada.",
   null,
-  null
+  "credential"
  ],
  [
   "employer.is_a_job_here_your_first_choice",
@@ -2789,7 +2789,7 @@
   null
  ],
  [
-  "ok.do_you_hold_cpr_certification",
+  "credential.do_you_hold_cpr_certification",
   "Do you hold CPR certification?",
   "radio",
   [
@@ -2798,7 +2798,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.can_you_lift_over_20_kg",
@@ -2997,7 +2997,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_us_nursing_license",
+  "credential.do_you_have_a_us_nursing_license",
   "Do you have a US nursing license?",
   "radio",
   [
@@ -3006,7 +3006,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.typing_speed",
@@ -3547,7 +3547,7 @@
   null
  ],
  [
-  "ok.are_you_cpr_certified",
+  "credential.are_you_cpr_certified",
   "Are you CPR certified?",
   "radio",
   [
@@ -3556,7 +3556,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.typing_speed_words_per_minute",
@@ -4466,7 +4466,7 @@
   null
  ],
  [
-  "ok.are_you_certified_in_bls",
+  "credential.are_you_certified_in_bls",
   "Are you certified in BLS?",
   "radio",
   [
@@ -4475,7 +4475,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.do_you_have_phlebotomy_experience",
@@ -4790,7 +4790,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_food_handler_s_certi",
+  "credential.do_you_have_a_food_handler_s_certi",
   "Do you have a food handler's certificate?",
   "radio",
   [
@@ -4799,7 +4799,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.do_you_have_experience_with_infect",
@@ -5030,7 +5030,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_commercial_driver_s_",
+  "credential.do_you_have_a_commercial_driver_s_",
   "Do you have a commercial driver's license (CDL)?",
   "radio",
   [
@@ -5039,10 +5039,10 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
-  "ok.are_you_certified_in_acls",
+  "credential.are_you_certified_in_acls",
   "Are you certified in ACLS?",
   "radio",
   [
@@ -5051,7 +5051,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.have_you_completed_osha_10_trainin",
@@ -5114,7 +5114,7 @@
   null
  ],
  [
-  "ok.which_certifications_do_you_hold",
+  "credential.which_certifications_do_you_hold",
   "Which certifications do you hold?",
   "radio",
   [
@@ -5123,7 +5123,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.do_you_have_experience_in_the_hosp",
@@ -5162,7 +5162,7 @@
   null
  ],
  [
-  "ok.do_you_hold_a_food_handler_certifi",
+  "credential.do_you_hold_a_food_handler_certifi",
   "Do you hold a food handler certificate?",
   "radio",
   [
@@ -5171,7 +5171,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.have_you_completed_any_paid_intern",
@@ -5765,7 +5765,7 @@
   null
  ],
  [
-  "ok.are_you_certified_as_a_medical_ass",
+  "credential.are_you_certified_as_a_medical_ass",
   "Are you certified as a medical assistant?",
   "radio",
   [
@@ -5774,7 +5774,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.do_you_have_ekg_experience",
@@ -5837,7 +5837,7 @@
   null
  ],
  [
-  "ok.do_you_hold_a_phlebotomy_certifica",
+  "credential.do_you_hold_a_phlebotomy_certifica",
   "Do you hold a phlebotomy certification?",
   "radio",
   [
@@ -5846,10 +5846,10 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
-  "ok.are_you_a_licensed_practical_nurse",
+  "credential.are_you_a_licensed_practical_nurse",
   "Are you a licensed practical nurse?",
   "radio",
   [
@@ -5858,7 +5858,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.do_you_have_experience_with_medica_3",
@@ -7039,7 +7039,7 @@
   null
  ],
  [
-  "ok.are_you_a_certified_pharmacy_techn",
+  "credential.are_you_a_certified_pharmacy_techn",
   "Are you a certified pharmacy technician?",
   "radio",
   [
@@ -7048,10 +7048,10 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
-  "ok.do_you_hold_a_basic_life_support_c",
+  "credential.do_you_hold_a_basic_life_support_c",
   "Do you hold a Basic Life Support certification?",
   "radio",
   [
@@ -7060,7 +7060,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.have_you_ever_worked_in_a_dental_o",
@@ -7195,7 +7195,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_forklift_operator_ce",
+  "credential.do_you_have_a_forklift_operator_ce",
   "Do you have a forklift operator certificate?",
   "radio",
   [
@@ -7204,7 +7204,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.can_you_drive_a_manual_transmissio",
@@ -7348,7 +7348,7 @@
   null
  ],
  [
-  "ok.are_you_cpr_and_first_aid_certifie",
+  "credential.are_you_cpr_and_first_aid_certifie",
   "Are you CPR and First Aid certified?",
   "radio",
   [
@@ -7357,7 +7357,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.do_you_have_experience_with_medica_4",
@@ -7465,7 +7465,7 @@
   null
  ],
  [
-  "ok.do_you_hold_a_security_guard_licen",
+  "credential.do_you_hold_a_security_guard_licen",
   "Do you hold a security guard license?",
   "radio",
   [
@@ -7474,7 +7474,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.are_you_a_notary_public",
@@ -7608,7 +7608,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_nursing_license",
+  "credential.do_you_have_a_nursing_license",
   "Do you have a nursing license?",
   "radio",
   [
@@ -7617,7 +7617,7 @@
   ],
   null,
   "Licenses and certifications",
-  null
+  "credential"
  ],
  [
   "employer.do_you_have_experience_with_patien_2",
@@ -7808,7 +7808,7 @@
   null
  ],
  [
-  "ok.are_you_cpr_certified_2",
+  "credential.are_you_cpr_certified_2",
   "Are you CPR certified?",
   "radio",
   [
@@ -7817,7 +7817,7 @@
   ],
   "If you are unsure, select No.",
   "Licenses and certifications",
-  null
+  "credential"
  ],
  [
   "ok.do_you_have_experience_with_ehr_sy_2",
@@ -7858,7 +7858,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_driver_s_license_3",
+  "credential.do_you_have_a_driver_s_license_3",
   "Do you have a driver's license?",
   "radio",
   [
@@ -7867,7 +7867,7 @@
   ],
   "Required for all applicants.",
   "Additional questions",
-  null
+  "credential"
  ],
  [
   "ok.can_you_lift_50_pounds_2",
@@ -7882,7 +7882,7 @@
   null
  ],
  [
-  "ok.do_you_hold_a_cna_certification_2",
+  "credential.do_you_hold_a_cna_certification_2",
   "Do you hold a CNA certification?",
   "radio",
   [
@@ -7891,7 +7891,7 @@
   ],
   "Include your certification number if you have one.",
   null,
-  null
+  "credential"
  ],
  [
   "ok.name_of_school_2",
@@ -7936,7 +7936,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_nursing_license_2",
+  "credential.do_you_have_a_nursing_license_2",
   "Do you have a nursing license?",
   "radio",
   [
@@ -7945,7 +7945,7 @@
   ],
   "Completion is voluntary.",
   "Licenses and certifications",
-  null
+  "credential"
  ],
  [
   "ok.have_you_ever_worked_in_a_hospital_2",
@@ -7960,13 +7960,13 @@
   null
  ],
  [
-  "ok.which_certifications_do_you_hold_2",
+  "credential.which_certifications_do_you_hold_2",
   "Which certifications do you hold?",
   "text",
   [],
   "List each certification on its own line.",
   "Licenses and certifications",
-  null
+  "credential"
  ],
  [
   "ok.typing_speed_words_per_minute_2",
@@ -8796,7 +8796,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_forklift_certificati",
+  "credential.do_you_have_a_forklift_certificati",
   "Do you have a forklift certification?",
   "radio",
   [
@@ -8805,7 +8805,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.what_is_your_highest_degree",
@@ -8949,7 +8949,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_it_support_certifica",
+  "credential.do_you_have_a_it_support_certifica",
   "Do you have a IT support certification?",
   "radio",
   [
@@ -8958,7 +8958,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.have_you_ever_managed_a_budget",
@@ -9235,7 +9235,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_teaching_credential",
+  "credential.do_you_have_a_teaching_credential",
   "Do you have a teaching credential?",
   "radio",
   [
@@ -9244,7 +9244,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.which_instruments_do_you_play",
@@ -9256,7 +9256,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_security_guard_licen",
+  "credential.do_you_have_a_security_guard_licen",
   "Do you have a security guard license?",
   "radio",
   [
@@ -9265,16 +9265,16 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
-  "ok.what_certifications_do_you_hold",
+  "credential.what_certifications_do_you_hold",
   "What certifications do you hold?",
   "text",
   [],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.languages_spoken_2",
@@ -9303,7 +9303,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_driver_s_license_4",
+  "credential.do_you_have_a_driver_s_license_4",
   "Do you have a driver's license?",
   "radio",
   [
@@ -9312,7 +9312,7 @@
   ],
   "Some roles involve driving.",
   null,
-  null
+  "credential"
  ],
  [
   "ok.skills",
@@ -9348,13 +9348,13 @@
   null
  ],
  [
-  "ok.certifications",
+  "credential.certifications",
   "Certifications",
   "text",
   [],
   null,
   "Qualifications",
-  null
+  "credential"
  ],
  [
   "ok.have_you_ever_worked_with_dementia",
@@ -9381,7 +9381,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_class_a_license",
+  "credential.do_you_have_a_class_a_license",
   "Do you have a Class A license?",
   "radio",
   [
@@ -9390,7 +9390,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.which_operating_systems_are_you_fa_2",
@@ -10006,7 +10006,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_commercial_driver_s__2",
+  "credential.do_you_have_a_commercial_driver_s__2",
   "Do you have a commercial driver's license?",
   "radio",
   [
@@ -10015,7 +10015,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.have_you_ever_operated_heavy_machi",
@@ -10054,7 +10054,7 @@
   null
  ],
  [
-  "ok.do_you_hold_a_real_estate_license",
+  "credential.do_you_hold_a_real_estate_license",
   "Do you hold a real estate license?",
   "radio",
   [
@@ -10063,10 +10063,10 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
-  "ok.do_you_have_welding_certification",
+  "credential.do_you_have_welding_certification",
   "Do you have welding certification?",
   "radio",
   [
@@ -10075,7 +10075,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.which_languages_can_you_read_and_w",
@@ -10151,7 +10151,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_first_aid_certificat",
+  "credential.do_you_have_a_first_aid_certificat",
   "Do you have a first aid certificate?",
   "radio",
   [
@@ -10160,7 +10160,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.which_payment_terminals_have_you_u",
@@ -10220,7 +10220,7 @@
   null
  ],
  [
-  "ok.do_you_hold_a_tefl_certificate",
+  "credential.do_you_hold_a_tefl_certificate",
   "Do you hold a TEFL certificate?",
   "radio",
   [
@@ -10229,7 +10229,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.can_you_type_60_words_per_minute",
@@ -10244,7 +10244,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_pharmacy_technician_",
+  "credential.do_you_have_a_pharmacy_technician_",
   "Do you have a pharmacy technician license?",
   "radio",
   [
@@ -10253,7 +10253,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.have_you_ever_led_a_project",
@@ -10394,7 +10394,7 @@
   null
  ],
  [
-  "ok.which_certifications_do_you_have",
+  "credential.which_certifications_do_you_have",
   "Which certifications do you have?",
   "checkbox_group",
   [
@@ -10404,7 +10404,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.areas_of_expertise",
@@ -10461,13 +10461,13 @@
   null
  ],
  [
-  "ok.certifications_2",
+  "credential.certifications_2",
   "Certifications",
   "text",
   [],
   "Include the issuing body.",
   null,
-  null
+  "credential"
  ],
  [
   "ok.typing_speed_2",
@@ -10911,7 +10911,7 @@
   null
  ],
  [
-  "ok.which_state_boards_are_you_license",
+  "credential.which_state_boards_are_you_license",
   "Which state boards are you licensed with?",
   "radio",
   [
@@ -10920,7 +10920,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.do_you_have_experience_with_time_m",
@@ -11007,7 +11007,7 @@
   "time"
  ],
  [
-  "ok.license_to_practice",
+  "credential.license_to_practice",
   "Do you hold a license to practice in Ohio?",
   "radio",
   [
@@ -11016,7 +11016,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "employer.position_applied_for",
@@ -11151,7 +11151,7 @@
   null
  ],
  [
-  "ok.do_you_have_a_comptia_certificatio",
+  "credential.do_you_have_a_comptia_certificatio",
   "Do you have a CompTIA certification?",
   "radio",
   [
@@ -11160,7 +11160,7 @@
   ],
   null,
   null,
-  null
+  "credential"
  ],
  [
   "ok.experience_with_python",
@@ -11597,5 +11597,54 @@
   null,
   null,
   null
+ ],
+ [
+  "time.do_you_have_valid_first_aid_training",
+  "Do you have valid first aid training?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "time.can_you_operate_a_pallet_jack",
+  "Can you operate a pallet jack?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "Your training must be current at the time of hire.",
+  null,
+  "time"
+ ],
+ [
+  "time.first_aid_training",
+  "First aid training",
+  "select",
+  [
+   "Active",
+   "Expired",
+   "None"
+  ],
+  null,
+  null,
+  "time"
+ ],
+ [
+  "place.can_you_operate_a_pallet_jack",
+  "Can you operate a pallet jack?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  "You will need it for the daily commute.",
+  null,
+  "place"
  ]
 ]

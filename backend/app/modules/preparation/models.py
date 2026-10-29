@@ -164,8 +164,11 @@ class AnswerDraft(Base):
     input_hash: Mapped[str] = mapped_column(String(64), index=True)
     provider: Mapped[str] = mapped_column(String(50))
     model: Mapped[str | None] = mapped_column(String(100))
-    text: Mapped[str] = mapped_column(Text)
+    # Erased when the user rejects the draft (C15, D68): a rejected draft's text is never kept.
+    text: Mapped[str | None] = mapped_column(Text)
     evidence: Mapped[list] = mapped_column(JSON, default=list)
+    # C15 (D68): the cited facts' hash when drafted; None for drafts made before C15.
+    grounding_hash: Mapped[str | None] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(
         String(20), default="proposed"
     )  # proposed|accepted|rejected

@@ -289,11 +289,13 @@ while mapping each scenario to a test; a second page is a stop, not filled.
 | C12 | Review UI edit, clear, optional answers, cover-letter selection, destination shown | M | C10, C11 | **Done (D64, 2026-10-28):** change, clear and optional answers where the resolver allows input; cover letter chosen or left out; "Sends to …" with a fixture or employer label; controls outside the package content |
 | C13 | Audit and approval wording, reason codes, revoke-while-queued | M | — | **Done (D65, 2026-10-28):** nine approval reason codes listed in `approval-reasons.md`; revoking cancels an attempt no worker has taken, leaves a held one to the gates, is refused after the send gate, and is audited with what it did |
 | C14 | Read-only version diff | M | — | **Done (D66, 2026-10-28):** two stored versions compared by label and shown value (answer, question or basis changed); on each history row and since the approved version; never builds or records |
-| C15 | Drafting hardening before any provider | M | C4/C5 regexes | Must precede any LLM provider (L4). Includes the job-text rule: job text reaches a prompt only as quoted, untrusted data and never changes which facts are used (`freehire-first-architecture.md` §1; `reliability-test-plan.md` R11.9, written with the first provider) |
-| C16 | Credentials as grounded facts | M | C15 | |
-| C17 | Retention and deletion of documents | M | — | Pairs with S6's discovered-row delete |
-| C18 | The one `SCHEMA_VERSION=3` bump bundling every [shape] change | S | C9, C12, C15 | Invalidates every approval; announce it |
-| L1-L4 | Resume text extraction, tailoring, grounded cover letters, a real draft provider | L | C15, C16, C18 | Later; L4 needs server-side credentials and a consent screen |
+| C15 | Drafting hardening before any provider | M | C4/C5 regexes | **Done (D68, 2026-10-29):** numbers only from cited facts; legal-status and sensitive mentions refused; job text and questions quoted as untrusted data in the one prompt shape (R11.9); accept compares the cited facts and the request, re-checks the question, and gives reason codes; the user can reject a draft, which erases its text |
+| C16 | Credentials as grounded facts | M | C15 | **Done (D69, 2026-10-29):** approved, unexpired credentials ground a draft; a draft names a licence only by citing one; licence and certification wording is never saved for reuse (400) |
+| C17 | Retention and deletion of documents | M | — | **Done (D70, 2026-10-29):** delete a version or every version with its files; refused while a live approval or a running attempt needs it, under the application locks; an application's choice of it removed; retention rows updated. The `needs_consent` display change is [shape] → C18 |
+| C18 | The one `SCHEMA_VERSION=3` bump bundling every [shape] change | S | C9, C12, C15 | **Done (D71, 2026-10-29), announced: every approval given before it is invalidated.** Preference facts hashed by value; document origin and provenance; `accept` enforced; implicit and chosen resumes explained apart; an answer awaiting consent never kept in a version |
+| L1 | Resume text extraction into proposed facts | L | C16, C18 | **Done (D72, 2026-10-29):** PDF, DOCX and TXT text; work, education and credentials proposed, approved one by one; nothing inferred, legal and sensitive lines skipped |
+| L2, L3 | Tailored resumes and grounded cover letters | L | C15, C16, C18 | **Done in code (D73, 2026-10-29):** generated only through the drafting provider (none configured: 503), from approved facts; checked like drafts; a DOCX for one application, used only once accepted and while its facts are unchanged; diff from the base resume |
+| L4 | A real draft provider | L | L2, L3 | **Owner decision:** server-side credentials, a cost budget and a consent screen showing what leaves NoEfforts; not started |
 
 ### Blocked or owner-only (not slices to implement now)
 
@@ -318,9 +320,11 @@ done: C1 C2 → C3-C5 → Q1 (D50) → S1 (C6, D51) → S2 (outcome integrity, D
       → S3 (job signals, D59) → C7 (answers tied to their question, D60)
       → C8 (the disclose path, D61) → S5 (fixture variants, D62) → C9 (salary units, D63)
       → C12 (review UI, D64) → C13 (approval reasons and revoking, D65) → C14 (version diff, D66)
-      → S6 (Freehire hardening, D67)
-now:  C15 (drafting hardening before any provider)
-then: C16 → C17 → C18 (one schema bump)
+      → S6 (Freehire hardening, D67) → C15 (drafting hardening, D68)
+      → C16 (credentials as grounded facts, D69) → C17 (deleting documents, D70)
+      → C18 (SCHEMA_VERSION 3, D71)
+      → L1 (facts proposed from a resume, D72) → L2, L3 in code (tailored documents, D73)
+next: L4 waits for the owner (a provider, credentials, a cost budget, a consent screen)
 later: L1-L4; live steps only with the owner's recorded permissions
 ```
 
@@ -385,9 +389,28 @@ since the approved one, by label and shown value.
 **S6 (Freehire hardening, D67) is done.** Counters no longer count as changes, a source's
 `Retry-After` holds the user's next request back, and each listing can be refreshed.
 
-**Recommended next: C15 (drafting hardening before any provider).** Size M.
+**C15 (drafting hardening, D68) is done.** A draft can use only numbers from the facts it
+cites, never states a legal status or a sensitive attribute, treats job text as quoted data,
+and is accepted only if nothing it was made from has changed; the user can reject one.
 
-**Runner-up: C17 (retention and deletion of documents).** Size M.
+**C16 (credentials, D69) is done.** A draft names a licence only from an approved, unexpired
+credential it cites, and licence answers are never saved for reuse.
+
+**C17 (deleting documents, D70) is done.** A version, or every version, of a document is
+deleted with its file, never while an approval or a running submission needs it.
+
+**C18 (SCHEMA_VERSION 3, D71) is done and announced: every approval given before it must be
+given again.**
+
+**L1 (facts proposed from a resume, D72) is done.** A resume's work history, education and
+licences are proposed into the profile and used only once approved.
+
+**L2 and L3 (tailored resumes and cover letters, D73) are done in code.** They run only
+through a drafting provider, and none is configured, so nothing is generated yet.
+
+**Next: L4, an owner decision.** A real provider needs server-side credentials, a cost budget
+and a consent screen that shows what leaves NoEfforts; nothing is sent to an external AI
+service until the owner decides them.
 
 ## 5. Never in any slice
 

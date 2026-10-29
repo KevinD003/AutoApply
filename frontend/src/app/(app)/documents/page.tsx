@@ -9,6 +9,8 @@ export default function DocumentsPage() {
   const [docs, setDocs] = useState<Doc[] | null>(null);
   const [versions, setVersions] = useState<Record<string, Doc[]>>({});
   const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState("");
+  const [confirming, setConfirming] = useState<string | null>(null);
 
   const load = useCallback(() => {
     api<Doc[]>("/documents").then(setDocs).catch((e) => {
@@ -27,12 +29,55 @@ export default function DocumentsPage() {
     }
   }
 
+  // C17 (D70): a version, or every version, is deleted with its file; refused while an approved
+  // package or a submission in progress needs it.
+  async function remove(d: Doc, scope: "version" | "lineage") {
+    setError(null);
+    setNotice("");
+    setConfirming(null);
+    try {
+      await api(`/documents/${d.id}?scope=${scope}`, { method: "DELETE" });
+      setNotice(scope === "lineage" ? `Deleted “${d.label}” and all its versions.` : `Deleted version ${d.version} of “${d.label}”.`);
+      setVersions((cur) => {
+        const next = { ...cur };
+        delete next[d.lineage_id];
+        return next;
+      });
+      load();
+    } catch (e) {
+      setError(e);
+    }
+  }
+
+  // L1 (D72): what this resume states becomes proposed profile facts, used only once approved.
+  async function propose(d: Doc) {
+    setError(null);
+    setNotice("");
+    try {
+      const r = await api<{ proposed: Record<string, number>; skipped: { existing: number; sensitive: number } }>(
+        `/documents/${d.id}/propose-facts`,
+        { method: "POST" },
+      );
+      const p = r.proposed;
+      setNotice(
+        `Proposed from “${d.label}”: ${p.employment} work ${p.employment === 1 ? "entry" : "entries"}, ${p.education} education ` +
+          `${p.education === 1 ? "entry" : "entries"}, ${p.credential} licence${p.credential === 1 ? "" : "s"} or certification${p.credential === 1 ? "" : "s"}. ` +
+          `Review and approve them in your profile; nothing is used until you do.` +
+          (r.skipped.existing ? ` ${r.skipped.existing} already in your profile.` : "") +
+          (r.skipped.sensitive ? ` ${r.skipped.sensitive} line${r.skipped.sensitive === 1 ? "" : "s"} about legal status or a personal topic not read.` : ""),
+      );
+    } catch (e) {
+      setError(e);
+    }
+  }
+
   return (
     <>
       <h1 className="text-xl font-semibold">Documents</h1>
       <Upload onDone={load} />
       <Card title="Your documents">
         <ErrorBox error={error} />
+        {notice && <Notice>{notice}</Notice>}
         {docs === null ? (
           <Loading />
         ) : docs.length === 0 ? (
@@ -55,6 +100,26 @@ export default function DocumentsPage() {
                       <button className="text-sm text-indigo-700 underline" onClick={() => showVersions(d)}>History</button>
                     )}
                     <Upload compact lineage={d} onDone={load} />
+                    {d.kind === "resume" && (
+                      <button className="text-sm text-indigo-700 underline" onClick={() => propose(d)}>
+                        Propose profile facts
+                      </button>
+                    )}
+                    {confirming === d.lineage_id ? (
+                      <span className="flex items-center gap-2 text-sm">
+                        Delete this document, every version and its files?
+                        <button className="text-red-700 underline" onClick={() => remove(d, "lineage")}>
+                          Yes, delete
+                        </button>
+                        <button className="text-slate-600 underline" onClick={() => setConfirming(null)}>
+                          Keep it
+                        </button>
+                      </span>
+                    ) : (
+                      <button className="text-sm text-red-700 underline" onClick={() => setConfirming(d.lineage_id)}>
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </div>
                 {versions[d.lineage_id] && (
@@ -63,6 +128,10 @@ export default function DocumentsPage() {
                       <li key={v.id}>
                         v{v.version} — {new Date(v.created_at).toLocaleString()} —{" "}
                         <a className="text-indigo-700 underline" href={`/api/documents/${v.id}/download`}>download</a>
+                        {" — "}
+                        <button className="text-red-700 underline" onClick={() => remove(v, "version")}>
+                          delete this version
+                        </button>
                       </li>
                     ))}
                   </ul>

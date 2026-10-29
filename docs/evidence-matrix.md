@@ -9,6 +9,93 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Tailored resumes and cover letters (L2, L3, 2026-10-29; local only, no provider)
+
+A labelled test double stands in for the provider; none is configured. Decision D73.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Nothing without a provider | `tests/test_generated_documents.py::test_nothing_is_generated_without_a_provider` | 503; nothing stored |
+| Stored unaccepted for one application | `::test_a_tailored_resume_is_stored_unaccepted_for_this_application`, `::test_a_cover_letter_is_generated_without_a_base`, `::test_a_docx_round_trips_and_escapes_markup` | DOCX, `generated`, its application, its cited facts; refused until accepted; then in the package with its provenance |
+| Checked like drafts | `::test_a_document_failing_the_draft_checks_is_never_stored`, `::test_the_request_holds_only_approved_facts_and_quoted_job_text` | four codes; nothing stored; audit by code only |
+| Diff from the base | `::test_a_tailored_resume_shows_what_changed_from_its_base` | the changed lines |
+| Never elsewhere, never stale | `::test_a_document_is_never_used_for_another_application`, `::test_a_changed_fact_makes_it_unusable`, `::test_a_document_whose_facts_changed_cannot_be_accepted` | 409 with its code; the row asks again, never another document in its place |
+| Reject; other users | `::test_rejecting_deletes_it_and_its_file`, `::test_another_users_application_and_documents_are_404` | row and file gone; 404 |
+| In the browser | `frontend/e2e/generated.spec.ts` (desktop, mobile; a synthetic list) | not configured said; cited facts and changes shown; accepted |
+| Sabotage | 9 cases | 9 caught (one after a stale-accept test was added) |
+
+## Facts proposed from a resume (L1, 2026-10-29; local only, no provider)
+
+Synthetic PDF, DOCX and TXT files built in the tests. Decision D72.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Text from PDF, DOCX, TXT | `tests/test_resume_facts.py::test_text_is_read_from_pdf_docx_and_txt`, `::test_only_the_first_pages_of_a_long_pdf_are_read` | the same lines; 10 pages at most |
+| Unreadable files | `::test_unreadable_documents_say_why`, `::test_a_docx_whose_document_part_is_too_large_is_refused` | `unreadable`, `no_text`, `unsupported`, `too_large` |
+| Only stated facts | `::test_only_stated_facts_are_proposed`, `::test_nothing_is_inferred` | work, education, credentials; dates kept as written; two legal and sensitive lines skipped |
+| Proposed until approved | `::test_proposed_facts_wait_for_approval_and_are_not_used_until_then` | `proposed`, `resume_parse`; no grounding fact until approved; audited by count |
+| Once only; other users | `::test_proposing_again_adds_nothing_already_there`, `::test_errors_and_other_users` | nothing twice; 404 across users; a cover letter refused |
+| In the browser | `frontend/e2e/documents.spec.ts` "a resume's facts are proposed" (desktop, mobile) | proposed, approved one by one |
+| Sabotage | 9 cases | 9 caught (one rerun after its edit was a syntax error, which proves nothing) |
+
+## SCHEMA_VERSION 3 (C18, 2026-10-29; local only)
+
+Synthetic data. Decision D71. Every approval given under 2 is invalidated.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Preference facts hashed by value | `tests/test_schema_v3.py::test_changing_only_the_salary_range_is_a_new_version` | the same number sent, a new version and hash |
+| The shape | `tests/test_package_contract.py` (shape 3 beside an unchanged shape 2) | equal |
+| `accept` enforced | `::test_accepts` (8 cases), `::test_a_txt_resume_into_a_pdf_or_docx_field_is_a_checkpoint` | a checkpoint; no document sent |
+| Implicit and chosen resumes | `::test_an_implicit_resume_is_explained_as_proposed_and_a_chosen_one_as_chosen` | two explanations |
+| Generated documents | `::test_a_generated_document_is_used_only_once_accepted`, `::test_an_uploaded_document_records_its_origin` | 409 until accepted; provenance in the package |
+| An answer awaiting consent | `::test_an_answer_awaiting_consent_is_never_written_into_a_version`, `tests/test_disclosure_ledger.py` | empty in every version; shown from the live answer; included, then withheld |
+| Old approvals | `::test_an_approval_given_under_schema_2_is_invalidated` | a new version; not approved |
+| Sabotage | 9 cases | 9 caught |
+
+## Deleting documents (C17, 2026-10-29; local only)
+
+Synthetic documents and the generic receiver. Decision D70.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| A version, then every version | `tests/test_document_deletion.py::test_deleting_a_version_removes_its_row_and_file_only`, `::test_deleting_a_document_removes_every_version` | download 404; the files gone; the other version kept; audited with scope and count |
+| Another user | `::test_another_users_document_is_404_and_untouched` | 404; file and download untouched |
+| Never while needed | `::test_a_document_in_an_approved_package_is_not_deleted_until_revoked`, `::test_a_document_a_running_attempt_needs_is_not_deleted` | `document_in_approval` until revoked, then deleted and the package asks again; `document_in_attempt` even after the approval expired |
+| Race with an approval | `::test_a_delete_waiting_for_an_approval_in_progress_sees_it` | waits on the application lock, then refuses |
+| An application's choice | `::test_an_application_that_chose_a_deleted_version_asks_again`, `::test_a_past_package_version_keeps_only_what_it_recorded` | the choice removed; the new version without it; the diff shows it gone |
+| In the browser | `frontend/e2e/documents.spec.ts` (desktop, mobile) | a version, then the document, deleted |
+| Sabotage | 8 cases | 8 caught |
+
+## Credentials as grounded facts (C16, 2026-10-29; local only, no provider)
+
+Synthetic credentials; labelled test doubles. Decision D69.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Only approved, unexpired credentials of this user | `tests/test_credentials.py::test_only_approved_unexpired_credentials_of_this_user_ground_a_draft` | expiring today and no expiry kept; expired, proposed, rejected and another user's excluded |
+| A credential named only from a cited credential | `::test_a_credential_named_in_a_draft_must_be_a_cited_credential`, `::test_a_draft_cannot_claim_an_expired_credential` | `uncited_credential` for a job title, an employment description or an expired credential |
+| Never saved for reuse | `::test_a_licence_answer_is_never_saved_for_reuse`, `::test_a_licence_question_is_never_answered_from_the_profile_or_the_bank`, `tests/test_bank_scope.py` (48 table rows) | 400; nothing saved; answered for each application |
+| Only narrows | `::test_the_credential_family_only_narrows`, `tests/test_bank_scope.py::test_every_family_use_is_load_bearing` (four new witness rows) | other categories kept; every family still load-bearing |
+| Sabotage | 8 cases | 8 caught |
+
+## Drafting hardening (C15, 2026-10-29; local only, no provider)
+
+Labelled test doubles stand in for a provider; nothing is sent anywhere. Decision D68.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Each rejection code | `tests/test_drafting.py::test_each_rejection_code` (13 cases), `::test_the_codes_are_listed_and_documented` | every code produced; the audit table lists them |
+| Numbers from the job text, the question or an uncited fact | `::test_numbers_echoed_from_the_job_text_or_the_question_are_rejected`, `::test_a_number_from_a_fact_the_draft_does_not_cite_is_rejected` | `invented_numbers` |
+| Legal status and sensitive topics | the parametrized rows ("never need sponsorship", "as a woman and veteran", citizenship, disability, criminal record) | `legal_status`, `sensitive_topic` |
+| Planted instruction (R11.9) | `::test_the_prompt_quotes_employer_text_and_never_lets_it_out`, `::test_a_planted_instruction_never_changes_the_facts_and_obeying_it_is_rejected` | the job text is one quoted string; the facts are the same with or without it; obeying it is rejected |
+| Grounding scope | `::test_grounding_uses_only_this_users_approved_records` | proposed, rejected and other users' records excluded |
+| Accept checks | `::test_a_fact_edited_between_request_and_accept_is_refused`, `::test_a_question_reworded_before_accept_is_refused`, `::test_a_question_that_can_no_longer_be_drafted_is_refused`, `::test_a_draft_that_no_longer_fits_is_a_409_not_a_500` | 409 with `draft_facts_changed`, `draft_inputs_changed`, `not_draftable`, `draft_does_not_fit` |
+| Audit, cited facts, cache, order | `::test_accepting_is_audited_by_reference_and_shows_the_cited_facts`, `::test_drafts_are_listed_in_the_order_they_were_made` | `draft.accepted` with a reference only; an accepted draft returned as accepted; creation order |
+| Rejecting | `::test_rejecting_erases_the_text_and_it_is_never_offered_again`, `::test_an_accepted_draft_is_not_rejected_and_another_users_is_404` | text NULL; `by_user`; a new draft next time; 404 across users and applications |
+| In the browser | `frontend/e2e/drafts.spec.ts` (desktop, mobile; the package view with one synthetic draft) | cited facts shown; a changed fact flagged; rejected |
+| Sabotage | 17 cases | 17 caught (the order test rewritten so that a wrong order is always caught) |
+
 ## Freehire contract hardening (S6, 2026-10-28; fixture only, no Freehire API request)
 
 The local stand-in of Freehire's documented API on the receiver; its request table is the

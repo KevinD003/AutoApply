@@ -318,7 +318,7 @@ def test_answer_bank_reuse_requires_same_wording_and_options():
 
 def test_yes_no_bank_answers_are_bound_to_their_question():
     """A saved 'Yes' to one question is never reused for a differently worded one."""
-    asked = radio("Do you have a driver's license?", key="dl")
+    asked = radio("Do you have experience with medical billing?", key="dl")
     entry = NS(
         id="b2",
         version=1,
@@ -328,8 +328,12 @@ def test_yes_no_bank_answers_are_bound_to_their_question():
     )
     bank = {question_key(asked): entry}
     assert resolve_field(asked, ctx(bank=bank)).display == "Yes"
-    negated = radio("Do you not have a driver's license?", key="dl2")
+    negated = radio("Do you not have experience with medical billing?", key="dl2")
     assert resolve_field(negated, ctx(bank=bank)).status == "needs_user"
+    # C16 (D69): a licence is never reused, even under its own key.
+    licence = radio("Do you have a driver's license?", key="dl4")
+    r = resolve_field(licence, ctx(bank={question_key(licence): entry}))
+    assert (r.status, r.source, r.bankable) == ("needs_user", "unresolved", False)
     # C6 (D51): "valid" is about now, so the answer is never reused, even under its own key.
     valid = radio("Do you have a valid driver's license?", key="dl3")
     r = resolve_field(valid, ctx(bank={question_key(valid): entry}))

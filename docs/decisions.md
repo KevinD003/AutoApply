@@ -1646,3 +1646,203 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   `SCHEMA_VERSION` (2).
 - **Rejected:** sleeping until `Retry-After` and retrying (a retry the user did not ask for);
   a global backoff shared by all users (one user's refusal would block everyone).
+
+## D68 — Drafting hardened before any provider exists (C15, 2026-10-29)
+- **Problem:** no drafting provider is configured, but the checks a future one would face had
+  gaps. A number in the job text or the question counted as grounded, although the employer
+  wrote it. Nothing stopped a draft from stating authorization or sponsorship ("I will never
+  need sponsorship") or a sensitive attribute ("as a woman and veteran"). Accepting a draft
+  checked only that the cited facts still existed: a fact edited in place, a reworded question
+  or a question that had become sensitive did not stop it, and a bad stored value was a 500.
+  A rejected draft could not be rejected by the user at all, an accepted cached draft was
+  returned without saying so, and the page did not show what a draft relied on.
+- **What changed:**
+  - `drafting.validate_draft`: numbers only from the facts the draft cites; a mention of work
+    authorization, sponsorship or immigration status is `legal_status`, and a demographic or
+    sensitive topic (the C5 vocabulary, the legacy list, and self-descriptions such as "as a
+    woman") is `sensitive_topic`, through `classify.mentions_legal_status` and
+    `classify.mentions_sensitive`. Both err towards refusing: "in the age of AI" is refused,
+    and the user writes the answer.
+  - `drafting.prompt` is the only presentation a provider may use (R11.9): fixed rules, then one
+    JSON document in which the question, help text, employer, title and job text are quoted
+    strings under `untrusted`. The facts are the user's approved facts, chosen before the job
+    text is read.
+  - A draft records the hash of its cited facts (`answer_drafts.grounding_hash`). Accepting
+    refuses, with a reason code, a rejected draft (`draft_rejected`), a question that can no
+    longer be drafted (`not_draftable`), cited facts that changed or were withdrawn
+    (`draft_facts_changed`), any other change to what the draft was made from: the question,
+    its help text or length, the job text or the facts (`draft_inputs_changed`), and a value
+    that no longer fits (`draft_does_not_fit`, a 409, not a 500). Accepting is audited
+    (`draft.accepted`, by reference).
+  - `POST /applications/{id}/drafts/{draft_id}/reject`: the text is erased at once, the row
+    kept only so the draft is never offered again (audited `draft.rejected`, `by_user`). An
+    accepted draft is the user's answer and is changed or cleared instead.
+  - Requesting a draft for unchanged inputs returns an accepted one with its status, and the
+    page says so. Drafts are listed in the order they were made, each with the facts it cites
+    as they are now (a changed one is shown without its text).
+- **Unchanged:** `get_provider()` returns None: nothing is drafted in any environment, and
+  nothing leaves NoEfforts. Drafting stays unavailable for sensitive and legal-status questions
+  and their follow-ups; `SCHEMA_VERSION` (2).
+- **Migration:** `d1e3ab560050` adds the nullable `grounding_hash` and makes `text` nullable;
+  downgrade deletes the erased rows first.
+- **Evidence:** `tests/test_drafting.py`; the test double in `tests/test_preparation.py` now
+  cites every fact it was given (numbers must come from cited facts);
+  `frontend/e2e/drafts.spec.ts`.
+- **Rejected:** allowing a sensitive or legal-status mention when a cited fact contains it (it
+  would let prose disclose what only a consented answer or a protected fact may); comparing only
+  the cited facts at accept (a reworded question would pass).
+
+## D69 — Credentials as grounded facts (C16, 2026-10-29)
+- **Problem:** the profile's credentials (name, issuer, issued and expiry dates, approval) were
+  never offered to a draft, so a draft naming a licence could rest only on an employment title
+  or description ("Licensed Practical Nurse at …") or on nothing. Answers to licence and
+  certification questions were saved for reuse like any durable fact, although a licence can
+  lapse and the profile records when it expires.
+- **What changed:**
+  - `drafting.grounding_facts` adds the user's approved credentials that have not expired (no
+    expiry date: not expiring), as `credential:<id>` facts with the name, issuer and expiry.
+    Proposed, rejected, expired and other users' credentials are never offered.
+  - `validate_draft` refuses a draft that names a licence, certification or credential unless
+    it cites a credential fact (`uncited_credential`): never one read into a job title, an
+    employment description or the job text.
+  - The bank scope gains `credential` (`bankscope.C_CREDENTIAL`: licence, licensed,
+    certification, certified, certificate, credential, board-certified in the label or help
+    text). It is checked after every other family, so it only narrows: a wording another
+    family refuses keeps its category, and 48 wordings of the table that were reusable are now
+    answered for each application ("Do you have a driver's license?", "Which certifications do
+    you hold?"). Saving one returns 400, and a saved answer to one is shown as not reused.
+  - Accreditation is not in the family: it is about institutions, not the candidate.
+- **Tests:** `tests/test_credentials.py`; `tests/bank_scope_wordings.json` (48 rows now
+  `credential`, four witness rows added so that each family's use stays proven without a
+  credential word, since the old witnesses for T_VALID and L_PLACE were licence questions).
+- **Older tests that used a licence as a reusable example**, found by the full run: the C3-C5
+  control "Are you certified in managing cardiac arrest?" now carries a C16 delta beside C6's
+  (`C16_DELTA`, checked by the same only-narrows test); the C6 controls "Do you have a driver's
+  license?" and "Are you CPR certified?" are now C16 controls that are never reused; the
+  resolver's "bound to its question" example and two legacy-corpus controls (R8.11) are
+  reworded to questions about experience, which keep what they test (exact wording reused,
+  capitals and option order ignored, another wording not reused), and the licence wording is
+  checked as refused beside them.
+- **Unchanged:** the resolver answers no licence question from the profile (a credential is not
+  matched to a question by name), `SCHEMA_VERSION` (2), no migration.
+- **Rejected:** answering "Do you hold a … licence?" from the credentials list (matching a
+  posting's name for a credential to the user's needs its own rules and tests; the user answers
+  until then); allowing a credential named in an employment description (the description is
+  the user's prose, not a dated, approved credential).
+
+## D70 — Deleting documents (C17, 2026-10-29)
+- **Problem:** an uploaded document could never be deleted: every version stayed, with its
+  file, until the account was gone, and there is no account deletion yet.
+- **What changed:** `DELETE /api/documents/{id}` deletes that version, and with
+  `scope=lineage` every version of the document. The rows go, with any application's choice
+  of them (that application's package is rebuilt without the document and asks for one
+  again), and then the files, after the commit (a failed commit keeps both). Audited as
+  `document.delete` with the scope and the count. The Documents page offers "Delete" (with a
+  confirmation) and "delete this version" in the history.
+- **Never while needed:** refused with a reason code while a live approval's package names one
+  of the versions (`document_in_approval`: revoke it first) or an attempt still running on such
+  a package (`document_in_attempt`). The check runs under the locks of every application whose
+  package names one of them, in id order, the lock that approve, revoke, claim and the gates
+  take: an approval in progress makes the deletion wait and then refuse (a race test).
+- **Retention limit:** package versions are immutable approval evidence, so a past one keeps
+  what it recorded: the id, version, size, type, digest and the name it showed. The file and
+  the document row are gone.
+- **Deferred to C18:** a `needs_consent` row still carries its proposed display in the
+  package content; removing it changes content and belongs in the one schema bump.
+- **Unchanged:** uploads, versions and downloads; `SCHEMA_VERSION` (2); no migration.
+- **Rejected:** deleting a document an approval names and invalidating the approval (an
+  approval the user gave should end only by the user's revocation or a change they see);
+  scrubbing names from past package versions (it would rewrite evidence approvals were given
+  on).
+
+## D71 — The one SCHEMA_VERSION=3 change (C18, 2026-10-29)
+- **Announced:** `SCHEMA_VERSION` is now 3. Every package is rebuilt at its next load with a new
+  hash, so **every approval given before this change is invalidated** and must be given again.
+  Only synthetic test data exists; no real application is affected.
+- **Why one bump:** each of these changes the package content; together they cost one round of
+  re-approval instead of five.
+- **What changed:**
+  - Preference facts are referenced by their value: relocation and salary carry it under
+    `value`, which the content hash covers. Under 2 it sat under `version`, which the hash
+    leaves out, so a salary range change that left the sent minimum alone kept the approval.
+  - Each package document says where it came from: `origin`, and for a generated document its
+    `base_document_id`, `grounding_hash` and `accepted_at` (new nullable columns, migration
+    `c14a371a79e8`). A generated document nobody accepted is never chosen (409
+    `document_not_accepted`), proposed or sent.
+  - A file field's `accept` attribute is enforced: a document it does not take (a TXT file in a
+    ".pdf,.docx" field) is a checkpoint that asks for another one.
+  - The only resume, proposed by NoEfforts, is explained as proposed; a chosen one as chosen.
+  - An answer awaiting consent is never written into a package version: its value and display
+    are empty there, and the review page reads the proposal from the live answer or saved
+    answer (`review[key].proposed`, outside the content). "Include this answer" digests that
+    live proposal (C7's binding). Package versions are kept, so a sensitive answer the user
+    never included no longer stays in their history.
+- **Evidence:** `tests/test_schema_v3.py`; `tests/test_package_contract.py` (shape 3 recorded
+  beside shape 2, which is unchanged); `tests/test_disclosure_ledger.py` reads the proposal from
+  the review controls; the C3-C5 pinned salary control records its reference by value
+  (`C18_DELTA` in `tests/test_question_safety.py`; the answer sent is unchanged).
+- **Unchanged:** what is sent for a resolved answer; resolver and classification; execution.
+- **Rejected:** several smaller bumps (each would invalidate every approval again); rewriting
+  stored versions in place (they are the evidence approvals were given on).
+
+## D72 — Profile facts proposed from a resume (L1, 2026-10-29)
+- **Problem:** a user with a resume retyped their work history, education and licences into the
+  profile by hand; the `resume_parse` provenance existed but nothing produced it.
+- **What changed:**
+  - `documents/extract.py` reads text from a PDF (`pypdf`, at most 10 pages), a DOCX (the
+    standard library: the document part only, refused above 5 MB unzipped) or a TXT file, cut
+    at 60,000 characters. An encrypted, unreadable or empty file gets a reason code
+    (`encrypted`, `unreadable`, `no_text`, `too_large`, `unsupported`). The text is not kept.
+  - `profiles/resume_parse.py` (pure, no LLM) proposes only what the text states in a
+    recognisable layout under a section heading: work entries ("Title at Employer",
+    "Title — Employer") with their bullet lines, education entries, and licences or
+    certifications with an issuer and an expiry written as a full date.
+  - `POST /api/documents/{id}/propose-facts` creates each as a `proposed` record
+    (`resume_parse`); one already in the profile is not proposed again. Audited as
+    `document.facts_proposed` with counts. The profile page marks proposed records ("Proposed
+    from your resume … Not used until you approve it") with an Approve button, and gains the
+    Licences and certifications card C16 needed.
+- **Never proposed:** work and education dates (a written range stays in the description, as
+  written), whether studies were completed (unknown), an expiry not written as a full date,
+  anything about work authorization, sponsorship or immigration status, and any line touching
+  a sensitive topic (classify, as for drafts): such lines are skipped and counted.
+- **Nothing uses a proposal:** answers, drafts and packages read approved records only (C15,
+  C16), so a proposal changes nothing until the user approves it.
+- **New dependency:** `pypdf` (pure Python, BSD), `>=5.1,<7`, locked at 6.21.4. Chosen over
+  writing a PDF parser; it reads only the first pages of a user's own upload.
+- **Evidence:** `tests/test_resume_facts.py` (synthetic PDF, DOCX and TXT files built in the
+  test); `frontend/e2e/documents.spec.ts`.
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration.
+- **Rejected:** an LLM to read resumes (a resume is applicant information, and no provider or
+  consent screen exists, L4); guessing month and day for "2019 – 2022".
+
+## D73 — Tailored resumes and cover letters, through the provider only (L2, L3, 2026-10-29)
+- **Problem:** the plan's L2 (a resume tailored to each application, with a diff, accepted
+  before use) and L3 (a grounded cover letter, reviewed before use) had nowhere to live, and
+  C18 had only prepared the document fields.
+- **What changed:**
+  - `POST /api/applications/{id}/generated-documents` (`resume` or `cover_letter`) asks the
+    drafting provider for the text, built by `generation.request_for` from the user's approved
+    facts and the job's own text (C15's quoted, untrusted data), never from the base resume's
+    text. The result passes every draft check (C15, C16) and a length limit (6,000 or 3,500
+    characters); one that fails is discarded and audited with its code only.
+  - It is stored as a DOCX (`generation.docx_bytes`, the text escaped), `generated`, written
+    for this application, with the ids and the hash of the facts it cites, and its base resume
+    for a tailored resume. The review page shows its text, the facts it cites, and for a
+    tailored resume the lines changed from that base; Accept or Reject (reject deletes it and
+    its file).
+  - It can be chosen only once accepted, only for the application it was written for, and only
+    while the facts it cites are unchanged (`generation.refusal`: `document_not_accepted`,
+    `document_for_another_application`, `document_facts_changed`). A chosen document that stops
+    being usable makes the row a checkpoint that says why: another document is never put in
+    its place (found by a test: the only uploaded resume used to be proposed instead).
+- **No provider:** `drafting.get_provider()` still returns None, so the endpoint answers 503
+  ("not configured") and nothing is generated or sent anywhere. L4 adds a provider; it needs
+  server-side credentials, a cost budget and a consent screen showing what leaves the system,
+  which are the owner's decisions.
+- **Evidence:** `tests/test_generated_documents.py` (a labelled test double as the provider);
+  `frontend/e2e/generated.spec.ts`.
+- **Unchanged:** `SCHEMA_VERSION` (3); migration `60e18e9115c8` adds two nullable columns.
+- **Rejected:** feeding the base resume's text to the provider (it is not an approved fact and
+  could carry claims the profile does not hold); a PDF writer (a DOCX is enough for the fields
+  that take documents, and is read back by L1's extractor).

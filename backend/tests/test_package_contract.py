@@ -119,6 +119,19 @@ SHAPES = {
         }
     ),
 }
+# C18 (D71): preference fact references carry their value under `value` (hashed), and each
+# document says where it came from. Every approval given under 2 is invalidated.
+SHAPES[3] = (SHAPES[2] - {".answers[].fact_refs[preferences].version"}) | {
+    ".answers[].fact_refs[preferences].value",
+    ".answers[].fact_refs[preferences].value.currency",
+    ".answers[].fact_refs[preferences].value.max",
+    ".answers[].fact_refs[preferences].value.min",
+    ".answers[].fact_refs[preferences].value.period",
+    ".documents[].accepted_at",
+    ".documents[].base_document_id",
+    ".documents[].grounding_hash",
+    ".documents[].origin",
+}
 
 
 @pytest.fixture(scope="module")

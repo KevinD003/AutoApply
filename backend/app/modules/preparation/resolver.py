@@ -95,6 +95,9 @@ SCOPE_EXPLANATION = {
     "address are never taken from a saved answer.",
     "fact": "Answer it for this application: it is about work authorization, sponsorship, "
     "citizenship, immigration status or residence, so a saved answer is never used.",
+    "credential": "Answer it for this application: it is about a licence, certification or "
+    "credential, which your profile's credentials record with their expiry, so a saved answer is "
+    "never used.",
     "section": "Answer it for this application: its section is about the job, pay, availability, "
     "your work history or other people, so a saved answer is never used.",
     "repeated": "Answer it for this application: the same question appears more than once on this "
@@ -115,6 +118,10 @@ class Context:
     inputs: dict = field(default_factory=dict)  # field_key -> ApplicationInput (answers)
     consents: dict = field(default_factory=dict)  # field_key -> choice str
     documents: dict = field(default_factory=dict)  # role -> Document
+    # C18: roles whose document NoEfforts proposed (the only resume), not one the user chose.
+    implicit_documents: frozenset = frozenset()
+    # L2/L3 (D73): roles whose chosen document can no longer be used, with the reason code.
+    refused_documents: dict = field(default_factory=dict)
     # C7 (D60): the user the inputs belong to, the questions whose answer or choice was given for
     # another wording (left out of inputs and consents), and each consent's disclose digest.
     owner: str | None = None
@@ -745,7 +752,7 @@ def _relocation(f, r, ctx, intent):
                 "type": "preferences",
                 "id": str(p.id),
                 "field": "willing_to_relocate",
-                "version": p.willing_to_relocate.value,
+                "value": p.willing_to_relocate.value,  # C18: hashed (a `version` is not)
             }
         ],
     )
@@ -818,7 +825,14 @@ def _salary(f, r, ctx, intent):
             "type": "preferences",
             "id": str(p.id),
             "field": "salary",
-            "version": f"{p.salary_min}-{p.salary_max}-{cur}-{period}",
+            # C18: under `value`, which the content hash covers, so a change to any of them is
+            # a new package version (a `version` counter is left out of the hash).
+            "value": {
+                "min": str(p.salary_min),
+                "max": None if p.salary_max is None else str(p.salary_max),
+                "currency": cur,
+                "period": period,
+            },
         }
     ]
     amount = float(p.salary_min)
@@ -1206,17 +1220,49 @@ def _disclose_covers(ctx, key: str, proposed: dict | None) -> bool:
     return stored == value_digest(ctx.owner, key, proposed)
 
 
+def accepts(accept: str | None, filename: str, content_type: str) -> bool:
+    """C18: whether a file field's `accept` attribute takes this document: an extension
+    (".pdf"), a type ("application/pdf") or a family ("text/*"). No attribute takes any."""
+    tokens = [t.strip().lower() for t in (accept or "").split(",") if t.strip()]
+    if not tokens:
+        return True
+    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    ctype = (content_type or "").lower()
+    return any(
+        t == ext or t == ctype or (t.endswith("/*") and ctype.startswith(t[:-1])) for t in tokens
+    )
+
+
 def _resolve_document(f, r, ctx, role: str) -> Resolution:
     r.bankable = False
     doc = ctx.documents.get(role)
+    noun = role.replace("_", " ")
+    if role in ctx.refused_documents:
+        why = {
+            "document_facts_changed": "was generated from facts that have changed since",
+            "document_not_accepted": "is a generated document you have not accepted",
+            "document_for_another_application": "was written for another application",
+        }[ctx.refused_documents[role]]
+        return _unresolved(r, f, f"The {noun} you chose {why}: choose another, or generate a "
+                                 "new one.")  # fmt: skip
     if doc is None:
+        return _unresolved(r, f, f"Select a {noun} document for this application.")
+    if not accepts(f.accept, doc.original_filename, doc.content_type):
         return _unresolved(
-            r, f, f"Select a {role.replace('_', ' ')} document for this application."
+            r,
+            f,
+            f"This question takes {f.accept} files; {doc.original_filename} is not one. Choose "
+            f"another {noun} for this application.",
         )
     r.status, r.source = "resolved", "document"
     r.value = {"document_id": str(doc.id)}
     r.display = f"{doc.label} (v{doc.version}, {doc.original_filename})"
-    r.explanation = f"The {role.replace('_', ' ')} version selected for this application."
+    r.explanation = (
+        f"Your only {noun}, in its latest version: NoEfforts proposes it. Choose another for "
+        "this application if you want."
+        if role in ctx.implicit_documents
+        else f"The {noun} version you chose for this application."
+    )
     r.fact_refs = [
         {"type": "document", "id": str(doc.id), "version": doc.version, "field": doc.sha256}
     ]

@@ -6,6 +6,10 @@
 4. C6: answer_bank.help_text added without touching a saved answer
 5. S7: discovery_run_approvals added, bounded by its checks, dropped on downgrade
 6. S8: discovery_watches added, bounded by its checks, dropped on downgrade
+7. S6: discovery_backoffs added and dropped alone
+8. C15: answer_drafts.grounding_hash added, text nullable; downgrade deletes erased drafts only
+9. C18, L2/L3: document provenance and its application added; a downgrade is refused while a
+   generated document awaits acceptance
 """
 
 import hashlib
@@ -352,6 +356,8 @@ def test_s7_adds_bounded_run_approvals_and_downgrade_drops_only_them(disposable)
 S7 = "4bc9c342d34c"
 S8 = "29588d78e7e1"
 S3 = "269ea4b8bc0c"
+S6 = "f150c66c69e3"
+C15 = "d1e3ab560050"
 
 
 def test_s8_adds_bounded_watches_and_downgrade_drops_only_them(disposable):
@@ -476,3 +482,125 @@ def test_s6_adds_the_discovery_backoffs_and_downgrade_drops_only_them(disposable
     with disposable.connect() as c:
         tables = set(c.execute(text("select tablename from pg_tables")).scalars())
     assert "discovery_backoffs" not in tables and {"users", "discovered_jobs"} <= tables
+
+
+def test_c15_adds_the_grounding_hash_and_downgrade_deletes_only_erased_drafts(disposable):
+    """C15 (D68): an existing draft keeps its text and gets a NULL hash; a draft whose text the
+    user's rejection erased is deleted on downgrade, before `text` is NOT NULL again."""
+    command.upgrade(_cfg(), S6)
+    uid, jid, aid, kept, erased = (uuid.uuid4() for _ in range(5))
+    with disposable.begin() as c:
+        c.execute(
+            text(
+                "insert into users (id,email,password_hash,created_at,updated_at) "
+                "values (:u,'c15.synthetic@example.com','x',now(),now())"
+            ),
+            {"u": uid},
+        )
+        c.execute(
+            text(
+                "insert into jobs (id,user_id,dedupe_key,employer,title,ats_provider,source,status,"
+                "first_seen_at,last_seen_at,seen_count,created_at,updated_at) values "
+                "(:j,:u,'fp:c15','Acme','Cook','unknown','manual','new',now(),now(),1,now(),now())"
+            ),
+            {"j": jid, "u": uid},
+        )
+        c.execute(
+            text(
+                "insert into applications (id,user_id,job_id,state,state_changed_at,outcome,"
+                "lock_version,created_at,updated_at) values "
+                "(:a,:u,:j,'draft',now(),'none',1,now(),now())"
+            ),
+            {"a": aid, "u": uid, "j": jid},
+        )
+        c.execute(
+            text(
+                "insert into answer_drafts (id,application_id,user_id,field_key,input_hash,"
+                "provider,text,evidence,status,created_at) values (:d,:a,:u,'why_us',:h,"
+                "'test-fake','Synthetic draft text.','[]','proposed',now())"
+            ),
+            {"d": kept, "a": aid, "u": uid, "h": "0" * 64},
+        )
+    command.upgrade(_cfg(), "head")
+    with disposable.begin() as c:
+        row = c.execute(
+            text("select text, grounding_hash from answer_drafts where id = :d"), {"d": kept}
+        ).one()
+        assert tuple(row) == ("Synthetic draft text.", None)
+        c.execute(
+            text(
+                "insert into answer_drafts (id,application_id,user_id,field_key,input_hash,"
+                "provider,text,evidence,status,grounding_hash,created_at) values (:d,:a,:u,"
+                "'why_us',:h,'test-fake',NULL,'[]','rejected',:h,now())"
+            ),
+            {"d": erased, "a": aid, "u": uid, "h": "1" * 64},
+        )
+    command.downgrade(_cfg(), S6)
+    with disposable.connect() as c:
+        ids = set(c.execute(text("select id from answer_drafts")).scalars())
+        cols = set(
+            c.execute(
+                text(
+                    "select column_name from information_schema.columns "
+                    "where table_name = 'answer_drafts'"
+                )
+            ).scalars()
+        )
+    assert ids == {kept} and "grounding_hash" not in cols
+
+
+def test_c18_and_l2_add_document_provenance_and_guard_the_downgrade(disposable):
+    """C18 (D71), L2/L3 (D73): uploads keep NULL provenance; a downgrade past C18 is refused
+    while a generated document awaits acceptance (the earlier code would use it)."""
+    command.upgrade(_cfg(), C15)
+    uid, upload, generated = (uuid.uuid4() for _ in range(3))
+    with disposable.begin() as c:
+        c.execute(
+            text(
+                "insert into users (id,email,password_hash,created_at,updated_at) "
+                "values (:u,'c18.synthetic@example.com','x',now(),now())"
+            ),
+            {"u": uid},
+        )
+        c.execute(
+            text(
+                "insert into documents (id,user_id,lineage_id,version,kind,label,original_filename,"
+                "content_type,size_bytes,sha256,storage_key,origin,created_at) values (:d,:u,:d,1,"
+                "'resume','Resume','resume.pdf','application/pdf',1,:h,:k,'upload',now())"
+            ),
+            {"d": upload, "u": uid, "h": "0" * 64, "k": uuid.uuid4().hex},
+        )
+    command.upgrade(_cfg(), "head")
+    with disposable.begin() as c:
+        row = c.execute(
+            text(
+                "select base_document_id, grounding_hash, accepted_at, made_for_application_id, "
+                "grounded_on from documents where id = :d"
+            ),
+            {"d": upload},
+        ).one()
+        assert tuple(row) == (None, None, None, None, None)
+        c.execute(
+            text(
+                "insert into documents (id,user_id,lineage_id,version,kind,label,original_filename,"
+                "content_type,size_bytes,sha256,storage_key,origin,base_document_id,created_at) "
+                "values (:d,:u,:d,1,'resume','Tailored','t.docx','application/x',1,:h,:k,"
+                "'generated',:b,now())"
+            ),
+            {"d": generated, "u": uid, "h": "1" * 64, "k": uuid.uuid4().hex, "b": upload},
+        )
+    with pytest.raises(RuntimeError, match="await acceptance"):
+        command.downgrade(_cfg(), C15)
+    with disposable.begin() as c:
+        c.execute(text("update documents set accepted_at = now() where id = :d"), {"d": generated})
+    command.downgrade(_cfg(), C15)
+    with disposable.connect() as c:
+        cols = set(
+            c.execute(
+                text(
+                    "select column_name from information_schema.columns "
+                    "where table_name = 'documents'"
+                )
+            ).scalars()
+        )
+    assert not cols & {"base_document_id", "grounding_hash", "accepted_at", "grounded_on"}

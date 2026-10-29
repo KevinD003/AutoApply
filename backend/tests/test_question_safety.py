@@ -1476,6 +1476,7 @@ row(
 )
 # C6 (D51): the controls C6 narrows answer nothing from a saved answer any more (C6_DELTA).
 C6_NARROWED = {"hear", "dl", "10y", "probationary", "jobref", "clearance", "relocation_accom"}
+C16_NARROWED = {"cardiac"}  # C16 (D69): a certification comes from the profile's credentials
 for rid, lbl, typ in [
     ("hear", "How did you hear about this job?", S),
     ("dl", "Do you have a valid driver's license?", R),
@@ -1493,7 +1494,7 @@ for rid, lbl, typ in [
         f"c5.ctrl.{rid}",
         fld(lbl, typ, opts),
         "needs_user val=None src=unresolved sens=0 bank=0"
-        if rid in C6_NARROWED
+        if rid in C6_NARROWED | C16_NARROWED
         else "resolved src=answer_bank sens=0 bank=1",
         bank_value=True,
         today="same",
@@ -1504,8 +1505,6 @@ EDU_O, LANG_O = O("Associate degree", "Bachelor's degree"), O("English", "Spanis
 for rid, lbl, typ, opts in [
     ("education", "Highest level of education completed", S, EDU_O),
     ("languages", "Which languages can you use with patients?", T.checkbox_group, LANG_O),
-    ("driver", "Do you have a driver's license?", R, None),
-    ("cpr", "Are you CPR certified?", R, None),
 ]:
     row(
         f"c6.ctrl.{rid}",
@@ -1513,6 +1512,10 @@ for rid, lbl, typ, opts in [
         "resolved src=answer_bank sens=0 bank=1",
         bank_value=True,
     )
+# C16 (D69): a licence or certification is never reused, even under its own key.
+for rid, lbl in [("driver", "Do you have a driver's license?"), ("cpr", "Are you CPR certified?")]:
+    row(f"c16.ctrl.{rid}", fld(lbl, R), "needs_user val=None src=unresolved sens=0 bank=0",
+        bank_value=True)  # fmt: skip
 row(
     "c5.ctrl.salary",
     fld("Desired annual salary (USD)", T.number),
@@ -1795,18 +1798,33 @@ C6_DELTA = {
     "c5.ctrl.salary": {"bankable": False},
     "c5.ctrl.expected_ctc": {"bankable": False, "explanation": SCOPE_EXPLANATION["pay"]},
 }
+C16_DELTA = {"c5.ctrl.cardiac": LOST | {"explanation": SCOPE_EXPLANATION["credential"]}}
+# C18 (D71): not a narrowing but the one schema change: the salary preference is referenced by
+# its value (which the hash covers), not under `version`. The answer sent is unchanged.
+C18_DELTA = {
+    "c5.ctrl.salary": {
+        "fact_refs": [
+            {
+                "type": "preferences",
+                "id": "pr1",
+                "field": "salary",
+                "value": {"min": "85000", "max": "95000", "currency": "usd", "period": "year"},
+            }
+        ]  # fmt: skip
+    }
+}
 
 
 def test_positive_controls_behave_exactly_as_before_c3_c5():
     """Pinned from the resolver before C3-C5 (same synthetic facts): every attribute, the
     explanation included, so nothing a control row sends or shows changed, except what C6
-    narrows (C6_DELTA, D51)."""
+    narrows (C6_DELTA, D51) and C16 (C16_DELTA, D69), and C18's reference shape (C18_DELTA)."""
     pinned = json.loads(CONTROLS.read_text())
     same = {rid: (f, kw, parent) for rid, f, kw, exp, parent in ROWS if kw.get("today") == "same"}
     assert set(pinned) == set(same)
-    assert set(C6_DELTA) <= set(same)
+    assert set(C6_DELTA) | set(C16_DELTA) <= set(same)
     for rid, (f, kw, parent) in same.items():
-        want = pinned[rid] | C6_DELTA.get(rid, {})
+        want = pinned[rid] | C6_DELTA.get(rid, {}) | C16_DELTA.get(rid, {}) | C18_DELTA.get(rid, {})
         assert dataclasses.asdict(resolve(f, kw, parent)) == want, rid
 
 
@@ -1814,7 +1832,7 @@ def test_each_c6_delta_only_narrows():
     """A C6 change to a pinned control takes reuse away and answers nothing new: bankable goes
     from true to false, and a row is resolved only if it was, with the same value and source."""
     pinned = json.loads(CONTROLS.read_text())
-    for rid, delta in C6_DELTA.items():
+    for rid, delta in (C6_DELTA | C16_DELTA).items():
         before, after = pinned[rid], pinned[rid] | delta
         assert before["bankable"] and not after["bankable"], rid
         assert after["source"] not in ("answer_bank", "profile_fact"), rid

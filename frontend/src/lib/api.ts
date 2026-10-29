@@ -280,6 +280,24 @@ export interface Doc {
   size_bytes: number;
   origin: string;
   created_at: string;
+  // L2/L3: a generated document is chosen only once accepted, for its own application.
+  accepted_at?: string | null;
+  made_for_application_id?: string | null;
+}
+
+// L2/L3 (D73): a tailored resume or a cover letter, written only through the drafting provider.
+export interface GeneratedDoc {
+  id: string;
+  kind: "resume" | "cover_letter";
+  label: string;
+  created_at: string;
+  accepted: boolean;
+  usable: boolean;
+  stale: boolean;
+  text: string;
+  cited: { kind: string | null; text: string | null }[];
+  base_label: string | null;
+  diff: { op: "+" | "-" | " "; line: string }[] | null;
 }
 
 export interface FormOption {
@@ -359,7 +377,17 @@ export interface PackageView {
   // S3: the job's own signals (closed, excluded, possible duplicate), outside the package.
   job_signals: JobSignals;
   drafting_available: boolean;
-  drafts: { id: string; field_key: string; text: string; evidence: string[]; provider: string }[];
+  drafts: PackageDraft[];
+}
+
+// C15: a proposed draft and the facts it cites, as they are now (text null: changed or withdrawn).
+export interface PackageDraft {
+  id: string;
+  field_key: string;
+  text: string;
+  evidence: string[];
+  cited: { kind: string | null; text: string | null }[];
+  provider: string;
 }
 
 // C14: what changed between two versions of a package (read-only, the page's own words).
@@ -384,6 +412,9 @@ export interface ReviewControls {
   clear: boolean; // an answer given for this application is stored and can be removed
   document_role: "resume" | "cover_letter" | null;
   not_asked: boolean;
+  // C18: an answer awaiting your consent, read from your live answer (never kept in a version).
+  proposed?: string | null;
+  proposed_value?: Record<string, unknown> | null;
 }
 
 export interface BankEntry {

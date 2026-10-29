@@ -2,7 +2,7 @@
 
 Pure: no database, no LLM, no network. `reason()` returns a category code or None:
 
-    fact | pay | place | employer | time | section | repeated | followup
+    fact | pay | place | employer | time | section | credential | repeated | followup
 
 It only ever narrows: resolve_field clears `bankable` when it returns a code, and nothing here can
 make a row bankable. `refusal_code()` adds the kinds NO_BANK already excludes for their own
@@ -326,6 +326,13 @@ S_STEP = re.compile(
     r"next of kin)\b"
 )
 
+# C16 (D69): licences, certifications and credentials are facts in the profile, which records
+# when they expire; an answer about one is never saved. Checked last, so it only narrows.
+C_CREDENTIAL = re.compile(
+    r"\b(licen[cs](e|es|ed|ing|ure)|certif(y|ied|ication|ications|icate|icates)|"
+    r"credentials?|board[- ]certified)\b"
+)
+
 # The label: pay and place before willingness, so "willing to travel" reads as place.
 LABEL = [
     ("pay", P_PAY),
@@ -453,7 +460,9 @@ def wording_reason(f: FormField, kind: str) -> str | None:
         for cat, pat in OPTIONS:
             if pat.search(ol):
                 return cat
-    return section_reason(f)
+    if section := section_reason(f):
+        return section
+    return "credential" if C_CREDENTIAL.search(label) or C_CREDENTIAL.search(help_) else None
 
 
 def section_reason(f: FormField) -> str | None:

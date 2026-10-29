@@ -203,11 +203,10 @@ def test_a_saved_answer_is_proposed_and_sent_only_after_include(api, receiver):
     assert len(api.get("/answer-bank").json()) == 1
     second = unfinished(api, receiver, slug="clinic2")
     row = gender_row(api, second)
-    assert (row["status"], row["source"], row["display"]) == (
-        "needs_consent",
-        "answer_bank",
-        "Woman",
-    )
+    assert (row["status"], row["source"], row["display"]) == ("needs_consent", "answer_bank", None)
+    # C18 (D71): the proposal is shown from the saved answer itself, never kept in a version.
+    review = api.get(f"/applications/{second}/package").json()["review"]["gender"]
+    assert review["proposed"] == "Woman"
     r = api.put(f"/applications/{second}/consents", json={"key": "gender", "choice": "disclose"})
     assert r.status_code == 200, r.text
     p = api.get(f"/applications/{second}/package").json()["package"]

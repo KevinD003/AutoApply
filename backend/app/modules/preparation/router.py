@@ -21,7 +21,7 @@ from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
 from app.modules.jobs import signals
 from app.modules.jobs.models import Job
-from app.modules.preparation import bankscope, binding, drafting
+from app.modules.preparation import bankscope, binding, drafting, generation
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation import package as pk
 from app.modules.preparation.classify import classify
@@ -308,10 +308,11 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
         for a in db.scalars(select(PackageApproval).where(PackageApproval.application_id == app.id))
     }
     drafts = db.scalars(
-        select(AnswerDraft).where(
-            AnswerDraft.application_id == app.id, AnswerDraft.status == "proposed"
-        )
+        select(AnswerDraft)
+        .where(AnswerDraft.application_id == app.id, AnswerDraft.status == "proposed")
+        .order_by(AnswerDraft.created_at, AnswerDraft.id)
     ).all()
+    facts = {f.id: f for f in drafting.grounding_facts(db, app.user_id)} if drafts else {}
     return {
         "application_id": str(app.id),
         "state": app.state.value,
@@ -328,8 +329,9 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
             "form_source": wording.form_source_label(pkg.content["destination"]["form_source"]),
             "destination": wording.destination_label(pkg.content["destination"]["origin"]),
         },
-        # C12 (D64): what the review page may offer per question (outside the content).
-        "review": pk.review_controls(db, app.id, pkg.content),
+        # C12 (D64): what the review page may offer per question (outside the content); C18:
+        # an answer awaiting your consent, read from your live answer.
+        "review": _review(db, app, pkg),
         "approval": _approval_view(db, app, pkg, appr, last),
         # E6: whether a submission here needs a rehearsal first, and why (execution/rehearsal.py).
         "rehearsal_prerequisite": rehearsal.view(db, app, pkg, appr),
@@ -351,12 +353,28 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
                 "field_key": d.field_key,
                 "text": d.text,
                 "evidence": d.evidence,
+                # C15 (D68): the facts the draft cites, as they are now; a fact changed or
+                # withdrawn since is listed without text.
+                "cited": [
+                    {"kind": facts[e].kind, "text": facts[e].text}
+                    if e in facts
+                    else {"kind": None, "text": None}
+                    for e in d.evidence
+                ],
                 "provider": d.provider,
                 "created_at": d.created_at,
             }
             for d in drafts
         ],
     }
+
+
+def _review(db: Session, app: Application, pkg: ApplicationPackage) -> dict:
+    out = pk.review_controls(db, app.id, pkg.content)
+    for key, (value, display) in pk.live_proposals(db, app).items():
+        if key in out:
+            out[key] = out[key] | {"proposed": display, "proposed_value": value}
+    return out
 
 
 def _current(db: Session, app: Application) -> ApplicationPackage:
@@ -487,6 +505,9 @@ REUSE_REFUSED = {
     "reuse: keep relocation in Preferences, or answer it for each application.",
     "section": "This question is in a section about the job, pay, availability, your work history "
     "or other people, so its answer is never saved for reuse.",
+    "credential": "This is about a licence, certification or credential: keep those in your "
+    "profile's credentials, which record when they expire, so its answer is never saved for "
+    "reuse.",
     "repeated": "The same question appears more than once on this form, so its answer is never "
     "saved for reuse.",
     "followup": "This follow-up depends on a question whose answer is never saved, so it is not "
@@ -674,7 +695,9 @@ def put_consent(
         # C7 (D60): bound to the question as shown, and a "disclose" to the exact answer shown.
         meta = binding.input_meta(f)
         if body.choice == "disclose":
-            meta["value_digest"] = binding.value_digest(user.id, key, entry["value"])
+            # C18: the answer as proposed now (a package version no longer keeps it).
+            proposed = pk.live_proposals(db, app).get(key, (entry["value"], None))[0]
+            meta["value_digest"] = binding.value_digest(user.id, key, proposed)
         _upsert_input(db, app, "consent", key, {"choice": body.choice}, meta=meta)
     record(db, user.id, "application.consent", "application", app.id, field_ref=ref(key, user.id),
            choice=body.choice)  # fmt: skip
@@ -708,6 +731,8 @@ def put_documents(
             raise not_found("Document")
         if doc.kind != kind:
             raise bad_request(f"That document is not a {role.replace('_', ' ')}.")
+        if (code := generation.refusal(db, doc, app.id)) is not None:
+            raise conflict(f"{generation.REFUSALS[code]} (reason: {code})")
         _upsert_input(db, app, "document", role, {"document_id": str(doc.id)})
         record(db, user.id, "application.document", "application", app.id, role=role,
                change="chosen")  # fmt: skip
@@ -828,29 +853,25 @@ def request_draft(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "AI drafting is not configured. Write this answer yourself.",
         )
-    job = db.get(Job, app.job_id)
     facts = drafting.grounding_facts(db, user.id)
     if not facts:
         raise bad_request(
             "Add work history or a summary to your profile first; drafts only "
             "use facts you have entered."
         )
-    req = drafting.DraftRequest(
-        question=f.label,
-        help_text=f.help_text,
-        max_chars=f.max_length or 1500,
-        employer=job.employer,
-        job_title=job.title,
-        job_text=(job.description or "")[:6000] or None,
-        facts=facts,
-    )
+    req = _draft_request(db, app, f, facts)
     h = req.input_hash()
+    # A draft the user rejected is never offered again; an accepted one is shown as accepted.
     cached = db.scalar(
-        select(AnswerDraft).where(
+        select(AnswerDraft)
+        .where(
             AnswerDraft.application_id == app.id,
             AnswerDraft.field_key == key,
             AnswerDraft.input_hash == h,
+            AnswerDraft.status != "rejected",
         )
+        .order_by(AnswerDraft.created_at.desc())
+        .limit(1)
     )
     if cached is None:
         result = provider.draft(req)
@@ -873,6 +894,8 @@ def request_draft(
             model=result.model,
             text=text,
             evidence=result.evidence,
+            # C15 (D68): the cited facts as they were when drafted, compared at accept.
+            grounding_hash=drafting.grounding_hash(drafting.cited(facts, result.evidence)),
             cost_usd=result.cost_usd,
         )
         db.add(cached)
@@ -897,6 +920,44 @@ def request_draft(
     }
 
 
+def _draft_request(db: Session, app: Application, f: FormField, facts) -> drafting.DraftRequest:
+    """One construction for requesting and accepting a draft, so that accept can tell whether
+    anything the draft was made from has changed (C15, D68)."""
+    job = db.get(Job, app.job_id)
+    return drafting.DraftRequest(
+        question=f.label,
+        help_text=f.help_text,
+        max_chars=f.max_length or 1500,
+        employer=job.employer,
+        job_title=job.title,
+        job_text=(job.description or "")[:6000] or None,
+        facts=facts,
+    )
+
+
+def _owned_draft(db: Session, app: Application, draft_id: uuid.UUID) -> AnswerDraft:
+    d = db.get(AnswerDraft, draft_id)
+    if d is None or d.application_id != app.id or d.user_id != app.user_id:
+        raise not_found("Draft")
+    return d
+
+
+DRAFT_REFUSALS = {
+    # C15 (D68): why a draft cannot be used; the code is the "(reason: code)" suffix.
+    "draft_rejected": "You rejected this draft; request a new one.",
+    "not_draftable": "This question can no longer be drafted; write the answer yourself.",
+    "draft_facts_changed": "Facts this draft relied on have changed; request a new draft.",
+    "draft_inputs_changed": "The question, the job or your facts changed since this draft was "
+    "made; request a new draft.",
+    "draft_does_not_fit": "This draft no longer fits the question; request a new draft or "
+    "write the answer yourself.",
+}
+
+
+def _draft_refused(code: str) -> HTTPException:
+    return conflict(f"{DRAFT_REFUSALS[code]} (reason: {code})")
+
+
 @router.post("/applications/{app_id}/drafts/{draft_id}/accept")
 def accept_draft(
     app_id: uuid.UUID,
@@ -905,21 +966,31 @@ def accept_draft(
     db: Session = Depends(get_db),
 ) -> dict:
     app = _owned_app(db, user, app_id)
-    d = db.get(AnswerDraft, draft_id)
-    if d is None or d.application_id != app.id:
-        raise not_found("Draft")
-    _, f = _field(db, app, d.field_key)
+    d = _owned_draft(db, app, draft_id)
+    entry, f = _field(db, app, d.field_key)
     pk.lock_application(db, app.id)
-    current = {g.id: g for g in drafting.grounding_facts(db, user.id)}
-    used = [current[e] for e in d.evidence if e in current]
-    if len(used) != len(d.evidence):
-        raise conflict("Facts this draft relied on have changed; request a new draft.")
+    if d.status == "rejected":
+        raise _draft_refused("draft_rejected")
+    if not entry["draftable"]:
+        raise _draft_refused("not_draftable")  # e.g. the question now reads as sensitive
+    facts = drafting.grounding_facts(db, user.id)
+    used = drafting.cited(facts, d.evidence)
+    if used is None or (
+        d.grounding_hash is not None and drafting.grounding_hash(used) != d.grounding_hash
+    ):
+        raise _draft_refused("draft_facts_changed")
+    if _draft_request(db, app, f, facts).input_hash() != d.input_hash:
+        raise _draft_refused("draft_inputs_changed")
+    try:
+        value = normalize_input(f, {"text": d.text})
+    except ValueError:
+        raise _draft_refused("draft_does_not_fit") from None
     _upsert_input(
         db,
         app,
         "answer",
         d.field_key,
-        normalize_input(f, {"text": d.text}),
+        value,
         provenance="draft_accepted",
         meta=binding.input_meta(
             f,
@@ -931,8 +1002,246 @@ def accept_draft(
         ),
     )
     d.status = "accepted"
+    record(db, user.id, "draft.accepted", "application", app.id,
+           field_ref=ref(d.field_key, user.id))  # fmt: skip
     db.flush()
     return _package_view(db, app, _current(db, app))
+
+
+@router.post("/applications/{app_id}/drafts/{draft_id}/reject")
+def reject_draft(
+    app_id: uuid.UUID,
+    draft_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """C15 (D68): the user rejects a proposed draft. Its text is erased at once; the row keeps
+    only what is needed never to offer it again. An accepted draft is the user's answer and is
+    changed or cleared on the review page instead."""
+    app = _owned_app(db, user, app_id)
+    d = _owned_draft(db, app, draft_id)
+    if d.status == "accepted":
+        raise conflict(
+            "This draft is already your answer; change or clear the answer instead. "
+            "(reason: draft_accepted)"
+        )
+    if d.status != "rejected":
+        d.status, d.text = "rejected", None
+        record(db, user.id, "draft.rejected", "application", app.id,
+               field_ref=ref(d.field_key, user.id), reason_code="by_user")  # fmt: skip
+    db.flush()
+    return _package_view(db, app, _current(db, app))
+
+
+# ---------------------------------------------------------------------------------------------
+# L2/L3 (D73): tailored resumes and cover letters, generated only through the drafting provider
+
+
+class GenerateIn(BaseModel):
+    kind: Literal["resume", "cover_letter"]
+
+
+def _generated(db: Session, app: Application, doc: Document, storage) -> dict:
+    """What the review page shows of a generated document: its text, the facts it cites as they
+    are now, whether it can still be used, and for a tailored resume the lines changed from the
+    resume it replaces."""
+    import difflib
+
+    from app.modules.documents.extract import ExtractError, extract_text
+
+    def text_of(d: Document) -> str | None:
+        try:
+            return extract_text(d.content_type, storage.get(d.storage_key))
+        except (ExtractError, OSError):
+            return None
+
+    text = text_of(doc) or ""
+    facts = {f.id: f for f in drafting.grounding_facts(db, app.user_id)}
+    diff = None
+    base = db.get(Document, doc.base_document_id) if doc.base_document_id else None
+    if base is not None and base.user_id == app.user_id:
+        before = text_of(base)
+        if before is not None:
+            diff = [
+                {"op": line[0], "line": line[2:]}
+                for line in difflib.ndiff(before.splitlines(), text.splitlines())
+                if line[0] in "+- "
+            ]
+    return {
+        "id": str(doc.id),
+        "kind": doc.kind.value,
+        "label": doc.label,
+        "created_at": doc.created_at,
+        "accepted": doc.accepted_at is not None,
+        "usable": generation.refusal(db, doc, app.id) is None,
+        "stale": generation.is_stale(db, doc),
+        "text": text,
+        "cited": [
+            {"kind": facts[e].kind, "text": facts[e].text} if e in facts
+            else {"kind": None, "text": None}
+            for e in doc.grounded_on or []
+        ],
+        "base_label": base.label if base is not None else None,
+        "diff": diff,
+    }  # fmt: skip
+
+
+def _owned_generated(db: Session, app: Application, doc_id: uuid.UUID) -> Document:
+    doc = db.get(Document, doc_id)
+    if (
+        doc is None
+        or doc.user_id != app.user_id
+        or doc.origin != "generated"
+        or doc.made_for_application_id != app.id
+    ):
+        raise not_found("Generated document")
+    return doc
+
+
+@router.post("/applications/{app_id}/generated-documents", status_code=status.HTTP_201_CREATED)
+def generate_document(
+    app_id: uuid.UUID,
+    body: GenerateIn,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """A tailored resume or a cover letter for this application, from your approved facts only.
+    Nothing is used until you accept it."""
+    import hashlib
+
+    from app.modules.documents.extract import DOCX
+    from app.modules.documents.storage import get_storage
+
+    app = _owned_app(db, user, app_id)
+    provider = drafting.get_provider()
+    if provider is None:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "AI drafting is not configured. Upload your own resume or cover letter instead.",
+        )
+    facts = drafting.grounding_facts(db, user.id)
+    if not facts:
+        raise bad_request(
+            "Add work history or a summary to your profile first; generated documents only use "
+            "facts you have approved."
+        )
+    job = db.get(Job, app.job_id)
+    kind, _, noun = generation.KINDS[body.kind]
+    req = generation.request_for(job, body.kind, facts)
+    result = provider.draft(req)
+    try:
+        text = drafting.validate_draft(req, result)
+    except drafting.InvalidDraft as e:
+        record(db, user.id, "document.generation_rejected", "application", app.id,
+               kind=body.kind, reason_code=e.code)  # fmt: skip
+        db.commit()
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"The {noun} failed validation and was discarded: {e} (reason: {e.code})",
+        ) from None
+    base = None
+    if kind == DocumentKind.resume:
+        chosen = pk.load_context(db, app).documents.get("resume")
+        base = chosen if chosen is not None and chosen.origin != "generated" else None
+    storage = get_storage()
+    data = generation.docx_bytes(text)
+    doc = Document(
+        user_id=user.id,
+        lineage_id=uuid.uuid4(),
+        version=1,
+        kind=kind,
+        label=f"{noun.capitalize()} for {job.title or 'this job'}"[:200],
+        original_filename=f"{body.kind.replace('_', '-')}.docx",
+        content_type=DOCX,
+        size_bytes=len(data),
+        sha256=hashlib.sha256(data).hexdigest(),
+        storage_key=storage.put(data),
+        origin="generated",
+        base_document_id=base.id if base is not None else None,
+        grounding_hash=drafting.grounding_hash(drafting.cited(facts, result.evidence)),
+        grounded_on=list(result.evidence),
+        made_for_application_id=app.id,
+    )
+    db.add(doc)
+    db.flush()
+    record(db, user.id, "document.generated", "document", doc.id, kind=body.kind,
+           provider=result.provider, cost_usd=result.cost_usd)  # fmt: skip
+    db.commit()
+    return _generated(db, app, doc, storage)
+
+
+@router.get("/applications/{app_id}/generated-documents")
+def list_generated(
+    app_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> list[dict]:
+    from app.modules.documents.storage import get_storage
+
+    app = _owned_app(db, user, app_id)
+    docs = db.scalars(
+        select(Document)
+        .where(
+            Document.user_id == user.id,
+            Document.origin == "generated",
+            Document.made_for_application_id == app.id,
+        )
+        .order_by(Document.created_at, Document.id)
+    ).all()
+    storage = get_storage()
+    return [_generated(db, app, d, storage) for d in docs]
+
+
+@router.post("/applications/{app_id}/generated-documents/{doc_id}/accept")
+def accept_generated(
+    app_id: uuid.UUID,
+    doc_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """You read it and it is yours to choose for this application. Refused when a fact it cites
+    has changed since it was written."""
+    from app.modules.documents.storage import get_storage
+
+    app = _owned_app(db, user, app_id)
+    doc = _owned_generated(db, app, doc_id)
+    db.execute(select(Document.id).where(Document.id == doc.id).with_for_update())
+    if generation.is_stale(db, doc):
+        raise conflict(f"{generation.REFUSALS['document_facts_changed']} "
+                       "(reason: document_facts_changed)")  # fmt: skip
+    if doc.accepted_at is None:
+        doc.accepted_at = utcnow()
+        record(db, user.id, "document.generated_accepted", "document", doc.id,
+               kind=doc.kind.value)  # fmt: skip
+    db.commit()
+    return _generated(db, app, doc, get_storage())
+
+
+@router.post(
+    "/applications/{app_id}/generated-documents/{doc_id}/reject",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def reject_generated(
+    app_id: uuid.UUID,
+    doc_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    """Delete a generated document you did not accept, with its file. One you accepted is
+    deleted from Documents instead (C17), which checks nothing still needs it."""
+    from app.modules.documents.storage import get_storage
+
+    app = _owned_app(db, user, app_id)
+    doc = _owned_generated(db, app, doc_id)
+    if doc.accepted_at is not None:
+        raise conflict(
+            "You accepted this document; delete it from Documents instead. "
+            "(reason: document_accepted)"
+        )
+    key = doc.storage_key
+    db.delete(doc)
+    record(db, user.id, "document.generated_rejected", "application", app.id,
+           kind=doc.kind.value)  # fmt: skip
+    db.commit()
+    get_storage().delete(key)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -964,6 +1273,7 @@ NOT_REUSED = {
     "pay": "Pay comes from your Preferences or is answered for each application.",
     "place": "Relocation comes from your Preferences; travel, work location and address are "
     "answered for each application.",
+    "credential": "Licences and certifications come from your profile's credentials.",
     "other": "NoEfforts asks this in each application.",
 }
 
