@@ -2512,13 +2512,13 @@ employer.
 | Authentication, sessions, CSRF, login rate limit | complete |
 | Profile facts with provenance, approval, versions, history; given/family/preferred names | complete |
 | Work authorization and sponsorship (now / later) per country | complete |
-| Employment, education, credentials | complete (credentials have no UI) |
+| Employment, education, credentials | complete (credentials card on the profile page since C16, D69) |
 | Preferences | complete |
 | Manual jobs, CSV/XLSX import/export, duplicates, exclusions | complete |
 | Match explanations | partial (preference checks, no scoring) |
 | Documents: upload, immutable versions, protected download | complete (no preview) |
 | Tracker with durable states, timeline, reconciliation | complete for manual tracking |
-| Docker Compose | Smoke-tested in GitHub CI; not yet verified on the user's Mac. Execution inside Compose is not supported (no browser in the image; attempts fail safe) |
+| Docker Compose | Smoke-tested in GitHub CI; not yet verified on the user's Mac. Execution inside Compose runs in the separate browser-runner container, against the synthetic receiver only (CI job `execution-compose`) |
 | Account deletion / data export | not started |
 
 ## Phase B — Preparation (this milestone)
@@ -2539,13 +2539,13 @@ employer.
 | Invalidation on fact, document, answer, consent, destination change; unrelated edits keep approval | complete | `test_protected_fact_change_invalidates_approval`, `test_other_material_changes_invalidate_approval` (4 cases), `test_unrelated_fact_change_keeps_approval` |
 | Queueing requires live approval | complete | API tests |
 | Review screen | complete | Playwright `phase-b.spec.ts` |
-| Long-form drafting interface with grounding validation | partial: interface, validation, caching, acceptance flow done and tested with a **test-only fake provider**; **no real LLM provider is implemented**, so drafting shows as unavailable | `test_fake_provider_draft_is_validated_and_needs_acceptance`, `test_drafting_unavailable_without_provider` |
+| Long-form drafting interface with grounding validation | complete in code, **off by default**: validation hardened (C15, C16), one provider (Claude, L4, D74) used only for an owner account after consent to the exact text and within a daily budget; no key configured and no request made, so drafting shows as unavailable | `test_drafting.py`, `test_drafting_provider.py` |
 | Tenant isolation for forms, packages, answers, consents, documents, answer bank, revoke, document selection, draft acceptance | complete | `test_tenant_isolation_for_preparation`, `test_tenant_isolation_for_revoke_documents_drafts_and_the_bank` |
-| Resume parsing into proposed facts | not started (resolver already ignores proposed facts) | — |
+| Resume parsing into proposed facts | complete (L1, D72): PDF, DOCX, TXT; proposed records approved one by one; no LLM | `test_resume_facts.py` |
 | Only resolved answers are sent; stale accepted drafts are checkpoints | complete (C2, D48) | `tests/test_sending.py` |
 | Package content shape pinned to `SCHEMA_VERSION` | complete (C1) | `tests/test_package_contract.py` |
-| Truthful resume tailoring | not started | — |
-| Cover letters | upload only: no generation, and the review page cannot select one (C12) | — |
+| Truthful resume tailoring | complete in code (L2, D73): only through the drafting provider (off), from approved facts, accepted before use, with a diff from the base | `test_generated_documents.py` |
+| Cover letters | upload and choose on the review page (C12); generation complete in code through the drafting provider (L3, D73; off) | `test_generated_documents.py`, `review-edit.spec.ts` |
 | Capturing forms from live ATS pages | not started (Phase C; network-blocked here) | — |
 
 ## Phase C — Controlled execution: partial (local fixtures only)
@@ -2578,7 +2578,7 @@ by default; docs inaccessible from this environment), spend reporting.
 | Tsenta | product + MCP docs read; developer docs inaccessible from this environment | none | no | no |
 | Freehire API | read in code and public docs | none (no live call has been made or approved) | discovery client implemented locally: off by default, fixture origins only, never an execution destination (D33, D34) | fixture only |
 | Gmail API | requirements documented | none | no | no |
-| LLM provider | — | no key configured | interface only | fake provider in tests only |
+| LLM provider (Anthropic, Claude) | Python SDK reference read | no key configured; no request made | provider built, off by default (L4, D74) | stub client in tests only |
 | Real ATS (Greenhouse, Lever, …) | Greenhouse public Job Board API docs read | read-only only: one public Greenhouse posting observed in owner-authorized manual runs (`docs/greenhouse-compatibility-report.md`) | Greenhouse-style adapters against local approximations only; nothing filled, uploaded or submitted on a real page; real destinations refused | fixture only (structure observed read-only) |
 | REA | README/docs read | `--help` ran once | not used for any analysis | — |
 
