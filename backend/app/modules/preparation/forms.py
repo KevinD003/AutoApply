@@ -16,7 +16,10 @@ from pydantic import BaseModel, Field, model_validator
 # v2 (D80): a search-as-you-type control (role=combobox or aria-autocomplete) is unsupported,
 # never a text box; with `challenges`, a CAPTCHA or bot check on the page is a required
 # unsupported field, so approval waits and the user applies on the employer's site.
-EXTRACTION_VERSION = "html-v2"
+# v3 (D81): a password or one-time-code input, and an ARIA widget with no native control in it
+# (a custom radio group, switch, dropdown or editable box), are unsupported too: a question the
+# extractor cannot operate is never dropped, and a credential is never asked for or kept.
+EXTRACTION_VERSION = "html-v3"
 
 
 class FieldType(enum.StrEnum):
@@ -203,6 +206,15 @@ _CHALLENGE = re.compile(
 )
 BOT_CHECK_KEY = "bot_check"
 _AUTOCOMPLETE = ("list", "both", "inline")
+_NATIVE = {"input", "select", "textarea"}
+_ARIA_WIDGETS = {"radiogroup", "listbox", "combobox", "switch", "checkbox", "radio", "slider",
+                 "spinbutton", "textbox", "searchbox"}  # fmt: skip
+_UNSUPPORTED_INPUT = {
+    "password": "a password: signing in or creating an account is yours, on the employer's "
+    "site; NoEfforts never asks for or keeps a password",
+    "one-time-code": "a verification code: you enter codes yourself when the employer sends "
+    "one; NoEfforts never keeps them",
+}
 
 
 def _bot_check() -> "FormField":
@@ -319,6 +331,25 @@ def extract_form_schema(html: str, *, challenges: bool = False) -> FormSchema:
                 )
             )
             continue
+        credential = (
+            "password"
+            if itype == "password"
+            else "one-time-code"
+            if (n.attrs.get("autocomplete") or "").lower() == "one-time-code"
+            else None
+        )
+        if credential:
+            fields.append(
+                FormField(
+                    label=label_of(n),
+                    help_text=help_of(n),
+                    type=FieldType.unsupported,
+                    required=required,
+                    unsupported_reason=_UNSUPPORTED_INPUT[credential],
+                    **common,
+                )
+            )
+            continue
         if n.tag == "input" and (
             (n.attrs.get("role") or "").lower() == "combobox"
             or (n.attrs.get("aria-autocomplete") or "").lower() in _AUTOCOMPLETE
@@ -354,6 +385,7 @@ def extract_form_schema(html: str, *, challenges: bool = False) -> FormSchema:
                 **common,
             )
         )
+    fields += _aria_widgets(nodes, by_id, step_of, {f.key for f in fields})
     if not fields:
         raise ExtractionError("no form fields found")
     if challenges and _CHALLENGE.search(html) and all(f.key != BOT_CHECK_KEY for f in fields):
@@ -365,3 +397,52 @@ def extract_form_schema(html: str, *, challenges: bool = False) -> FormSchema:
         method=(form_node.attrs.get("method") or "get").lower() if form_node else None,
         fields=fields,
     )
+
+
+def _aria_widgets(nodes, by_id, step_of, taken: set[str]) -> list[FormField]:
+    """Controls built from ARIA roles with no native control inside (D81): each one is a
+    question NoEfforts cannot operate, so it becomes an unsupported field (required when
+    aria-required is "true") rather than disappearing. A listbox that a combobox owns, and a
+    widget inside one already counted, are part of that control. Hidden ones are skipped, as
+    hidden inputs are."""
+    owned: set[str] = set()
+    for n in nodes:
+        for attr in ("aria-controls", "aria-owns"):
+            owned |= set((n.attrs.get(attr) or "").split())
+    counted: list = []
+    out: list[FormField] = []
+    for n in nodes:
+        role = (n.attrs.get("role") or "").lower()
+        if role not in _ARIA_WIDGETS or n.tag in _NATIVE:
+            continue
+        if "hidden" in n.attrs or n.attrs.get("aria-hidden") == "true":
+            continue
+        if n.attrs.get("id") in owned or any(d.tag in _NATIVE for d in n.walk()):
+            continue
+        if any(a in counted for a in n.ancestors()):
+            continue
+        counted.append(n)
+        ids = (n.attrs.get("aria-labelledby") or "").split()
+        label = (
+            n.attrs.get("aria-label")
+            or " ".join(by_id[i].all_text() for i in ids if i in by_id).strip()
+            or n.all_text()[:200]
+            or "An interactive control NoEfforts does not recognise"
+        )
+        raw = re.sub(r"[^A-Za-z0-9_.:\[\]-]", "_", n.attrs.get("id") or "") or str(len(out) + 1)
+        key = f"aria:{raw}"
+        while key in taken:
+            key += "_"
+        taken.add(key)
+        out.append(
+            FormField(
+                key=key,
+                label=label[:2000],
+                type=FieldType.unsupported,
+                required=n.attrs.get("aria-required") == "true",
+                unsupported_reason=f"a custom control (role={role}) with no native input: "
+                "NoEfforts does not operate it",
+                step=step_of(n),
+            )
+        )
+    return out

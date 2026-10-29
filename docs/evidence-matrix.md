@@ -9,6 +9,16 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Workday and Ashby shapes, embeds, credentials, custom widgets (D81, 2026-10-29; local only)
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| An account gate is never passed for the user; no password is asked for or kept | password and one-time-code inputs unsupported | `test_workday_account_gate_and_traps_are_never_filled`, `test_a_credential_input_is_never_a_text_field` | pass | — |
+| An unknown required question is never dropped | ARIA widgets without native input → unsupported | `test_a_required_custom_widget_blocks_instead_of_disappearing` (4 widgets), the two fixture tests, `test_a_visible_listbox_owned_by_a_combobox_is_part_of_that_control` | pass | Widgets with no ARIA role at all stay invisible to the extractor (a page script, a canvas) |
+| Ashby embeds are recognised, fail-closed | `detect_ats` | positive (3), malformed (4), ambiguity and host-precedence tests, the gap probe | pass | The any-host trust is a recorded gap |
+| Sensitive and legal questions on these shapes are never answered for the user | resolver (unchanged) | the two fixture tests | pass | — |
+| The owner's verification returns only safe output | `verify-local.sh` summary | `test_verify_local_reports_each_step_and_never_a_value`, `test_verify_local_ends_with_a_safe_summary_when_docker_is_missing` | pass | The Mac run itself is pending |
+
 ## Lever-shaped form, checkpoint-first (D80, 2026-10-29; local only)
 
 | Requirement | Implementation | Evidence | Result | Gaps |

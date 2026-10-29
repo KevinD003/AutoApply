@@ -176,6 +176,9 @@ plus unverified candidates:
 
 ## 7. Proposed synthetic fixture: "Example Health (fictional)"
 
+**Implemented (D81)** as `backend/app/modules/preparation/fixtures/workday.html` (the form only, as a
+preparation fixture; no receiver route and no adapter). Tests: `backend/tests/test_workday_ashby_fixtures.py`.
+
 A local multi-page wizard served by the receiver. Page names follow the search-reported GA4
 list. (u) marks a shape I have not seen documented; it is a fixture design choice.
 

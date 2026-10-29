@@ -2118,3 +2118,46 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Not done:** no Lever adapter, no request to any Lever host; the shapes stay search-reported
   until a real page is observed under the provider-admission rules.
 - **Unchanged:** `SCHEMA_VERSION` (3); no migration.
+
+## D81 — Workday- and Ashby-shaped forms, checkpoint-first; Ashby embeds recognised fail-closed; passwords and custom widgets never dropped or filled (2026-10-29)
+- **Problem:**
+  - Workday's search-reported wizard has an account gate (password fields), custom dropdowns
+    and switches built from ARIA roles, pickers and legal attestations.
+  - Ashby renders Yes/No questions as buttons, uses a location picker, and embeds postings on
+    employer sites as `?ashby_jid=<uuid>`.
+  - The generic extractor read a password input as a text box, which an answer could fill and
+    store. It dropped ARIA widgets with no native input entirely: a required question could
+    vanish from the package. It also did not recognise Ashby embeds.
+- **Decision:**
+  - The generic extractor (`html-v3`) reads a password input and an `autocomplete=one-time-code`
+    input as unsupported: NoEfforts never asks for or keeps a password or a code. A required
+    one blocks approval, so an account gate means you apply yourself.
+  - An ARIA widget (`radiogroup`, `switch`, `combobox`, `listbox`, `textbox` and others) with
+    no native control inside becomes an unsupported field, required when
+    `aria-required="true"`. It is never dropped.
+    - A listbox that a combobox owns (`aria-controls` / `aria-owns`), and a radio inside a
+      counted group, are part of that one control.
+    - Hidden widgets are skipped, as hidden inputs are.
+  - The fixture adapter re-extracts at execution with bot-check detection, so a CAPTCHA that
+    appears after approval is a changed form and stops the attempt.
+  - `detect_ats`:
+    - `ashby_jid=<UUID>` on a non-ATS host is Ashby (company unknown).
+    - A non-UUID value, or `gh_jid` and `ashby_jid` together, is unknown: two ids cannot be
+      told apart, so neither is believed.
+    - Vendor host rules still win.
+    - Believing an embedded id on any host is recorded for Ashby under the existing
+      `identity_jid_any_host` gap, so no admission stage can be claimed past it.
+  - New preparation fixtures `workday` and `ashby` (search-reported shapes). Their tests:
+    - the account gate and pickers block or stay blank;
+    - eligibility wording that names no country waits for you;
+    - sensitive questions are never inferred;
+    - both routes stay a manual handoff.
+  - `docs/remaining-work.md` gains a provider evidence ladder that names the missing
+    integration work per provider.
+  - The read-only Greenhouse check's comparison counts custom controls
+    (`page_custom_controls`) instead of listing their keys: such a key comes from the page's
+    own markup, and its leak guard refused to publish the whole summary when one was listed.
+- **Deliberate version change:** `html-v2` → `html-v3`, so the fixture adapter version becomes
+  `fixture-ats-1+html-v3`; approvals bound to the earlier version ask again.
+- **Not done:** no Workday or Ashby adapter or receiver route; no request to any vendor host.
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration.

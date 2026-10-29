@@ -10,6 +10,7 @@ TRACKING_PARAMS = re.compile(
     re.I,
 )
 _SPACE = re.compile(r"\s+")
+_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _LEGAL_SUFFIX = re.compile(
     r"[,.]?\s+(inc|inc\.|llc|l\.l\.c\.|ltd|ltd\.|limited|corp|corp\.|corporation|co|co\.|gmbh|plc|"
     r"s\.a\.|pvt\.? ltd\.?|pty ltd)$",
@@ -92,8 +93,17 @@ def detect_ats(canonical_url: str) -> AtsIdentity:
         m = pat.match(hostpath)
         if m:
             return AtsIdentity(provider, m.group("company").lower(), m.group("req"))
-    if "gh_jid" in q:  # Greenhouse embedded on an employer's own careers site
+    # Embedded on an employer's own careers site: the posting id is in the query. Both ids at
+    # once cannot be told apart, so neither is believed (fail closed). Ashby's id is a UUID
+    # (D81, docs/research/ashby.md section 4); the board slug cannot be read from such a URL.
+    if "gh_jid" in q and "ashby_jid" in q:
+        return AtsIdentity("unknown", None, None)
+    if "gh_jid" in q:
         return AtsIdentity("greenhouse", None, q["gh_jid"])
+    if "ashby_jid" in q:
+        jid = q["ashby_jid"].lower()
+        if _UUID.fullmatch(jid):
+            return AtsIdentity("ashby", None, jid)
     return AtsIdentity("unknown", None, None)
 
 

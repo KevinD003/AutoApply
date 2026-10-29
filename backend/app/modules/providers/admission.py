@@ -199,8 +199,9 @@ SCENARIO_GAPS: frozenset[tuple[str, str]] = frozenset()
 # keys, ATS names, or ANY_ATS for every provider serving an ATS.
 ANY_ATS = "any_ats"
 KNOWN_GAPS: dict[str, frozenset[str]] = {
-    # gh_jid on any host (or a host merely containing the vendor's domain) is Greenhouse.
-    "identity_jid_any_host": frozenset({"greenhouse"}),
+    # gh_jid on any host (or a host merely containing the vendor's domain) is Greenhouse, and
+    # ashby_jid (a UUID) is Ashby (D81): an embed's id is believed on any host.
+    "identity_jid_any_host": frozenset({"greenhouse", "ashby"}),
     # The posting parser and the identity rules accept different Greenhouse URL forms.
     "identity_rules_disagree": frozenset({"greenhouse"}),
     # An unidentified job with a Greenhouse-captured form skips the form/ATS mismatch check.

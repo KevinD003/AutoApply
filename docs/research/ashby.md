@@ -139,7 +139,7 @@ Checked locally with fictional URLs (no network):
 |---|---|
 | `https://jobs.ashbyhq.com/examplehealth/<uuid>` | ashby |
 | `https://jobs.ashbyhq.com/examplehealth/<uuid>/application` | ashby |
-| `https://careers.examplehealth.invalid/jobs?ashby_jid=<uuid>` | **unknown** |
+| `https://careers.examplehealth.invalid/jobs?ashby_jid=<uuid>` | **unknown**; ashby since D81 |
 | `https://jobs.ashbyhq.com/example/apply` (the docs' placeholder) | unknown |
 
 - **inferred** Embedded postings on employer sites (`ashby_jid`) are not recognised, unlike
@@ -165,6 +165,9 @@ Checked locally with fictional URLs (no network):
   with the repository's current rules.
 
 ## 7. Proposed synthetic fixture: "Example Health (fictional)"
+
+**Implemented (D81)** as `backend/app/modules/preparation/fixtures/ashby.html` (the form only, as a
+preparation fixture; no receiver route and no adapter). Tests: `backend/tests/test_workday_ashby_fixtures.py`.
 
 A local fixture with two views: the public posting list (search-reported shape) and the
 form definition (search-reported `applicationFormDefinition` and `surveyFormDefinitions`). NoEfforts

@@ -1,0 +1,118 @@
+<!doctype html>
+<!-- Workday-shaped synthetic wizard (docs/research/workday.md section 7). Fictional tenant,
+     employer and requisition. Every step is shown on one page as data-step sections; on a real
+     tenant each "Next" would send that step's data (a disclosure boundary), which this
+     preparation fixture does not model. Shapes are search-reported or fixture design choices
+     (marked (u)); no Workday page was opened. -->
+<html>
+<head><title>Registered Nurse, Night Shift — Example Health (fictional)</title></head>
+<body>
+<h1>Registered Nurse, Night Shift — Example Health (fictional, Workday-shaped)</h1>
+<form action="/workday/External/job/Springfield/Nurse_R-100001/apply" method="post">
+  <section data-step="Sign in or create an account">
+    <p>Example Health (fictional) requires a candidate account to apply.</p>
+    <label for="acct_email">Email address</label>
+    <input id="acct_email" name="account.email" type="email" required>
+    <label for="acct_password">Password</label>
+    <input id="acct_password" name="account.password" type="password" required>
+    <label for="acct_password2">Verify new password</label>
+    <input id="acct_password2" name="account.password_verify" type="password" required>
+    <label><input type="checkbox" name="account.terms" required> I agree to the (fictional) candidate account terms.</label>
+  </section>
+  <section data-step="My Information">
+    <!-- (u) Workday's own dropdowns are buttons with listboxes, not native selects -->
+    <div id="source_label">How did you hear about us?</div>
+    <button type="button" id="source" role="combobox" aria-labelledby="source_label" aria-required="true" aria-haspopup="listbox" aria-controls="source_list">Select One</button>
+    <ul id="source_list" role="listbox" hidden><li role="option">Job board</li><li role="option">Referral</li></ul>
+    <fieldset required>
+      <legend>Have you previously worked for Example Health (fictional)?</legend>
+      <label><input type="radio" name="previous_worker" value="Yes"> Yes</label>
+      <label><input type="radio" name="previous_worker" value="No"> No</label>
+    </fieldset>
+    <label for="country">Country</label>
+    <select id="country" name="country" required>
+      <option value="">Select One</option>
+      <option value="US">United States of America</option>
+      <option value="CA">Canada</option>
+    </select>
+    <label for="first">Given Name(s)</label>
+    <input id="first" name="legal_name.first" type="text" required>
+    <label for="last">Family Name</label>
+    <input id="last" name="legal_name.last" type="text" required>
+    <label for="addr1">Address Line 1</label>
+    <input id="addr1" name="address.line1" type="text">
+    <label for="city">City</label>
+    <input id="city" name="address.city" type="text">
+    <label for="email">Email Address</label>
+    <input id="email" name="email" type="email" required>
+    <label for="phone">Phone Number</label>
+    <input id="phone" name="phone.number" type="tel" required>
+  </section>
+  <section data-step="My Experience">
+    <label for="w_title">Job Title</label>
+    <input id="w_title" name="work[0].title" type="text">
+    <label for="w_company">Company</label>
+    <input id="w_company" name="work[0].company" type="text">
+    <!-- (u) a school picker that searches as you type -->
+    <label for="school">School or University</label>
+    <input id="school" name="education[0].school" type="text" role="combobox" aria-autocomplete="list">
+    <div id="skills_label">Type to Add Skills</div>
+    <div id="skills" role="listbox" aria-labelledby="skills_label" aria-multiselectable="true"></div>
+    <label for="resume">Resume/CV</label>
+    <input id="resume" name="resume" type="file" accept=".pdf,.doc,.docx">
+  </section>
+  <section data-step="Application Questions (1 of 2)">
+    <fieldset required>
+      <legend>Are you legally authorized to work in the country where this job is located?</legend>
+      <label><input type="radio" name="q.work_eligibility" value="Yes"> Yes</label>
+      <label><input type="radio" name="q.work_eligibility" value="No"> No</label>
+    </fieldset>
+    <fieldset required>
+      <legend>Will you now or in the future require sponsorship for employment visa status?</legend>
+      <label><input type="radio" name="q.sponsorship" value="Yes"> Yes</label>
+      <label><input type="radio" name="q.sponsorship" value="No"> No</label>
+    </fieldset>
+    <fieldset required>
+      <legend>Which nursing licence do you hold?</legend>
+      <label><input type="radio" name="q.licence_type" value="RN"> RN</label>
+      <label><input type="radio" name="q.licence_type" value="LPN"> LPN</label>
+      <label><input type="radio" name="q.licence_type" value="None"> None</label>
+    </fieldset>
+  </section>
+  <section data-step="Application Questions (2 of 2)">
+    <label for="salary">Desired annual salary (USD)</label>
+    <input id="salary" name="q.salary_expectation" type="number">
+    <label for="start">Earliest start date</label>
+    <input id="start" name="q.start_date" type="date">
+    <!-- (u) an on/off switch with no native input -->
+    <div id="nights_label">Are you available for night shifts?</div>
+    <div id="nights" role="switch" aria-checked="false" aria-labelledby="nights_label" aria-required="true" tabindex="0"></div>
+  </section>
+  <section data-step="Voluntary Disclosures">
+    <label for="vd_gender">Gender</label>
+    <select id="vd_gender" name="vd.gender">
+      <option value="">Select One</option>
+      <option value="Female">Female</option>
+      <option value="Male">Male</option>
+      <option value="Decline">I do not wish to answer</option>
+    </select>
+    <label for="vd_veteran">Veteran status</label>
+    <select id="vd_veteran" name="vd.veteran">
+      <option value="">Select One</option>
+      <option value="Not a veteran">I am not a protected veteran</option>
+      <option value="Decline">I do not wish to answer</option>
+    </select>
+    <label><input type="checkbox" name="vd.terms_ack" required> I have read and agree to the (fictional) terms and conditions.</label>
+  </section>
+  <section data-step="Self Identify">
+    <fieldset>
+      <legend>Please check one of the boxes below (voluntary self-identification of disability)</legend>
+      <label><input type="radio" name="si.disability" value="Yes"> Yes, I have a disability (or previously had a disability)</label>
+      <label><input type="radio" name="si.disability" value="No"> No, I do not have a disability and have not had one in the past</label>
+      <label><input type="radio" name="si.disability" value="Decline"> I do not want to answer</label>
+    </fieldset>
+  </section>
+  <button type="submit">Submit</button>
+</form>
+</body>
+</html>

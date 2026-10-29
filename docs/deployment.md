@@ -156,12 +156,16 @@ docker compose stop           # the check uses the same local ports
 ./scripts/verify-local.sh
 ```
 
-It checks `.env`, validates `docker-compose.yml` with it, and runs the smoke test as a separate,
+It checks `.env`, validates `docker-compose.yml` with it, runs the smoke test as a separate,
 throwaway Compose project (`noefforts_smoke`) with its own volumes, removed at the end. Your
 stack's data is never read or changed, and nothing contacts an employer, Freehire or an AI
-provider.
+provider. It ends with a summary block that is safe to share (step results and versions, never a
+value or a log line).
 
 ## 10. On a Mac (not yet verified)
+
+The runbook, and what to send back (the summary block only), is
+[docs/owner-mac-verification.md](owner-mac-verification.md).
 
 Expected, to be confirmed by running section 9 on the Mac:
 

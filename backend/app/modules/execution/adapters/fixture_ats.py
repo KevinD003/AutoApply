@@ -33,7 +33,8 @@ class FixtureAtsAdapter:
 
     # -- inspect ----------------------------------------------------------------------------
     def extract(self, page: Page) -> FormSchema:
-        return extract_form_schema(page.content())
+        # As captured (D81): a bot check that appears after approval changes the form.
+        return extract_form_schema(page.content(), challenges=True)
 
     def blocked_reason(self, page: Page) -> str | None:
         """A reason to stop before disclosing anything (e.g. a bot check), or None."""

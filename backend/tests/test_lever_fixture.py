@@ -112,8 +112,8 @@ def test_words_alone_are_not_a_bot_check_and_a_plain_input_is_not_a_combobox():
 def test_the_extraction_version_moved_and_the_fixture_adapter_follows_it():
     from app.modules.execution import policy
 
-    assert forms.EXTRACTION_VERSION == "html-v2"
-    assert policy.ADAPTER_VERSIONS["fixture_ats"] == "fixture-ats-1+html-v2"
+    assert forms.EXTRACTION_VERSION == "html-v3"
+    assert policy.ADAPTER_VERSIONS["fixture_ats"] == "fixture-ats-1+html-v3"
     # An approval recorded before bindings existed meant html-v1; it no longer matches.
     assert policy.LEGACY_VERSIONS["fixture_ats"] != policy.ADAPTER_VERSIONS["fixture_ats"]
     assert "h-captcha" in fixture_html("lever")

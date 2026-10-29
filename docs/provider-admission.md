@@ -210,7 +210,7 @@ hashes. `any_ats` means every provider serving an ATS.
 
 | code | applies to | what is reproduced |
 |---|---|---|
-| `identity_jid_any_host` | `greenhouse` | a `gh_jid` parameter on any host, or on a host merely containing the vendor's domain, is identified as Greenhouse (the probe holds while either does) |
+| `identity_jid_any_host` | `ashby`, `greenhouse` | a `gh_jid` parameter on any host, or on a host merely containing the vendor's domain, is identified as Greenhouse; since D81 a UUID `ashby_jid` on any host is identified as Ashby (the probe holds while any does) |
 | `identity_rules_disagree` | `greenhouse` | the posting parser and the identity rules disagree on Greenhouse URL forms (an embed URL, a suffix after the posting id, an over-long board; the probe holds while any does) |
 | `identity_unknown_skips_form_check` | `greenhouse_dom`, `greenhouse_hosted` | a job with no identified ATS and a Greenhouse-captured form skips the form/ATS mismatch check |
 | `identity_stored_unknown_not_redetected` | `any_ats` | a job stored as `unknown` is not identified again when the rules change |

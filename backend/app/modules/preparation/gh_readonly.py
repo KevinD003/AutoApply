@@ -233,10 +233,15 @@ def compare(api_json: dict, rendered) -> dict:
             d["label_differs"] = True
         if d:
             differ.append({"key": k, **d})
+    page_only = sorted(set(r) - set(a))
+    custom = [k for k in page_only if k.startswith("aria:")]
     return {
         "in_both": len(both),
         "api_only": sorted(set(a) - set(r)),
-        "page_only": sorted(set(r) - set(a)),
+        # D81 (html-v3): a custom control with no native input is keyed from the page's own
+        # markup, so it is counted, never named.
+        "page_only": [k for k in page_only if k not in custom],
+        "page_custom_controls": len(custom),
         "differences": differ,
         "conditional_on_page": sorted(f.key for f in rendered.fields if f.condition),
     }
@@ -1040,7 +1045,8 @@ _OUTPUT_WORDS = {
     "inputs_by_type", "selects", "textareas", "controls_with_name", "controls_with_id_only",
     "controls_outside_form", "labels", "comboboxes", "file_inputs", "buttons", "iframes",
     "shadow_hosts", "scripts", "frames", "same_origin", "kind", "compare", "in_both",
-    "api_only", "page_only", "differences", "key", "label_differs", "conditional_on_page",
+    "api_only", "page_only", "page_custom_controls", "differences", "key", "label_differs",
+    "conditional_on_page",
     "page_stopped", "stopped", "rendering", "networkidle_reached", "ready_state",
     "may_be_incomplete", "failed_requests", "resource_type", "failure", "mapping",
     "field_type", "id_candidates", "label_candidates", "label_matches", "control", "tag",

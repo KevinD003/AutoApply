@@ -72,8 +72,8 @@ anywhere real. Real pages and APIs **have** been read, as above, under single-us
 | 25 | Package approval, rehearsal, separate submission approval, submission, receipt | Fixture-tested | `test_execution_*`, `submission.spec.ts`, `journey.spec.ts` | — | No | — |
 | 26 | Greenhouse-style adapters | Fixture-tested; real pages read-only only (above) | `test_greenhouse_*.py`, `docs/greenhouse-compatibility-report.md` | Live-pilot permissions 1-4 and a Greenhouse terms review (below) | Yes | — |
 | 27 | Lever | **Unfinished**: no adapter, specification only (`provider-architecture.md` §7b). A Lever-shaped synthetic form (D80) is fixture-tested checkpoint-first: pickers, the bot check, consents, EEO and unknown authorization never guessed; the route stays a manual handoff. Public docs: the Postings API README read; help centre and Data API docs not reachable from this sandbox | `test_lever.py`, `test_lever_fixture.py`; `docs/research/lever.md` | Network access to `hire.lever.co`, `help.lever.co`; observing a real page needs the provider-admission approval | Network and approval | Confirm the search-reported shapes; then an adapter against the receiver |
-| 28 | Workday | **Unfinished**: planned only. No Workday documentation page could be opened from this sandbox | `docs/research/workday.md` | Network access to `doc.workday.com` and related hosts; an owner decision on Workday's terms (below) | Yes | A synthetic multi-step, account-gated fixture; every account step a checkpoint |
-| 29 | Ashby | **Unfinished**: identity only. No Ashby documentation page could be opened from this sandbox | `docs/research/ashby.md` | Network access to `developers.ashbyhq.com`, `docs.ashbyhq.com` | Network only | A synthetic fixture from the search-reported field types, every one a checkpoint until confirmed |
+| 28 | Workday | **Unfinished**: no adapter (planned only). A Workday-shaped synthetic wizard (D81) is fixture-tested checkpoint-first: the account gate's passwords block approval, custom dropdowns and switches are kept as questions, eligibility that names no country and legal attestations wait for you. No Workday documentation page could be opened from this sandbox | `test_workday_ashby_fixtures.py`; `docs/research/workday.md` | Network access to `doc.workday.com` and related hosts; an owner decision on Workday's terms (below) | Yes | Per-step disclosure in the receiver, before any adapter |
+| 29 | Ashby | **Unfinished**: no adapter. URL recognition for hosted postings and, since D81, for `?ashby_jid=` embeds on employer sites (fail-closed: a non-UUID or a second embedded id is not believed; recorded under the `identity_jid_any_host` gap). An Ashby-shaped synthetic form (D81) is fixture-tested checkpoint-first. No Ashby documentation page could be opened from this sandbox | `test_workday_ashby_fixtures.py`; `docs/research/ashby.md` | Network access to `developers.ashbyhq.com`, `docs.ashbyhq.com` | Network only | Confirm the shapes from the documentation |
 | 30 | Verification codes | Fixture-tested by manual entry (checkpoint) | `test_execution_*`, `submission.spec.ts` | — | No | — |
 | 31 | Gmail or inbox access (codes, replies) | **Awaiting access or consent**: not started (D10) | `docs/research/gmail-oauth.md` | A separately scoped inbox permission | Yes | — |
 | 32 | Standing approvals (auto-apply with caps) | **Unfinished**: not started; every submission needs its own approval | — | An owner decision that it is wanted at all | Yes (decision) | — |
@@ -88,6 +88,19 @@ anywhere real. Real pages and APIs **have** been read, as above, under single-us
 | 39 | Backups and restore (local stack) | **Awaiting deployment verification**: documented (`docs/deployment.md` sections 5 and 7: `pg_dump`, a storage archive, drop and restore); the CI smoke job runs the same commands on a throwaway stack; not run on the owner's machine; no scheduled or off-machine backup | `scripts/docker-smoke.sh` | The owner's machine; for scheduled or off-site backups, the hosting choice (row 40) | Yes (run it); hosting is the owner's choice | — |
 | 40 | Production hosting (TLS, domain, secrets store) | **Unfinished** | — | Hosting choice and any paid commitment | Yes | — |
 | 41 | Spend reporting | Partial: the drafting budget only (L4) | `test_drafting_provider.py` | — | No | — |
+
+## Provider evidence ladder
+
+Each rung is separate evidence; a lower rung never stands in for a higher one. "Fixture" means a
+local synthetic page or service; nothing on this ladder implies live support.
+
+| Provider | URL recognition | Synthetic form coverage | Provider-specific adapter | Observed real-page behaviour | Approved disclosure rehearsal (real) | Confirmed submission (real) |
+|---|---|---|---|---|---|---|
+| Greenhouse | Yes (hosted, embed `gh_jid`, `/embed/job_app`); gaps recorded (`identity_jid_any_host`, `identity_rules_disagree`) | Yes: receiver v1 and v2 forms, failure modes | Yes, against local fixtures only (`greenhouse_hosted`, `greenhouse_dom`) | Read-only only (above): job data and page read; dropdowns opened in two runs; never typed | None (needs live-pilot permission 3) | None (needs permission 4) |
+| Lever | Yes (hosted, EU) | Preparation fixture only (D80); no receiver route | **None**. Missing: receiver form + submit + ledger, adapter (fill, upload, readback, confirm), capability entry, rehearsal path rule | None | None | None |
+| Workday | Yes, except the `/apply` variant (gap `identity_variant_unrecognised`) | Preparation fixture only (D81): one page for a multi-step wizard | **None**. Missing: a per-step receiver, step-by-step disclosure accounting, account-gate handoff, adapter; and the owner's terms decision | None | None | None |
+| Ashby | Yes (hosted; embeds since D81, gap recorded) | Preparation fixture only (D81) | **None**. Missing: receiver form, adapter, a way to detect its undocumented spam check | None | None | None |
+| Workable, SmartRecruiters | Yes | None | None | None | None | None |
 
 ## "Phase E", defined
 

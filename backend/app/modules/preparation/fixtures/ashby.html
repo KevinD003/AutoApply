@@ -1,0 +1,79 @@
+<!doctype html>
+<!-- Ashby-shaped synthetic form (docs/research/ashby.md section 7). Fictional employer and
+     posting. Field types follow the search-reported applicationFormDefinition shapes; how
+     Ashby renders them on a page was not observed, so the markup is a fixture design choice.
+     Ashby's spam protection has no documented widget, so nothing here can detect it. -->
+<html>
+<head><title>Clinical Data Analyst — Example Health (fictional)</title></head>
+<body>
+<h1>Clinical Data Analyst — Example Health (fictional, Ashby-shaped)</h1>
+<!-- a cookie-consent banner: never clicked for the user -->
+<div role="dialog" aria-label="Cookie consent"><p>We use cookies.</p><button type="button">Accept all</button><button type="button">Reject</button></div>
+<form action="/ashby/examplehealth/00000000-0000-4000-8000-00000000b001/application" method="post" enctype="multipart/form-data">
+  <section data-step="Application">
+    <label for="name">Name</label>
+    <input id="name" name="_systemfield_name" type="text" required>
+    <label for="email">Email</label>
+    <input id="email" name="_systemfield_email" type="email" required>
+    <label for="resume">Resume</label>
+    <input id="resume" name="_systemfield_resume" type="file" accept=".pdf,.doc,.docx">
+    <label for="phone">Phone</label>
+    <input id="phone" name="phone" type="tel">
+    <label for="linkedin">LinkedIn</label>
+    <input id="linkedin" name="linkedin" type="url">
+    <!-- Candidate's location: a location picker -->
+    <label for="location">Candidate's location</label>
+    <input id="location" name="location" type="text" role="combobox" aria-autocomplete="list" required>
+    <!-- Boolean questions as Yes/No buttons with no native input -->
+    <div id="auth_label">Are you authorized to work in the United States?</div>
+    <div id="authorized" role="radiogroup" aria-labelledby="auth_label" aria-required="true">
+      <button type="button" role="radio" aria-checked="false">Yes</button>
+      <button type="button" role="radio" aria-checked="false">No</button>
+    </div>
+    <fieldset required>
+      <legend>Will you now or in the future require visa sponsorship?</legend>
+      <label><input type="radio" name="sponsorship" value="Yes"> Yes</label>
+      <label><input type="radio" name="sponsorship" value="No"> No</label>
+    </fieldset>
+    <label for="years_sql">Years of SQL experience</label>
+    <input id="years_sql" name="years_sql" type="number">
+    <label for="start_date">Earliest start date</label>
+    <input id="start_date" name="start_date" type="date">
+    <label for="tool">Primary analysis tool</label>
+    <select id="tool" name="tool" required>
+      <option value="">Select...</option>
+      <option value="R">R</option>
+      <option value="Python">Python</option>
+      <option value="Other">Other</option>
+    </select>
+    <fieldset>
+      <legend>Clinical domains</legend>
+      <label><input type="checkbox" name="domains" value="Oncology"> Oncology</label>
+      <label><input type="checkbox" name="domains" value="Cardiology"> Cardiology</label>
+      <label><input type="checkbox" name="domains" value="Pediatrics"> Pediatrics</label>
+    </fieldset>
+    <label for="why">Why Example Health?</label>
+    <textarea id="why" name="why" maxlength="5000"></textarea>
+    <label for="sample">Work sample</label>
+    <input id="sample" name="portfolio" type="file">
+  </section>
+  <section data-step="Voluntary EEOC survey (fictional)">
+    <label for="gender">Gender</label>
+    <select id="gender" name="survey.gender">
+      <option value="">Select...</option>
+      <option value="Female">Female</option>
+      <option value="Male">Male</option>
+      <option value="Decline to self-identify">Decline to self-identify</option>
+    </select>
+    <label for="disability">Disability status</label>
+    <select id="disability" name="survey.disability">
+      <option value="">Select...</option>
+      <option value="Yes">Yes, I have a disability</option>
+      <option value="No">No, I do not have a disability</option>
+      <option value="I do not want to answer">I do not want to answer</option>
+    </select>
+  </section>
+  <button type="submit">Submit Application</button>
+</form>
+</body>
+</html>

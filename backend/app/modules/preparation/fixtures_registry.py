@@ -9,6 +9,9 @@ FIXTURES = {
     "tricky": "Dispatcher — Northwind Logistics (fictional, negation/tense/option traps)",
     # D80: shapes from docs/research/lever.md (search-reported); checkpoint-first.
     "lever": "Registered Nurse — Example Health (fictional, Lever-shaped, search-reported fields)",
+    # D81: shapes from docs/research/workday.md and ashby.md (search-reported); checkpoint-first.
+    "workday": "Registered Nurse — Example Health (fictional, Workday-shaped, account required)",
+    "ashby": "Clinical Data Analyst — Example Health (fictional, Ashby-shaped, search-reported)",
 }
 
 

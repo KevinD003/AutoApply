@@ -82,7 +82,8 @@ PROBES = {
     # gh_jid on any host, and on a host merely containing the vendor's domain.
     "identity_jid_any_host": lambda: any(_ats(u) == "greenhouse" for u in (
         "https://careers.example.invalid/openings?gh_jid=4000001",
-        "https://boards.greenhouse.io.example.invalid/x?gh_jid=4000001")),
+        "https://boards.greenhouse.io.example.invalid/x?gh_jid=4000001"))
+    or _ats(f"https://careers.example.invalid/jobs?ashby_jid={UUID}") == "ashby",
     # The posting parser and the identity rules disagree on a Greenhouse URL form.
     "identity_rules_disagree": lambda: any(
         (_ats(u) == "greenhouse") != (gh.parse_posting(u, fixture_origin=False) is not None)

@@ -128,3 +128,71 @@ def test_backups_are_never_committed():
     for path in ("backups/noefforts-20261029.dump", "backups/storage-20261029.tgz"):
         ignored = subprocess.run(["git", "check-ignore", "-q", path], cwd=ROOT)
         assert ignored.returncode == 0, path
+
+
+def _verify_copy(tmp_path: Path) -> Path:
+    """The verify script and what it reads, in a scratch directory (the repository's own .env
+    is never created or read)."""
+    root = tmp_path / "repo"
+    (root / "scripts").mkdir(parents=True)
+    for name in ("verify-local.sh", "check_env.py", "docker-smoke.sh", "smoke_lib.sh"):
+        (root / "scripts" / name).write_text((ROOT / "scripts" / name).read_text())
+    (root / "docker-compose.yml").write_text((ROOT / "docker-compose.yml").read_text())
+    return root
+
+
+def _run_verify(root: Path, path: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", str(root / "scripts" / "verify-local.sh")],
+        env={"PATH": path, "HOME": str(root)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+def test_verify_local_ends_with_a_safe_summary_when_docker_is_missing(tmp_path):
+    root = _verify_copy(tmp_path)
+    result = _run_verify(root, "/usr/bin:/bin")
+    if Path("/usr/bin/docker").exists() or Path("/bin/docker").exists():
+        return  # this machine has Docker on that path; the next test covers the summary
+    assert result.returncode == 1
+    out = result.stdout
+    assert "===== NoEfforts verification summary (safe to share) =====" in out
+    assert "result: FAILED at step: prerequisites" in out and "docker: unavailable" in out
+
+
+def test_verify_local_reports_each_step_and_never_a_value(tmp_path):
+    import socket
+
+    root = _verify_copy(tmp_path)
+    values = good_values()
+    write_env(root, values)
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    # A stand-in for the Docker CLI: answers the version and config calls, nothing else.
+    (fake / "docker").write_text(
+        '#!/bin/sh\ncase "$*" in\n  "compose version --short") echo 2.40.0;;\n'
+        '  "compose version") echo "Docker Compose version v2.40.0";;\n'
+        '  "compose config --quiet") exit 0;;\n  "version --format"*) echo 28.0.0;;\n'
+        "  *) exit 3;;\nesac\n"
+    )
+    (fake / "docker").chmod(0o755)
+    held = socket.socket()
+    try:
+        held.bind(("127.0.0.1", 8000))  # one of the stack's ports, in use for this run
+        held.listen()
+    except OSError:
+        pass  # already in use: the script stops there either way
+    try:
+        result = _run_verify(root, f"{fake}:/usr/bin:/bin")
+    finally:
+        held.close()
+    out = result.stdout + result.stderr
+    assert result.returncode == 1
+    for step in ("prerequisites", "env check", "compose config"):
+        assert f"passed: {step}" in out, step
+    assert "result: FAILED at step: ports free" in out
+    assert "docker: 28.0.0" in out and "compose: 2.40.0" in out
+    for value in values.values():
+        assert value not in out
