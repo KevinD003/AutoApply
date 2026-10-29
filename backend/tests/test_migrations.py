@@ -650,3 +650,36 @@ def test_l4_adds_drafting_consents_and_usage_and_downgrade_drops_only_them(dispo
         tables = set(c.execute(text("select tablename from pg_tables")).scalars())
     assert not {"drafting_consents", "drafting_usage"} & tables
     assert {"users", "answer_drafts", "documents"} <= tables
+
+
+L4 = "452ae3b5aec9"  # drafting consents and usage, before notification reads (D83)
+
+
+def test_d83_adds_notification_reads_and_downgrade_drops_only_them(disposable):
+    """Priority C (D83): one read mark per user and notification key, deleted with the user; a
+    downgrade drops the table and nothing else (every notification shows unread again)."""
+    command.upgrade(_cfg(), L4)
+    uid = uuid.uuid4()
+    with disposable.begin() as c:
+        c.execute(
+            text(
+                "insert into users (id,email,password_hash,created_at,updated_at) "
+                "values (:u,'d83.synthetic@example.com','x',now(),now())"
+            ),
+            {"u": uid},
+        )
+    command.upgrade(_cfg(), "head")
+    mark = "insert into notification_reads (id,user_id,item_key,read_at) values (:i,:u,'k',now())"
+    with disposable.begin() as c:
+        c.execute(text(mark), {"i": uuid.uuid4(), "u": uid})
+    with pytest.raises(Exception, match="unique|duplicate"):
+        with disposable.begin() as c:
+            c.execute(text(mark), {"i": uuid.uuid4(), "u": uid})
+    with disposable.begin() as c:
+        c.execute(text("delete from users where id = :u"), {"u": uid})
+        assert c.execute(text("select count(*) from notification_reads")).scalar() == 0
+    command.downgrade(_cfg(), L4)
+    with disposable.connect() as c:
+        tables = set(c.execute(text("select tablename from pg_tables")).scalars())
+    assert "notification_reads" not in tables
+    assert {"users", "drafting_consents", "execution_attempts"} <= tables

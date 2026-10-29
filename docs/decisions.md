@@ -2178,3 +2178,26 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
     explanation. The account's inputs are read once per page of jobs, not once per job.
 - **Unchanged:** `SCHEMA_VERSION` (3); no migration.
 
+## D83 — In-app notifications, derived from the records they describe (priority C, 2026-10-29)
+- **Problem:** what happens to an application while you are away (a verification code asked
+  for, an approval that stops applying, a rehearsal, a receipt, a stop) was visible only on
+  that application's page.
+- **Decision:**
+  - A feed (`GET /api/notifications`, page `/notifications`, a count in the header), derived
+    every time from the authoritative rows: checkpoints, approvals with `invalidated_at`,
+    rehearsal records and finished attempts. A notification therefore says what its record
+    says now: a code request past its time reads "expired", an attempt's text is its own
+    `outcome_detail`, a local test form is labelled as one.
+  - One notification per record, by a key that names it. A rejected code opens a new round,
+    which is a new notification; an expired or failed request is one too. An approval used up
+    by an outcome, a rehearsed attempt, an approval you revoked and an attempt you cancelled are
+    not notified apart (their outcome is, or you did it yourself).
+  - Read marks are the only stored state: `notification_reads (user_id, item_key, read_at)`,
+    unique per user and key, deleted with the user, in the export. Marking a key that is not
+    one of your current notifications is 404 and marks nothing.
+  - Nothing is emailed, texted, pushed or sent anywhere; a test checks that the module imports
+    no network, mail or task library.
+- **Small refactor:** `package.REVOKED_BY_YOU`, the one text an approval revoked by you carries.
+- **Migration:** `7d2c4e9a1b60` (one table; downgrade drops it alone). `SCHEMA_VERSION`
+  unchanged (3).
+

@@ -432,6 +432,7 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "created_at",
         "updated_at",
     ),
+    "notification_reads": ("id", "user_id", "item_key", "read_at"),
     "package_approvals": (
         "id",
         "package_id",

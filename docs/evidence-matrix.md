@@ -9,6 +9,26 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## In-app notifications (D83, 2026-10-29; local only)
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Truthful: a notification says what its record says now | `notifications/service.py` derives each one from checkpoints, approvals, rehearsal records and attempts every time | `test_a_failure_says_what_happened_and_never_promises_a_retry` (real unknown and rejected outcomes), `test_a_verification_code_request_needs_you_until_it_ends` (simulated rows) | pass | Expired approvals (not invalidated) are not notified |
+| Deduplicated: one per record | keyed by the record; a used-up approval and a rehearsed attempt are not notified apart from their rehearsal | `test_a_rehearsal_is_one_notification_not_three`, `test_a_receipt_is_notified_once_with_its_evidence_class_and_a_link` | pass | — |
+| Nothing you did yourself is news | approvals you revoked and attempts you cancelled are left out | `test_an_approval_that_stops_applying_is_notified_but_not_one_you_revoked`, `test_nothing_is_notified_for_what_you_cancelled` | pass | A package you changed yourself still notifies the approval it ended (on purpose: it no longer applies) |
+| Tenant-scoped read state | `notification_reads`; another account's key is 404 and nothing is marked | `test_read_marks_are_yours_and_another_account_cannot_see_or_touch_them`, `test_every_query_of_the_feed_is_scoped_to_the_account` | pass | — |
+| No delivery outside the app | no mail, network or task library in the module; used by its own routes only | `test_nothing_in_notifications_can_send_anything_anywhere` | pass | — |
+| Exported and deleted with the account | export inventory; FK cascade | `test_read_marks_are_exported_and_deleted_with_the_account`, `test_d83_adds_notification_reads_and_downgrade_drops_only_them` | pass | — |
+| In the browser: receipt and invalidated approval, read/unread, links, per account | `notifications/page.tsx`, header count | `notifications.spec.ts` (desktop, mobile) against the real worker and receiver | pass | — |
+
+## Jobs-list match summary (D82, 2026-10-29; local only)
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| The list and the job page cannot disagree | `fit.summary(fit.assess(...))` | `test_the_jobs_list_summarises_the_same_assessment_and_hides_nothing` | pass | — |
+| No score, verdict or probability; eligibility not summarised | summary keys fixed | `test_the_summary_says_nothing_about_eligibility`, `test_no_text_calls_it_a_prediction_a_score_or_a_verdict`, `match-summary.spec.ts` word checks | pass | — |
+| A job without text is "not compared", not "names none" | `compared` flag | `test_a_job_without_text_is_not_compared_rather_than_naming_nothing` | pass | — |
+
 ## Workday and Ashby shapes, embeds, credentials, custom widgets (D81, 2026-10-29; local only)
 
 | Requirement | Implementation | Evidence | Result | Gaps |

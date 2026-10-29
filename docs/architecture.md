@@ -40,6 +40,7 @@ Next.js frontend ──rewrite──▶ FastAPI backend ──▶ PostgreSQL (du
 | `documents` | Immutable document versions grouped by `lineage_id` |
 | `applications` | One per user and job; state, outcome, optimistic `lock_version` |
 | `application_events` | Append-only timeline; insert-only in the database (a trigger refuses UPDATE, and DELETE unless it cascades from the application or user). `source`, `from_outcome`/`to_outcome`, `occurred_on`, `evidence_note` (D53) |
+| `notification_reads` | That you read a notification, by its key (D83). Notifications themselves are derived from the records they describe, never stored |
 | `audit_events` | Audit trail; `meta` sanitized before storage (`docs/audit-events.md`). Application code never updates or deletes rows; the privacy repair migration `c303eee5a3c9` rewrote legacy `meta` once |
 
 Every fact row carries `provenance` (user_entered / resume_parse / import), `approval_status`

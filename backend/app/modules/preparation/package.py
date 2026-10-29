@@ -707,6 +707,10 @@ def approve(
     return appr
 
 
+# An approval you revoked yourself (notifications leave it out: you did it).
+REVOKED_BY_YOU = "Revoked by you"
+
+
 def revoke(db: Session, app: Application, queued_attempt: str = "none") -> None:
     """Invalidate every live approval of the application. `queued_attempt`: what revoking did to
     an attempt in progress (execution.service.stop_for_revoke): none, cancelled or stopping."""
@@ -717,7 +721,7 @@ def revoke(db: Session, app: Application, queued_attempt: str = "none") -> None:
         )
     ):
         appr.invalidated_at = utcnow()
-        appr.invalidation_reason = "Revoked by you"
+        appr.invalidation_reason = REVOKED_BY_YOU
     record(db, app.user_id, "package.revoke", "application", app.id, queued_attempt=queued_attempt)
 
 

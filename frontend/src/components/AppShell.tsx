@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 
-import { api, ApiError, Me, setCsrf } from "@/lib/api";
+import { api, ApiError, Me, NOTIFICATIONS_CHANGED, setCsrf } from "@/lib/api";
 import { ErrorBox, Loading } from "./ui";
 
 const NAV = [
@@ -36,6 +36,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
       });
   }, [router, path]);
 
+  // Priority C (D83): the unread count, read again on every page and after marking.
+  const [unread, setUnread] = useState<number | null>(null);
+  useEffect(() => {
+    if (!me) return;
+    const refresh = () =>
+      api<{ unread: number }>("/notifications/unread")
+        .then((r) => setUnread(r.unread))
+        .catch(() => setUnread(null));
+    refresh();
+    window.addEventListener(NOTIFICATIONS_CHANGED, refresh);
+    return () => window.removeEventListener(NOTIFICATIONS_CHANGED, refresh);
+  }, [me, path]);
+
   async function logout() {
     await api("/auth/logout", { method: "POST" }).catch(() => undefined);
     setCsrf(null);
@@ -58,6 +71,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
             NoEfforts
           </Link>
           <div className="flex items-center gap-3 text-sm">
+            <Link
+              href="/notifications"
+              aria-current={path.startsWith("/notifications") ? "page" : undefined}
+              aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
+              className="flex items-center gap-1 rounded-lg px-2 py-1 font-medium text-slate-700 hover:bg-slate-100"
+            >
+              Notifications
+              {!!unread && (
+                <span aria-hidden="true" className="rounded-full bg-indigo-600 px-1.5 text-xs font-semibold text-white">
+                  {unread}
+                </span>
+              )}
+            </Link>
             <span className="hidden text-slate-500 sm:inline">{me.email}</span>
             <button onClick={logout} className="text-slate-600 underline-offset-2 hover:underline">
               Sign out

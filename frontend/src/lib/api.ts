@@ -89,6 +89,25 @@ export interface JobMatch {
   unknown: number;
 }
 
+/** Priority C (D83): one in-app notification, derived from the record it names (no delivery
+ * outside the app). */
+export interface AppNotification {
+  key: string;
+  kind: "checkpoint" | "approval_invalidated" | "rehearsal" | "receipt" | "failure";
+  at: string;
+  application_id: string;
+  job: string;
+  title: string;
+  text: string;
+  needs_action: boolean;
+  evidence_label: string | null;
+  link: string;
+  read: boolean;
+}
+
+/** Fired after notifications are marked, so the header count refreshes at once. */
+export const NOTIFICATIONS_CHANGED = "noefforts:notifications";
+
 export interface FitYours {
   country: string;
   authorized: string;

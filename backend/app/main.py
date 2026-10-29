@@ -15,6 +15,7 @@ from app.modules.documents.router import router as documents_router
 from app.modules.execution.router import router as execution_router
 from app.modules.identity.router import router as auth_router
 from app.modules.jobs.router import router as jobs_router
+from app.modules.notifications.router import router as notifications_router
 from app.modules.preparation.router import router as preparation_router
 from app.modules.profiles.router import router as profile_router
 from app.modules.providers.router import router as providers_router
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
         execution_router,
         providers_router,
         discovery_router,
+        notifications_router,
     ):
         app.include_router(r, prefix=API_PREFIX)
 
