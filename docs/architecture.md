@@ -136,7 +136,8 @@ Module `app/modules/preparation/`:
 | `classify.py` | Deterministic intent classification (what a question asks), including country, sponsorship time frame, negation, and explicit ambiguity reasons. |
 | `resolver.py` | Resolution order and value validation — see `docs/answer-policy.md`. |
 | `package.py` | Builds package content, hashes it, writes immutable versions, binds and invalidates approvals, and moves the application between `preparing`, `needs_user_action`, `awaiting_approval` and back out of `queued` when content changes. |
-| `drafting.py` | Optional `DraftProvider` interface with grounding validation; `get_provider()` returns `None` (no provider configured). |
+| `drafting.py` | Optional `DraftProvider` interface with grounding validation; `get_provider()` returns the owner-configured provider or `None` (the default), `provider_for()` adds the owner, consent and budget checks (D74). |
+| `anthropic_provider.py`, `drafting_access.py` | Claude through Anthropic's API, off by default; the owner account, the user's consent to the exact text, and the daily budget reserved at each request's worst case (L4, D74). |
 | `router.py` | Form capture, package review, answers, consents, document selection, approve/revoke, drafts, answer bank (one upsert per save, D51). |
 | `bankscope.py` | Which answers are never saved to or reused from the answer bank, and why (D51); the bank key. Pure. |
 

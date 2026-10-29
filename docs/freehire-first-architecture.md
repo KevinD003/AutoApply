@@ -58,7 +58,7 @@ Trust boundaries (CONFIRMED unless NEW):
   (`M/discovery/provider.py:118-126`; `tests/test_freehire_discovery.py::test_untrusted_markup_becomes_short_plain_text`).
 - **Job text never decides what is drafted** (rule; enforced since C15, D68). The 500-character
   summary is copied into `Job.description` when a job is linked (`M/discovery/service.py:195`).
-  No drafting provider exists today, and `drafting.prompt` is the only presentation one may use:
+  The one drafting provider (L4, D74; off by default) presents a request only through `drafting.prompt`:
   job text, question and employer names are quoted strings under `untrusted`, and the facts are
   chosen before the job text is read. A number from the job text is not a grounded number. The
   legacy bot put job text and page labels straight into its prompts (`legacy-audit.md` U12;

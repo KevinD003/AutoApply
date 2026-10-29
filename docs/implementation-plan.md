@@ -295,7 +295,7 @@ while mapping each scenario to a test; a second page is a stop, not filled.
 | C18 | The one `SCHEMA_VERSION=3` bump bundling every [shape] change | S | C9, C12, C15 | **Done (D71, 2026-10-29), announced: every approval given before it is invalidated.** Preference facts hashed by value; document origin and provenance; `accept` enforced; implicit and chosen resumes explained apart; an answer awaiting consent never kept in a version |
 | L1 | Resume text extraction into proposed facts | L | C16, C18 | **Done (D72, 2026-10-29):** PDF, DOCX and TXT text; work, education and credentials proposed, approved one by one; nothing inferred, legal and sensitive lines skipped |
 | L2, L3 | Tailored resumes and grounded cover letters | L | C15, C16, C18 | **Done in code (D73, 2026-10-29):** generated only through the drafting provider (none configured: 503), from approved facts; checked like drafts; a DOCX for one application, used only once accepted and while its facts are unchanged; diff from the base resume |
-| L4 | A real draft provider | L | L2, L3 | **Owner decision:** server-side credentials, a cost budget and a consent screen showing what leaves NoEfforts; not started |
+| L4 | A real draft provider | L | L2, L3 | **Done in code, off (D74, 2026-10-29):** Claude through Anthropic's API, only for an owner account, after that user agrees to the exact consent text, within a daily budget reserved at each request's worst case; default budget 0 and no key: nothing is sent. **Owner step:** the key, the owner account and a budget |
 
 ### Blocked or owner-only (not slices to implement now)
 
@@ -324,8 +324,10 @@ done: C1 C2 → C3-C5 → Q1 (D50) → S1 (C6, D51) → S2 (outcome integrity, D
       → C16 (credentials as grounded facts, D69) → C17 (deleting documents, D70)
       → C18 (SCHEMA_VERSION 3, D71)
       → L1 (facts proposed from a resume, D72) → L2, L3 in code (tailored documents, D73)
-next: L4 waits for the owner (a provider, credentials, a cost budget, a consent screen)
-later: L1-L4; live steps only with the owner's recorded permissions
+      → L4 in code, off (Claude as the drafting provider, D74)
+next: the owner turns L4 on (a key, the owner account, a budget, then agreeing in the app)
+later: live steps only with the owner's recorded permissions (a live Freehire read or watch, the
+      read-only Greenhouse run, AI drafting)
 ```
 
 S2, S4 and S5 touch different modules from the C-steps and can be reordered without conflict;
@@ -406,11 +408,15 @@ given again.**
 licences are proposed into the profile and used only once approved.
 
 **L2 and L3 (tailored resumes and cover letters, D73) are done in code.** They run only
-through a drafting provider, and none is configured, so nothing is generated yet.
+through the drafting provider.
 
-**Next: L4, an owner decision.** A real provider needs server-side credentials, a cost budget
-and a consent screen that shows what leaves NoEfforts; nothing is sent to an external AI
-service until the owner decides them.
+**L4 (Claude as the drafting provider, D74) is done in code and off.** It is used only for an
+owner account, after that user agrees in the profile to the exact consent text, and within a
+daily budget (default 0). No key exists in the repository, and nothing has been sent.
+
+**Next: the owner's step.** Set `NOEFFORTS_DRAFTING_PROVIDER=anthropic`, the API key, the owner
+account and a daily budget on the server, then agree in the app. Showing the consent text to
+anyone but the owner is a legal and consent decision that stays with the owner.
 
 ## 5. Never in any slice
 

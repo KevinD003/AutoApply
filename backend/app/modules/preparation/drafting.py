@@ -1,9 +1,13 @@
 """Optional long-form drafting interface.
 
-No real LLM provider is wired in yet: `get_provider()` returns None, the API reports drafting as
-unavailable, and users write long answers themselves. Tests inject a clearly labelled fake
-provider to exercise the validation path. A real provider must implement `DraftProvider`, be
-enabled only with server-side credentials, and report cost.
+One real provider exists (L4, D74): Claude through Anthropic's API
+(`anthropic_provider.AnthropicProvider`). It is off by default: `get_provider()` returns it only
+when the owner has configured it on the server, and `provider_for()` hands it to a user only when
+that account is the owner's, has agreed to the exact consent text and the day's budget is not
+spent (`drafting_access`). Otherwise the API reports drafting as unavailable and users write long
+answers themselves. Tests inject clearly labelled fake providers to exercise the validation path;
+a provider that sends anything out of NoEfforts sets `external = True`, which puts it behind
+those checks.
 
 Grounding rules enforced on every draft, whatever the provider:
   * inputs are only approved profile facts and the job's own text, passed as data;
@@ -70,6 +74,27 @@ class DraftingUnavailable(RuntimeError):
     pass
 
 
+class ProviderFailed(RuntimeError):
+    """The provider gave no usable draft. `code` is a fixed reason code, safe to record and show;
+    nothing the provider returned is kept or shown."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+# L4 (D74): every code a provider failure is reported with.
+PROVIDER_FAILURES = {
+    "provider_refused": "The AI provider declined to write this.",
+    "provider_incomplete": "The AI provider stopped before finishing.",
+    "provider_unparseable": "The AI provider's answer could not be read.",
+    "provider_timeout": "The AI provider did not answer in time.",
+    "provider_unreachable": "The AI provider could not be reached.",
+    "provider_error": "The AI provider returned an error.",
+    "provider_destination_refused": "The AI provider's address did not pass the safety check.",
+}
+
+
 class InvalidDraft(ValueError):
     """`code` is a fixed reason code, safe to record; the message is for the user only."""
 
@@ -79,8 +104,27 @@ class InvalidDraft(ValueError):
 
 
 def get_provider() -> DraftProvider | None:
-    """Return the configured provider, or None when drafting is not available."""
-    return None
+    """The provider the owner configured on this server, or None. Not yet bound to a user:
+    callers go through `provider_for`."""
+    from app.modules.preparation import anthropic_provider
+
+    return anthropic_provider.configured()
+
+
+def provider_for(db, user) -> tuple[DraftProvider | None, str]:
+    """The provider `user` may draft with now, and a status code: `available`,
+    `not_configured`, `not_for_this_account`, `consent_needed` or `budget_reached`."""
+    from app.modules.preparation import drafting_access
+
+    provider = get_provider()
+    if provider is None:
+        return None, "not_configured"
+    if not getattr(provider, "external", False):
+        return provider, "available"  # a labelled local test double: nothing leaves
+    why = drafting_access.refusal(db, user, provider.name)
+    if why is not None:
+        return None, why
+    return provider.bound(user.id), "available"
 
 
 _NUM = re.compile(r"\d+(?:[.,]\d+)?")

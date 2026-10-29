@@ -313,6 +313,7 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
         .order_by(AnswerDraft.created_at, AnswerDraft.id)
     ).all()
     facts = {f.id: f for f in drafting.grounding_facts(db, app.user_id)} if drafts else {}
+    _, drafting_status = drafting.provider_for(db, db.get(User, app.user_id))
     return {
         "application_id": str(app.id),
         "state": app.state.value,
@@ -346,7 +347,9 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
             }
             for h in history
         ],
-        "drafting_available": drafting.get_provider() is not None,
+        # L4 (D74): why drafting is or is not available to this user (drafting.provider_for).
+        "drafting_available": drafting_status == "available",
+        "drafting_status": drafting_status,
         "drafts": [
             {
                 "id": str(d.id),
@@ -847,12 +850,7 @@ def request_draft(
     entry, f = _field(db, app, key)
     if not entry["draftable"]:
         raise bad_request("Only long-form questions can be drafted.")
-    provider = drafting.get_provider()
-    if provider is None:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "AI drafting is not configured. Write this answer yourself.",
-        )
+    provider = _drafting_provider(db, user, "Write this answer yourself.")
     facts = drafting.grounding_facts(db, user.id)
     if not facts:
         raise bad_request(
@@ -874,7 +872,14 @@ def request_draft(
         .limit(1)
     )
     if cached is None:
-        result = provider.draft(req)
+        instead = "Write this answer yourself or ask again."
+        try:
+            result = _call_provider(provider, req, instead)
+        except drafting.ProviderFailed as e:
+            record(db, user.id, "draft.provider_failed", "application", app.id,
+                   field_ref=ref(key, user.id), reason_code=e.code)  # fmt: skip
+            db.commit()
+            raise _provider_failed(e, instead) from None
         try:
             text = drafting.validate_draft(req, result)
         except drafting.InvalidDraft as e:
@@ -918,6 +923,140 @@ def request_draft(
         "provider": cached.provider,
         "status": cached.status,
     }
+
+
+class DraftingConsentIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # The version of the consent text the user read (drafting_access.CONSENT_VERSION).
+    version: str = Field(min_length=1, max_length=64)
+
+
+def _consent_view(db: Session, user: User) -> dict:
+    """L4 (D74): whether AI drafting is offered to this account, the exact consent text with
+    what is sent and what never is, and whether the user agreed to this text."""
+    from app.modules.preparation import drafting_access as da
+
+    configured = drafting.get_provider()
+    offered = (
+        configured is not None and getattr(configured, "external", False) and da.is_owner(user)
+    )
+    _, why = drafting.provider_for(db, user)
+    c = da.consent_of(db, user.id, configured.name) if offered else None
+    live = c is not None and c.withdrawn_at is None
+    return {
+        "status": why,
+        "offered": offered,
+        "provider": "Anthropic (Claude)" if offered else None,
+        "model": configured.model if offered else None,
+        "consent": {
+            "version": da.CONSENT_VERSION,
+            "text": da.CONSENT_TEXT,
+            "sends": list(da.SENDS),
+            "never_sends": list(da.NEVER_SENDS),
+        },  # fmt: skip
+        "given_at": c.given_at if live and c.consent_version == da.CONSENT_VERSION else None,
+        # Agreed to an earlier wording: it no longer counts until the user agrees again.
+        "earlier_text": live and c.consent_version != da.CONSENT_VERSION,
+        "spent_today_usd": float(da.spent_today(db)) if offered else None,
+        "daily_budget_usd": float(da.budget()) if offered else None,
+    }
+
+
+@router.get("/drafting/consent")
+def get_drafting_consent(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    return _consent_view(db, user)
+
+
+@router.put("/drafting/consent")
+def give_drafting_consent(
+    body: DraftingConsentIn, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    from app.modules.preparation import drafting_access as da
+
+    view = _consent_view(db, user)
+    if not view["offered"]:
+        raise conflict(
+            "AI drafting is not offered to this account; nothing was recorded. "
+            "(reason: drafting_not_available)"
+        )
+    provider = drafting.get_provider()
+    try:
+        c = da.give(db, user, provider.name, body.version)
+    except ValueError:
+        raise conflict(
+            "The consent text has changed since you read it; read it again. Nothing was "
+            "recorded. (reason: consent_text_changed)"
+        ) from None
+    record(db, user.id, "drafting.consent_given", "drafting_consent", c.id,
+           provider=provider.name, consent_version=c.consent_version)  # fmt: skip
+    db.commit()
+    return _consent_view(db, user)
+
+
+@router.delete("/drafting/consent")
+def withdraw_drafting_consent(
+    user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    from app.modules.preparation import anthropic_provider as ap
+    from app.modules.preparation import drafting_access as da
+
+    if da.withdraw(db, user, ap.NAME):
+        c = da.consent_of(db, user.id, ap.NAME)
+        record(db, user.id, "drafting.consent_withdrawn", "drafting_consent", c.id,
+               provider=ap.NAME)  # fmt: skip
+        db.commit()
+    return _consent_view(db, user)
+
+
+_NOT_CONFIGURED = "AI drafting is not configured."
+
+
+def _drafting_provider(db: Session, user: User, instead: str):
+    """L4 (D74): the provider this user may use now, or the refusal that says why not."""
+    provider, why = drafting.provider_for(db, user)
+    if provider is not None:
+        return provider
+    if why == "consent_needed":
+        raise conflict(
+            "Turn on AI drafting in your profile first: it says what is sent, and to whom. "
+            "(reason: drafting_consent_needed)"
+        )
+    if why == "budget_reached":
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"Today's AI drafting budget on this server is used up. {instead} "
+            "(reason: drafting_budget_reached)",
+        )
+    if why == "not_for_this_account":
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"AI drafting is not available for this account. {instead} "
+            "(reason: drafting_not_for_this_account)",
+        )
+    raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"{_NOT_CONFIGURED} {instead}")
+
+
+def _call_provider(provider, req, instead: str) -> drafting.DraftResult:
+    """One request to the provider; a spent budget is refused before anything is sent. A
+    provider failure (drafting.ProviderFailed) is the caller's to record (L4, D74)."""
+    from app.modules.preparation import drafting_access
+
+    try:
+        return provider.draft(req)
+    except drafting_access.BudgetReached:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"Today's AI drafting budget on this server is used up. {instead} "
+            "(reason: drafting_budget_reached)",
+        ) from None
+
+
+def _provider_failed(e: drafting.ProviderFailed, instead: str) -> HTTPException:
+    """Nothing the provider returned is kept or shown: a fixed message and code only."""
+    return HTTPException(
+        status.HTTP_502_BAD_GATEWAY,
+        f"{drafting.PROVIDER_FAILURES[e.code]} Nothing was kept. {instead} (reason: {e.code})",
+    )
 
 
 def _draft_request(db: Session, app: Application, f: FormField, facts) -> drafting.DraftRequest:
@@ -1113,12 +1252,7 @@ def generate_document(
     from app.modules.documents.storage import get_storage
 
     app = _owned_app(db, user, app_id)
-    provider = drafting.get_provider()
-    if provider is None:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "AI drafting is not configured. Upload your own resume or cover letter instead.",
-        )
+    provider = _drafting_provider(db, user, "Upload your own resume or cover letter instead.")
     facts = drafting.grounding_facts(db, user.id)
     if not facts:
         raise bad_request(
@@ -1128,7 +1262,14 @@ def generate_document(
     job = db.get(Job, app.job_id)
     kind, _, noun = generation.KINDS[body.kind]
     req = generation.request_for(job, body.kind, facts)
-    result = provider.draft(req)
+    instead = "Upload your own or ask again."
+    try:
+        result = _call_provider(provider, req, instead)
+    except drafting.ProviderFailed as e:
+        record(db, user.id, "document.generation_failed", "application", app.id,
+               kind=body.kind, reason_code=e.code)  # fmt: skip
+        db.commit()
+        raise _provider_failed(e, instead) from None
     try:
         text = drafting.validate_draft(req, result)
     except drafting.InvalidDraft as e:

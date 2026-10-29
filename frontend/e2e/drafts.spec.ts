@@ -28,12 +28,12 @@ test("a draft shows the facts it cites and can be rejected", async ({ page }, in
       ],
       provider: "test-fake",
     };
-    await route.fulfill({ json: { ...real, drafting_available: true, drafts: rejected ? [] : [draft] } });
+    await route.fulfill({ json: { ...real, drafting_available: true, drafting_status: "available", drafts: rejected ? [] : [draft] } });
   });
   await page.route(`**/api/applications/${app.id}/drafts/*/reject`, async (route: Route) => {
     rejected = true;
     const real = await (await page.request.get(`/api/applications/${app.id}/package`)).json();
-    await route.fulfill({ json: { ...real, drafting_available: true, drafts: [] } });
+    await route.fulfill({ json: { ...real, drafting_available: true, drafting_status: "available", drafts: [] } });
   });
 
   await page.goto(`/applications/${app.id}`);

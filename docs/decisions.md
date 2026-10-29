@@ -1846,3 +1846,67 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Rejected:** feeding the base resume's text to the provider (it is not an approved fact and
   could carry claims the profile does not hold); a PDF writer (a DOCX is enough for the fields
   that take documents, and is read back by L1's extractor).
+
+## D74 — Claude as the drafting provider, built and off: owner account, consent to the exact text, a daily budget (L4, 2026-10-29)
+- **Problem:** L4 (a real drafting provider) was the last plan step. Drafts, tailored resumes
+  and cover letters (C15, L2, L3) had every check in place but nothing to write them, and the
+  brief forbids sending applicant information to an external AI service unless the product's
+  explicit configuration and consent cover it. Credentials, a cost budget and the consent
+  screen were recorded as the owner's decisions.
+- **Decision:** build the provider and every gate around it, with each of the owner's decisions
+  left as a switch that is off by default, as S7 (D55) did for the live Freehire read. Nothing
+  is sent until the owner turns it on and the user agrees in the app.
+- **What changed:**
+  - `preparation/anthropic_provider.py`: Claude through Anthropic's Messages API and the official
+    SDK. One request per draft: `drafting.prompt`'s rules as the system
+    prompt (plus one sentence naming the two output fields), the facts and the quoted employer
+    text as one JSON user message, the answer constrained to JSON `{text, evidence}`, then
+    checked like every draft. Model `claude-opus-5-5`, effort `medium`, `max_tokens` 16,000; no
+    sampling parameters, tools or retries (`max_retries=0`). The API host must resolve to
+    public addresses only before each request (R10.5).
+  - `get_provider()` returns it only when `NOEFFORTS_DRAFTING_PROVIDER=anthropic`,
+    `NOEFFORTS_ANTHROPIC_API_KEY` is set (a `SecretStr`; an ambient `ANTHROPIC_API_KEY` is never
+    used) and the model's price is listed. `provider_for(db, user)` then hands it out only when
+    (`drafting_access`): the account is in `NOEFFORTS_DRAFTING_OWNER_EMAILS` (a personal
+    prototype, never multi-user); the user agreed to `CONSENT_TEXT` exactly as it is now (its
+    digest is stored; a changed text needs a new agreement) and has not withdrawn; and the
+    day's spend is under `NOEFFORTS_DRAFTING_DAILY_BUDGET_USD` (default 0: nothing is sent).
+  - The budget: each request reserves its worst case (every input character as a token, since
+    the JSON is ASCII, plus `max_tokens` of output, at the listed price) under one advisory
+    lock before it is sent, in its own committed transaction; the reservation becomes the cost
+    the API reports. A timeout or a lost connection keeps the worst case (the work may have
+    been done); an API error status costs nothing. Ledger: `drafting_usage` (numbers and codes
+    only). Migration `452ae3b5aec9` adds it and `drafting_consents`.
+  - The consent screen is the profile page's AI drafting card: what each request holds (approved
+    summary and skills, approved work history, education and unexpired credentials, the
+    question, the employer, the title and up to 6,000 characters of the job description), what
+    it never holds (contact details unless the user wrote them into a fact, work authorization,
+    sponsorship, residence, nationality, salary, relocation, demographic answers, documents,
+    anything unapproved), that Anthropic's handling follows the owner's API account, and the
+    day's spend. `GET/PUT/DELETE /api/drafting/consent`; audit `drafting.consent_given`
+    (the digest) and `drafting.consent_withdrawn`.
+  - A provider failure keeps nothing it returned: 502 with a fixed code (`provider_refused`,
+    `provider_incomplete`, `provider_unparseable`, `provider_timeout`, `provider_unreachable`,
+    `provider_error`, `provider_destination_refused`), audited as `draft.provider_failed` or
+    `document.generation_failed`. Refusals before sending: 409 `drafting_consent_needed`,
+    503 `drafting_not_for_this_account` or `drafting_budget_reached`; the review page says
+    which, with a link to the profile card.
+  - Any class in `app/` with a `draft` method must set `external = True`, which puts it behind
+    these checks (a static test); local test doubles do not, and send nothing.
+- **Not turned on:** no key exists in the repository or the sandbox, no request was made to
+  Anthropic, and the defaults send nothing. Turning it on is the owner's step: set the provider,
+  the key, the owner account and a budget, then agree in the app. The consent wording is
+  written for the owner's own use; showing it to anyone else is a legal and consent decision
+  that stays with the owner.
+- **Evidence:** `tests/test_drafting_provider.py` (a stub SDK client returning the SDK's own
+  `Message` type, and a stub resolver); `frontend/e2e/drafting-consent.spec.ts`;
+  `tests/test_migrations.py::test_l4_adds_drafting_consents_and_usage_and_downgrade_drops_only_them`.
+- **New dependency:** `anthropic` (Apache-2.0), `>=2.3,<3`, locked at 2.3.0, with `httpx2` and
+  `httpcore2` (BSD-3-Clause), `jiter`, `docstring-parser`, `truststore` (MIT) and `sniffio`
+  (MIT or Apache-2.0). Imported only when the provider is configured and a request is made.
+- **Unchanged:** `SCHEMA_VERSION` (3): nothing in a package changes.
+- **Rejected:** Anthropic's server-side fallback to another model (the budget is priced for the
+  configured model, and a declined draft means the user writes it); SDK retries (a timed-out
+  request may already have been billed); a per-request estimate from the token-counting
+  endpoint (a second request that also sends the applicant's facts); multi-user access (D34,
+  D55).

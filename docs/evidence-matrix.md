@@ -9,6 +9,25 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Claude as the drafting provider, built and off (L4, 2026-10-29; local only, no request to Anthropic)
+
+A stub SDK client (returning the SDK's own `Message` type) and a stub resolver stand in for
+Anthropic's API and DNS; no key exists and nothing was sent. Decision D74.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Off unless the owner configures it | `tests/test_drafting_provider.py::test_off_unless_the_owner_configures_it`, `::test_without_a_provider_nothing_changes` | no provider without `anthropic`, NoEfforts' own key and a priced model; an ambient `ANTHROPIC_API_KEY` is ignored; 503 as before |
+| The client: the server's key, no retries | `::test_the_client_uses_only_the_servers_key_and_never_retries`, `::test_the_key_never_reaches_a_response` | `max_retries=0`; the key is in no response and no settings dump |
+| Owner account and consent to the exact text | `::test_a_draft_needs_the_owners_account_and_consent_to_this_text`, `::test_another_account_is_refused_and_one_consent_never_covers_another`, `::test_a_changed_consent_text_needs_a_new_agreement` | 409 `drafting_consent_needed`, 503 `drafting_not_for_this_account`, 409 `consent_text_changed`; nothing sent before consent or after withdrawal; audit by digest |
+| Every sending provider is gated | `::test_every_provider_class_in_the_app_declares_whether_it_sends_anything_out`, `::test_an_unbound_provider_never_sends` | the one class sets `external = True`; an unbound one refuses |
+| The request | `::test_the_request_is_the_rules_and_one_json_message_with_no_sampling_or_tools` | the rules as the system prompt; one ASCII JSON user message with the approved facts; JSON output schema; effort `medium`; no sampling, thinking or tool fields |
+| The budget | `::test_no_budget_sends_nothing`, `::test_a_request_whose_worst_case_does_not_fit_is_never_sent`, `::test_the_worst_case_is_reserved_before_sending_then_the_reported_cost_is_kept`, `::test_a_settled_request_frees_what_it_did_not_use`, `::test_concurrent_reservations_never_pass_the_budget_together` | reserved before sending, then the reported cost; 6 concurrent reservations with room for 2: 2 reserved |
+| Failures keep nothing | `::test_a_failure_keeps_nothing_and_says_why` (8 cases), `::test_an_api_host_resolving_to_a_private_address_is_never_contacted`, `::test_a_provider_draft_is_checked_like_every_draft` | 502 with a fixed code; no draft stored; timeouts keep the worst case, error statuses cost nothing; a private address is never contacted; the draft checks still apply |
+| Tailored documents | `::test_a_tailored_resume_goes_through_the_same_checks` | the same gates; `document.generation_failed` audited by code |
+| Migration | `tests/test_migrations.py::test_l4_adds_drafting_consents_and_usage_and_downgrade_drops_only_them` | one consent per user and provider; rows deleted with the user; downgrade drops only them |
+| In the browser | `frontend/e2e/drafting-consent.spec.ts` (desktop, mobile; a synthetic consent view) | not configured said; what is sent and never sent shown; agree and turn off; the review page links to the profile card |
+| Sabotage | 17 cases (owner, consent version, withdrawal, budget, lock, reported cost, any version, timeout cost, destination check, `external`, key, retries, refusal, job text in the system prompt, reservation after sending, unbound use, the gate) | 17 caught; the race case caught in 5 of 5 further runs, and passes 8 of 8 when intact |
+
 ## Public-address check before every real server-side request (R10.5, 2026-10-29; local only)
 
 No request to any real host was made: a stub resolver and a stub opener stand in for the network.

@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, Empty, ErrorBox, Field, inputCls, Loading, Notice, splitList, TriSelect } from "@/components/ui";
-import { api, TriState } from "@/lib/api";
+import { api, DraftingConsentView, TriState } from "@/lib/api";
 
 interface Meta {
   id: string;
@@ -83,6 +83,7 @@ export default function ProfilePage() {
       <EmploymentCard />
       <EducationCard />
       <CredentialsCard />
+      <AiDraftingCard />
     </>
   );
 }
@@ -426,5 +427,70 @@ function CredentialsCard() {
         <div className="sm:col-span-2"><Button type="submit">Add licence or certification</Button></div>
       </form>
     </Card>
+  );
+}
+
+// L4 (D74): AI drafting is off until you turn it on here, and only where the server's owner has
+// set it up for your account. The text you agree to is the one shown, word for word; if it
+// changes, you are asked again.
+function AiDraftingCard() {
+  const [v, setV] = useState<DraftingConsentView | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const load = useCallback(() => {
+    api<DraftingConsentView>("/drafting/consent").then(setV).catch(setError);
+  }, []);
+  useEffect(load, [load]);
+
+  async function change(on: boolean) {
+    setError(null);
+    try {
+      setV(
+        await api<DraftingConsentView>("/drafting/consent", on ? { method: "PUT", json: { version: v!.consent.version } } : { method: "DELETE" }),
+      );
+    } catch (err) {
+      setError(err);
+    }
+  }
+
+  return (
+    <div id="ai-drafting">
+      <Card title="AI drafting">
+        <ErrorBox error={error} />
+        {v === null ? (
+          <Loading />
+        ) : !v.offered ? (
+          <p className="text-sm text-slate-600">
+            {v.status === "not_for_this_account" ? "AI drafting is not available for this account." : "AI drafting is not configured on this server."} You
+            write long answers, resumes and cover letters yourself.
+          </p>
+        ) : (
+          <div className="space-y-3 text-sm">
+            <p>
+              {v.given_at ? <Badge tone="green">On</Badge> : <Badge tone="amber">Off</Badge>} Drafts are written by {v.provider} ({v.model}).
+            </p>
+            {v.earlier_text && <p className="text-amber-800">The wording below has changed since you agreed. AI drafting stays off until you agree again.</p>}
+            <div>
+              <p className="font-medium">Each request holds only:</p>
+              <ul className="list-disc pl-5">{v.consent.sends.map((x) => <li key={x}>{x}</li>)}</ul>
+            </div>
+            <div>
+              <p className="font-medium">It never holds:</p>
+              <ul className="list-disc pl-5">{v.consent.never_sends.map((x) => <li key={x}>{x}</li>)}</ul>
+            </div>
+            <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700" aria-label="What you agree to">{v.consent.text}</p>
+            {v.daily_budget_usd !== null && (
+              <p className="text-xs text-slate-500">
+                Spent today on this server: ${v.spent_today_usd?.toFixed(2)} of ${v.daily_budget_usd.toFixed(2)}.
+              </p>
+            )}
+            {v.given_at ? (
+              <Button variant="secondary" onClick={() => change(false)}>Turn AI drafting off</Button>
+            ) : (
+              <Button onClick={() => change(true)}>I agree: turn AI drafting on</Button>
+            )}
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }

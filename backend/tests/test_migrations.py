@@ -10,6 +10,7 @@
 8. C15: answer_drafts.grounding_hash added, text nullable; downgrade deletes erased drafts only
 9. C18, L2/L3: document provenance and its application added; a downgrade is refused while a
    generated document awaits acceptance
+10. L4: drafting_consents and drafting_usage added, deleted with the user, dropped on downgrade
 """
 
 import hashlib
@@ -604,3 +605,48 @@ def test_c18_and_l2_add_document_provenance_and_guard_the_downgrade(disposable):
             ).scalars()
         )
     assert not cols & {"base_document_id", "grounding_hash", "accepted_at", "grounded_on"}
+
+
+L2 = "60e18e9115c8"
+
+
+def test_l4_adds_drafting_consents_and_usage_and_downgrade_drops_only_them(disposable):
+    """L4 (D74): one consent per user and provider; usage rows are deleted with the user; a
+    downgrade drops both tables and nothing else."""
+    command.upgrade(_cfg(), L2)
+    uid = uuid.uuid4()
+    with disposable.begin() as c:
+        c.execute(
+            text(
+                "insert into users (id,email,password_hash,created_at,updated_at) "
+                "values (:u,'l4.synthetic@example.com','x',now(),now())"
+            ),
+            {"u": uid},
+        )
+    command.upgrade(_cfg(), "head")
+    consent = (
+        "insert into drafting_consents (id,user_id,provider,consent_version,given_at) "
+        "values (:i,:u,'anthropic','v1',now())"
+    )
+    with disposable.begin() as c:
+        c.execute(text(consent), {"i": uuid.uuid4(), "u": uid})
+        c.execute(
+            text(
+                "insert into drafting_usage (id,user_id,day,provider,model,status,reserved_usd,"
+                "cost_usd,created_at) values (:i,:u,current_date,'anthropic','m','reserved',"
+                "0.5,0.5,now())"
+            ),
+            {"i": uuid.uuid4(), "u": uid},
+        )
+    with pytest.raises(Exception, match="unique|duplicate"):
+        with disposable.begin() as c:
+            c.execute(text(consent), {"i": uuid.uuid4(), "u": uid})
+    with disposable.begin() as c:
+        c.execute(text("delete from users where id = :u"), {"u": uid})
+        for t in ("drafting_consents", "drafting_usage"):
+            assert c.execute(text(f"select count(*) from {t}")).scalar() == 0
+    command.downgrade(_cfg(), L2)
+    with disposable.connect() as c:
+        tables = set(c.execute(text("select tablename from pg_tables")).scalars())
+    assert not {"drafting_consents", "drafting_usage"} & tables
+    assert {"users", "answer_drafts", "documents"} <= tables

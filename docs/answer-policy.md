@@ -169,12 +169,18 @@ only narrowing:
 
 ## Long-form drafting (optional)
 
-- Only for long-form text questions, only on explicit request, and only if a provider is
-  configured (none is today; the UI says so and you write the answer yourself).
-- Inputs: approved profile facts (summary, skills, work history, education) and the job's own
-  text, passed as data.
+- Only for long-form text questions, only on explicit request, and only where AI drafting is
+  on for you (L4, D74): the server's owner set up the provider (Claude, through Anthropic's
+  API) for your account, you agreed in your profile to the exact text that says what is sent
+  and to whom, and the day's budget is not spent. Otherwise the page says which, and you write
+  the answer yourself. Off by default.
+- Inputs: approved profile facts (summary, skills, work history, education, unexpired
+  credentials) and the job's own text, quoted as untrusted data (C15, D68).
 - Output must cite provided facts only, fit the length limit, contain no placeholders, and
-  contain no numbers that are not in your facts or the job text. Failing drafts are discarded.
+  contain no numbers that are not in the facts it cites (never from the job text or the
+  question); it never states work authorization, sponsorship or immigration status, never
+  touches a sensitive topic, and names a licence only by citing one (C16). Failing drafts are
+  discarded, and so is anything a failed provider request returned.
 - A draft is never used until you accept it; it then shows as "Accepted draft".
 - If a fact an accepted draft relied on changes, the question becomes a checkpoint, optional or
   not: save the text as your own answer or request a new draft. Nothing stale is approved or sent.

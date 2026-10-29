@@ -377,7 +377,25 @@ export interface PackageView {
   // S3: the job's own signals (closed, excluded, possible duplicate), outside the package.
   job_signals: JobSignals;
   drafting_available: boolean;
+  // L4 (D74): why drafting is or is not available to you (backend drafting.provider_for).
+  drafting_status: DraftingStatus;
   drafts: PackageDraft[];
+}
+
+export type DraftingStatus = "available" | "not_configured" | "not_for_this_account" | "consent_needed" | "budget_reached";
+
+// L4 (D74): whether AI drafting is offered to your account, the exact consent text, and whether
+// you agreed to this text (GET/PUT/DELETE /drafting/consent).
+export interface DraftingConsentView {
+  status: DraftingStatus;
+  offered: boolean;
+  provider: string | null;
+  model: string | null;
+  consent: { version: string; text: string; sends: string[]; never_sends: string[] };
+  given_at: string | null;
+  earlier_text: boolean;
+  spent_today_usd: number | null;
+  daily_budget_usd: number | null;
 }
 
 // C15: a proposed draft and the facts it cites, as they are now (text null: changed or withdrawn).

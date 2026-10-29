@@ -1,8 +1,8 @@
 """Tailored resumes and cover letters (L2, L3; D73), written only through the drafting provider.
 
-No provider is configured (drafting.get_provider() returns None), so nothing is generated in
-any environment yet; L4 adds one, with server-side credentials and a consent screen. What is in
-place is everything around it:
+The provider is off unless the owner configures it, and is used only for an owner account that
+agreed to the exact consent text, within the day's budget (L4, D74; drafting.provider_for).
+Around it:
 
 - a request is a drafting.DraftRequest built from the user's approved facts and the job's own
   text (quoted as untrusted, drafting.prompt), never from the base resume's text;

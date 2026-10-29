@@ -96,8 +96,21 @@ class Settings(BaseSettings):
     # Refused outside development/test.
     execution_test_disable_interception: bool = False
 
-    # Optional integrations. Absent credentials disable the feature rather than failing.
-    anthropic_api_key: str | None = None
+    # L4 (D74): AI drafting through Anthropic's Messages API (preparation/anthropic_provider.py).
+    # Off unless drafting_provider is "anthropic" and anthropic_api_key is set; even then only
+    # for accounts named in drafting_owner_emails (a personal prototype, as D55), each only after
+    # it has agreed in the app to the exact consent text (preparation/drafting_access.py), and
+    # only while the day's spend (UTC) stays within drafting_daily_budget_usd, counted with the
+    # worst case of each request before it is sent; 0 sends nothing. The key stays server-side:
+    # never returned by the API, logged or passed to the browser. drafting_model must be one
+    # whose price is listed in anthropic_provider.PRICES_PER_MTOK.
+    drafting_provider: str = ""
+    drafting_model: str = "claude-opus-5-5"
+    drafting_owner_emails: list[str] = Field(default_factory=list)
+    drafting_daily_budget_usd: float = 0.0
+    drafting_timeout_seconds: int = 120
+    anthropic_api_key: SecretStr = SecretStr("")
+    anthropic_base_url: str = "https://api.anthropic.com"
 
 
 @lru_cache

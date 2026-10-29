@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AnswerInput from "@/components/AnswerInput";
 import ExecutionCard from "@/components/ExecutionCard";
 import { Badge, Button, Card, ErrorBox, inputCls, Loading, Notice } from "@/components/ui";
-import { api, ApiError, Doc, GeneratedDoc, PackageAnswer, PackageDiff, PackageDraft, PackageView, ReviewControls } from "@/lib/api";
+import { api, ApiError, Doc, DraftingStatus, GeneratedDoc, PackageAnswer, PackageDiff, PackageDraft, PackageView, ReviewControls } from "@/lib/api";
 
 const SOURCE: Record<string, { label: string; tone: "green" | "indigo" | "amber" | "slate" | "red" }> = {
   profile_fact: { label: "Profile fact", tone: "green" },
@@ -348,7 +348,7 @@ export default function ReviewPage() {
         ))}
       </Card>
 
-      <Tailored appId={id} available={view.drafting_available} onChange={load} />
+      <Tailored appId={id} status={view.drafting_status} onChange={load} />
 
       <Card title={`Needs your answer (${pending.length})`}>
         {pending.length === 0 ? (
@@ -436,7 +436,7 @@ export default function ReviewPage() {
                 </p>
                 {q.draftable && (
                   <DraftControls
-                    available={view.drafting_available}
+                    status={view.drafting_status}
                     draft={drafts[q.key]}
                     onRequest={async () => {
                       setError(null);
@@ -637,23 +637,54 @@ function ChoiceRow({ current, choices, onPick }: { current?: string; choices: [s
   );
 }
 
-const FACT_KIND: Record<string, string> = { summary: "Profile summary", skills: "Skills", employment: "Work history", education: "Education" };
+const FACT_KIND: Record<string, string> = {
+  summary: "Profile summary",
+  skills: "Skills",
+  employment: "Work history",
+  education: "Education",
+  credential: "Licences and certifications",
+};
+
+// L4 (D74): why AI drafting is not available here, and what to do instead.
+function DraftingOff({ status, instead, small }: { status: DraftingStatus; instead: string; small?: boolean }) {
+  const cls = small ? "mt-1 text-xs text-slate-500" : "text-sm text-slate-600";
+  if (status === "consent_needed")
+    return (
+      <p className={cls}>
+        AI drafting is off for your account.{" "}
+        <Link className="underline" href="/profile#ai-drafting">
+          Turn it on in your profile
+        </Link>{" "}
+        (it says what is sent, and to whom), or {instead.charAt(0).toLowerCase() + instead.slice(1)}
+      </p>
+    );
+  const why =
+    status === "budget_reached"
+      ? "Today's AI drafting budget on this server is used up."
+      : status === "not_for_this_account"
+        ? "AI drafting is not available for this account."
+        : "AI drafting is not configured on this server.";
+  return (
+    <p className={cls}>
+      {why} {instead}
+    </p>
+  );
+}
 
 function DraftControls({
-  available,
+  status,
   draft,
   onRequest,
   onAccept,
   onReject,
 }: {
-  available: boolean;
+  status: DraftingStatus;
   draft?: PackageDraft;
   onRequest: () => void;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
 }) {
-  if (!available)
-    return <p className="mt-1 text-xs text-slate-500">AI drafting is not configured on this server. Write this answer yourself.</p>;
+  if (status !== "available") return <DraftingOff status={status} instead="Write this answer yourself." small />;
   return (
     <div className="mt-2 space-y-2">
       {draft ? (
@@ -688,7 +719,7 @@ function DraftControls({
 
 // L2/L3 (D73): a resume tailored to this job, or a cover letter, written from your approved facts
 // only. Nothing is used until you accept it, and it stops being usable when a fact it cites changes.
-function Tailored({ appId, available, onChange }: { appId: string; available: boolean; onChange: () => void }) {
+function Tailored({ appId, status, onChange }: { appId: string; status: DraftingStatus; onChange: () => void }) {
   const [items, setItems] = useState<GeneratedDoc[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
@@ -717,7 +748,7 @@ function Tailored({ appId, available, onChange }: { appId: string; available: bo
     <Card title="Tailored resume and cover letter">
       <ErrorBox error={error} />
       {notice && <Notice>{notice}</Notice>}
-      {available ? (
+      {status === "available" ? (
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => act(`/applications/${appId}/generated-documents`, { kind: "resume" }, "A tailored resume was written: read it below.")}>
             Tailor my resume for this job
@@ -727,7 +758,7 @@ function Tailored({ appId, available, onChange }: { appId: string; available: bo
           </Button>
         </div>
       ) : (
-        <p className="text-sm text-slate-600">AI drafting is not configured on this server. Upload your own resume or cover letter instead.</p>
+        <DraftingOff status={status} instead="Upload your own resume or cover letter instead." />
       )}
       {items && items.length > 0 && (
         <ul className="mt-3 space-y-4">

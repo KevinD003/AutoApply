@@ -1,10 +1,11 @@
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -174,3 +175,46 @@ class AnswerDraft(Base):
     )  # proposed|accepted|rejected
     cost_usd: Mapped[float | None] = mapped_column(Numeric(10, 6))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DraftingConsent(Base):
+    """L4 (D74): a user's agreement that drafting requests may be sent to an external provider,
+    bound to the exact consent text (`consent_version`, its digest). It counts only for that
+    text and until withdrawn; a changed text needs a new agreement."""
+
+    __tablename__ = "drafting_consents"
+    __table_args__ = (UniqueConstraint("user_id", "provider"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[str] = mapped_column(String(50))
+    consent_version: Mapped[str] = mapped_column(String(64))
+    given_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DraftingUsage(Base):
+    """L4 (D74): one request to an external drafting provider. Written with the request's worst
+    case cost before it is sent (`reserved`), then set to what the provider reported
+    (`settled`); a request whose outcome is unknown keeps its worst case. The day's budget is
+    counted from these rows. Numbers and codes only: no text."""
+
+    __tablename__ = "drafting_usage"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    day: Mapped[date] = mapped_column(Date, index=True)  # UTC
+    provider: Mapped[str] = mapped_column(String(50))
+    model: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(20), default="reserved")  # reserved|settled
+    outcome: Mapped[str | None] = mapped_column(String(50))
+    reserved_usd: Mapped[float] = mapped_column(Numeric(10, 6))
+    cost_usd: Mapped[float] = mapped_column(Numeric(10, 6))
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

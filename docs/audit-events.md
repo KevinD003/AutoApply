@@ -79,6 +79,7 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `document.generated_accepted` | `document` | `kind` | you accepted it for its application |
 | `document.generated_rejected` | `application` | `kind` | you rejected it; the document and its file were deleted |
 | `document.generation_rejected` | `application` | `kind`, `reason_code` | the provider's text failed a draft check and was discarded (C15's codes) |
+| `document.generation_failed` | `application` | `kind`, `reason_code` | the drafting provider gave no usable document (L4, D74): `provider_refused`, `provider_incomplete`, `provider_unparseable`, `provider_timeout`, `provider_unreachable`, `provider_error`, `provider_destination_refused`; nothing it returned is kept |
 | `document.delete` | `document` | `scope`, `versions` | `version` or `lineage`; how many versions were deleted with their files (C17, D70); never the name |
 | `job.create` / `job.duplicate` | `job` | - | one call site; the action says whether the job was new |
 | `job.update` | `job` | `fields` | names of the job fields the user changed, never their values |
@@ -93,6 +94,8 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `discovery.watch.found` | `discovery_watch` | `created`, `provider` | a check of a watched search added postings (written only when it found new ones) |
 | `discovery.watch.pause` | `discovery_watch` | `reason` | a watched search was paused: not an owner, a refused address, or ten failures in a row (the failure kind) |
 | `discovery.watch.stop` | `discovery_watch` | `provider` | the owner stopped a watched search |
+| `drafting.consent_given` | `drafting_consent` | `consent_version`, `provider` | the user agreed to the consent text for AI drafting (L4, D74); the digest of the text agreed to |
+| `drafting.consent_withdrawn` | `drafting_consent` | `provider` | the user turned AI drafting off; requests stop at once |
 | `job.form_captured` | `job` | `source`, `version` | a fixed form-source name; form version number |
 | `route.decision` | `job` | `adapter_version`, `api_grant`, `evidence`, `provider`, `reason_code`, `route` | see "Route decisions" below |
 | `application.create` | `application` | - | |
@@ -104,6 +107,7 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `application.answer_cleared` | `application` | `field_ref` | reference to the question whose answer for this application was removed (C12) |
 | `application.document` | `application` | `change`, `role` | `chosen` or `cleared`; `resume` or `cover_letter` (C12); never the document's id or name |
 | `draft.created` | `application` | `cost_usd`, `field_ref`, `provider` | drafting cost; reference; the drafting provider's name |
+| `draft.provider_failed` | `application` | `field_ref`, `reason_code` | reference; the drafting provider gave no usable draft (L4, D74): `provider_refused`, `provider_incomplete`, `provider_unparseable`, `provider_timeout`, `provider_unreachable`, `provider_error`, `provider_destination_refused`; nothing it returned is kept |
 | `draft.accepted` | `application` | `field_ref` | reference (C15, D68); the draft's text is the answer, recorded as an input, never here |
 | `draft.rejected` | `application` | `field_ref`, `reason_code` | reference; a fixed rejection code (`empty`, `too_long`, `placeholders`, `uncited_facts`, `invented_numbers`, `legal_status`, `sensitive_topic`, `uncited_credential`; `by_user` when the user rejects it, and its text is erased) |
 | `answer_bank.delete` | `answer_bank` | - | |
