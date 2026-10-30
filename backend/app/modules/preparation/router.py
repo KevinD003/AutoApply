@@ -166,15 +166,11 @@ def _store_form(db, user, job, schema: FormSchema, source, ref, extraction) -> d
 
 
 def _fetch_fixture(url: str) -> bytes:
-    """Loopback fixture only (callers check is_fixture_origin); no proxies, no redirects."""
-    import urllib.request
+    """Local test fixture only (callers check is_fixture_origin; so does every connection,
+    by the address it reaches): no proxies, no redirects."""
+    from app.core.urlsafety import fixture_opener
 
-    class _NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, *a, **k):
-            return None
-
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
-    with opener.open(url, timeout=10) as r:
+    with fixture_opener().open(url, timeout=10) as r:
         return r.read(2_000_001)[:2_000_000]
 
 

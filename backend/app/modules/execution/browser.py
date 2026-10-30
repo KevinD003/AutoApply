@@ -4,7 +4,8 @@ Network isolation (enforced outside the browser; see sandbox/):
   * Chromium runs in its own network namespace with only a loopback interface: no routes, no
     DNS, no database or broker. Its only way out is a relay to the egress proxy, which allows
     exactly the approved destination host:port and refuses non-public addresses (except an
-    explicit test-only fixture exception).
+    explicit test-only fixture exception, limited to loopback and the configured test network;
+    a fixture is never browsed without the proxy).
   * Separation from the orchestrator's credentials: a minimal environment (no database URL,
     broker URL, API keys); its own PID namespace and /proc, so the worker's process and
     environment are invisible; its own mount namespace in which the backend code, `.env`,
@@ -370,6 +371,7 @@ def browser_session(
     that the namespace + egress proxy alone enforce the policy. `subresources`: extra origins
     for page dependencies (SubresourceRule), read-only observation only; every layer (resolver
     rules, interception, egress proxy, runner) is widened by exactly these and nothing else."""
+    from app.core.urlsafety import fixture_networks
     from app.modules.execution.sandbox.egress_proxy import EgressProxy
 
     allowed = allowed_origin.lower().rstrip("/")
@@ -378,9 +380,20 @@ def browser_session(
     log = EgressLog()
     args = ["--disable-background-networking", "--no-first-run", "--disable-sync"]
     rules = tuple(subresources)
+    if isolation not in ("netns", "container") and (
+        allow_private_destination or any(r.allow_private for r in rules)
+    ):
+        # Only the egress proxy checks the address each connection and redirect hop reaches.
+        raise IsolationUnavailable(
+            "a local test fixture is reached only through the egress proxy", "fixture_needs_proxy"
+        )
     extra_hp = [r.host_port for r in rules]
     if intercept:
-        keep = " , ".join(f"EXCLUDE {h}" for h in [host, *(h for h, _ in extra_hp)])
+        # The proxy itself stays reachable, as in the container launcher: in netns mode it is
+        # the relay on the namespace's loopback (before D86 only a 127.0.0.1 destination did).
+        relay = ["127.0.0.1"] if isolation == "netns" else []
+        keep = " , ".join(f"EXCLUDE {h}" for h in dict.fromkeys(
+            [host, *(h for h, _ in extra_hp), *relay]))  # fmt: skip
         args.insert(0, f"--host-resolver-rules=MAP * ~NOTFOUND , {keep}")
     with ExitStack() as stack, sync_playwright() as p:
         launch: dict = {"headless": True, "args": args}
@@ -395,6 +408,7 @@ def browser_session(
                 allow={(host, port), *extra_hp},
                 allow_private=({(host, port)} if allow_private_destination else set())
                 | {r.host_port for r in rules if r.allow_private},
+                networks=fixture_networks(),
             ).start()
             stack.callback(proxy.stop)
             log.proxy = proxy
@@ -429,8 +443,11 @@ def browser_session(
             ctx.set_default_navigation_timeout(nav_timeout_ms)
             ctx.set_default_timeout(nav_timeout_ms)
             if intercept:
+                # With an egress proxy (netns, container) the driver never fetches or
+                # connects itself: it runs outside the browser's network, so a request it made
+                # would bypass the proxy and its check of the address reached (D86).
                 _install_interception(
-                    ctx, allowed, log, driver_fetch=isolation != "container", subresources=rules
+                    ctx, allowed, log, driver_fetch=isolation == "off", subresources=rules
                 )
             pages = []
             ctx.on("page", lambda pg: pg.close() if pages else pages.append(pg))
@@ -443,9 +460,10 @@ def browser_session(
 def _install_interception(
     ctx, allowed: str, log: "EgressLog", *, driver_fetch=True, subresources=()
 ) -> None:
-    """`driver_fetch=False` (container mode): never fetch or connect from the Playwright
-    driver, which runs in the browser container but outside the browser's proxy settings;
-    every allowed request is left to the browser, so it can only leave through the proxy.
+    """`driver_fetch=False` (netns and container modes): never fetch or connect from the
+    Playwright driver, which runs outside the browser's network namespace (netns) or outside
+    its proxy settings (container); every allowed request is left to the browser, so it can
+    only leave through the egress proxy, which checks every hop and the address it reaches.
     `subresources`: a request to one of those origins passes only with one of its methods and
     resource types; so must every redirect target."""
     rules = _rules_by_origin(subresources)

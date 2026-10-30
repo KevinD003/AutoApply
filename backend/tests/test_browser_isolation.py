@@ -336,10 +336,11 @@ def test_closing_the_browser_mid_submit_never_resends(isolation):
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     origin = f"http://127.0.0.1:{srv.server_port}"
     try:
-        with browser_session(origin, 3000, isolation=isolation, allow_private_destination=True) as (
-            page,
-            _log,
-        ):
+        # Without a proxy ("off") the fixture flag is refused (D86) and would change nothing.
+        private = isolation != "off"
+        with browser_session(
+            origin, 3000, isolation=isolation, allow_private_destination=private
+        ) as (page, _log):
             page.goto(origin + "/")
             page.click("#go", no_wait_after=True)
             # Wait the way the adapter does (through Playwright, so route handlers run).

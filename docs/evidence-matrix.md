@@ -9,6 +9,26 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Fixture-origin boundary (D86, 2026-10-30; local only)
+
+Every public address below comes from a fake resolver; each check refuses before a connection
+is opened, so nothing public was contacted. Tests are in `test_fixture_origin_boundary.py`
+unless named otherwise.
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Single-label names only if listed exactly | `urlsafety.FIXTURE_SERVICE_HOSTS` (`receiver`) | `test_only_names_listed_exactly_are_fixture_hosts`, `test_an_unlisted_single_label_name_is_refused`, `test_lever_adapter.py::test_only_the_listed_compose_receiver_name_is_a_fixture_host` | pass | — |
+| A listed name resolving publicly is refused | `connect_fixture` (every resolved address); egress proxy `check_destination` | `test_a_listed_name_resolving_to_a_public_address_is_refused_before_connecting`, `test_a_listed_name_is_read_only_while_it_resolves_locally`, `test_execution_through_a_listed_name_follows_where_it_resolves`, `test_the_proxy_refuses_a_fixture_name_resolving_outside_the_test_network` | pass | — |
+| The address actually connected to is checked | `connect_fixture` peer check; proxy peer check before relaying | `test_the_address_actually_connected_to_is_checked_again`, `test_the_proxy_checks_the_peer_it_actually_reached` | pass | — |
+| Test networks are narrow and private | `parse_fixture_networks`; Settings validator; proxy service startup | `test_a_test_network_must_be_a_narrow_private_network`, `test_test_networks_must_be_given_as_a_list`, `test_the_proxy_service_takes_its_own_test_network_and_refuses_a_wide_one` | pass | — |
+| Redirects refused, every hop checked | fixture opener follows none and checks each request's origin; browser hops through the proxy | `test_the_opener_never_follows_a_redirect`, `test_every_request_the_opener_makes_is_checked_by_origin`, `test_a_capture_redirect_off_the_fixture_is_never_followed`, `test_lever_adapter.py::test_a_redirect_off_the_local_site_is_blocked_before_anything_is_entered` | pass | — |
+| Outside the test environment, refused | `is_fixture_origin` needs `env == "test"` | `test_fixture_origins_are_refused_outside_the_test_environment` (development, staging, production) | pass | — |
+| Other spellings of an address; IPv6 loopback and mapped forms | standard-form literals only; `_legacy_ipv4` in `check_url_syntax` | `test_other_spellings_of_a_loopback_address_never_count`, `test_other_spellings_of_a_public_address_are_public_not_fixtures`, `test_ipv6_loopback_and_mapped_forms`, `test_fixture_addresses_are_loopback_or_on_the_test_network` | pass | — |
+| A fixture is never browsed without the egress proxy | `browser_session` refuses `isolation=off` (`fixture_needs_proxy`) | `test_a_fixture_is_never_browsed_without_the_egress_proxy` | pass | — |
+| In `netns` mode every connection leaves through the proxy | driver never fetches or connects (was: GET/HEAD and WebSockets from the driver) | probe (no proxy decision for the destination with interception on, before the fix); `test_in_netns_mode_the_page_load_itself_passes_the_egress_proxy`, `test_execution_through_a_listed_name_follows_where_it_resolves` (refused at the proxy) | pass | — |
+| Compose execution still works | `fixtures` pinned to `10.231.47.0/24`, `NOEFFORTS_ENV=test` on the API and worker, test network on API, worker and proxy | CI `execution-compose` on the commit (no Docker daemon in this sandbox) | see `implementation-status.md` | not run locally |
+| Sabotage | 14 guards broken one at a time | each caught, restored by MD5 (`implementation-status.md`) | pass | — |
+
 ## Lever-style adapter against the local receiver (D85, 2026-10-30; local only)
 
 The oracle is the receiver's own ledger. Passing shows compatibility with the labelled

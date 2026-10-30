@@ -5,7 +5,9 @@ Two listeners:
     (`Proxy-Authorization: Basic <session-id>:<session-token>`). Its destination is then
     checked against THAT session's allow-list by the same code as the in-process proxy
     (`EgressProxy.check`: exact host:port, every resolved address public unless the exact
-    host:port is a fixture origin, connect to the checked address). Unauthenticated → 407.
+    host:port is a fixture origin, whose addresses must then be loopback or on this service's
+    own EGRESS_FIXTURE_NETWORKS; connect to the checked address and check the peer reached).
+    Unauthenticated → 407.
   * the control socket (worker-facing): create / inspect / delete sessions. It is a UNIX
     socket, not a network listener: in Compose it lives on a volume mounted only into this
     service and the worker, so the browser container has neither a route nor a path to it.
@@ -14,7 +16,9 @@ Sessions expire on their own. Decisions are logged as host:port only.
 
 Run: python -m app.modules.execution.sandbox.proxy_service
 Env: EGRESS_CONTROL_TOKEN (required, >= 16 chars), EGRESS_PROXY_PORT (3128),
-     EGRESS_CONTROL_SOCKET (/run/egress-control/control.sock), EGRESS_SESSION_TTL_SECONDS (900).
+     EGRESS_CONTROL_SOCKET (/run/egress-control/control.sock), EGRESS_SESSION_TTL_SECONDS (900),
+     EGRESS_FIXTURE_NETWORKS (TEST ONLY, JSON list of private CIDRs; default none: a fixture
+     host:port may then only be loopback, which here is this container itself).
 """
 
 import asyncio
@@ -30,6 +34,7 @@ import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler
 
+from app.core.urlsafety import parse_fixture_networks
 from app.modules.execution.sandbox.egress_proxy import Decision, check_destination, serve_connection
 
 log = logging.getLogger("noefforts.egress")
@@ -40,9 +45,10 @@ class Policy:
     allow: set[tuple[str, int]]
     allow_private: set[tuple[str, int]]
     decisions: list[Decision] = field(default_factory=list)
+    networks: tuple = ()  # this service's own test networks (EGRESS_FIXTURE_NETWORKS)
 
     def check(self, host: str, port: int) -> tuple[str | None, str]:
-        return check_destination(self.allow, self.allow_private, host, port)
+        return check_destination(self.allow, self.allow_private, host, port, self.networks)
 
 
 @dataclass
@@ -54,8 +60,8 @@ class Session:
 
 
 class Registry:
-    def __init__(self, ttl: float):
-        self.ttl = ttl
+    def __init__(self, ttl: float, networks: tuple = ()):
+        self.ttl, self.networks = ttl, tuple(networks)
         self._lock = threading.Lock()
         self._sessions: dict[str, Session] = {}
 
@@ -63,6 +69,7 @@ class Registry:
         policy = Policy(
             allow={(h.lower(), int(p)) for h, p in allow},
             allow_private={(h.lower(), int(p)) for h, p in allow_private},
+            networks=self.networks,
         )
         s = Session(secrets.token_hex(8), secrets.token_urlsafe(24), policy, time.time() + self.ttl)
         with self._lock:
@@ -197,8 +204,10 @@ def control_server(path: str, registry: Registry, control_token: str) -> _UnixHT
         os.umask(old)
 
 
-async def serve(proxy_port: int, control_socket: str, control_token: str, ttl: float):
-    registry = Registry(ttl)
+async def serve(
+    proxy_port: int, control_socket: str, control_token: str, ttl: float, networks: tuple = ()
+):
+    registry = Registry(ttl, networks)
     httpd = control_server(control_socket, registry, control_token)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
 
@@ -216,12 +225,18 @@ def main():
     token = os.environ.get("EGRESS_CONTROL_TOKEN", "")
     if len(token) < 16:
         raise SystemExit("EGRESS_CONTROL_TOKEN (at least 16 characters) is required")
+    try:
+        raw = os.environ.get("EGRESS_FIXTURE_NETWORKS") or "[]"
+        networks = parse_fixture_networks(json.loads(raw))
+    except (ValueError, TypeError) as e:
+        raise SystemExit(f"EGRESS_FIXTURE_NETWORKS: {e}") from None
     asyncio.run(
         serve(
             int(os.environ.get("EGRESS_PROXY_PORT", "3128")),
             os.environ.get("EGRESS_CONTROL_SOCKET", "/run/egress-control/control.sock"),
             token,
             float(os.environ.get("EGRESS_SESSION_TTL_SECONDS", "900")),
+            networks,
         )
     )
 

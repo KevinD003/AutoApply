@@ -4,7 +4,9 @@ Listens on a UNIX socket (reachable from inside the browser's network namespace 
 the relay in `netns_boot.py`). Every request names its destination (CONNECT host:port, or an
 absolute-form HTTP URL); it is allowed only if (host, port) is on the allow-list, the host
 resolves, and every resolved address is public, except for an explicit test-only fixture
-exception. The proxy then connects to the exact address it checked (no second DNS lookup).
+exception: every address of a fixture host:port must be loopback or on a configured test
+network, never public or link-local (D86). The proxy then connects to the exact address it
+checked (no second DNS lookup) and checks the peer it actually reached before relaying.
 Decisions are logged without paths, headers or bodies.
 """
 
@@ -16,12 +18,17 @@ import threading
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
+from app.core.urlsafety import fixture_address
+
 DENY = b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
 
 
-def check_destination(allow, allow_private, host: str, port: int) -> tuple[str | None, str]:
+def check_destination(
+    allow, allow_private, host: str, port: int, networks=()
+) -> tuple[str | None, str]:
     """(address to connect to, reason). Exact host:port allow-list; every resolved address must
-    be public unless that exact host:port is in `allow_private` (fixture origins only)."""
+    be public, or, for a host:port in `allow_private` (fixture origins only), loopback or inside
+    one of `networks` (the test network): a fixture name that resolves elsewhere is refused."""
     key = (host.lower().strip("[]"), port)
     if key not in allow:
         return None, "destination not on the allow-list"
@@ -30,11 +37,25 @@ def check_destination(allow, allow_private, host: str, port: int) -> tuple[str |
     except socket.gaierror:
         return None, "does not resolve"
     ips = sorted({i[4][0] for i in infos})
+    if not ips:
+        return None, "does not resolve"
     for ip in ips:
-        a = ipaddress.ip_address(ip.split("%")[0])
-        if not a.is_global and key not in allow_private:
-            return None, f"resolves to non-public address {a}"
+        reason = address_refusal(key in allow_private, ip, networks)
+        if reason:
+            return None, reason
     return ips[0], "allowed"
+
+
+def address_refusal(fixture: bool, ip: str, networks) -> str | None:
+    a = ipaddress.ip_address(ip.split("%")[0])
+    if fixture:
+        return None if fixture_address(a, networks) else f"fixture outside the test network {a}"
+    return None if a.is_global else f"resolves to non-public address {a}"
+
+
+def peer_address(writer) -> str | None:
+    peer = writer.get_extra_info("peername")
+    return peer[0] if peer else None
 
 
 @dataclass
@@ -51,6 +72,7 @@ class EgressProxy:
     allow: set[tuple[str, int]]
     allow_private: set[tuple[str, int]] = field(default_factory=set)  # test fixtures only
     decisions: list[Decision] = field(default_factory=list)
+    networks: tuple = ()  # test networks a fixture may be on, besides loopback
 
     def __post_init__(self):
         self._loop = asyncio.new_event_loop()
@@ -86,7 +108,7 @@ class EgressProxy:
 
     # -- policy ------------------------------------------------------------------------------
     def check(self, host: str, port: int) -> tuple[str | None, str]:
-        return check_destination(self.allow, self.allow_private, host, port)
+        return check_destination(self.allow, self.allow_private, host, port, self.networks)
 
     # -- connection handling -----------------------------------------------------------------
     async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -101,8 +123,9 @@ AUTH_REQUIRED = (
 
 
 async def serve_connection(reader, writer, policy_for):
-    """One proxied connection. `policy_for(head)` returns the policy (an object with `check`
-    and `decisions`) the request is subject to, or None to demand proxy authentication."""
+    """One proxied connection. `policy_for(head)` returns the policy (an object with `check`,
+    `allow_private`, `networks` and `decisions`) the request is subject to, or None to demand
+    proxy authentication."""
     try:
         head = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 15)
     except (asyncio.IncompleteReadError, asyncio.LimitOverrunError, TimeoutError):
@@ -148,6 +171,20 @@ async def serve_connection(reader, writer, policy_for):
         up_r, up_w = await asyncio.wait_for(asyncio.open_connection(ip, port), 15)
     except (OSError, TimeoutError):
         writer.write(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
+        writer.close()
+        return
+    # The address actually reached, checked again before a byte is relayed.
+    fixture = (host.lower().strip("[]"), port) in policy.allow_private
+    peer = peer_address(up_w)
+    if (
+        peer is None
+        or ipaddress.ip_address(peer.split("%")[0]) != ipaddress.ip_address(ip.split("%")[0])
+        or address_refusal(fixture, peer, policy.networks)
+    ):
+        policy.decisions.append(Decision(host, port, False, "connected to an unchecked address"))
+        up_w.close()
+        writer.write(DENY)
+        await writer.drain()
         writer.close()
         return
     if path is None:

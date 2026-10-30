@@ -18,7 +18,7 @@ import urllib.request
 from urllib.parse import quote, urlsplit
 
 from app.core.config import get_settings
-from app.core.urlsafety import is_fixture_origin
+from app.core.urlsafety import fixture_opener, is_fixture_origin
 from app.modules.execution.adapters.fixture_ats import Outcome, UploadFailed
 from app.modules.execution.adapters.greenhouse import approved_fields
 from app.modules.preparation import greenhouse as gh
@@ -54,7 +54,7 @@ class FakeApiAdapter:
         self.origin = dest["origin"].rstrip("/")
         parts = [x for x in urlsplit(dest["url"]).path.split("/") if x]
         self.board, self.job_id = parts[1], parts[3]
-        self.opener = urllib.request.build_opener(_NoRedirect)
+        self.opener = fixture_opener(_NoRedirect)  # every connection checked (D86)
 
     # -- transport --------------------------------------------------------------------------
     def _call(self, method: str, path: str, body=None, key: str | None = None, timeout=None):

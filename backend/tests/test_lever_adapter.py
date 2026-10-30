@@ -407,11 +407,13 @@ def test_listing_a_public_site_as_a_fixture_never_makes_it_one(api, receiver, mo
     assert [r for r in receiver.ledger()["requests"] if "/lever/" in r["path"]] == []
 
 
-def test_a_single_label_internal_receiver_is_a_fixture_host():
-    """The Compose test network's receiver (scripts/compose-execution-test.sh)."""
+def test_only_the_listed_compose_receiver_name_is_a_fixture_host():
+    """The Compose test network's receiver (scripts/compose-execution-test.sh) is listed by
+    name (D86); no other single-label name, `localhost` included, is a fixture host."""
     from app.core.urlsafety import local_fixture_host
 
     assert local_fixture_host("receiver") and local_fixture_host("127.0.0.1")
-    assert local_fixture_host("localhost") and local_fixture_host("::1")
+    assert local_fixture_host("::1") and not local_fixture_host("localhost")
     assert not local_fixture_host("jobs.lever.co") and not local_fixture_host("10.0.0.5")
     assert not local_fixture_host("") and not local_fixture_host("8.8.8.8")
+    assert not local_fixture_host("other") and not local_fixture_host("receiver.")

@@ -161,7 +161,9 @@ the employer's receipt is recorded; a recorded confirmation is never queued agai
 ## Execution (Phase C, local fixtures only)
 
 Module `app/modules/execution/`. Only destinations whose origin is listed in
-`NOEFFORTS_FIXTURE_ORIGINS` can be executed, and that setting is ignored in production.
+`NOEFFORTS_FIXTURE_ORIGINS` can be executed, and that setting is honoured only when
+`NOEFFORTS_ENV=test`; a listed name must also resolve, at every connection, to loopback or the
+configured test network (D86).
 
 ```
 user queues ──(same txn)──> attempt(pending) + outbox row

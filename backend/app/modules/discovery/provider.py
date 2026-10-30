@@ -28,7 +28,12 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from app.core.config import get_settings
-from app.core.urlsafety import UnsafeURL, is_fixture_origin, resolve_public_destination
+from app.core.urlsafety import (
+    UnsafeURL,
+    fixture_opener,
+    is_fixture_origin,
+    resolve_public_destination,
+)
 from app.modules.jobs.canonical import canonicalize_url, detect_ats
 
 WORKPLACE = ("remote", "hybrid", "onsite", "unknown")
@@ -377,7 +382,8 @@ class FreehireApiProvider(DiscoveryProvider):
         headers = {"Accept": "application/json", "User-Agent": "NoEfforts-discovery/1"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        opener = urllib.request.build_opener(_NoRedirect)
+        opener = (fixture_opener(_NoRedirect) if is_fixture_origin(self.base)
+                  else urllib.request.build_opener(_NoRedirect))  # fmt: skip
         try:
             with opener.open(
                 urllib.request.Request(url, headers=headers), timeout=self.timeout

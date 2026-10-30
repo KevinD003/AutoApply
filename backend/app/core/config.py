@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,9 +31,13 @@ class Settings(BaseSettings):
 
     # Approvals lapse after this long; the user must re-approve.
     approval_ttl_hours: int = 72
-    # Origins of local synthetic fixture receivers that execution may target. Ignored entirely
-    # when env == "production" (see app/core/urlsafety.py and app/modules/execution/policy.py).
+    # Origins of local synthetic fixture receivers that execution may target. Honoured only
+    # when env == "test" (D86; app/core/urlsafety.py, app/modules/execution/policy.py).
     fixture_origins: list[str] = Field(default_factory=list)
+    # TEST ONLY: private networks (CIDR, at most /16 or /48) a fixture host may resolve to,
+    # besides loopback: the Compose test network's subnet (docker-compose.execution-test.yml).
+    # Checked against the address actually connected to (urlsafety.connect_fixture, egress proxy).
+    fixture_networks: list[str] = Field(default_factory=list)
 
     # Execution (Phase C)
     lease_seconds: int = 60
@@ -115,6 +119,14 @@ class Settings(BaseSettings):
     # the local, labelled fixture drafting provider (preparation/fixture_provider.py), so the
     # end-to-end journey can exercise drafts and tailored documents. It sends nothing anywhere.
     drafting_test_fixture_users: list[str] = Field(default_factory=list)
+
+    @field_validator("fixture_networks")
+    @classmethod
+    def _private_test_networks(cls, v: list[str]) -> list[str]:
+        from app.core.urlsafety import parse_fixture_networks
+
+        parse_fixture_networks(v)  # raises for anything but a private test network
+        return v
 
 
 @lru_cache

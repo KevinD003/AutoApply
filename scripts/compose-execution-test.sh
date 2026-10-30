@@ -12,7 +12,9 @@ EGRESS_CONTROL_TOKEN="control-$(openssl rand -hex 16)"
 AUDIT_REF_KEY="$(openssl rand -hex 32)"  # throwaway, for this disposable stack only
 export RECEIVER_ADMIN_TOKEN BROWSER_RUNNER_TOKEN EGRESS_CONTROL_TOKEN AUDIT_REF_KEY
 export BROWSER_MAX_SESSION_SECONDS=45
-export NOEFFORTS_FIXTURE_ORIGINS='["http://receiver:8799"]'  # cdn-fixture: a SubresourceRule, not a page origin
+# Honoured only because the test override runs the stack as NOEFFORTS_ENV=test, with the
+# `fixtures` subnet as its only test network (D86). cdn-fixture: a SubresourceRule, not an origin.
+export NOEFFORTS_FIXTURE_ORIGINS='["http://receiver:8799"]'
 # shellcheck source=scripts/smoke_lib.sh
 source scripts/smoke_lib.sh
 

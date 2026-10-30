@@ -76,8 +76,14 @@ class Budget:
 
     def __init__(self, limit: int, base: str = f"https://{API_HOST}", opener=None,
                  resolver=socket.getaddrinfo):  # fmt: skip
+        from app.core.urlsafety import fixture_opener, is_fixture_origin
+
         self.limit, self.base, self.used, self.log = limit, base, 0, []
-        self.opener = opener or urllib.request.build_opener(_NoRedirect)
+        self.opener = opener or (
+            fixture_opener(_NoRedirect)  # a test fixture: every connection checked (D86)
+            if is_fixture_origin(base)
+            else urllib.request.build_opener(_NoRedirect)
+        )
         self.resolver = resolver
 
     def get(self, url: str) -> bytes:

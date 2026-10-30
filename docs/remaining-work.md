@@ -107,8 +107,14 @@ local synthetic page or service; nothing on this ladder implies live support.
 the admission framework admits an ATS-identified adapter to `fixture_only` only after the
 owner's recorded review of that ATS's public docs and terms, and none is recorded for Lever.
 So real Lever jobs keep the planned specification's manual handoff (`planned_adapter_only`),
-fixture evidence counts for nothing on Lever, and a listed fixture origin must be a local host
-(loopback or a single-label name): naming a public site there never makes it a fixture.
+fixture evidence counts for nothing on Lever, and a listed fixture origin must be a local host:
+naming a public site there never makes it a fixture.
+
+**Fixture-origin boundary: tightened (D86).** Fixture origins are honoured only with
+`NOEFFORTS_ENV=test`; a name counts only if listed exactly (`receiver`, the Compose service),
+and every connection to one (server-side and through the egress proxy) must reach loopback or
+the configured test network. Found and fixed on the way: in `netns` mode the driver fetched
+page loads itself, outside the egress proxy.
 
 **Next automatically selected task: an Ashby-style adapter against the local receiver only**
 (`fixture_ashby`, no Ashby identity, the same shape as D85): a receiver route serving the D81

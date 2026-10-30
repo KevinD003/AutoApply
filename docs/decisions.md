@@ -2254,9 +2254,54 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   - A listed fixture origin counts only when its host is local (loopback, `localhost` or a
     single-label internal name, such as the Compose receiver): listing a public site in
     `NOEFFORTS_FIXTURE_ORIGINS` never makes it a fixture (`urlsafety.local_fixture_host`).
+    Superseded by D86: names only if listed exactly, checked again at every connection.
   - The job page gains "Read Lever-style test form".
 - **Not done:** no Lever host was contacted; no docs review, observation, credential, real
   upload or submission. The `lever` specification stays `planned`.
 - **Unchanged:** `SCHEMA_VERSION` (3); no migration. New adapter version
   `fixture-lever-1+html-v3`.
 
+
+## D86 — The fixture-origin boundary: exact names, connection-time address checks, test only (2026-10-30)
+
+- **Why:** D85 accepted any single-label host on a listed fixture origin. A DNS search suffix
+  can resolve a bare name to a host that is not local, so a name alone proves nothing.
+- **Decision:**
+  - A fixture origin counts only when `NOEFFORTS_ENV=test` (before: anywhere but production),
+    is plain `http`, is listed exactly in `NOEFFORTS_FIXTURE_ORIGINS`, and its host is an
+    address literal in standard form that is loopback or on a configured test network, or
+    exactly one name in `urlsafety.FIXTURE_SERVICE_HOSTS` (today only `receiver`, the Compose
+    service). There is no general single-label rule; `localhost` is not listed.
+  - Other spellings of an address (decimal, hex, octal, shortened such as `127.1`) are never
+    fixture hosts, and as job addresses they are checked as the address they spell
+    (`check_url_syntax`). IPv6 loopback in any standard notation and an IPv4-mapped address
+    count as the address they are: mapped loopback is loopback, mapped public is public.
+  - Test networks (`NOEFFORTS_FIXTURE_NETWORKS`, and the egress-proxy service's own
+    `EGRESS_FIXTURE_NETWORKS`) must lie inside RFC 1918 or IPv6 unique-local space and be at
+    most /16 or /48; anything else stops startup. Compose pins the `fixtures` network to
+    `10.231.47.0/24` and names it on the API, the worker and the proxy.
+  - At connection time every address a fixture host resolves to, and the peer actually
+    reached, must be loopback or on a test network: server-side through
+    `urlsafety.fixture_opener` / `connect_fixture` (capture, discovery fixture, the read-only
+    check's fixture base, the fake API adapter), in the browser through the egress proxy
+    (in-process and the service), which now also refuses a fixture host:port resolving to a
+    public or link-local address (before: any address was accepted for one) and re-checks the
+    peer it reached before relaying a byte.
+  - Redirects: the server-side fixture opener follows none and checks every request's origin
+    as it is opened; it has no file, ftp or data handler. In the browser every hop leaves
+    through the egress proxy, which allows only the destination host:port.
+  - A fixture is never browsed without the egress proxy: `isolation=off` refuses it
+    (`fixture_needs_proxy`).
+- **Found while testing it, fixed:**
+  - In `netns` mode the Playwright driver fetched GET and HEAD requests to the destination,
+    and opened its WebSockets, itself, from the worker's network: those connections bypassed
+    the egress proxy and its address checks (probe: no proxy decision for the destination
+    with interception on; one with it off). The driver now never fetches or connects in
+    `netns` mode, as already in `container` mode; the browser sends everything through the
+    proxy.
+  - In `netns` mode Chromium's resolver rule (`MAP * ~NOTFOUND`) also covered its own proxy
+    relay on 127.0.0.1, so a named destination could never be reached; only a 127.0.0.1
+    destination worked. The relay address is now kept, as the container launcher keeps its
+    proxy host.
+- **Unchanged:** the browser-egress block, the receiver-only Compose network, the in-process
+  interception, every adapter and gate. No migration; `SCHEMA_VERSION` 3.

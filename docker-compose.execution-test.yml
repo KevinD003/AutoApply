@@ -4,6 +4,14 @@
 # `fixtures` is internal: only the egress proxy (the browser's only way out) and the API (which
 # reads fixture forms when preparing) can reach the receiver and the canary. Nothing is
 # published; the host-side test reaches the receiver's admin API with `docker compose exec`.
+#
+# D86: this stack runs as NOEFFORTS_ENV=test (fixture origins are honoured nowhere else), and
+# `fixtures` has a fixed subnet that the API, the worker and the egress proxy each name as the
+# only private network a fixture host may resolve to; the address every connection reaches is
+# checked against it (loopback aside). `receiver` is the one name a fixture origin may use
+# (urlsafety.FIXTURE_SERVICE_HOSTS); a bare name resolving anywhere else is refused.
+x-fixture-network: &fixture-network "10.231.47.0/24"
+
 services:
   receiver:
     build: ./backend
@@ -24,13 +32,20 @@ services:
     networks: [fixtures]
 
   egress-proxy:
+    environment:
+      EGRESS_FIXTURE_NETWORKS: '["10.231.47.0/24"]'
     networks: [exec_egress, fixtures]
 
   backend:
+    environment:
+      NOEFFORTS_ENV: test
+      NOEFFORTS_FIXTURE_NETWORKS: '["10.231.47.0/24"]'
     networks: [default, fixtures]
 
   worker:
     environment:
+      NOEFFORTS_ENV: test
+      NOEFFORTS_FIXTURE_NETWORKS: '["10.231.47.0/24"]'
       NOEFFORTS_SUBMIT_TIMEOUT_SECONDS: "10"
       NOEFFORTS_CHECKPOINT_TTL_SECONDS: "120"
       NOEFFORTS_OUTBOX_RELAY_INTERVAL_SECONDS: "1"
@@ -39,4 +54,7 @@ services:
       NOEFFORTS_EXECUTION_TEST_DISABLE_INTERCEPTION: ${EXEC_TEST_DISABLE_INTERCEPTION:-false}
 
 networks:
-  fixtures: { internal: true }
+  fixtures:
+    internal: true
+    ipam:
+      config: [{ subnet: *fixture-network }]
