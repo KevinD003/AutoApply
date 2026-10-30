@@ -14,7 +14,8 @@ WORKDAY = "https://acme.wd5.myworkdayjobs.com/en-US/External/job/Remote/Engineer
 # For each ATS name (jobs.canonical.ATS_NAMES): a posting and what it identifies as; variants
 # that must identify the same (case, region, suffix); tracking parameters that must not change
 # its dedupe key; and URLs that must not be identified at all. `foreign_form`: the route a job
-# on this ATS gets with a form captured as another ATS's (None: no other ATS's source exists).
+# on this ATS gets with a form captured as another ATS's, or from a local approximation with no
+# ATS identity such as the Lever-style one (D85) (None: no such source exists).
 IDENTITY_CASES: dict[str, dict] = {
     "greenhouse": {
         "positive": ("https://boards.greenhouse.io/acme/jobs/4000001", ("acme", "4000001")),
@@ -24,7 +25,7 @@ IDENTITY_CASES: dict[str, dict] = {
         "not_ats": ["https://www.greenhouse.io/", "https://boards.greenhouse.io/acme",
                     "https://boards.greenhouse.io.example.invalid/acme/jobs/4000001",
                     "https://boards.greenhouse.io/acme/jobs/not-a-number"],
-        "foreign_form": None,
+        "foreign_form": "form_ats_mismatch",  # a Lever-style approximation's form (D85)
     },
     "lever": {
         "positive": (LEVER, ("acme", UUID)),
@@ -105,6 +106,7 @@ RECEIPT_KEYS = {
     "greenhouse_hosted": {"receipt_id", "confirmation", "final_origin", "http_status"},
     "greenhouse_dom": {"receipt_id", "confirmation", "final_origin", "http_status"},
     "fake_api": {"route", "receipt_ref_sha256", "http_status"},
+    "fixture_lever": {"receipt_id", "confirmation", "final_origin", "http_status"},
 }
 
 # The ledger test that shows each scenario an execution provider's fixture levels require
@@ -113,6 +115,7 @@ RECEIPT_KEYS = {
 _EF, _GH, _GD = ("tests/test_execution_failures.py", "tests/test_greenhouse_adapter.py",
                  "tests/test_greenhouse_dom.py")  # fmt: skip
 _UP, _API = "tests/test_upload_evidence.py", "tests/test_api_provider.py"
+_LV = "tests/test_lever_adapter.py"
 _RECONCILE = f"{_EF}::test_reconciling_an_unknown_outcome_never_sends_again"
 SCENARIO_TESTS: dict[tuple[str, str], str] = {
     ("fixture_ats", "full_run_matches_ledger"):
@@ -180,6 +183,23 @@ SCENARIO_TESTS: dict[tuple[str, str], str] = {
     ("fake_api", "reconcile_never_resends"):
         f"{_API}::test_accepted_but_response_lost_is_unknown_and_never_resent",
     ("fake_api", "confirmation_bound_to_attempt"): f"{_API}::test_confirmation_bound_to_attempt",
+    ("fixture_lever", "full_run_matches_ledger"):
+        f"{_LV}::test_full_run_sends_exactly_the_approved_values_and_byte_identical_documents",
+    ("fixture_lever", "changed_form_stops_before_disclosure"):
+        f"{_LV}::test_form_changed_after_approval_stops_before_disclosure",
+    ("fixture_lever", "unknown_outcome_never_resent"):
+        f"{_LV}::test_an_uncertain_final_send_is_quarantined_and_never_retried",
+    ("fixture_lever", "readback_mismatch_stops_before_submit"):
+        f"{_LV}::test_a_parsed_resume_that_changes_a_field_stops_before_submit",
+    ("fixture_lever", "upload_failure_stops_with_evidence"):
+        f"{_LV}::test_a_partial_upload_failure_keeps_the_evidence_of_the_earlier_disclosure",
+    ("fixture_lever", "challenge_stops_before_disclosure"):
+        f"{_LV}::test_a_bot_check_that_appears_after_approval_stops_before_disclosure",
+    ("fixture_lever", "rejection_is_not_confirmation"):
+        f"{_LV}::test_outcomes_after_the_final_click",
+    ("fixture_lever", "reconcile_never_resends"): _RECONCILE,
+    ("fixture_lever", "confirmation_bound_to_attempt"):
+        f"{_LV}::test_confirmation_bound_to_attempt",
 }  # fmt: skip
 # What a scenario test must name to exercise its provider: its builder, or the provider itself.
 BUILDERS = {
@@ -187,4 +207,5 @@ BUILDERS = {
     "greenhouse_hosted": ("gh_application", "greenhouse_hosted"),
     "greenhouse_dom": ("v2_application", "greenhouse_dom"),
     "fake_api": ("api_application", "fake_api", "fapi_requests"),
+    "fixture_lever": ("lever_application", "fixture_lever"),
 }

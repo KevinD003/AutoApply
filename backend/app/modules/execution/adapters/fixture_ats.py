@@ -32,6 +32,11 @@ class FixtureAtsAdapter:
         self.documents = documents  # field key -> (filename, content type, bytes)
 
     # -- inspect ----------------------------------------------------------------------------
+    def form_url(self) -> str:
+        """The page that holds the form: the job's own address unless an adapter knows better
+        (the runner opens it only on the destination's origin)."""
+        return self.content["destination"]["url"]
+
     def extract(self, page: Page) -> FormSchema:
         # As captured (D81): a bot check that appears after approval changes the form.
         return extract_form_schema(page.content(), challenges=True)

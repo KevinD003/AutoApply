@@ -24,6 +24,11 @@ part of the product and must never be deployed.
     at load on one real posting. Its widget behaviour is a fixture assumption, listed in the
     file header.
 
+- A labelled Lever-style approximation, `lever_like.py` (`/lever/<site>/<posting>`, its form
+  at `/apply`; D85), on the same ledger. It is not Lever code or markup: documents uploaded
+  when chosen, the resume prefill (`lever_prefill`), the confirmation page and its reference
+  are fixture design choices; its modes are listed in the file header.
+
 - **S5 variants (D62). FIXTURE ASSUMPTION, every one:** built from the legacy author's notes
   on real pages (`docs/legacy-audit.md` R7, HYPOTHESIS), they show how the adapters handle
   such a page (by stopping or by verified success), never that a real page behaves this way.

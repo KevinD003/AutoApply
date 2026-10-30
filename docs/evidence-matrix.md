@@ -9,6 +9,27 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Lever-style adapter against the local receiver (D85, 2026-10-30; local only)
+
+The oracle is the receiver's own ledger. Passing shows compatibility with the labelled
+Lever-style approximation only, never with a real Lever posting.
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Approved values, byte-identical documents | `fixture_lever` fill and upload | `test_full_run_sends_exactly_the_approved_values_and_byte_identical_documents`, `lever.spec.ts` | pass | — |
+| A rehearsal discloses under its approval, never submits | the existing rehearsal stop | `test_a_rehearsal_discloses_under_its_approval_and_never_submits`, `lever.spec.ts` | pass | — |
+| Submission needs its own approval | approval scopes (unchanged) | the same tests (the rehearsal's approval is used up) | pass | — |
+| A duplicate delivery never submits twice | claim fencing (unchanged) | `test_a_duplicate_delivery_never_submits_twice` (receiver non-idempotent) | pass | — |
+| A partial upload failure keeps earlier disclosures' evidence | `UploadFailed` disclosures | `test_a_partial_upload_failure_keeps_the_evidence_of_the_earlier_disclosure` | pass | — |
+| Unknown required controls block approval or execution | capture as unsupported; drift check | `test_a_required_picker_or_a_bot_check_on_the_form_blocks_approval`, `test_form_changed_after_approval_stops_before_disclosure`, `test_unknown_authorization_blocks_approval` | pass | — |
+| A page value nobody approved is never sent | readback of unanswered fields | `test_a_parsed_resume_that_changes_a_field_stops_before_submit` | pass | — |
+| Changed approved inputs invalidate authorization | package versioning (unchanged) | `test_a_changed_approved_input_invalidates_the_approval` | pass | — |
+| An uncertain final send is quarantined, never retried | unknown outcome (unchanged) | `test_an_uncertain_final_send_is_quarantined_and_never_retried`, `test_outcomes_after_the_final_click`, `test_reconciling_an_unknown_outcome_never_sends_again[fixture_lever-*]` | pass | — |
+| Real Lever stays a manual handoff; fixture evidence enables nothing | no Lever identity; planned `lever` | `test_a_real_lever_posting_is_never_read_and_is_a_manual_handoff`, `test_fixture_evidence_never_enables_a_real_destination`, `lever.spec.ts` | pass | — |
+| The app never calls it live support | labels from `providers/wording.py` | `test_the_app_never_calls_this_live_support` | pass | — |
+| No hostname, redirect or configuration escape | runner same-origin check; egress; local fixture hosts | `test_a_form_page_off_the_destination_site_is_never_opened`, `test_a_redirect_off_the_local_site_is_blocked_before_anything_is_entered`, `test_listing_a_public_site_as_a_fixture_never_makes_it_one` | pass | — |
+| Sabotage | 7 guards broken one at a time | each caught, restored by MD5 | pass | — |
+
 ## API tokens, CLI and MCP (D84, 2026-10-29; local only)
 
 | Requirement | Implementation | Evidence | Result | Gaps |

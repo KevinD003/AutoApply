@@ -161,6 +161,7 @@ detector behind `text_names_nothing` (`test_text_naming_an_identifier_is_caught`
 | `greenhouse_hosted` | `ats_execution` | `fixture_only` | `fixture_only` | `observed_read_only` | `doc_review_recorded`, `observed_cells_credited` | – |
 | `greenhouse_dom` | `ats_execution` | `observed_read_only` | `observed_read_only` | `rehearsal_ready` | `doc_review_recorded`, `readiness_dropdowns`, `readiness_unmatched_required_controls`, `readiness_location`, `known_gaps_closed` | – |
 | `fake_api` | `generic_execution` | `fixture_only` | `fixture_only` | – | – | `no_ats_identity` |
+| `fixture_lever` | `generic_execution` | `fixture_only` | `fixture_only` | – | – | `no_ats_identity` |
 | `greenhouse_readonly` | `observation` | `observed_read_only` | `observed_read_only` | – | – | `read_only_by_kind` |
 | `freehire_mock` | `discovery` | `fixture_only` | `fixture_only` | – | – | `discovery_by_kind` |
 | `freehire` | `discovery` | `fixture_only` | `fixture_only` | – | – | `discovery_by_kind` |

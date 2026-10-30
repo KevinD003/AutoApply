@@ -71,7 +71,7 @@ anywhere real. Real pages and APIs **have** been read, as above, under single-us
 | **Apply** | | | | | | |
 | 25 | Package approval, rehearsal, separate submission approval, submission, receipt | Fixture-tested | `test_execution_*`, `submission.spec.ts`, `journey.spec.ts` | — | No | — |
 | 26 | Greenhouse-style adapters | Fixture-tested; real pages read-only only (above) | `test_greenhouse_*.py`, `docs/greenhouse-compatibility-report.md` | Live-pilot permissions 1-4 and a Greenhouse terms review (below) | Yes | — |
-| 27 | Lever | **Unfinished**: no adapter, specification only (`provider-architecture.md` §7b). A Lever-shaped synthetic form (D80) is fixture-tested checkpoint-first: pickers, the bot check, consents, EEO and unknown authorization never guessed; the route stays a manual handoff. Public docs: the Postings API README read; help centre and Data API docs not reachable from this sandbox | `test_lever.py`, `test_lever_fixture.py`; `docs/research/lever.md` | Network access to `hire.lever.co`, `help.lever.co`; observing a real page needs the provider-admission approval | Network and approval | The selected milestone below: a Lever-hosted adapter against the receiver |
+| 27 | Lever | **Fixture-tested (local approximation only)**, D85: `fixture_lever` reads a Lever-style posting's form page on the local receiver, fills only approved facts and answers, uploads documents (evidence kept after a partial failure), reads back (a field a parsed resume changed stops it), rehearses without submitting, submits once after its own approval and binds the confirmation to the attempt. It has **no Lever identity**: a real Lever job stays a manual handoff (`planned_adapter_only`) and the `lever` specification stays `planned`. Not a provider adapter for real Lever pages: nothing was observed on one. Public docs: the Postings API README read; help centre, Data API docs and terms not reachable from this sandbox | `test_lever_adapter.py`, `lever.spec.ts`, `test_lever.py`, `test_lever_fixture.py`; `docs/research/lever.md` | Network access to `hire.lever.co`, `help.lever.co`, `www.lever.co/legal`; the owner's recorded review of Lever's public docs and terms (`public_doc_reviewed`); observing a real page needs the provider-admission approval | Network and approval | Owner: record a Lever docs-and-terms review, or leave Lever at `planned` |
 | 28 | Workday | **Unfinished**: no adapter (planned only). A Workday-shaped synthetic wizard (D81) is fixture-tested checkpoint-first: the account gate's passwords block approval, custom dropdowns and switches are kept as questions, eligibility that names no country and legal attestations wait for you. No Workday documentation page could be opened from this sandbox | `test_workday_ashby_fixtures.py`; `docs/research/workday.md` | Network access to `doc.workday.com` and related hosts; an owner decision on Workday's terms (below) | Yes | Per-step disclosure in the receiver, before any adapter |
 | 29 | Ashby | **Unfinished**: no adapter. URL recognition for hosted postings and, since D81, for `?ashby_jid=` embeds on employer sites (fail-closed: a non-UUID or a second embedded id is not believed; recorded under the `identity_jid_any_host` gap). An Ashby-shaped synthetic form (D81) is fixture-tested checkpoint-first. No Ashby documentation page could be opened from this sandbox | `test_workday_ashby_fixtures.py`; `docs/research/ashby.md` | Network access to `developers.ashbyhq.com`, `docs.ashbyhq.com` | Network only | Confirm the shapes from the documentation |
 | 30 | Verification codes | Fixture-tested by manual entry (checkpoint) | `test_execution_*`, `submission.spec.ts` | — | No | — |
@@ -97,24 +97,24 @@ local synthetic page or service; nothing on this ladder implies live support.
 | Provider | URL recognition | Synthetic form coverage | Provider-specific adapter | Observed real-page behaviour | Approved disclosure rehearsal (real) | Confirmed submission (real) |
 |---|---|---|---|---|---|---|
 | Greenhouse | Yes (hosted, embed `gh_jid`, `/embed/job_app`); gaps recorded (`identity_jid_any_host`, `identity_rules_disagree`) | Yes: receiver v1 and v2 forms, failure modes | Yes, against local fixtures only (`greenhouse_hosted`, `greenhouse_dom`) | Read-only only (above): job data and page read; dropdowns opened in two runs; never typed | None (needs live-pilot permission 3) | None (needs permission 4) |
-| Lever | Yes (hosted, EU) | Preparation fixture only (D80); no receiver route | **None**. Missing: receiver form + submit + ledger, adapter (fill, upload, readback, confirm), capability entry, rehearsal path rule | None | None | None |
+| Lever | Yes (hosted, EU) | Yes (D85): the receiver's Lever-style posting, form, uploads, submit and confirmation, with failure modes | **Fixture only, no Lever identity** (`fixture_lever`, D85): it never serves a real Lever posting. Missing for real Lever: the owner's docs-and-terms review, a read-only observation, an identity-bearing adapter | None | None | None |
 | Workday | Yes, except the `/apply` variant (gap `identity_variant_unrecognised`) | Preparation fixture only (D81): one page for a multi-step wizard | **None**. Missing: a per-step receiver, step-by-step disclosure accounting, account-gate handoff, adapter; and the owner's terms decision | None | None | None |
 | Ashby | Yes (hosted; embeds since D81, gap recorded) | Preparation fixture only (D81) | **None**. Missing: receiver form, adapter, a way to detect its undocumented spam check | None | None | None |
 | Workable, SmartRecruiters | Yes | None | None | None | None | None |
 
-**Next bounded provider-adapter milestone (selected 2026-10-29): a Lever-hosted adapter against
-the local receiver only.** Greenhouse stays the first live-pilot candidate; this adds Lever's
-second rung-3 entry without any request to Lever. In scope, each with receiver-style tests:
-1. a Lever-shaped receiver route (posting page, `/apply` form, submit, receipt page) writing to
-   the receiver ledger, with failure modes (validation, unknown outcome, upload failure, a bot
-   check that appears);
-2. a `lever_hosted` adapter: fill, upload, read back, re-check, submit once, confirm against the
-   attempt; the Current Location picker and any other picker stay unsupported (a required one
-   blocks approval, an optional one stays blank), and a bot check stops the attempt;
-3. a capability entry and an admission stage of "fixture-tested", a rehearsal path rule, and
-   approval binding to the adapter version;
-4. real Lever hosts stay refused (`real_destination_disabled`); no live observation, credential
-   or submission. Out of scope: the Postings API POST (needs an employer key).
+**Lever-style adapter milestone: done (D85), with one deliberate change.** The adapter is
+`fixture_lever`, registered with no Lever identity, not an identity-bearing `lever_hosted`:
+the admission framework admits an ATS-identified adapter to `fixture_only` only after the
+owner's recorded review of that ATS's public docs and terms, and none is recorded for Lever.
+So real Lever jobs keep the planned specification's manual handoff (`planned_adapter_only`),
+fixture evidence counts for nothing on Lever, and a listed fixture origin must be a local host
+(loopback or a single-label name): naming a public site there never makes it a fixture.
+
+**Next automatically selected task: an Ashby-style adapter against the local receiver only**
+(`fixture_ashby`, no Ashby identity, the same shape as D85): a receiver route serving the D81
+Ashby-shaped form with failure modes, the adapter, its tests against the ledger, and an e2e run.
+Its undocumented spam check stays a stop: a form showing one, or anything unrecognised after the
+final click, is never solved or resent. Workday stays behind the owner's terms decision.
 
 ## "Phase E", defined
 

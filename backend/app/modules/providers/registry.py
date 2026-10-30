@@ -170,6 +170,27 @@ PROVIDERS: dict[str, ProviderSpec] = {
         },
         status="Potential future discovery provider; not yet connected or validated.",
     ),
+    "fixture_lever": ProviderSpec(
+        name="fixture_lever",
+        kind=Kind.browser,
+        description="Lever-style hosted form (a posting page, then its form page), served by a "
+        "labelled local approximation. No Lever identity: it serves no real Lever posting.",
+        operations=_BROWSER_OPS,
+        capabilities={
+            C.posting_read: FIXTURE,
+            C.form_extract: FIXTURE,
+            C.deterministic_fill: FIXTURE,
+            C.file_upload: FIXTURE,
+            C.captcha_checkpoint: Support(
+                fixture=True, note="stops before anything is entered; never solved"
+            ),
+            C.final_submit: FIXTURE,
+            C.confirmation_detection: FIXTURE,
+            C.reconciliation: _USER_RECONCILES,
+        },
+        status="Fixture only (a local Lever-style approximation); a real Lever job is a manual "
+        "handoff.",
+    ),
     "workday": ProviderSpec(
         name="workday",
         kind=Kind.browser,
@@ -182,8 +203,9 @@ PROVIDERS: dict[str, ProviderSpec] = {
     "lever": ProviderSpec(
         name="lever",
         kind=Kind.browser,
-        description="Future Lever adapter: a specification only (docs/provider-architecture.md"
-        " §7b). No code, no fixture, no observation; nothing was read from Lever.",
+        description="Future Lever adapter for real postings: a specification only "
+        "(docs/provider-architecture.md §7b). No observation; no Lever page was read. The local "
+        "Lever-style approximation has its own fixture adapter, with no Lever identity.",
         operations=frozenset(),
         stage="planned",
         status="Planned only. Lever applications are not supported: no automation exists.",
@@ -232,6 +254,13 @@ _TRAITS: dict[str, dict[Trait, TraitValue]] = {
         T.captcha_possible: V("unknown", "none seen; the observation stops on a challenge"),
         T.multi_step: V("no", "the observed posting was one page"),
     },
+    "fixture_lever": {
+        T.login_required: V("no", "fixture design: no account"),
+        T.manual_verification_required: V("no", "fixture design: a verification step after "
+                                                "submitting is not handled (one mode shows it)"),
+        T.captcha_possible: V("yes", "fixture design: a mode puts a bot check on the form"),
+        T.multi_step: V("no", "fixture design: one form page after the posting page"),
+    },
     "fake_api": {
         T.login_required: V("no", "credentials, not a login: the user's grant plus a token"),
         T.manual_verification_required: V("no", "fixture design"),
@@ -267,6 +296,7 @@ _TESTED_AGAINST = {
     "greenhouse_hosted": (f"{_RECEIVER}/greenhouse_like.py",),
     "greenhouse_dom": (f"{_RECEIVER}/greenhouse_v2.py",),
     "fake_api": (f"{_RECEIVER}/fake_api.py",),
+    "fixture_lever": (f"{_RECEIVER}/lever_like.py",),
     "greenhouse_readonly": (f"{_RECEIVER}/greenhouse_like.py", f"{_RECEIVER}/greenhouse_v2.py"),
     "freehire_mock": ("fixtures/discovery/freehire_mock.json",),
     "freehire": (f"{_RECEIVER}/freehire_fixture.py",),

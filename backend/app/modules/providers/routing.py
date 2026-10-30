@@ -101,8 +101,11 @@ def active_authorization(user_id, provider: str, origin: str) -> bool:
         )
 
 
-# The ATS a captured form's source belongs to (None: the generic fixture form).
-FORM_SOURCE_ATS = {"greenhouse_api": "greenhouse", "greenhouse_api_dom": "greenhouse"}
+# The ATS each adapter-specific form source belongs to. None: a local approximation with no ATS
+# identity (D85), whose form belongs to no job on an identified ATS. The generic sources
+# (policy.GENERIC_FORM_SOURCES) are not listed.
+FORM_SOURCE_ATS = {"greenhouse_api": "greenhouse", "greenhouse_api_dom": "greenhouse",
+                   "fixture_lever": None}  # fmt: skip
 
 
 def ats_of(url: str | None) -> str:
@@ -117,7 +120,8 @@ def ats_of(url: str | None) -> str:
 
 def _identity_refusal(destination: dict, steps: list[str]) -> RouteDecision | None:
     ats = destination.get("ats_provider") or ats_of(destination.get("url"))
-    form_ats = FORM_SOURCE_ATS.get(destination.get("form_source") or "")
+    source = destination.get("form_source") or ""
+    form_ats = FORM_SOURCE_ATS.get(source)
     steps.append(f"identity: ATS {ats}; form source {destination.get('form_source') or 'html'}")
     planned = registry.planned_for_ats(ats)
     if planned is not None:
@@ -127,8 +131,9 @@ def _identity_refusal(destination: dict, steps: list[str]) -> RouteDecision | No
                              f"{label} applications are not supported yet: NoEfforts has only a "
                              f"specification for a {label} adapter. Apply on the employer's site "
                              "and record it in the tracker.", "planned_adapter_only")  # fmt: skip
-    if form_ats and ats != "unknown" and ats != form_ats:
-        steps.append(f"identity: the form was captured as {form_ats} but the job is on {ats}")
+    if source in FORM_SOURCE_ATS and ats != "unknown" and ats != form_ats:
+        steps.append(f"identity: the form was captured as {form_ats or 'a local approximation'}"
+                     f" but the job is on {ats}")  # fmt: skip
         return RouteDecision("manual_handoff", "manual_handoff", steps,
                              "The captured form does not belong to this job's application "
                              "system. Apply on the employer's site.",

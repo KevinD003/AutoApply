@@ -2224,3 +2224,39 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Not done:** no versioned public API, no third-party clients, nothing exposed beyond this
   machine.
 
+## D85 — A Lever-style adapter against the local receiver, with no Lever identity (2026-10-30)
+- **Problem:** the selected milestone was a provider-specific Lever adapter against the local
+  receiver. The admission framework admits an adapter that carries an ATS identity to
+  `fixture_only` only after the owner's recorded review of that ATS's public documentation and
+  terms (`public_doc_reviewed`); none is recorded for Lever (Lever's terms were never seen, see
+  `docs/research/lever.md` §5), and only providers registered before the framework may waive it.
+- **Decision:**
+  - Receiver: `fixtures/ats_receiver/lever_like.py`, a labelled Lever-style approximation (a
+    posting page, its form at `/apply`, documents uploaded when chosen, submit, a confirmation
+    page with a reference) on the shared ledger, with failure modes: a bot check on the form or
+    after the final click, a required location picker, a resume prefill, a changed form, a
+    confirmation on another posting, a verification step, validation, errors, a dropped reply,
+    and upload failures.
+  - Capture: `POST /api/jobs/{id}/form/lever` reads the posting's form page, on a fixture
+    origin only, with the generic extractor (Lever's public API lists no custom questions); a
+    real Lever posting is refused before any request. Source `fixture_lever`.
+  - Adapter `fixture_lever` (`execution/adapters/lever.py`) on the existing framework: opens
+    the posting's `/apply` page (the runner refuses a form page off the destination's site),
+    uploads documents first, fills only resolved answers, reads back every value and checks
+    every field it leaves unanswered is still empty (a parsed resume changing one stops the
+    attempt), stops on a bot check, binds the confirmation to its own POST and posting, and
+    treats anything else after the final click as an unknown outcome, never resent. All the
+    existing approval, rehearsal, cancellation, fencing and quarantine paths apply unchanged.
+  - Registered as `fixture_lever` with **no Lever identity** (the generic fixture track, end
+    `no_ats_identity`): real Lever jobs keep the `lever` specification's manual handoff
+    (`planned_adapter_only`), its rehearsal path is the approximation's site, and a form it
+    captured is foreign on any job of an identified ATS (`form_ats_mismatch`).
+  - A listed fixture origin counts only when its host is local (loopback, `localhost` or a
+    single-label internal name, such as the Compose receiver): listing a public site in
+    `NOEFFORTS_FIXTURE_ORIGINS` never makes it a fixture (`urlsafety.local_fixture_host`).
+  - The job page gains "Read Lever-style test form".
+- **Not done:** no Lever host was contacted; no docs review, observation, credential, real
+  upload or submission. The `lever` specification stays `planned`.
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration. New adapter version
+  `fixture-lever-1+html-v3`.
+

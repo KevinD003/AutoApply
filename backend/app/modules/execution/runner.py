@@ -27,6 +27,7 @@ from app.modules.execution.adapters.fake_api import FakeApiAdapter
 from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, UploadFailed
 from app.modules.execution.adapters.greenhouse import GreenhouseHostedAdapter
 from app.modules.execution.adapters.greenhouse_dom import GreenhouseDomAdapter
+from app.modules.execution.adapters.lever import LeverFixtureAdapter
 from app.modules.execution.browser import IsolationUnavailable, browser_session
 from app.modules.execution.faults import fault
 from app.modules.execution.models import ExecutionAttempt
@@ -41,6 +42,7 @@ ADAPTERS = {
     "fixture_ats": FixtureAtsAdapter,
     "greenhouse_hosted": GreenhouseHostedAdapter,
     "greenhouse_dom": GreenhouseDomAdapter,
+    "fixture_lever": LeverFixtureAdapter,
 }
 
 log = logging.getLogger("noefforts.execution")
@@ -161,8 +163,14 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         with _Closing(session):
             beat()
             fault("before_navigate")
+            url = adapter.form_url()
+            if rehearsal.normalize_origin(_origin_of(url)) != rehearsal.normalize_origin(
+                dest["origin"]
+            ):
+                svc.fail_safe(aid, worker, gen, "the form is not on the destination's site")
+                return "failed_safe"
             try:
-                page.goto(dest["url"])
+                page.goto(url)
             except Exception as e:  # noqa: BLE001 - any navigation failure is a safe stop
                 svc.fail_safe(aid, worker, gen, f"could not open the form ({type(e).__name__})")
                 return "failed_safe"

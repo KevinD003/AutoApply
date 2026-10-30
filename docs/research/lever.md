@@ -216,7 +216,9 @@ in the README's examples are UUIDs. Checked locally with fictional URLs (no netw
 ## 7. Proposed synthetic fixture: "Example Health (fictional)"
 
 **Implemented (D80)** as `backend/app/modules/preparation/fixtures/lever.html` (the form only,
-as a preparation fixture; no receiver route and no adapter). Tests: `backend/tests/test_lever_fixture.py`.
+as a preparation fixture). Tests: `backend/tests/test_lever_fixture.py`. **Since D85** the
+receiver serves a Lever-style posting and form (`fixtures/ats_receiver/lever_like.py`) and the
+`fixture_lever` adapter fills and submits it, for the local approximation only.
 
 A local fixture only (for `fixtures/ats_receiver`), never a real host. `<id>` is a fictional
 UUID such as `00000000-0000-4000-8000-00000000a001`. Fields marked (sr) are search-reported

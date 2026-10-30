@@ -17,14 +17,31 @@ class UnsafeURL(ValueError):
 
 
 def is_fixture_origin(url: str) -> bool:
-    """True only outside production, for an exact origin listed in NOEFFORTS_FIXTURE_ORIGINS."""
+    """True only outside production, for an exact origin listed in NOEFFORTS_FIXTURE_ORIGINS
+    whose host is local (`local_fixture_host`): listing a public site there never makes it a
+    fixture (D85)."""
     from app.core.config import get_settings
 
     s = get_settings()
     if s.env == "production" or not s.fixture_origins:
         return False
     p = urlsplit(url.strip())
-    return f"{p.scheme}://{p.netloc}".lower() in {o.lower().rstrip("/") for o in s.fixture_origins}
+    origin = f"{p.scheme}://{p.netloc}".lower()
+    listed = origin in {o.lower().rstrip("/") for o in s.fixture_origins}
+    return listed and p.scheme in ALLOWED_SCHEMES and local_fixture_host(p.hostname or "")
+
+
+def local_fixture_host(host: str) -> bool:
+    """A host a local fixture may run on: a loopback address, "localhost", or a single-label
+    name (an internal service, such as the Compose test network's receiver). Never a dotted
+    public name or any other address."""
+    host = host.lower().rstrip(".")
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return bool(host) and "." not in host and ":" not in host
 
 
 def check_url_syntax(url: str) -> str:

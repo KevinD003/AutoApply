@@ -1,7 +1,8 @@
 """Which destinations may be executed, and by which adapter.
 
-Four adapters exist (`ADAPTER_VERSIONS`): three browser adapters (`fixture_ats`,
-`greenhouse_hosted`, `greenhouse_dom`) and the authorized-API adapter `fake_api`. All run only
+Five adapters exist (`ADAPTER_VERSIONS`): four browser adapters (`fixture_ats`,
+`greenhouse_hosted`, `greenhouse_dom`, `fixture_lever`) and the authorized-API adapter `fake_api`.
+All run only
 against local synthetic fixtures and only outside production. Every real employer destination is
 refused by `adapter_for`, whatever the flags below say: no adapter has been verified against a
 real employer.
@@ -96,6 +97,35 @@ CAPABILITIES: dict[str, dict] = {
         ],
         "tested_against": ["fixtures/ats_receiver/greenhouse_v2.py"],
     },
+    "fixture_lever": {
+        "description": (
+            "Lever-style hosted form (a posting page, then its form page), served by a labelled "
+            "local approximation (fictional employer). It identifies no Lever posting and is "
+            "never used for one: a real Lever job is a manual handoff."
+        ),
+        "environments": ["development", "test"],
+        "inspect": True,  # the posting's form page, read by the generic extractor
+        "extract": True,
+        "fill": True,  # text, email, phone, url, textarea, select, radio, checkbox group, consent
+        "upload": True,  # documents uploaded when chosen (counted as disclosures)
+        "checkpoint": True,  # pickers, unknown facts and bot checks stop before approval
+        "submit": True,
+        "confirm": True,  # a confirmation page with a reference, bound to the attempt
+        "real_destinations": False,
+        # Each is the approximation's own design; none has been seen on a real Lever form.
+        "unverified": {
+            "uploads": "synthetic: documents uploaded when chosen, to the fixture's endpoint",
+            "resume_prefill": "synthetic: a parsed resume overwriting page fields (one mode)",
+            "confirmation": "synthetic: a confirmation page with a reference",
+        },
+        "unsupported": [
+            "CAPTCHA or bot checks (stop, never solved)",
+            "location and other search-as-you-type pickers",
+            "verification codes after submitting",
+            "accounts, passwords or sign-in",
+        ],
+        "tested_against": ["fixtures/ats_receiver/lever_like.py"],
+    },
 }
 
 
@@ -111,6 +141,8 @@ ADAPTER_VERSIONS: dict[str, str] = {
     # 3: dropdowns without a list at load are handled by explicit, evidence-checked strategies
     # (adapters/dropdowns.py), verified before disclosure.
     "greenhouse_dom": f"greenhouse-dom-3+{gdom.EXTRACTION_VERSION}",
+    # D85: the Lever-style approximation's form, read by the generic extractor.
+    "fixture_lever": f"fixture-lever-1+{forms.EXTRACTION_VERSION}",
     # The internal authorized-API contract, exercised only against the local fake API.
     "fake_api": "fake-api-1",
 }
@@ -156,8 +188,9 @@ def approved_binding(approval, destination: dict) -> dict | None:
     meant the route the code had then (greenhouse_api -> greenhouse_hosted, else fixture_ats)."""
     if approval.adapter is not None:
         return {"adapter": approval.adapter, "adapter_version": approval.adapter_version}
-    name = "greenhouse_hosted" if destination.get("form_source") == "greenhouse_api" else (
-        "fixture_ats" if destination.get("form_source") != "greenhouse_api_dom" else None
+    source = destination.get("form_source")
+    name = "greenhouse_hosted" if source == "greenhouse_api" else (
+        "fixture_ats" if source not in ("greenhouse_api_dom", "fixture_lever") else None
     )  # fmt: skip
     if name is None:
         return None  # that source did not exist before bindings: nothing was approved for it
@@ -192,6 +225,7 @@ REAL_DESTINATION_DISABLED = (
 FORM_SOURCE_ADAPTERS = {
     "greenhouse_api": "greenhouse_hosted",
     "greenhouse_api_dom": "greenhouse_dom",
+    "fixture_lever": "fixture_lever",
 }
 GENERIC_FORM_SOURCES = frozenset({None, "fixture", "html", "manual"})
 GENERIC_ADAPTER = "fixture_ats"

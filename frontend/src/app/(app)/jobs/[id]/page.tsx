@@ -311,10 +311,10 @@ function FormCard({
       .catch(() => undefined);
   }, [load]);
 
-  async function readGreenhouse() {
+  async function read(kind: "greenhouse" | "lever") {
     setError(null);
     try {
-      setForm(await api<FormInfo>(`/jobs/${jobId}/form/greenhouse`, { method: "POST" }));
+      setForm(await api<FormInfo>(`/jobs/${jobId}/form/${kind}`, { method: "POST" }));
       onCaptured();
     } catch (e) {
       setError(e);
@@ -364,8 +364,15 @@ function FormCard({
             For a Greenhouse-style job post on the local test receiver, NoEfforts can read the questions from the job data and
             the application page and check that they agree. Real Greenhouse posts are not read in this version.
           </p>
-          <Button variant="secondary" onClick={readGreenhouse}>
+          <Button variant="secondary" onClick={() => read("greenhouse")}>
             Read Greenhouse-style test form
+          </Button>
+          <p>
+            For a Lever-style posting on the local test receiver, NoEfforts can read its application page. Real Lever
+            postings are not read in this version.
+          </p>
+          <Button variant="secondary" onClick={() => read("lever")}>
+            Read Lever-style test form
           </Button>
         </div>
       ) : (

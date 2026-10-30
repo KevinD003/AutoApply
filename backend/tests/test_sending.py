@@ -189,6 +189,7 @@ def test_every_fixture_package_sends_only_resolved_answers(api, receiver):
     from app.modules.preparation.fixtures_registry import FIXTURES
     from tests.test_greenhouse_adapter import gh_application
     from tests.test_greenhouse_dom import v2_application
+    from tests.test_lever_adapter import lever_application
     from tests.test_preparation import new_application, setup_candidate
 
     setup_candidate(api)
@@ -203,10 +204,11 @@ def test_every_fixture_package_sends_only_resolved_answers(api, receiver):
         gh_application(api),
         gh_application(api, employed="Yes", site="https://portfolio.example.com", approve=False),
         v2_application(api),
+        lever_application(api, approve=False),
     ):
         assert_sends_only_resolved(package(api, app_id)["content"])
         seen += 1
-    assert seen == len(FIXTURES) + 5
+    assert seen == len(FIXTURES) + 6
 
 
 # ------------------------------------------------------------------ the runner, before any adapter
@@ -221,7 +223,7 @@ def _browser_or_api_application(adapter, api, receiver) -> str:
     return _browser_application(adapter, api, receiver)
 
 
-ADAPTERS = ["fixture_ats", "greenhouse_hosted", "greenhouse_dom", "fake_api"]
+ADAPTERS = ["fixture_ats", "greenhouse_hosted", "greenhouse_dom", "fake_api", "fixture_lever"]
 
 
 def _optional_text_row(content: dict) -> str:
@@ -330,18 +332,28 @@ def test_the_adapter_view_drops_only_what_is_not_resolved():
 
 
 def test_nothing_else_reads_answer_values_for_sending():
-    """Every adapter takes its view in its constructor (the Greenhouse adapters inherit it)."""
+    """Every adapter takes its view in its constructor (the Greenhouse and Lever-style adapters
+    inherit it)."""
     import inspect
 
-    from app.modules.execution.adapters import fake_api, fixture_ats, greenhouse, greenhouse_dom
+    from app.modules.execution.adapters import (
+        fake_api,
+        fixture_ats,
+        greenhouse,
+        greenhouse_dom,
+        lever,
+    )
 
     for cls in (fixture_ats.FixtureAtsAdapter, fake_api.FakeApiAdapter):
         assert "sendable_view(content)" in inspect.getsource(cls.__init__), cls
-    for cls in (greenhouse.GreenhouseHostedAdapter, greenhouse_dom.GreenhouseDomAdapter):
+    inheriting = (greenhouse.GreenhouseHostedAdapter, greenhouse_dom.GreenhouseDomAdapter,
+                  lever.LeverFixtureAdapter)  # fmt: skip
+    for cls in inheriting:
         assert issubclass(cls, fixture_ats.FixtureAtsAdapter)
     assert set(runner.ADAPTERS.values()) | set(runner.API_ADAPTERS.values()) == {
         fixture_ats.FixtureAtsAdapter,
         greenhouse.GreenhouseHostedAdapter,
         greenhouse_dom.GreenhouseDomAdapter,
         fake_api.FakeApiAdapter,
+        lever.LeverFixtureAdapter,
     }
