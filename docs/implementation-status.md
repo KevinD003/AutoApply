@@ -37,6 +37,19 @@ Last updated: 2026-10-30 (extension: a capture-only browser extension saves the 
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## Full suites on the final tree of D88-D90 (2026-10-30; local only)
+
+Run sequentially on commit `b04d31d` (tree `d0452b2`: D89, D90 and the D88 correction after
+CI #127), with nothing else using the test ports, databases or Redis:
+
+- `cd backend && uv run pytest tests -o addopts= -q -p no:cacheprovider`: **3,768 passed**, 0
+  failed, 0 skipped, in 42m40s.
+- `cd frontend && npx playwright test`: **111 passed, 2 skipped** (desktop and mobile), in
+  9.7 minutes.
+- An earlier full backend run on the tree before the D88 correction was **stopped at 57%**
+  (interrupted, not a result) once CI #127 showed the failure it was about to repeat.
+- CI on the pushed commit is recorded in the next update.
+
 ## A capture-only browser extension (D90, 2026-10-30; local only, synthetic accounts)
 
 - **What you can do now:** load `extension/` unpacked in a Chromium browser, give it your
