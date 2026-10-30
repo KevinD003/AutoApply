@@ -52,7 +52,12 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   `npx playwright test e2e/discovery.spec.ts`: 6 passed (desktop and mobile); sabotage 4/4
   caught (a boolean as a count, any class text, matching reading them, signals in the
   fingerprint), files restored by MD5.
+- **Full suites on the final tree** (commit `678f397`, tree `b8b4544`, run sequentially):
+  backend **3,791 passed** in 39m41s; Playwright **115 passed, 2 skipped** (desktop and mobile)
+  in 9.6 minutes.
 - **Not done:** filtering or sorting by a signal. Live Freehire reads stay row 11.
+- **CI for the previous commit:** #129 (run 41067938580, 879e02e, D91-D92) passed: backend,
+  frontend, docker-smoke and execution-compose.
 
 ## Follow-ups and the decision register (D91, D92, 2026-10-30; local only, synthetic accounts)
 
