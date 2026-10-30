@@ -102,7 +102,7 @@ jobs:
       - name: Prepare environment file (synthetic defaults only)
         run: cp .env.example .env
       - name: Smoke checks fail when they should (request failure, wrong content, exited container)
-        run: ./scripts/test_smoke_lib.sh
+        run: ./scripts/test_smoke_lib.sh && ./scripts/test_validate.sh
       - name: Docker Compose smoke test
         run: ./scripts/docker-smoke.sh
 

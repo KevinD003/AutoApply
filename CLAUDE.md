@@ -31,6 +31,8 @@ Job-discovery and application platform for any profession. Read these first:
 - Backend tests: `cd backend && uv run pytest` (needs Postgres DB `noefforts_test`; it is wiped).
 - Lint: `cd backend && uv run ruff check . && uv run ruff format --check .`
 - Frontend: `cd frontend && npx tsc --noEmit && npm run lint`
+- Validation with honest exit codes: `scripts/validate.sh quick` (or `all`); never trust a
+  `| tail` of a check.
 - E2E: `cd frontend && npx playwright test` (needs DB `noefforts_e2e`; in the cloud sandbox set
   `PW_CHROMIUM_PATH=$(ls -d /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1)`).
 - New migration: `cd backend && uv run alembic revision --autogenerate -m "..."`, then review it.

@@ -9,6 +9,25 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Email reminders to the owner (D94, 2026-10-30; local SMTP sink only)
+
+The oracle is the sink's own ledger (`fixtures/ats_receiver/mail_sink.py`), which shares no code
+or database with NoEfforts. Tests are in `test_email_reminders.py` unless named otherwise.
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Off by default; opt-in needs a verified address | `config_problem`, `set_enabled`, `verify_code` | `test_off_by_default_nothing_is_ever_sent`, `test_turning_it_on_needs_a_verified_address_entered_in_the_app`, `test_codes_expire_run_out_and_are_limited_and_addresses_are_checked`, `email.spec.ts` | pass | — |
+| Minimal content, safe link, owner only | `digest_message`; recipient from settings only | `test_the_digest_says_only_the_category_and_links_to_the_tracker`, `test_nothing_is_ever_emailed_to_anyone_but_the_verified_owner`, `email.spec.ts` | pass | — |
+| Categories, daily digest, deduplication | `digest_items`, dedupe key, emailed keys | `test_attention_items_are_their_own_category_and_choices_are_respected`, `test_one_digest_a_day_and_an_item_is_never_emailed_twice`, `test_an_item_read_in_the_app_is_not_emailed`, `test_before_the_hour_nothing_is_sent` | pass | — |
+| Opt-out, new address, deletion before dispatch | `cancel_pending`; re-check at claim | `test_opting_out_or_removing_the_address_before_dispatch_cancels`, `test_a_new_address_needs_verifying_again_and_cancels_what_is_pending`, `test_deleting_the_account_before_dispatch_sends_nothing` | pass | an accepted message cannot be recalled |
+| Duplicate workers, fencing, recovery | lock + skip-locked claim, `generation`, `recover_stale` | `test_two_workers_for_one_delivery_send_it_once`, `test_a_late_result_after_recovery_is_fenced`, `test_a_worker_lost_while_sending_leaves_it_uncertain` | pass | — |
+| Refusal, timeout, uncertain acceptance | `SmtpTransport` classification; bounded retries | `test_a_definite_transient_refusal_is_retried_a_bounded_number_of_times`, `test_a_refusal_then_acceptance_is_sent_once`, `test_a_permanent_refusal_fails_and_is_not_retried`, `test_a_refused_connection_is_a_definite_failure`, `test_a_possible_acceptance_is_uncertain_and_never_resent` | pass | not exactly-once (SMTP cannot promise it) |
+| No application change; no follow-up marked done | reminders read only | `test_reminders_never_change_an_application_or_mark_a_follow_up_done`, `email.spec.ts` | pass | — |
+| Isolation, tokens, privacy of logs, audit, export | `session_only`; sanitized logs; export lists | `test_another_account_and_api_tokens_never_reach_your_email_settings`, `test_logs_audit_and_export_keep_no_address_code_or_message`, `test_every_table_and_column_has_an_export_decision` | pass | — |
+| Configuration checked before sending | `config_problem` | `test_the_configuration_is_checked_before_anything_is_sent` | pass | — |
+| Honest validation exit codes | `scripts/validate.sh` | `scripts/test_validate.sh` (CI docker-smoke job) | pass | — |
+| Sabotage | 13 guards | each caught (`implementation-status.md`) | pass | — |
+
 ## Freehire signals, display-only (D93, 2026-10-30; fixture only)
 
 | Requirement | Implementation | Evidence | Result | Gaps |

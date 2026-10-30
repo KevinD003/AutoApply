@@ -17,6 +17,9 @@ Next.js frontend ──rewrite──▶ FastAPI backend ──▶ PostgreSQL (du
   The rewrite target (`NOEFFORTS_BACKEND_URL`) is fixed **at build time**. It installs as a
   web app (D89): `public/manifest.webmanifest` and a service worker (`public/sw.js`) that keeps
   only a static offline page and one icon, never a page, an API response or a document.
+- **Email reminders** (`app/modules/mail/`, D94): to the account owner only, opt-in after a
+  verified address; an outbox of deliveries claimed under a lock, fenced by `generation`, with
+  uncertain sends never repeated. Off unless the owner configures a mail server.
 - **Follow-ups** (`app/modules/followups/`, D92): derived from an application's own records,
   like notifications; only your choices are stored (`follow_ups`). Nothing is sent.
 - **Browser extension** (`extension/`, D90): capture only. It sends a tab's address and title

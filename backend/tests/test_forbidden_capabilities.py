@@ -561,11 +561,34 @@ def test_the_scanned_tree_is_the_repository():
     assert "frontend/package.json" in found["package"]
 
 
+# D94: email reminders to the account owner are authorized, outbound SMTP only. These files may
+# import exactly these names: the standard library's SMTP client and message classes, and the
+# local test sink. Reading mail (IMAP, POP, a mailbox, Gmail or any provider's API) stays
+# forbidden everywhere, these files included.
+OUTBOUND_MAIL = {
+    "backend/app/modules/mail/transport.py": {"smtplib", "email.message"},
+    "backend/app/modules/mail/service.py": {"email.message"},
+    "fixtures/ats_receiver/mail_sink.py": {"email"},
+    "fixtures/ats_receiver/receiver.py": {"mail_sink"},
+    "backend/tests/test_email_reminders.py": {"mail_sink"},
+}
+
+
+def _outbound_allowed(hit: str, root: Path) -> bool:
+    m = re.fullmatch(r"(.+):\d+ import (\S+)", hit)
+    if not m:
+        return False
+    path, name = Path(m[1]), m[2]
+    rel = path.relative_to(root).as_posix() if path.is_relative_to(root) else None
+    return rel in OUTBOUND_MAIL and name in OUTBOUND_MAIL[rel]
+
+
 def repo_mail_hits(root: Path = REPO) -> list[str]:
     app = root / "backend/app"
     files = py_files(root)
     hits = mail_hits([p for p in files if app not in p.parents])
     hits += mail_hits([p for p in files if app in p.parents], computed_imports_fail=True)
+    hits = [h for h in hits if not _outbound_allowed(h, root)]
     return hits + mail_hits(js_files(root) + frontend_sources(root))
 
 
@@ -574,6 +597,23 @@ def test_no_mailbox_client_is_imported_or_addressed_anywhere():
     mail host, API, protocol or OAuth scope, or runs a mail program; in backend/app an import
     whose name is computed fails too."""
     assert repo_mail_hits() == []
+
+
+def test_outbound_mail_is_allowed_only_where_listed_and_reading_mail_never(tmp_path):
+    """D94: the exception is per file and per name; a mailbox client fails even there."""
+    t = tmp_path / "backend/app/modules/mail/transport.py"
+    t.parent.mkdir(parents=True)
+    t.write_text("import smtplib\nfrom email.message import EmailMessage\n")
+    assert repo_mail_hits(tmp_path) == []
+    for reading in ("import imaplib\n", "import poplib\n", "import mailbox\n",
+                    "from googleapiclient import discovery\n"):  # fmt: skip
+        t.write_text("import smtplib\n" + reading)
+        assert repo_mail_hits(tmp_path), reading
+    other = tmp_path / "backend/app/modules/notifications/service.py"
+    other.parent.mkdir(parents=True)
+    t.write_text("import smtplib\n")
+    other.write_text("import smtplib\n")
+    assert repo_mail_hits(tmp_path) == [f"{other}:1 import smtplib"]
 
 
 def test_the_repository_mail_scan_reads_each_place_as_it_should(tmp_path):

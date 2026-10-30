@@ -56,6 +56,17 @@ Check the file before starting (prints key names only, never values):
 python3 scripts/check_env.py .env
 ```
 
+### Email reminders (optional, off by default; D94)
+
+Reminders go to the account owner only, never to an employer. To use them, set
+`NOEFFORTS_EMAIL_ENABLED=true`, an SMTP server (`NOEFFORTS_EMAIL_SMTP_HOST`, `_PORT`,
+`_STARTTLS`, `_USERNAME`, `_PASSWORD`) and a sender (`NOEFFORTS_EMAIL_FROM`) in `.env`, and
+`NOEFFORTS_PUBLIC_BASE_URL` to the address you open NoEfforts at (the links point there). In
+production STARTTLS is required unless the server is on this machine. Then, in Account, Email
+reminders: verify your address with the code, choose what to be reminded of, turn them on. A
+message the server accepted cannot be recalled; one whose acceptance is uncertain is never sent
+again. Not yet run against a real mail server.
+
 ## 3. Start
 
 ```bash

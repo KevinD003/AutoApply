@@ -60,6 +60,11 @@ celery_app.conf.update(
         "purge-expired-evidence": {"task": "noefforts.purge_expired_evidence", "schedule": 86400.0},
         # D56: watched Freehire searches; does nothing unless Freehire is an enabled provider.
         "check-discovery-watches": {"task": "noefforts.check_discovery_watches", "schedule": 10.0},
+        # D94: owner email reminders; does nothing unless the owner configured email.
+        "email-tick": {
+            "task": "noefforts.email_tick",
+            "schedule": settings.email_dispatch_interval_seconds,
+        },
     },
 )
 
@@ -107,6 +112,13 @@ def check_discovery_watches() -> int:
     from app.modules.discovery.service import check_due_watches
 
     return check_due_watches()
+
+
+@celery_app.task(name="noefforts.email_tick")
+def email_tick() -> dict:
+    from app.modules.mail.service import tick
+
+    return tick(WORKER_ID)
 
 
 @celery_app.task(name="noefforts.purge_expired_sessions")

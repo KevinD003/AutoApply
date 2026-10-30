@@ -124,6 +124,24 @@ class Settings(BaseSettings):
     # assessment you recorded) before NoEfforts reminds you to follow up. In the app only.
     follow_up_days: int = Field(default=7, ge=1, le=60)
 
+    # D94: email reminders to the account owner (never to an employer), off by default. With
+    # `email_enabled` false nothing is ever sent and the settings page says email is not set up.
+    # `email_recipient_domains`, when set, is the only domains a reminder may go to (the tests use
+    # example.com). `public_base_url` is where an email's links point. mail/service.py
+    # `config_problem` refuses an incomplete or unsafe setup before anything is sent.
+    email_enabled: bool = False
+    email_smtp_host: str = ""
+    email_smtp_port: int = Field(default=587, ge=1, le=65535)
+    email_smtp_starttls: bool = True
+    email_smtp_username: str = ""
+    email_smtp_password: SecretStr = SecretStr("")
+    email_from: str = ""
+    email_timeout_seconds: float = Field(default=10, gt=0, le=60)
+    email_max_attempts: int = Field(default=3, ge=1, le=5)
+    email_dispatch_interval_seconds: float = Field(default=60, ge=1, le=3600)
+    email_recipient_domains: list[str] = Field(default_factory=list)
+    public_base_url: str = "http://localhost:3000"
+
     @field_validator("fixture_networks")
     @classmethod
     def _private_test_networks(cls, v: list[str]) -> list[str]:

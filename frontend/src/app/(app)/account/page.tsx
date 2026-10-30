@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import ApiTokens from "@/components/ApiTokens";
+import EmailReminders from "@/components/EmailReminders";
 import { Button, Card, ErrorBox, Field, inputCls, Loading } from "@/components/ui";
 import { api, setCsrf } from "@/lib/api";
 
@@ -75,6 +76,7 @@ export default function AccountPage() {
           Download all my data
         </a>
       </Card>
+      <EmailReminders />
       <ApiTokens />
       <Card title="Delete my account">
         <p className="text-sm text-slate-700">Deleting takes effect at once and cannot be undone. It deletes:</p>

@@ -106,6 +106,7 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `application.reconcile` | `application` | `finding` | `received` or `not_received` |
 | `application.outcome` | `application` | `source`, `to` | the outcome the user recorded (`applications/states.py` `Outcome`); `user_reported`, the only source of an outcome a user records. Never the date the user gave, their note or the previous outcome, which stay on the application's timeline |
 | `follow_up.update` | `application` | `change` | what you did about following up on a submitted application (D92): `done` (you followed up), `remind` (you chose a day), `stop` or `resume`. Never the day you chose or the message |
+| `email.update` | `email_settings` | `change` | what you did with your email reminders (D94): `address`, `code` (asked for a code), `verify`, `preferences`, `enable`, `disable` or `remove`. Never the address, a code, the categories chosen or any message |
 | `application.answer` | `application` | `field_ref` | reference to the question, never its key or the answer |
 | `application.consent` | `application` | `choice`, `field_ref` | the consent choice; reference to the question |
 | `application.answer_cleared` | `application` | `field_ref` | reference to the question whose answer for this application was removed (C12) |

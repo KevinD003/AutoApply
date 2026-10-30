@@ -17,6 +17,7 @@ from app.modules.execution.router import router as execution_router
 from app.modules.followups.router import router as followups_router
 from app.modules.identity.router import router as auth_router
 from app.modules.jobs.router import router as jobs_router
+from app.modules.mail.router import router as mail_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.preparation.router import router as preparation_router
 from app.modules.profiles.router import router as profile_router
@@ -70,6 +71,7 @@ def create_app() -> FastAPI:
         discovery_router,
         notifications_router,
         followups_router,
+        mail_router,
         apitokens_router,
     ):
         app.include_router(r, prefix=API_PREFIX)

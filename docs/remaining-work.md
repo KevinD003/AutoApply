@@ -49,7 +49,7 @@ anywhere real. Real pages and APIs **have** been read, as above, under single-us
 | 5 | MCP server | **Fixture-tested** (D84): `scripts/noefforts_mcp.py`, stdio only, read tools for jobs, applications and notifications, and `import_job` only for an `import:jobs` token; never a submit, approve, answer or consent tool. Not tried with a third-party MCP client | `test_api_tokens.py` (in process, and as a subprocess against a real uvicorn) | — | No | Try it with the owner's MCP client (owner's machine) |
 | 6 | Browser extension (capture only) | **Partial** (D90): fixture-tested in Chromium, loaded unpacked, not published. `extension/` saves the current tab's address and title to your own NoEfforts on this machine with an `import:jobs` token (`activeTab` and `storage` only; no content scripts; never the session cookie). It never reads, fills or submits a page. **Unfinished**: sending the page itself, Firefox/Safari builds, a store listing | `frontend/e2e/extension.spec.ts` | Real-page form capture is refused today (409); sending a page would need it | Yes, before it captures a real page or is published | None without that decision; keep the address-only contract |
 | 7 | Mobile | Responsive web, fixture-tested at 390×844 (`mobile` project), and **installable** (D89): a web app manifest and a service worker whose only offline content is a static offline page that shows nothing about you (no page, API response or document is cached). **Unfinished**: no native app, no offline data, no push notifications | Playwright `mobile` project, `frontend/e2e/pwa.spec.ts`, `scripts/docker-smoke.sh` | A decision on native apps | Yes, for native apps | Decide on native apps; offline data only with its own export and deletion design |
-| 8 | Messaging (notifications: email, push, chat) | **Partial**: an in-app feed (D83) of verification requests, approvals that stop applying, rehearsals, receipts and stops, with read/unread, derived from the records; nothing is sent to the user outside the web app | `test_notifications.py`, `notifications.spec.ts` | Consent, and a sending provider for anything outside the app | Yes for outside providers | None without a decision on outside delivery |
+| 8 | Messaging (notifications: email, push, chat) | **Partial**: the in-app feed (D83) is the source of truth. **Email reminders to the account owner (D94), fixture-tested**: off by default; on only after you verify your address with a code typed in the app and turn them on; at most one daily digest naming only the category (needs attention, follow-up due) with a link to the tracker; never to an employer or recruiter. Tested against a local SMTP sink only. No push or chat | `test_email_reminders.py`, `email.spec.ts` | A real mail server, configured by the owner | Yes, to configure a real mail server | Push and chat only if wanted |
 | **Find** | | | | | | |
 | 9 | Manual jobs, CSV/XLSX import/export, dedupe, exclusions | Fixture-tested | `test_jobs.py`, `phase-a.spec.ts` | — | No | — |
 | 10 | Freehire discovery (documented API, fixture) | Fixture-tested | `test_freehire_discovery.py`, `discovery.spec.ts`, `journey.spec.ts` | — | No | — |
@@ -75,13 +75,13 @@ anywhere real. Real pages and APIs **have** been read, as above, under single-us
 | 28 | Workday | **Fixture-tested (local approximation only, checkpoint-first)**, D88: `fixture_workday` reads a Workday-style single-page application on the local receiver, fills only approved facts and answers, uploads files (evidence kept after a partial failure), reads back (a resume parse that fills a field you left blank stops it), rehearses without submitting, submits once after its own approval and binds the confirmation to the attempt. Candidate accounts and passwords, email verification, applications on several pages, values the page filled in itself, dependent location lists, pickers and custom dropdowns are all checkpoints, never automated. It has **no Workday identity**: a real Workday job stays a manual handoff (`planned_adapter_only`) and the `workday` specification stays `planned`. No Workday documentation page could be opened from this sandbox | `test_workday_adapter.py`, `workday.spec.ts`, `test_workday_ashby_fixtures.py`; `docs/research/workday.md` | Network access to `doc.workday.com` and related hosts; Workday's terms (the decision register below keeps it a manual handoff) | Yes | Per-page disclosure accounting before several pages could ever be applied |
 | 29 | Ashby | **Fixture-tested (local approximation only)**, D87: `fixture_ashby` reads an Ashby-style posting's application page on the local receiver, fills only approved facts and answers (Yes/No questions naming the country from your facts), uploads files (evidence kept after a partial failure), reads back (a field resume autofill changed stops it), never clicks the cookie banner, rehearses without submitting, submits once after its own approval and binds the confirmation to the attempt. The approximation's spam check is a hard stop everywhere: a checkpoint at capture, a stop before anything is entered, an unknown outcome after the final click (as are "already applied" and a confirmation that shows a challenge), never solved, retried or resent. It has **no Ashby identity**: a real Ashby job stays a manual handoff. URL recognition for hosted postings and `?ashby_jid=` embeds as before (D81). No Ashby documentation page could be opened from this sandbox, so every page detail is the fixture's own design | `test_ashby_adapter.py`, `ashby.spec.ts`, `test_workday_ashby_fixtures.py`; `docs/research/ashby.md` | Network access to `developers.ashbyhq.com`, `docs.ashbyhq.com`; an owner's docs-and-terms review before any Ashby specification | Network only | Confirm the shapes from the documentation |
 | 30 | Verification codes | Fixture-tested by manual entry (checkpoint) | `test_execution_*`, `submission.spec.ts` | — | No | — |
-| 31 | Gmail or inbox access (codes, replies) | **Awaiting access or consent**: not started (D10) | `docs/research/gmail-oauth.md` | A separately scoped inbox permission | Yes | — |
+| 31 | Gmail or inbox access (codes, replies) | **Disabled by design** (D10, D94): NoEfforts does not read an inbox or retrieve verification codes; you type codes in the app. Not an owner action | `docs/research/gmail-oauth.md` | — | No | None |
 | 32 | Standing approvals (auto-apply with caps) | **Decided: not built** (D91): every submission needs its own approval, by the owner's standing default | — | — | No | None |
 | 33 | Tsenta as a provider | **Awaiting access**: developer docs not accessible (D8) | `docs/research/tsenta.md` | Public developer docs reachable | Yes | — |
 | **Track** | | | | | | |
 | 34 | Tracker, timeline, outcomes with sources, funnel | Fixture-tested | `test_funnel.py`, `tracker-outcomes.spec.ts`, `journey.spec.ts` | — | No | — |
 | 34a | Follow-ups | **Fixture-tested** (D92): due a set number of days (7 by default) after you applied, followed up, or recorded an interview or assessment, or on a day you choose; closed by an outcome; an in-app notification when due; a message to copy, never sent | `test_follow_ups.py`, `follow-ups.spec.ts` | — | No | Sending it by email only behind row 8's opt-in |
-| 35 | Inbox classification of replies | **Unfinished**; would need row 31 | — | Row 31 | Yes | — |
+| 35 | Inbox classification of replies | **Deferred**: a separate optional integration, only if separately authorized; not bundled with outbound reminders | — | A separate authorization | Yes (only if wanted) | — |
 | **Platform** | | | | | | |
 | 36 | Docker Compose stack | **Awaiting deployment verification**: smoke-tested in CI (`docker-smoke`, `execution-compose`); the API has a health check and the worker and web app start only once it is healthy; secrets checked before start; owner's guide `docs/deployment.md`; **not run on the owner's Mac** | CI jobs, `test_deployment_config.py`, `scripts/check_env.py` | The owner's machine | Yes: run `./scripts/verify-local.sh` (section 9 of the guide) | Record the Mac result in `implementation-status.md` |
 | 37 | Full data export | Fixture-tested: one ZIP of every record and document file, column by column; secrets and keyed material left out with reasons | `test_account.py`, `account.spec.ts` | — | No | — |
@@ -131,11 +131,15 @@ offline it shows a static page that keeps nothing about you. Row 6's safe part (
 capture-only browser extension saves the current tab's address and title to your own NoEfforts
 with an `import:jobs` token, and never reads or fills the page.
 
-**What is left needs the owner or is queued.** Rows that wait on someone else are marked
-**external** in the decision register below (rows 23, 26, 31, 35, 40), plus the owner's machine
-(rows 5, 36, 39), the answer file (row 24) and access to Tsenta's documentation (row 33). Work
-that needs nothing from anyone is queued: row 8's external messaging (email first) behind an
-explicit opt-in, built and tested against a local mail sink, off until configured.
+**What is left, and what it blocks.** Each missing input blocks one action, not the work
+around it: a Claude key and budget block paid AI drafting only (row 23; built and tested with
+the fixture provider); the answer archive blocks that import only (row 24; the answer bank is
+built); live-pilot consent blocks real employer activity only (row 26; local development
+continues); hosting is local-first by default, and paid or public deployment is not a pending
+routine decision (row 40); the owner's Mac and a real MCP client are environment checks of
+features already built (rows 5, 36, 39), not missing backend work; a real mail server is needed
+only to send reminders for real (row 8). Inbox reading and code retrieval stay disabled (row 31),
+and reply classification is deferred unless separately authorized (row 35).
 
 ## "Phase E", defined
 
@@ -172,9 +176,11 @@ queue: only the rows marked **external** wait on someone else, and each blocks o
 | Follow-ups | In the app, derived, with a message to copy; nothing sent (D92) | Decided; built |
 | Workday's terms and employers' Workday sites | Workday stays a manual handoff; a review of public terms would be mine, recorded as such, never the owner's acceptance | Decided |
 | Live-pilot permissions 1-4 for one real employer | The owner's to give (`live-pilot-gate.md` §2); real destinations refused in code until then | **External** (row 26) |
-| Inbox access for codes and replies | A separately scoped permission | **External** (rows 31, 35) |
+| Inbox access for codes and replies | Inbox reading and automated code retrieval stay disabled; codes are typed in the app. Reply classification is a separate optional integration, deferred unless separately authorized | Decided (rows 31, 35) |
+| Email reminders | To the owner only, opt-in after a verified address, a daily digest of categories with a safe link, off by default (D94) | Decided; built |
 | A Claude key and daily budget | The owner's credential and spending decision | **External** (row 23) |
-| Hosting, a domain, paid provisioning, public launch | Designed only; nothing provisioned or exposed | **External** (row 40) |
+| Hosting, a domain, paid provisioning, public launch | Local-first; paid or public deployment only when the owner chooses to (designed, nothing provisioned or exposed) | Decided; provisioning **external** (row 40) |
+| A real mail server for reminders | The owner's SMTP host and credentials, in `.env` | **External** (row 8, to send for real) |
 
 Kept as decided, not open: the bot-check stop (never narrowed; `implementation-plan.md`, "Owner
 decisions"); every consent boundary in CLAUDE.md and D74.

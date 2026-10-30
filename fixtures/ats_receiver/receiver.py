@@ -21,6 +21,7 @@ import greenhouse_v2  # second approximation: id-only controls, ARIA comboboxes 
 import lever_like  # labelled approximation of a Lever-hosted posting and form (same ledger)
 import ashby_like  # labelled approximation of an Ashby-hosted posting and form (same ledger)
 import workday_like  # labelled approximation of a Workday-hosted application (same ledger)
+from mail_sink import MailSink  # D94: a local SMTP sink with its own ledger (test-only)
 
 SCHEMA = """
 create table if not exists acceptances (id integer primary key, receipt text, slug text,
@@ -64,7 +65,7 @@ class Ledger:
             return c.execute(sql, args).fetchall()
 
 
-def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
+def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     cfg = {"mode": "normal", "delay_s": 0.0, "idempotent": True, "canary": None,
            "token_ttl_s": 3600, "autosave": False, "tamper": None, "form_delay_s": 0.0,
@@ -107,6 +108,25 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
             "freehire_requests": [{"route": r, "offset": o, "limit": n, "q": q,
                                    "auth_present": bool(a)} for r, o, n, q, a in fh],
         }
+
+    @app.get("/_admin/mail")
+    def get_mail(x_admin_token: str | None = Header(None)):
+        """D94: what the local SMTP sink received (its own ledger), and how often it was asked."""
+        admin(x_admin_token)
+        if mail is None:
+            raise HTTPException(404)
+        return {"messages": mail.received(), "connections": mail.connections, "mode": mail.mode}
+
+    @app.post("/_admin/mail/config")
+    async def set_mail(request: Request, x_admin_token: str | None = Header(None)):
+        admin(x_admin_token)
+        if mail is None:
+            raise HTTPException(404)
+        body = await request.json()
+        if body.get("reset"):
+            mail.reset()
+        mail.mode = body.get("mode", mail.mode)
+        return {"mode": mail.mode}
 
     @app.post("/_admin/reset")
     def reset(x_admin_token: str | None = Header(None)):
@@ -400,8 +420,13 @@ def main():
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--ledger", required=True)
     ap.add_argument("--admin-token", required=True)
+    ap.add_argument("--smtp-port", type=int, default=0, help="D94: also run the local SMTP sink")
     a = ap.parse_args()
-    uvicorn.run(build_app(Ledger(a.ledger), a.admin_token), host=a.host, port=a.port,
+    mail = None
+    if a.smtp_port:
+        mail = MailSink()
+        mail.start("127.0.0.1", a.smtp_port)
+    uvicorn.run(build_app(Ledger(a.ledger), a.admin_token, mail), host=a.host, port=a.port,
                 log_level="warning")
 
 

@@ -2502,3 +2502,45 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
     provider and the two routes that show them only.
 - **Not done:** filtering or sorting by a signal (it would make an unverified claim an input).
 - **Unchanged:** `SCHEMA_VERSION` (3); no migration; the fingerprint.
+
+## D94 — Email reminders to the account owner, opt-in, one daily digest (2026-10-30)
+
+- **Why:** remaining-work row 8, with the owner's definition: reminders to the account owner
+  that an application needs attention or a follow-up is due, with a link back; never an email to
+  an employer or recruiter, and the follow-up message stays a draft to copy.
+- **Decision:**
+  - Off by default at two levels: the owner's switch (`NOEFFORTS_EMAIL_ENABLED` and an SMTP
+    server; `mail/service.config_problem` refuses an incomplete setup, a link address with a
+    path, or production without STARTTLS to a non-loopback server) and each account's opt-in.
+    Opting in needs an authenticated session (API tokens refused), an address verified with a
+    6-digit code typed in the app (keyed digest stored, 30 minutes, 5 tries, 5 codes a day),
+    then "Turn email reminders on". `NOEFFORTS_EMAIL_RECIPIENT_DOMAINS` can restrict domains.
+  - One daily digest at the hour you choose (UTC): unread items of the in-app feed in the
+    categories you chose, never an item emailed before. It says only the category and links to
+    `/tracker?highlight=<application>`, a page that only reads. No job, employer, answer,
+    document, token or action link; following it changes nothing.
+  - Delivery (`email_deliveries`): `pending`, claimed under a lock (settings, then delivery: the
+    same order as opting out), re-checked (opted in, the same verified address, an allowed
+    domain, something new), marked `sending` in its own commit, then the transport decides, with
+    every write fenced by `generation`. Accepted -> `sent`; a definite transient refusal (before
+    the message, or an explicit 4xx after it) -> `pending`, at most `NOEFFORTS_EMAIL_MAX_ATTEMPTS`
+    (3) with backoff, then `failed`; permanent -> `failed`; a possible acceptance (connection
+    lost or timed out after the message started) -> `uncertain`, final, never resent; a worker
+    that dies while `sending` -> `uncertain`. Not exactly-once: SMTP cannot promise it, so an
+    uncertain message is never retried rather than risk a duplicate.
+  - Opting out, a new address or removing it cancels everything still `pending`; deleting the
+    account deletes every row, and a worker finds nothing to send. A message already accepted by
+    the mail server cannot be recalled.
+  - Logs and audit carry the delivery id, a fixed outcome code and the kind of change only:
+    never the address, a code, a message or an exception's text. The export holds your settings
+    and deliveries without keyed digests or worker internals; no message content is stored.
+  - A local SMTP sink (`fixtures/ats_receiver/mail_sink.py`, also served by the receiver with
+    `--smtp-port`) with its own ledger and failure modes is the test oracle. No real mail server
+    or recipient is used.
+- **Also (tooling):** `scripts/validate.sh` runs each validation step with its output in a log
+  and its own exit status deciding (a `ruff check | tail` once passed on `tail`'s status);
+  `scripts/test_validate.sh` proves a failing step fails the wrapper and runs in CI.
+- **Register corrections (D91):** inbox reading and automated code retrieval stay disabled and
+  are not an owner action; reply classification is a separate optional integration, deferred.
+- **Not done:** push or chat; per-item immediate emails; a real mail server.
+- **Unchanged:** `SCHEMA_VERSION` (3); the execution path. Migration `c4e8a2d17b55`.

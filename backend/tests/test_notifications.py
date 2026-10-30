@@ -238,7 +238,12 @@ def test_nothing_in_notifications_can_send_anything_anywhere():
         for p in (ROOT / "backend/app").rglob("*.py")
         if "modules.notifications" in p.read_text() and "notifications" not in p.parent.name
     ]
-    assert sorted(users) == ["backend/app/main.py", "backend/app/models.py"]
+    # D94: the owner's email digest reads the feed; sending lives in the mail module, never here.
+    assert sorted(users) == [
+        "backend/app/main.py",
+        "backend/app/models.py",
+        "backend/app/modules/mail/service.py",
+    ]
 
 
 def test_every_query_of_the_feed_is_scoped_to_the_account():

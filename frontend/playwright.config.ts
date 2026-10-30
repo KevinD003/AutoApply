@@ -28,6 +28,17 @@ const backendEnv = {
   // Test-only as well: journey.* accounts draft with the labelled local fixture provider
   // (backend preparation/fixture_provider.py); every other account sees drafting as not configured.
   NOEFFORTS_DRAFTING_TEST_FIXTURE_USERS: JSON.stringify(["journey.*@example.com"]),
+  // D94: email reminders go to the receiver's local SMTP sink only (port MAIL_PORT), to
+  // example.com addresses only; nothing is relayed anywhere.
+  NOEFFORTS_EMAIL_ENABLED: "true",
+  NOEFFORTS_EMAIL_SMTP_HOST: "127.0.0.1",
+  NOEFFORTS_EMAIL_SMTP_PORT: "8796",
+  NOEFFORTS_EMAIL_SMTP_STARTTLS: "false",
+  NOEFFORTS_EMAIL_FROM: "noefforts@example.com",
+  NOEFFORTS_EMAIL_RECIPIENT_DOMAINS: JSON.stringify(["example.com"]),
+  NOEFFORTS_EMAIL_DISPATCH_INTERVAL_SECONDS: "2",
+  NOEFFORTS_EMAIL_TIMEOUT_SECONDS: "5",
+  NOEFFORTS_PUBLIC_BASE_URL: "http://127.0.0.1:3100",
 };
 
 // Offline emulation reaches a service worker's own requests only with this switch (Playwright
@@ -55,7 +66,7 @@ export default defineConfig({
   webServer: [
     {
       // Fresh ledger per run: the receiver is the oracle, so stale rows must not carry over.
-      command: `rm -f /tmp/noefforts-e2e-ledger.db && uv run python ../fixtures/ats_receiver/receiver.py --port 8799 --ledger /tmp/noefforts-e2e-ledger.db --admin-token ${RECEIVER_TOKEN}`,
+      command: `rm -f /tmp/noefforts-e2e-ledger.db && uv run python ../fixtures/ats_receiver/receiver.py --port 8799 --ledger /tmp/noefforts-e2e-ledger.db --admin-token ${RECEIVER_TOKEN} --smtp-port 8796`,
       cwd: "../backend",
       url: `${RECEIVER}/apply/health-check`,
       reuseExistingServer: false,
