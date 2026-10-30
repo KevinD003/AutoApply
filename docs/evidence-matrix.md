@@ -9,6 +9,16 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Freehire signals, display-only (D93, 2026-10-30; fixture only)
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Only the documented fields, each with its type | `provider.freehire_signals` | `test_reality_is_read_field_by_field_with_its_documented_type_and_nothing_else` | pass | the fixture's shapes stand in for Freehire's reference |
+| Worded in the source's terms, attributed | `provider.describe_signals`; Discover; job page | `test_signals_are_described_in_the_sources_terms_without_a_verdict`, `test_the_listing_and_the_job_page_show_what_freehire_says`, `discovery.spec.ts` | pass | — |
+| Refreshed without counting as a change | stored in `normalized`, outside the fingerprint | `test_signals_refresh_on_every_read_without_counting_as_a_change`, `test_counters_and_reality_ticking_are_not_a_change` | pass | — |
+| Never an input | code scan of every reader | `test_signals_never_reach_matching_approval_routing_or_execution` | pass | — |
+| Sabotage | 4 guards | each caught (`implementation-status.md`) | pass | — |
+
 ## Follow-ups (D92, 2026-10-30; local only)
 
 | Requirement | Implementation | Evidence | Result | Gaps |

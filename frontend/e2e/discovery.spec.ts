@@ -42,6 +42,10 @@ test("discover jobs: source, import result, duplicates, incomplete fields, outag
   await expect(page.getByText("via freehire.me", { exact: true })).toHaveCount(5);
   await expect(page.getByText(/sponsorship: source says yes \(provider enrichment\)/).first()).toBeVisible();
   await expect(page.getByText(/sponsorship: source not stated/).first()).toBeVisible();
+  // D93: what Freehire says about each posting, in its own terms, display-only.
+  await expect(page.getByTestId("source-signals").first()).toHaveText(
+    "Freehire says: classified as “fresh” · listed for 3 days (not checked by NoEfforts)",
+  );
 
   // Deleting a listing (D56) removes it and the job it created; a later search never adds it back.
   await page.locator("li", { hasText: "Data Analyst" }).getByRole("button", { name: "Delete" }).click();
@@ -56,6 +60,7 @@ test("discover jobs: source, import result, duplicates, incomplete fields, outag
   await expect(page.getByRole("link", { name: "already in your jobs (same job link)" }).first()).toBeVisible();
   await page.goto(`/jobs/${(await mine.json()).job.id}`);
   await expect(page.getByText("Found through a discovery source")).toBeVisible();
+  await expect(page.getByTestId("source-signals").first()).toContainText("Freehire says: classified as “fresh” · listed for 3 days");
   await expect(page.getByText("via freehire.me", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "My own title" })).toBeVisible();
 

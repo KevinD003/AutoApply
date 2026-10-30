@@ -68,6 +68,9 @@ class NormalizedJob:
     missing: list[str] = field(default_factory=list)  # why it cannot be linked automatically
     # Shown with every listing: {"text": ..., "url": a page on the source, or None}.
     attribution: dict = field(default_factory=dict)
+    # D93: what the source itself says about the posting (Freehire's documented `reality`),
+    # display-only: never a fact, never read by matching, approval, routing or execution.
+    source_signals: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         d = asdict(self)
@@ -123,6 +126,61 @@ def freehire_fingerprint(raw: dict) -> str:
     enr = raw.get("enrichment") if isinstance(raw.get("enrichment"), dict) else {}
     read = {k: raw.get(k) for k in FREEHIRE_READ}
     return fingerprint(read | {"enrichment": {k: enr.get(k) for k in FREEHIRE_ENRICHMENT_READ}})
+
+
+_REALITY_CLASS = re.compile(r"[a-z][a-z_-]{0,29}")
+_MAX_COUNT = 100_000
+
+
+def freehire_signals(raw: dict) -> dict:
+    """D93: Freehire's documented `reality` object (`class`, `age_days`, `repost_count`,
+    `mass_posting_count`, `fake_freshness`), each kept only with its documented type; anything
+    else in it is not read. Empty when Freehire says nothing usable."""
+    r = raw.get("reality")
+    if not isinstance(r, dict):
+        return {}
+
+    def count(v):
+        ok = isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= _MAX_COUNT
+        return v if ok else None
+
+    cls = r.get("class")
+    out = {
+        "class": cls if isinstance(cls, str) and _REALITY_CLASS.fullmatch(cls) else None,
+        "age_days": count(r.get("age_days")),
+        "repost_count": count(r.get("repost_count")),
+        "mass_posting_count": count(r.get("mass_posting_count")),
+        "fake_freshness": r.get("fake_freshness")
+        if isinstance(r.get("fake_freshness"), bool)
+        else None,
+    }
+    if all(v is None for v in out.values()):
+        return {}
+    return {"stated_by": "freehire", "basis": "Freehire's reality classification"} | out
+
+
+def _times(n: int) -> str:
+    return {1: "once", 2: "twice"}.get(n, f"{n} times")
+
+
+def describe_signals(signals: dict | None) -> list[str]:
+    """What the source says, in its own terms, for display after "Freehire says:". No line
+    says more than its field: no verdict on the posting and nothing about the employer."""
+    s = signals or {}
+    lines = []
+    if s.get("class"):
+        cls = s["class"]
+        lines.append("likely evergreen" if cls == "evergreen" else f"classified as “{cls}”")
+    if s.get("age_days") is not None:
+        n = s["age_days"]
+        lines.append(f"listed for {n} day{'' if n == 1 else 's'}")
+    if s.get("repost_count"):
+        lines.append(f"reposted {_times(s['repost_count'])}")
+    if s.get("mass_posting_count"):
+        lines.append(f"mass-posting count {s['mass_posting_count']}")
+    if s.get("fake_freshness") is True:
+        lines.append("flagged for fake freshness")
+    return lines
 
 
 def tri(value) -> str:
@@ -529,6 +587,7 @@ class FreehireApiProvider(DiscoveryProvider):
             closed_at_source=bool(raw.get("closed_at")),
             missing=_missing(url, None, title, employer),
             attribution=dict(self.ATTRIBUTION),
+            source_signals=freehire_signals(raw),  # D93: display-only
         )
 
 

@@ -5,6 +5,7 @@ own request table is the oracle for what was asked."""
 
 import dataclasses
 import logging
+import pathlib
 import uuid
 
 import pytest
@@ -20,7 +21,9 @@ from app.modules.discovery.provider import (
     FreehireApiProvider,
     NormalizedJob,
     Page,
+    describe_signals,
     enabled,
+    freehire_signals,
     plain_summary,
 )
 from app.modules.jobs.models import Job
@@ -213,8 +216,14 @@ def test_no_raw_payload_is_kept(api):
     assert set(row.normalized) == {f.name for f in dataclasses.fields(NormalizedJob)}
     assert set(row.raw_ref) == {"provider", "source_job_id", "fingerprint", "fields"}
     stored = str(row.normalized) + str(row.raw_ref) + str(row.source_facts)
-    for raw_only in ("<script>", "<p>", "Customer support.", "fake_freshness", "'view_count': 3"):
+    for raw_only in ("<script>", "<p>", "Customer support.", "09:20:00", "'view_count': 3"):
         assert raw_only not in stored, raw_only
+    # D93: the documented `reality` fields are read on purpose, each with its type, and nothing
+    # else of that object.
+    assert row.normalized["source_signals"] == {
+        "stated_by": "freehire", "basis": "Freehire's reality classification", "class": "fresh",
+        "age_days": 3, "repost_count": 0, "mass_posting_count": 0, "fake_freshness": False,
+    }  # fmt: skip
     with SessionLocal() as db:  # the tracker job gets the plain summary, not the source HTML
         assert db.get(Job, row.job_id).description == "Help customers by email and chat."
 
@@ -608,3 +617,67 @@ def test_a_refused_refresh_holds_back_the_next_refresh_and_import(api, receiver,
     assert r.status_code == 429 and "Nothing was sent" in r.json()["detail"]
     assert run(api).status_code == 429
     assert len(fh_requests(receiver)) == sent
+
+
+# -- D93: Freehire's `reality` signals, display-only ------------------------------------------
+
+
+def test_reality_is_read_field_by_field_with_its_documented_type_and_nothing_else():
+    good = {"class": "evergreen", "age_days": 412, "repost_count": 3, "mass_posting_count": 0,
+            "fake_freshness": True, "ghost": True, "score": 0.9}  # fmt: skip
+    out = freehire_signals({"reality": good})
+    assert out == {"stated_by": "freehire", "basis": "Freehire's reality classification",
+                   "class": "evergreen", "age_days": 412, "repost_count": 3,
+                   "mass_posting_count": 0, "fake_freshness": True}  # fmt: skip
+    bad = {"class": "<b>Evergreen</b>", "age_days": "412", "repost_count": True,
+           "mass_posting_count": -1, "fake_freshness": "yes"}  # fmt: skip
+    assert freehire_signals({"reality": bad}) == {}  # nothing usable, so nothing at all
+    assert freehire_signals({"reality": {"age_days": 10**9}}) == {}
+    assert freehire_signals({"reality": "evergreen"}) == {} and freehire_signals({}) == {}
+
+
+def test_signals_are_described_in_the_sources_terms_without_a_verdict():
+    assert describe_signals({"class": "evergreen", "age_days": 1, "repost_count": 2,
+                             "mass_posting_count": 5, "fake_freshness": True}) == [
+        "likely evergreen", "listed for 1 day", "reposted twice", "mass-posting count 5",
+        "flagged for fake freshness"]  # fmt: skip
+    assert describe_signals({"class": "fresh", "age_days": 3, "repost_count": 0,
+                             "mass_posting_count": 0, "fake_freshness": False}) == [
+        "classified as “fresh”", "listed for 3 days"]  # fmt: skip
+    assert describe_signals({}) == [] and describe_signals(None) == []
+
+
+def test_the_listing_and_the_job_page_show_what_freehire_says(api):
+    run(api)
+    item = next(x for x in api.get("/discovery/jobs").json() if x["source_job_id"] == SUPPORT)
+    assert item["signal_lines"] == ["classified as “fresh”", "listed for 3 days"]
+    assert item["source_signals"]["stated_by"] == "freehire"
+    row = rows(me(api))[SUPPORT]
+    sources = api.get(f"/jobs/{row.job_id}").json()["discovered_from"]
+    assert ["classified as “fresh”", "listed for 3 days"] in [d["signal_lines"] for d in sources]
+
+
+def test_signals_refresh_on_every_read_without_counting_as_a_change(api, receiver):
+    run(api)
+    receiver.config(fh_mode="fh_reality_tick")
+    res = run(api).json()
+    assert (res["created"], res["updated"], res["unchanged"]) == (0, 0, 5)
+    row = rows(me(api))[SUPPORT]
+    assert row.normalized["source_signals"]["age_days"] > 3  # the newer day, as Freehire said
+    assert row.changed_fields == []
+
+
+def test_signals_never_reach_matching_approval_routing_or_execution():
+    """Display-only (D91): the only readers are the discovery provider and the two routes that
+    show them."""
+    app = pathlib.Path(__file__).resolve().parents[1] / "app"
+    readers = {
+        str(p.relative_to(app))
+        for p in app.rglob("*.py")
+        if "source_signals" in p.read_text() or "describe_signals" in p.read_text()
+    }
+    assert readers == {
+        "modules/discovery/provider.py",
+        "modules/discovery/router.py",
+        "modules/jobs/router.py",
+    }

@@ -18,7 +18,13 @@ from app.core.errors import not_found
 from app.modules.audit.service import record
 from app.modules.discovery import service
 from app.modules.discovery.models import DiscoveredJob, DiscoveryWatch
-from app.modules.discovery.provider import PROVIDERS, DiscoveryError, DiscoveryFilters, enabled
+from app.modules.discovery.provider import (
+    PROVIDERS,
+    DiscoveryError,
+    DiscoveryFilters,
+    describe_signals,
+    enabled,
+)
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
 from app.modules.jobs import signals
@@ -110,6 +116,9 @@ def _row(r: DiscoveredJob, detail: bool = False) -> dict:
         "missing": n.get("missing") or [],
         "filter": r.filter_result,
         "source_facts": r.source_facts,
+        # D93: display-only, in the source's own terms; never used to match, approve or apply.
+        "source_signals": n.get("source_signals") or {},
+        "signal_lines": describe_signals(n.get("source_signals")),
         "stale": r.stale,
         "stale_reason": r.stale_reason,
         "changed_fields": r.changed_fields or [],

@@ -152,6 +152,7 @@ export interface JobDetail extends Job {
     stale: boolean;
     stale_reason: string | null;
     changed_fields: string[];
+    signal_lines?: string[]; // D93: what the source says, display-only
   }[];
   signals: JobSignals;
 }
@@ -220,6 +221,7 @@ export interface DiscoveredJob {
   missing: string[];
   filter: { result: "match" | "insufficient"; fields: string[] } | null;
   source_facts: { sponsorship_offered?: SourceFact };
+  signal_lines?: string[]; // D93: what the source says about the posting, display-only
   stale: boolean;
   stale_reason: string | null;
   changed_fields: string[];

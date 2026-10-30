@@ -169,6 +169,11 @@ export default function JobPage() {
                   <Badge>{d.label}</Badge> <Credit a={d.attribution} /> last seen {new Date(d.last_seen_at).toLocaleString()}
                   {d.stale && <> · <span className="text-amber-800">{d.stale_reason}</span></>}
                   {d.changed_fields.length > 0 && <> · changed at the source: {d.changed_fields.join(", ")} (not applied here)</>}
+                  {(d.signal_lines?.length ?? 0) > 0 && (
+                    <span className="block text-xs text-slate-600" data-testid="source-signals">
+                      {d.label} says: {d.signal_lines!.join(" · ")} (display only: not used to match, approve or apply)
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

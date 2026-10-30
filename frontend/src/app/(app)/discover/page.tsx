@@ -302,6 +302,12 @@ function DiscoveredRow({ r, onDelete, onRefresh }: { r: DiscoveredJob; onDelete:
         {r.published_on ? ` · posted ${r.published_on}` : ""}
         {sponsorship ? ` · sponsorship: source ${SPONSORSHIP_TEXT[sponsorship.value]}${sponsorship.value !== "unknown" ? ` (${sponsorship.basis})` : ""}` : ""}
       </p>
+      {(r.signal_lines?.length ?? 0) > 0 && (
+        // D93: in the source's own terms, display-only; never used to match, approve or apply.
+        <p className="text-xs text-slate-600" data-testid="source-signals">
+          {r.provider_label} says: {r.signal_lines!.join(" · ")} <span className="text-slate-400">(not checked by NoEfforts)</span>
+        </p>
+      )}
       {r.missing.length > 0 && (
         <p className="text-xs text-red-700">
           Missing: {r.missing.join(", ")}. <Link className="underline" href="/jobs">Add it manually</Link>.

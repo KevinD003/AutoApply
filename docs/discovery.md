@@ -216,10 +216,14 @@ unchanged). Only what the documentation states is relied on.
 - **No raw payload is kept** (tested). In particular, none of these are stored:
   - the HTML description;
   - the enrichment object;
-  - counters;
-  - the `reality` signals.
+  - counters.
 
   The tracker job receives the plain-text summary only.
+- **Freehire's `reality` signals (D93), display-only:** its five documented fields (`class`,
+  `age_days`, `repost_count`, `mass_posting_count`, `fake_freshness`) are read, each only with
+  its documented type, into `source_signals`, and refreshed on every read without making a record
+  "changed". Discover and the job page show them as "Freehire says: …" in its own terms. Matching,
+  approval, routing and execution never read them (`test_signals_never_reach_matching_approval_routing_or_execution`).
 
 ## Import rules (`discovery/service.import_from`)
 

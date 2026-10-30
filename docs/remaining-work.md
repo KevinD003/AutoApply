@@ -54,7 +54,7 @@ anywhere real. Real pages and APIs **have** been read, as above, under single-us
 | 9 | Manual jobs, CSV/XLSX import/export, dedupe, exclusions | Fixture-tested | `test_jobs.py`, `phase-a.spec.ts` | — | No | — |
 | 10 | Freehire discovery (documented API, fixture) | Fixture-tested | `test_freehire_discovery.py`, `discovery.spec.ts`, `journey.spec.ts` | — | No | — |
 | 11 | Live Freehire read and watched searches | **Awaiting access or consent**: implemented (D55, D56), never run | `test_freehire_live_read.py`, `test_freehire_watch.py` | The owner's run approval; network access to `freehire.me` (this sandbox denies it) | Yes | Owner records an approval and runs it where `freehire.me` is reachable |
-| 12 | Freehire `reality` signals (repost, evergreen) | **Unfinished**: not read yet. Decided (D91): shown display-only, attributed to Freehire, never used in matching, approval or routing | `test_undocumented_fields_are_not_read` | — | No | Read the documented fields and show them on Discover and the job page |
+| 12 | Freehire `reality` signals (repost, evergreen) | **Fixture-tested** (D93): the five documented fields read with their types, shown display-only on Discover and the job page as "Freehire says: …", refreshed on every read, never part of the fingerprint, never read by matching, approval, routing or execution | `test_freehire_discovery.py` (D93 tests), `discovery.spec.ts` | Live Freehire reads (row 11) | No | — |
 | 13 | Explainable match scoring | Fixture-tested (D79): preferences (met / not met / not stated / not set, counted as "m of n checked preferences met"), eligibility shown side by side and never decided, approved qualifications the job names, missing information; never a probability or an ATS score. Since D82 each jobs-list row summarises the same assessment (preferences counted, approved skills and licences named, unknowns counted) and links to the explanation | `test_fit.py`, `journey.spec.ts`, `match-summary.spec.ts` | — | No | None planned |
 | 14 | Job signals (closed, excluded, possible duplicate) | Fixture-tested | `test_job_signals.py`, `job-signals.spec.ts` | — | No | — |
 | **Prep** | | | | | | |
@@ -134,8 +134,8 @@ with an `import:jobs` token, and never reads or fills the page.
 **What is left needs the owner or is queued.** Rows that wait on someone else are marked
 **external** in the decision register below (rows 23, 26, 31, 35, 40), plus the owner's machine
 (rows 5, 36, 39), the answer file (row 24) and access to Tsenta's documentation (row 33). Work
-that needs nothing from anyone is queued in order: row 12 (Freehire signals, display-only), then
-row 8's external messaging behind an explicit opt-in.
+that needs nothing from anyone is queued: row 8's external messaging (email first) behind an
+explicit opt-in, built and tested against a local mail sink, off until configured.
 
 ## "Phase E", defined
 
@@ -160,7 +160,7 @@ queue: only the rows marked **external** wait on someone else, and each blocks o
 
 | Question | Decision | Status |
 |---|---|---|
-| Show Freehire's documented `reality` signals? | Yes, display-only, attributed to Freehire; never used in matching, approval or routing | Decided; to build (row 12) |
+| Show Freehire's documented `reality` signals? | Yes, display-only, attributed to Freehire; never used in matching, approval or routing | Decided; built (D93) |
 | A job-level eligibility view, and its wording | The advisory component of D79: tri-state, side by side, no verdict | Decided |
 | Should "possible duplicate" block preparation? | No: it warns; approval waits for "This is a different role" (D59) | Decided |
 | The user move `submitted_unconfirmed → submitted_confirmed` | Kept, with at least 15 characters of what you checked, recorded as your statement (D53) | Decided |

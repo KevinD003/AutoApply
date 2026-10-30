@@ -103,7 +103,7 @@ Trust boundaries (CONFIRMED unless NEW):
 | `enrichment.visa_sponsorship` | yes | `source_facts.sponsorship_offered` with `basis: "provider enrichment"` | Model-extracted; absent = not stated; reliability UNKNOWN. Never compared with the user's sponsorship fact |
 | `enrichment.summary` | yes | not read | Model-synthesised; not shown as the employer's text |
 | `description` | yes | `description_summary` (500 chars) | Plain text |
-| `reality{class, age_days, repost_count, mass_posting_count, fake_freshness}` | yes | not read (D: deliberately) | Deterministic (Freehire `jobreality/classify.go`). NEW, owner decision: show as "Freehire says: likely evergreen / reposted N times", display-only, never a filter on facts |
+| `reality{class, age_days, repost_count, mass_posting_count, fake_freshness}` | yes | `source_signals`, display-only (D93; decided in D91) | Deterministic (Freehire `jobreality/classify.go`). Decided: show as "Freehire says: likely evergreen / reposted N times", display-only, never a filter on facts |
 | `last_seen_at`, `ghost`, `auto_apply_available`, `metros`, `direct_apply`, `ai_interview_reports`, vote counters | **no** | never read | Present in Freehire code, absent from the reference. Must not be read as facts (`tests/test_freehire_discovery.py::test_undocumented_fields_are_not_read`) |
 | `application_url` / `apply_url` on the job | **no** (only on `/copies` items, where it equals the tagged `url`) | `application_url = None` (`M/discovery/provider.py:454`) | CONFIRMED there is none |
 

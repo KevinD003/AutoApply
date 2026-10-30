@@ -2482,3 +2482,23 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Not done:** sending anything (email, text, push): external messaging stays opt-in work
   (row 8); per-user follow-up days (one owner setting, single-owner default).
 - **Unchanged:** `SCHEMA_VERSION` (3); the execution path and the worker (nothing written there).
+
+## D93 — Freehire's `reality` signals, shown display-only (2026-10-30)
+
+- **Why:** decided in D91 (row 12): show what Freehire says about a posting's age and reposts,
+  attributed to Freehire, never as a fact and never as an input.
+- **Decision:**
+  - `provider.freehire_signals` reads only the five documented fields of `reality`, each with
+    its documented type (a lowercase class token; whole counts from 0 to 100,000, never a
+    boolean; a boolean flag); anything else in the object is not read, and an object with
+    nothing usable gives no signal. Stored in the record's normalized data (`source_signals`),
+    so no migration, refreshed on every read, and never part of the fingerprint: a ticking
+    `age_days` is not a change.
+  - `describe_signals` words them in Freehire's own terms ("likely evergreen", "listed for 3
+    days", "reposted twice", "mass-posting count 5", "flagged for fake freshness"): no verdict on
+    the posting and nothing about the employer. Discover and the job page show "Freehire says:"
+    with "not checked by NoEfforts".
+  - Display-only, enforced: a test reads the code and allows the signals in the discovery
+    provider and the two routes that show them only.
+- **Not done:** filtering or sorting by a signal (it would make an unverified claim an input).
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration; the fingerprint.

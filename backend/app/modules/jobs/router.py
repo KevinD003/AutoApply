@@ -343,7 +343,7 @@ def _job_detail(db: Session, user: User, job: Job, for_token: bool = False) -> J
     """A job as its page shows it; to an API token, without the eligibility side by side."""
     prefs = db.scalar(select(JobPreferences).where(JobPreferences.user_id == user.id))
     from app.modules.discovery.models import DiscoveredJob
-    from app.modules.discovery.provider import PROVIDERS
+    from app.modules.discovery.provider import PROVIDERS, describe_signals
 
     sources = db.scalars(
         select(DiscoveredJob).where(
@@ -370,6 +370,8 @@ def _job_detail(db: Session, user: User, job: Job, for_token: bool = False) -> J
                 "stale": d.stale,
                 "stale_reason": d.stale_reason,
                 "changed_fields": d.changed_fields or [],
+                # D93: display-only, attributed to the source above.
+                "signal_lines": describe_signals((d.normalized or {}).get("source_signals")),
             }
             for d in sources
         ],
