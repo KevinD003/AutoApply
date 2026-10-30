@@ -37,7 +37,7 @@ def test_the_policy_tables_cover_exactly_the_adapters_that_exist():
     from app.modules.execution import policy, runner
 
     assert set(policy.ADAPTER_VERSIONS) == set(runner.ADAPTERS) | set(runner.API_ADAPTERS)
-    assert len(policy.ADAPTER_VERSIONS) == 6  # as policy.py's docstring says
+    assert len(policy.ADAPTER_VERSIONS) == 7  # as policy.py's docstring says
     assert set(policy.CAPABILITIES) == set(runner.ADAPTERS)  # browser adapters only
     assert not any(c.get("real_destinations", False) for c in policy.CAPABILITIES.values())
 

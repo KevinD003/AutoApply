@@ -192,6 +192,7 @@ def test_every_fixture_package_sends_only_resolved_answers(api, receiver):
     from tests.test_greenhouse_dom import v2_application
     from tests.test_lever_adapter import lever_application
     from tests.test_preparation import new_application, setup_candidate
+    from tests.test_workday_adapter import workday_application
 
     setup_candidate(api)
     seen = 0
@@ -207,10 +208,11 @@ def test_every_fixture_package_sends_only_resolved_answers(api, receiver):
         v2_application(api),
         lever_application(api, approve=False),
         ashby_application(api, approve=False),
+        workday_application(api, approve=False),
     ):
         assert_sends_only_resolved(package(api, app_id)["content"])
         seen += 1
-    assert seen == len(FIXTURES) + 7
+    assert seen == len(FIXTURES) + 8
 
 
 # ------------------------------------------------------------------ the runner, before any adapter
@@ -232,6 +234,7 @@ ADAPTERS = [
     "fake_api",
     "fixture_lever",
     "fixture_ashby",
+    "fixture_workday",
 ]
 
 
@@ -352,12 +355,14 @@ def test_nothing_else_reads_answer_values_for_sending():
         greenhouse,
         greenhouse_dom,
         lever,
+        workday,
     )
 
     for cls in (fixture_ats.FixtureAtsAdapter, fake_api.FakeApiAdapter):
         assert "sendable_view(content)" in inspect.getsource(cls.__init__), cls
     inheriting = (greenhouse.GreenhouseHostedAdapter, greenhouse_dom.GreenhouseDomAdapter,
-                  lever.LeverFixtureAdapter, ashby.AshbyFixtureAdapter)  # fmt: skip
+                  lever.LeverFixtureAdapter, ashby.AshbyFixtureAdapter,
+                  workday.WorkdayFixtureAdapter)  # fmt: skip
     for cls in inheriting:
         assert issubclass(cls, fixture_ats.FixtureAtsAdapter)
     assert set(runner.ADAPTERS.values()) | set(runner.API_ADAPTERS.values()) == {
@@ -367,4 +372,5 @@ def test_nothing_else_reads_answer_values_for_sending():
         fake_api.FakeApiAdapter,
         lever.LeverFixtureAdapter,
         ashby.AshbyFixtureAdapter,
+        workday.WorkdayFixtureAdapter,
     }

@@ -2340,3 +2340,37 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   upload or submission.
 - **Unchanged:** `SCHEMA_VERSION` (3); no migration; `forms.EXTRACTION_VERSION`. New adapter
   version `fixture-ashby-1+html-v3`.
+
+## D88 — A Workday-style adapter against the local receiver, checkpoint-first, with no Workday identity (2026-10-30)
+
+- **Why:** the last bounded adapter of this series (the owner's direction after D87), before
+  the next product slice.
+- **Decision:**
+  - Receiver: a labelled Workday-style approximation (`fixtures/ats_receiver/workday_like.py`,
+    `/workday/TENANT/REQ` with its application at `/apply`), built from search-reported
+    summaries of Workday's documentation (no Workday page could be opened;
+    docs/research/workday.md): an "apply manually" application on one page, files uploaded when
+    chosen, a custom dropdown, eligibility and sponsorship naming the country, a licence
+    question, voluntary disclosures and a terms acknowledgement, and a confirmation page with a
+    reference. Every page detail is the fixture's own design.
+  - Checkpoint-first: these never become automation. At capture (`preparation.workday
+    .extract_schema`, on top of the generic extractor): a candidate account (passwords), an
+    application on several pages (a step marker or "Save and Continue"), values already on the
+    page when it loads (a parsed resume or a previous application), a location list that depends
+    on another answer, search-as-you-type pickers and custom dropdowns are required unsupported
+    fields. After approval, an account gate or several pages stop the attempt before anything
+    is entered; a resume parse that fills a field NoEfforts left blank stops it at readback;
+    email verification after the final click is an unknown outcome, quarantined, never resent.
+  - Capture: `POST /api/jobs/{id}/form/workday`, fixture origins only; a real Workday posting
+    (`*.myworkdayjobs.com`, `*.myworkdaysite.com`) is refused before any request. Source
+    `fixture_workday`. The job page gains "Read Workday-style test form".
+  - Adapter `fixture_workday` (`execution/adapters/workday.py`) on the shared hosted-form base
+    (D87). Registered with no Workday identity (generic fixture track, end `no_ats_identity`):
+    the `workday` specification stays `planned`, real Workday jobs keep its manual handoff
+    (`planned_adapter_only`), and the owner's terms decision on Workday is untouched.
+  - This ends the `fixture_<ats>` series: the next work is a product slice from
+    `docs/remaining-work.md`.
+- **Not done:** no Workday host was contacted; no docs review, observation, account, credential,
+  real upload or submission; no page-by-page disclosure (several pages stay a checkpoint).
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration; `forms.EXTRACTION_VERSION`. New adapter
+  version `fixture-workday-1+html-v3`.

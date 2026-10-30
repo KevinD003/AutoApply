@@ -176,6 +176,11 @@ plus unverified candidates:
 
 ## 7. Proposed synthetic fixture: "Example Health (fictional)"
 
+**Since D88** the receiver also serves a labelled Workday-style approximation
+(`fixtures/ats_receiver/workday_like.py`: posting, a single-page application, file uploads,
+submit, confirmation, checkpoint modes), which the `fixture_workday` adapter fills and submits,
+checkpoint-first, for the local approximation only; a real Workday posting is never read.
+
 **Implemented (D81)** as `backend/app/modules/preparation/fixtures/workday.html` (the form only, as a
 preparation fixture; no receiver route and no adapter). Tests: `backend/tests/test_workday_ashby_fixtures.py`.
 

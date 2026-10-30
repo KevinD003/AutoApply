@@ -9,6 +9,27 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Workday-style adapter against the local receiver (D88, 2026-10-30; local only, checkpoint-first)
+
+The oracle is the receiver's own ledger. Passing shows compatibility with the labelled
+Workday-style approximation only, never with a real Workday tenant. Tests are in
+`test_workday_adapter.py` unless named otherwise.
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Account, password and verification steps are checkpoints | password inputs unsupported; `blocked_reason`; verification after the click is unknown | `test_accounts_several_pages_prefill_and_complex_fields_are_checkpoints`, `test_an_account_gate_or_several_pages_after_approval_stop_before_disclosure`, `test_email_verification_after_the_final_click_is_a_hard_stop`, `workday.spec.ts` | pass | — |
+| Several pages are a checkpoint | `multi_step` field at capture; `blocked_reason` | the same tests, `workday.spec.ts` | pass | page-by-page disclosure not built |
+| Résumé-parsing prefill is never trusted | `prefilled_values` at capture; readback of unanswered fields | `test_accounts_several_pages_prefill_and_complex_fields_are_checkpoints`, `test_resume_parsing_is_never_trusted_without_readback` | pass | — |
+| Complex location fields and custom dropdowns are checkpoints | dependent lists read as unsupported pickers; ARIA widgets unsupported | `test_accounts_several_pages_prefill_and_complex_fields_are_checkpoints` | pass | — |
+| Approved values, byte-identical documents | `fixture_workday` fill and upload (hosted-form base) | `test_full_run_sends_exactly_the_approved_values_and_byte_identical_documents`, `workday.spec.ts` | pass | — |
+| A rehearsal discloses under its approval, never submits; submission needs its own approval | the existing rehearsal stop and scopes | `test_a_rehearsal_discloses_under_its_approval_and_never_submits`, `workday.spec.ts` | pass | — |
+| No duplicate send; an uncertain send is quarantined | claim fencing; unknown outcome | `test_a_duplicate_delivery_never_submits_twice`, `test_an_uncertain_final_send_is_quarantined_and_never_retried`, `test_outcomes_after_the_final_click`, `test_reconciling_an_unknown_outcome_never_sends_again[fixture_workday-*]` | pass | — |
+| Upload evidence kept after a partial failure | `UploadFailed` disclosures | `test_a_partial_upload_failure_keeps_the_evidence_of_the_earlier_disclosure` | pass | — |
+| Changed inputs cancel the approval; drift stops | package versioning; fingerprint | `test_a_changed_approved_input_invalidates_the_approval`, `test_form_changed_after_approval_stops_before_disclosure` | pass | — |
+| Off-site pages and redirects stop; the confirmation is bound | runner same-origin check; egress; `_bound` | `test_a_form_page_off_the_destination_site_is_never_opened`, `test_a_redirect_off_the_local_site_is_blocked_before_anything_is_entered`, `test_confirmation_bound_to_attempt` | pass | — |
+| Real Workday stays a manual handoff | no Workday identity; planned `workday` | `test_a_real_workday_posting_is_never_read_and_is_a_manual_handoff`, `test_fixture_evidence_never_enables_a_real_destination`, `workday.spec.ts` | pass | — |
+| Sabotage | 8 guards broken one at a time | each caught, restored by MD5 (`implementation-status.md`) | pass | — |
+
 ## Ashby-style adapter against the local receiver (D87, 2026-10-30; local only)
 
 The oracle is the receiver's own ledger. Passing shows compatibility with the labelled

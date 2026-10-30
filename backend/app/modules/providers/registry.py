@@ -214,6 +214,25 @@ PROVIDERS: dict[str, ProviderSpec] = {
         status="Fixture only (a local Ashby-style approximation); a real Ashby job is a manual "
         "handoff.",
     ),
+    "fixture_workday": ProviderSpec(
+        name="fixture_workday",
+        kind=Kind.browser,
+        description="Workday-style hosted application (a posting, then one application page), "
+        "served by a labelled local approximation, checkpoint-first. No Workday identity: it "
+        "serves no real Workday posting.",
+        operations=_BROWSER_OPS,
+        capabilities={
+            C.posting_read: FIXTURE,
+            C.form_extract: FIXTURE,
+            C.deterministic_fill: FIXTURE,
+            C.file_upload: FIXTURE,
+            C.final_submit: FIXTURE,
+            C.confirmation_detection: FIXTURE,
+            C.reconciliation: _USER_RECONCILES,
+        },
+        status="Fixture only (a local Workday-style approximation); a real Workday job is a "
+        "manual handoff.",
+    ),
     "workday": ProviderSpec(
         name="workday",
         kind=Kind.browser,
@@ -291,6 +310,15 @@ _TRAITS: dict[str, dict[Trait, TraitValue]] = {
                                      "Ashby documents a score with no widget"),
         T.multi_step: V("no", "fixture design: one application page after the posting page"),
     },
+    "fixture_workday": {
+        T.login_required: V("no", "fixture design: applying manually needs no account; a mode "
+                                  "requires one, which stops before anything is entered"),
+        T.manual_verification_required: V("no", "fixture design: a mode asks for email "
+                                                "verification after the final click (unknown)"),
+        T.captcha_possible: V("no", "fixture design; Workday documents none"),
+        T.multi_step: V("no", "fixture design: one application page; a mode has several, "
+                              "which stops before anything is entered"),
+    },
     "fake_api": {
         T.login_required: V("no", "credentials, not a login: the user's grant plus a token"),
         T.manual_verification_required: V("no", "fixture design"),
@@ -328,6 +356,7 @@ _TESTED_AGAINST = {
     "fake_api": (f"{_RECEIVER}/fake_api.py",),
     "fixture_lever": (f"{_RECEIVER}/lever_like.py",),
     "fixture_ashby": (f"{_RECEIVER}/ashby_like.py",),
+    "fixture_workday": (f"{_RECEIVER}/workday_like.py",),
     "greenhouse_readonly": (f"{_RECEIVER}/greenhouse_like.py", f"{_RECEIVER}/greenhouse_v2.py"),
     "freehire_mock": ("fixtures/discovery/freehire_mock.json",),
     "freehire": (f"{_RECEIVER}/freehire_fixture.py",),

@@ -29,6 +29,7 @@ from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, Upload
 from app.modules.execution.adapters.greenhouse import GreenhouseHostedAdapter
 from app.modules.execution.adapters.greenhouse_dom import GreenhouseDomAdapter
 from app.modules.execution.adapters.lever import LeverFixtureAdapter
+from app.modules.execution.adapters.workday import WorkdayFixtureAdapter
 from app.modules.execution.browser import IsolationUnavailable, browser_session
 from app.modules.execution.faults import fault
 from app.modules.execution.models import ExecutionAttempt
@@ -45,6 +46,7 @@ ADAPTERS = {
     "greenhouse_dom": GreenhouseDomAdapter,
     "fixture_lever": LeverFixtureAdapter,
     "fixture_ashby": AshbyFixtureAdapter,
+    "fixture_workday": WorkdayFixtureAdapter,
 }
 
 log = logging.getLogger("noefforts.execution")

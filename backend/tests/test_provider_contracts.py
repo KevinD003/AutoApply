@@ -140,7 +140,7 @@ def test_the_code_tables_are_the_runner_tables():
     assert set(discovery.PROVIDERS) == registry_keys(Kind.discovery)
     assert {gh_readonly.PROVIDER} == registry_keys(Kind.observation)
     assert set(rehearsal.PATH_RULES) == rehearsal.BOARD_ADAPTERS | {
-        "fixture_ats", "fixture_lever", "fixture_ashby"}  # fmt: skip
+        "fixture_ats", "fixture_lever", "fixture_ashby", "fixture_workday"}  # fmt: skip
 
 
 def registry_keys(kind: Kind) -> set[str]:
@@ -156,11 +156,13 @@ def registry_keys(kind: Kind) -> set[str]:
         ("fake_api", f"{BASE}/gh2/northwind/jobs/5020001"),
         ("fixture_lever", f"{BASE}/lever/examplehealth/00000000-0000-4000-8000-00000000a001"),
         ("fixture_ashby", f"{BASE}/ashby/examplehealth/00000000-0000-4000-8000-00000000c001"),
+        ("fixture_workday", f"{BASE}/workday/examplehealth/R-100001"),
     ],
 )
 def test_every_path_rule_reads_its_own_fixture_destination(adapter, url):
     assert set(rehearsal.PATH_RULES) == {"fixture_ats", "greenhouse_hosted", "greenhouse_dom",
-                                         "fake_api", "fixture_lever", "fixture_ashby"}  # fmt: skip
+                                         "fake_api", "fixture_lever", "fixture_ashby",
+                                         "fixture_workday"}  # fmt: skip
     path = rehearsal.execution_path({"origin": BASE, "url": url}, adapter)
     assert path is not None and path.adapter == adapter
 
@@ -294,7 +296,8 @@ def test_the_documented_capability_matrix_is_the_registry():
     columns = {"FA": ["fixture_ats"], "GH": ["greenhouse_hosted"], "GD": ["greenhouse_dom"],
                "API": ["fake_api"], "RO": ["greenhouse_readonly"],
                "FH": ["freehire_mock", "freehire"], "MH": ["manual_handoff"],
-               "FL": ["fixture_lever"], "AS": ["fixture_ashby"]}  # fmt: skip
+               "FL": ["fixture_lever"], "AS": ["fixture_ashby"],
+               "WS": ["fixture_workday"]}  # fmt: skip
     assert header[1:] == list(columns)
     unplanned = {k for k, p in registry.PROVIDERS.items() if p.stage != "planned"}
     assert {k for keys in columns.values() for k in keys} == unplanned

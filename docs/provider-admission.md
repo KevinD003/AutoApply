@@ -163,6 +163,7 @@ detector behind `text_names_nothing` (`test_text_naming_an_identifier_is_caught`
 | `fake_api` | `generic_execution` | `fixture_only` | `fixture_only` | – | – | `no_ats_identity` |
 | `fixture_lever` | `generic_execution` | `fixture_only` | `fixture_only` | – | – | `no_ats_identity` |
 | `fixture_ashby` | `generic_execution` | `fixture_only` | `fixture_only` | – | – | `no_ats_identity` |
+| `fixture_workday` | `generic_execution` | `fixture_only` | `fixture_only` | – | – | `no_ats_identity` |
 | `greenhouse_readonly` | `observation` | `observed_read_only` | `observed_read_only` | – | – | `read_only_by_kind` |
 | `freehire_mock` | `discovery` | `fixture_only` | `fixture_only` | – | – | `discovery_by_kind` |
 | `freehire` | `discovery` | `fixture_only` | `fixture_only` | – | – | `discovery_by_kind` |

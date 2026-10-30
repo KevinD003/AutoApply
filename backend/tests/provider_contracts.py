@@ -108,6 +108,7 @@ RECEIPT_KEYS = {
     "fake_api": {"route", "receipt_ref_sha256", "http_status"},
     "fixture_lever": {"receipt_id", "confirmation", "final_origin", "http_status"},
     "fixture_ashby": {"receipt_id", "confirmation", "final_origin", "http_status"},
+    "fixture_workday": {"receipt_id", "confirmation", "final_origin", "http_status"},
 }
 
 # The ledger test that shows each scenario an execution provider's fixture levels require
@@ -117,6 +118,7 @@ _EF, _GH, _GD = ("tests/test_execution_failures.py", "tests/test_greenhouse_adap
                  "tests/test_greenhouse_dom.py")  # fmt: skip
 _UP, _API = "tests/test_upload_evidence.py", "tests/test_api_provider.py"
 _LV, _AS = "tests/test_lever_adapter.py", "tests/test_ashby_adapter.py"
+_WD = "tests/test_workday_adapter.py"
 _RECONCILE = f"{_EF}::test_reconciling_an_unknown_outcome_never_sends_again"
 SCENARIO_TESTS: dict[tuple[str, str], str] = {
     ("fixture_ats", "full_run_matches_ledger"):
@@ -218,6 +220,21 @@ SCENARIO_TESTS: dict[tuple[str, str], str] = {
     ("fixture_ashby", "reconcile_never_resends"): _RECONCILE,
     ("fixture_ashby", "confirmation_bound_to_attempt"):
         f"{_AS}::test_confirmation_bound_to_attempt",
+    ("fixture_workday", "full_run_matches_ledger"):
+        f"{_WD}::test_full_run_sends_exactly_the_approved_values_and_byte_identical_documents",
+    ("fixture_workday", "changed_form_stops_before_disclosure"):
+        f"{_WD}::test_form_changed_after_approval_stops_before_disclosure",
+    ("fixture_workday", "unknown_outcome_never_resent"):
+        f"{_WD}::test_an_uncertain_final_send_is_quarantined_and_never_retried",
+    ("fixture_workday", "readback_mismatch_stops_before_submit"):
+        f"{_WD}::test_resume_parsing_is_never_trusted_without_readback",
+    ("fixture_workday", "upload_failure_stops_with_evidence"):
+        f"{_WD}::test_a_partial_upload_failure_keeps_the_evidence_of_the_earlier_disclosure",
+    ("fixture_workday", "rejection_is_not_confirmation"):
+        f"{_WD}::test_outcomes_after_the_final_click",
+    ("fixture_workday", "reconcile_never_resends"): _RECONCILE,
+    ("fixture_workday", "confirmation_bound_to_attempt"):
+        f"{_WD}::test_confirmation_bound_to_attempt",
 }  # fmt: skip
 # What a scenario test must name to exercise its provider: its builder, or the provider itself.
 BUILDERS = {
@@ -227,4 +244,5 @@ BUILDERS = {
     "fake_api": ("api_application", "fake_api", "fapi_requests"),
     "fixture_lever": ("lever_application", "fixture_lever"),
     "fixture_ashby": ("ashby_application", "fixture_ashby"),
+    "fixture_workday": ("workday_application", "fixture_workday"),
 }

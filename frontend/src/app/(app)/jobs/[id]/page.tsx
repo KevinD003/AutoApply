@@ -311,7 +311,7 @@ function FormCard({
       .catch(() => undefined);
   }, [load]);
 
-  async function read(kind: "greenhouse" | "lever" | "ashby") {
+  async function read(kind: "greenhouse" | "lever" | "ashby" | "workday") {
     setError(null);
     try {
       setForm(await api<FormInfo>(`/jobs/${jobId}/form/${kind}`, { method: "POST" }));
@@ -380,6 +380,14 @@ function FormCard({
           </p>
           <Button variant="secondary" onClick={() => read("ashby")}>
             Read Ashby-style test form
+          </Button>
+          <p>
+            For a Workday-style posting on the local test receiver, NoEfforts can read a single-page application. Accounts,
+            several pages, prefilled answers and location lists stay yours. Real Workday postings are not read in this
+            version.
+          </p>
+          <Button variant="secondary" onClick={() => read("workday")}>
+            Read Workday-style test form
           </Button>
         </div>
       ) : (
