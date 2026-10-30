@@ -65,6 +65,9 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   - sabotage (9 guards): 7 caught alone; the account scoping of the list and the
     before-submission guard are each double (the second layer re-checks the first), and each
     was caught with both layers removed. Files restored by MD5.
+- **Full suites on the final tree** (commit `234d03c`, tree `46fa6a0`, run sequentially):
+  backend `uv run pytest tests -o addopts= -q -p no:cacheprovider` **3,786 passed** in 37m54s;
+  `npx playwright test` **115 passed, 2 skipped** (desktop and mobile) in 9.9 minutes.
 - **Not done:** sending a follow-up (external messaging is opt-in work, row 8); per-user days.
 - **CI for the previous commit:** #128 (run 41041268796, fe68b74) passed: backend, frontend,
   docker-smoke and execution-compose.
