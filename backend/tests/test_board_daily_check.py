@@ -5,6 +5,7 @@ accounts only; no real board is contacted."""
 import json
 from datetime import timedelta
 
+import pytest
 from sqlalchemy import select, update
 
 from app.core.config import get_settings
@@ -14,17 +15,18 @@ from app.modules.discovery import board_sync
 from app.modules.discovery.models import BoardSource
 from app.modules.mail.models import EmailSettings
 from app.modules.mail.service import digest_items
+from tests.execution_harness import Receiver
 from tests.test_account import unzip
-from tests.test_board_sources import (  # noqa: F401  (fixtures)
-    _settings,
-    add,
-    jobs,
-    receiver,
-    requests_made,
-    sync,
-)
+from tests.test_board_sources import _settings, add, jobs, requests_made, sync  # noqa: F401
 
 DAY = timedelta(days=1, minutes=1)
+
+
+@pytest.fixture(scope="module")
+def receiver():  # `_settings` (autouse, from the D95 tests) points the boards at it
+    r = Receiver()
+    yield r
+    r.stop()
 
 
 def daily(api, sid: str, on: bool = True):
