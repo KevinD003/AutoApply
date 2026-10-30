@@ -84,6 +84,11 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     passed; fixed, then those suites 177 passed. While the wrapper's Playwright step ran I also
     started those suites, which share the receiver's port: they errored (12) against the wrong
     receiver. That concurrent run is void and was repeated alone.
+- **Full validation on the final tree** (commit `336b1c9`, tree `a075d2e`, through
+  `scripts/validate.sh`, run sequentially): lint, format, typecheck and eslint ok; backend
+  **3,817 passed** in 54m51s; Playwright **117 passed, 2 skipped** (desktop and mobile) in
+  10.7 minutes. The first wrapper run on the earlier tree reported `validation FAILED: backend`
+  (exit 1) for the two guards above: the wrapper did its job.
 - **Not verified:** a real mail server (none configured or authorized); delivery to an inbox
   (acceptance by a server is all any sender can know).
 - **CI for the previous commit:** #130 (run 41076244019, 43d0d30, D93 results) passed on all four
