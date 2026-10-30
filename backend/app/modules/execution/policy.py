@@ -1,7 +1,8 @@
 """Which destinations may be executed, and by which adapter.
 
-Five adapters exist (`ADAPTER_VERSIONS`): four browser adapters (`fixture_ats`,
-`greenhouse_hosted`, `greenhouse_dom`, `fixture_lever`) and the authorized-API adapter `fake_api`.
+Six adapters exist (`ADAPTER_VERSIONS`): five browser adapters (`fixture_ats`,
+`greenhouse_hosted`, `greenhouse_dom`, `fixture_lever`, `fixture_ashby`) and the authorized-API
+adapter `fake_api`.
 All run only
 against local synthetic fixtures and only outside production. Every real employer destination is
 refused by `adapter_for`, whatever the flags below say: no adapter has been verified against a
@@ -126,6 +127,37 @@ CAPABILITIES: dict[str, dict] = {
         ],
         "tested_against": ["fixtures/ats_receiver/lever_like.py"],
     },
+    "fixture_ashby": {
+        "description": (
+            "Ashby-style hosted form (a posting, then its application tab), served by a "
+            "labelled local approximation (fictional employer). It identifies no Ashby posting "
+            "and is never used for one: a real Ashby job is a manual handoff."
+        ),
+        "environments": ["development", "test"],
+        "inspect": True,  # the posting's application page, read by the generic extractor
+        "extract": True,
+        "fill": True,  # text, email, phone, url, number, textarea, select, Yes/No, checkboxes
+        "upload": True,  # files uploaded when chosen (counted as disclosures)
+        "checkpoint": True,  # pickers, button-only Yes/No, unknown facts, the spam check
+        "submit": True,
+        "confirm": True,  # a confirmation page with a reference, bound to the attempt
+        "real_destinations": False,
+        # Each is the approximation's own design; none has been seen on a real Ashby form.
+        "unverified": {
+            "uploads": "synthetic: files uploaded when chosen, to the fixture's endpoint",
+            "resume_autofill": "synthetic: a resume upload overwriting page fields (one mode)",
+            "spam_check": "synthetic marker: Ashby documents a score, no widget",
+            "confirmation": "synthetic: a confirmation page with a reference",
+        },
+        "unsupported": [
+            "the spam check or any bot check (stop, never solved or retried)",
+            "the candidate-location picker and other search-as-you-type pickers",
+            "Yes/No buttons with no native input",
+            "the cookie-consent banner (never clicked)",
+            "accounts, passwords or sign-in",
+        ],
+        "tested_against": ["fixtures/ats_receiver/ashby_like.py"],
+    },
 }
 
 
@@ -143,6 +175,9 @@ ADAPTER_VERSIONS: dict[str, str] = {
     "greenhouse_dom": f"greenhouse-dom-3+{gdom.EXTRACTION_VERSION}",
     # D85: the Lever-style approximation's form, read by the generic extractor.
     "fixture_lever": f"fixture-lever-1+{forms.EXTRACTION_VERSION}",
+    # D87: the Ashby-style approximation's form, read by the generic extractor plus its spam
+    # check as the bot-check field (preparation/ashby.py).
+    "fixture_ashby": f"fixture-ashby-1+{forms.EXTRACTION_VERSION}",
     # The internal authorized-API contract, exercised only against the local fake API.
     "fake_api": "fake-api-1",
 }
@@ -190,7 +225,9 @@ def approved_binding(approval, destination: dict) -> dict | None:
         return {"adapter": approval.adapter, "adapter_version": approval.adapter_version}
     source = destination.get("form_source")
     name = "greenhouse_hosted" if source == "greenhouse_api" else (
-        "fixture_ats" if source not in ("greenhouse_api_dom", "fixture_lever") else None
+        "fixture_ats"
+        if source not in ("greenhouse_api_dom", "fixture_lever", "fixture_ashby")
+        else None
     )  # fmt: skip
     if name is None:
         return None  # that source did not exist before bindings: nothing was approved for it
@@ -226,6 +263,7 @@ FORM_SOURCE_ADAPTERS = {
     "greenhouse_api": "greenhouse_hosted",
     "greenhouse_api_dom": "greenhouse_dom",
     "fixture_lever": "fixture_lever",
+    "fixture_ashby": "fixture_ashby",
 }
 GENERIC_FORM_SOURCES = frozenset({None, "fixture", "html", "manual"})
 GENERIC_ADAPTER = "fixture_ats"

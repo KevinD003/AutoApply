@@ -29,6 +29,13 @@ part of the product and must never be deployed.
   when chosen, the resume prefill (`lever_prefill`), the confirmation page and its reference
   are fixture design choices; its modes are listed in the file header.
 
+- A labelled Ashby-style approximation, `ashby_like.py` (`/ashby/<board>/<posting>`, its form
+  on `/application`; D87), on the same ledger. It is not Ashby code or markup: files uploaded
+  when chosen, resume autofill (`ashby_autofill`), the spam-check marker
+  (`data-ashby-spam-check`; Ashby documents a score, no widget), the pages after a flagged or
+  repeated application, and the confirmation page are fixture design choices. A click on its
+  cookie banner is recorded (`cookie_choice`) so tests can show nothing clicks it.
+
 - **S5 variants (D62). FIXTURE ASSUMPTION, every one:** built from the legacy author's notes
   on real pages (`docs/legacy-audit.md` R7, HYPOTHESIS), they show how the adapters handle
   such a page (by stopping or by verified success), never that a real page behaves this way.

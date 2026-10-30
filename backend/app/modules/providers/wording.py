@@ -55,6 +55,7 @@ FORM_SOURCE_LABELS: dict[str, str | None] = {
     "greenhouse_api_dom": "Greenhouse-style form mapped by id and label: second local test "
     "approximation (fictional employer)",
     "fixture_lever": "Lever-style form: local test approximation (fictional employer)",
+    "fixture_ashby": "Ashby-style form: local test approximation (fictional employer)",
     "html": None,
     "manual": None,
 }

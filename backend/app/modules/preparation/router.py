@@ -264,6 +264,47 @@ def capture_lever_form(
     return _store_form(db, user, job, schema, source, ref, EXTRACTION_VERSION)
 
 
+@router.post("/jobs/{job_id}/form/ashby", status_code=status.HTTP_201_CREATED)
+def capture_ashby_form(
+    job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    """Read an Ashby-style posting's application page and store its schema (D87). Only the
+    local Ashby-style approximation is read: a real Ashby posting is refused before any request,
+    and reading one would not be permission to submit an application."""
+    from urllib.parse import urljoin, urlsplit
+
+    from app.core.urlsafety import is_fixture_origin
+    from app.modules.preparation import ashby
+
+    job = _owned_job(db, user, job_id)
+    url = job.url or job.canonical_url or ""
+    p = urlsplit(url)
+    origin = f"{p.scheme}://{p.netloc}"
+    posting = ashby.parse_posting(url, fixture_origin=is_fixture_origin(origin))
+    if posting is None:
+        raise bad_request("This job's address is not an Ashby-style posting")
+    if not posting.fixture:
+        raise conflict(
+            "Reading real Ashby postings is not enabled in this version; it needs separate "
+            "approval. Apply on the employer's site and record it in the tracker."
+        )
+    form_page = origin + ashby.application_path(posting)
+    try:
+        schema = ashby.extract_schema(_fetch_fixture(form_page).decode("utf-8", "replace"))
+    except (OSError, ValueError, ExtractionError, ValidationError) as e:
+        raise bad_request(f"Could not read the posting's form ({type(e).__name__})") from None
+    target = urlsplit(urljoin(form_page, schema.action or ""))
+    if (f"{target.scheme}://{target.netloc}" != origin
+            or target.path != ashby.application_path(posting)
+            or (schema.method or "").lower() != "post"):  # fmt: skip
+        raise conflict(
+            "Could not capture the form: it does not submit to this posting. Nothing was sent; "
+            "apply on the employer's site. (reason: form_submits_elsewhere)"
+        )
+    source, ref = "fixture_ashby", f"{posting.board}/{posting.posting_id}"
+    return _store_form(db, user, job, schema, source, ref, EXTRACTION_VERSION)
+
+
 def _form_out(form) -> dict:
     return {
         "id": str(form.id),

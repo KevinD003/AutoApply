@@ -311,7 +311,7 @@ function FormCard({
       .catch(() => undefined);
   }, [load]);
 
-  async function read(kind: "greenhouse" | "lever") {
+  async function read(kind: "greenhouse" | "lever" | "ashby") {
     setError(null);
     try {
       setForm(await api<FormInfo>(`/jobs/${jobId}/form/${kind}`, { method: "POST" }));
@@ -373,6 +373,13 @@ function FormCard({
           </p>
           <Button variant="secondary" onClick={() => read("lever")}>
             Read Lever-style test form
+          </Button>
+          <p>
+            For an Ashby-style posting on the local test receiver, NoEfforts can read its application page. Real Ashby
+            postings are not read in this version.
+          </p>
+          <Button variant="secondary" onClick={() => read("ashby")}>
+            Read Ashby-style test form
           </Button>
         </div>
       ) : (

@@ -25,8 +25,8 @@ from app.core.config import get_settings
 from app.core.db import utcnow
 from app.core.urlsafety import is_fixture_origin
 from app.modules.execution.models import ACTIVE, Evidence, ExecutionAttempt, RehearsalRecord
+from app.modules.preparation import ashby, lever
 from app.modules.preparation import greenhouse as gh
-from app.modules.preparation import lever
 from app.modules.preparation.models import ApplicationPackage, ApprovalScope, PackageApproval
 from app.modules.preparation.package import ApprovalError
 
@@ -254,7 +254,8 @@ BOARD_ADAPTERS = frozenset({"greenhouse_hosted", "greenhouse_dom", "fake_api"})
 # The ATS whose boards each adapter's path rule reads (None: the generic fixture form's slug). An
 # adapter with no entry has no path rule: its paths are unknown, so its prerequisite fails closed.
 PATH_RULES: dict[str, str | None] = {**dict.fromkeys(BOARD_ADAPTERS, "greenhouse"),
-                                     "fixture_ats": None, "fixture_lever": None}  # fmt: skip
+                                     "fixture_ats": None, "fixture_lever": None,
+                                     "fixture_ashby": None}  # fmt: skip
 MET, ESTABLISHED, UNMET, NOT_REQUIRED = "met", "established", "unmet", "not_required"
 HELD = frozenset({MET, ESTABLISHED})  # what a send gate may record as having held
 
@@ -370,6 +371,9 @@ def execution_path(destination: dict, adapter: str) -> Path | None:
         elif adapter == "fixture_lever":  # D85: the approximation's site is its board
             posting = lever.parse_posting(url, fixture_origin=is_fixture_origin(origin))
             board = posting.site if posting and posting.fixture else None
+        elif adapter == "fixture_ashby":  # D87: the approximation's board
+            posting = ashby.parse_posting(url, fixture_origin=is_fixture_origin(origin))
+            board = posting.board if posting and posting.fixture else None
         else:
             board = None  # an adapter with no path rule: unknown, so it fails closed
         return Path(adapter, origin, board) if board else None

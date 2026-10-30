@@ -2305,3 +2305,38 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
     proxy host.
 - **Unchanged:** the browser-egress block, the receiver-only Compose network, the in-process
   interception, every adapter and gate. No migration; `SCHEMA_VERSION` 3.
+
+## D87 — An Ashby-style adapter against the local receiver, with no Ashby identity (2026-10-30)
+
+- **Why:** the next bounded adapter after D85, on the local fixture track only.
+- **Decision:**
+  - Receiver: a labelled Ashby-style approximation (`fixtures/ats_receiver/ashby_like.py`,
+    `/ashby/BOARD/POSTING` with its form on `/application`), built from search-reported
+    summaries of Ashby's documentation (no Ashby page could be opened; docs/research/ashby.md):
+    `_systemfield_*` system fields, Yes/No questions naming the country, a candidate-location
+    picker, files uploaded when chosen, resume autofill (one mode), a cookie banner whose clicks
+    are recorded, an optional EEOC survey, a required data consent, and a confirmation page with
+    a reference. Every one of those page details is the fixture's own design.
+  - Ashby documents a spam score but no widget, so nothing can detect it on a real page. The
+    approximation marks its own check (`data-ashby-spam-check`), and `preparation.ashby
+    .extract_schema` turns it into the bot-check field: a checkpoint at capture. If it appears
+    after approval, the attempt stops before anything is entered. After the final click, a page
+    saying the application was flagged, one saying you already applied, a confirmation page
+    that also shows a challenge, and anything else that is not this posting's confirmation are
+    unknown outcomes: quarantined in `submitted_unconfirmed`, never solved, retried or resent.
+  - Capture: `POST /api/jobs/{id}/form/ashby`, on a fixture origin only; a real Ashby posting
+    (`jobs.ashbyhq.com`) is refused before any request, and an embed (`?ashby_jid=`) names no
+    board. Source `fixture_ashby`. The job page gains "Read Ashby-style test form".
+  - Adapter `fixture_ashby` (`execution/adapters/ashby.py`) on a new shared base,
+    `execution/adapters/hosted_form.py`, which now also carries the Lever-style adapter's
+    mechanics unchanged (files first, readback of unanswered fields, upload evidence after a
+    partial failure, the confirmation bound to its own POST and posting, a challenge after the
+    click is unknown). The Lever adapter's behaviour and version are unchanged.
+  - Registered as `fixture_ashby` with no Ashby identity (generic fixture track, end
+    `no_ats_identity`). Ashby has no specification in the registry, so a real Ashby job is a
+    manual handoff (`real_destination_disabled`) and nothing the adapter proves counts for
+    Ashby.
+- **Not done:** no Ashby host was contacted; no docs review, observation, credential, real
+  upload or submission.
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration; `forms.EXTRACTION_VERSION`. New adapter
+  version `fixture-ashby-1+html-v3`.

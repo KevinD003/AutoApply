@@ -97,8 +97,8 @@ their own; `tests/test_support_wording.py` reads the frontend sources to check.
 | `not_supported` | the provider has no capability at all | Not supported |
 | `live` | some capability is `live_fill` or `live_submit` | none. The lookup fails until a label is added deliberately, with its evidence, tests and docs |
 
-- **Today:** `fixture_ats`, `greenhouse_hosted`, `fake_api`, `fixture_lever`, `freehire` and
-  `freehire_mock` are `fixture_only`; `greenhouse_dom` and `greenhouse_readonly` are `observed_read_only`;
+- **Today:** `fixture_ats`, `greenhouse_hosted`, `fake_api`, `fixture_lever`, `fixture_ashby`,
+  `freehire` and `freehire_mock` are `fixture_only`; `greenhouse_dom` and `greenhouse_readonly` are `observed_read_only`;
   `workday` and `lever` are `planned`; `manual_handoff` is
   `manual` (`tests/test_provider_contracts.py` checks this list).
 - **Routes:** a route's label is its kind and the evidence behind it, for example "Browser
@@ -122,27 +122,28 @@ their own; `tests/test_support_wording.py` reads the frontend sources to check.
 Columns: FA = `fixture_ats`, GH = `greenhouse_hosted`, GD = `greenhouse_dom`, API =
 `fake_api`, RO = `greenhouse_readonly` (observation), FH = `freehire_mock` and `freehire`
 (discovery; identical rows), MH = `manual_handoff`, FL = `fixture_lever` (the Lever-style
-approximation's adapter, with no Lever identity; D85). A dash means none. The planned providers
+approximation's adapter, with no Lever identity; D85), AS = `fixture_ashby` (the Ashby-style
+approximation's adapter, with no Ashby identity; D87). A dash means none. The planned providers
 (`workday`, `lever`) have no capabilities, so they have no column here.
 
-| Capability | FA | GH | GD | API | RO | FH | MH | FL |
-|---|---|---|---|---|---|---|---|---|
-| discovery | – | – | – | – | – | fixture | – | – |
-| posting_read | fixture | fixture | **observed** | fixture | **observed** | – | – | fixture |
-| form_extract | fixture | fixture | **observed** | fixture | **observed** | – | – | fixture |
-| deterministic_fill | fixture | fixture | fixture | – | – | – | – | fixture |
-| custom_dropdowns | – | – | fixture | – | **observed** | – | – | – |
-| file_upload | fixture | fixture | fixture | fixture | – | – | – | fixture |
-| location_picker | – | – | – | – | – | – | – | – |
-| login_required | – | – | – | – | – | – | – | – |
-| email_verification | fixture | fixture | – | – | – | – | – | – |
-| mobile_verification | – | – | – | – | – | – | – | – |
-| captcha_checkpoint | – | fixture | fixture | – | – | – | – | fixture |
-| final_submit | fixture | fixture | fixture | fixture | – | – | – | fixture |
-| confirmation_detection | fixture | fixture | fixture | fixture | – | – | – | fixture |
-| reconciliation | fixture | fixture | fixture | fixture | – | – | – | fixture |
-| official_api_submission | – | – | – | fixture | – | – | – | – |
-| real_destinations_enabled | no | no | no | no | no | no | no | no |
+| Capability | FA | GH | GD | API | RO | FH | MH | FL | AS |
+|---|---|---|---|---|---|---|---|---|---|
+| discovery | – | – | – | – | – | fixture | – | – | – |
+| posting_read | fixture | fixture | **observed** | fixture | **observed** | – | – | fixture | fixture |
+| form_extract | fixture | fixture | **observed** | fixture | **observed** | – | – | fixture | fixture |
+| deterministic_fill | fixture | fixture | fixture | – | – | – | – | fixture | fixture |
+| custom_dropdowns | – | – | fixture | – | **observed** | – | – | – | – |
+| file_upload | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture |
+| location_picker | – | – | – | – | – | – | – | – | – |
+| login_required | – | – | – | – | – | – | – | – | – |
+| email_verification | fixture | fixture | – | – | – | – | – | – | – |
+| mobile_verification | – | – | – | – | – | – | – | – | – |
+| captcha_checkpoint | – | fixture | fixture | – | – | – | – | fixture | fixture |
+| final_submit | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture |
+| confirmation_detection | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture |
+| reconciliation | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture |
+| official_api_submission | – | – | – | fixture | – | – | – | – | – |
+| real_destinations_enabled | no | no | no | no | no | no | no | no | no |
 
 Notes on the matrix:
 
@@ -225,21 +226,21 @@ capabilities. Rows marked *trait* are what a workflow demands, not what NoEffort
 Levels: `fixture` = local fixture only; `observed` = seen read-only on one real page; `none` =
 not implemented. **No cell is `live_fill` or `live_submit`.**
 
-| Capability | fixture_ats | greenhouse_hosted | greenhouse_dom | fake_api | greenhouse_readonly | freehire / mock | workday (planned) | lever (planned) | manual_handoff | fixture_lever |
-|---|---|---|---|---|---|---|---|---|---|---|
-| discovery | none | none | none | none | none | fixture | none | none | none | none |
-| public_schema_read | fixture | fixture | observed | fixture | observed | none | none | none | none | fixture |
-| API_submission | none | none | none | fixture | none | none | none | none | none | none |
-| browser_inspection | fixture | fixture | observed | none | observed | none | none | none | none | fixture |
-| browser_fill | fixture | fixture | fixture | none | none | none | none | none | none | fixture |
-| document_upload | fixture | fixture | fixture | fixture | none | none | none | none | none | fixture |
-| login_required *(trait)* | no | unknown | no | no | no | n/a | expected | unknown | n/a | no |
-| manual_verification_required *(trait)* | yes | unknown | unknown | no | n/a | n/a | expected | unknown | n/a | no |
-| CAPTCHA_possible *(trait)* | no | unknown | unknown | no | unknown | n/a | expected | expected | n/a | yes |
-| multi_step *(trait)* | no | unknown | no | no | no | n/a | expected | unknown | n/a | no |
-| location_picker | none | none | none | none | none | none | none | none | none | none |
-| custom_dropdown | none | none | fixture | none | observed (structure only) | none | none | none | none | none |
-| confirmation_detection | fixture | fixture | fixture | fixture | none | none | none | none | none | fixture |
+| Capability | fixture_ats | greenhouse_hosted | greenhouse_dom | fake_api | greenhouse_readonly | freehire / mock | workday (planned) | lever (planned) | manual_handoff | fixture_lever | fixture_ashby |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| discovery | none | none | none | none | none | fixture | none | none | none | none | none |
+| public_schema_read | fixture | fixture | observed | fixture | observed | none | none | none | none | fixture | fixture |
+| API_submission | none | none | none | fixture | none | none | none | none | none | none | none |
+| browser_inspection | fixture | fixture | observed | none | observed | none | none | none | none | fixture | fixture |
+| browser_fill | fixture | fixture | fixture | none | none | none | none | none | none | fixture | fixture |
+| document_upload | fixture | fixture | fixture | fixture | none | none | none | none | none | fixture | fixture |
+| login_required *(trait)* | no | unknown | no | no | no | n/a | expected | unknown | n/a | no | no |
+| manual_verification_required *(trait)* | yes | unknown | unknown | no | n/a | n/a | expected | unknown | n/a | no | no |
+| CAPTCHA_possible *(trait)* | no | unknown | unknown | no | unknown | n/a | expected | expected | n/a | yes | yes |
+| multi_step *(trait)* | no | unknown | no | no | no | n/a | expected | unknown | n/a | no | no |
+| location_picker | none | none | none | none | none | none | none | none | none | none | none |
+| custom_dropdown | none | none | fixture | none | observed (structure only) | none | none | none | none | none | none |
+| confirmation_detection | fixture | fixture | fixture | fixture | none | none | none | none | none | fixture | fixture |
 
 Both views are served at `GET /api/providers` (`routing_capabilities`, `traits`,
 `interface`, `stage`). `tests/test_lever.py` fails when a column of the table above differs
@@ -615,6 +616,14 @@ the specification expects something, and as "unknown" otherwise:
   existing consent model: never inferred, disclosed only by an explicit per-question choice.
 - **Any API route** would need the employer's own authorization. None exists for
   candidates, so the authorized-API route does not apply.
+
+**The local Ashby-style adapter (D87).** `fixture_ashby` does the same for the labelled
+Ashby-style approximation (`fixtures/ats_receiver/ashby_like.py`), on the shared hosted-form
+base (`execution/adapters/hosted_form.py`). Ashby has no specification in the registry, so a
+real Ashby job is a manual handoff (`real_destination_disabled`), and nothing the adapter
+proves counts for Ashby. The approximation's spam check is a hard stop: a checkpoint at
+capture, a stop before anything is entered if it appears later, an unknown outcome after the
+final click; never solved, retried or resent.
 
 **The local Lever-style adapter (D85).** `fixture_lever` fills, uploads to, rehearses on and
 submits to the labelled local approximation (`fixtures/ats_receiver/lever_like.py`) only. It is

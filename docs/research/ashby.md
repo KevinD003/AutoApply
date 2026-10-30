@@ -166,6 +166,11 @@ Checked locally with fictional URLs (no network):
 
 ## 7. Proposed synthetic fixture: "Example Health (fictional)"
 
+**Since D87** the receiver also serves a labelled Ashby-style approximation
+(`fixtures/ats_receiver/ashby_like.py`: posting, application page, file uploads, submit,
+confirmation, failure modes), which the `fixture_ashby` adapter fills and submits, for the local
+approximation only; a real Ashby posting is never read.
+
 **Implemented (D81)** as `backend/app/modules/preparation/fixtures/ashby.html` (the form only, as a
 preparation fixture; no receiver route and no adapter). Tests: `backend/tests/test_workday_ashby_fixtures.py`.
 

@@ -403,6 +403,7 @@ def test_broker_outage_after_commit_loses_nothing(api, receiver):
 
 
 def _browser_application(adapter, api, receiver) -> str:
+    from tests.test_ashby_adapter import ashby_application
     from tests.test_greenhouse_adapter import gh_application
     from tests.test_greenhouse_dom import v2_application
     from tests.test_lever_adapter import lever_application
@@ -410,12 +411,13 @@ def _browser_application(adapter, api, receiver) -> str:
     return {"fixture_ats": lambda: prepared_application(api, receiver),
             "greenhouse_hosted": lambda: gh_application(api),
             "greenhouse_dom": lambda: v2_application(api),
-            "fixture_lever": lambda: lever_application(api)}[adapter]()  # fmt: skip
+            "fixture_lever": lambda: lever_application(api),
+            "fixture_ashby": lambda: ashby_application(api)}[adapter]()  # fmt: skip
 
 
 @pytest.mark.parametrize("finding", ["received", "not_received"])
 @pytest.mark.parametrize("adapter", ["fixture_ats", "greenhouse_hosted", "greenhouse_dom",
-                                     "fixture_lever"])  # fmt: skip
+                                     "fixture_lever", "fixture_ashby"])  # fmt: skip
 def test_reconciling_an_unknown_outcome_never_sends_again(api, receiver, adapter, finding):
     """A browser route's unknown outcome is reconciled by the user's statement. Either answer
     leaves the employer's ledger exactly as it was; "not received" makes it retryable, and

@@ -23,6 +23,7 @@ from app.modules.documents.models import Document
 from app.modules.documents.storage import get_storage
 from app.modules.execution import policy, rehearsal
 from app.modules.execution import service as svc
+from app.modules.execution.adapters.ashby import AshbyFixtureAdapter
 from app.modules.execution.adapters.fake_api import FakeApiAdapter
 from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, UploadFailed
 from app.modules.execution.adapters.greenhouse import GreenhouseHostedAdapter
@@ -43,6 +44,7 @@ ADAPTERS = {
     "greenhouse_hosted": GreenhouseHostedAdapter,
     "greenhouse_dom": GreenhouseDomAdapter,
     "fixture_lever": LeverFixtureAdapter,
+    "fixture_ashby": AshbyFixtureAdapter,
 }
 
 log = logging.getLogger("noefforts.execution")

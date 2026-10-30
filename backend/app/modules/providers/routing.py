@@ -105,7 +105,7 @@ def active_authorization(user_id, provider: str, origin: str) -> bool:
 # identity (D85), whose form belongs to no job on an identified ATS. The generic sources
 # (policy.GENERIC_FORM_SOURCES) are not listed.
 FORM_SOURCE_ATS = {"greenhouse_api": "greenhouse", "greenhouse_api_dom": "greenhouse",
-                   "fixture_lever": None}  # fmt: skip
+                   "fixture_lever": None, "fixture_ashby": None}  # fmt: skip
 
 
 def ats_of(url: str | None) -> str:

@@ -9,6 +9,29 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Ashby-style adapter against the local receiver (D87, 2026-10-30; local only)
+
+The oracle is the receiver's own ledger. Passing shows compatibility with the labelled
+Ashby-style approximation only, never with a real Ashby posting. Tests are in
+`test_ashby_adapter.py` unless named otherwise.
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Approved values, byte-identical documents | `fixture_ashby` fill and upload (hosted-form base) | `test_full_run_sends_exactly_the_approved_values_and_byte_identical_documents`, `ashby.spec.ts` | pass | — |
+| A rehearsal discloses under its approval, never submits | the existing rehearsal stop | `test_a_rehearsal_discloses_under_its_approval_and_never_submits`, `ashby.spec.ts` | pass | — |
+| Submission needs its own approval | approval scopes (unchanged) | the same tests (the rehearsal's approval is used up) | pass | — |
+| A duplicate delivery never submits twice | claim fencing (unchanged) | `test_a_duplicate_delivery_never_submits_twice` (receiver non-idempotent) | pass | — |
+| Upload evidence kept after a partial failure | `UploadFailed` disclosures | `test_a_partial_upload_failure_keeps_the_evidence_of_the_earlier_disclosure` | pass | — |
+| Unknown required controls block | capture as unsupported; drift check | `test_an_unsupported_required_control_or_the_spam_check_blocks_approval`, `test_form_changed_after_approval_stops_before_disclosure`, `test_unknown_sponsorship_blocks_approval` | pass | — |
+| The spam check is a hard stop | bot-check field at capture; `blocked_reason`; unknown after the click | `test_an_unsupported_required_control_or_the_spam_check_blocks_approval`, `test_a_spam_check_that_appears_after_approval_stops_before_disclosure`, `test_the_spam_check_or_a_repeat_after_the_final_click_is_a_hard_stop`, `test_a_confirmation_page_that_also_shows_a_bot_check_is_not_a_confirmation` | pass | — |
+| A page value nobody approved is never sent | readback of unanswered fields | `test_a_resume_autofill_that_changes_a_field_stops_before_submit` | pass | — |
+| The cookie banner is never clicked | nothing outside the form is clicked | `test_full_run_sends_exactly_the_approved_values_and_byte_identical_documents`, `ashby.spec.ts` (no `cookie_choice` in the ledger) | pass | — |
+| Changed approved inputs cancel the approval | package versioning (unchanged) | `test_a_changed_approved_input_invalidates_the_approval` | pass | — |
+| An uncertain final send is quarantined, never retried | unknown outcome (unchanged) | `test_an_uncertain_final_send_is_quarantined_and_never_retried`, `test_outcomes_after_the_final_click`, `test_reconciling_an_unknown_outcome_never_sends_again[fixture_ashby-*]` | pass | — |
+| Off-site pages and redirects stop | runner same-origin check; egress | `test_a_form_page_off_the_destination_site_is_never_opened`, `test_a_redirect_off_the_local_site_is_blocked_before_anything_is_entered` | pass | — |
+| Real Ashby stays a manual handoff; fixture evidence enables nothing | no Ashby identity, no specification | `test_a_real_ashby_posting_is_never_read_and_is_a_manual_handoff`, `test_fixture_evidence_never_enables_a_real_destination`, `ashby.spec.ts` | pass | — |
+| Sabotage | 10 guards broken one at a time | each caught, restored by MD5 (`implementation-status.md`) | pass | — |
+
 ## Fixture-origin boundary (D86, 2026-10-30; local only)
 
 Every public address below comes from a fake resolver; each check refuses before a connection

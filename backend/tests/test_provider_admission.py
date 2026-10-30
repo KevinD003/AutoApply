@@ -40,6 +40,9 @@ EXPECTED = {
     # generic track; real Lever stays the planned specification below.
     "fixture_lever": ("generic_execution", "fixture_only", "fixture_only", None, [], [], [],
                       "no_ats_identity"),
+    # D87: likewise the Ashby-style approximation's adapter (no Ashby specification exists).
+    "fixture_ashby": ("generic_execution", "fixture_only", "fixture_only", None, [], [], [],
+                      "no_ats_identity"),
     "greenhouse_hosted": ("ats_execution", "fixture_only", "fixture_only", "observed_read_only",
                           ["doc_review_recorded", "observed_cells_credited"],
                           ["doc_review_recorded"], GH_EXEC_GAPS, None),

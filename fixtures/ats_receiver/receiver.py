@@ -19,6 +19,7 @@ import fake_api  # a fake authorized application API (internal contract only; sa
 import freehire_fixture  # stand-in for Freehire's documented read API (synthetic data only)
 import greenhouse_v2  # second approximation: id-only controls, ARIA comboboxes (same ledger)
 import lever_like  # labelled approximation of a Lever-hosted posting and form (same ledger)
+import ashby_like  # labelled approximation of an Ashby-hosted posting and form (same ledger)
 
 SCHEMA = """
 create table if not exists acceptances (id integer primary key, receipt text, slug text,
@@ -164,6 +165,7 @@ def build_app(ledger: Ledger, admin_token: str) -> FastAPI:
     greenhouse_like.mount(app, ledger, cfg, _accept)
     greenhouse_v2.mount(app, ledger, cfg, _accept)
     lever_like.mount(app, ledger, cfg, _accept)
+    ashby_like.mount(app, ledger, cfg, _accept)
     fake_api.mount(app, ledger, cfg, _accept)
     freehire_fixture.mount(app, ledger, cfg)
 
