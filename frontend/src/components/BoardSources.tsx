@@ -6,7 +6,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Card, Empty, ErrorBox, Field, inputCls, Notice } from "./ui";
 import { api } from "@/lib/api";
 
-// D95: public job boards you add (Greenhouse, Lever), read only when you press "Read now".
+// D95: public job boards you add (Greenhouse, Lever), read only when you press "Read now", or
+// once a day for a board where you tick "Check daily" (D96).
 // What the board says (listed or not), whether it is in your jobs, and how it matches you are
 // shown apart; none of them is a way to apply.
 interface Provider {
@@ -23,6 +24,8 @@ interface Source {
   board: string;
   employer: string;
   paused: boolean;
+  daily_check: boolean;
+  next_check_after: string | null;
   last_success_at: string | null;
   last_status: "ok" | "failed" | null;
   last_error: string | null;
@@ -46,6 +49,7 @@ interface View {
   enabled: boolean;
   providers: Provider[];
   not_built: Record<string, string>;
+  daily_check_limit: number;
   items: Source[];
 }
 
@@ -87,7 +91,7 @@ export default function BoardSources() {
   return (
     <Card title="Employer job boards">
       <p className="text-sm text-slate-600">
-        Add an employer&rsquo;s public job board and read it when you choose. NoEfforts asks the provider&rsquo;s public postings
+        Add an employer&rsquo;s public job board and read it when you choose, or once a day if you tick &ldquo;Check daily&rdquo;. NoEfforts asks the provider&rsquo;s public postings
         feed for that one board, sends nothing of yours, and adds a posting to your jobs only when you save it.
       </p>
       {!v.enabled && <Notice>Reading job boards is not switched on for this NoEfforts. You can add boards; nothing is read.</Notice>}
@@ -139,6 +143,7 @@ export default function BoardSources() {
                 <span className="font-medium">{s.employer}</span>
                 <Badge>{s.provider_label}{s.region === "eu" ? " (EU)" : ""}</Badge>
                 {s.paused && <Badge tone="slate">paused</Badge>}
+                {s.daily_check && !s.paused && <Badge tone="indigo">checked daily</Badge>}
                 {s.last_status === "failed" && <Badge tone="red">last read failed</Badge>}
               </div>
               <p className="text-slate-600">
@@ -146,6 +151,9 @@ export default function BoardSources() {
                 {s.listed} listed · {s.no_longer_listed} no longer listed · {s.in_your_jobs} in your jobs
               </p>
               {s.last_status === "failed" && s.last_error && <p className="text-xs text-red-700">{s.last_error}</p>}
+              {s.daily_check && s.next_check_after && v.enabled && (
+                <p className="text-xs text-slate-500">Next daily check after {new Date(s.next_check_after).toLocaleString()}</p>
+              )}
               <div className="flex flex-wrap gap-2">
                 <Button
                   disabled={!v.enabled || s.paused}
@@ -161,6 +169,19 @@ export default function BoardSources() {
                 <Button variant="secondary" onClick={() => run(async () => { await api(`/discovery/sources/${s.id}`, { method: "PATCH", json: { paused: !s.paused } }); })}>
                   {s.paused ? "Resume" : "Pause"}
                 </Button>
+                <label className="flex min-h-10 items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={s.daily_check}
+                    onChange={(e) => run(async () => {
+                      await api(`/discovery/sources/${s.id}`, { method: "PATCH", json: { daily_check: e.target.checked } });
+                      return e.target.checked
+                        ? "This board will be read once a day; new postings appear in your notifications."
+                        : "Daily check off. The board is read only when you press “Read now”.";
+                    })}
+                  />
+                  Check daily
+                </label>
                 <Button
                   variant="danger"
                   onClick={() => run(async () => {

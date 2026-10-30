@@ -461,7 +461,9 @@ Details: `docs/provider-architecture.md` (decision D32).
     `urlsafety.public_https_opener` (that host only, HTTPS, public addresses checked at connect,
     no redirects); GET only, nothing of the user sent. Postings land in `discovered_jobs` under
     their board, and reach `jobs` only when the user saves one. Only a complete read marks a
-    posting no longer listed. Off by default (`NOEFFORTS_BOARD_SOURCES_ENABLED`).
+    posting no longer listed. Off by default (`NOEFFORTS_BOARD_SOURCES_ENABLED`). A board its
+    user marks "Check daily" is read by the worker once a day through the same `sync`
+    (`board_sync.check_due`, D96); new postings become a notice in the derived notifications feed.
 - **Checkpoints** (`providers/checkpoints.py`):
   - CAPTCHA, bot checks, login/MFA, SMS codes and identity checks stop the attempt and send
     the user to the employer's site;

@@ -49,6 +49,10 @@ class BoardSource(Base):
     last_count: Mapped[int] = mapped_column(Integer, default=0)
     failures: Mapped[int] = mapped_column(Integer, default=0)
     next_allowed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # D96: you chose to have it read once a day; postings first seen after `baseline_at` (its
+    # first successful read) are new to you and noted in your notifications.
+    daily_check: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    baseline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class DiscoveredJob(Base):

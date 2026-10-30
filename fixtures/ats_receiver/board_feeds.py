@@ -7,7 +7,7 @@ Every board, employer, posting and person here is fictional. Each request is rec
 table (`board_requests`): the path, the query, the method, and whether a cookie, an
 Authorization header or a body came with it, so tests can prove nothing of the user was sent.
 
-Modes (cfg["board_mode"]): normal, removed (one posting gone), malicious (script and markup in
+Modes (cfg["board_mode"]): normal, removed (one posting gone), added (one more posting), malicious (script and markup in
 descriptions, javascript:/data:/private-address links), malformed (records without ids or of the
 wrong type), total_mismatch (Greenhouse meta.total disagrees), not_found (404), rate_limited (429
 with Retry-After 120), unavailable (503), redirect (302 to a metadata address), oversize (a body
@@ -38,6 +38,13 @@ def _gh_jobs(token: str, mode: str) -> list[dict]:
     ]  # fmt: skip
     if mode == "removed":
         jobs = jobs[:1]
+    if mode == "added":
+        jobs.append({"id": 4100003, "internal_job_id": 900003, "title": "Night Nurse (fictional)",
+                     "updated_at": "2026-10-22T10:00:00-04:00", "requisition_id": "R-3",
+                     "location": {"name": "Springfield (fictional)"},
+                     "absolute_url": f"https://boards.greenhouse.io/{token}/jobs/4100003",
+                     "language": "en", "metadata": None, "content": _CONTENT,
+                     "departments": [], "offices": []})  # fmt: skip
     if mode == "malicious":
         jobs[0] |= {"content": "&lt;script&gt;alert(1)&lt;/script&gt;&lt;img src=x "
                     "onerror=alert(2)&gt;Plain words", "absolute_url": "javascript:alert(3)"}
@@ -65,6 +72,9 @@ def _lever_postings(site: str, mode: str) -> list[dict]:
         })  # fmt: skip
     if mode == "removed":
         out = out[1:]
+    if mode == "added":
+        out.append(dict(out[0], id="00000006-1111-2222-3333-444444444446", text="Nurse 6 (fictional)",
+                        hostedUrl=f"https://jobs.lever.co/{site}/00000006"))  # fmt: skip
     if mode == "malicious":
         out[0] |= {"applyUrl": "data:text/html,<script>alert(1)</script>",
                    "hostedUrl": "http://127.0.0.1:8100/api/account/delete"}  # fmt: skip

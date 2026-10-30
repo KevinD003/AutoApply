@@ -93,9 +93,9 @@ export interface JobMatch {
  * outside the app). */
 export interface AppNotification {
   key: string;
-  kind: "checkpoint" | "approval_invalidated" | "rehearsal" | "receipt" | "failure" | "follow_up";
+  kind: "checkpoint" | "approval_invalidated" | "rehearsal" | "receipt" | "failure" | "follow_up" | "board_postings";
   at: string;
-  application_id: string;
+  application_id: string | null; // null for a job board's new postings (D96)
   job: string;
   title: string;
   text: string;

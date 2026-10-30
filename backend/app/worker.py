@@ -60,6 +60,8 @@ celery_app.conf.update(
         "purge-expired-evidence": {"task": "noefforts.purge_expired_evidence", "schedule": 86400.0},
         # D56: watched Freehire searches; does nothing unless Freehire is an enabled provider.
         "check-discovery-watches": {"task": "noefforts.check_discovery_watches", "schedule": 10.0},
+        # D96: boards whose owners chose a daily check; nothing unless job boards are enabled.
+        "check-board-sources": {"task": "noefforts.check_board_sources", "schedule": 300.0},
         # D94: owner email reminders; does nothing unless the owner configured email.
         "email-tick": {
             "task": "noefforts.email_tick",
@@ -112,6 +114,13 @@ def check_discovery_watches() -> int:
     from app.modules.discovery.service import check_due_watches
 
     return check_due_watches()
+
+
+@celery_app.task(name="noefforts.check_board_sources")
+def check_board_sources() -> int:
+    from app.modules.discovery.board_sync import check_due
+
+    return check_due()
 
 
 @celery_app.task(name="noefforts.email_tick")

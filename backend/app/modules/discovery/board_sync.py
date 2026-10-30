@@ -11,6 +11,10 @@ time is refused, never queued), reads it with discovery/boards.py and then, in o
     board", and one listed again as listed. A failed or incomplete read changes no posting.
 A failed read backs off (doubling from 5 minutes, at most a day; a 429's Retry-After within 1
 minute and 1 day) and a successful one waits `board_min_interval_seconds` before the next.
+D96: a board whose owner chose "Check daily" is read by the worker (`check_due`) once a day,
+through the same `sync`, with the same refusals, lock and backoff; never a board that is
+paused, off, or someone else's choice. Postings first seen after a board's first successful
+read (`baseline_at`) are new to you: the notifications feed says how many.
 Nothing here touches an application, an approval, a package or a route: a posting's source
 saying it is open is not a match, not eligibility and not a way to apply."""
 
@@ -22,7 +26,8 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.db import utcnow
+from app.core.db import SessionLocal, utcnow
+from app.modules.audit.service import record
 from app.modules.discovery import boards
 from app.modules.discovery.models import BoardSource, DiscoveredJob
 from app.modules.discovery.provider import MalformedRecord, NormalizedJob
@@ -99,6 +104,7 @@ def sync(db: Session, user_id, source_id) -> dict:
             if not row.stale:
                 row.stale, row.stale_reason, row.stale_since = True, NO_LONGER_LISTED, now
                 out["no_longer_listed"] += 1
+    src.baseline_at = src.baseline_at or now  # before this, everything it lists is not "new"
     src.last_success_at, src.last_status, src.last_error_code = now, "ok", None
     src.failures, src.last_count = 0, len(seen)
     src.next_allowed_at = now + timedelta(seconds=s.board_min_interval_seconds)
@@ -106,6 +112,50 @@ def sync(db: Session, user_id, source_id) -> dict:
     out["listed"] = len(seen)
     log.info("board source %s: ok (%d listed, complete=%s)", src.id, len(seen), fetched.complete)
     return out
+
+
+DAY = timedelta(days=1)
+
+
+def due(db: Session, now, limit: int) -> list[tuple]:
+    """Boards whose owner chose a daily check, not paused, not backing off, and not attempted
+    in the last day: oldest attempt first. (user_id, id) pairs."""
+    q = (
+        select(BoardSource.user_id, BoardSource.id)
+        .where(
+            BoardSource.daily_check.is_(True),
+            BoardSource.paused.is_(False),
+            (BoardSource.last_attempt_at.is_(None)) | (BoardSource.last_attempt_at <= now - DAY),
+            (BoardSource.next_allowed_at.is_(None)) | (BoardSource.next_allowed_at <= now),
+        )
+        .order_by(BoardSource.last_attempt_at.asc().nulls_first(), BoardSource.id)
+        .limit(limit)
+    )
+    return [tuple(r) for r in db.execute(q).all()]
+
+
+def check_due(now=None, limit: int | None = None) -> int:
+    """The worker's daily checks (D96): at most `board_check_batch` boards per tick, each read
+    through `sync` in its own session. Returns how many were read (ok or failed). Nothing runs
+    while job boards are off. A board being read by its owner at that moment is skipped."""
+    s = get_settings()
+    if not s.board_sources_enabled:
+        return 0
+    with SessionLocal() as db:
+        pairs = due(db, now or utcnow(), limit or s.board_check_batch)
+    done = 0
+    for user_id, source_id in pairs:
+        with SessionLocal() as db:
+            try:
+                out = sync(db, user_id, source_id)
+            except (Refused, LookupError):
+                db.rollback()
+                continue
+            record(db, user_id, "board_source.update", "board_source", source_id,
+                   change="daily_check", outcome=out["status"])  # fmt: skip
+            db.commit()
+            done += 1
+    return done
 
 
 def _store(db: Session, src: BoardSource, n: NormalizedJob, now, out: dict) -> None:

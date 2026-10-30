@@ -153,6 +153,10 @@ class Settings(BaseSettings):
     board_page_size: int = Field(default=100, ge=1, le=100)
     board_max_pages: int = Field(default=20, ge=1, le=100)
     board_min_interval_seconds: int = Field(default=300, ge=0, le=86_400)
+    # D96: boards per account that may be read once a day on their own (each by its owner's
+    # choice), and how many boards one tick of the worker reads at most.
+    board_daily_check_limit: int = Field(default=10, ge=1, le=50)
+    board_check_batch: int = Field(default=5, ge=1, le=50)
 
     @field_validator("fixture_networks")
     @classmethod
