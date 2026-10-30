@@ -12,6 +12,7 @@ from app.modules.apitokens.router import router as apitokens_router
 from app.modules.applications.router import router as applications_router
 from app.modules.audit.service import check_ref_key
 from app.modules.discovery.router import router as discovery_router
+from app.modules.discovery.sources_router import router as board_sources_router
 from app.modules.documents.router import router as documents_router
 from app.modules.execution.router import router as execution_router
 from app.modules.followups.router import router as followups_router
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
         preparation_router,
         execution_router,
         providers_router,
+        board_sources_router,
         discovery_router,
         notifications_router,
         followups_router,

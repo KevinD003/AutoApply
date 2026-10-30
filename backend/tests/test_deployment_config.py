@@ -57,6 +57,36 @@ def test_every_required_compose_variable_is_in_the_example_and_the_checker():
     assert required <= set(example)  # `cp .env.example .env` names every one
 
 
+# .env.example keys Compose does not pass on as written, and why.
+NOT_PASSED = {
+    "NOEFFORTS_ENV": "Compose runs the default environment; the test overlay sets its own",
+    "NOEFFORTS_DATABASE_URL": "set by Compose to the postgres service",
+    "NOEFFORTS_REDIS_URL": "set by Compose to the redis service",
+    "NOEFFORTS_STORAGE_DIR": "the storage volume (/data/storage, the Dockerfile's)",
+    "NOEFFORTS_AUDIT_REF_KEY": "Compose takes AUDIT_REF_KEY",
+    "NOEFFORTS_CORS_ORIGINS": "set by Compose to the web app's address",
+    "NOEFFORTS_BROWSER_ISOLATION": "Compose uses the browser-runner container",
+    "NOEFFORTS_FAKE_API_TOKEN": "fixture only",
+    "NOEFFORTS_BACKEND_URL": "the web app's build argument",
+}
+
+
+def test_every_owner_setting_in_the_example_reaches_the_api_and_the_worker():
+    """Compose reads .env only to fill in docker-compose.yml: a setting it does not name never
+    reaches a container, so the documented switches (email, boards, drafting, discovery) would
+    stay off whatever .env says (found while checking D94)."""
+    example = {k for k in checker().parse((ROOT / ".env.example").read_text())
+               if k.startswith("NOEFFORTS_")}  # fmt: skip
+    services = compose()["services"]
+    for name in ("backend", "worker"):
+        env = services[name]["environment"]
+        for key in sorted(example - set(NOT_PASSED)):
+            assert key in env, (name, key)
+            assert str(env[key]).startswith(f"${{{key}:-"), (name, key)  # from .env, or a default
+    assert set(NOT_PASSED) <= example
+    assert "env_file" not in services["backend"] and "env_file" not in services["worker"]
+
+
 def test_every_published_port_is_bound_to_this_machine_only():
     published = {name: service.get("ports", []) for name, service in compose()["services"].items()}
     assert published["backend"] and published["frontend"]
@@ -119,6 +149,11 @@ def test_reused_secrets_missing_keys_and_outbound_switches():
     assert errors == [] and any("NOEFFORTS_DISCOVERY_PROVIDERS" in w for w in warnings)
     _, warnings = check(good_values() | {"NOEFFORTS_DISCOVERY_PROVIDERS": "[]"})
     assert warnings == []
+    for key in ("NOEFFORTS_EMAIL_ENABLED", "NOEFFORTS_BOARD_SOURCES_ENABLED"):
+        _, warnings = check(good_values() | {key: "true"})
+        assert any(key in w for w in warnings), key
+        _, warnings = check(good_values() | {key: "false"})
+        assert warnings == [], key
     # Quoted values and `export` lines are read the way Compose reads them.
     parsed = checker().parse("export AUDIT_REF_KEY='abc'\n# AUDIT_REF_KEY=no\nX = \"y\"\n")
     assert parsed == {"AUDIT_REF_KEY": "abc", "X": "y"}

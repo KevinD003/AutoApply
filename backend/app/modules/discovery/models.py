@@ -18,6 +18,39 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base, new_id, utcnow
 
 
+class BoardSource(Base):
+    """D95: one employer's public job board that you added (Greenhouse, Lever or Ashby), read
+    only when you ask. `board` is the identifier the provider's public postings API uses; the
+    request URL is built from it and the provider's fixed host, never taken as a URL. Status
+    fields say what the last read did; nothing here is an application route."""
+
+    __tablename__ = "board_sources"
+    __table_args__ = (
+        UniqueConstraint("user_id", "provider", "region", "board", name="uq_board_source"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[str] = mapped_column(String(20))  # greenhouse | lever | ashby
+    region: Mapped[str] = mapped_column(String(10), default="global")  # lever: global | eu
+    board: Mapped[str] = mapped_column(String(100))
+    employer: Mapped[str] = mapped_column(String(200))  # what you call this employer
+    paused: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_status: Mapped[str | None] = mapped_column(String(20))  # ok | failed
+    last_error_code: Mapped[str | None] = mapped_column(String(40))
+    last_count: Mapped[int] = mapped_column(Integer, default=0)
+    failures: Mapped[int] = mapped_column(Integer, default=0)
+    next_allowed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class DiscoveredJob(Base):
     """One source record, as the discovery provider last reported it. Linked to a tracker job
     (deduplicated with the user's existing jobs) when it is complete enough; otherwise it waits
@@ -31,6 +64,11 @@ class DiscoveredJob(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # D95: the job board this posting was read from; removing the source removes its postings
+    # (a job you saved from one stays in your jobs).
+    board_source_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("board_sources.id", ondelete="CASCADE"), index=True
     )
     provider: Mapped[str] = mapped_column(String(50))
     source_job_id: Mapped[str] = mapped_column(String(200))

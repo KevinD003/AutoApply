@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
+import BoardSources from "@/components/BoardSources";
 import { Badge, Button, Card, Credit, Empty, ErrorBox, Field, inputCls, Loading, Notice, splitList } from "@/components/ui";
 import {
   api,
@@ -135,6 +136,7 @@ export default function DiscoverPage() {
           </ul>
         </Card>
       )}
+      <BoardSources />
       {watches.length > 0 && <Watches watches={watches} onStop={stop} />}
       {enabled.length > 0 && <RunDiscovery providers={enabled} onDone={load} />}
       {notice && <Notice>{notice}</Notice>}

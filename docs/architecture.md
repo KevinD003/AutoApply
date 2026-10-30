@@ -455,6 +455,13 @@ Details: `docs/provider-architecture.md` (decision D32).
   - `application_route` is a manual handoff until a form is captured.
   - Providers: a Freehire client for its documented public read API (fixture base URLs only)
     and a local mock file. Both are off by default (`docs/discovery.md`).
+  - Employer job boards (D95, `discovery/boards.py`, `board_sync.py`, `sources_router.py`): a
+    user adds a Greenhouse or Lever board by identifier (`board_sources`) and reads it on
+    request. The URL is the provider's fixed host plus the encoded identifier, fetched with
+    `urlsafety.public_https_opener` (that host only, HTTPS, public addresses checked at connect,
+    no redirects); GET only, nothing of the user sent. Postings land in `discovered_jobs` under
+    their board, and reach `jobs` only when the user saves one. Only a complete read marks a
+    posting no longer listed. Off by default (`NOEFFORTS_BOARD_SOURCES_ENABLED`).
 - **Checkpoints** (`providers/checkpoints.py`):
   - CAPTCHA, bot checks, login/MFA, SMS codes and identity checks stop the attempt and send
     the user to the employer's site;
@@ -466,7 +473,8 @@ Details: `docs/provider-architecture.md` (decision D32).
 - Live ATS adapters (each needs its own capability entry and receiver-style tests)
 - A real API provider (needs an agreement, secret storage, its own adapter and capability entry).
 - Multi-page adapters with a disclosure boundary per step (Workday: see provider-architecture.md).
-- A live discovery provider (Freehire is fixture-only; see `docs/discovery.md`).
+- A live discovery provider (Freehire and the job-board connectors are tested against local
+  stand-ins only; see `docs/discovery.md`).
 - Optional Gmail OAuth and spend tracking (Phase D). Manual entry of an emailed verification
   code is built: a checkpoint the user answers (`providers/checkpoints.py`).
 

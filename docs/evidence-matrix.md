@@ -9,6 +9,31 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Employer job boards (D95, 2026-10-30; local stand-ins only, no real board read)
+
+The oracle is the stand-in's own request ledger (`board_requests` in the receiver's SQLite,
+`fixtures/ats_receiver/board_feeds.py`): method, path, query, whether a cookie, an
+`Authorization` header or a body came. Boards and postings are fictional. Tests are in
+`test_board_sources.py` unless named otherwise.
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Off by default; explicit per-board activation | `board_sources_enabled`; `POST /discovery/sources`; "Read now" | `test_off_by_default_nothing_is_read`, `board-sources.spec.ts` | pass | — |
+| A board is an identifier, never a URL | `boards.check_identifier`, encoded path | `test_a_board_is_an_identifier_never_a_url` (URL, `../`, space, unknown provider, unknown region: 400, no request) | pass | — |
+| Fixed hosts, HTTPS, public addresses at connect, no redirects | `urlsafety.public_https_opener`, `_NoRedirect` | `test_the_public_opener_refuses_other_hosts_plain_http_and_private_addresses`, `test_outside_tests_the_fixed_public_host_is_used_never_an_override`, the `redirect` case of `test_a_failed_read_changes_nothing_and_backs_off` | pass | the real hosts were never contacted |
+| GET only; nothing of the user sent | fixed headers, no cookie jar | `test_a_greenhouse_board_is_read_once_with_nothing_of_yours` (ledger: one GET, no cookie, no credential, no body), `board-sources.spec.ts` (same, through the UI) | pass | — |
+| Documented paging and completeness | Greenhouse `meta.total`; Lever short page | `test_a_lever_board_is_paged_until_a_short_page`, `test_only_a_complete_read_says_a_posting_is_no_longer_listed`, `test_an_incomplete_read_never_marks_anything_closed` | pass | completeness rules are inferred from the docs (`docs/research/job-board-apis.md`) |
+| Failures, limits, rate limiting, backoff | `BoardError` codes, `backoff`, size cap, `next_allowed_at` | `test_a_failed_read_changes_nothing_and_backs_off` (404, 503, 429 with Retry-After, redirect, oversize, not JSON, Lever page 2 failing), `test_backoff_is_bounded`, `test_two_reads_of_one_board_at_once_are_refused` | pass | no rate limit is documented for either read API |
+| Normalization, malformed and missing values | `boards.normalize` | `test_malformed_records_are_skipped`, the two read tests | pass | — |
+| Malicious descriptions and links | `plain_summary`, `_safe_url`, links never fetched | `test_untrusted_content_and_links_are_neutralised` (script, `onerror`, `javascript:`, `data:`, metadata and loopback links) | pass | — |
+| Duplicates: repeated reads, saves, other sources | one row per board and posting id; `service._existing_job` | `test_repeated_reads_never_duplicate`, `test_a_posting_is_saved_once_and_reconciled_with_your_existing_jobs` | pass | — |
+| Pause, resume, rename, remove | `PATCH`, `DELETE` | `test_pause_resume_rename_and_remove`, `board-sources.spec.ts` | pass | — |
+| Account isolation | `user_id` on every query; 404 | `test_another_account_never_reaches_your_boards` | pass | — |
+| Discovery never touches applications | reads and saves only jobs and discovered rows | `test_discovery_never_creates_an_application_route_or_approval` | pass | — |
+| Export, deletion, audit, logs | `board_sources` exported; cascades; audit codes only | `test_export_deletion_audit_and_logs_keep_board_data_where_it_belongs`, `test_every_table_and_column_has_an_export_decision` | pass | — |
+| Owner settings reach the containers (D94 fix) | `docker-compose.yml` pass-throughs | `test_every_owner_setting_in_the_example_reaches_the_api_and_the_worker` (`test_deployment_config.py`); `docker compose config` with a synthetic `.env` | pass | not run on the owner's machine |
+| Sabotage | 12 guards | each caught (`implementation-status.md`) | pass | — |
+
 ## Email reminders to the owner (D94, 2026-10-30; local SMTP sink only)
 
 The oracle is the sink's own ledger (`fixtures/ats_receiver/mail_sink.py`), which shares no code
@@ -18,12 +43,12 @@ or database with NoEfforts. Tests are in `test_email_reminders.py` unless named 
 |---|---|---|---|---|
 | Off by default; opt-in needs a verified address | `config_problem`, `set_enabled`, `verify_code` | `test_off_by_default_nothing_is_ever_sent`, `test_turning_it_on_needs_a_verified_address_entered_in_the_app`, `test_codes_expire_run_out_and_are_limited_and_addresses_are_checked`, `email.spec.ts` | pass | — |
 | Minimal content, safe link, owner only | `digest_message`; recipient from settings only | `test_the_digest_says_only_the_category_and_links_to_the_tracker`, `test_nothing_is_ever_emailed_to_anyone_but_the_verified_owner`, `email.spec.ts` | pass | — |
-| Categories, daily digest, deduplication | `digest_items`, dedupe key, emailed keys | `test_attention_items_are_their_own_category_and_choices_are_respected`, `test_one_digest_a_day_and_an_item_is_never_emailed_twice`, `test_an_item_read_in_the_app_is_not_emailed`, `test_before_the_hour_nothing_is_sent` | pass | — |
+| Categories, daily digest, deduplication | `digest_items`, dedupe key, emailed keys | `test_attention_items_are_their_own_category_and_choices_are_respected`, `test_one_digest_a_day_and_no_item_is_put_in_a_second_digest`, `test_an_item_read_in_the_app_is_not_emailed`, `test_before_the_hour_nothing_is_sent` | pass | — |
 | Opt-out, new address, deletion before dispatch | `cancel_pending`; re-check at claim | `test_opting_out_or_removing_the_address_before_dispatch_cancels`, `test_a_new_address_needs_verifying_again_and_cancels_what_is_pending`, `test_deleting_the_account_before_dispatch_sends_nothing` | pass | an accepted message cannot be recalled |
 | Duplicate workers, fencing, recovery | lock + skip-locked claim, `generation`, `recover_stale` | `test_two_workers_for_one_delivery_send_it_once`, `test_a_late_result_after_recovery_is_fenced`, `test_a_worker_lost_while_sending_leaves_it_uncertain` | pass | — |
-| Refusal, timeout, uncertain acceptance | `SmtpTransport` classification; bounded retries | `test_a_definite_transient_refusal_is_retried_a_bounded_number_of_times`, `test_a_refusal_then_acceptance_is_sent_once`, `test_a_permanent_refusal_fails_and_is_not_retried`, `test_a_refused_connection_is_a_definite_failure`, `test_a_possible_acceptance_is_uncertain_and_never_resent` | pass | not exactly-once (SMTP cannot promise it) |
+| Refusal, timeout, uncertain acceptance | `SmtpTransport` classification; bounded retries | `test_a_definite_transient_refusal_is_retried_a_bounded_number_of_times`, `test_a_refusal_then_acceptance_is_sent_once`, `test_a_permanent_refusal_fails_and_is_not_retried`, `test_a_refused_connection_is_a_definite_failure`, `test_a_possible_acceptance_is_uncertain_and_never_resent` | pass | not exactly-once: NoEfforts never resends an uncertain message, but neither it nor SMTP can rule out a duplicate further down the delivery chain |
 | No application change; no follow-up marked done | reminders read only | `test_reminders_never_change_an_application_or_mark_a_follow_up_done`, `email.spec.ts` | pass | — |
-| Isolation, tokens, privacy of logs, audit, export | `session_only`; sanitized logs; export lists | `test_another_account_and_api_tokens_never_reach_your_email_settings`, `test_logs_audit_and_export_keep_no_address_code_or_message`, `test_every_table_and_column_has_an_export_decision` | pass | — |
+| Isolation, tokens, privacy of logs, audit, export | `session_only`; sanitized logs; export lists | `test_another_account_and_api_tokens_never_reach_your_email_settings`, `test_logs_and_audit_keep_no_address_code_or_message_and_the_export_keeps_your_settings`, `test_every_table_and_column_has_an_export_decision` | pass | — |
 | Configuration checked before sending | `config_problem` | `test_the_configuration_is_checked_before_anything_is_sent` | pass | — |
 | Honest validation exit codes | `scripts/validate.sh` | `scripts/test_validate.sh` (CI docker-smoke job) | pass | — |
 | Sabotage | 13 guards | each caught (`implementation-status.md`) | pass | — |

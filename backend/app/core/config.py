@@ -142,6 +142,18 @@ class Settings(BaseSettings):
     email_recipient_domains: list[str] = Field(default_factory=list)
     public_base_url: str = "http://localhost:3000"
 
+    # D95: public employer job boards (Greenhouse, Lever). Off: sources can be added but never
+    # read until the owner sets this. Each read is a user action on one source. Hosts are fixed in
+    # code (discovery/boards.py); `board_api_overrides` points a provider at a local stand-in and
+    # is honoured only in the test environment, for a listed fixture origin.
+    board_sources_enabled: bool = False
+    board_api_overrides: dict[str, str] = Field(default_factory=dict)
+    board_timeout_seconds: float = Field(default=10, gt=0, le=60)
+    board_max_bytes: int = Field(default=10_000_000, ge=1_000, le=50_000_000)
+    board_page_size: int = Field(default=100, ge=1, le=100)
+    board_max_pages: int = Field(default=20, ge=1, le=100)
+    board_min_interval_seconds: int = Field(default=300, ge=0, le=86_400)
+
     @field_validator("fixture_networks")
     @classmethod
     def _private_test_networks(cls, v: list[str]) -> list[str]:

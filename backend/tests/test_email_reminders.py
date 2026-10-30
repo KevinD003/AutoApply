@@ -207,7 +207,7 @@ def test_attention_items_are_their_own_category_and_choices_are_respected(api, s
         assert keys() == ["follow_up:3"]
 
 
-def test_one_digest_a_day_and_an_item_is_never_emailed_twice(api, sink):
+def test_one_digest_a_day_and_no_item_is_put_in_a_second_digest(api, sink):
     verified(api, sink)
     first = due_follow_up(api)
     service.tick()
@@ -432,7 +432,12 @@ def test_nothing_is_ever_emailed_to_anyone_but_the_verified_owner():
     assert "modules.followups" not in mail and "modules.jobs" not in mail
 
 
-def test_logs_audit_and_export_keep_no_address_code_or_message(api, sink, caplog):
+def test_logs_and_audit_keep_no_address_code_or_message_and_the_export_keeps_your_settings(
+    api, sink, caplog
+):
+    """Two rules, not one: your address stays out of logs and audit records, and is in your
+    own export with when it was verified and your preferences. The code's keyed digest and
+    the delivery's keyed recipient digest are credential material: never exported."""
     caplog.set_level(logging.DEBUG)
     verified(api, sink)
     code_mail = None  # the code was in the email only
@@ -449,6 +454,8 @@ def test_logs_audit_and_export_keep_no_address_code_or_message(api, sink, caplog
     tables = json.loads(files["noefforts-export.json"])["tables"]
     (s,) = tables["email_settings"]
     assert s["address"] == ADDRESS and "code_digest" not in s
+    assert s["verified_at"] and s["enabled"] is True
+    assert (s["attention"], s["follow_ups"], s["digest_hour_utc"]) == (True, True, 0)
     assert tables["email_deliveries"] and all(
         "recipient_ref" not in d and "generation" not in d for d in tables["email_deliveries"]
     )

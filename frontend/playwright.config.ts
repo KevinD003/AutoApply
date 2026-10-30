@@ -39,6 +39,11 @@ const backendEnv = {
   NOEFFORTS_EMAIL_DISPATCH_INTERVAL_SECONDS: "2",
   NOEFFORTS_EMAIL_TIMEOUT_SECONDS: "5",
   NOEFFORTS_PUBLIC_BASE_URL: "http://127.0.0.1:3100",
+  // D95: public job-board connectors, pointed at the receiver's stand-ins of the documented feeds
+  // (the override is honoured only in the test environment, for a listed fixture origin).
+  NOEFFORTS_BOARD_SOURCES_ENABLED: "true",
+  NOEFFORTS_BOARD_API_OVERRIDES: JSON.stringify({ greenhouse: `${RECEIVER}/gh-board`, lever: `${RECEIVER}/lever-board` }),
+  NOEFFORTS_BOARD_MIN_INTERVAL_SECONDS: "0",
 };
 
 // Offline emulation reaches a service worker's own requests only with this switch (Playwright

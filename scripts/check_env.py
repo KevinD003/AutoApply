@@ -28,7 +28,10 @@ OUTBOUND = (
     "NOEFFORTS_DISCOVERY_PROVIDERS",
     "NOEFFORTS_DRAFTING_PROVIDER",
     "NOEFFORTS_ANTHROPIC_API_KEY",
+    "NOEFFORTS_EMAIL_ENABLED",
+    "NOEFFORTS_BOARD_SOURCES_ENABLED",
 )
+OFF = ("", "[]", '""', "''", "false", "0", "no")
 
 
 def parse(text: str) -> dict[str, str]:
@@ -77,7 +80,7 @@ def check(values: dict[str, str]) -> tuple[list[str], list[str]]:
             )
     for key in OUTBOUND:
         v = values.get(key, "")
-        if v and v not in ("[]", '""', "''"):
+        if v.lower() not in OFF:
             warnings.append(
                 f"{key}: set; it turns on something that contacts an outside service"
                 " (docs/deployment.md)"

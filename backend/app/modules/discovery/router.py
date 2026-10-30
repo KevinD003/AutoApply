@@ -144,6 +144,8 @@ def _owned(db: Session, user: User, row_id: uuid.UUID) -> DiscoveredJob:
     row = db.get(DiscoveredJob, row_id)
     if row is None or row.user_id != user.id or row.status == "dismissed":
         raise not_found("Discovered job")  # a deleted record keeps only its id (D56)
+    if row.board_source_id is not None:
+        raise not_found("Discovered job")  # D95: a board's postings belong to its source
     return row
 
 
@@ -239,7 +241,9 @@ def list_rows(
     db: Session = Depends(get_db),
 ) -> list[dict]:
     q = select(DiscoveredJob).where(
-        DiscoveredJob.user_id == user.id, DiscoveredJob.status != "dismissed"
+        DiscoveredJob.user_id == user.id,
+        DiscoveredJob.status != "dismissed",
+        DiscoveredJob.board_source_id.is_(None),  # D95: board postings are listed per source
     )
     if provider:
         q = q.where(DiscoveredJob.provider == provider)

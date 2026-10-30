@@ -43,12 +43,19 @@ Generate each with `openssl rand -hex 32`. `POSTGRES_PASSWORD` defaults to `post
 acceptable only because the port is bound to 127.0.0.1.
 
 `.env` is git-ignored: never commit it. The API reads its own settings as `NOEFFORTS_*`
-environment variables (`backend/app/core/config.py`); Compose passes them from `.env`. Running
-without Docker, the API reads `backend/.env` instead (README).
+environment variables (`backend/app/core/config.py`). Compose reads `.env` only to fill in
+`docker-compose.yml`, so a setting reaches the API and the worker only if that file names it:
+every `NOEFFORTS_*` setting in `.env.example` is named there, except the few Compose sets itself
+(database, broker, storage, CORS, browser isolation); `test_deployment_config.py` checks this.
+(Before D95 the email, discovery, drafting and session settings were not passed on, so setting
+them in `.env` had no effect under Compose.) Running without Docker, the API reads `backend/.env`
+instead (README).
 
 **Switches that contact outside services stay off unless you set them on purpose:**
 `NOEFFORTS_DISCOVERY_PROVIDERS` (Freehire), `NOEFFORTS_DRAFTING_PROVIDER` and
-`NOEFFORTS_ANTHROPIC_API_KEY` (AI drafting, D74). `scripts/check_env.py` warns when any is set.
+`NOEFFORTS_ANTHROPIC_API_KEY` (AI drafting, D74), `NOEFFORTS_EMAIL_ENABLED` (email reminders,
+D94) and `NOEFFORTS_BOARD_SOURCES_ENABLED` (employer job boards, D95). `scripts/check_env.py`
+warns when any is on.
 
 Check the file before starting (prints key names only, never values):
 
@@ -65,7 +72,25 @@ Reminders go to the account owner only, never to an employer. To use them, set
 production STARTTLS is required unless the server is on this machine. Then, in Account, Email
 reminders: verify your address with the code, choose what to be reminded of, turn them on. A
 message the server accepted cannot be recalled; one whose acceptance is uncertain is never sent
-again. Not yet run against a real mail server.
+again by NoEfforts. Turning reminders off stops what no worker has claimed yet. Server acceptance
+is not inbox delivery.
+
+| State | How you know | Now |
+|---|---|---|
+| Feature implemented | this guide | yes (tested against a local test mail server only) |
+| Transport configured | the settings page no longer says "not set up" | only when you set `NOEFFORTS_EMAIL_*` |
+| Recipient verified | "Verified" on the settings page | per account, by the emailed code |
+| Email enabled | "Reminders on" on the settings page | per account, after verification |
+| Real delivery verified | a reminder in your own inbox | not yet: never run against a real mail server |
+
+### Employer job boards (optional, off by default; D95)
+
+`NOEFFORTS_BOARD_SOURCES_ENABLED=true` lets each account read the public job boards it added in
+Discover (Greenhouse and Lever postings feeds), one board at a time, when its owner presses
+"Read now". Requests go only to `boards-api.greenhouse.io`, `api.lever.co` or `api.eu.lever.co`
+over HTTPS, GET only, without cookies or credentials, at most once every 5 minutes per board.
+Nothing reads a board on a schedule. Off, boards can be
+added but none is read. Never run against a real board while building this (local stand-ins only).
 
 ## 3. Start
 

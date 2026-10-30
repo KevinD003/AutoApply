@@ -342,6 +342,7 @@ def get_job(
 def _job_detail(db: Session, user: User, job: Job, for_token: bool = False) -> JobDetail:
     """A job as its page shows it; to an API token, without the eligibility side by side."""
     prefs = db.scalar(select(JobPreferences).where(JobPreferences.user_id == user.id))
+    from app.modules.discovery import boards
     from app.modules.discovery.models import DiscoveredJob
     from app.modules.discovery.provider import PROVIDERS, describe_signals
 
@@ -359,7 +360,9 @@ def _job_detail(db: Session, user: User, job: Job, for_token: bool = False) -> J
         discovered_from=[
             {
                 "provider": d.provider,
-                "label": PROVIDERS[d.provider].label if d.provider in PROVIDERS else d.provider,
+                "label": PROVIDERS[d.provider].label
+                if d.provider in PROVIDERS
+                else boards.label(d.provider) or d.provider,
                 "source_url": (d.normalized or {}).get("job_url"),
                 "attribution": (d.normalized or {}).get("attribution")
                 or {

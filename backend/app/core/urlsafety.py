@@ -261,3 +261,57 @@ def resolve_public_destination(url: str, resolver=socket.getaddrinfo) -> list[st
     for ip in ips:
         _check_ip(ipaddress.ip_address(ip.split("%")[0]))
     return ips
+
+
+# D95: read-only requests to one fixed public HTTPS API host (the public job-board connectors).
+# The host is fixed in code, never taken from user input; every address it resolves to must be
+# public, and the socket is opened to one of those checked addresses (no second lookup between
+# the check and the connection). Plain HTTP and redirects are refused.
+class _PublicHTTPSConnection(http.client.HTTPSConnection):
+    resolver = staticmethod(socket.getaddrinfo)
+
+    def connect(self) -> None:
+        try:
+            infos = self.resolver(self.host, self.port, type=socket.SOCK_STREAM)
+        except socket.gaierror as e:
+            raise UnsafeURL("Host could not be resolved") from e
+        ips = sorted({info[4][0] for info in infos})
+        if not ips:
+            raise UnsafeURL("Host could not be resolved")
+        for ip in ips:
+            _check_ip(ipaddress.ip_address(ip.split("%")[0]))
+        sock = socket.create_connection((ips[0], self.port), self.timeout)
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+class _OnlyHost(urllib.request.HTTPSHandler):
+    def __init__(self, host: str) -> None:
+        super().__init__()
+        self.host = host
+
+    def https_open(self, req):
+        parts = urlsplit(req.full_url)
+        if parts.hostname != self.host or parts.port not in (None, 443) or parts.username:
+            raise UnsafeURL("Only the approved API host may be requested")
+        return self.do_open(_PublicHTTPSConnection, req)
+
+
+class _RefuseHTTP(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        raise UnsafeURL("Plain HTTP is not allowed")
+
+
+def public_https_opener(host: str, no_redirect) -> urllib.request.OpenerDirector:
+    """An opener for exactly `host` over HTTPS, public addresses only, no redirects, no file or
+    data handlers (an explicit OpenerDirector, like `fixture_opener`)."""
+    opener = urllib.request.OpenerDirector()
+    handlers = (
+        _OnlyHost(host),
+        _RefuseHTTP(),
+        no_redirect(),
+        urllib.request.HTTPErrorProcessor(),
+        urllib.request.HTTPDefaultErrorHandler(),
+    )
+    for handler in handlers:
+        opener.add_handler(handler)
+    return opener

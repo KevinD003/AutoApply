@@ -2529,8 +2529,20 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
     that dies while `sending` -> `uncertain`. Not exactly-once: SMTP cannot promise it, so an
     uncertain message is never retried rather than risk a duplicate.
   - Opting out, a new address or removing it cancels everything still `pending`; deleting the
-    account deletes every row, and a worker finds nothing to send. A message already accepted by
-    the mail server cannot be recalled.
+    account deletes every row, and a worker finds nothing to send. That is the boundary: a
+    delivery a worker has already claimed (`sending`) is with the transport and may still go out,
+    and a message the mail server accepted cannot be recalled. Acceptance by the server is not
+    delivery to an inbox. NoEfforts never resends an uncertain message and never puts an item in
+    a second digest; it cannot promise that no duplicate appears further down the delivery chain.
+  - Five separate states, none implying the next: the feature is implemented (yes, local sink
+    only); a transport is configured (the owner's `NOEFFORTS_EMAIL_*`; the settings page shows
+    "not set up" otherwise); the recipient is verified (per account, by code); email is enabled
+    (per account, after verification); real delivery is verified (no: never run against a real
+    mail server or inbox).
+  - Export: your address, when it was verified and your preferences are in your export (they are
+    yours); the pending code's keyed digest is not (credential material), nor are a delivery's
+    keyed recipient digest and worker internals. No message content is stored, so none is
+    exported. Keeping addresses out of logs and audit records is a separate rule.
   - Logs and audit carry the delivery id, a fixed outcome code and the kind of change only:
     never the address, a code, a message or an exception's text. The export holds your settings
     and deliveries without keyed digests or worker internals; no message content is stored.
@@ -2544,3 +2556,67 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   are not an owner action; reply classification is a separate optional integration, deferred.
 - **Not done:** push or chat; per-item immediate emails; a real mail server.
 - **Unchanged:** `SCHEMA_VERSION` (3); the execution path. Migration `c4e8a2d17b55`.
+
+## D95 — Employer job boards: read-only connectors for published postings, one board at a time (2026-10-30)
+
+- **Why:** the owner's next milestone: discovery from documented public posting feeds
+  (Greenhouse, Lever, Ashby), without employer credentials and without turning a board setting
+  into a way to fetch arbitrary addresses. Research: `docs/research/job-board-apis.md`.
+- **Decision:**
+  - **Connectors.** Greenhouse's Job Board API list (`GET /v1/boards/{board_token}/jobs
+    ?content=true`) and Lever's Postings API list (`GET /v0/postings/{site}?mode=json&skip&limit`,
+    global or EU host). Both are documented as public, read-only and unauthenticated for GET.
+    Their application POSTs (employer key), Greenhouse Harvest and Lever's Data API are never
+    called: no candidate endpoint, form, upload, login or submission exists in this code.
+  - **Ashby: not built.** Its documentation host could not be opened (DNS, the environment's
+    allowlist) on two days; a connector is not built from search snippets. The app says why.
+  - **Activation.** Off at two levels: the owner's `NOEFFORTS_BOARD_SOURCES_ENABLED` (default
+    false; Compose now passes it) and each board, which a user adds by provider, region and
+    board identifier, and reads by pressing "Read now". Nothing reads a board on a schedule or
+    crawls employers; a board can be paused or removed.
+  - **Network boundary.** The request URL is built from the provider's fixed host and the board
+    identifier (letters, digits, `-`, `_`, up to 100; then percent-encoded): a user never gives
+    a URL. GET only; no cookies, credentials or anything of the user (headers are `Accept` and a
+    fixed `User-Agent`). HTTPS to that one host only; every resolved address must be public,
+    checked when connecting (`urlsafety.public_https_opener`, the existing checks); redirects are
+    refused, never followed; 10-second timeout, 10 MB per response, Lever at most 20 pages of
+    100. Test stand-ins come only from `NOEFFORTS_BOARD_API_OVERRIDES`, honoured only with
+    `NOEFFORTS_ENV=test` and a listed fixture origin (D86); production rules are unchanged.
+  - **Rate and failures.** One read per board at a time (a row lock), at most one every 5
+    minutes; a `429` holds the board for its `Retry-After` (bounded 1 minute to 1 day); other
+    failures back off 5 minutes doubling to 1 day. A failed read changes no posting; the board
+    shows when it last read successfully and a fixed error code with a safe message.
+  - **Completeness.** Only a complete read may say a posting is no longer listed: Greenhouse
+    when `meta.total` equals the jobs received, Lever when a page comes back short. A read that
+    fails, or stops at the page limit, closes nothing.
+  - **Postings stay apart from your jobs.** A read stores postings for that board only
+    (`discovered_jobs` with `board_source_id`); it adds nothing to your jobs. "Save to my jobs"
+    adds one, or links it to an existing job with the same posting address, or (for a job
+    entered without a link) the one job with the same employer, title and location: the
+    existing dedupe (`service._existing_job`), so a role listed on two boards or added by hand
+    is not added twice. Repeated reads update the same rows (one per board and posting id).
+  - **Distinct states, never merged:** the posting exists (it was read); the source lists it
+    ("Source lists it" / "No longer listed by the board since …"); it matches your preferences
+    (the existing match explanation, D79); you meet a requirement (never decided here); an
+    application route is supported (unchanged: a saved job gets the usual route, a manual
+    handoff for a real destination). Discovery changes no approval, route, permission or
+    submission state.
+  - **Untrusted content.** Descriptions are reduced to plain text (entities decoded once, tags
+    and scripts dropped) and rendered as text; links are kept only if they are `http(s)` and
+    syntactically safe, shown as links with `noopener noreferrer nofollow`, and never fetched.
+    Attribution: "from Greenhouse job board" / "from Lever job board" and the employer name you
+    gave.
+  - **Privacy.** Board identities and postings live only in the application database, per
+    account (cross-account access is 404). Logs carry the source's id, a fixed outcome code and
+    counts; audit records the kind of change, the provider or the outcome; never the board, the
+    employer, a posting or a URL. Your
+    boards and their postings are in your export and are deleted with your account; removing a
+    board deletes its postings, and jobs you saved from it stay.
+- **Also (D94 configuration fix):** Compose passed only the settings it named, so the email,
+  discovery, drafting and session settings in `.env` never reached the containers.
+  `docker-compose.yml` now names every owner setting in `.env.example` (no `env_file`, so the
+  runner and proxy secrets stay out of the API container), `scripts/check_env.py` warns when
+  email or boards are on, and `test_deployment_config.py` keeps the two files in step.
+- **Not verified:** any real board. Every request in tests went to local stand-ins of the
+  documented shapes (`fixtures/ats_receiver/board_feeds.py`), whose ledger is the oracle.
+- **Unchanged:** `SCHEMA_VERSION` (3); execution, routing and admission. Migration `d7f3b9e41c26`.

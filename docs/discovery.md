@@ -13,6 +13,9 @@ on a provider and keep working during a provider outage. This is tested.
 |---|---|---|---|---|
 | `freehire`: client for Freehire's documented public read API | yes (fixture of the documented API) | **no** (possible for the owner, with a run approval, D55) | **no** | **no** |
 | `freehire_mock`: local mock file | yes (invented record shape) | n/a | n/a | no (refused in production) |
+| `board:greenhouse`: Greenhouse Job Board API list, one board you add (D95) | yes (local stand-in of the documented shape) | **no** (off: `NOEFFORTS_BOARD_SOURCES_ENABLED`) | **no** (no real board read) | **no** |
+| `board:lever`: Lever Postings API list, one site you add, global or EU (D95) | yes (local stand-in of the documented shape) | **no** (same switch) | **no** | **no** |
+| Ashby job boards | **no**: documentation not reachable from this environment (D95) | n/a | n/a | no |
 
 Freehire: **Not yet validated against Freehire.** A live read is possible for the owner's
 account only, with the owner's single-use run approval (D55, "Live read" below); none has been
@@ -331,3 +334,52 @@ tracker job as "source says closed", and an approval to apply waits for your "It
 (the job itself is not changed). Each Discover row shows your application to its job, if any,
 and whether the job looks like a role you already applied to (same employer, title and
 location), for example a Freehire repost under a new slug. See `docs/job-signals.md`.
+
+## Employer job boards (D95)
+
+An employer's public job board, added by you and read only when you press "Read now".
+Sources and what could not be verified: `docs/research/job-board-apis.md`; the decision: D95.
+
+- **What is read:** Greenhouse `GET https://boards-api.greenhouse.io/v1/boards/{board token}/jobs
+  ?content=true`; Lever `GET https://api.lever.co/v0/postings/{site}?mode=json&skip=&limit=`
+  (EU: `api.eu.lever.co`). Nothing else: no application endpoint, no employer API, no page.
+- **What is sent:** the path and query above, `Accept: application/json` and a fixed
+  `User-Agent`. No cookie, credential, profile, document or answer (the tests read the stand-in's
+  own request ledger).
+- **The address:** built from the provider's fixed host and the board identifier you type
+  (letters, digits, `-`, `_`; percent-encoded). You never type a URL. HTTPS to that host only,
+  public addresses only (checked when connecting), no redirects, 10 seconds, 10 MB, Lever 20
+  pages of 100.
+- **Complete or not:** Greenhouse when `meta.total` equals the jobs received; Lever when a page
+  comes back short. Only after a complete read is a posting it no longer lists shown as "No
+  longer listed by the board since …"; a failed or incomplete read changes no posting.
+- **Postings are not jobs:** a read stores them under that board; "Save to my jobs" adds one
+  (or links it to the job you already have). The match shown with each posting is the usual
+  preference match (D79); whether the board lists it, whether it matches you, whether you meet
+  a requirement and whether NoEfforts can apply are shown and kept apart. Saving never prepares,
+  approves or routes an application.
+- **Limits:** one read of a board at a time; at most one read every 5 minutes; a `429` waits its
+  `Retry-After` (1 minute to 1 day); other failures back off from 5 minutes doubling to a day.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `NOEFFORTS_BOARD_SOURCES_ENABLED` | `false` | Off: boards can be added but none is read. |
+| `NOEFFORTS_BOARD_TIMEOUT_SECONDS` / `_MAX_BYTES` | 10 / 10,000,000 | Per request. |
+| `NOEFFORTS_BOARD_PAGE_SIZE` / `_MAX_PAGES` | 100 / 20 | Lever paging. |
+| `NOEFFORTS_BOARD_MIN_INTERVAL_SECONDS` | 300 | Between two reads of one board. |
+| `NOEFFORTS_BOARD_API_OVERRIDES` | `{}` | Tests only: honoured only with `NOEFFORTS_ENV=test` and a listed fixture origin. |
+
+| Method and path | Purpose |
+|---|---|
+| `GET /api/discovery/sources` | the switch, the providers (with what the identifier is called and their regions), what is not built and why, your boards with their last successful read, last status and counts |
+| `POST /api/discovery/sources` | add a board: `{provider, region, board, employer}`; 400 for an unknown provider or a bad identifier, 409 if you have it already |
+| `PATCH /api/discovery/sources/{id}` | rename the employer, pause or resume |
+| `DELETE /api/discovery/sources/{id}` | remove it and its postings; jobs you saved stay |
+| `POST /api/discovery/sources/{id}/sync` | read it now: `ok` with counts, or `failed` with a fixed code and a safe message; 409 when off, paused, too soon or already being read |
+| `GET /api/discovery/sources/{id}/postings` | its postings: what the board says, whether it is in your jobs, the match summary |
+| `POST /api/discovery/sources/postings/{id}/save` | add that posting to your jobs, or link it to the one you have |
+
+Every route is scoped to your account (another account's board or posting is 404). Your boards
+and their postings are in your export and deleted with your account. Logs and audit records
+never name a board, employer, posting or URL.
+

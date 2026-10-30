@@ -53,6 +53,7 @@ anywhere real. Real pages and APIs **have** been read, as above, under single-us
 | **Find** | | | | | | |
 | 9 | Manual jobs, CSV/XLSX import/export, dedupe, exclusions | Fixture-tested | `test_jobs.py`, `phase-a.spec.ts` | — | No | — |
 | 10 | Freehire discovery (documented API, fixture) | Fixture-tested | `test_freehire_discovery.py`, `discovery.spec.ts`, `journey.spec.ts` | — | No | — |
+| 10a | Employer job boards (Greenhouse, Lever public postings feeds) | **Fixture-tested** (D95): add a board by identifier, read it when you choose, see what it lists, save a posting to your jobs; pause, remove; only a complete read says a posting is no longer listed; GET only to the provider's fixed host, nothing of yours sent. Off by default (`NOEFFORTS_BOARD_SOURCES_ENABLED`). **No real board read**: local stand-ins of the documented shapes only. Ashby **not built**: its documentation could not be opened | `test_board_sources.py`, `board-sources.spec.ts`; `docs/research/job-board-apis.md` | Network access from where NoEfforts runs to `boards-api.greenhouse.io`, `api.lever.co` / `api.eu.lever.co`; for Ashby, `developers.ashbyhq.com` reachable to read its docs | The owner turns it on and adds a board | Ashby from its documentation, once reachable |
 | 11 | Live Freehire read and watched searches | **Awaiting access or consent**: implemented (D55, D56), never run | `test_freehire_live_read.py`, `test_freehire_watch.py` | The owner's run approval; network access to `freehire.me` (this sandbox denies it) | Yes | Owner records an approval and runs it where `freehire.me` is reachable |
 | 12 | Freehire `reality` signals (repost, evergreen) | **Fixture-tested** (D93): the five documented fields read with their types, shown display-only on Discover and the job page as "Freehire says: …", refreshed on every read, never part of the fingerprint, never read by matching, approval, routing or execution | `test_freehire_discovery.py` (D93 tests), `discovery.spec.ts` | Live Freehire reads (row 11) | No | — |
 | 13 | Explainable match scoring | Fixture-tested (D79): preferences (met / not met / not stated / not set, counted as "m of n checked preferences met"), eligibility shown side by side and never decided, approved qualifications the job names, missing information; never a probability or an ATS score. Since D82 each jobs-list row summarises the same assessment (preferences counted, approved skills and licences named, unknowns counted) and links to the explanation | `test_fit.py`, `journey.spec.ts`, `match-summary.spec.ts` | — | No | None planned |
@@ -147,7 +148,8 @@ and reply classification is deferred unless separately authorized (row 35).
 
 1. **Row 1, monitoring many career pages:** NoEfforts' requirement is bounded, scheduled discovery
    from permitted feeds. It was delivered early as Freehire discovery: watched searches exist in
-   code (D56) and have not run live (row 11 above).
+   code (D56) and have not run live (row 11 above). Employer job boards (row 10a, D95) read an
+   employer's public postings feed one board at a time, on request only; no schedule.
 2. **Row 2, broad ATS coverage:** claim only tested adapters. Greenhouse-style adapters exist
    (fixture-tested). Lever, Workday and Ashby are rows 27-29.
 3. **Row 14, a dedicated inbox with classification and automatic status updates:** row 35, after
@@ -181,6 +183,8 @@ queue: only the rows marked **external** wait on someone else, and each blocks o
 | A Claude key and daily budget | The owner's credential and spending decision | **External** (row 23) |
 | Hosting, a domain, paid provisioning, public launch | Local-first; paid or public deployment only when the owner chooses to (designed, nothing provisioned or exposed) | Decided; provisioning **external** (row 40) |
 | A real mail server for reminders | The owner's SMTP host and credentials, in `.env` | **External** (row 8, to send for real) |
+| Which public job boards to read | Greenhouse and Lever public postings feeds, added and read one board at a time by the user; no crawl; no employer credentials (D95) | Decided; built (row 10a) |
+| Ashby job boards | Not built until its public posting API documentation can be read | **External**: `developers.ashbyhq.com` blocked by this environment's network allowlist |
 
 Kept as decided, not open: the bot-check stop (never narrowed; `implementation-plan.md`, "Owner
 decisions"); every consent boundary in CLAUDE.md and D74.
@@ -194,6 +198,9 @@ cloud sandbox:
   `github.com/lever/integrator-resources`).
 - **Not reachable:** `hire.lever.co`, `help.lever.co`, `developers.ashbyhq.com` and
   `doc.workday.com` all failed DNS resolution (`ENOTFOUND`) on 2026-10-29 around 15:23-15:24 UTC.
+  On 2026-10-30 (D95), `developers.greenhouse.io` and `developers.ashbyhq.com` failed the same
+  way; Greenhouse's Job Board API pages were read from Greenhouse's own documentation repository
+  (`github.com/grnhse/greenhouse-api-docs`) instead (`docs/research/job-board-apis.md`).
   This is the environment's network allowlist, not the vendors. Not attempted after that:
   `docs.ashbyhq.com`, `community.workday.com`, `developer.workday.com` and the vendors' legal
   pages.

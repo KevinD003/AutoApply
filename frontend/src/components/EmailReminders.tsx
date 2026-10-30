@@ -32,7 +32,7 @@ const STATUS_TEXT: Record<Delivery["status"], string> = {
   pending: "waiting to be sent",
   sending: "being sent",
   sent: "accepted by the mail server",
-  uncertain: "may or may not have been accepted (never sent again)",
+  uncertain: "may or may not have been accepted (NoEfforts never sends it again)",
   failed: "not sent",
   cancelled: "cancelled before sending",
 };
@@ -161,7 +161,7 @@ export default function EmailReminders() {
             ))}
           </ul>
           <p className="mt-1 text-xs text-slate-500">
-            &ldquo;Accepted&rdquo; means the mail server took it, not that it reached your inbox. A message already accepted cannot be recalled.
+            &ldquo;Accepted&rdquo; means the mail server took it, not that it reached your inbox. Turning reminders off stops what has not started to go out; a message already handed to the mail server cannot be recalled.
           </p>
         </div>
       )}

@@ -22,6 +22,7 @@ import lever_like  # labelled approximation of a Lever-hosted posting and form (
 import ashby_like  # labelled approximation of an Ashby-hosted posting and form (same ledger)
 import workday_like  # labelled approximation of a Workday-hosted application (same ledger)
 from mail_sink import MailSink  # D94: a local SMTP sink with its own ledger (test-only)
+import board_feeds  # D95: stand-ins for public job-board feeds (synthetic data only)
 
 SCHEMA = """
 create table if not exists acceptances (id integer primary key, receipt text, slug text,
@@ -97,6 +98,8 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
         ch = ledger.run("select id, code, attempts, done from challenges order by created_at")
         req = ledger.run("select method, path from requests order by id")
         fh = ledger.run("select route, offset_, limit_, q, auth_present from fh_requests order by id")
+        br = ledger.run("select method, path, query, has_cookie, has_auth, body_len "
+                        "from board_requests order by id")
         return {
             "requests": [{"method": m, "path": p} for m, p in req],
             "accepted": len(acc),
@@ -107,6 +110,8 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                            for i, c, a, d in ch],
             "freehire_requests": [{"route": r, "offset": o, "limit": n, "q": q,
                                    "auth_present": bool(a)} for r, o, n, q, a in fh],
+            "board_requests": [{"method": m, "path": p, "query": q, "cookie": bool(c),
+                                "auth": bool(a), "body_len": b} for m, p, q, c, a, b in br],
         }
 
     @app.get("/_admin/mail")
@@ -131,10 +136,11 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
     @app.post("/_admin/reset")
     def reset(x_admin_token: str | None = Header(None)):
         admin(x_admin_token)
-        for t in ("acceptances", "disclosures", "tokens", "challenges", "requests", "fh_requests"):
+        for t in ("acceptances", "disclosures", "tokens", "challenges", "requests", "fh_requests",
+                  "board_requests"):
             ledger.run(f"delete from {t}")
         cfg.update({"mode": "normal", "delay_s": 0.0, "idempotent": True, "autosave": False,
-                    "tamper": None, "form_delay_s": 0.0, "fh_mode": "normal",
+                    "tamper": None, "form_delay_s": 0.0, "fh_mode": "normal", "board_mode": "normal",
                     "fh_rate_limit": 1000, "upload_fail_field": None, "upload_delay_s": 0.0,
                     "verify_drop": False})
         return {"ok": True}
@@ -190,6 +196,7 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
     workday_like.mount(app, ledger, cfg, _accept)
     fake_api.mount(app, ledger, cfg, _accept)
     freehire_fixture.mount(app, ledger, cfg)
+    board_feeds.mount(app, ledger, cfg)
 
     @app.post("/apply/{slug}/submit", response_class=HTMLResponse)
     async def submit(slug: str, request: Request):
