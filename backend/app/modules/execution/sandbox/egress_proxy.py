@@ -105,6 +105,13 @@ class EgressProxy:
             self._loop.run_forever()
         finally:
             server.close()
+            # Finish every open connection here, while the loop still runs: a task left
+            # pending would be destroyed later and log from whatever runs next.
+            pending = asyncio.all_tasks(self._loop)
+            for task in pending:
+                task.cancel()
+            self._loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            self._loop.close()
 
     # -- policy ------------------------------------------------------------------------------
     def check(self, host: str, port: int) -> tuple[str | None, str]:
@@ -125,7 +132,15 @@ AUTH_REQUIRED = (
 async def serve_connection(reader, writer, policy_for):
     """One proxied connection. `policy_for(head)` returns the policy (an object with `check`,
     `allow_private`, `networks` and `decisions`) the request is subject to, or None to demand
-    proxy authentication."""
+    proxy authentication. A client that hangs up while it is being answered (a closing
+    browser) is not an error: its connection just ends, and the decision stays recorded."""
+    try:
+        await _serve_connection(reader, writer, policy_for)
+    except OSError:  # ConnectionResetError, BrokenPipeError: the peer is gone
+        writer.close()
+
+
+async def _serve_connection(reader, writer, policy_for):
     try:
         head = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 15)
     except (asyncio.IncompleteReadError, asyncio.LimitOverrunError, TimeoutError):
@@ -203,5 +218,7 @@ async def _pipe(r: asyncio.StreamReader, w: asyncio.StreamWriter):
         while data := await r.read(65536):
             w.write(data)
             await w.drain()
+    except OSError:
+        pass  # either side hung up: the connection is over
     finally:
         w.close()

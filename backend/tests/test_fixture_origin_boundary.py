@@ -454,3 +454,63 @@ def test_execution_through_a_listed_name_follows_where_it_resolves(api, receiver
     assert led["disclosures"] == [] and led["accepted"] == 0
     a = attempt(aid)
     assert a.state == "failed_safe" and a.outcome_detail.startswith("Stopped before sending")
+
+
+@pytest.mark.parametrize("answer", ["8.8.8.8", "127.0.0.1"])
+def test_a_client_that_hangs_up_never_crashes_the_proxy(monkeypatch, caplog, receiver, answer):
+    """CI #124: a browser closing while the proxy answered it (a refusal, or a relayed reply)
+    raised ConnectionResetError out of the connection handler, which asyncio logged with a
+    traceback. A hang-up is not an error: nothing is logged and the proxy keeps serving."""
+    import logging
+    import time
+
+    caplog.set_level(logging.DEBUG)
+    real = egress_proxy.socket.getaddrinfo
+
+    def slow(host, port, *a, **k):  # the client is gone before the proxy answers
+        if host == "slow":
+            time.sleep(0.3)
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (answer, RECEIVER_PORT))]
+        return real(host, port, *a, **k)
+
+    monkeypatch.setattr(egress_proxy.socket, "getaddrinfo", slow)
+    work = tempfile.mkdtemp(prefix="ne-proxytest-")
+    sock = os.path.join(work, "p.sock")
+    key = ("slow", RECEIVER_PORT)
+    proxy = EgressProxy(sock, allow={key}, allow_private={key}).start()
+    try:
+        for _ in range(3):
+            c = socket.socket(socket.AF_UNIX)
+            c.connect(sock)
+            c.sendall(f"GET http://slow:{RECEIVER_PORT}/apply/health-check HTTP/1.1\r\n"
+                      "Host: x\r\n\r\n".encode())  # fmt: skip
+            c.close()
+        time.sleep(1.2)
+        req = f"GET {BASE}/apply/health-check HTTP/1.1\r\nHost: x\r\n\r\n".encode()
+        proxy.allow.add(("127.0.0.1", RECEIVER_PORT))
+        proxy.allow_private.add(("127.0.0.1", RECEIVER_PORT))
+        assert _ask(sock, req).startswith(b"HTTP/1.1 200")  # still serving
+    finally:
+        proxy.stop()
+        shutil.rmtree(work, ignore_errors=True)
+    assert "Traceback" not in caplog.text and "Unhandled exception" not in caplog.text
+
+
+def test_stopping_the_proxy_finishes_its_open_connections(receiver):
+    """A connection still open when the proxy stops is finished there and then: nothing is left
+    pending to be destroyed later, logging from whatever runs next."""
+    work = tempfile.mkdtemp(prefix="ne-proxytest-")
+    sock = os.path.join(work, "p.sock")
+    key = ("127.0.0.1", RECEIVER_PORT)
+    proxy = EgressProxy(sock, allow={key}, allow_private={key}).start()
+    c = socket.socket(socket.AF_UNIX)
+    try:
+        c.settimeout(10)
+        c.connect(sock)
+        c.sendall(f"CONNECT 127.0.0.1:{RECEIVER_PORT} HTTP/1.1\r\nHost: x\r\n\r\n".encode())
+        assert c.recv(200).startswith(b"HTTP/1.1 200")  # relaying, and left open
+        proxy.stop()
+        assert proxy._loop.is_closed() and not proxy._thread.is_alive()
+    finally:
+        c.close()
+        shutil.rmtree(work, ignore_errors=True)

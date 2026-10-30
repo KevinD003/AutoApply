@@ -87,6 +87,25 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
 - **CI for the previous commit:** #123 (run 40995862833, 75cb2c3, D85) passed: backend,
   frontend, docker-smoke and execution-compose; it stands as the full-suite result for that
   commit.
+- **CI #124 (run 41011885378, 1dfcf33, this change) failed, then fixed:** frontend,
+  docker-smoke and execution-compose passed (the Compose stack with the pinned test network
+  works); backend: 3,685 passed, 1 skipped, 1 failed,
+  `test_audit_privacy.py::test_unexpected_runner_errors_are_logged_by_type_only`. Cause, in
+  this change's path: with every `netns` request now going through the egress proxy, a browser
+  closing while the proxy wrote a refusal made `writer.drain()` raise `ConnectionResetError`
+  out of the connection handler, and asyncio logged it with a traceback (the test forbids any
+  traceback in logs). It was not reproduced by the local full run (a race). Fix: a client
+  hanging up ends its connection without an error; a relayed connection reset by either side
+  ends quietly; stopping the proxy finishes its open connections instead of leaving tasks to
+  be destroyed later (they logged into whichever test ran next). Reproduced first,
+  deterministically, by `test_a_client_that_hangs_up_never_crashes_the_proxy` (a slow refusal
+  to a client that has already gone: failed before, passes after); the failing test and every
+  proxy-backed suite (`test_audit_privacy`, `test_browser_isolation`, `test_b3_policy`,
+  `test_container_runner`, `test_gh_readonly`, `test_execution_security`,
+  `test_fixture_origin_boundary`, `test_lever_adapter`, `test_ashby_adapter`): 265 passed;
+  sabotage of the hang-up handling and of the clean shutdown: each caught
+  (`test_stopping_the_proxy_finishes_its_open_connections`). The full suite for this fix is
+  CI's run on its commit.
 
 ## A Lever-style adapter against the local receiver (D85, 2026-10-30; local only, synthetic accounts)
 
