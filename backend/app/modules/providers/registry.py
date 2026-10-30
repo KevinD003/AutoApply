@@ -226,6 +226,9 @@ PROVIDERS: dict[str, ProviderSpec] = {
             C.form_extract: FIXTURE,
             C.deterministic_fill: FIXTURE,
             C.file_upload: FIXTURE,
+            C.captcha_checkpoint: Support(
+                fixture=True, note="stops before anything is entered; never solved"
+            ),
             C.final_submit: FIXTURE,
             C.confirmation_detection: FIXTURE,
             C.reconciliation: _USER_RECONCILES,
@@ -315,7 +318,8 @@ _TRAITS: dict[str, dict[Trait, TraitValue]] = {
                                   "requires one, which stops before anything is entered"),
         T.manual_verification_required: V("no", "fixture design: a mode asks for email "
                                                 "verification after the final click (unknown)"),
-        T.captcha_possible: V("no", "fixture design; Workday documents none"),
+        T.captcha_possible: V("yes", "fixture design: a mode puts a challenge on the page; "
+                                     "Workday documents none"),
         T.multi_step: V("no", "fixture design: one application page; a mode has several, "
                               "which stops before anything is entered"),
     },

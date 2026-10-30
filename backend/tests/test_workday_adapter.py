@@ -155,7 +155,7 @@ def test_unknown_authorization_blocks_approval(api, receiver):
     ("mode", "key"),
     [("wd_account_required", "account.password"), ("wd_multi_step", "multi_step"),
      ("wd_prefilled", "prefilled_values"), ("wd_location_cascade", "address--region"),
-     ("wd_custom_dropdown", "aria:source")],
+     ("wd_custom_dropdown", "aria:source"), ("wd_challenge", "bot_check")],
 )  # fmt: skip
 def test_accounts_several_pages_prefill_and_complex_fields_are_checkpoints(
     api, receiver, mode, key
@@ -332,6 +332,15 @@ def test_an_account_gate_or_several_pages_after_approval_stop_before_disclosure(
     assert runner.run_attempt(aid, "w1") == "failed_safe"
     assert receiver.ledger()["disclosures"] == [] and receiver.ledger()["accepted"] == 0
     assert detail in attempt(aid).outcome_detail
+
+
+def test_a_challenge_that_appears_after_approval_stops_before_disclosure(api, receiver):
+    app_id = workday_application(api)
+    aid = queue(api, app_id)
+    receiver.config(mode="wd_challenge")
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert receiver.ledger()["disclosures"] == [] and receiver.ledger()["accepted"] == 0
+    assert "CAPTCHA" in attempt(aid).outcome_detail
 
 
 def test_form_changed_after_approval_stops_before_disclosure(api, receiver):

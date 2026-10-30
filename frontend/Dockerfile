@@ -15,6 +15,8 @@ COPY --from=build /app/package.json /app/package-lock.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/next.config.mjs ./
+# The web app manifest, icons, the offline page and its service worker (D89).
+COPY --from=build /app/public ./public
 USER node
 EXPOSE 3000
 CMD ["npx", "next", "start", "-p", "3000"]

@@ -47,8 +47,8 @@ anywhere real. Real pages and APIs **have** been read, as above, under single-us
 | 3 | Public or third-party API (tokens, versioned contract) | **Partial** (D84): personal access tokens for your own scripts on this machine: hashed, shown once, 30-day default and 90-day maximum expiry, revocable, scopes `read` and `import:jobs` as route allow-lists with default deny (`docs/api-tokens.md`). No versioned public contract and no third-party clients; nothing exposed beyond 127.0.0.1 | `test_api_tokens.py`, `api-tokens.spec.ts` | A decision that third-party clients are wanted | Yes before exposing it | None without that decision |
 | 4 | CLI | **Fixture-tested** (D84): `scripts/noefforts.py` (standard library) reads jobs, a job, applications, an application, notifications and its own token, and adds a job with `import:jobs`; no command can answer, consent, approve, queue or submit. Operator tools exist too (`execution.cli`, `discovery.approve`, `discovery.watch`, `gh_readonly`) | `test_api_tokens.py` (in process, and as a subprocess against a real uvicorn) | — | No | None planned |
 | 5 | MCP server | **Fixture-tested** (D84): `scripts/noefforts_mcp.py`, stdio only, read tools for jobs, applications and notifications, and `import_job` only for an `import:jobs` token; never a submit, approve, answer or consent tool. Not tried with a third-party MCP client | `test_api_tokens.py` (in process, and as a subprocess against a real uvicorn) | — | No | Try it with the owner's MCP client (owner's machine) |
-| 6 | Browser extension (capture only) | **Unfinished**: not started | — | Real-page form capture is refused today (409); the extension would need it | Yes, before it captures a real page | Specify a capture-only contract (send URL and page to the user's own NoEfforts; never fill) |
-| 7 | Mobile | Responsive web only, fixture-tested at 390×844 (`mobile` project). **Unfinished**: no native app, no installable PWA | Playwright `mobile` project | — | No | PWA manifest and a read-only offline view, then decide on native apps |
+| 6 | Browser extension (capture only) | **Partial** (D90): fixture-tested in Chromium, loaded unpacked, not published. `extension/` saves the current tab's address and title to your own NoEfforts on this machine with an `import:jobs` token (`activeTab` and `storage` only; no content scripts; never the session cookie). It never reads, fills or submits a page. **Unfinished**: sending the page itself, Firefox/Safari builds, a store listing | `frontend/e2e/extension.spec.ts` | Real-page form capture is refused today (409); sending a page would need it | Yes, before it captures a real page or is published | None without that decision; keep the address-only contract |
+| 7 | Mobile | Responsive web, fixture-tested at 390×844 (`mobile` project), and **installable** (D89): a web app manifest and a service worker whose only offline content is a static offline page that shows nothing about you (no page, API response or document is cached). **Unfinished**: no native app, no offline data, no push notifications | Playwright `mobile` project, `frontend/e2e/pwa.spec.ts`, `scripts/docker-smoke.sh` | A decision on native apps | Yes, for native apps | Decide on native apps; offline data only with its own export and deletion design |
 | 8 | Messaging (notifications: email, push, chat) | **Partial**: an in-app feed (D83) of verification requests, approvals that stop applying, rehearsals, receipts and stops, with read/unread, derived from the records; nothing is sent to the user outside the web app | `test_notifications.py`, `notifications.spec.ts` | Consent, and a sending provider for anything outside the app | Yes for outside providers | None without a decision on outside delivery |
 | **Find** | | | | | | |
 | 9 | Manual jobs, CSV/XLSX import/export, dedupe, exclusions | Fixture-tested | `test_jobs.py`, `phase-a.spec.ts` | — | No | — |
@@ -125,10 +125,17 @@ resent; an uncertain outcome is quarantined. Real Ashby jobs keep the manual han
 several pages, prefill (never trusted without readback and review) and complex location fields
 are checkpoints. This ends the `fixture_<ats>` series.
 
-**Next product slices, picked from this table (no owner action needed):** row 7, an installable
-web app with an offline page that keeps no personal data; then row 6's safe part, a browser
-extension that saves the current tab's job address to your own NoEfforts and never reads or
-fills the page.
+**Product slices after the series: done.** Row 7 (D89): NoEfforts installs as a web app, and
+offline it shows a static page that keeps nothing about you. Row 6's safe part (D90): a
+capture-only browser extension saves the current tab's address and title to your own NoEfforts
+with an `import:jobs` token, and never reads or fills the page.
+
+**What is left needs the owner.** Every remaining row above depends on an owner action: a
+credential or key (rows 11, 23), consent or a live-pilot permission (rows 26, 32), a terms or
+documentation review (rows 27, 28), inbox access (rows 31, 35), the owner's machine or a deployment
+(rows 5, 36, 39, 40), the answer file (row 24), access to Tsenta's documentation (row 33), or a
+product decision (rows 3, 6's page capture, 7's native apps, 8, 12 and the open decisions
+below). None is started without it.
 
 ## "Phase E", defined
 

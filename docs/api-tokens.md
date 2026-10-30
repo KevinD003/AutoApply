@@ -4,6 +4,10 @@ Status: implemented (D84). Personal access tokens let your own scripts, the `noe
 an MCP client on your machine read your NoEfforts data. A token with a narrow extra scope can
 also add jobs. Nothing here exposes the service beyond this machine.
 
+The capture-only browser extension (D90, `extension/README.md`) is one such client: it keeps
+a token only if `GET /api/token` shows the `import:jobs` scope and nothing else, and uses it for
+`POST /api/jobs` with a tab's address and title, never with the browser's session cookie.
+
 Code: `backend/app/modules/apitokens/` (model, checks, routes), `identity/deps.py`
 (`current_user`, `session_only`), `scripts/noefforts.py` (CLI), `scripts/noefforts_mcp.py`
 (MCP server). Tests: `backend/tests/test_api_tokens.py`.

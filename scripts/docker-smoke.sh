@@ -34,6 +34,9 @@ echo "Register + session OK"
 wait_http http://127.0.0.1:3000/login 60
 expect_running_services
 expect_contains "web login page" "NoEfforts" http://127.0.0.1:3000/login
+expect_contains "installable web app manifest" '"short_name": "NoEfforts"' \
+  http://127.0.0.1:3000/manifest.webmanifest
+expect_contains "offline page" "You are offline" http://127.0.0.1:3000/offline.html
 expect_contains "API through the web app" "$email" -b /tmp/smoke-cookies \
   http://127.0.0.1:3000/api/auth/me
 echo "Web app serves pages and proxies the API"

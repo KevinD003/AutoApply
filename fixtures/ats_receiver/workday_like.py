@@ -8,7 +8,8 @@ location lists, custom dropdowns, eligibility and sponsorship questions, volunta
 a terms acknowledgement and an email verification step. It is NOT Workday code or markup.
 Fixture design choices, each undocumented: the single-page "apply manually" form used by the
 happy path, the step marker (`data-workday-progress`), files uploaded when chosen, the parse
-response, the cascade marker (`data-cascade-from`) and the confirmation page with a reference.
+response, the cascade marker (`data-cascade-from`), the challenge widget (Workday documents
+none; it is here so that the stop on one is tested) and the confirmation page with a reference.
 Passing tests against it shows fixture compatibility only, never that a real Workday tenant
 behaves this way.
 
@@ -23,6 +24,7 @@ gate), wd_multi_step (the application is page 1 of 4 with "Save and Continue"), 
 (the page arrives with values a parsed resume put there), wd_resume_parse (a resume upload fills
 fields on the page), wd_location_cascade (a required State list that depends on the country),
 wd_custom_dropdown (the "How did you hear about us?" button dropdown is required),
+wd_challenge (a CAPTCHA-style challenge widget on the application page),
 wd_verification (the final click is answered "verify your email"), wd_drift (a new required
 question), wd_receipt_elsewhere (the confirmation is shown on another posting's page); and the
 shared modes validation_fail, error_before_accept, error_after_accept, drop_after_accept, delay,
@@ -118,6 +120,8 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
               "</select>" if mode == "wd_location_cascade" else "")  # fmt: skip
     drift = (_yes_no("q.weekends", "Are you available to work weekends?", True)
              if mode == "wd_drift" else "")  # fmt: skip
+    challenge = ('<div class="h-captcha" data-sitekey="fixture-not-a-key"></div>'
+                 if mode == "wd_challenge" else "")  # fmt: skip
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
 {progress}
@@ -165,6 +169,7 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 <label><input type="checkbox" name="terms_ack" value="1" required> I have read and agree to
  the (fictional) terms and conditions.</label>
 </section>
+{challenge}
 {footer}
 <button type="submit" data-automation-id="bottom-navigation-next-button">Submit</button>
 </form>

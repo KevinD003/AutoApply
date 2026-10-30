@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Offline — NoEfforts</title>
+<link rel="icon" href="/icons/icon-192.png">
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; color: #0f172a;
+         background: #fff; display: flex; min-height: 100vh; align-items: center; justify-content: center; }
+  main { max-width: 32rem; padding: 1.5rem; }
+  h1 { font-size: 1.25rem; margin: 0 0 .75rem; }
+  p { line-height: 1.5; margin: 0 0 .75rem; }
+  button { font: inherit; padding: .5rem 1rem; border-radius: .375rem; border: 1px solid #0f172a;
+           background: #0f172a; color: #fff; cursor: pointer; }
+</style>
+</head>
+<body>
+<main data-offline-page>
+  <h1>You are offline</h1>
+  <p>NoEfforts needs a connection to show your jobs, applications and answers. Nothing about you is
+     kept on this device for offline use, so there is nothing to show until you are back online.</p>
+  <p>Nothing was sent while you were offline, and nothing will be sent on its own when you reconnect.</p>
+  <button type="button" onclick="location.reload()">Try again</button>
+</main>
+</body>
+</html>

@@ -25,6 +25,7 @@ Job-discovery and application platform for any profession. Read these first:
   (`models.py`, `router.py`, `service.py`), Alembic in `migrations/`, tests in `tests/`.
 - `frontend/` — Next.js App Router in `src/app/(app)/…`, shared UI in `src/components/`,
   API client in `src/lib/api.ts`, Playwright tests in `e2e/`.
+- `extension/` — capture-only Chromium extension (D90), tested by `frontend/e2e/extension.spec.ts`.
 
 ### Commands
 - Backend tests: `cd backend && uv run pytest` (needs Postgres DB `noefforts_test`; it is wiped).

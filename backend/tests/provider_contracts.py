@@ -230,6 +230,8 @@ SCENARIO_TESTS: dict[tuple[str, str], str] = {
         f"{_WD}::test_resume_parsing_is_never_trusted_without_readback",
     ("fixture_workday", "upload_failure_stops_with_evidence"):
         f"{_WD}::test_a_partial_upload_failure_keeps_the_evidence_of_the_earlier_disclosure",
+    ("fixture_workday", "challenge_stops_before_disclosure"):
+        f"{_WD}::test_a_challenge_that_appears_after_approval_stops_before_disclosure",
     ("fixture_workday", "rejection_is_not_confirmation"):
         f"{_WD}::test_outcomes_after_the_final_click",
     ("fixture_workday", "reconcile_never_resends"): _RECONCILE,

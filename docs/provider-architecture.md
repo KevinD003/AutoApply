@@ -140,7 +140,7 @@ means none. The planned providers
 | login_required | – | – | – | – | – | – | – | – | – | – |
 | email_verification | fixture | fixture | – | – | – | – | – | – | – | – |
 | mobile_verification | – | – | – | – | – | – | – | – | – | – |
-| captcha_checkpoint | – | fixture | fixture | – | – | – | – | fixture | fixture | – |
+| captcha_checkpoint | – | fixture | fixture | – | – | – | – | fixture | fixture | fixture |
 | final_submit | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture | fixture |
 | confirmation_detection | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture | fixture |
 | reconciliation | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture | fixture |
@@ -238,7 +238,7 @@ not implemented. **No cell is `live_fill` or `live_submit`.**
 | document_upload | fixture | fixture | fixture | fixture | none | none | none | none | none | fixture | fixture | fixture |
 | login_required *(trait)* | no | unknown | no | no | no | n/a | expected | unknown | n/a | no | no | no |
 | manual_verification_required *(trait)* | yes | unknown | unknown | no | n/a | n/a | expected | unknown | n/a | no | no | no |
-| CAPTCHA_possible *(trait)* | no | unknown | unknown | no | unknown | n/a | expected | expected | n/a | yes | yes | no |
+| CAPTCHA_possible *(trait)* | no | unknown | unknown | no | unknown | n/a | expected | expected | n/a | yes | yes | yes |
 | multi_step *(trait)* | no | unknown | no | no | no | n/a | expected | unknown | n/a | no | no | no |
 | location_picker | none | none | none | none | none | none | none | none | none | none | none | none |
 | custom_dropdown | none | none | fixture | none | observed (structure only) | none | none | none | none | none | none | none |
@@ -624,8 +624,10 @@ to, rehearses on and submits a single-page "apply manually" application on the l
 Workday-style approximation (`fixtures/ats_receiver/workday_like.py`) only, on the shared
 hosted-form base. A candidate account, an email verification step, an application on several
 pages, values the page filled in itself, dependent location lists, pickers and custom dropdowns
-are all checkpoints. It has no Workday identity, so the `workday` specification stays
-`planned` and a real Workday job is a manual handoff.
+are all checkpoints, and so is a challenge on the page (Workday documents none; the
+approximation's `wd_challenge` mode makes the stop tested, so `captcha_checkpoint` is claimed
+where the adapter detects one). It has no Workday identity, so the `workday` specification
+stays `planned` and a real Workday job is a manual handoff.
 
 **The local Ashby-style adapter (D87).** `fixture_ashby` does the same for the labelled
 Ashby-style approximation (`fixtures/ats_receiver/ashby_like.py`), on the shared hosted-form

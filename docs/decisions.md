@@ -2374,3 +2374,59 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   real upload or submission; no page-by-page disclosure (several pages stay a checkpoint).
 - **Unchanged:** `SCHEMA_VERSION` (3); no migration; `forms.EXTRACTION_VERSION`. New adapter
   version `fixture-workday-1+html-v3`.
+- **Correction (CI #127):** the adapter stops on a challenge on the page (a CAPTCHA or bot
+  check), but the registry did not claim `captcha_checkpoint`, which
+  `test_a_captcha_checkpoint_is_claimed_only_where_the_adapter_detects_one` requires. The stop
+  is kept: the approximation gains a `wd_challenge` mode (Workday documents none; the mode makes
+  the stop tested), the capture turns it into the bot-check checkpoint, an attempt that meets
+  it after approval stops before anything is entered
+  (`test_a_challenge_that_appears_after_approval_stops_before_disclosure`), and the registry
+  claims the checkpoint at fixture level with `captcha_possible` "yes" (fixture design).
+
+## D89 — An installable web app whose offline page keeps nothing about you (2026-10-30)
+
+- **Why:** remaining-work row 7, the first product slice after the `fixture_<ats>` series
+  (D88): "PWA manifest and a read-only offline view".
+- **Decision:**
+  - A web app manifest (`frontend/public/manifest.webmanifest`: name NoEfforts, start `/jobs`,
+    standalone, 192, 512 and maskable icons) and Apple web-app metadata in `layout.tsx`, so the
+    app can be installed on a phone or desktop.
+  - A service worker (`public/sw.js`, registered by `components/ServiceWorker.tsx`) that keeps
+    exactly two files for offline use: a static offline page (`public/offline.html`) and one
+    icon. It never caches a page of the app, an API response or a document. Every request goes
+    to the network as before; only a page load that fails because you are offline gets the
+    offline page, which says so and shows nothing about you.
+  - "Read-only offline view" is the offline page alone: showing your jobs or applications
+    offline would mean keeping your data on the device, outside the account's export and
+    deletion (D77), so it is not done.
+  - The Docker web image now ships `public/` (it did not before), and the smoke test checks the
+    manifest and the offline page through the running container.
+  - Playwright blocks service workers in every spec except `pwa.spec.ts`, so request routing in
+    the other specs still sees every request.
+- **Not done:** no offline data, no push notifications, no background sync, no store listing,
+  no native app (row 7 keeps "then decide on native apps").
+- **Unchanged:** the backend, `SCHEMA_VERSION` (3), no migration.
+
+## D90 — A capture-only browser extension: the tab's address and title, to your own NoEfforts (2026-10-30)
+
+- **Why:** remaining-work row 6, its safe part: "send URL ... to the user's own NoEfforts;
+  never fill". Page capture stays refused (409 for real pages), so the extension sends no page.
+- **Decision:**
+  - `extension/`, Chromium Manifest V3, loaded unpacked (not published). Permissions
+    `activeTab` and `storage` only; host permissions `http://127.0.0.1/*` and
+    `http://localhost/*` only; no content scripts, no `scripting`, `tabs`, cookies or history.
+  - It sends `POST /api/jobs` with `{url, title}` (the address without its fragment, the title
+    cut to 300 characters) with an API token (D84) as `Authorization: Bearer`, with
+    `credentials: "omit"` (never the browser's NoEfforts session) and redirects refused.
+  - The token must have exactly the `import:jobs` scope: the options page checks it with
+    `GET /api/token` before keeping it and refuses any other scope set. It is never shown
+    again, and changing the NoEfforts address removes it, so it is never sent to an address it
+    was not checked against. The address must be plain http to 127.0.0.1 or localhost, with no
+    path, query or login.
+  - The background worker completes a save only for a message from the extension's own pages,
+    for a tab it reads itself; without your click on its button (`activeTab`), it cannot see
+    another site's tab.
+  - No backend change: the existing `import:jobs` allow-list already covers `POST /api/jobs`.
+- **Not done:** no page text or form capture, no filling, no Firefox or Safari build, no store
+  listing, no access from anywhere but this machine.
+- **Unchanged:** the backend, `SCHEMA_VERSION` (3), no migration.

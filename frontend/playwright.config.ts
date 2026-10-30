@@ -30,6 +30,10 @@ const backendEnv = {
   NOEFFORTS_DRAFTING_TEST_FIXTURE_USERS: JSON.stringify(["journey.*@example.com"]),
 };
 
+// Offline emulation reaches a service worker's own requests only with this switch (Playwright
+// 1.56, crServiceWorker.js). Only pwa.spec.ts allows service workers; the others block them.
+process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = "1";
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 120_000,
@@ -39,10 +43,14 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:3100",
     launchOptions: process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {},
     trace: "retain-on-failure",
+    // The offline-page worker (D89) is blocked everywhere except pwa.spec.ts, so request
+    // routing in the other specs sees every request.
+    serviceWorkers: "block",
   },
   projects: [
     { name: "desktop", use: { viewport: { width: 1280, height: 800 } } },
-    { name: "mobile", use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+    // The browser extension (D90) is a desktop browser feature: its spec runs on desktop only.
+    { name: "mobile", use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }, testIgnore: /extension\.spec\.ts/ },
   ],
   webServer: [
     {

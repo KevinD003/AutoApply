@@ -40,8 +40,9 @@ part of the product and must never be deployed.
   application at `/apply`; D88), on the same ledger, checkpoint-first. It is not Workday code or
   markup: the single-page "apply manually" application, files uploaded when chosen, the parse
   response (`wd_resume_parse`), the step marker (`data-workday-progress`), the cascade marker
-  (`data-cascade-from`) and the confirmation page are fixture design choices; the account gate,
-  several pages, prefill and verification are modes, listed in the file header.
+  (`data-cascade-from`), the challenge widget (`wd_challenge`; Workday documents none) and the
+  confirmation page are fixture design choices; the account gate, several pages, prefill and
+  verification are modes, listed in the file header.
 
 - **S5 variants (D62). FIXTURE ASSUMPTION, every one:** built from the legacy author's notes
   on real pages (`docs/legacy-audit.md` R7, HYPOTHESIS), they show how the adapters handle

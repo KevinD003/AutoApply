@@ -9,6 +9,32 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Capture-only browser extension (D90, 2026-10-30; local only, Chromium)
+
+The extension (`extension/`) is loaded unpacked into Playwright's Chromium in
+`frontend/e2e/extension.spec.ts` (desktop project), against the real web app and API. Postings
+are the local receiver's fictional pages; accounts are synthetic.
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Least permissions: no page access, NoEfforts on this machine only | `manifest.json`: `activeTab`, `storage`, loopback host permissions, no content scripts | "the extension asks for the least" (manifest and code checked statically) | pass | — |
+| Sends the address (no fragment) and title only, with the token, never the browser's cookies | `lib.js` `checkTab`, `saveJob` (`credentials: "omit"`, `redirect: "error"`) | "what is sent" (the request as made, through a stand-in `fetch`) | pass | — |
+| Only plain http to 127.0.0.1 or localhost | `checkBase` | "what is sent" (nine addresses) and the options test | pass | — |
+| Keeps only an `import:jobs`-only token NoEfforts accepts; never shows it; drops it when the address changes | `checkToken` (`GET /api/token`), `options.js` | "options keep only a token..." (a `read`+`import:jobs` token, an unknown token, a good token, an address change) | pass | — |
+| Saves the tab's job once to the token owner's account, not the signed-in browser session's | `background.js` → `POST /api/jobs` | "a fictional posting's tab is saved..." (owner's list has it once with its title; the bystander signed in in that browser does not) | pass | — |
+| Cannot read a tab you did not click its button on; refuses a non-web page | `activeTab` only; `checkTab` | "a tab you did not click the button on is never read..." | pass | the `activeTab` grant by a real toolbar click is not automatable in Playwright |
+| Sabotage | 7 guards broken one at a time | each caught (`implementation-status.md`) | pass | — |
+
+## Installable web app with an offline page (D89, 2026-10-30; local only)
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Installable: manifest, icons, a service worker | `public/manifest.webmanifest`, `layout.tsx`, `public/sw.js` | `pwa.spec.ts` "the app can be installed" (desktop and mobile) | pass | install prompt itself not automated |
+| Offline, a page load shows the offline page | `sw.js`: network first for page loads, `offline.html` only when that fails | `pwa.spec.ts` "offline, a page shows the offline page" | pass | — |
+| Nothing about you is kept on the device | the worker caches `offline.html` and one icon, nothing else | the same test: after browsing four pages signed in, the caches hold exactly those two files | pass | — |
+| The image serves it | `frontend/Dockerfile` copies `public/` | `scripts/docker-smoke.sh` (manifest, offline page) in CI `docker-smoke` | CI | not run in the sandbox (no Docker daemon) |
+| Sabotage | 2 guards broken (cache pages; no offline fallback) | each caught (`implementation-status.md`) | pass | — |
+
 ## Workday-style adapter against the local receiver (D88, 2026-10-30; local only, checkpoint-first)
 
 The oracle is the receiver's own ledger. Passing shows compatibility with the labelled
@@ -19,6 +45,7 @@ Workday-style approximation only, never with a real Workday tenant. Tests are in
 |---|---|---|---|---|
 | Account, password and verification steps are checkpoints | password inputs unsupported; `blocked_reason`; verification after the click is unknown | `test_accounts_several_pages_prefill_and_complex_fields_are_checkpoints`, `test_an_account_gate_or_several_pages_after_approval_stop_before_disclosure`, `test_email_verification_after_the_final_click_is_a_hard_stop`, `workday.spec.ts` | pass | — |
 | Several pages are a checkpoint | `multi_step` field at capture; `blocked_reason` | the same tests, `workday.spec.ts` | pass | page-by-page disclosure not built |
+| A challenge on the page is a checkpoint, never solved (added after CI #127) | `bot_check` field at capture; `blocked_reason`; registry claims `captcha_checkpoint` | `test_accounts_several_pages_prefill_and_complex_fields_are_checkpoints[wd_challenge-bot_check]`, `test_a_challenge_that_appears_after_approval_stops_before_disclosure`, `test_a_captcha_checkpoint_is_claimed_only_where_the_adapter_detects_one` | pass | Workday documents no challenge; the mode is fixture design |
 | Résumé-parsing prefill is never trusted | `prefilled_values` at capture; readback of unanswered fields | `test_accounts_several_pages_prefill_and_complex_fields_are_checkpoints`, `test_resume_parsing_is_never_trusted_without_readback` | pass | — |
 | Complex location fields and custom dropdowns are checkpoints | dependent lists read as unsupported pickers; ARIA widgets unsupported | `test_accounts_several_pages_prefill_and_complex_fields_are_checkpoints` | pass | — |
 | Approved values, byte-identical documents | `fixture_workday` fill and upload (hosted-form base) | `test_full_run_sends_exactly_the_approved_values_and_byte_identical_documents`, `workday.spec.ts` | pass | — |
@@ -28,7 +55,7 @@ Workday-style approximation only, never with a real Workday tenant. Tests are in
 | Changed inputs cancel the approval; drift stops | package versioning; fingerprint | `test_a_changed_approved_input_invalidates_the_approval`, `test_form_changed_after_approval_stops_before_disclosure` | pass | — |
 | Off-site pages and redirects stop; the confirmation is bound | runner same-origin check; egress; `_bound` | `test_a_form_page_off_the_destination_site_is_never_opened`, `test_a_redirect_off_the_local_site_is_blocked_before_anything_is_entered`, `test_confirmation_bound_to_attempt` | pass | — |
 | Real Workday stays a manual handoff | no Workday identity; planned `workday` | `test_a_real_workday_posting_is_never_read_and_is_a_manual_handoff`, `test_fixture_evidence_never_enables_a_real_destination`, `workday.spec.ts` | pass | — |
-| Sabotage | 8 guards broken one at a time | each caught, restored by MD5 (`implementation-status.md`) | pass | — |
+| Sabotage | 8 guards broken one at a time, then 2 for the challenge stop | each caught, restored by MD5 (`implementation-status.md`) | pass | — |
 
 ## Ashby-style adapter against the local receiver (D87, 2026-10-30; local only)
 

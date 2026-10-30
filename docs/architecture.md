@@ -14,7 +14,12 @@ Next.js frontend ──rewrite──▶ FastAPI backend ──▶ PostgreSQL (du
 
 - **Frontend** (`frontend/`): Next.js App Router, client components, Tailwind. It never calls the
   API cross-origin: `next.config.mjs` rewrites `/api/*` to the backend, so cookies are first-party.
-  The rewrite target (`NOEFFORTS_BACKEND_URL`) is fixed **at build time**.
+  The rewrite target (`NOEFFORTS_BACKEND_URL`) is fixed **at build time**. It installs as a
+  web app (D89): `public/manifest.webmanifest` and a service worker (`public/sw.js`) that keeps
+  only a static offline page and one icon, never a page, an API response or a document.
+- **Browser extension** (`extension/`, D90): capture only. It sends a tab's address and title
+  to `POST /api/jobs` on this machine with an `import:jobs` API token (`docs/api-tokens.md`),
+  never the session cookie, and never reads or fills a page.
 - **Backend** (`backend/app`): FastAPI with Pydantic validation. One module per domain under
   `app/modules/` (identity, profiles, jobs, documents, applications, audit). Each module owns its
   models, router and service functions.
@@ -454,7 +459,6 @@ Details: `docs/provider-architecture.md` (decision D32).
 ## Planned components (not built)
 
 - Live ATS adapters (each needs its own capability entry and receiver-style tests)
-- Account export/deletion
 - A real API provider (needs an agreement, secret storage, its own adapter and capability entry).
 - Multi-page adapters with a disclosure boundary per step (Workday: see provider-architecture.md).
 - A live discovery provider (Freehire is fixture-only; see `docs/discovery.md`).
