@@ -9,6 +9,18 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Follow-ups (D92, 2026-10-30; local only)
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Only after a submission; due after the set days, a chosen day, or from an interview's day | `followups/service.py` `evaluate` | `test_nothing_to_follow_up_before_the_application_is_submitted`, `test_due_seven_days_after_you_applied_and_notified_then`, `test_the_days_are_the_owner_setting`, `test_remind_me_on_a_day_you_choose_within_a_year`, `test_an_interview_you_recorded_starts_the_wait_from_its_day` | pass | — |
+| Your actions: done, a day, stop, resume; closed by an outcome | `POST /applications/{id}/follow-up` | `test_saying_you_followed_up_starts_the_next_wait_and_a_new_notification`, `test_stopping_the_reminders_and_resuming_them`, `test_an_outcome_that_closes_the_application_ends_the_reminders`, `test_every_closing_outcome_closes_it`, `follow-ups.spec.ts` | pass | — |
+| Due is notified in the app; nothing is sent | `notifications/service.py` `_follow_ups` | the same tests; `follow-ups.spec.ts` | pass | no outside delivery (row 8) |
+| The message uses the job, the day and your approved name only | `followups/service.py` `draft` | `test_the_message_uses_the_job_your_approved_name_and_nothing_else_of_yours`, `test_without_a_name_the_message_says_where_yours_goes` | pass | — |
+| Account isolation, CSRF, token scope | `_owned`, scoped queries, the `read` allow-list | `test_another_account_never_sees_or_changes_your_follow_up`, `test_a_change_needs_the_csrf_token`, `test_a_read_token_lists_follow_ups_but_never_reads_the_message_or_changes_one`, `follow-ups.spec.ts` | pass | — |
+| Audit, export, deletion | `follow_up.update`; `follow_ups` exported; cascades | `test_your_choices_are_audited_by_action_only_and_exported_with_the_account`, `test_deleting_the_application_or_the_account_deletes_your_choices`, `test_every_table_and_column_has_an_export_decision` | pass | — |
+| Sabotage | 9 guards | 7 caught alone; 2 double layers caught together (`implementation-status.md`) | pass | — |
+
 ## Capture-only browser extension (D90, 2026-10-30; local only, Chromium)
 
 The extension (`extension/`) is loaded unpacked into Playwright's Chromium in

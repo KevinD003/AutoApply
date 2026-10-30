@@ -16,7 +16,7 @@ Code: `backend/app/modules/apitokens/` (model, checks, routes), `identity/deps.p
 
 | Scope | Allows (and nothing else) |
 |---|---|
-| `read` | `GET /api/jobs` (with each job's match summary), `GET /api/jobs/{job_id}`, `GET /api/applications`, `GET /api/applications/funnel`, `GET /api/applications/{app_id}` (with its timeline), `GET /api/notifications`, `GET /api/notifications/unread` |
+| `read` | `GET /api/jobs` (with each job's match summary), `GET /api/jobs/{job_id}`, `GET /api/applications`, `GET /api/applications/funnel`, `GET /api/applications/{app_id}` (with its timeline), `GET /api/notifications`, `GET /api/notifications/unread`, `GET /api/follow-ups` (the list; not the message draft, which names you) |
 | `import:jobs` | `POST /api/jobs` (add one job by link or fields) and `POST /api/jobs/import` (a CSV or XLSX file), the same as the Jobs page |
 | any token | `GET /api/token`: the calling token's own scopes and expiry |
 

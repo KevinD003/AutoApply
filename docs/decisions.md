@@ -2430,3 +2430,55 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Not done:** no page text or form capture, no filling, no Firefox or Safari build, no store
   listing, no access from anywhere but this machine.
 - **Unchanged:** the backend, `SCHEMA_VERSION` (3), no migration.
+
+## D91 — Decision register: the open questions resolved under the standing authorization (2026-10-30)
+
+- **Why:** the owner delegated ordinary product and engineering decisions ("Resolve existing
+  questions yourself") and set standing defaults: local-first single owner, PWA first, in-app
+  notifications first, external messaging and AI drafting only behind explicit opt-in, no
+  standing permission to submit, per-application approval. Each open question in
+  `docs/remaining-work.md` is now decided, or isolated as an external permission. The register
+  itself is the table in that file ("Decision register"); it is not an approval queue.
+- **Decided (defaults kept, now final until a demonstrated need changes them):** eligibility
+  shown as its own advisory, tri-state component; a possible duplicate never blocks preparation
+  but approval waits for "This is a different role"; the user move to `submitted_confirmed`
+  stays, with what you checked; an outcome before any known submission is refused; Freehire
+  credit on the Discover and job pages; AI drafting for owner accounts only; account deletion
+  immediate, nothing kept, no grace period; no standing approvals (every submission needs its
+  own approval: an owner default, not a missing feature); follow-ups in the app (D92).
+- **Decided, to build:** Freehire's documented `reality` signals are shown display-only,
+  attributed to Freehire, never used in matching, approval or routing (row 12).
+- **Not mine to decide (external permission, isolated):** live-pilot permissions 1-4 for a
+  real employer (row 26); the inbox scope (row 31); a key and budget for Claude (row 23);
+  hosting and any paid provisioning (row 40). Each blocks only its own action.
+- **Workday terms:** Workday stays a manual handoff. A review I make of public terms would be
+  my own reading, recorded as such; it would not be the owner's acceptance or a legal
+  permission, and no automation of real Workday sites follows from it.
+
+## D92 — Follow-ups: when to check on a submitted application, in the app, with a message to copy (2026-10-30)
+
+- **Why:** the target list names "receipts, tracker, follow-ups and notifications"; receipts,
+  the tracker and notifications existed, follow-ups did not.
+- **Decision:**
+  - Derived, like notifications (D83): a follow-up exists only once the application entered a
+    submitted state (an employer receipt, or your statement that you applied yourself). It is
+    due `NOEFFORTS_FOLLOW_UP_DAYS` (default 7, 1-60) after the latest of the first submission,
+    the day you last followed up, and the day of an assessment or interview you recorded; or on
+    a day you choose (today to a year ahead). An offer, a rejection, a withdrawal or "no
+    response" closes it.
+  - Stored (`follow_ups`, migration `b6d41f8e2a93`): only your choices, the day you followed
+    up, a chosen day, stopped. Deleted with the application and the account; exported.
+  - `GET /api/follow-ups`, `GET /api/applications/{id}/follow-up` (with the message),
+    `POST /api/applications/{id}/follow-up` (`done`, `remind`, `stop`, `resume`), each scoped
+    to the signed-in account (404 otherwise); refusals carry reason codes. A `read` token may
+    list follow-ups, not read the message (it names you) and not change one.
+  - A due follow-up is an in-app notification (`follow_up:<application>:<day>`); a new day is a
+    new notification. The tracker list marks "Follow up due"; the tracker panel and the
+    application page show the follow-up and its actions.
+  - The message is a deterministic template: the job's title and employer, the day you applied
+    and your name as approved in your profile ("[Your name]" otherwise); for an interview or an
+    assessment you recorded, it says so. No other fact of yours, no LLM, never sent.
+  - Audit `follow_up.update` with the change only (never the chosen day or the message).
+- **Not done:** sending anything (email, text, push): external messaging stays opt-in work
+  (row 8); per-user follow-up days (one owner setting, single-owner default).
+- **Unchanged:** `SCHEMA_VERSION` (3); the execution path and the worker (nothing written there).

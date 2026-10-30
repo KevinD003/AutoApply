@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import AnswerInput from "@/components/AnswerInput";
 import ExecutionCard from "@/components/ExecutionCard";
+import FollowUpCard from "@/components/FollowUpCard";
 import { Badge, Button, Card, ErrorBox, inputCls, Loading, Notice } from "@/components/ui";
 import { api, ApiError, Doc, DraftingStatus, GeneratedDoc, PackageAnswer, PackageDiff, PackageDraft, PackageView, ReviewControls } from "@/lib/api";
 
@@ -99,9 +100,12 @@ export default function ReviewPage() {
 
   if (noForm)
     return (
-      <Card title="No application form yet">
-        <p className="text-sm">{noForm} Attach a form from the job page first.</p>
-      </Card>
+      <>
+        <Card title="No application form yet">
+          <p className="text-sm">{noForm} Attach a form from the job page first.</p>
+        </Card>
+        <FollowUpCard appId={id} hideUntilSubmitted />
+      </>
     );
   if (!view)
     return (
@@ -293,6 +297,8 @@ export default function ReviewPage() {
         prerequisiteUnmet={prereq.status === "unmet"}
         onChange={load}
       />
+
+      <FollowUpCard appId={id} refreshKey={view.state} hideUntilSubmitted />
 
       <Card title="Documents">
         {resumes.length === 0 ? (

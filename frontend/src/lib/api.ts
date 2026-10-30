@@ -93,7 +93,7 @@ export interface JobMatch {
  * outside the app). */
 export interface AppNotification {
   key: string;
-  kind: "checkpoint" | "approval_invalidated" | "rehearsal" | "receipt" | "failure";
+  kind: "checkpoint" | "approval_invalidated" | "rehearsal" | "receipt" | "failure" | "follow_up";
   at: string;
   application_id: string;
   job: string;
@@ -103,6 +103,21 @@ export interface AppNotification {
   evidence_label: string | null;
   link: string;
   read: boolean;
+}
+
+/** D92: following up on a submitted application; derived from its records, nothing is sent. */
+export interface FollowUp {
+  status: "not_submitted" | "scheduled" | "due" | "stopped" | "closed";
+  application_id?: string;
+  due_on?: string | null;
+  submitted_on?: string;
+  followed_up_on?: string | null;
+  remind_on?: string | null;
+  stopped?: boolean;
+  outcome?: string;
+  days?: number;
+  job?: string;
+  draft: { subject: string; body: string; name_missing: boolean } | null;
 }
 
 /** Fired after notifications are marked, so the header count refreshes at once. */

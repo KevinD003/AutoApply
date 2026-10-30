@@ -120,6 +120,10 @@ class Settings(BaseSettings):
     # end-to-end journey can exercise drafts and tailored documents. It sends nothing anywhere.
     drafting_test_fixture_users: list[str] = Field(default_factory=list)
 
+    # D92: days after an application was submitted (or you last followed up, or an interview or
+    # assessment you recorded) before NoEfforts reminds you to follow up. In the app only.
+    follow_up_days: int = Field(default=7, ge=1, le=60)
+
     @field_validator("fixture_networks")
     @classmethod
     def _private_test_networks(cls, v: list[str]) -> list[str]:

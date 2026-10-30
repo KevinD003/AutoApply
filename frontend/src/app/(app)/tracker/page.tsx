@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, Empty, ErrorBox, inputCls, Loading } from "@/components/ui";
-import { api, Application, Funnel, Outcome } from "@/lib/api";
+import FollowUpCard from "@/components/FollowUpCard";
+import { api, Application, FollowUp, Funnel, Outcome } from "@/lib/api";
 
 // Neutral state names (the timeline); the badges say what a submission rests on (stateLabel).
 const LABEL: Record<string, string> = {
@@ -113,6 +114,7 @@ function Tracker() {
   const [apps, setApps] = useState<Application[] | null>(null);
   const [funnel, setFunnel] = useState<Funnel | null>(null);
   const [open, setOpen] = useState<Application | null>(null);
+  const [due, setDue] = useState<Set<string>>(new Set());
   const [error, setError] = useState<unknown>(null);
 
   const load = useCallback(() => {
@@ -121,6 +123,9 @@ function Tracker() {
       setApps([]);
     });
     api<Funnel>("/applications/funnel").then(setFunnel).catch(() => setFunnel(null));
+    api<{ items: FollowUp[] }>("/follow-ups")
+      .then((r) => setDue(new Set(r.items.filter((f) => f.status === "due").map((f) => f.application_id ?? ""))))
+      .catch(() => setDue(new Set()));
   }, []);
   useEffect(load, [load]);
 
@@ -181,6 +186,7 @@ function Tracker() {
             ))}
           </div>
           <OutcomeForm key={`${open.id}-${open.outcome}-${open.events?.length ?? 0}`} app={open} onDone={done} />
+          <FollowUpCard appId={open.id} refreshKey={`${open.state}-${open.outcome}-${open.events?.length ?? 0}`} />
           <h3 className="mb-2 text-sm font-semibold">Timeline</h3>
           <ol className="space-y-2 border-l-2 border-slate-200 pl-4 text-sm">
             {open.events?.map((e, i) => (
@@ -215,6 +221,7 @@ function Tracker() {
                     <span className="block text-sm text-slate-600">{a.job.employer}</span>
                   </span>
                   <span className="flex flex-wrap gap-2">
+                    {due.has(a.id) && <Badge tone="amber">Follow up due</Badge>}
                     {a.outcome !== "none" && <Badge>{OUTCOME_LABEL[a.outcome]}</Badge>}
                     {!a.reached_submission && a.outcome !== "none" && a.outcome !== "withdrawn" && (
                       <Badge>Recorded before it was submitted</Badge>

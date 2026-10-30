@@ -11,7 +11,9 @@ One notification per record, by a key that names it:
     its own notification;
   * `rehearsal:<id>`: a rehearsal completed; nothing was submitted;
   * `attempt:<id>`: a submission ended with an employer receipt, an unknown outcome, a refusal,
-    or a stop. Not a rehearsal (its own notification) and not one you cancelled.
+    or a stop. Not a rehearsal (its own notification) and not one you cancelled;
+  * `follow_up:<id>:<day>`: following up on a submitted application is due (followups/service.py);
+    a new day (after you followed up, or a day you chose) is a new notification.
 Read marks (models.NotificationRead) are the only stored state. Nothing here sends anything:
 no email, text message, push or any other delivery outside this app."""
 
@@ -30,6 +32,7 @@ from app.modules.execution.models import (
     RehearsalRecord,
 )
 from app.modules.execution.service import RETIRED
+from app.modules.followups import service as followups
 from app.modules.jobs.models import Job
 from app.modules.notifications.models import NotificationRead
 from app.modules.preparation.models import ApprovalScope, PackageApproval
@@ -165,6 +168,27 @@ def _attempts(db: Session, user_id) -> list[dict]:
     return out
 
 
+def _follow_ups(db: Session, user_id) -> list[dict]:
+    out = []
+    for f in followups.for_user(db, user_id):  # its own day (followups.today), as on its page
+        if f["status"] != "due":
+            continue
+        out.append(
+            _item(
+                f"follow_up:{f['application_id']}:{f['due_on'].isoformat()}",
+                "follow_up",
+                followups.due_at(f),
+                f["application_id"],
+                "Time to follow up",
+                "You applied on "
+                f"{f['submitted_on'].isoformat()}. The application page has a message you can "
+                "copy; NoEfforts sends nothing itself.",
+                needs_action=True,
+            )
+        )
+    return out
+
+
 def feed(db: Session, user_id, now: datetime | None = None) -> list[dict]:
     """Every notification of the account, newest first, each with its read mark and the job
     it concerns. Scoped to the account in every query."""
@@ -174,6 +198,7 @@ def feed(db: Session, user_id, now: datetime | None = None) -> list[dict]:
         + _approvals(db, user_id)
         + _rehearsals(db, user_id)
         + _attempts(db, user_id)
+        + _follow_ups(db, user_id)
     )
     read = set(
         db.scalars(select(NotificationRead.item_key).where(NotificationRead.user_id == user_id))

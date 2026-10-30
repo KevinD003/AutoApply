@@ -43,6 +43,7 @@ SCOPES: dict[str, frozenset[tuple[str, str]]] = {
             ("GET", "/api/applications/{app_id}"),
             ("GET", "/api/notifications"),
             ("GET", "/api/notifications/unread"),
+            ("GET", "/api/follow-ups"),  # D92: the list; not the draft, which names you
         }
     ),
     # The same as the Jobs page: add one job, or import a CSV or XLSX file. Nothing else.

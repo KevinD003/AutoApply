@@ -54,7 +54,7 @@ anywhere real. Real pages and APIs **have** been read, as above, under single-us
 | 9 | Manual jobs, CSV/XLSX import/export, dedupe, exclusions | Fixture-tested | `test_jobs.py`, `phase-a.spec.ts` | — | No | — |
 | 10 | Freehire discovery (documented API, fixture) | Fixture-tested | `test_freehire_discovery.py`, `discovery.spec.ts`, `journey.spec.ts` | — | No | — |
 | 11 | Live Freehire read and watched searches | **Awaiting access or consent**: implemented (D55, D56), never run | `test_freehire_live_read.py`, `test_freehire_watch.py` | The owner's run approval; network access to `freehire.me` (this sandbox denies it) | Yes | Owner records an approval and runs it where `freehire.me` is reachable |
-| 12 | Freehire `reality` signals (repost, evergreen) | **Unfinished**: not read, by an open owner decision (below) | `test_undocumented_fields_are_not_read` | Owner decision 1 | Yes (decision) | — |
+| 12 | Freehire `reality` signals (repost, evergreen) | **Unfinished**: not read yet. Decided (D91): shown display-only, attributed to Freehire, never used in matching, approval or routing | `test_undocumented_fields_are_not_read` | — | No | Read the documented fields and show them on Discover and the job page |
 | 13 | Explainable match scoring | Fixture-tested (D79): preferences (met / not met / not stated / not set, counted as "m of n checked preferences met"), eligibility shown side by side and never decided, approved qualifications the job names, missing information; never a probability or an ATS score. Since D82 each jobs-list row summarises the same assessment (preferences counted, approved skills and licences named, unknowns counted) and links to the explanation | `test_fit.py`, `journey.spec.ts`, `match-summary.spec.ts` | — | No | None planned |
 | 14 | Job signals (closed, excluded, possible duplicate) | Fixture-tested | `test_job_signals.py`, `job-signals.spec.ts` | — | No | — |
 | **Prep** | | | | | | |
@@ -72,14 +72,15 @@ anywhere real. Real pages and APIs **have** been read, as above, under single-us
 | 25 | Package approval, rehearsal, separate submission approval, submission, receipt | Fixture-tested | `test_execution_*`, `submission.spec.ts`, `journey.spec.ts` | — | No | — |
 | 26 | Greenhouse-style adapters | Fixture-tested; real pages read-only only (above) | `test_greenhouse_*.py`, `docs/greenhouse-compatibility-report.md` | Live-pilot permissions 1-4 and a Greenhouse terms review (below) | Yes | — |
 | 27 | Lever | **Fixture-tested (local approximation only)**, D85: `fixture_lever` reads a Lever-style posting's form page on the local receiver, fills only approved facts and answers, uploads documents (evidence kept after a partial failure), reads back (a field a parsed resume changed stops it), rehearses without submitting, submits once after its own approval and binds the confirmation to the attempt. It has **no Lever identity**: a real Lever job stays a manual handoff (`planned_adapter_only`) and the `lever` specification stays `planned`. Not a provider adapter for real Lever pages: nothing was observed on one. Public docs: the Postings API README read; help centre, Data API docs and terms not reachable from this sandbox | `test_lever_adapter.py`, `lever.spec.ts`, `test_lever.py`, `test_lever_fixture.py`; `docs/research/lever.md` | Network access to `hire.lever.co`, `help.lever.co`, `www.lever.co/legal`; the owner's recorded review of Lever's public docs and terms (`public_doc_reviewed`); observing a real page needs the provider-admission approval | Network and approval | Owner: record a Lever docs-and-terms review, or leave Lever at `planned` |
-| 28 | Workday | **Fixture-tested (local approximation only, checkpoint-first)**, D88: `fixture_workday` reads a Workday-style single-page application on the local receiver, fills only approved facts and answers, uploads files (evidence kept after a partial failure), reads back (a resume parse that fills a field you left blank stops it), rehearses without submitting, submits once after its own approval and binds the confirmation to the attempt. Candidate accounts and passwords, email verification, applications on several pages, values the page filled in itself, dependent location lists, pickers and custom dropdowns are all checkpoints, never automated. It has **no Workday identity**: a real Workday job stays a manual handoff (`planned_adapter_only`) and the `workday` specification stays `planned`. No Workday documentation page could be opened from this sandbox | `test_workday_adapter.py`, `workday.spec.ts`, `test_workday_ashby_fixtures.py`; `docs/research/workday.md` | Network access to `doc.workday.com` and related hosts; an owner decision on Workday's terms (below) | Yes | Per-page disclosure accounting before several pages could ever be applied |
+| 28 | Workday | **Fixture-tested (local approximation only, checkpoint-first)**, D88: `fixture_workday` reads a Workday-style single-page application on the local receiver, fills only approved facts and answers, uploads files (evidence kept after a partial failure), reads back (a resume parse that fills a field you left blank stops it), rehearses without submitting, submits once after its own approval and binds the confirmation to the attempt. Candidate accounts and passwords, email verification, applications on several pages, values the page filled in itself, dependent location lists, pickers and custom dropdowns are all checkpoints, never automated. It has **no Workday identity**: a real Workday job stays a manual handoff (`planned_adapter_only`) and the `workday` specification stays `planned`. No Workday documentation page could be opened from this sandbox | `test_workday_adapter.py`, `workday.spec.ts`, `test_workday_ashby_fixtures.py`; `docs/research/workday.md` | Network access to `doc.workday.com` and related hosts; Workday's terms (the decision register below keeps it a manual handoff) | Yes | Per-page disclosure accounting before several pages could ever be applied |
 | 29 | Ashby | **Fixture-tested (local approximation only)**, D87: `fixture_ashby` reads an Ashby-style posting's application page on the local receiver, fills only approved facts and answers (Yes/No questions naming the country from your facts), uploads files (evidence kept after a partial failure), reads back (a field resume autofill changed stops it), never clicks the cookie banner, rehearses without submitting, submits once after its own approval and binds the confirmation to the attempt. The approximation's spam check is a hard stop everywhere: a checkpoint at capture, a stop before anything is entered, an unknown outcome after the final click (as are "already applied" and a confirmation that shows a challenge), never solved, retried or resent. It has **no Ashby identity**: a real Ashby job stays a manual handoff. URL recognition for hosted postings and `?ashby_jid=` embeds as before (D81). No Ashby documentation page could be opened from this sandbox, so every page detail is the fixture's own design | `test_ashby_adapter.py`, `ashby.spec.ts`, `test_workday_ashby_fixtures.py`; `docs/research/ashby.md` | Network access to `developers.ashbyhq.com`, `docs.ashbyhq.com`; an owner's docs-and-terms review before any Ashby specification | Network only | Confirm the shapes from the documentation |
 | 30 | Verification codes | Fixture-tested by manual entry (checkpoint) | `test_execution_*`, `submission.spec.ts` | — | No | — |
 | 31 | Gmail or inbox access (codes, replies) | **Awaiting access or consent**: not started (D10) | `docs/research/gmail-oauth.md` | A separately scoped inbox permission | Yes | — |
-| 32 | Standing approvals (auto-apply with caps) | **Unfinished**: not started; every submission needs its own approval | — | An owner decision that it is wanted at all | Yes (decision) | — |
+| 32 | Standing approvals (auto-apply with caps) | **Decided: not built** (D91): every submission needs its own approval, by the owner's standing default | — | — | No | None |
 | 33 | Tsenta as a provider | **Awaiting access**: developer docs not accessible (D8) | `docs/research/tsenta.md` | Public developer docs reachable | Yes | — |
 | **Track** | | | | | | |
 | 34 | Tracker, timeline, outcomes with sources, funnel | Fixture-tested | `test_funnel.py`, `tracker-outcomes.spec.ts`, `journey.spec.ts` | — | No | — |
+| 34a | Follow-ups | **Fixture-tested** (D92): due a set number of days (7 by default) after you applied, followed up, or recorded an interview or assessment, or on a day you choose; closed by an outcome; an in-app notification when due; a message to copy, never sent | `test_follow_ups.py`, `follow-ups.spec.ts` | — | No | Sending it by email only behind row 8's opt-in |
 | 35 | Inbox classification of replies | **Unfinished**; would need row 31 | — | Row 31 | Yes | — |
 | **Platform** | | | | | | |
 | 36 | Docker Compose stack | **Awaiting deployment verification**: smoke-tested in CI (`docker-smoke`, `execution-compose`); the API has a health check and the worker and web app start only once it is healthy; secrets checked before start; owner's guide `docs/deployment.md`; **not run on the owner's Mac** | CI jobs, `test_deployment_config.py`, `scripts/check_env.py` | The owner's machine | Yes: run `./scripts/verify-local.sh` (section 9 of the guide) | Record the Mac result in `implementation-status.md` |
@@ -130,12 +131,11 @@ offline it shows a static page that keeps nothing about you. Row 6's safe part (
 capture-only browser extension saves the current tab's address and title to your own NoEfforts
 with an `import:jobs` token, and never reads or fills the page.
 
-**What is left needs the owner.** Every remaining row above depends on an owner action: a
-credential or key (rows 11, 23), consent or a live-pilot permission (rows 26, 32), a terms or
-documentation review (rows 27, 28), inbox access (rows 31, 35), the owner's machine or a deployment
-(rows 5, 36, 39, 40), the answer file (row 24), access to Tsenta's documentation (row 33), or a
-product decision (rows 3, 6's page capture, 7's native apps, 8, 12 and the open decisions
-below). None is started without it.
+**What is left needs the owner or is queued.** Rows that wait on someone else are marked
+**external** in the decision register below (rows 23, 26, 31, 35, 40), plus the owner's machine
+(rows 5, 36, 39), the answer file (row 24) and access to Tsenta's documentation (row 33). Work
+that needs nothing from anyone is queued in order: row 12 (Freehire signals, display-only), then
+row 8's external messaging behind an explicit opt-in.
 
 ## "Phase E", defined
 
@@ -152,22 +152,29 @@ below). None is started without it.
 The other planned surfaces (row 17: apps, extension, messaging, MCP) were given no phase beyond
 "responsive web app first". They stay in scope as rows 3-8 above, not as completed work.
 
-## Open owner decisions
+## Decision register (D91)
 
-Each decision is quoted from the document that raised it. None blocks the priorities A-D.
+The open questions, resolved under the owner's standing authorization (2026-10-30). One row per
+question; a decided row is final until a demonstrated need changes it. This is not an approval
+queue: only the rows marked **external** wait on someone else, and each blocks only its action.
 
-| Decision (quoted) | Source | Safe default now | Concrete effect | Blocks |
-|---|---|---|---|---|
-| "Whether to display Freehire's documented `reality` signals (display-only)" | `freehire-first-architecture.md` §12 item 3 | Not read and not shown | No "likely evergreen" or "reposted N times" hint on discovered jobs | Row 12 only |
-| "Whether a job-level eligibility view is wanted, and its exact wording" | §12 item 4 | Priority D shows eligibility as its own advisory component, side by side and tri-state, with the §5.4 wording rules and no verdict | The wording of that component can be changed without changing what it computes | Nothing; the wording is a setting of D |
-| "Whether 'possible duplicate' should block preparation or only warn" | §12 item 5 (D59) | Never blocks preparation; approval waits for "This is a different role" | One statement per possible duplicate before approving | Nothing |
-| "A user move `submitted_unconfirmed → submitted_confirmed` requires stated evidence … (Alternative for the owner: remove the user move and route it through `/reconcile` only.)" | `implementation-plan.md` S2 change 1 (D53) | The user move stays, with at least 15 characters of what was checked, recorded as the user's statement | Confirmed-by-you and confirmed-by-receipt stay separate in the funnel | Nothing |
-| "An outcome other than `withdrawn` on an application that never reached a submitted state is refused with a reason code (or flagged, owner decision)." | S2 change 4 (D53) | Refused | Record "I applied myself" first, then the outcome | Nothing |
-| "Freehire credit … for the list and export (only if the owner decides it is required)" | `reliability-test-plan.md` R9.9 | Credit on the Discover and job pages only | Jobs list and export carry no Freehire credit | Nothing |
-| Live-pilot permissions: "1. Read the public job post … 2. Open the application page … 3. Disclose … 4. Submit … A 'no' at any step stops there." | `live-pilot-gate.md` §2 | None given: real destinations refused in code | No real disclosure or submission | Row 26 live use |
-| Who besides the owner may use AI drafting, with which consent wording | D74 | Owner accounts only | Others see "not available for this account" | Row 23 for others |
-| Workday's end-user agreement reportedly bars automated access to "the Website" without consent; whether that covers employers' Workday career sites | `docs/research/workday.md` (search-reported, not opened) | Workday stays a manual handoff | No Workday automation beyond fixtures | Row 28 beyond fixtures |
-| Whether anything about a deleted account is kept, for how long, and whether deletion can be undone within a grace period; how long backups are kept | Priority B (D77) | Nothing kept in the database (not even audit events); immediate, no grace period; backups are the owner's own files | One log line without any id or address is the only trace; a backup made before deletion still holds the account (`docs/account-deletion.md`) | Nothing; the decision is isolated in `account/policy.py` |
+| Question | Decision | Status |
+|---|---|---|
+| Show Freehire's documented `reality` signals? | Yes, display-only, attributed to Freehire; never used in matching, approval or routing | Decided; to build (row 12) |
+| A job-level eligibility view, and its wording | The advisory component of D79: tri-state, side by side, no verdict | Decided |
+| Should "possible duplicate" block preparation? | No: it warns; approval waits for "This is a different role" (D59) | Decided |
+| The user move `submitted_unconfirmed → submitted_confirmed` | Kept, with at least 15 characters of what you checked, recorded as your statement (D53) | Decided |
+| An outcome before any known submission | Refused with a reason code; record "I applied myself" first (D53) | Decided |
+| Freehire credit on the list and export | Discover and job pages only; the source stays on each record | Decided |
+| Who besides the owner may use AI drafting | Owner accounts only (single-owner deployment), each behind its disclosure consent (D74) | Decided |
+| What is kept of a deleted account; a grace period | Nothing in the database; immediate; no grace period. Backups are the owner's own files (D77) | Decided |
+| Standing approvals (auto-apply with caps) | Not built: every submission needs its own approval (owner default) | Decided (row 32) |
+| Follow-ups | In the app, derived, with a message to copy; nothing sent (D92) | Decided; built |
+| Workday's terms and employers' Workday sites | Workday stays a manual handoff; a review of public terms would be mine, recorded as such, never the owner's acceptance | Decided |
+| Live-pilot permissions 1-4 for one real employer | The owner's to give (`live-pilot-gate.md` §2); real destinations refused in code until then | **External** (row 26) |
+| Inbox access for codes and replies | A separately scoped permission | **External** (rows 31, 35) |
+| A Claude key and daily budget | The owner's credential and spending decision | **External** (row 23) |
+| Hosting, a domain, paid provisioning, public launch | Designed only; nothing provisioned or exposed | **External** (row 40) |
 
 Kept as decided, not open: the bot-check stop (never narrowed; `implementation-plan.md`, "Owner
 decisions"); every consent boundary in CLAUDE.md and D74.

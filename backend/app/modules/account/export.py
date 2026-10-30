@@ -375,6 +375,15 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "snapshot",
         "created_at",
     ),
+    "follow_ups": (
+        "id",
+        "user_id",
+        "application_id",
+        "followed_up_on",
+        "remind_on",
+        "stopped",
+        "updated_at",
+    ),
     "import_batches": (
         "id",
         "user_id",

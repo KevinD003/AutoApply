@@ -15,6 +15,7 @@ const KIND = {
   rehearsal: { label: "Rehearsal", tone: "indigo" },
   receipt: { label: "Receipt", tone: "green" },
   failure: { label: "Stopped", tone: "red" },
+  follow_up: { label: "Follow-up", tone: "amber" },
 } as const;
 
 interface Feed {
