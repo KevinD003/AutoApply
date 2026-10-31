@@ -53,7 +53,34 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   a review of Greenhouse's public terms as mine (D91), with its findings stated plainly
   (MyGreenhouse forbids automated use; NoEfforts never uses MyGreenhouse); a new adapter name
   rather than switching `greenhouse_dom` on, so evidence and approvals say which ran.
-- **Tests (commands actually run):** D102_TEST_LINES
+- **Tests (commands actually run, in a separate worktree and test database):**
+  - `uv run pytest tests/test_greenhouse_live.py`: 25 passed (off by default; the owner's
+    account only, and another account's job 404; production with the container sandbox; board
+    hosts only, https, no port or userinfo; no real host contacted from tests, and in production
+    a Greenhouse name resolving to this machine refused; robots.txt and the post's own id; no
+    redirect; only Greenhouse's static assets; the first application to an employer a rehearsal,
+    then one acceptance in the receiver's ledger; switching it off stops a queued application
+    with nothing disclosed).
+  - The receiver-ledger scenarios through the pilot: `tests/test_greenhouse_dom.py -k pilot`
+    18 passed; with the failed-upload and reconcile cases and the provider, admission and
+    reason-code contracts, 61 passed.
+  - A wider set (Greenhouse, execution security, routing, rehearsal, readiness, dropdowns,
+    providers, admission, reason codes, uploads, failures, documentation, guards, hygiene,
+    deployment, read-only check, fixture boundary, audit inventory): 806 passed, 2 failed. One
+    was the known port artefact of the discovery reason-code test (its fixture data names port
+    8799; this run used another), the other the D101 test address since fixed on `main`; after
+    merging it, hygiene, inbox, documentation and pilot tests 50 passed and 1 failed (a
+    userinfo test URL that read as an address, now built at run time), then 28 passed.
+  - `tests/test_deployment_config.py`: 12 passed (the pilot's Compose override changes only
+    production mode and the egress proxy's outbound network).
+  - Sabotage, one change at a time against `test_greenhouse_live.py`: 14 of 15 caught (on by
+    default, any account, production without the sandbox, outside production, any board path,
+    real hosts from tests, robots ignored, another post's data, a redirect followed, the CDN
+    for any origin, a switched-off pilot still running, others capturing, the route ignoring
+    the account, the stand-in in production). Missed: removing the https check alone, because
+    the board origins themselves are https only and refuse a plain-http address too.
+  - `npx playwright test e2e/greenhouse-pilot.spec.ts e2e/routing.spec.ts e2e/journey.spec.ts
+    e2e/account.spec.ts` (desktop and mobile): 8 passed.
 - **Not verified:** any real Greenhouse page filled, uploaded to or submitted to; what the first
   real rehearsal will stop on (the one real posting observed read-only had dropdowns with no
   opening evidence, unlisted controls such as a phone country picker, and a location search).
