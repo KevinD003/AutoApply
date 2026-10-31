@@ -39,6 +39,8 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
 
 ## Greenhouse controls on local stand-ins: phone country, location search, late options (D104, 2026-10-31; local stand-ins only)
 
+- **Review page:** a hidden value that the page's own location search sets is labelled "set by
+  the page's location search, never by NoEfforts", not "left blank" (`applications/[id]/page.tsx`).
 - **What changed for you:** on the local Greenhouse-style stand-in only (never on a real page,
   where each of these still stops the attempt before anything is entered):
   - **Phone country.** The country picker beside the phone number is a question of its own. It

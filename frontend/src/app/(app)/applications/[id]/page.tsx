@@ -440,7 +440,14 @@ export default function ReviewPage() {
               <li key={q.key} className="py-3">
                 <QuestionHeader q={q} />
                 <p className="text-sm">
-                  <span className="font-medium">{q.display ?? (q.status === "blank_optional" ? "(left blank)" : "—")}</span>
+                  <span className="font-medium">
+                    {q.display ??
+                      (q.widget === "location_structured"
+                        ? "(set by the page's location search, never by NoEfforts)"
+                        : q.status === "blank_optional"
+                          ? "(left blank)"
+                          : "—")}
+                  </span>
                 </p>
                 {q.draftable && (
                   <DraftControls

@@ -403,6 +403,8 @@ export interface PackageAnswer {
   bankable: boolean;
   user_input_allowed: boolean;
   draftable: boolean;
+  /** D104, local stand-ins only: the control's kind, set by NoEfforts' capture. */
+  widget?: "phone_country" | "location_search" | "location_structured";
 }
 
 export interface PackageView {
