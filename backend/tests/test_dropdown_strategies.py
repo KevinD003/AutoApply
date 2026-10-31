@@ -43,6 +43,8 @@ def run(api, receiver, mode="gh2_dd", **cfg):
         ("arrow_down", {}),
         ("trigger_button", {}),
         ("locale_gate", {}),  # opens once a locale file has loaded at page load
+        # ... and when that file is slow, as on a busy CI runner (CI #133 failed this way)
+        ("locale_gate", {"locale_delay_ms": 2500}),
         ("delayed", {"delay_ms": 300}),
         ("preselect_first", {}),  # the highlighted first option is not what was approved
     ],

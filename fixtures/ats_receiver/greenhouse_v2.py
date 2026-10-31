@@ -38,7 +38,8 @@ gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_laz
 filechooser, required, select, dialog, upload, hash, images, covered),
 gh2_widget_variants (cfg variant, delay_ms; see _VARIANTS_JS), gh2_required_unmarked,
 gh2_required_extra, gh2_required_marker_only, gh2_required_answered, gh2_required_group, gh2_required_cover_group,
-gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS), GET /locales/{lang}/{ns}.json,
+gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS), GET /locales/{lang}/{ns}.json (cfg
+locale_delay_ms),
 gh2_cdn_app (cfg cdn,
 redirect_away), S5 variants gh2_phrase_in_body, gh2_phrase_no_confirmation, gh2_option_unlisted,
 gh2_challenge_after_submit, gh2_autofill_overwrite, gh2_two_steps (FIXTURE ASSUMPTIONS from the
@@ -715,7 +716,10 @@ def mount(app, ledger, cfg, accept) -> None:
 })();"""
 
     @app.get("/locales/{lang}/{ns}.json")
-    def locale_file(lang: str, ns: str):  # FIXTURE ASSUMPTION: static translation strings
+    async def locale_file(lang: str, ns: str):  # FIXTURE ASSUMPTION: static translation strings
+        # cfg locale_delay_ms: a slow locale file, as on a busy machine (the page is still
+        # loading when the form is first looked at).
+        await asyncio.sleep(int(cfg.get("locale_delay_ms") or 0) / 1000)
         return JSONResponse({"locale": "fixture", "strings": {}})
 
     @app.get("/gh2/{board}/jobs/{job_id}/options.json")

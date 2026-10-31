@@ -52,6 +52,20 @@ ADAPTERS = {
 log = logging.getLogger("noefforts.execution")
 
 
+SETTLE_LOAD_MS = 8000
+
+
+def _settle(page) -> None:
+    """Let what the page loads by itself (a locale file, its scripts) finish before the form is
+    read or touched: a control may only respond once that has loaded, and on a busy machine it
+    can come late (CI #133). Bounded; a page that never goes quiet is used as it is. Nothing is
+    sent and nothing is repeated: this only waits."""
+    try:
+        page.wait_for_load_state("networkidle", timeout=SETTLE_LOAD_MS)
+    except Exception:  # noqa: BLE001 - a timeout, or a page that cannot report it: carry on
+        pass
+
+
 def _snapshot(attempt_id):
     """Everything the browser needs comes from the immutable approved package, never from
     live profile data, so what is sent is what was approved."""
@@ -178,6 +192,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             except Exception as e:  # noqa: BLE001 - any navigation failure is a safe stop
                 svc.fail_safe(aid, worker, gen, f"could not open the form ({type(e).__name__})")
                 return "failed_safe"
+            _settle(page)
             reason = adapter.blocked_reason(page) or adapter.schema_matches(page)
             if reason:
                 svc.fail_safe(aid, worker, gen, reason)
