@@ -320,6 +320,20 @@ Anthropic's API and DNS; no key exists and nothing was sent. Decision D74.
 | In the browser | `frontend/e2e/drafting-consent.spec.ts` (desktop, mobile; a synthetic consent view) | not configured said; what is sent and never sent shown; agree and turn off; the review page links to the profile card |
 | Sabotage | 17 cases (owner, consent version, withdrawal, budget, lock, reported cost, any version, timeout cost, destination check, `external`, key, retries, refusal, job text in the system prompt, reservation after sending, unbound use, the gate) | 17 caught; the race case caught in 5 of 5 further runs, and passes 8 of 8 when intact |
 
+## Question wordings from the owner's archive (D98, 2026-10-31; local only)
+
+Synthetic paraphrases only; the archive stays private. Decision D98.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| New sensitive topics never saved | `tests/test_classify_archive_wordings.py::test_a_sensitive_topic_is_never_saved` (17 wordings, select and text) | sensitive, not bankable, not draftable |
+| Equal-opportunity topics in more forms | `::test_an_equal_opportunity_question_is_sensitive` (9) | sensitive `demographic` |
+| Legal status in other words | `::test_a_legal_status_question_is_a_checkpoint` (13, select and text) | `legal_status`, protected, no value, not bankable |
+| Licences and address parts | `::test_a_licence_or_an_address_part_is_never_saved` (8) | not bankable |
+| Nothing nearby changed | `::test_nearby_wordings_are_unchanged` (9), `::test_the_bare_state_of_residence_label_is_still_a_profile_fact` | unchanged; existing suites 2,017 passed |
+| Drafts | `::test_a_draft_that_states_a_new_topic_is_refused` | a draft stating first-generation status or a church is refused |
+| Sabotage | 17 cases, one pattern each | 17 caught |
+
 ## Drafting spend view and ledger (D97, 2026-10-31; local only)
 
 A stub SDK client and a stub resolver stand in for Anthropic; no key, no paid request. Decision D97.

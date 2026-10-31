@@ -310,7 +310,8 @@ L_PLACE = re.compile(
     r"\bget(ting)? to work\b|\breliable transport(ation)?\b|\b(own )?transportation to\b|"
     # residence details outside the profile: a saved address goes stale when you move
     r"(?<!e-mail )(?<!email )(?<!web )(?<!ip )\baddress\b|\bstreet\b|\bzip( code)?\b|"
-    r"\bpost(al)? ?code\b|\bcounty\b|\bsuburb\b|\bneighbou?rhood\b|"
+    r"\bpost(al)? ?code\b|\bzipcode\b|\bpin ?codes?\b|^(apt|apartment|suite|unit|flat)\b"
+    r"[^?]{0,25}$|\bcounty\b|\bsuburb\b|\bneighbou?rhood\b|"
     r"\b(cit(y|ies)|countr(y|ies)|(?<!united )states|provinces?|regions?|territor(y|ies)|"
     r"locations?)\b"
 )
@@ -330,7 +331,7 @@ S_STEP = re.compile(
 # when they expire; an answer about one is never saved. Checked last, so it only narrows.
 C_CREDENTIAL = re.compile(
     r"\b(licen[cs](e|es|ed|ing|ure)|certif(y|ied|ication|ications|icate|icates)|"
-    r"credentials?|board[- ]certified)\b"
+    r"credentials?|board[- ]certified|cpa|cfa|cfp|cma|frm|pmp|nmls|chartered accountant)\b"
 )
 
 # The label: pay and place before willingness, so "willing to travel" reads as place.

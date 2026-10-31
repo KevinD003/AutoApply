@@ -51,9 +51,9 @@ COUNTRIES: dict[str, tuple[str, ...]] = {
 
 _NEG = re.compile(r"\b(not|never|no longer)\b|n't\b")
 _SENSITIVE = re.compile(
-    r"\b(gender|sex|pronouns?|race|racial|ethnicity|ethnic|hispanic|latin[oax]|veteran|"
-    r"disabilit(y|ies)|disabled|sexual orientation|transgender|lgbt\w*|religion|religious|"
-    r"marital|date of birth|birth ?date|age)\b"
+    r"\b(genders?|sex|pronouns?|races?|racial|ethnicit(y|ies)|ethnic|hispanic|latin[oax]|"
+    r"veterans?|disabilit(y|ies)|disabled|sexual orientation|transgender|lgbt\w*|"
+    r"2slgbt\w*|religions?|religious|marital|date of birth|birth ?date|age)\b"
 )
 _ACK = re.compile(
     r"\b(i (hereby )?(certify|attest|acknowledge|agree|consent|understand|confirm|declare)|"
@@ -134,7 +134,9 @@ _SENSITIVE_MORE = [
             r"convictions?|offen[cs]es?|charges?|background|proceedings)|(been |ever |were you )?"
             r"arrested|arrest (records?|history)|on (probation|parole)|parole|pending (criminal )?"
             r"charges|plead(ed)? (guilty|no contest)|incarcerat\w*|sex offender|"
-            r"(driving|traffic|motoring) offen[cs]es?|expunge\w*)\b",
+            r"(driving|traffic|motoring) offen[cs]es?|expunge\w*|fugitive from justice|"
+            r"subject to an? (\w+ )?(court|restraining|protection|protective) order|"
+            r"restraining orders?|dishonou?rabl[ey] discharg\w*)\b",
         ),
         (
             "health",
@@ -144,7 +146,9 @@ _SENSITIVE_MORE = [
             r"illness(es)?|treatment|impairments?)|(take|taking|on) (any )?(prescription )?"
             r"medications?|prescription medications?|pregnan\w*|maternity|(are you|have you been) "
             r"(fully )?(vaccinated|immuni[sz]ed)|(vaccination|immuni[sz]ation) (status|records?|"
-            r"card)|workers'? comp(ensation)?|genetic (information|testing|tests?)|hiv)\b",
+            r"card)|workers'? comp(ensation)?|genetic (information|testing|tests?)|hiv|"
+            r"neurodiver\w*|neurotypical|mental (defective|institutions?)|addicted to|"
+            r"unlawful user of)\b",
         ),
         (
             "accommodation",
@@ -197,8 +201,8 @@ _SENSITIVE_MORE = [
             "military",
             "demographic",
             r"\b(military (service|status|spouse|member|veteran|affiliation|background)|(served|"
-            r"serve|serving|service) in the (military|armed forces|national guard|reserves?)|"
-            r"armed forces|national guard|reservist)\b",
+            r"serve|serving|service) in the ((u\.?s\.?|united states|us) )?(military|armed forces|"
+            r"national guard|reserves?)|armed forces|national guard|reservist)\b",
         ),
         (
             "political_union_caste",
@@ -212,6 +216,30 @@ _SENSITIVE_MORE = [
             r"\b((identify as|member of) (an? )?(underrepresented|minority)|(persons?|people) of "
             r"colou?r|bipoc|visible minority|aboriginal|torres strait|indigenous|first nations?|"
             r"native american)\b",
+        ),
+        # D98: wordings found in the owner's archive of real application questions.
+        (
+            "religion",
+            "demographic",
+            r"\b(church(es)?|mosques?|synagogues?|places? of worship|pastors?|statement of faith|"
+            r"doctrinal|faith (tradition|community|background)|community to which you belong)\b",
+        ),
+        ("first_generation", "demographic", r"\bfirst[- ]gen(eration)?\b"),
+        (
+            "financial_history",
+            "sensitive_topic",
+            r"\b(filed|file|paid|pay) (all |your )?(required )?((federal|state|personal|income|"
+            r"and) )*(tax returns|taxes)\b|\btaxes (that )?you owe\b|\bowe (any )?(back )?taxes\b|"
+            r"\bpayment agreement with the (irs|internal revenue service)\b|\b(declared|filed "
+            r"for|personal) bankruptcy\b|\b(your|personal) credit (history|score|report)\b|"
+            r"\bliens? against you\b|\bwage garnish\w*",
+        ),
+        (
+            "public_office",
+            "sensitive_topic",
+            r"\b(are|were|is|have|has|do) (you|any(one)?|a family member|your)\b[^?]{0,120}"
+            r"\b(government|public|foreign) officials?\b|\bpolitically exposed\b|"
+            r"\b(government|public) officials? or (a )?(family member|relative)",
         ),
     ]
 ]
@@ -243,6 +271,21 @@ GENERIC_LABEL = re.compile(
     r"details)|anything else|notes?|status|i identify as|which best describes you|"
     r"self-identification)$"
 )
+
+
+_CAMEL = re.compile(r"(?<=[a-z])(?=[A-Z])")
+_PRONOUN_LABEL = re.compile(r"^(he|she|they|xe|ze|zie|hir|ey|fae)\s?/\s?\w+")
+# D98: authorization, citizenship and residence in wordings found in the owner's archive.
+_AUTH_MORE = re.compile(
+    r"\bwork(ing)? (status|rights)\b|\bemployment eligibility\b|\beligib\w* for employment\b|"
+    r"\b(proof of|legal) (legal )?(employment|work) authori[sz]ation\b"
+)
+_STATUS_MORE = re.compile(
+    r"\baliens?\b|\bresiden(t|cy) status\b|\bnon-?residents?\b|\bitar\b|\bexport[- ]control\w*|"
+    r"\bdeemed exports?\b|\bu\.?s\.? persons?\b|\bclearance eligibility\b|\beligib\w* (to "
+    r"obtain|for|to hold)\b[^?]{0,40}\bclearance\b"
+)
+_RESIDE_MORE = re.compile(r"\bstate of residence\b|\bhome state\b|\bresident as defined\b|\bccpa\b")
 
 
 def sensitive_topic(text: str) -> tuple[str, str] | None:
@@ -958,7 +1001,14 @@ def classify(f: FormField) -> Intent:
     step = normalize(f.step)
     context = normalize(f"{f.label} {f.help_text or ''}")
     elig = _eligibility_words(label)
-    legacy = _SENSITIVE.search(label)
+    # D98: "VeteranStatus" read as "veteran status"; "He/him" or "Asexual" as a label (a form
+    # that shows an option as its own question).
+    legacy = (
+        _SENSITIVE.search(label)
+        or _SENSITIVE.search(normalize(_CAMEL.sub(" ", f.label)))
+        or _PRONOUN_LABEL.match(label)
+        or _SENSITIVE_OPTION_STRONG.fullmatch(label)
+    )
 
     # 1. Unchanged: a legacy sensitive word (any field type), now unless eligibility words too.
     if legacy and not elig:
@@ -1082,6 +1132,13 @@ def classify(f: FormField) -> Intent:
     # S4: a negated right to work, after the C5 signals so that a sensitive one stays sensitive.
     if _negated_work(label, f.label):
         return _legal("auth")
+    # D98: the same facts in other words: a checkpoint, never saved.
+    if _AUTH_MORE.search(label):
+        return _legal("auth")
+    if _STATUS_MORE.search(label):
+        return _legal("status")
+    if _RESIDE_MORE.search(label):
+        return _legal("residence")
     if any(
         _fact_words(normalize(o.label)) or _IMMIGRATION.search(normalize(o.label))
         for o in f.options

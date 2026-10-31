@@ -2711,3 +2711,44 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **No paid request was made and no key exists in the repository:** every test uses a stub
   client and a stub resolver.
 - **Unchanged:** `SCHEMA_VERSION` (3); routing, admission, discovery. Migration `a4c8e2d61f93`.
+
+## D98 — Question wordings found in the owner's archive of real applications (2026-10-31)
+
+- **Why:** the owner supplied the old bot's answers (row 24): 3,364 distinct real application
+  questions. Run through NoEfforts' own resolver (read-only, outside the repository), dozens of
+  them would have been saved as reusable answers and filled in again elsewhere although they
+  are sensitive, about work authorization, citizenship or residence, a licence or an address.
+  The answer policy already said NoEfforts recognises known wordings only; these are now known.
+- **Decision** (LLM-free, patterns only; tests use synthetic paraphrases, never the archive):
+  - **Never saved, sensitive (added to the C5 topics):** religion in other words (church,
+    pastor, place of worship, statement of faith, "the community to which you belong"),
+    first-generation status, financial history (tax returns filed, taxes owed, a payment
+    agreement with the IRS, bankruptcy, your credit), public office (you or family as a
+    government official, politically exposed), the prohibited-person questions (fugitive from
+    justice, unlawful drug use or addiction, a mental institution, subject to a restraining or
+    protection order, dishonourable discharge), neurodivergence, and "served in the U.S.
+    military".
+  - **The original equal-opportunity topics in more forms** (still sensitive, saved only as a
+    sensitive answer that needs "include this answer" on each form, D61): plurals ("protected
+    veterans", "races", "ethnicities", "genders", "religions", "2SLGBTQIA+"), run-together
+    labels ("VeteranStatus", "DisabilityStatus"), pronoun labels ("He/him", "Xe/xem") and an
+    option shown as its own question ("Asexual").
+  - **Legal status, a checkpoint you answer for each application:** work status, employment
+    eligibility, working rights, proof of (legal) employment authorization, alien, residency or
+    resident status, non-resident, ITAR, export control, deemed export, U.S. person, eligibility
+    for a security clearance, home state or state of residence in a sentence (the bare label
+    "State of residence" is still answered from your profile), resident "as defined" by a law,
+    CCPA. Checked after the sensitive signals, so a sensitive question stays sensitive.
+  - **Not saved:** a licence named by its acronym (CPA, CFA, CFP, CMA, FRM, PMP, NMLS,
+    chartered accountant: a credential in your profile, D69) and the parts of an address
+    (apartment, suite, unit, zipcode, PIN code: they go stale, C6).
+- **Measured on the archive** (private, wording only): 77 of 3,364 wordings changed; none of
+  them a skills or experience question. Left as they were, on purpose: questions about military
+  programs or the military community (about the job, not you), drug-free-workplace and
+  lie-detector notices (statements), and wordings in other languages.
+- **Effect on saved answers:** an answer saved earlier for one of these wordings is kept and
+  listed as "Not reused" (the existing rule); nothing is deleted. Package content keeps its
+  shape: `SCHEMA_VERSION` stays 3. A package rebuilt after D98 may resolve such a question
+  differently, and its approval then follows the usual rules.
+- **Not done here:** importing the owner's answers. That waits for the owner's marked review
+  (row 24); only rows marked yes would be imported, each through the same resolver check.
