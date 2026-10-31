@@ -339,6 +339,7 @@ the test environment. Decision D102.
 | Switching it off stops what was approved | `::test_switching_the_pilot_off_stops_an_approved_application_before_anything_is_sent` | `failed_safe`; the ledger: 0 disclosures, 0 accepted; `live_not_enabled` |
 | Fill, upload, outcome scenarios (the receiver's ledger) | `tests/test_greenhouse_dom.py` `pilot` cases, `tests/test_upload_evidence.py` `greenhouse_pilot`, `tests/test_execution_failures.py::test_reconciling_an_unknown_outcome_never_sends_again[greenhouse_live-*]` | every scenario its fixture levels require (`tests/provider_contracts.py` `SCENARIO_TESTS`) |
 | Registry, admission, reason codes, documentation | `tests/test_providers.py`, `tests/test_provider_contracts.py`, `tests/test_provider_admission.py`, `tests/test_reason_codes.py` | the pilot alone names real destinations and claims no live support; admitted to `observed_read_only`; four `live_*` codes, each produced by a path |
+| Deployment | `tests/test_deployment_config.py::test_the_greenhouse_pilot_override_changes_only_what_it_says` | `docker-compose.pilot.yml`: production for the API and worker; an outbound network for the egress proxy alone; the browser's networks stay internal |
 | In the browser | `frontend/e2e/greenhouse-pilot.spec.ts` (desktop, mobile; a synthetic route) | refused while off; "Read the Greenhouse form" while on |
 
 ## Your Gmail, read-only (D101, 2026-10-31; local only)
