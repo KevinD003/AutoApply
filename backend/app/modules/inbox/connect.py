@@ -25,12 +25,13 @@ import os
 import secrets
 import sys
 import threading
+import urllib.error
+import urllib.request
 import webbrowser
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-import httpx
-
+from app.core.urlsafety import UnsafeURL, public_https_opener
 from app.modules.inbox.provider import SCOPE
 
 GOOGLE_AUTH = ("https://accounts.google.com/",)
@@ -65,7 +66,35 @@ def auth_url(client: dict, redirect_uri: str, state: str, challenge: str) -> str
         "code_challenge": challenge, "code_challenge_method": "S256"})  # fmt: skip
 
 
-def exchange(client: dict, code: str, redirect_uri: str, verifier: str, post=httpx.post) -> dict:
+class _Reply:
+    def __init__(self, status: int, body: bytes):
+        self.status_code, self._body = status, body
+
+    def json(self):
+        return json.loads(self._body)
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ConnectError("Google answered with a redirect; it is not followed.")
+
+
+def _post(url: str, timeout: float, data: dict) -> _Reply:
+    """POST a form to Google's token endpoint: HTTPS, public addresses only, no redirects."""
+    req = urllib.request.Request(url, data=urlencode(data).encode(), method="POST", headers={
+        "Content-Type": "application/x-www-form-urlencoded"})  # fmt: skip
+    try:
+        with public_https_opener(urlsplit(url).hostname, _NoRedirect).open(
+            req, timeout=timeout
+        ) as r:
+            return _Reply(r.status, r.read(1_000_001))
+    except urllib.error.HTTPError as e:
+        return _Reply(e.code, b"{}")
+    except (UnsafeURL, urllib.error.URLError, TimeoutError, OSError):
+        raise ConnectError("Google's token endpoint could not be reached safely.") from None
+
+
+def exchange(client: dict, code: str, redirect_uri: str, verifier: str, post=_post) -> dict:
     r = post(client["token_uri"], timeout=20, data={
         "grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri,
         "client_id": client["client_id"], "client_secret": client["client_secret"],
@@ -127,7 +156,7 @@ def main(argv=None) -> int:
         if not got.get("code"):
             raise ConnectError(f"Not connected ({got.get('error') or 'no answer'}).")
         save(exchange(client, got["code"], redirect, verifier), a.out)
-    except (OSError, ValueError, ConnectError, httpx.HTTPError) as e:
+    except (OSError, ValueError, ConnectError) as e:
         print(f"Not connected: {e}", file=sys.stderr)
         return 1
     print(f"Connected, read-only. The token is saved to {a.out} (readable by you only).")
