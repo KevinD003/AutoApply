@@ -244,7 +244,7 @@ def check_spec(spec: ProviderSpec) -> None:
             "reviewed change to this rule"
         )
     if spec.real_destinations_enabled and live:
-        raise SpecError(f"{spec.name}: a pilot claims no live support (its evidence is the pilot's)")
+        raise SpecError(f"{spec.name}: a pilot claims no live support (its evidence is its own)")
 
 
 def matrix(spec: ProviderSpec) -> dict[str, str]:
