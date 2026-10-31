@@ -94,9 +94,12 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   name). The export keeps your address, its verification time and your preferences, and leaves
   out the code's keyed digest and the delivery's keyed recipient digest (credential material),
   as D94 now says.
-- **Full validation on the final tree:** running when this commit was made (`scripts/validate.sh
-  all`, sequentially; lint, format, typecheck and eslint ok); its results are recorded in the
-  next commit.
+- **Full validation on the final tree** (commit `a41c59e`, tree `9718e05`, through
+  `scripts/validate.sh all`, run sequentially after a container restart stopped the first run):
+  lint, format, typecheck and eslint ok; backend **3,849 passed** in 52m14s; Playwright **119
+  passed, 2 skipped** (desktop and mobile) in 11.5 minutes.
+- **CI for this commit:** #132 (run 41135046717, `a41c59e`) passed on all four jobs: backend,
+  frontend, docker-smoke and execution-compose.
 - **Not verified:** any real Greenhouse or Lever board (none read; the live hosts were never
   contacted, and this sandbox's network policy was not tested against them); Ashby (not built).
 - **CI for the previous commit:** #131 (run 41122842515, `af49cd2`, D94 results) passed on all
