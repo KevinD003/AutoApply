@@ -89,10 +89,17 @@ CAPABILITIES: dict[str, dict] = {
             "submission": "synthetic: JSON POST to the form's submit path",
             "confirmation": "synthetic: a status message replacing the form",
             "conditions": "synthetic: hidden-at-load questions with no visible trigger",
+            # D104: on local stand-ins only; a real destination with one of them is refused.
+            "phone_country": "synthetic stand-in only: a country picker beside the phone field, "
+            "chosen by a unique calling code or by you, read back",
+            "location_search": "synthetic stand-in only: the approved text typed after the "
+            "disclosure gate, the one exact suggestion chosen, the page's hidden values checked",
+            "late_options": "synthetic stand-in only: a dropdown list arriving late (a delay or a "
+            "same-origin GET), accepted within a bounded wait once settled and exact",
         },
         "unsupported": [
             "CAPTCHA or bot checks (stop, never bypassed)",
-            "location search pickers and hidden coordinates",
+            "location search pickers and hidden coordinates, except the D104 stand-in",
             "multi-choice comboboxes",
             "questions shown by page logic NoEfforts cannot see",
             "security-code steps",
@@ -127,7 +134,9 @@ CAPABILITIES: dict[str, dict] = {
         },
         "unsupported": [
             "CAPTCHA or bot checks (stop, never bypassed)",
-            "location search pickers and hidden coordinates",
+            "location search pickers and hidden coordinates (D104's are local stand-ins only)",
+            "phone country pickers (D104's is a local stand-in only)",
+            "dropdown options loaded late from the network (D104: local stand-ins only)",
             "multi-choice comboboxes",
             "controls the job data does not list",
             "security-code steps",
@@ -241,9 +250,12 @@ ADAPTER_VERSIONS: dict[str, str] = {
     # leaves empty blocks (the job data's requirement is never lowered).
     # 3: dropdowns without a list at load are handled by explicit, evidence-checked strategies
     # (adapters/dropdowns.py), verified before disclosure.
-    "greenhouse_dom": f"greenhouse-dom-3+{gdom.EXTRACTION_VERSION}",
+    # 4 (D104): on local stand-ins, the phone country picker, the location search and dropdown
+    # lists that arrive late; a list needs STABLE_SAMPLES equal reads everywhere.
+    "greenhouse_dom": f"greenhouse-dom-4+{gdom.EXTRACTION_VERSION}",
     # D102: the same rules on a real board host, from a form captured as `greenhouse_live`.
-    "greenhouse_live": f"greenhouse-live-1+{gdom.EXTRACTION_VERSION}",
+    # 2 (D104): greenhouse_dom's version 4; its stand-in controls are refused on a real host.
+    "greenhouse_live": f"greenhouse-live-2+{gdom.EXTRACTION_VERSION}",
     # D85: the Lever-style approximation's form, read by the generic extractor.
     "fixture_lever": f"fixture-lever-1+{forms.EXTRACTION_VERSION}",
     # D87: the Ashby-style approximation's form, read by the generic extractor plus its spam

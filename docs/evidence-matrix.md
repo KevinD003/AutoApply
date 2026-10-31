@@ -9,6 +9,29 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Greenhouse controls on local stand-ins (D104, 2026-10-31; local stand-ins only)
+
+Tests are in `test_greenhouse_controls.py` unless noted; the oracle is the receiver's ledger
+(`fixtures/ats_receiver/greenhouse_v2.py`, modes `gh2_phone_country`, `gh2_loc_search`, `gh2_dd`
+`late_*`). Every structure is a FIXTURE ASSUMPTION: synthetic coverage is not evidence that a real
+page works, and on any destination that is not a local stand-in each control stops the attempt
+before anything is entered.
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Only these structures, only on stand-ins | `greenhouse_dom.phone_country_field`, `location_picker`, `build_schema(stand_ins=…)` | `test_capture_recognises_the_phone_country_picker_and_the_location_search_on_stand_ins`, `test_anything_but_these_structures_stays_a_checkpoint_at_capture`, `test_a_page_that_is_not_a_stand_in_never_gets_these_rules`, `test_a_widget_is_never_accepted_from_a_hand_made_form` | pass | not seen on a real page |
+| Phone country from a unique calling code only | `resolver._phone_country` | `test_phone_country_only_from_a_calling_code_that_names_exactly_one_option`, `test_an_unapproved_phone_number_never_chooses`, `test_a_unique_calling_code_chooses_the_country_and_it_is_read_back` | pass | — |
+| +1 or no code: your choice, never residence | as above | `test_a_shared_calling_code_is_a_checkpoint_until_you_choose`, `test_no_calling_code_is_a_checkpoint_never_inferred_from_residence` | pass | — |
+| Location text: residence fact or your answer | `resolver._location_search` | `test_location_search_text_is_the_residence_fact_or_your_answer_never_saved_or_guessed` | pass | — |
+| Typed after the gate, counted, exact suggestion, page-set coordinates | `GreenhouseDomAdapter._search_location`, `_location_readback` | `test_location_exact_or_checkpoint` (ledger: one `location_search` disclosure, the exact suggestion's coordinates, no write to a hidden value but the page's) | pass | — |
+| None, several, label only, nothing set: stop after disclosure, never retried | as above | `test_a_location_that_is_not_exactly_one_suggestion_set_by_the_page_stops_the_attempt` | pass | — |
+| Prefill never trusted | `_location_state_dirty` | `test_a_location_the_page_filled_itself_is_never_trusted` | pass | — |
+| Structures re-proven before disclosure | `schema_matches` | `test_a_changed_structure_after_approval_stops_before_anything_is_entered` | pass | — |
+| Late options: bounded, settled, exact; refused otherwise | `dropdowns._observe(late=True)`, `_data_refusal` | `test_dropdown_strategies.py` (`late_*`, `delayed`, `locale_on_open`), `test_late_options_through_both_adapters` | pass | — |
+| Real destinations refused | `STAND_IN_ONLY`; `late` only on stand-ins | `test_on_a_destination_that_is_not_a_stand_in_they_stop_before_anything_is_entered`, `test_capabilities_stay_fixture_only_and_real_destinations_refused` | pass | — |
+| No SCHEMA_VERSION change for other packages | `package.build_content` | `test_only_forms_with_these_controls_carry_a_widget_so_schema_version_stays` | pass | — |
+| Sabotage | one guard at a time, 26 changes | all caught; 25 on the first run, the three-read rule alone only after `late_slow_changing` was added (`implementation-status.md`, D104) | pass | — |
+
 ## A daily check of a job board you choose (D96, 2026-10-31; local stand-ins only)
 
 Tests are in `test_board_daily_check.py`; the oracle for requests is the stand-in's ledger.
@@ -1051,7 +1074,7 @@ labelled stand-ins, and nothing claims live API or ATS compatibility.
 
 | Requirement | Evidence (`tests/test_execution_routing.py` unless noted) | Result |
 |---|---|---|
-| Routing vocabulary, no live claims | `test_every_provider_declares_the_routing_vocabulary_without_live_claims` | 13 names for every provider; no `live_*` level; `greenhouse_dom`: browser_fill and custom_dropdown fixture, location_picker none, public_schema_read observed, CAPTCHA_possible unknown |
+| Routing vocabulary, no live claims | `test_every_provider_declares_the_routing_vocabulary_without_live_claims` | 13 names for every provider; no `live_*` level; `greenhouse_dom`: browser_fill and custom_dropdown fixture, location_picker fixture since D104 (a local stand-in; none before), public_schema_read observed, CAPTCHA_possible unknown |
 | Workday is a specification only | `test_workday_is_a_specification_only` | stage planned; every capability none; traits "expected"; status says not supported |
 | Interface only where operations exist | `test_interface_is_implemented_only_where_the_operations_exist` | 9 names; manual handoff only `request_user_action`; Workday and Freehire none |
 | API vs browser vs manual | `test_route_selection_api_then_browser_then_manual` | no form: manual; captured: browser `greenhouse_dom`; grant without token: browser; grant plus token: API `fake_api`; real origin: manual |

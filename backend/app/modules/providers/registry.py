@@ -89,7 +89,14 @@ PROVIDERS: dict[str, ProviderSpec] = {
             C.deterministic_fill: FIXTURE,
             C.custom_dropdowns: Support(
                 fixture=True,
-                note="strategies fixture-only; no opening evidence on the real page (run #9)",
+                note="strategies fixture-only; no opening evidence on the real page (run #9); "
+                "lists arriving late accepted on local stand-ins only (D104)",
+            ),
+            # D104: a location search stand-in only. On a real page no location control was
+            # seen at all; this is not evidence for one.
+            C.location_picker: Support(
+                fixture=True,
+                note="local stand-in only: the exact suggestion or a stop; never on a real page",
             ),
             C.file_upload: FIXTURE,
             C.captcha_checkpoint: Support(fixture=True, note="stop and hand off; never solved"),

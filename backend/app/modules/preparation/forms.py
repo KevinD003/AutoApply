@@ -11,7 +11,7 @@ import json
 import re
 from html.parser import HTMLParser
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_serializer, model_validator
 
 # v2 (D80): a search-as-you-type control (role=combobox or aria-autocomplete) is unsupported,
 # never a text box; with `challenges`, a CAPTCHA or bot check on the page is a required
@@ -60,6 +60,15 @@ class Condition(BaseModel):
 
 KEY_PATTERN = r"^[A-Za-z0-9_.:\[\]-]+$"  # a field key as extracted from a form
 
+# D104: controls the id-mapping capture recognises only on local stand-ins (greenhouse_dom
+# `build_schema(stand_ins=True)`), each answered and filled by its own rule:
+#   phone_country        the country picker beside the phone field: chosen only when the
+#                        approved phone number's calling code matches exactly one option
+#   location_search      a text question asked through the page's search-as-you-type picker
+#   location_structured  a hidden value that picker's own script sets (coordinates); never
+#                        written by NoEfforts, checked after a suggestion is chosen
+WIDGETS = ("phone_country", "location_search", "location_structured")
+
 
 class FormField(BaseModel):
     key: str = Field(min_length=1, max_length=200, pattern=KEY_PATTERN)
@@ -73,6 +82,7 @@ class FormField(BaseModel):
     accept: str | None = Field(default=None, max_length=200)
     condition: Condition | None = None
     unsupported_reason: str | None = Field(default=None, max_length=300)
+    widget: str | None = Field(default=None, max_length=50)  # D104: one of WIDGETS
 
     @model_validator(mode="after")
     def _options(self):
@@ -80,7 +90,20 @@ class FormField(BaseModel):
             raise ValueError(f"field '{self.key}' of type {self.type} needs options")
         if self.type not in CHOICE_TYPES | MULTI_TYPES and self.options:
             raise ValueError(f"field '{self.key}' of type {self.type} cannot have options")
+        shape = {"phone_country": FieldType.select, "location_search": FieldType.text,
+                 "location_structured": FieldType.unsupported}  # fmt: skip
+        if self.widget is not None and shape.get(self.widget) != self.type:
+            raise ValueError(f"field '{self.key}' cannot be a {self.widget} control")
         return self
+
+    @model_serializer(mode="wrap")
+    def _dump(self, handler):
+        # D104: written only for a field that has one, so every other stored form keeps its
+        # exact content.
+        out = handler(self)
+        if isinstance(out, dict) and out.get("widget") is None:
+            out.pop("widget", None)
+        return out
 
 
 class FormSchema(BaseModel):
@@ -119,6 +142,8 @@ def field_fingerprint(f: FormField) -> str:
         payload.append(["if", f.condition.key, sorted(f.condition.any_of)])
     if f.type == FieldType.unsupported:
         payload.append(["unsupported", f.unsupported_reason or ""])
+    if f.widget:  # D104
+        payload.append(["widget", f.widget])
     return hashlib.sha256(json.dumps(payload).encode()).hexdigest()[:24]
 
 

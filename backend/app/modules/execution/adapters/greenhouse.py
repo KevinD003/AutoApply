@@ -65,6 +65,7 @@ def approved_fields(content: dict) -> list[FormField]:
                 options=[Option(**o) for o in a["options"]],
                 condition=Condition(**cond) if cond else None,
                 unsupported_reason=a.get("unsupported_reason"),
+                widget=a.get("widget"),  # D104
             )
         )
     return out

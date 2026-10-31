@@ -25,7 +25,11 @@ from app.modules.execution import live, policy, rehearsal
 from app.modules.execution import service as svc
 from app.modules.execution.adapters.ashby import AshbyFixtureAdapter
 from app.modules.execution.adapters.fake_api import FakeApiAdapter
-from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, UploadFailed
+from app.modules.execution.adapters.fixture_ats import (
+    FixtureAtsAdapter,
+    StoppedAfterDisclosure,
+    UploadFailed,
+)
 from app.modules.execution.adapters.greenhouse import GreenhouseHostedAdapter
 from app.modules.execution.adapters.greenhouse_dom import (
     GreenhouseDomAdapter,
@@ -267,7 +271,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             fault("after_disclosure_gate")
             try:
                 disclosures = adapter.fill(page)
-            except UploadFailed as e:
+            except StoppedAfterDisclosure as e:  # an upload, or D104's location search
                 _record_disclosures(aid, worker, gen, e.disclosures)
                 svc.abandon(aid, worker, gen, str(e))
                 return "abandoned"
@@ -356,8 +360,9 @@ def _stop_rehearsal(aid, worker, gen) -> str:
 
 
 def _record_disclosures(aid, worker, gen, disclosures: list[dict]) -> None:
-    """Evidence of every upload made before an upload failed, the failed one included: data
-    may have reached the employer even though the attempt stops."""
+    """Evidence of every disclosure made before filling stopped (an upload that failed, a
+    location search that could not be completed), the last one included: data may have reached
+    the employer even though the attempt stops."""
     for d in disclosures:
         svc.record_evidence(aid, worker, gen, "disclosure", d)
 

@@ -24,13 +24,18 @@ from app.modules.preparation.forms import (
     FieldType,
     FormField,
     FormSchema,
+    Option,
     _Node,
     _TreeBuilder,
 )
 
 # v2: a visible page control the job data does not list becomes a blocking field at capture
 # (see `unlisted_controls`), so the route is a checkpoint before anything can be approved.
-EXTRACTION_VERSION = "greenhouse-dom-v2"
+# v3 (D104): on local stand-ins only (`build_schema(stand_ins=True)`), two structures are
+# recognised instead of refused: the country picker beside the phone field
+# (`phone_country_field`) and a location search picker whose own script sets the job data's
+# hidden values (`location_picker`). Anywhere else they stay checkpoints, as in v2.
+EXTRACTION_VERSION = "greenhouse-dom-v3"
 UNKNOWN_TRIGGER = "unknown-trigger"  # Condition.key for "shown by page logic we cannot see"
 UNLISTED_REASON = (
     "a control on the page that the job data does not list: what it asks, and whether it is "
@@ -251,6 +256,144 @@ def unlisted_controls(fields: list[FormField], controls: list[Control]) -> list[
 
 ACCEPTED = ("mapped", "mapped_via_group", "protocol", "search_picker")
 
+# -- D104: companion structures recognised on local stand-ins only --------------------------
+# FIXTURE ASSUMPTIONS (fixtures/ats_receiver/greenhouse_v2.py, modes gh2_phone_country and
+# gh2_loc_search): neither structure has been seen working on a real page. Each is recognised
+# only exactly as described; anything else stays a checkpoint (unlisted, or unsupported).
+
+# How the country picker beside the phone field may be labelled (normalised, exact).
+PHONE_COUNTRY_LABELS = frozenset({"country", "country code", "phone country",
+                                  "country calling code"})  # fmt: skip
+# An option names a country and its calling code, e.g. "Canada (+1)". A code is never taken
+# to identify a country on its own: several options may share it.
+_CALLING_OPTION = re.compile(r"^(?P<name>\S.*?)\s*\(\+(?P<code>\d{1,4})\)$")
+LOCATION_STRUCTURED_REASON = (
+    "hidden value set by the page's own location search when a suggestion is chosen; never "
+    "written by NoEfforts"
+)
+
+
+def option_calling_code(label: str) -> str | None:
+    """The calling code an option label states ("Canada (+1)" -> "1"), or None."""
+    m = _CALLING_OPTION.match(" ".join((label or "").split()))
+    return m.group("code") if m else None
+
+
+def listbox_options(html: str, listbox_id: str | None) -> list[tuple[str | None, str]] | None:
+    """(data-value, text) of each role=option inside the one role=listbox with this id in the
+    static page, or None when there is not exactly one such listbox."""
+    if not listbox_id:
+        return None
+    b = _TreeBuilder()
+    b.feed(html)
+    boxes = [n for n in b.root.walk()
+             if isinstance(n, _Node) and n.attrs.get("id") == listbox_id]  # fmt: skip
+    if len(boxes) != 1 or boxes[0].attrs.get("role") != "listbox":
+        return None
+    return [(n.attrs.get("data-value"), " ".join(n.all_text().split()))
+            for n in boxes[0].walk() if n.attrs.get("role") == "option"]  # fmt: skip
+
+
+def phone_country_control(fields: list[FormField], controls: list[Control],
+                          cid: str | None = None) -> Control | None:  # fmt: skip
+    """The country picker beside the phone field, only in this structure: the job data has one
+    phone question, its control sits in a group named exactly as that question, and the group
+    holds exactly one other control: a visible combobox in the form, labelled as a country (code)
+    picker, whose option list is in the page (`aria-controls` -> role=listbox). `cid`: it must be
+    this control (re-proven on the live page)."""
+    tel = [f for f in fields if f.type == FieldType.tel]
+    if len(tel) != 1:
+        return None
+    phone = [c for c in controls if c.id == tel[0].key.removesuffix("[]")]
+    if len(phone) != 1 or phone[0].group_key is None:
+        return None
+    p = phone[0]
+    if _norm(p.group_name) != _norm(tel[0].label):
+        return None
+    members = [c for c in controls if c.group_key == p.group_key and c is not p]
+    if len(members) != 1:
+        return None
+    c = members[0]
+    ok = (
+        (cid is None or c.id == cid)
+        and c.role == "combobox"
+        and c.tag == "input"
+        and c.controls_listbox
+        and c.in_form
+        and not c.hidden
+        and _norm(c.accessible_name) in PHONE_COUNTRY_LABELS
+    )
+    return c if ok else None
+
+
+def phone_country_field(fields: list[FormField], controls: list[Control], html: str,
+                        taken: set[str]) -> FormField | None:  # fmt: skip
+    """The phone country picker as a question of its own (`widget="phone_country"`), with the
+    options read from the page: at least two, each with its own value and label, and every label
+    stating a calling code. Otherwise None, and the control stays an unlisted checkpoint."""
+    c = phone_country_control(fields, controls)
+    if c is None or c.id in taken or not re.fullmatch(KEY_PATTERN, c.id):
+        return None
+    opts = listbox_options(html, c.controls)
+    if not opts or len(opts) < 2:
+        return None
+    values, labels = [v for v, _ in opts], [_norm(t) for _, t in opts]
+    if not all(values) or len(set(values)) != len(values) or len(set(labels)) != len(labels):
+        return None
+    if any(option_calling_code(t) is None for _, t in opts) or not (c.accessible_name or ""):
+        return None
+    return FormField(
+        key=c.id,
+        label=c.accessible_name[:2000],
+        type=FieldType.select,
+        required=True,  # it is always answered: by a unique calling code, or by you
+        options=[Option(value=str(v)[:500], label=t[:500]) for v, t in opts],
+        widget="phone_country",
+    )
+
+
+def location_candidates(api: dict) -> tuple[str, list[str]] | None:
+    """From the job data: its one text location question and the hidden values beside it."""
+    found = [(fl.get("name"), fl.get("type")) for q in api.get("location_questions") or []
+             for fl in q.get("fields") or []]  # fmt: skip
+    text = [n for n, t in found if t == "input_text"]
+    hidden = [n for n, t in found if t == "input_hidden"]
+    return (text[0], hidden) if len(text) == 1 and hidden else None
+
+
+def location_picker(fields: list[FormField], controls: list[Control], text_key: str,
+                    structured: list[str]) -> bool:  # fmt: skip
+    """True only for this structure: the question `text_key` is one visible combobox in the form
+    whose list is in the page, labelled exactly as the question, inside a group named exactly as
+    the question; each hidden value in `structured` is one hidden input in that same group; and
+    the group holds nothing else. The page's own script is what sets those hidden values."""
+    f = next((x for x in fields if x.key == text_key), None)
+    by: dict[str, list[Control]] = {}
+    for c in controls:
+        by.setdefault(c.id, []).append(c)
+    pick = by.get(text_key, [])
+    if f is None or not structured or len(pick) != 1:
+        return False
+    c = pick[0]
+    if not (
+        c.role == "combobox"
+        and c.tag == "input"
+        and c.controls_listbox
+        and c.in_form
+        and not c.hidden
+        and c.group_key is not None
+        and _norm(c.accessible_name) == _norm(f.label)
+        and _norm(c.group_name) == _norm(f.label)
+    ):
+        return False
+    for k in structured:
+        h = by.get(k, [])
+        if len(h) != 1 or (h[0].tag, h[0].type, h[0].group_key) != ("input", "hidden",
+                                                                      c.group_key):  # fmt: skip
+            return False
+    return sum(1 for x in controls if x.group_key == c.group_key) == 1 + len(structured)
+
+
 # How a page marks a control as required, kept apart (any of them may be used, or none): the
 # HTML attribute, the ARIA attribute, ARIA on the enclosing group, and a trailing "*" on the
 # control's own label or on its group's label. Read from the live page (labels can be built
@@ -289,9 +432,12 @@ def required_evidence(api_required: bool, signals: dict | None) -> str:
     return "api_required_page_unmarked" if api_required else "page_required_api_optional"
 
 
-def build_schema(api: dict, page_html: str) -> tuple[FormSchema, list[FieldMapping]]:
+def build_schema(api: dict, page_html: str, *, stand_ins: bool = False
+                 ) -> tuple[FormSchema, list[FieldMapping]]:  # fmt: skip
     """Job-post fields, verified against the page's controls. Raises gh.SchemaMismatch unless
-    every field is mapped (or is a page-managed hidden value)."""
+    every field is mapped (or is a page-managed hidden value). `stand_ins` (D104): the page is a
+    local stand-in (a fixture origin), the only place the phone country picker and the location
+    search are recognised; on any other page they stay checkpoints."""
     from_api = gh.schema_from_api(api)
     controls = snapshot(page_html)
     mappings = map_fields(from_api.fields, controls)
@@ -303,9 +449,19 @@ def build_schema(api: dict, page_html: str) -> tuple[FormSchema, list[FieldMappi
             "controls_do_not_match",
         )
     form = _form_attrs(page_html)
+    loc = location_candidates(api) if stand_ins else None
+    if loc and not location_picker(from_api.fields, controls, *loc):
+        loc = None
     fields = []
     for f, m in zip(from_api.fields, mappings, strict=True):
-        if m.status == "search_picker":
+        if m.status == "search_picker" and loc and f.key == loc[0] and f.type == FieldType.text:
+            # D104: asked through the page's own search; the text is typed only after the
+            # disclosure gate, and only a suggestion that is exactly it is chosen.
+            f = f.model_copy(update={"widget": "location_search"})
+        elif loc and f.key in loc[1] and f.type == FieldType.unsupported:
+            f = f.model_copy(update={"widget": "location_structured",
+                                     "unsupported_reason": LOCATION_STRUCTURED_REASON})  # fmt: skip
+        elif m.status == "search_picker":
             f = f.model_copy(
                 update={
                     "type": FieldType.unsupported,
@@ -327,7 +483,14 @@ def build_schema(api: dict, page_html: str) -> tuple[FormSchema, list[FieldMappi
             f = f.model_copy(update={"condition": Condition(key=UNKNOWN_TRIGGER, any_of=["?"])})
         fields.append(f)
     taken = {f.key for f in fields}
-    for n, c in enumerate(unlisted_controls(from_api.fields, controls), 1):
+    phone = phone_country_field(from_api.fields, controls, page_html, taken) if stand_ins else None
+    if phone is not None:  # D104: right after the phone question, so it is filled after it
+        at = next(i for i, f in enumerate(fields) if f.type == FieldType.tel)
+        fields.insert(at + 1, phone)
+        taken.add(phone.key)
+    unlisted = [c for c in unlisted_controls(from_api.fields, controls)
+                if phone is None or c.id != phone.key]  # fmt: skip
+    for n, c in enumerate(unlisted, 1):
         valid = bool(c.id) and re.fullmatch(KEY_PATTERN, c.id) and c.id not in taken
         key = c.id if valid else f"page_control_{n}"
         taken.add(key)

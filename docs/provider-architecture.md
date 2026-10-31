@@ -138,7 +138,7 @@ means none. The planned providers
 | deterministic_fill | fixture | fixture | fixture | – | – | – | – | fixture | fixture | fixture | fixture |
 | custom_dropdowns | – | – | fixture | – | **observed** | – | – | – | – | – | fixture |
 | file_upload | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture | fixture | fixture |
-| location_picker | – | – | – | – | – | – | – | – | – | – | – |
+| location_picker | – | – | fixture | – | – | – | – | – | – | – | – |
 | login_required | – | – | – | – | – | – | – | – | – | – | – |
 | email_verification | fixture | fixture | – | – | – | – | – | – | – | – | – |
 | mobile_verification | – | – | – | – | – | – | – | – | – | – | – |
@@ -245,7 +245,7 @@ not implemented. **No cell is `live_fill` or `live_submit`.**
 | manual_verification_required *(trait)* | yes | unknown | unknown | no | n/a | n/a | expected | unknown | n/a | no | no | no |
 | CAPTCHA_possible *(trait)* | no | unknown | unknown | no | unknown | n/a | expected | expected | n/a | yes | yes | yes |
 | multi_step *(trait)* | no | unknown | no | no | no | n/a | expected | unknown | n/a | no | no | no |
-| location_picker | none | none | none | none | none | none | none | none | none | none | none | none |
+| location_picker | none | none | fixture | none | none | none | none | none | none | none | none | none |
 | custom_dropdown | none | none | fixture | none | observed (structure only) | none | none | none | none | none | none | none |
 | confirmation_detection | fixture | fixture | fixture | fixture | none | none | none | none | none | fixture | fixture | fixture |
 

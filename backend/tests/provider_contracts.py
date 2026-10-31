@@ -173,6 +173,9 @@ SCENARIO_TESTS: dict[tuple[str, str], str] = {
         f"{_GD}::test_confirmation_bound_to_attempt",
     ("greenhouse_dom", "unlisted_option_is_checkpoint"):
         f"{_GD}::test_unlisted_option_is_checkpoint",
+    # D104: a location search stand-in only (greenhouse_live's location_picker stays none).
+    ("greenhouse_dom", "location_exact_or_checkpoint"):
+        "tests/test_greenhouse_controls.py::test_location_exact_or_checkpoint",
     # D102: the Greenhouse pilot runs the same scenarios through its own builder.
     ("greenhouse_live", "full_run_matches_ledger"):
         f"{_GD}::test_full_run_sends_exactly_the_approved_values",

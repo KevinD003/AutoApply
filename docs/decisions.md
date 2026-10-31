@@ -2995,3 +2995,60 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Not verified:** any of it against a real mailbox or a real Greenhouse page (nothing is
   authorized to be).
 - **Unchanged:** `SCHEMA_VERSION` (3); no migration; every other route, adapter and approval rule.
+
+## D104 — Greenhouse controls on local stand-ins: phone country, location search, late options (2026-10-31)
+
+- **Why:** the owner, on 2026-10-31: "Then continue Greenhouse control support. Proceed with local
+  stand-ins for: Phone country selection. Location search. Late-loading dropdown options. Use
+  deterministic matching against approved facts. Country calling code alone must not be assumed
+  to identify a unique country. Location labels must not be treated as proof of a selected
+  structured location. Do not manufacture hidden coordinates or trust résumé-parsing/prefill
+  blindly. Ambiguous or unsupported choices become checkpoints. Synthetic control coverage is not
+  evidence that the real page works. No real rehearsal or submission is authorized by this
+  message." It is also the owner's policy change that `docs/location-handling.md` asked for
+  before typing into a page's own location search, **for local stand-ins only**.
+- **Decision:**
+  - **Local stand-ins only.** Each structure is recognised at capture only when the page is a
+    fixture origin (`greenhouse_dom.build_schema(stand_ins=True)`; there is none in production),
+    and the adapter stops before anything is entered on any other destination
+    (`STAND_IN_ONLY`). Late lists are accepted only there too (`dropdowns`, `late=True`).
+    Elsewhere every rule of D102 and earlier stands. The stand-ins are in
+    `fixtures/ats_receiver/greenhouse_v2.py` (`gh2_phone_country`, `gh2_loc_search`,
+    `gh2_dd` `late_*`), each a FIXTURE ASSUMPTION.
+  - **Phone country** (`widget: phone_country`). Capture recognises exactly one structure: the
+    phone question's control in a group named as that question, with exactly one other control,
+    a combobox labelled as a country (code) picker, its list in the page, every option stating a
+    calling code ("Canada (+1)"). Anything else stays an unlisted checkpoint. NoEfforts chooses
+    only when the approved phone number states its code (a "+", digits, then a separator) and
+    exactly one option has it. +1 (several options), no code, or no approved number: you choose
+    one of the captured options for this application. Never residence, nationality or anything
+    else; never saved. The choice is proven by readback.
+  - **Location search** (`widget: location_search`, its hidden values `location_structured`).
+    The text is the approved residence fact only where the existing rules already classify the
+    question as residence, otherwise your answer for this application; never a saved answer, a
+    draft, résumé parsing or page prefill. It is typed only after the disclosure gate (the
+    ledger counts it as a disclosure; NoEfforts' evidence records that it was disclosed, never
+    the text). Exactly one settled suggestion must equal it (whitespace and case aside); then
+    the page itself must have set every hidden value and still show the text. A label alone,
+    none or several suggestions, a page that sets nothing, or a location already filled in by
+    the page stop the attempt, never retried. NoEfforts never writes a hidden value.
+  - **Late options.** A list that arrives after opening (a delay, and/or GET requests to the
+    page's own origin that finished with a 2xx answer) counts only within `LATE_MS` (5 s), once
+    nothing is loading, the same list has been read three times in a row (`STABLE_SAMPLES`,
+    now for every list) and it is exactly the approved one in order. Still loading at the
+    deadline, changing, partial, different, or fetched any other way: refused before
+    disclosure.
+  - **Versions:** extraction `greenhouse-dom-v3`; adapters `greenhouse-dom-4` and
+    `greenhouse-live-2`, so approvals given under the earlier rules are refused at queueing.
+    `dropdowns.CAPABILITIES` names each of the three as `fixture_only`.
+  - **`SCHEMA_VERSION` stays 3.** Only a package of a form with one of these controls gains a
+    key (`.answers[].widget`); every other package keeps its exact content and hash, so no
+    approval changes meaning. Such forms could not be captured before D104.
+  - **Registry:** `greenhouse_dom`'s `location_picker` is now `fixture` (the stand-in), with its
+    required ledger scenario `location_exact_or_checkpoint`. `greenhouse_live`'s stays `none`:
+    on its real hosts the control is refused. Readiness is unchanged: 0 of 7 conditions met;
+    fixture evidence meets none.
+- **Not verified:** any of it on a real page. Run #9 saw no location control and no dropdown
+  opening on the one real posting observed; its phone-group control (`u1`) remains not
+  understood. Nothing was rehearsed or submitted for real.
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration; every other adapter, route and approval rule.

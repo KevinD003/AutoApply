@@ -81,6 +81,9 @@ NO_BANK = PROFILE_ONLY | {
     # C6 (D51): preferences that Preferences holds; never from a saved answer
     "relocation",
     "salary_expectation",
+    # D104: the phone country picker and the hidden values a location search sets
+    "phone_country",
+    "location_structured",
 }
 SCOPE_EXPLANATION = {
     "employer": "Answer it for this application: it refers to the employer or the job (how you "
@@ -396,12 +399,18 @@ def resolve_field(
 def _resolve_field(
     f: FormField, ctx: Context, parent: Resolution | None, repeated: bool
 ) -> Resolution:
+    if f.widget == "phone_country":  # D104: never from what the label alone suggests
+        return _phone_country(f, _base(f, Intent("phone_country")), ctx)
+    if f.widget == "location_structured":
+        return _location_structured(f, _base(f, Intent("location_structured")))
     intent = _inherit(f, classify(f), parent)
     r = _base(f, intent)
     # C6 (D51): only narrows; `scope` is set only on a row that was bankable until now.
     scope = bankscope.reason(f, intent, parent=parent, repeated=repeated) if r.bankable else None
     if scope is not None:
         r.bankable = False
+    if f.widget == "location_search":
+        return _location_search(f, r, ctx, intent)
 
     if f.type == FieldType.unsupported:
         # Nothing to map and nothing to type: a required one is a checkpoint (apply manually).
@@ -604,6 +613,137 @@ def _residence_city(f, r, ctx, intent):
         f,
         "The form offers its own list of places. NoEfforts never picks one from your profile's "
         "city: such a list is usually where the job is, not where you live.",
+    )
+
+
+# ---------------------------------------------------------------------------------------------
+# D104: controls recognised only on local stand-ins (greenhouse_dom `build_schema`)
+
+# The calling code an approved phone number states for itself: a "+", one to four digits, then
+# a separator ("+1 555 0100", "+44-20-..."). Digits run together give no code ("+15550100").
+_CALLING_CODE = re.compile(r"^\+(\d{1,4})(?=[\s\-.(/])")
+_CALLING_OPTION = re.compile(r"^\S.*?\s*\(\+(\d{1,4})\)$")
+
+
+def calling_code(phone: str | None) -> str | None:
+    m = _CALLING_CODE.match((phone or "").strip())
+    return m.group(1) if m else None
+
+
+def _option_code(label: str) -> str | None:
+    m = _CALLING_OPTION.match(" ".join(label.split()))
+    return m.group(1) if m else None
+
+
+def _phone_country(f: FormField, r: Resolution, ctx: Context) -> Resolution:
+    """The country picker beside the phone field. Chosen by NoEfforts only when the approved
+    phone number states its calling code and exactly one of the page's options has that code.
+    A code shared by several options (+1), no code, or no approved number: you choose one of
+    the page's options for this application. Never inferred from residence, nationality or
+    anything else; never saved or reused."""
+    r.user_input_allowed, r.bankable, r.draftable = True, False, False
+    p = ctx.profile
+    phone = p.phone if _approved(p) else None
+    if phone:  # changing the number re-asks, and re-checks a choice you made
+        r.fact_refs = [_ref(p, "profile", "phone")]
+    code = calling_code(phone)
+    hits = [o for o in f.options if code and _option_code(o.label) == code]
+    if len(hits) == 1:
+        r.status, r.source, r.value, r.display = (
+            "resolved",
+            "deterministic_mapping",
+            _choice(hits[0]),
+            hits[0].label,
+        )
+        r.user_input_allowed = False
+        r.explanation = (
+            f"Your phone number's calling code (+{code}) matches exactly one of the page's "
+            f"options, '{hits[0].label}'."
+        )
+        return r
+    inp = ctx.inputs.get(f.key)
+    if inp is not None:
+        err = validate_value(f, inp.value)
+        if err:
+            return _unresolved(r, f, f"Your saved answer no longer fits this question: {err}")
+        r.status, r.value, r.display = "resolved", inp.value, display_value(f, inp.value)
+        r.source, r.explanation = "user_entered", "You chose this for this application."
+        return r
+    if not phone:
+        why = "Your profile has no verified phone number."
+    elif not code:
+        why = "Your phone number does not state its calling code (for example +44 ...)."
+    elif hits:
+        why = f"Several of the page's options share your calling code (+{code})."
+    else:
+        why = f"None of the page's options has your calling code (+{code})."
+    return _unresolved(
+        r,
+        f,
+        f"{why} Choose the country for this application; it is never inferred from where you live.",
+    )
+
+
+def _location_structured(f: FormField, r: Resolution) -> Resolution:
+    """A hidden value the page's own location search sets (coordinates). Not a question: nothing
+    is entered or sent for it by NoEfforts, and the attempt stops unless the page sets it."""
+    r.user_input_allowed, r.bankable, r.draftable = False, False, False
+    r.status, r.value, r.display = "blank_optional", None, None
+    r.explanation = (
+        "Set by the page's own location search when NoEfforts chooses the suggestion that is "
+        "exactly your location. NoEfforts never writes it; if the page does not set it, the "
+        "attempt stops before submitting."
+    )
+    return r
+
+
+_RESIDENCE = ("residence_city", "residence_region", "residence_country")
+_TYPED = (
+    " It is typed into the employer's page search before you submit (that sends it), and only "
+    "a suggestion that is exactly this text is chosen; otherwise the attempt stops."
+)
+
+
+def _location_search(f: FormField, r: Resolution, ctx: Context, intent: Intent) -> Resolution:
+    """A text question asked through the page's search picker. The text typed is your approved
+    residence where the question is clearly about where you live (the existing rules), or your
+    answer for this application; never a saved answer, a draft or anything the page proposes."""
+    r.bankable, r.draftable = False, False
+    if intent.sensitive or intent.acknowledgment or intent.kind == "fact_statement":
+        r.user_input_allowed = False
+        return _unresolved(
+            r,
+            f,
+            "NoEfforts types only a location into a page's search, and this question asks more "
+            "than that. "
+            + ("It is required, so apply on the employer's site." if f.required else "Left blank."),
+        )
+    if intent.ambiguity is None and intent.kind in _RESIDENCE:
+        out = FACT_RESOLVERS[intent.kind](f, r, ctx, intent)
+        err = validate_value(f, out.value) if out.status == "resolved" else None
+        if err:
+            return _does_not_fit(out, f, f"Your profile's answer does not fit this field ({err}).")
+        if out.status == "resolved":
+            out.explanation += _TYPED
+        return out
+    inp = ctx.inputs.get(f.key)
+    if inp is not None and r.user_input_allowed:
+        err = validate_value(f, inp.value)
+        if err:
+            return _unresolved(r, f, f"Your saved answer no longer fits this question: {err}")
+        r.status, r.value, r.display = "resolved", inp.value, display_value(f, inp.value)
+        r.source = "user_entered"
+        r.explanation = "You answered this for this application." + _TYPED
+        return r
+    if not r.user_input_allowed:
+        return _unresolved(r, f, "NoEfforts cannot tell what to type here. Apply on the employer's "
+                           "site." if f.required else "Left blank.")  # fmt: skip
+    why = intent.ambiguity or "Answer it for this application."
+    return _unresolved(
+        r,
+        f,
+        f"{why} Type the location exactly as the page's search shows it: only a suggestion that "
+        "is exactly your text is chosen.",
     )
 
 

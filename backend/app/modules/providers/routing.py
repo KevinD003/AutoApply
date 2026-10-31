@@ -219,8 +219,11 @@ def form_checkpoint(schema: dict | None) -> list[str]:
     """The keys of the required controls NoEfforts cannot fill deterministically (never turned
     into a guessed answer). Keys and labels come from the employer's form: they are counted in
     route messages and steps, never quoted there or recorded in audit events."""
+    # D104: a hidden value a recognised location search sets is checked after the search,
+    # never filled, so it is not a control the user must complete on the employer's site.
     return [f.get("key") or "" for f in (schema or {}).get("fields", [])
-            if f.get("type") == "unsupported" and f.get("required")]  # fmt: skip
+            if f.get("type") == "unsupported" and f.get("required")
+            and f.get("widget") != "location_structured"]  # fmt: skip
 
 
 def _live_user_refusal(user_id) -> str | None:

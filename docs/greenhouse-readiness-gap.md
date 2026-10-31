@@ -20,7 +20,7 @@ Primary evidence: `docs/greenhouse-compatibility-report.md` (runs #3–#9);
 | File uploads | Fixture-tested | Local fixture | Do not enable on real page yet |
 | Attachments mapping | Partial | Real page structure | Require approved file/version |
 | Dropdowns | Unknown | Real page inspection inconclusive | Stop and require manual action |
-| Location picker | Unsupported | Real page structure | Stop and require manual action |
+| Location picker | Unsupported on real pages; a local stand-in only (D104) | Real page structure; stand-in: local fixture | Stop and require manual action |
 | Unknown required controls | Unsupported | Real page structure | Stop and require manual action |
 | CAPTCHA | Manual handoff only | Policy | Never solve or bypass |
 | Verification code | Fixture-tested | Local fixture | Require manual checkpoint |
@@ -49,10 +49,13 @@ Where each row's evidence lives:
   - Strategies (D31) are fixture-only: `tests/test_dropdown_strategies.py`.
 - **Location picker.** The job data asks for `location` plus required hidden `latitude` and
   `longitude`. No location control was found on the page, and the coordinates are
-  page-managed. The rule is `test_location_job_is_a_checkpoint`.
+  page-managed. The rule is `test_location_job_is_a_checkpoint`. D104 handles a local
+  stand-in of a location search only (`docs/location-handling.md`, D104 section); it is not
+  evidence for the real page.
 - **Unknown required controls.** `u1`–`u5` are dropdown-like controls that match no
   job-data question. `u1` (inside the phone group) and `u2` are required. Their purpose is not
-  inferred.
+  inferred. D104's phone country picker is a local stand-in of one possible structure only;
+  it does not say what `u1` is.
   - On the local fixture, such a control is captured as a blocking field, so the route is a
     checkpoint and the package cannot be approved before anything is queued
     (`test_unlisted_dropdowns_are_a_checkpoint_from_capture`).
@@ -96,6 +99,9 @@ Where each row's evidence lives:
 - Drift detection before disclosure.
 - Outcome classification (confirmed, rejected, unknown) with no resend.
 - The D31 dropdown strategies (click, ArrowDown, single trigger).
+- D104, on local stand-ins only: a phone country picker (chosen by a unique calling code, or by
+  you), a location search (the exact suggestion, coordinates set by the page), and dropdown
+  lists that arrive late (a bounded wait, settled and exact).
 
 ## Assumed fixture behavior (never seen on a real page)
 
@@ -160,7 +166,7 @@ them can meet a real condition while real destinations are disabled.
 |---|---|---|
 | `dropdowns` | not met | `custom_dropdowns` is `fixture`; Path A pending |
 | `unmatched_required_controls` | not met | no mapping rule exists for `u1` or `u2`; Path A pending |
-| `location` | not met | `location_picker` is `none` |
+| `location` | not met | `location_picker` is `fixture` (a local stand-in only, D104) |
 | `real_upload` | not met | `file_upload` is `fixture`; met only by rehearsal evidence on a real destination; real destinations are disabled, so NoEfforts cannot have made one |
 | `real_submission` | not met | `final_submit` is `fixture`; met only by real-submission evidence (an attempt-bound confirmation); real destinations are disabled, so NoEfforts cannot have made one |
 | `pilot_gate` | not met | no permission given (`docs/live-pilot-gate.md`) |

@@ -58,8 +58,9 @@ def test_every_provider_declares_the_routing_vocabulary_without_live_claims():
         assert set(view) == set(ROUTING_CAPABILITIES), spec.name
         assert not {"live_fill", "live_submit"} & set(view.values()), spec.name
     gd = routing_view(registry.get("greenhouse_dom"))
+    # D104: location_picker is a local stand-in only.
     assert (gd["browser_fill"], gd["custom_dropdown"], gd["location_picker"]) == (
-        "fixture", "fixture", "none")  # fmt: skip
+        "fixture", "fixture", "fixture")  # fmt: skip
     assert gd["public_schema_read"] == "observed" and gd["API_submission"] == "none"
     assert gd["CAPTCHA_possible"] == "unknown"  # none seen; never claimed either way
     assert routing_view(registry.get("fake_api"))["API_submission"] == "fixture"

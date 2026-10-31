@@ -8,11 +8,15 @@ strategy, one bounded action each, tried in a fixed order:
   trigger_button  one click on the single trigger next to the control
 
 A strategy counts only with post-action evidence (the inspection detector's probes and
-`classify_open`): the list must be observed sufficiently, stable and complete, with exactly
-the approved options in order. Otherwise the dropdown is refused, never guessed:
+`classify_open`): the list must be observed sufficiently, stable over STABLE_SAMPLES samples and
+complete, with exactly the approved options in order. Otherwise the dropdown is refused, never
+guessed:
   * no strategy opened it, or something other than a list appeared;
   * the list is partial, still changing, loading or virtualized (never scrolled);
-  * its options came from the network during the action (a checkpoint until verified);
+  * its options came from the network during the action (a checkpoint until verified), except
+    on a local stand-in (D104, `late=True`): there a list may arrive late, from a delay and/or
+    GET requests to the page's own origin that finished successfully, within LATE_MS; it counts
+    only once nothing loads any more and the list is stable and exactly the approved one;
   * options are duplicated or differ from the approved ones;
   * more than one element could open it;
   * a failed attempt changed a value.
@@ -23,6 +27,8 @@ nothing is typed. Selection is then proven by readback (adapter).
 Every strategy has been exercised only against local fixtures (FIXTURE ASSUMPTIONS); none has
 been seen working on a real page, and real destinations stay refused (`real_destinations`).
 """
+
+from urllib.parse import urlsplit
 
 from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
@@ -37,14 +43,24 @@ CAPABILITIES = {
     "arrow_down": "fixture_only",
     "trigger_button": "fixture_only",
     "type_to_filter": "unsupported (never types into a dropdown)",
-    "options_loaded_from_network": "checkpoint (refused until separately verified)",
+    # D104: on local stand-ins only; on any other destination still refused before disclosure.
+    "late_loading_options": "fixture_only (stand-ins: a delay or same-origin GET, within "
+    "LATE_MS, settled and exactly the approved list)",
+    "options_loaded_from_network": "checkpoint (refused until separately verified), except "
+    "late_loading_options on a local stand-in",
     "partial_or_virtualized_list": "unsupported (never scrolls)",
-    "location_picker": "unsupported",
+    "phone_country": "fixture_only (stand-ins: chosen only when the approved phone number's "
+    "calling code matches exactly one option; otherwise you choose)",
+    "location_picker": "fixture_only (stand-ins: the approved text typed after the disclosure "
+    "gate, exactly one exact suggestion chosen, the page's own hidden values checked)",
 }
 SETTLE_MS = 1500  # how long one action may take to show a stable list (polled)
+LATE_MS = 5000  # D104, stand-ins only: how long a list that is still loading may take
+STABLE_SAMPLES = 3  # the same list, read this many times in a row, counts as stable
 SAMPLE_MS = 250
 _ACTION_MS = 2000
 _DATA = frozenset({"xhr", "fetch", "eventsource", "websocket"})
+_FETCHED = frozenset({"xhr", "fetch"})  # what a late list may come from (D104), nothing else
 
 
 class Refused(Exception):
@@ -118,33 +134,83 @@ def _act(page: Page, cid: str, strategy: str) -> bool:
     return True
 
 
-def _observe(page: Page, cid: str, strategy: str, api_count: int) -> dict:
-    """One attempt: act, then poll the probes until the list is stable or the time is up."""
-    data: list[str] = []
+def _origin(url: str) -> str:
+    p = urlsplit(url)
+    return f"{p.scheme}://{p.netloc}"
+
+
+def _data_refusal(page: Page, data: list, done: set, late: bool) -> str | None:
+    """Why the data requests made during the action rule the list out, or None. Without `late`,
+    any data request does. With it (a local stand-in, D104), only XHR/fetch GETs to the page's
+    own origin are allowed, and only once each has finished with a 2xx answer."""
+    if not data:
+        return None
+    if not late:
+        return "its options load from the network (not verified)"
+    own = _origin(page.url)
+    for r in data:
+        if r.resource_type not in _FETCHED or r.method != "GET" or _origin(r.url) != own:
+            return "its options load from the network in a way NoEfforts does not accept"
+        if id(r) in done:
+            resp = None if r.failure else r.response()
+            if resp is None or not 200 <= resp.status < 300:
+                return "its options load from the network in a way NoEfforts does not accept"
+    return None
+
+
+def _observe(page: Page, cid: str, strategy: str, api_count: int, late: bool = False) -> dict:
+    """One attempt: act, then poll the probes until the list is settled or the time is up.
+    Settled: observed sufficiently (nothing loading, complete as far as can be told), no data
+    request in flight, and the same texts read STABLE_SAMPLES times in a row. `late` (a local
+    stand-in, D104): a list that is loading may take up to LATE_MS instead of SETTLE_MS."""
+    data: list = []
+    done: set[int] = set()
 
     def on_request(r):
         if r.resource_type in _DATA:
-            data.append(r.resource_type)
+            data.append(r)
+
+    def on_done(r):
+        done.add(id(r))
 
     page.evaluate(ro._PRE_JS, cid)
     pre = page.evaluate(ro._PROBE_JS, cid)
     page.on("request", on_request)
+    page.on("requestfinished", on_done)
+    page.on("requestfailed", on_done)
     try:
         if not _act(page, cid, strategy):
-            return {"state": "not_applicable", "data": 0, "texts": []}
-        series, post, state, partial = [], pre, "not_opened", []
-        for _ in range(SETTLE_MS // SAMPLE_MS):
+            return {"state": "not_applicable", "data": None, "texts": []}
+        series, seen, post, state, partial = [], [], pre, "not_opened", []
+        settled, waited, refusal = False, 0, None
+        while waited < (LATE_MS if late else SETTLE_MS):
             page.wait_for_timeout(SAMPLE_MS)
+            waited += SAMPLE_MS
             post = page.evaluate(ro._PROBE_JS, cid)
             if post is None:
                 raise Refused("the control disappeared")
             series.append(len(post["texts"]))
+            seen.append([dom._norm(t) for t in post["texts"]])
             state, _, partial = ro.classify_open(pre, post, series, api_count, True)
-            if state == "observed_sufficiently" and len(series) >= 2:
-                break
-        return {"state": state, "partial": partial, "data": len(data), "texts": post["texts"]}
+            refusal = _data_refusal(page, data, done, late)
+            pending = [r for r in data if id(r) not in done]
+            settled = (
+                state == "observed_sufficiently"
+                and not pending
+                and len(seen) >= STABLE_SAMPLES
+                and all(x == seen[-1] for x in seen[-STABLE_SAMPLES:])
+            )
+            if settled:
+                break  # a refusal is reported after the whole window, as before D104
+            if waited >= SETTLE_MS and state == "not_opened" and not data:
+                break  # nothing opened and nothing is loading: no reason to wait longer
+        if state == "observed_sufficiently" and not settled:
+            state, partial = "partially_observed", [*partial, "still_changing_or_loading"]
+        return {"state": state, "partial": partial, "data": refusal, "texts": post["texts"]}
     finally:
         page.remove_listener("request", on_request)
+        page.remove_listener("requestfinished", on_done)
+        page.remove_listener("requestfailed", on_done)
 
 
 def _close(page: Page, cid: str) -> None:
@@ -153,12 +219,12 @@ def _close(page: Page, cid: str) -> None:
     page.evaluate(ro._END_PROBE_JS)
 
 
-def _open(page: Page, cid: str, labels: list[str]) -> tuple[str, list[str]]:
+def _open(page: Page, cid: str, labels: list[str], late: bool = False) -> tuple[str, list[str]]:
     """Open with the first strategy that shows a verifiable list; (strategy, texts)."""
     for strategy in STRATEGIES:
         values = page.evaluate(_VALUES_JS)
         try:
-            got = _observe(page, cid, strategy, len(labels))
+            got = _observe(page, cid, strategy, len(labels), late)
         except PWError as e:
             raise Refused(f"it could not be acted on ({type(e).__name__})") from None
         if got["state"] in ("not_applicable", "not_opened"):
@@ -169,10 +235,12 @@ def _open(page: Page, cid: str, labels: list[str]) -> tuple[str, list[str]]:
             continue
         if got["data"]:
             _close(page, cid)
-            raise Refused("its options load from the network (not verified)")
+            raise Refused(got["data"])
         if got["state"] != "observed_sufficiently":
             _close(page, cid)
-            raise Refused(f"its list could not be read completely ({got['state']})")
+            why = ", ".join(got.get("partial") or [])  # fixed vocabulary, never page text
+            raise Refused(f"its list could not be read completely ({got['state']}"
+                          + (f": {why})" if why else ")"))  # fmt: skip
         texts = [dom._norm(t) for t in got["texts"]]
         if len(set(texts)) != len(texts):
             _close(page, cid)
@@ -187,17 +255,19 @@ def _open(page: Page, cid: str, labels: list[str]) -> tuple[str, list[str]]:
     raise Refused("no supported action opened it")
 
 
-def verify(page: Page, cid: str, options: list) -> str:
+def verify(page: Page, cid: str, options: list, late: bool = False) -> str:
     """Before anything is disclosed: open, check the list against the approved options, close.
-    Returns the strategy that worked; raises Refused otherwise. Nothing is selected."""
-    strategy, _ = _open(page, cid, [o.label for o in options])
+    Returns the strategy that worked; raises Refused otherwise. Nothing is selected. `late`:
+    a local stand-in, where a list may arrive late (D104)."""
+    strategy, _ = _open(page, cid, [o.label for o in options], late)
     _close(page, cid)
     if page.evaluate(ro._PROBE_JS, cid)["expanded"] == "true":
         raise Refused("it did not close")
     return strategy
 
 
-def select(page: Page, cid: str, strategy: str, options: list, want_value: str) -> bool:
+def select(page: Page, cid: str, strategy: str, options: list, want_value: str,
+           late: bool = False) -> bool:  # fmt: skip
     """Open with the verified strategy and click the one option whose label (and value, where
     exposed) is the approved one. False when that cannot be done exactly; readback decides."""
     labels = [o.label for o in options]
@@ -205,7 +275,7 @@ def select(page: Page, cid: str, strategy: str, options: list, want_value: str) 
     if target is None:
         return False
     try:
-        got = _observe(page, cid, strategy, len(labels))
+        got = _observe(page, cid, strategy, len(labels), late)
         texts = [dom._norm(t) for t in got["texts"]]
         if (got["state"] != "observed_sufficiently" or got["data"]
                 or texts != [dom._norm(x) for x in labels]):  # fmt: skip

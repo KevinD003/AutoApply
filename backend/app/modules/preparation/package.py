@@ -324,6 +324,10 @@ def build_content(db: Session, app: Application) -> dict:
                     if f.type == FieldType.unsupported
                     else {}
                 ),
+                # D104: only a form with a phone country picker or a location search (local
+                # stand-ins) has one, so no other package's content or hash changes and
+                # SCHEMA_VERSION stays 3 (pinned in tests/test_greenhouse_controls.py).
+                **({"widget": f.widget} if f.widget else {}),
             }
         )
         if r.status in ("needs_user", "needs_consent"):

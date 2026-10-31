@@ -145,7 +145,9 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
         cfg.update({"mode": "normal", "delay_s": 0.0, "idempotent": True, "autosave": False,
                     "tamper": None, "form_delay_s": 0.0, "fh_mode": "normal", "board_mode": "normal",
                     "fh_rate_limit": 1000, "upload_fail_field": None, "upload_delay_s": 0.0,
-                    "verify_drop": False, "inbox_mode": "normal", "email_codes": None})
+                    "verify_drop": False, "inbox_mode": "normal", "email_codes": None,
+                    # the v2 approximation's per-mode settings, so none leaks into the next test
+                    "dd": None, "delay_ms": 0, "locale_delay_ms": 0, "loc": None, "pc": None})
         return {"ok": True}
 
     @app.post("/_admin/inbox")

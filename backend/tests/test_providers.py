@@ -63,7 +63,9 @@ def test_real_page_evidence_is_recorded_only_where_it_exists():
         ("greenhouse_readonly", "custom_dropdowns"),
     }  # fmt: skip
     gd = matrix(registry.get("greenhouse_dom"))
-    assert gd["custom_dropdowns"] == "fixture" and gd["location_picker"] == "none"
+    # D104: a location search stand-in is fixture-tested; nothing on a real page.
+    assert gd["custom_dropdowns"] == "fixture" and gd["location_picker"] == "fixture"
+    assert matrix(registry.get("greenhouse_live"))["location_picker"] == "none"
 
 
 @pytest.mark.parametrize(

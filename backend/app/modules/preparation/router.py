@@ -136,6 +136,9 @@ def attach_form(
             schema, source, ref = extract_form_schema(body.html, challenges=True), "html", None
         else:
             schema, source, ref = body.form, "manual", None
+            if any(f.widget for f in schema.fields):
+                # D104: set only by the Greenhouse capture of a local stand-in, never by hand.
+                raise bad_request("Could not read the form: 'widget' is set by NoEfforts only")
     except KeyError:
         raise bad_request("Unknown fixture") from None
     except (ExtractionError, ValidationError) as e:
@@ -180,12 +183,15 @@ def _capture_live(db, user, job, url: str, posting) -> dict:
     no redirects, where robots.txt allows, nothing of yours sent), mapped by the id rules
     (greenhouse_dom) or refused.
     Reading it is not an approval: every application still needs yours."""
+    from app.core.urlsafety import is_fixture_origin
     from app.modules.execution import live
     from app.modules.preparation import greenhouse_dom
 
     try:
         api, page = live.read_posting(posting, url)
-        schema, _ = greenhouse_dom.build_schema(api, page)
+        # D104: the stand-in structures only on a local stand-in (never in production, where no
+        # origin is a fixture); on a real board they stay checkpoints.
+        schema, _ = greenhouse_dom.build_schema(api, page, stand_ins=is_fixture_origin(url))
     except live.LiveError as e:  # a fixed code; the message names no posting
         raise conflict(f"Could not read the job post: {e} (reason: {e.code})") from None
     except gh.SchemaMismatch as e:
@@ -245,8 +251,9 @@ def capture_greenhouse_form(
             schema = gh.build_schema(api, page)
         except ExtractionError:
             # No named controls (the structure seen on a real hosted page): map by id, label
-            # and role instead, refusing anything absent or ambiguous.
-            schema, _ = greenhouse_dom.build_schema(api, page)
+            # and role instead, refusing anything absent or ambiguous. A local fixture only
+            # here, so the D104 stand-in structures are recognised.
+            schema, _ = greenhouse_dom.build_schema(api, page, stand_ins=True)
             source, extraction = "greenhouse_api_dom", greenhouse_dom.EXTRACTION_VERSION
     except gh.SchemaMismatch as e:  # generic wording plus the fixed code; no form structure
         raise conflict(

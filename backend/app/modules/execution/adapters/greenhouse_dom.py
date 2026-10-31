@@ -12,6 +12,12 @@ selection. Refused before disclosure: CAPTCHA, any mapping that is no longer uni
 labelled, changed options, a new visible control, a different submit address, an answer to a
 question whose trigger is unknown. Search pickers, multi-choice comboboxes and hidden
 coordinates were already checkpoints at preparation.
+
+D104, on local stand-ins only (`stand_ins`: the destination is a fixture origin, which no origin
+is in production): the phone country picker (a combobox whose option was chosen by a unique
+calling code or by you), a location search (`_search_location`) and dropdown lists that arrive
+late (`dropdowns.LATE_MS`). On any other destination a form that needs one of them stops before
+anything is entered. Synthetic coverage of these controls is not evidence that a real page works.
 """
 
 import re
@@ -21,6 +27,7 @@ from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PWTimeout
 
+from app.core.urlsafety import is_fixture_origin
 from app.modules.execution.adapters import dropdowns
 from app.modules.execution.adapters.fixture_ats import (
     ACK_ERROR,
@@ -28,6 +35,7 @@ from app.modules.execution.adapters.fixture_ats import (
     ACK_SHOWN,
     FixtureAtsAdapter,
     Outcome,
+    StoppedAfterDisclosure,
     UploadFailed,
     upload_evidence,
 )
@@ -54,6 +62,68 @@ PRE_CONFIRMATION = (
     "cannot confirm this submission"
 )
 
+# -- D104: stand-in controls ------------------------------------------------------------------
+STAND_IN_ONLY = (
+    "the form needs a control NoEfforts handles only on local test stand-ins (a phone country "
+    "picker or a location search), never on a real page"
+)
+LOCATION_PREFILLED = (
+    "the page filled in the location itself (for example from a parsed résumé); NoEfforts never "
+    "trusts a location it did not choose"
+)
+LOCATION_NO_LIST = "the page's location search showed no settled list of suggestions in time"
+LOCATION_NONE = "no suggestion of the page's location search is exactly the approved location"
+LOCATION_SEVERAL = (
+    "more than one suggestion of the page's location search is exactly the approved location"
+)
+LOCATION_NOT_SET = (
+    "after the suggestion was chosen, the page did not set the location's own hidden values; a "
+    "matching label alone is not proof"
+)
+LOCATION_LABEL = "after the suggestion was chosen, the location shown is not the approved one"
+LOCATION_FAILED = "the location search could not be completed"
+LOCATION_MS = 5000  # how long the page's suggestions, or its hidden values, may take
+_LOC_STATE_JS = """([id, hidden]) => { const el = document.getElementById(id);
+  if (!el) return null;
+  const structured = {};
+  for (const h of hidden) { const e = document.getElementById(h);
+    structured[h] = (e && e.type === 'hidden') ? (e.value || '') : null; }
+  return {text: el.value || '', structured}; }"""
+_LOC_VIS = """const vis = (e) => e.checkVisibility ? e.checkVisibility({visibilityProperty: true})
+    : !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);"""
+_LOC_LIST_JS = (
+    "(id) => { const el = document.getElementById(id);\n  "
+    + _LOC_VIS
+    + """
+  const lb = el && document.getElementById(el.getAttribute('aria-controls') || '');
+  if (!lb || lb.getAttribute('role') !== 'listbox') return null;
+  return {open: vis(lb),
+          busy: lb.getAttribute('aria-busy') === 'true' || !!lb.querySelector('[role=progressbar]'),
+          texts: Array.from(lb.querySelectorAll('[role=option]')).filter(vis)
+            .map((o) => o.textContent)}; }"""
+)
+_LOC_OPTION_JS = (
+    "([id, i]) => { const el = document.getElementById(id);\n  "
+    + _LOC_VIS
+    + """
+  const lb = el && document.getElementById(el.getAttribute('aria-controls') || '');
+  return lb ? (Array.from(lb.querySelectorAll('[role=option]')).filter(vis)[i] || null) : null; }"""
+)
+
+
+def stand_ins(content: dict) -> bool:
+    """D104: the destination is a local stand-in (a fixture origin; never in production)."""
+    return is_fixture_origin((content.get("destination") or {}).get("origin") or "")
+
+
+def _place(s: str | None) -> str:
+    """A location as compared with a suggestion: whitespace collapsed, case folded."""
+    return " ".join((s or "").split()).casefold()
+
+
+class LocationStopped(StoppedAfterDisclosure):
+    """D104: the location search stopped the attempt; never retried."""
+
 
 def _id(key: str) -> str:
     cid = key.removesuffix("[]")
@@ -77,6 +147,11 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         # (before anything is disclosed). See adapters/dropdowns.py.
         self._dd: dict[str, str] = {}
         self._dd_checked = False
+        # D104: the stand-in controls run only on a local stand-in; the hidden values the page's
+        # location search set, as read right after the suggestion was chosen; filling started.
+        self._stand_in = stand_ins(self.content)
+        self._loc: dict[str, dict] = {}
+        self._filled = False
 
     # -- inspect ----------------------------------------------------------------------------
     def extract(self, page: Page):
@@ -97,14 +172,30 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         fields = approved_fields(self.content)
         changed, pending = [], []  # NoEfforts' fixed reasons, one per field; never field keys
         answered = {a["key"] for a in self.content["answers"] if a["value"] is not None}
+        if any(f.widget for f in fields) and not self._stand_in:
+            return STAND_IN_ONLY  # D104: before anything is entered
+        structured = [f.key for f in fields if f.widget == "location_structured"]
         for f, m in zip(fields, dom.map_fields(fields, controls), strict=True):
             if f.type == FieldType.unsupported:
                 continue  # never filled; a required one could not have been approved
-            ok = m.status == "mapped" or (
-                m.status == "mapped_via_group" and f.type == FieldType.file
+            ok = (
+                m.status == "mapped"
+                or (m.status == "mapped_via_group" and f.type == FieldType.file)
+                or (m.status == "search_picker" and f.widget == "location_search")
             )
             if not ok:
                 changed.append(m.status)
+                continue
+            # D104: each stand-in structure is re-proven exactly as it was captured.
+            if f.widget == "phone_country" and not dom.phone_country_control(
+                fields, controls, m.control.id
+            ):
+                changed.append("widget")
+                continue
+            if f.widget == "location_search" and not dom.location_picker(
+                fields, controls, f.key, structured
+            ):
+                changed.append("widget")
                 continue
             # Required: the job data's requirement stands whatever the page shows (a required
             # field was approved with an answer). What blocks is the page requiring a field
@@ -132,7 +223,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             # Only once, before the disclosure gate: open, read, close; nothing is selected.
             for f, cid in pending:
                 try:
-                    self._dd[f.key] = dropdowns.verify(page, cid, f.options)
+                    self._dd[f.key] = dropdowns.verify(page, cid, f.options, self._stand_in)
                 except dropdowns.Refused as e:
                     changed.append(f"dropdown: {e}")
                     break
@@ -156,6 +247,14 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             cond = a.get("condition") or {}
             if cond.get("key") == dom.UNKNOWN_TRIGGER and a["value"] is not None:
                 return "an answer depends on page logic NoEfforts cannot see"
+        if not self._filled:
+            # D104: a location (or its hidden values) already on the page before anything is
+            # entered was put there by the page, never by NoEfforts' choice: not trusted.
+            for f in fields:
+                if f.widget == "location_search" and self._location_state_dirty(
+                    page, f.key, structured
+                ):
+                    return LOCATION_PREFILLED
         form = dom._form_attrs(html)
         action = form.get("data-submit-path")
         if not action or urljoin(page.url, action) != self.content["destination"]["submit_url"]:
@@ -166,12 +265,16 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
 
     # -- fill -------------------------------------------------------------------------------
     def fill(self, page: Page) -> list[dict]:
+        self._filled = True
         disclosures = []
         for a in self.content["answers"]:
             if a["value"] is None or a["type"] == FieldType.unsupported.value:
                 continue
             if a.get("condition"):
                 continue  # unknown trigger: refused in schema_matches if answered
+            if a.get("widget") == "location_search":
+                disclosures.append(self._search_location(page, a, disclosures))
+                continue
             if a["type"] == "file":
                 try:
                     disclosures.append(self._attach(page, a))
@@ -194,7 +297,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         if a["key"] in self._dd:
             f = next(x for x in approved_fields(self.content) if x.key == a["key"])
             dropdowns.select(page, _id(a["key"]), self._dd[a["key"]], f.options,
-                             a["value"]["option"])  # fmt: skip
+                             a["value"]["option"], self._stand_in)  # fmt: skip
             return  # readback decides whether the approved option is shown
         cb = _by_id(page, a["key"])
         cb.click()
@@ -206,6 +309,104 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         if len(matches) != 1:
             return  # readback reports it; never pick a near match
         matches[0].click()
+
+    # -- D104: the location search (local stand-ins only) ---------------------------------
+    def _structured(self) -> list[str]:
+        return [_id(a["key"]) for a in self.content["answers"]
+                if a.get("widget") == "location_structured"]  # fmt: skip
+
+    def _location_state_dirty(self, page: Page, key: str, structured: list[str]) -> bool:
+        state = page.evaluate(_LOC_STATE_JS, [_id(key), [_id(k) for k in structured]])
+        return (
+            state is None
+            or bool(state["text"])
+            or any(v is None or v for v in state["structured"].values())
+        )
+
+    def _search_location(self, page: Page, a: dict, before: list[dict]) -> dict:
+        """Type the approved text into the page's own search (a disclosure, after the gate),
+        wait for its suggestions to settle, choose the one suggestion that is exactly the
+        approved text, then check that the page itself set the hidden values and still shows
+        that text. NoEfforts never writes the hidden values, never presses Enter and never
+        picks a first or highlighted suggestion. Anything else stops the attempt: LocationStopped
+        (the runner abandons it; never retried)."""
+        key, text, structured = _id(a["key"]), a["value"]["text"], self._structured()
+        if self._location_state_dirty(page, key, structured):  # e.g. a résumé autofill
+            raise LocationStopped(LOCATION_PREFILLED, list(before))
+        sent = {"field": a["key"], "disclosed": "location_search_text"}
+        stop = lambda why: LocationStopped(why, [*before, sent])  # noqa: E731
+        data: list = []
+        done: set[int] = set()
+
+        def on_request(r):
+            if r.resource_type in ("xhr", "fetch"):
+                data.append(id(r))
+
+        def on_done(r):
+            done.add(id(r))
+
+        page.on("request", on_request)
+        page.on("requestfinished", on_done)
+        page.on("requestfailed", on_done)
+        try:
+            # One input event with the whole approved text: what the page's search receives.
+            page.locator(f'[id="{key}"]').fill(text, timeout=dropdowns._ACTION_MS)
+            seen, waited, got = [], 0, None
+            while waited < LOCATION_MS:
+                page.wait_for_timeout(dropdowns.SAMPLE_MS)
+                waited += dropdowns.SAMPLE_MS
+                got = page.evaluate(_LOC_LIST_JS, key)
+                if got is None:
+                    raise stop(LOCATION_NO_LIST)
+                seen.append([_place(t) for t in got["texts"]])
+                n = dropdowns.STABLE_SAMPLES
+                if (got["open"] and not got["busy"] and all(i in done for i in data)
+                        and len(seen) >= n and all(x == seen[-1] for x in seen[-n:])):  # fmt: skip
+                    break
+            else:
+                raise stop(LOCATION_NO_LIST)
+            exact = [i for i, t in enumerate(seen[-1]) if t == _place(text)]
+            if len(exact) != 1:
+                raise stop(LOCATION_SEVERAL if exact else LOCATION_NONE)
+            opt = page.evaluate_handle(_LOC_OPTION_JS, [key, exact[0]]).as_element()
+            if opt is None or _place(opt.text_content()) != _place(text):
+                raise stop(LOCATION_NO_LIST)
+            opt.click(timeout=dropdowns._ACTION_MS)
+            state, waited = None, 0
+            while waited < LOCATION_MS:
+                page.wait_for_timeout(dropdowns.SAMPLE_MS)
+                waited += dropdowns.SAMPLE_MS
+                state = page.evaluate(_LOC_STATE_JS, [key, structured])
+                if state and all(state["structured"].values()):
+                    break
+            if not state or not all(state["structured"].values()):
+                raise stop(LOCATION_NOT_SET)
+            if _place(state["text"]) != _place(text):
+                raise stop(LOCATION_LABEL)
+            self._loc[a["key"]] = dict(state["structured"])
+            return sent
+        except PWError:
+            raise stop(LOCATION_FAILED) from None
+        finally:
+            page.remove_listener("request", on_request)
+            page.remove_listener("requestfinished", on_done)
+            page.remove_listener("requestfailed", on_done)
+
+    def _location_readback(self, page: Page, a: dict) -> bool:
+        """The approved location is still shown, and the hidden values are still the ones the
+        page set when it was chosen (or, with no location approved, all of them are empty)."""
+        state = page.evaluate(_LOC_STATE_JS, [_id(a["key"]), self._structured()])
+        if state is None:
+            return False
+        if a["value"] is None:
+            return state["text"] == "" and not any(state["structured"].values())
+        want = self._loc.get(a["key"])
+        return (
+            _place(state["text"]) == _place(a["value"]["text"])
+            and bool(want)
+            and all(want.values())
+            and state["structured"] == want
+        )
 
     def _attach(self, page: Page, a: dict) -> dict:
         key = _id(a["key"])
@@ -241,7 +442,9 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 if v is not None:
                     bad.append(a["key"])
                 continue
-            if t == "file":
+            if a.get("widget") == "location_search":
+                ok = self._location_readback(page, a)
+            elif t == "file":
                 names = loc.evaluate(_FILE_JS)
                 st = page.locator(f'[id="{_id(a["key"])}-status"]')
                 aid = st.get_attribute("data-attachment-id") if st.count() else None

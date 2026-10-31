@@ -47,6 +47,12 @@ def run(api, receiver, mode="gh2_dd", **cfg):
         ("locale_gate", {"locale_delay_ms": 2500}),
         ("delayed", {"delay_ms": 300}),
         ("preselect_first", {}),  # the highlighted first option is not what was approved
+        # D104 (local stand-ins only): a list that arrives late, within dropdowns.LATE_MS, once
+        # nothing loads any more and it has stayed the same: after a delay, after a locale file
+        # from the page's own origin, or from a same-origin GET of its own options.
+        ("delayed", {"delay_ms": 2500}),
+        ("locale_on_open", {}),
+        ("late_fetch", {"delay_ms": 1200}),
     ],
 )
 def test_each_strategy_selects_exactly_the_approved_option(api, receiver, dd, cfg):
@@ -88,8 +94,17 @@ def test_a_form_still_loading_after_the_allowance_stops_before_anything_is_enter
         ("inert", {}, "no supported action opened it"),
         ("type_only", {}, "no supported action opened it"),  # never types into a dropdown
         ("two_triggers", {}, "several elements could open it"),
-        ("locale_on_open", {}, "its options load from the network (not verified)"),
-        ("delayed", {"delay_ms": 3000}, "its list could not be read completely"),
+        # D104: still loading when the bounded wait ends (dropdowns.LATE_MS), never accepted.
+        ("delayed", {"delay_ms": 7000}, "its list could not be read completely"),
+        # D104: lists that arrive late are refused unless they settle as exactly the approved
+        # one: a different list, one still loading at the deadline, one that keeps changing, a
+        # partial one, and one requested in a way that is not a same-origin GET.
+        ("late_differ", {}, "its options differ from the approved ones"),
+        ("late_never", {}, "its list could not be read completely"),
+        ("late_changing", {}, "its list could not be read completely"),
+        ("late_slow_changing", {}, "its list could not be read completely"),
+        ("late_partial", {"delay_ms": 200}, "its list could not be read completely"),
+        ("late_post", {}, "its options load from the network in a way NoEfforts does not accept"),
         ("virtualized", {}, "its list could not be read completely"),  # never scrolled
         ("duplicate_option", {}, "its list shows an option more than once"),
     ],

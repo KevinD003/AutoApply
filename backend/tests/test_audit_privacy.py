@@ -218,7 +218,7 @@ def test_route_decisions_are_audited_without_applicant_or_external_data(api, rec
         (wd, "manual", "planned_adapter_only", "none", "not_applicable"),
     ]
     assert all(set(r.meta) == ROUTE_META and r.entity_type == "job" for r in rows)
-    assert rows[1].meta["adapter_version"].startswith("greenhouse-dom-3+")
+    assert rows[1].meta["adapter_version"].startswith("greenhouse-dom-4+")
     assert rows[2].meta["adapter_version"] == "fake-api-1"
     assert_no_markers(dump(rows), extra=["latitude", "Location", "Field Technician"])
 

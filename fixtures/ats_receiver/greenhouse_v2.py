@@ -39,7 +39,9 @@ filechooser, required, select, dialog, upload, hash, images, covered),
 gh2_widget_variants (cfg variant, delay_ms; see _VARIANTS_JS), gh2_required_unmarked,
 gh2_required_extra, gh2_required_marker_only, gh2_required_answered, gh2_required_group, gh2_required_cover_group,
 gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS), GET /locales/{lang}/{ns}.json (cfg
-locale_delay_ms),
+locale_delay_ms), D104 stand-ins: gh2_phone_country (cfg pc; see PHONE_COUNTRIES),
+gh2_loc_search (cfg loc; see _LOC_JS) with GET /gh2/{board}/jobs/{id}/places (a disclosure: the
+search text), GET|POST /gh2/{board}/jobs/{id}/dd-options/{qid}.json (dd late_*),
 gh2_cdn_app (cfg cdn,
 redirect_away), S5 variants gh2_phrase_in_body, gh2_phrase_no_confirmation, gh2_option_unlisted,
 gh2_challenge_after_submit, gh2_autofill_overwrite, gh2_two_steps (FIXTURE ASSUMPTIONS from the
@@ -59,6 +61,20 @@ from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 YES_NO = [{"value": 1, "label": "Yes"}, {"value": 0, "label": "No"}]
+# D104 (FIXTURE ASSUMPTION, never seen on a real page): the country picker beside the phone
+# field, each option naming its calling code. +1 is shared on purpose: a code alone is not a
+# country.
+PHONE_COUNTRIES = [("US", "United States (+1)"), ("CA", "Canada (+1)"), ("IN", "India (+91)"),
+                   ("GB", "United Kingdom (+44)"), ("KE", "Kenya (+254)")]
+# D104: the location search's gazetteer (fictional places and coordinates). For "Springfield"
+# the exact suggestion is not the first one, and the first one is highlighted.
+PLACES = [{"id": "pl-101", "label": "Springfield Heights", "lat": "10.1250", "lng": "20.5000"},
+          {"id": "pl-102", "label": "Springfield", "lat": "10.2500", "lng": "20.7500"},
+          {"id": "pl-103", "label": "Riverton", "lat": "11.0000", "lng": "21.0000"}]
+PLACES_TWO = [{"id": "pl-102", "label": "Springfield", "lat": "10.2500", "lng": "20.7500"},
+              {"id": "pl-104", "label": "Springfield", "lat": "12.5000", "lng": "22.2500"}]
+PLACES_NONE = [{"id": "pl-101", "label": "Springfield Heights", "lat": "10.1250", "lng": "20.5"},
+               {"id": "pl-105", "label": "Springfield, Northshire", "lat": "13.0", "lng": "23.0"}]
 COUNTRIES = [{"value": 900 + i, "label": c} for i, c in enumerate(
     ["Argentina", "Australia", "Brazil", "Canada", "France", "Germany", "India", "Japan",
      "Kenya", "Mexico", "Nigeria", "Spain", "United Kingdom", "United States"])]
@@ -144,9 +160,25 @@ def _label(qid, text, required, for_id=True):
     return f'<label id="{qid}-label"{attr}>{html.escape(text)}{star}</label>'
 
 
-def _render(q, mode) -> str:
+def _phone_country(cfg) -> str:
+    """D104: the stand-in country picker, its options in the page (a listbox) at load."""
+    pc = (cfg or {}).get("pc")
+    opts = [(v, n.split(" (+")[0]) if pc == "no_codes" else (v, n) for v, n in PHONE_COUNTRIES]
+    items = "".join(f'<li role="option" id="phone-country-opt-{v}" data-value="{v}" '
+                    f'aria-selected="false">{html.escape(n)}</li>' for v, n in opts)
+    return ('<span id="phone-country-label">Country code</span>'
+            '<input type="text" id="phone-country" role="combobox" aria-autocomplete="list" '
+            'aria-expanded="false" aria-controls="phone-country-listbox" '
+            'aria-labelledby="phone-country-label" aria-required="true" autocomplete="off">'
+            '<ul id="phone-country-listbox" role="listbox" aria-labelledby="phone-country-label" '
+            f'hidden>{items}</ul>')
+
+
+def _render(q, mode, cfg=None) -> str:
     f = q["fields"][0]
     qid, t, req = f["name"], f["type"], q["required"]
+    if mode == "gh2_loc_search" and t == "input_hidden":
+        return ""  # D104: inside the location search's own group (below)
     label_text = q["label"]
     if mode == "gh2_label_mismatch" and qid == "question_8101":
         label_text = "Do you need a visa?"
@@ -224,6 +256,15 @@ def _render(q, mode) -> str:
                 f'aria-expanded="false" aria-controls="{qid}-listbox" autocomplete="off"{areq}>'
                 f'<ul id="{qid}-listbox" role="listbox" aria-labelledby="{qid}-label" hidden>'
                 f'{opts}</ul>{dup}</div>')
+    if qid == "location" and mode == "gh2_loc_search":
+        # D104 (FIXTURE ASSUMPTION): a search picker in a group named as its question, holding
+        # the hidden values its own script sets (_LOC_JS); nothing else is in the group.
+        return (f'<div class="field location" role="group" aria-labelledby="{qid}-label">'
+                f'{_label(qid, label_text, req)}'
+                f'<input type="text" id="{qid}" role="combobox" aria-autocomplete="list" '
+                f'aria-expanded="false" aria-controls="{qid}-listbox" autocomplete="off"{areq}>'
+                f'<ul id="{qid}-listbox" role="listbox" hidden></ul>'
+                '<input type="hidden" id="latitude"><input type="hidden" id="longitude"></div>')
     if qid == "location":
         return (f'<div class="field location">{_label(qid, label_text, req)}'
                 f'<input type="text" id="{qid}" role="combobox" aria-autocomplete="list" '
@@ -231,6 +272,12 @@ def _render(q, mode) -> str:
                 f'<ul id="{qid}-listbox" role="listbox" hidden></ul></div>')
     itype = {"email": "email", "phone": "tel"}.get(qid, "text")
     body = f'{_label(qid, label_text, star)}<input type="{itype}" id="{qid}"{areq}>'
+    if qid == "phone" and mode == "gh2_phone_country":
+        if (cfg or {}).get("pc") == "outside":  # beside the group, not in it: not recognised
+            return (f'<div class="field" role="group" aria-labelledby="{qid}-label">{body}</div>'
+                    f'<div class="field">{_phone_country(cfg)}</div>')
+        return (f'<div class="field" role="group" aria-labelledby="{qid}-label">{body}'
+                f'{_phone_country(cfg)}</div>')
     if qid == "phone" and mode in ("gh2_widgets", "gh2_widget_variants", "gh2_dd_extras"):
         # FIXTURE ASSUMPTION (structure observed in B3): a combobox inside the phone field's
         # group, labelled differently from any question; here a dialling-country list equal to
@@ -282,6 +329,7 @@ for (const inp of document.querySelectorAll('input[type=file]')) {
       if (!r.ok) throw new Error('upload');
       const j = await r.json(); uploads[inp.id] = j.id;
       st.dataset.attachmentId = j.id; st.textContent = 'Attached: ' + j.filename;
+      if (window.__fxLocAutofill) window.__fxLocAutofill();  // D104: a location "from the resume"
       if (form.dataset.mode === 'gh2_autofill_overwrite') {  // S5 (R2.7): "autofill from resume"
         document.getElementById('phone').value = '+1 555 0199';
         document.getElementById('last_name').value = '';
@@ -296,6 +344,10 @@ form.addEventListener('submit', async (e) => {
     if (el.type === 'file' || el.closest('[hidden]') || el.hidden) continue;
     const v = el.getAttribute('role') === 'combobox' ? (el.dataset.value || '') : el.value;
     if (v) fields[el.id] = v;
+  }
+  if (window.__fxWrites) {  // D104: who wrote the location's hidden values (the ledger's oracle)
+    fields.fx_hidden_writes_page = String(window.__fxWrites.page);
+    fields.fx_hidden_writes_other = String(window.__fxWrites.other);
   }
   const r = await fetch(form.dataset.submitPath, {method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -503,9 +555,19 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 #   preselect_first   the first option is highlighted (aria-selected) when the list opens
 #   ignores_choice    clicking an option closes the list without choosing it
 #   wrong_value       the control shows the label but keeps a different value
+# D104, lists that arrive late: busy with a progress bar, then a same-origin GET to
+# dd-options/{id}.json (answered from the job data), then the options after delay_ms:
+#   late_fetch      the job data's options (accepted within the bounded wait)
+#   late_differ     the endpoint answers with one option more
+#   late_never      the endpoint does not answer within the wait
+#   late_changing   the options keep being re-rendered, in alternating order, every 60 ms
+#   late_slow_changing  the same every 300 ms: quiet between changes, so only reading the list
+#                   several times in a row shows it never settles
+#   late_partial    one option, and the list stays busy
+#   late_post       the options are requested with a POST
 _DD_JS = """
 (() => {
-  const DD = %DD%, DELAY = %DELAY%;
+  const DD = %DD%, DELAY = %DELAY%, BASE = %BASE%;
   const open = new Map();
   let seq = 0;
   const choose = (cb, o) => {
@@ -545,6 +607,27 @@ _DD_JS = """
       p.setAttribute('aria-busy', 'true');
       fetch('/locales/en/options.json').then((x) => x.json())
         .then(() => { render(cb, p, pairs); p.removeAttribute('aria-busy'); }).catch(() => {});
+    } else if (DD.startsWith('late_')) {
+      p.setAttribute('aria-busy', 'true');
+      const bar = document.createElement('li');
+      bar.setAttribute('role', 'progressbar'); bar.textContent = 'Loading options';
+      p.append(bar);
+      const url = BASE + '/dd-options/' + encodeURIComponent(cb.id) + '.json';
+      fetch(url, DD === 'late_post' ? {method: 'POST'} : {}).then((x) => x.json()).then((got) => {
+        setTimeout(() => {
+          if (!p.isConnected) return;
+          bar.remove();
+          if (DD === 'late_partial') { render(cb, p, got.slice(0, 1)); return; }
+          render(cb, p, got); p.removeAttribute('aria-busy');
+          if (DD === 'late_changing' || DD === 'late_slow_changing') {
+            let flip = false;
+            const iv = setInterval(() => {
+              if (!p.isConnected) { clearInterval(iv); return; }
+              flip = !flip; p.replaceChildren(); render(cb, p, flip ? got.slice().reverse() : got);
+            }, DD === 'late_changing' ? 60 : 300);
+          }
+        }, DELAY);
+      }).catch(() => {});
     } else {
       render(cb, p, pairs);
     }
@@ -593,11 +676,88 @@ _DD_JS = """
 """
 
 
+# D104: the location search stand-in (gh2_loc_search, cfg loc). FIXTURE ASSUMPTIONS, never seen
+# on a real page (run #9 found no location control at all). Typing asks the receiver's places
+# endpoint (each request is a disclosure in the ledger); clicking a suggestion shows its label
+# and the page sets the hidden latitude/longitude itself. Every write to those hidden values is
+# counted: the page's own, and any other (sent with the application, for the tests' oracle).
+#   (none)                the normal behaviour
+#   two / none            two suggestions exactly "Springfield" / none exactly it
+#   ignores               clicking a suggestion closes the list and sets nothing
+#   label_only            clicking shows the label but never sets the hidden values
+#   prefill               the location and its hidden values are set at load
+#   prefill_after_upload  they are set when the résumé upload is acknowledged ("autofill")
+_LOC_JS = """
+(() => {
+  const V = %LOC%, BASE = %BASE%;
+  const cb = document.getElementById('location');
+  const lb = document.getElementById('location-listbox');
+  const hidden = ['latitude', 'longitude'].map((h) => document.getElementById(h));
+  const W = window.__fxWrites = {page: 0, other: 0};
+  let mine = false;
+  const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  for (const h of hidden) {  // the property, and the attribute set from a script
+    Object.defineProperty(h, 'value', {configurable: true,
+      get() { return proto.get.call(this); },
+      set(v) { if (mine) W.page++; else W.other++; proto.set.call(this, v); }});
+    for (const m of ['setAttribute', 'removeAttribute', 'toggleAttribute']) {
+      h[m] = function (name, ...rest) {
+        if (String(name).toLowerCase() === 'value') { if (mine) W.page++; else W.other++; }
+        return Element.prototype[m].call(this, name, ...rest);
+      };
+    }
+  }
+  const setHidden = (vals) => { mine = true; hidden.forEach((h, i) => { h.value = vals[i]; });
+                                mine = false; };
+  const close = () => { lb.hidden = true; cb.setAttribute('aria-expanded', 'false'); };
+  const choose = (li) => {
+    if (V === 'ignores') { close(); return; }
+    cb.value = li.textContent; cb.dataset.value = li.textContent;
+    if (V !== 'label_only') setHidden([li.dataset.lat, li.dataset.lng]);
+    close();
+  };
+  const autofill = () => { cb.value = 'Springfield'; cb.dataset.value = 'Springfield';
+                           setHidden(['10.2500', '20.7500']); };
+  let seq = 0;
+  cb.addEventListener('input', () => {
+    const q = cb.value, my = ++seq;
+    delete cb.dataset.value;
+    setHidden(['', '']);  // typed text is not a chosen place
+    lb.replaceChildren(); lb.hidden = false; cb.setAttribute('aria-expanded', 'true');
+    if (!q.trim()) return;
+    lb.setAttribute('aria-busy', 'true');
+    const bar = document.createElement('li');
+    bar.setAttribute('role', 'progressbar'); bar.textContent = 'Searching';
+    lb.append(bar);
+    fetch(BASE + '/places?q=' + encodeURIComponent(q)).then((r) => r.json()).then((items) => {
+      if (my !== seq) return;
+      lb.replaceChildren();
+      items.forEach((it, i) => {
+        const li = document.createElement('li');
+        li.setAttribute('role', 'option'); li.id = 'location-opt-' + i;
+        li.dataset.value = it.id; li.dataset.lat = it.lat; li.dataset.lng = it.lng;
+        li.textContent = it.label;
+        li.setAttribute('aria-selected', i === 0 ? 'true' : 'false');  // the first: highlighted
+        li.addEventListener('click', () => choose(li));
+        lb.append(li);
+      });
+      lb.removeAttribute('aria-busy');
+    }).catch(() => { lb.removeAttribute('aria-busy'); });
+  });
+  if (V === 'prefill') autofill();
+  window.__fxLocAutofill = V === 'prefill_after_upload' ? autofill : null;
+})();
+"""
+
+
 def _form_page(board, job_id, token, cfg) -> HTMLResponse:
     j = JOBS[(board, job_id)]
     mode = cfg["mode"]
     base = f"/gh2/{board}/jobs/{job_id}"
-    qs = "".join(_render(q, mode) for q in j["questions"] + j["location_questions"])
+    qs = "".join(_render(q, mode, cfg) for q in j["questions"] + j["location_questions"])
+    if mode == "gh2_loc_search" and j["location_questions"]:
+        qs += ("<script>" + _LOC_JS.replace("%LOC%", json.dumps(cfg.get("loc") or ""))
+               .replace("%BASE%", json.dumps(base)) + "</script>")
     if mode == "gh2_two_steps":  # S5 (R2.10): the rest of the form is on a second page
         qs = "".join(_render(q, mode) for q in j["questions"][:STEP_ONE])
         qs += f'<a id="continue" href="{base}/step2?t={token}">Continue</a>'
@@ -615,7 +775,8 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
             qs += _extra_dropdown("extra-1", "How did you hear about this job?",
                                   ["Job board", "Referral", "Other"], True)
         qs += ("<script>" + _DD_JS.replace("%DD%", json.dumps(cfg.get("dd") or "click_popup"))
-               .replace("%DELAY%", str(int(cfg.get("delay_ms") or 0))) + "</script>")
+               .replace("%DELAY%", str(int(cfg.get("delay_ms") or 0)))
+               .replace("%BASE%", json.dumps(base)) + "</script>")
     if mode in ("gh2_widgets", "gh2_widget_variants"):
         # FIXTURE ASSUMPTIONS: two standalone labelled comboboxes not in the job data (one
         # required); lists are built when a combobox is opened (click) and removed on Escape.
@@ -721,6 +882,36 @@ def mount(app, ledger, cfg, accept) -> None:
         # loading when the form is first looked at).
         await asyncio.sleep(int(cfg.get("locale_delay_ms") or 0) / 1000)
         return JSONResponse({"locale": "fixture", "strings": {}})
+
+    @app.get("/gh2/{board}/jobs/{job_id}/places")
+    async def places(board: str, job_id: str, q: str = ""):
+        """D104: the location search's suggestions. The search text reached the employer: it
+        is recorded as a disclosure, as an upload is."""
+        job_or_404(board, job_id)
+        ledger.run("insert into disclosures (kind,slug,detail,created_at) values (?,?,?,?)",
+                   ("location_search", f"gh2-{board}-{job_id}", json.dumps({"q": q}),
+                    time.time()))
+        loc = cfg.get("loc")
+        if loc in ("two", "none"):
+            return JSONResponse(PLACES_TWO if loc == "two" else PLACES_NONE)
+        want = " ".join(q.split()).casefold()
+        return JSONResponse([p for p in PLACES if p["label"].casefold().startswith(want)]
+                            if want else [])
+
+    @app.api_route("/gh2/{board}/jobs/{job_id}/dd-options/{qid}.json", methods=["GET", "POST"])
+    async def dd_options(board: str, job_id: str, qid: str):
+        """D104: options for a dropdown that loads them when opened (dd late_*)."""
+        job_or_404(board, job_id)
+        q = next((q for q in JOBS[(board, job_id)]["questions"]
+                  if q["fields"][0]["name"] == qid), None)
+        if q is None:
+            raise HTTPException(404)
+        if cfg.get("dd") == "late_never":
+            await asyncio.sleep(30)
+        pairs = [[str(v["value"]), v["label"]] for v in q["fields"][0]["values"]]
+        if cfg.get("dd") == "late_differ":
+            pairs.append(["999", "Prefer not to say"])
+        return JSONResponse(pairs)
 
     @app.get("/gh2/{board}/jobs/{job_id}/options.json")
     def widget_options(board: str, job_id: str):  # must never be reached during inspection
@@ -831,6 +1022,8 @@ def mount(app, ledger, cfg, accept) -> None:
                 else fields.get(name)
             if not got:
                 missing.append(q["label"])
+        if cfg["mode"] == "gh2_phone_country" and not fields.get("phone-country"):
+            missing.append("Country code")  # D104: the stand-in requires its picker
         if cfg["mode"] == "gh2_challenge_after_submit":  # S5: each final click is recorded
             ledger.run("insert into disclosures (kind,slug,detail,created_at) values (?,?,?,?)",
                        ("submit_challenged", f"gh2-{board}-{job_id}", "", time.time()))

@@ -167,15 +167,16 @@ def test_unreadable_required_status_stops_safely(api, receiver, monkeypatch):
 
 
 def test_approval_bound_to_an_earlier_adapter_version_is_retired(api, receiver):
-    """The required rule (v2) and the dropdown strategies (v3) changed what the adapter does:
-    an approval given under an earlier version is refused at queueing and retired."""
+    """The required rule (v2), the dropdown strategies (v3) and the D104 stand-in controls (v4)
+    changed what the adapter does: an approval given under an earlier version is refused at
+    queueing and retired."""
     import uuid
 
     from app.core.db import SessionLocal
     from app.modules.execution import policy
     from app.modules.preparation.models import PackageApproval
 
-    assert policy.ADAPTER_VERSIONS["greenhouse_dom"].startswith("greenhouse-dom-3+")
+    assert policy.ADAPTER_VERSIONS["greenhouse_dom"].startswith("greenhouse-dom-4+")
     app_id = v2_application(api)
     with SessionLocal() as db:
         a = (db.query(PackageApproval)

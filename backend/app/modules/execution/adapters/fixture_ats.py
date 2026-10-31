@@ -224,14 +224,20 @@ class FixtureAtsAdapter:
         }
 
 
-class UploadFailed(RuntimeError):
-    """An upload was not acknowledged as accepted. `disclosures`: the evidence of every upload
-    this attempt made, the failed one included, since its data may have reached the employer
-    anyway. The runner records it before stopping."""
+class StoppedAfterDisclosure(RuntimeError):
+    """Filling stopped after something may have reached the employer. `disclosures`: the
+    evidence of every disclosure this attempt made, the last one included. The runner records
+    them, then abandons the attempt with this message (never retried)."""
 
     def __init__(self, message: str, disclosures: list[dict] | None = None):
         super().__init__(message)
         self.disclosures = list(disclosures or [])
+
+
+class UploadFailed(StoppedAfterDisclosure):
+    """An upload was not acknowledged as accepted. `disclosures`: the evidence of every upload
+    this attempt made, the failed one included, since its data may have reached the employer
+    anyway. The runner records it before stopping."""
 
 
 # How the destination acknowledged an upload, as a fixed value: never the page's text or its
