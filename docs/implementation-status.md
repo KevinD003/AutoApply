@@ -205,6 +205,10 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   separate databases and ports.
 - **CI recorded:** **CI #141** on `be16318` (run 41193378664) and **CI #142** on `f70f435` (run
   41196286997) passed on all four jobs (backend, frontend, docker-smoke, execution-compose).
+  **CI #143** on `d65e976` (run 41236104409), D103 itself, passed on all four jobs, including:
+  - the new steps that create the disposable test and e2e databases with `tests/isolation.py`;
+  - importing the API and worker with production dependencies only;
+  - the backend tests (34 min).
 - **Validation** (`VALIDATE_LOG_DIR=/tmp/v103 scripts/validate.sh all`, on `3eb9789`, each suite on
   a disposable database the script created and dropped):
   - lint, format, typecheck and eslint: ok;
