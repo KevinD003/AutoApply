@@ -66,7 +66,10 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     `test_preparation.py`, `test_repo_hygiene.py`, `test_forbidden_capabilities.py`:
     **197 passed**.
 - **CI recorded:** **CI #144** on `f9a6f56` (run 41243717835), D104, passed on all four jobs.
-- **Validation:** see below.
+- **Full validation** (`VALIDATE_LOG_DIR=/tmp/v105 scripts/validate.sh all`, the tree of `71fb66b`,
+  each suite on a disposable database the script created and dropped): lint, format, typecheck
+  and eslint ok; backend **4,158 passed** (1h01m46s); Playwright **131 passed, 2 skipped**
+  (12.2 min, the new review spec included).
 
 ## Greenhouse controls on local stand-ins: phone country, location search, late options (D104, 2026-10-31; local stand-ins only)
 
