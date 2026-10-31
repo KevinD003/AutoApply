@@ -87,6 +87,16 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   sink could not start because its port (8796) was held by a backend test run I had started in
   another worktree on that port; run alone afterwards, `e2e/email.spec.ts` **2 passed**. The
   pushed commits differ from `5beb7da` only in that test and in documentation.
+- **CI #140 on `5581439` (run 41190056397): failed.** Backend and frontend passed; both Docker
+  jobs (`docker-smoke`, `execution-compose`) failed because the API could not start in the
+  image: the Gmail reader and its connect command imported `httpx`, which only the development
+  dependencies install (the image runs `uv sync --no-dev`). Every local and CI test run had it,
+  so nothing else caught it. Fixed: both use the standard library, through the same
+  public-address and fixture openers as the other server-side reads (`public_https_opener`,
+  `fixture_opener`), and a new guard, `tests/test_runtime_dependencies.py`, fails when any module
+  under `app/` imports a package only the `dev` group provides (put back, `import httpx` fails
+  it). After the fix: `test_inbox.py`, `test_forbidden_capabilities.py`, `test_repo_hygiene.py`
+  **166 passed**; the new guard **1 passed**.
 - **Not verified:** a real mailbox, a real application system's code email or a real employer's
   reply (a local stand-in of Gmail's API only); the wording rules against real mail.
 - **Earlier commit, recorded here:** D100 (`3b6d370`), through `scripts/validate.sh all`: lint,
