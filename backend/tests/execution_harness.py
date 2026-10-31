@@ -45,11 +45,17 @@ class Receiver:
             stderr=subprocess.DEVNULL,
         )
         for _ in range(100):
+            if self.proc.poll() is not None:  # it could not listen: never use what answers there
+                raise RuntimeError(f"receiver could not start on port {RECEIVER_PORT}")
             try:
                 with socket.create_connection(("127.0.0.1", RECEIVER_PORT), timeout=0.2):
+                    pass
+                # Only this receiver knows this run's admin token.
+                if httpx.get(f"{BASE}/_admin/ledger", headers=self._h(), timeout=2).is_success:
                     return
-            except OSError:
-                time.sleep(0.1)
+            except (OSError, httpx.HTTPError):
+                pass
+            time.sleep(0.1)
         raise RuntimeError("receiver did not start")
 
     def _h(self):
@@ -80,10 +86,17 @@ PILOT_SETTINGS = ("live_greenhouse_enabled", "live_owner_emails", "live_greenhou
                   "live_greenhouse_test_api_base")  # fmt: skip
 
 
-def pilot_on(owner: str = "synthetic.user@example.com") -> None:
+PILOT_PERMISSIONS = ("read", "open", "disclose", "submit")
+
+
+def pilot_on(owner: str = "synthetic.user@example.com", permitted=PILOT_PERMISSIONS) -> None:
     """D102: the Greenhouse pilot on for `owner` (the `api` fixture's account), with the
     receiver's second Greenhouse-style approximation playing a real board host and its Job Board
-    API. Test environment only; conftest turns it off after every test."""
+    API. D103: with a synthetic record of the owner's permission for `permitted` (none: the
+    switch alone). Test environment only; conftest turns it off after every test."""
+    from datetime import date
+
+    from app.core import authorizations
     from app.core.config import get_settings
 
     s = get_settings()
@@ -91,6 +104,14 @@ def pilot_on(owner: str = "synthetic.user@example.com") -> None:
     s.live_owner_emails = [owner]
     s.live_greenhouse_test_board_base = f"{BASE}/gh2"
     s.live_greenhouse_test_api_base = f"{BASE}/gh2-api"
+    authorizations.RECORDED = tuple(
+        a for a in authorizations.RECORDED if a.what != authorizations.GREENHOUSE_PILOT
+    )
+    if permitted:
+        authorizations.RECORDED += (authorizations.Authorization(
+            what=authorizations.GREENHOUSE_PILOT, decision="TEST", given_on=date(2000, 1, 1),
+            words="(synthetic: tests only)", actions=frozenset(permitted),
+            data="synthetic test data only", ends_on=None),)  # fmt: skip
 
 
 def synthetic_candidate(api) -> None:

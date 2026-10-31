@@ -21,12 +21,11 @@ from app.core.db import engine
 from app.modules.audit import repair
 from app.modules.audit.repair import AuditRepairError, repair_meta
 from app.modules.audit.service import ref
+from tests import isolation
 
-ADMIN = os.environ.get(
-    "NOEFFORTS_TEST_ADMIN_URL", "postgresql+psycopg://postgres@127.0.0.1:5432/postgres"
-)
-NAME = "noefforts_audit_repair_migration_test"
-URL = ADMIN.rsplit("/", 1)[0] + f"/{NAME}"
+# D103: this run's own sibling database (tests/isolation.py), never one named alone.
+TEST_DB = os.environ["NOEFFORTS_TEST_DATABASE_URL"]
+URL = isolation.sibling(TEST_DB, "audit_repair")
 BEFORE = "955a3214d25a"  # the revision before the repair
 BACKEND = os.path.join(os.path.dirname(__file__), "..")
 
@@ -185,17 +184,11 @@ def alembic(*args: str) -> str:
 
 @pytest.fixture
 def disposable():
-    assert NAME.endswith("_migration_test")  # never touch anything else
-    admin = create_engine(ADMIN, isolation_level="AUTOCOMMIT")
-    with admin.connect() as c:
-        c.execute(text(f"DROP DATABASE IF EXISTS {NAME} WITH (FORCE)"))
-        c.execute(text(f"CREATE DATABASE {NAME}"))
+    isolation.recreate_sibling(TEST_DB, "audit_repair")
     eng = create_engine(URL)
     yield eng
     eng.dispose()
-    with admin.connect() as c:
-        c.execute(text(f"DROP DATABASE IF EXISTS {NAME} WITH (FORCE)"))
-    admin.dispose()
+    isolation.drop_sibling(TEST_DB, "audit_repair")
 
 
 def repair_line(out: str, what: str = "audit metadata repair") -> str:

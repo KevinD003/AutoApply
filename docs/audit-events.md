@@ -225,8 +225,8 @@ event's metadata:
 | Rehearsal records | until their application or user is deleted (`ON DELETE CASCADE`) | counts and fixed values only; revoked, not deleted, when the user deletes the application's evidence; a record whose evidence has been purged no longer holds (`rehearsal_evidence_missing`) |
 | Sessions | until expiry | purged hourly by `purge-expired-sessions` |
 | Uploaded documents | until deleted: one version, or every version (C17, D70); refused while a live approval or a running attempt needs it | the row and the file under `NOEFFORTS_STORAGE_DIR` (default `./var/storage`, ignored by git) are deleted, and any application's choice of it; past package versions keep the id, version, size, type, digest and the name they showed |
-| Test database `noefforts_test` | one test run | the schema is dropped and recreated at the start of every run; tables are truncated after each test |
-| Migration test databases (names ending `_migration_test`) | one test | created and dropped by the tests |
-| End-to-end database `noefforts_e2e` | reused across runs | each run creates new synthetic accounts; drop the database to reset it |
+| Test databases (D103: owned by the test-only role `noefforts_tester`, marked `noefforts-disposable-test run=<id>`) | one test run | the schema is dropped and recreated at the start of every run, only after the run has claimed the database; tables are truncated after each test; `python -m tests.isolation drop --run <id>` drops only the databases marked with that run (docs/test-isolation.md) |
+| Migration test databases (`<test database>_<purpose>_migration_test`, marked with the same run) | one test | created and dropped by the tests, only when marked with their own run |
+| End-to-end database `noefforts_e2e_test` (marked, test-only role) | reused across runs, or one per `scripts/validate.sh` run | each run creates new synthetic accounts; the API claims it before migrating |
 | Docker Compose data | until removed | `docker compose down -v` removes the `pgdata` and `storage` volumes |
 | Compose execution test stack | one run | removed with `down -v` by the script's exit trap |

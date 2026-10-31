@@ -28,12 +28,15 @@ Job-discovery and application platform for any profession. Read these first:
 - `extension/` — capture-only Chromium extension (D90), tested by `frontend/e2e/extension.spec.ts`.
 
 ### Commands
-- Backend tests: `cd backend && uv run pytest` (needs Postgres DB `noefforts_test`; it is wiped).
+- Backend tests: `cd backend && eval "$(uv run python -m tests.isolation create --export)" && uv run pytest`
+  (a disposable database of its own; there is no default; `docs/test-isolation.md`). Several runs at
+  once need different `NOEFFORTS_TEST_RECEIVER_PORT`/`_CANARY_PORT`/`_BROKER_PORT`; a clash is refused.
 - Lint: `cd backend && uv run ruff check . && uv run ruff format --check .`
 - Frontend: `cd frontend && npx tsc --noEmit && npm run lint`
 - Validation with honest exit codes: `scripts/validate.sh quick` (or `all`); never trust a
   `| tail` of a check.
-- E2E: `cd frontend && npx playwright test` (needs DB `noefforts_e2e`; in the cloud sandbox set
+- E2E: `cd frontend && npx playwright test` (needs the disposable DB `noefforts_e2e_test`, made with
+  `uv run python -m tests.isolation create --name noefforts_e2e_test --run e2e`; in the cloud sandbox set
   `PW_CHROMIUM_PATH=$(ls -d /opt/pw-browsers/chromium-*/chrome-linux/chrome | head -1)`).
 - New migration: `cd backend && uv run alembic revision --autogenerate -m "..."`, then review it.
 - Cloud sandbox has no Postgres service: initialise one with `initdb` as the `postgres` user

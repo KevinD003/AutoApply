@@ -219,7 +219,7 @@ def capture_greenhouse_form(
     real = live.posting(url)
     if real is not None and live.environment_refusal() != "not_enabled":
         # D102: the Greenhouse pilot is switched on: a real job post is read through it alone.
-        why = live.refusal(user)
+        why = live.refusal(user, ("read",))  # D103: reading is permission 1, on its own
         if why:
             raise conflict(f"{live.WHY[why]} Apply on the employer's site and record it in the "
                            "tracker.")  # fmt: skip

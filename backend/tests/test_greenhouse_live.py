@@ -228,3 +228,108 @@ def test_switching_the_pilot_off_stops_an_approved_application_before_anything_i
         policy.adapter_for({"form_source": "greenhouse_live", "origin": BASE,
                             "submit_url": f"{BASE}/x", "url": f"{BASE}/gh2/b/jobs/1"})  # fmt: skip
     assert e.value.code == "live_not_enabled"
+
+
+# -- D103: switched on is not authorized ----------------------------------------------------------
+
+
+def _reason(aid) -> str | None:
+    """The reason code kept on the attempt's outcome event."""
+    import uuid
+
+    from app.modules.execution.models import AttemptEvent
+
+    with SessionLocal() as db:
+        (e,) = db.query(AttemptEvent).filter(AttemptEvent.attempt_id == uuid.UUID(aid),
+                                             AttemptEvent.kind.like("outcome_%")).all()  # fmt: skip
+        return e.detail.get("reason_code")
+
+
+def test_the_switch_alone_reads_opens_and_sends_nothing(api, receiver, monkeypatch):
+    """The owner's switch, the owner's account and the stand-in board, but no recorded
+    permission: the job post is not read, the route says why, and nothing reaches the board."""
+    pilot_on(OWNER, permitted=())
+    called = []
+    monkeypatch.setattr(live, "fetch", lambda url: called.append(url) or b"")
+    job = v2_job(api)
+    r = api.post(f"/jobs/{job}/form/greenhouse")
+    assert r.status_code == 409 and "recorded permission" in r.text
+    assert called == [] and forms(job) == []
+    route = api.get(f"/jobs/{job}/route").json()
+    assert (route["route"], route["reason"]) == ("manual_handoff", "live_not_authorized")
+    with pytest.raises(policy.UnsupportedDestination) as e:
+        policy.adapter_for({"form_source": "greenhouse_live", "origin": BASE,
+                            "submit_url": f"{BASE}/x", "url": f"{BASE}/gh2/b/jobs/1"})  # fmt: skip
+    assert e.value.code == "live_not_authorized"
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+def test_permission_to_read_is_not_permission_to_open_or_fill(api, receiver):
+    """Reading the job post (permission 1) captures the form; nothing can be queued on it."""
+    pilot_on(OWNER, permitted=("read",))
+    job = v2_job(api)
+    assert api.post(f"/jobs/{job}/form/greenhouse").status_code == 201
+    assert api.get(f"/jobs/{job}/route").json()["reason"] == "live_not_authorized"
+    app_id = live_application(api, approve=False)
+    pilot_on(OWNER, permitted=("read",))  # live_application turned every permission on
+    assert approve(api, app_id, "disclose_only").status_code == 200  # your approval: yours
+    r = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
+    assert r.status_code == 409 and "recorded permission" in r.text  # but nothing can run
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+def test_a_permission_that_ends_after_queueing_stops_before_the_page_is_opened(api, receiver):
+    aid = queue(api, live_application(api))  # every permission, at queueing
+    pilot_on(OWNER, permitted=("read",))  # then only reading
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert _reason(aid) == "live_not_authorized"
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0  # the page never even got a value
+
+
+def test_permission_to_disclose_is_not_permission_to_submit(api, receiver):
+    """A rehearsal may run with permissions 1-3; an approval to submit cannot be queued without
+    permission 4, and permission 4 withdrawn after queueing stops at the send gate: the page was
+    filled (that was permitted), the final click never happened."""
+    app_id = live_application(api, approve=False)
+    pilot_on(OWNER, permitted=("read", "open", "disclose"))
+    assert approve(api, app_id, "disclose_only").status_code == 200
+    assert runner.run_attempt(queue(api, app_id), "w1") == "rehearsed"
+    led = receiver.ledger()
+    assert led["disclosures"] and led["accepted"] == 0
+    assert approve(api, app_id).status_code == 200  # your approval to submit: still needed too
+    r = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
+    assert r.status_code == 409 and "recorded permission" in r.text
+    pilot_on(OWNER)  # permission 4 recorded: it queues
+    aid = queue(api, app_id)
+    pilot_on(OWNER, permitted=("read", "open", "disclose"))  # and withdrawn before the click
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    assert _reason(aid) == "live_not_authorized"
+    assert receiver.ledger()["accepted"] == 0
+
+
+@pytest.mark.parametrize(
+    "destination",
+    [
+        # A real employer's own site, captured from its page: no adapter, pilot or not.
+        {"form_source": "html", "origin": "https://careers.example.com",
+         "submit_url": "https://careers.example.com/apply", "url": "https://careers.example.com/j/1"},
+        # A real Greenhouse board in the test environment: real hosts are production-only.
+        {"form_source": "greenhouse_live", "origin": "https://job-boards.greenhouse.io",
+         "submit_url": "https://job-boards.greenhouse.io/exampleboard/jobs/4000001",
+         "url": GH_REAL},
+        # The pilot's form source on another host than a Greenhouse board.
+        {"form_source": "greenhouse_live", "origin": "https://careers.example.com",
+         "submit_url": "https://careers.example.com/apply", "url": "https://careers.example.com/j/1"},
+    ],
+)  # fmt: skip
+def test_every_permission_recorded_still_refuses_every_other_real_destination(destination):
+    """D103: the register widens nothing: with all four permissions recorded and the switch on,
+    a destination that is not the pilot's stand-in (here) or a Greenhouse board (production) is
+    refused as before."""
+    pilot_on(OWNER)
+    with pytest.raises(policy.UnsupportedDestination) as e:
+        policy.adapter_for(destination)
+    assert e.value.code in ("real_destination_disabled", "no_captured_destination")

@@ -124,17 +124,27 @@ class MailSink:
                 pass
 
     def start(self, host: str = "127.0.0.1", port: int = 0) -> int:
-        """Serves in a daemon thread; returns the port."""
+        """Serves in a daemon thread; returns the port. Raises if it cannot listen (D103: a port
+        held by another test run once made the sink fail silently and every mail vanish)."""
         ready = threading.Event()
+        failed: list[BaseException] = []
 
         def run() -> None:
             loop = asyncio.new_event_loop()
             self._loop = loop
-            server = loop.run_until_complete(asyncio.start_server(self._handle, host, port))
+            try:
+                server = loop.run_until_complete(asyncio.start_server(self._handle, host, port))
+            except OSError as e:
+                failed.append(e)
+                ready.set()
+                return
             self.port = server.sockets[0].getsockname()[1]
             ready.set()
             loop.run_forever()
 
         threading.Thread(target=run, daemon=True, name="mail-sink").start()
-        ready.wait(10)
+        if not ready.wait(10):
+            raise RuntimeError("the mail sink did not start")
+        if failed:
+            raise RuntimeError(f"the mail sink cannot listen on {host}:{port}") from failed[0]
         return self.port

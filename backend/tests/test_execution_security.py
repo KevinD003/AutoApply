@@ -21,6 +21,7 @@ from app.modules.execution import runner
 from app.modules.execution.models import Checkpoint
 from app.modules.execution.policy import UnsupportedDestination, adapter_for
 from app.modules.preparation.models import ApplicationPackage
+from tests.conftest import CANARY_PORT
 from tests.execution_harness import (
     BACKEND,
     BASE,
@@ -32,7 +33,6 @@ from tests.execution_harness import (
 )
 
 FAKE_SECRET = "SYNTHETIC-SECRET-7F3A9-DO-NOT-LEAK"
-CANARY_PORT = 8798
 
 
 @pytest.fixture(scope="module")

@@ -44,11 +44,11 @@ from app.modules.execution.browser import IsolationUnavailable, browser_session
 from app.modules.execution.sandbox import egress_proxy, proxy_service
 from app.modules.execution.sandbox.egress_proxy import EgressProxy
 from app.modules.preparation import lever
-from tests.conftest import RECEIVER_PORT
+from tests.conftest import CANARY_PORT, RECEIVER_PORT
 from tests.execution_harness import BASE, Receiver, attempt, queue, synthetic_candidate
 from tests.test_lever_adapter import lever_application, lever_job
 
-CANARY = 8798
+CANARY = CANARY_PORT
 NAMED = f"http://receiver:{RECEIVER_PORT}"  # the Compose receiver's name, here on loopback
 TEST_NET = parse_fixture_networks(["10.231.47.0/24"])
 _real_getaddrinfo = socket.getaddrinfo

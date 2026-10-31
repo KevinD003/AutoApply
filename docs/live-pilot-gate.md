@@ -1,13 +1,15 @@
 # Live pilot gate (proposal — not executed, not approved)
 
-> **D102 (2026-10-31):** for Greenhouse, the owner asked for automatic applications; the
-> Greenhouse pilot (`docs/greenhouse-live.md`) is built and off. It keeps this gate's structure
-> per application rather than per named employer: the owner's switch replaces §1's single named
-> employer, your approval of each package names the employer, job and destination (§1), an
-> approval to fill and check only is permission 3 (the rehearsal, required first on each
-> employer's path) and a separate approval to submit is permission 4. §5-§7 apply unchanged
-> (`container` isolation and production are enforced in `execution/live.py`). Nothing has run on
-> a real page. Every other real destination stays refused.
+> **D102 (2026-10-31), corrected by D103:** the Greenhouse pilot (`docs/greenhouse-live.md`) is
+> built and off. D102 said the owner's switch replaces §1's single named employer. **That was
+> wrong, and D103 withdraws it.** A request to build the feature does not grant this gate's
+> permissions. No posting has been named under §1, and none of the permissions in §2 has been
+> given. Each permission is now a separate entry in the register of the owner's recorded
+> authorizations (`backend/app/core/authorizations.py`, empty). The pilot checks it at capture,
+> queueing, before the page opens and at both gates (`live_not_authorized`), whatever the switch
+> says. Your approval of each package is still needed as well. A rehearsal approval is still not
+> an approval to submit. §5-§7 apply unchanged. Nothing has run on a real page. Every other real
+> destination stays refused. What activation still needs: `docs/activation-status.md`.
 
 A live pilot means the first real disclosure and submission to a real employer. Nothing in this
 repository performs one today: real destinations are refused in code (`policy.adapter_for`),

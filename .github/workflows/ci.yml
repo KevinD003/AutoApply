@@ -22,8 +22,6 @@ jobs:
     defaults:
       run:
         working-directory: backend
-    env:
-      NOEFFORTS_TEST_DATABASE_URL: postgresql+psycopg://postgres@127.0.0.1:5432/noefforts_test
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -38,8 +36,16 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Install Chromium for Playwright (Python)
         run: uv run playwright install --with-deps chromium
-      - name: Create test database
-        run: psql -h 127.0.0.1 -U postgres -c "create database noefforts_test"
+      - name: Create the disposable test database (test-only role, marked; tests/isolation.py)
+        # NOEFFORTS_TEST_DATABASE_URL has no default (D103); this exports it for the steps below.
+        run: uv run python -m tests.isolation create --name noefforts_test --run ci >> "$GITHUB_ENV"
+      - name: Import the API and worker with production dependencies only (as the image installs)
+        env:
+          UV_PROJECT_ENVIRONMENT: /tmp/production-venv
+          NOEFFORTS_AUDIT_REF_KEY: ci-production-import-check-key-0123456789
+        run: |
+          uv sync --frozen --no-dev --python 3.12
+          uv run --no-sync python -c "import app.main, app.worker, app.modules.inbox.connect"
       - name: Lint
         run: uv run ruff check . && uv run ruff format --check .
       - name: Tests (unit, API, migrations, execution, real Celery worker)
@@ -73,8 +79,9 @@ jobs:
         run: uv sync --frozen --python 3.12 && uv run playwright install chromium
       - name: Allow unprivileged user namespaces (the worker's browser runs in its own netns)
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - name: Create e2e database
-        run: psql -h 127.0.0.1 -U postgres -c "create database noefforts_e2e"
+      - name: Create the disposable e2e database (test-only role, marked; tests/isolation.py)
+        working-directory: backend
+        run: uv run python -m tests.isolation create --name noefforts_e2e_test --run e2e
       - name: Install
         working-directory: frontend
         run: npm ci

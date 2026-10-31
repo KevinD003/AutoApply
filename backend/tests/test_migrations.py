@@ -1,4 +1,4 @@
-"""Migration tests on a separate, disposable database (name must end in _migration_test).
+"""Migration tests on a separate, disposable database: this run's own (tests/isolation.py).
 
 1. empty -> head
 2. populated Phase A snapshot -> head, data preserved
@@ -23,22 +23,18 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
 
-ADMIN = os.environ.get(
-    "NOEFFORTS_TEST_ADMIN_URL", "postgresql+psycopg://postgres@127.0.0.1:5432/postgres"
-)
-NAME = "noefforts_migration_test"
-URL = ADMIN.rsplit("/", 1)[0] + f"/{NAME}"
+from tests import isolation
+
+# D103: this run's own sibling database, named after its test database and marked with its run id
+# (tests/isolation.py); created and dropped by the test role, never by name alone.
+TEST_DB = os.environ["NOEFFORTS_TEST_DATABASE_URL"]
+URL = isolation.sibling(TEST_DB, "schema")
 PHASE_A = "c7b625a61ac2"
 HERE = os.path.dirname(__file__)
 
 
 def _recreate():
-    assert NAME.endswith("_migration_test")  # never touch anything else
-    eng = create_engine(ADMIN, isolation_level="AUTOCOMMIT")
-    with eng.connect() as c:
-        c.execute(text(f"DROP DATABASE IF EXISTS {NAME} WITH (FORCE)"))
-        c.execute(text(f"CREATE DATABASE {NAME}"))
-    eng.dispose()
+    isolation.recreate_sibling(TEST_DB, "schema")
 
 
 def _cfg():

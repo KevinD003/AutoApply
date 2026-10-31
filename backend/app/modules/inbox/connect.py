@@ -66,12 +66,21 @@ def auth_url(client: dict, redirect_uri: str, state: str, challenge: str) -> str
         "code_challenge": challenge, "code_challenge_method": "S256"})  # fmt: skip
 
 
+MAX_REPLY = 1_000_000  # the largest token-endpoint answer read
+
+
 class _Reply:
     def __init__(self, status: int, body: bytes):
         self.status_code, self._body = status, body
 
     def json(self):
-        return json.loads(self._body)
+        """The answer as a JSON object; {} for anything else (never an exception that could
+        carry the answer's text)."""
+        try:
+            body = json.loads(self._body)
+        except ValueError:
+            return {}
+        return body if isinstance(body, dict) else {}
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -87,11 +96,14 @@ def _post(url: str, timeout: float, data: dict) -> _Reply:
         with public_https_opener(urlsplit(url).hostname, _NoRedirect).open(
             req, timeout=timeout
         ) as r:
-            return _Reply(r.status, r.read(1_000_001))
+            body = r.read(MAX_REPLY + 1)
     except urllib.error.HTTPError as e:
         return _Reply(e.code, b"{}")
     except (UnsafeURL, urllib.error.URLError, TimeoutError, OSError):
         raise ConnectError("Google's token endpoint could not be reached safely.") from None
+    if len(body) > MAX_REPLY:  # never a truncated answer read as if it were whole
+        raise ConnectError("Google's token endpoint answered with more than expected.")
+    return _Reply(r.status, body)
 
 
 def exchange(client: dict, code: str, redirect_uri: str, verifier: str, post=_post) -> dict:

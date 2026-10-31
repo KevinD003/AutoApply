@@ -50,13 +50,16 @@ REASONS = {
     "live_not_for_this_account": "the Greenhouse pilot is for the server owner's account only",
     "live_needs_production": "the Greenhouse pilot runs only in production mode",
     "live_needs_container": "the Greenhouse pilot needs the browser's container isolation",
+    # D103: switched on is not authorized; each step needs the owner's recorded permission.
+    "live_not_authorized": "the owner has not recorded permission for the Greenhouse pilot",
 }
 AUTHORIZATION_STATES = ("granted", "none", "not_applicable")
 # D102: why the Greenhouse pilot does not apply (live.WHY codes) as reason codes.
 LIVE_REASONS = {"not_enabled": "live_not_enabled",
                 "not_for_this_account": "live_not_for_this_account",
                 "needs_production": "live_needs_production",
-                "needs_container": "live_needs_container"}  # fmt: skip
+                "needs_container": "live_needs_container",
+                "not_authorized": "live_not_authorized"}  # fmt: skip
 
 
 @dataclass

@@ -8,16 +8,18 @@ import os
 import pytest
 from sqlalchemy import select
 
+from app.core import authorizations
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.modules.applications.models import ApplicationEvent
 from app.modules.audit.models import AuditEvent
 from app.modules.execution import runner
-from app.modules.execution.models import Checkpoint
+from app.modules.execution.models import Checkpoint, ExecutionAttempt, OutboxMessage
 from app.modules.identity.models import User
 from app.modules.inbox import connect, rules, service
 from app.modules.inbox.models import InboxEvent
 from app.modules.inbox.provider import SCOPE, GmailReader, InboxUnavailable
+from tests.authorized import authorize, unauthorize
 from tests.execution_harness import BASE, Receiver, prepared_application, queue
 from tests.test_execution_security import open_checkpoint, start_worker, wait_for
 
@@ -51,14 +53,16 @@ def connected(monkeypatch, tmp_path):
                  ("inbox_token_url", f"{BASE}/inbox-fixture/token"),
                  ("inbox_code_senders", ["codes.example"])):  # fmt: skip
         monkeypatch.setattr(s, k, v)
+    authorize(monkeypatch, authorizations.INBOX)  # synthetic: the shipped register is empty
     return token
 
 
-def deliver(receiver, sender, subject, text):
+def deliver(receiver, sender, subject, text, at=None):
+    """A synthetic message in the stand-in mailbox; `at`: when it arrived (epoch seconds)."""
     import httpx
 
     r = httpx.post(f"{BASE}/_admin/inbox", headers=receiver._h(),
-                   json={"sender": sender, "subject": subject, "text": text})  # fmt: skip
+                   json={"sender": sender, "subject": subject, "text": text, "at": at})  # fmt: skip
     r.raise_for_status()
 
 
@@ -199,6 +203,76 @@ def test_a_code_from_another_sender_or_two_codes_are_left_to_you(api, receiver, 
     assert out.strip() == "confirmed", err[-800:]
 
 
+def _force_on(user_id) -> None:
+    """Both uses on, as they would be if turned on before an authorization ended."""
+    with SessionLocal() as db:
+        st = service.settings_of(db, user_id)
+        st.codes_enabled = st.tracking_enabled = True
+        db.commit()
+
+
+def test_switched_on_and_connected_is_not_authorized(api, receiver, connected, monkeypatch):
+    """D103: the owner's switch, the owner's account and a connection are not an authorization.
+    Without one nothing is read, by the API, the worker or a direct call, and a code you type
+    yourself still completes the step."""
+    unauthorize(monkeypatch)
+    v = api.get("/inbox").json()
+    assert v["available"] is False and "recorded authorization" in v["why_not"]
+    for body in ({"codes_enabled": True, "tracking_enabled": False},
+                 {"codes_enabled": False, "tracking_enabled": True}):  # fmt: skip
+        assert api.put("/inbox", json=body).status_code == 409
+    assert api.post("/inbox/check").status_code == 409
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    receiver.config(mode="otp", email_codes=CODE_SENDER)
+    _force_on(user().id)
+    deliver(receiver, EMPLOYER, "Interview", "We would like to schedule an interview with you.")
+    w = start_worker(aid)
+    cp = open_checkpoint(api, app_id, 1)
+    real = wait_for(lambda: receiver.ledger()["challenges"])[-1]["code"]
+    assert fill() == 0
+    with SessionLocal() as db:
+        assert service.check(db, db.get(User, user().id)) == {"skipped": "not_authorized"}
+        assert service.due(db) == []
+    assert service.inbox_tick() == {"codes": 0, "reads": 0, "errors": 0}
+    assert receiver.ledger()["inbox_requests"] == [] and events() == []  # nothing even asked
+    r = api.post(f"/applications/{app_id}/checkpoints/{cp['id']}/code",
+                 json={"round": 1, "code": real})  # fmt: skip
+    assert r.status_code == 202  # manual entry is unaffected
+    out, err = w.communicate(timeout=60)
+    assert out.strip() == "confirmed", err[-800:]
+
+
+def test_each_use_needs_its_own_authorization(api, receiver, connected, monkeypatch):
+    """Reading application emails does not authorize codes; reading code emails does not
+    authorize entering one."""
+    unauthorize(monkeypatch)
+    authorize(monkeypatch, authorizations.INBOX, "read_application_email", "read_codes")
+    assert api.get("/inbox").json()["available"] is True
+    codes = {"codes_enabled": True, "tracking_enabled": False}
+    assert api.put("/inbox", json=codes).status_code == 409
+    tracking = {"codes_enabled": False, "tracking_enabled": True}
+    assert api.put("/inbox", json=tracking).status_code == 200
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    receiver.config(mode="otp", email_codes=CODE_SENDER)
+    _force_on(user().id)
+    w = start_worker(aid)
+    cp = open_checkpoint(api, app_id, 1)
+    real = wait_for(lambda: receiver.ledger()["challenges"])[-1]["code"]
+    assert fill() == 0  # no code read, none entered
+    assert not [r for r in receiver.ledger()["inbox_requests"] if r["route"] != "token"]
+    r = api.post(f"/applications/{app_id}/checkpoints/{cp['id']}/code",
+                 json={"round": 1, "code": real})  # fmt: skip
+    assert r.status_code == 202
+    out, err = w.communicate(timeout=60)
+    assert out.strip() == "confirmed", err[-800:]
+    unauthorize(monkeypatch)
+    authorize(monkeypatch, authorizations.INBOX, "read_codes", "enter_codes")
+    assert api.put("/inbox", json=tracking).status_code == 409
+    assert api.post("/inbox/check").status_code == 409
+
+
 def test_codes_are_never_read_while_turned_off(api, receiver, connected):
     app_id = prepared_application(api, receiver)  # codes are off by default
     aid = queue(api, app_id)
@@ -274,8 +348,11 @@ def test_a_received_email_settles_a_submission_of_unknown_outcome_when_you_confi
     assert receiver.ledger()["accepted"] == 1
     assert api.get(f"/applications/{app_id}").json()["state"] == "submitted_unconfirmed"
     api.put("/inbox", json={"codes_enabled": False, "tracking_enabled": True})
+    with SessionLocal() as db:
+        attempts = db.query(ExecutionAttempt).count()
+        outbox = db.query(OutboxMessage).count()
     deliver(receiver, EMPLOYER, "Thank you for applying to Example Health Clinic",
-            "We have received your application and will review it shortly.")  # fmt: skip
+            "We have received your application for Clinic Assistant.")  # fmt: skip
     v = api.post("/inbox/check").json()
     assert v["result"] == {"proposed": 1}
     (e,) = v["events"]
@@ -292,13 +369,20 @@ def test_a_received_email_settles_a_submission_of_unknown_outcome_when_you_confi
     assert "examplehealth.test" in ev.evidence_note
     assert api.post(f"/inbox/events/{e['id']}/accept").status_code == 409  # once
     assert receiver.ledger()["accepted"] == 1  # reading mail never sends anything
+    with SessionLocal() as db:  # nor queues or retries anything: no attempt, no message
+        assert db.query(ExecutionAttempt).count() == attempts
+        assert db.query(OutboxMessage).count() == outbox
 
 
 def test_a_received_email_is_only_noted_once_the_submission_is_settled(api, receiver, connected):
     submitted(api, receiver)  # the employer's receipt already confirmed it
     api.put("/inbox", json={"codes_enabled": False, "tracking_enabled": True})
-    deliver(receiver, EMPLOYER, "Application received: Example Health Clinic",
-            "Thank you for applying. We have received your application.")  # fmt: skip
+    deliver(
+        receiver,
+        EMPLOYER,
+        "Application received: Example Health Clinic",
+        "Thank you for applying for Clinic Assistant. We have received your application.",
+    )
     v = api.post("/inbox/check").json()
     (e,) = v["events"]
     assert (e["kind"], e["state"]) == ("received", "noted")
@@ -310,7 +394,8 @@ def test_a_proposed_reconciliation_is_refused_once_settled_another_way(api, rece
     receiver.config(mode="error_after_accept")
     assert runner.run_attempt(queue(api, app_id), "w1") == "unknown"
     api.put("/inbox", json={"codes_enabled": False, "tracking_enabled": True})
-    deliver(receiver, EMPLOYER, "Example Health Clinic", "We have received your application.")
+    deliver(receiver, EMPLOYER, "Example Health Clinic",
+            "We have received your application for Clinic Assistant.")  # fmt: skip
     (e,) = api.post("/inbox/check").json()["events"]
     assert e["state"] == "proposed"
     api.post(f"/applications/{app_id}/reconcile", json={
@@ -323,6 +408,60 @@ def test_a_proposed_reconciliation_is_refused_once_settled_another_way(api, rece
             ApplicationEvent.application_id == app_id,
             ApplicationEvent.to_state == "submitted_confirmed")).all()  # fmt: skip
     assert len(n) == 1
+
+
+def _unknown(api, receiver) -> str:
+    """A submission the employer accepted whose answer never reached NoEfforts."""
+    app_id = prepared_application(api, receiver)
+    receiver.config(mode="error_after_accept")
+    assert runner.run_attempt(queue(api, app_id), "w1") == "unknown"
+    api.put("/inbox", json={"codes_enabled": False, "tracking_enabled": True})
+    return app_id
+
+
+def test_a_received_email_must_name_the_role_and_follow_the_final_click(api, receiver, connected):
+    """D103: the employer's name alone does not identify a submission (one employer, several
+    roles), and an email that arrived before the final click is about something else. Both are
+    only noted, never proposed; the submission stays unknown until you settle it."""
+    import time as _time
+
+    app_id = _unknown(api, receiver)
+    deliver(receiver, EMPLOYER, "Example Health Clinic",
+            "We have received your application.")  # fmt: skip
+    deliver(receiver, EMPLOYER, "Example Health Clinic: Clinic Assistant",
+            "We have received your application.", at=_time.time() - 3600)  # fmt: skip
+    v = api.post("/inbox/check").json()
+    assert v["result"] == {"noted": 2}
+    assert [e["state"] for e in v["events"]] == ["noted", "noted"]
+    assert api.get(f"/applications/{app_id}").json()["state"] == "submitted_unconfirmed"
+
+
+def test_only_one_reconciliation_is_proposed_at_a_time(api, receiver, connected):
+    app_id = _unknown(api, receiver)
+    for subject in ("Clinic Assistant: application received", "Re: Clinic Assistant"):
+        deliver(receiver, EMPLOYER, f"Example Health Clinic {subject}",
+                "We have received your application.")  # fmt: skip
+    v = api.post("/inbox/check").json()
+    assert sorted(e["state"] for e in v["events"]) == ["noted", "proposed"]
+    assert api.get(f"/applications/{app_id}").json()["state"] == "submitted_unconfirmed"
+
+
+def test_a_received_email_never_starts_a_submission(api, receiver, connected):
+    """An application approved but never sent: a "received" email naming it is only noted,
+    and nothing about it can queue, send or confirm anything."""
+    submitted(api, receiver)  # another one, sent, so that mail is read at all
+    app_id = prepared_application(api, receiver, url_suffix="?posting=2")  # approved, never sent
+    deliver(receiver, EMPLOYER, "Example Health Clinic: Clinic Assistant",
+            "We have received your application.")  # fmt: skip
+    api.put("/inbox", json={"codes_enabled": False, "tracking_enabled": True})
+    with SessionLocal() as db:
+        attempts = db.query(ExecutionAttempt).count()
+    v = api.post("/inbox/check").json()
+    assert all(e["state"] != "proposed" for e in v["events"])
+    assert api.get(f"/applications/{app_id}").json()["state"] != "submitted_confirmed"
+    with SessionLocal() as db:
+        assert db.query(ExecutionAttempt).count() == attempts
+    assert receiver.ledger()["accepted"] == 1  # the other application's one submission only
 
 
 def test_a_refused_connection_is_reported_by_its_code(api, receiver, connected):

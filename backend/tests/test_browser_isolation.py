@@ -26,6 +26,7 @@ from app.modules.execution.browser import (
     isolation_self_check,
 )
 from app.modules.execution.sandbox.egress_proxy import EgressProxy
+from tests.conftest import CANARY_PORT, RECEIVER_PORT
 from tests.execution_harness import (
     BACKEND,
     BASE,
@@ -35,7 +36,7 @@ from tests.execution_harness import (
     queue,
 )
 
-CANARY = 8798
+CANARY = CANARY_PORT
 
 
 class _Hits(http.server.BaseHTTPRequestHandler):
@@ -120,15 +121,18 @@ def test_isolation_alone_blocks_egress_without_interception(receiver, canary):
         assert "SYNTHETIC" in page.title()  # allowed destination works
         # In no-cors mode the proxy's 403 is an opaque response, so the page cannot tell
         # blocked from reached; the proxy's decision log and the canary are the evidence.
-        page.evaluate("""async () => {
+        page.evaluate(
+            """async (canary) => {
             const out = {};
-            for (const u of ['http://127.0.0.1:8798/direct-fetch', 'http://127.0.0.1:5432/',
+            for (const u of [`http://127.0.0.1:${canary}/direct-fetch`, 'http://127.0.0.1:5432/',
                              'http://127.0.0.1:6379/', 'http://169.254.169.254/latest/',
-                             'https://example.com/', 'http://[::1]:8798/']) {
+                             'https://example.com/', `http://[::1]:${canary}/`]) {
               try { const r = await fetch(u, {mode: 'no-cors'}); out[u] = 'reached'; }
               catch (e) { out[u] = 'blocked'; }
             }
-            return out; }""")
+            return out; }""",
+            CANARY,
+        )
         # Same-origin hops, then off to the canary: the proxy answers 403 for the last hop.
         with pytest.raises(PlaywrightError, match="ERR_HTTP_RESPONSE_CODE_FAILURE"):
             page.goto(f"{BASE}/redirect-chain")
@@ -136,13 +140,13 @@ def test_isolation_alone_blocks_egress_without_interception(receiver, canary):
         chrome_pids = [p for p in os.listdir("/proc") if p.isdigit() and _is_isolated_chrome(p)]
         denied = log.proxy_denied()
     expected = {
-        "127.0.0.1:8798",
+        f"127.0.0.1:{CANARY}",
         "127.0.0.1:5432",
         "127.0.0.1:6379",
         "169.254.169.254:80",
         "10.0.0.1:80",
         "::1:80",
-        "::1:8798",
+        f"::1:{CANARY}",
         "example.com:443",
     }
     assert expected <= set(denied), sorted(expected - set(denied))
@@ -170,7 +174,7 @@ def test_loopback_destination_denied_without_fixture_exception(receiver):
     ) as (page, log):
         with pytest.raises(PlaywrightError, match="ERR_"):
             page.goto(f"{BASE}/apply/clinic")
-        assert "127.0.0.1:8799" in log.proxy_denied()
+        assert f"127.0.0.1:{RECEIVER_PORT}" in log.proxy_denied()
 
 
 def test_production_refuses_to_run_without_isolation(api, receiver, monkeypatch):
@@ -247,9 +251,8 @@ def test_proxy_connect_and_absolute_http_follow_the_same_policy(receiver):
     """HTTPS goes through CONNECT, plain HTTP as absolute-form requests; both are checked."""
     work = tempfile.mkdtemp(prefix="ne-proxytest-")
     sock_path = os.path.join(work, "p.sock")
-    proxy = EgressProxy(
-        sock_path, allow={("127.0.0.1", 8799)}, allow_private={("127.0.0.1", 8799)}
-    ).start()
+    here = {("127.0.0.1", RECEIVER_PORT)}
+    proxy = EgressProxy(sock_path, allow=here, allow_private=here).start()
 
     def ask(raw: bytes) -> bytes:
         c = socket.socket(socket.AF_UNIX)
@@ -261,15 +264,14 @@ def test_proxy_connect_and_absolute_http_follow_the_same_policy(receiver):
         return data
 
     try:
-        assert ask(b"CONNECT 127.0.0.1:8799 HTTP/1.1\r\nHost: x\r\n\r\n").startswith(
-            b"HTTP/1.1 200"
-        )
+        connect = f"CONNECT 127.0.0.1:{RECEIVER_PORT} HTTP/1.1\r\nHost: x\r\n\r\n"
+        assert ask(connect.encode()).startswith(b"HTTP/1.1 200")
         assert b" 403 " in ask(b"CONNECT 127.0.0.1:8798 HTTP/1.1\r\n\r\n")
         assert b" 403 " in ask(b"CONNECT 127.0.0.1:5432 HTTP/1.1\r\n\r\n")
-        ok = ask(b"GET http://127.0.0.1:8799/apply/health-check HTTP/1.1\r\nHost: x\r\n\r\n")
+        ok = ask(f"GET {BASE}/apply/health-check HTTP/1.1\r\nHost: x\r\n\r\n".encode())
         assert ok.startswith(b"HTTP/1.1 200"), ok
         assert b" 403 " in ask(b"GET http://127.0.0.1:6379/ HTTP/1.1\r\n\r\n")
-        assert b" 403 " in ask(b"GET ftp://127.0.0.1:8799/ HTTP/1.1\r\n\r\n")
+        assert b" 403 " in ask(f"GET ftp://127.0.0.1:{RECEIVER_PORT}/ HTTP/1.1\r\n\r\n".encode())
     finally:
         proxy.stop()
         shutil.rmtree(work, ignore_errors=True)

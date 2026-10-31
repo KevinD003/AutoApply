@@ -38,7 +38,7 @@ from app.modules.applications.models import Application
 from app.modules.applications.service import transition
 from app.modules.applications.states import Actor, AppState
 from app.modules.audit.service import record
-from app.modules.execution import rehearsal
+from app.modules.execution import live, rehearsal
 from app.modules.execution.models import (
     ACTIVE,
     AttemptEvent,
@@ -110,6 +110,11 @@ def enqueue(db: Session, app: Application) -> ExecutionAttempt:
         e.approval_id = appr.id  # the caller retires it after rolling back the queue
         raise
     adapter, dest = binding["adapter"], pkg.content["destination"]
+    if adapter == live.ADAPTER and appr.scope == ApprovalScope.submit:
+        # D103: submitting is the pilot's permission 4, recorded on its own; your approval to
+        # submit is needed as well, and neither stands in for the other.
+        if live.permission_refusal(("submit",)):
+            raise UnsupportedDestination(live.WHY["not_authorized"], "live_not_authorized")
     cls = rehearsal.destination_class(dest.get("origin"))
     ref = rehearsal.path_ref(app.user_id, rehearsal.execution_path(dest, adapter))
     if appr.scope == ApprovalScope.submit:
@@ -393,6 +398,7 @@ def _gate_checks(db: Session, att: ExecutionAttempt, approval_lock: str = "share
     content = pk.build_content(db, app)
     if pk.content_hash(content) != att.package_hash:
         raise GateRefused("profile, documents or answers changed after approval")
+    _pilot_permission(att, ("open", "disclose"))
     appr = db.get(PackageApproval, att.approval_id)
     try:
         check_binding(appr, content["destination"], att.adapter)
@@ -406,6 +412,14 @@ def _gate_checks(db: Session, att: ExecutionAttempt, approval_lock: str = "share
     if att.destination_class != rehearsal.destination_class(content["destination"].get("origin")):
         raise GateRefused("the destination is no longer the kind it was when queued")
     return GateContext(app, content, appr)
+
+
+def _pilot_permission(att: ExecutionAttempt, actions: tuple[str, ...]) -> None:
+    """D103: through the Greenhouse pilot, each action on a real employer's page needs the owner's
+    recorded permission (app/core/authorizations.py), checked at every gate: the switch is not
+    one, and a permission that ends while an attempt waits stops it here."""
+    if att.adapter == live.ADAPTER and live.permission_refusal(actions):
+        raise GateRefused(live.WHY["not_authorized"], "live_not_authorized")
 
 
 def _gate_prerequisite(db: Session, att: ExecutionAttempt, ctx: GateContext, layer: str):
@@ -466,6 +480,7 @@ def gate_before_send(attempt_id, worker: str, gen: int) -> None:
             # A rehearsal stops before this gate (runner); this refusal holds even if it did not.
             if ctx.approval.scope != ApprovalScope.submit:
                 raise GateRefused("this approval permits filling and checking only, not submitting")
+            _pilot_permission(att, ("submit",))
             verdict = _gate_prerequisite(db, att, ctx, "send")
         except GateRefused as e:
             db.rollback()

@@ -2,16 +2,13 @@ import { execSync } from "node:child_process";
 
 import { APIRequestContext, expect, Page, test } from "@playwright/test";
 
-import { RECEIVER, RECEIVER_TOKEN } from "../playwright.config";
+import { E2E_DATABASE, RECEIVER, RECEIVER_TOKEN } from "../playwright.config";
 
 // Submission UI against the synthetic receiver and a real Celery worker. The receiver's own
 // ledger is the oracle for what was accepted. Synthetic data only.
 test.describe.configure({ mode: "serial" });
 
-const DB = (process.env.NOEFFORTS_E2E_DATABASE_URL ?? "postgresql+psycopg://postgres@127.0.0.1:5432/noefforts_e2e").replace(
-  "postgresql+psycopg://",
-  "postgresql://",
-);
+const DB = E2E_DATABASE.replace("postgresql+psycopg://", "postgresql://");
 const RUN = Date.now().toString(36); // unique slugs per run, in case a ledger is reused
 const PDF = Buffer.from("%PDF-1.4\n% synthetic e2e resume\n");
 

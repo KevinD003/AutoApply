@@ -27,8 +27,9 @@ the names come from `grep "def test_"` on the test files.
    of the guard), then made to pass; record both runs in `docs/implementation-status.md`.
 6. **No tracing or screenshots** in any execution test.
 
-Commands (from CLAUDE.md, not run here): `cd backend && uv run pytest` (needs the
-`noefforts_test` database), `cd frontend && npx playwright test` (needs `noefforts_e2e`).
+Commands (from CLAUDE.md, not run here): `cd backend && uv run pytest` (on a disposable
+database of its own, docs/test-isolation.md), `cd frontend && npx playwright test` (on the
+disposable `noefforts_e2e_test`).
 
 ## 1. Scenarios
 

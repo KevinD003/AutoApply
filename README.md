@@ -81,22 +81,26 @@ or add jobs; they can never answer, approve or submit.
 ## Tests
 
 ```bash
-# Backend: needs PostgreSQL (database noefforts_test, wiped each run; the migration tests also
-# create and drop databases whose names end in _migration_test) and Redis on localhost. Execution tests start the
-# synthetic receiver (ports 8799/8798) and a real Celery worker themselves.
-createdb noefforts_test
+# Backend: needs PostgreSQL and Redis on localhost. The suite drops and recreates its database's
+# schema, so it runs only on a disposable database of its own: no default, never a shared one
+# (D103, backend/tests/isolation.py). Execution tests start the synthetic receiver (port 8799)
+# and a real Celery worker themselves; each run holds its ports and Redis database.
 cd backend && uv run playwright install chromium   # first time only
+eval "$(uv run python -m tests.isolation create --export)"   # owned by the test-only role, marked
 uv run pytest
+uv run python -m tests.isolation drop --run "$NOEFFORTS_TEST_RUN_ID"   # only this run's databases
 uv run ruff check .
 
-# Frontend: typecheck, lint, then end-to-end (needs Postgres + a database named noefforts_e2e)
+# Frontend: typecheck, lint, then end-to-end (on a disposable database named noefforts_e2e_test)
+(cd backend && uv run python -m tests.isolation create --name noefforts_e2e_test --run e2e)
 cd frontend
 npx tsc --noEmit && npm run lint
-createdb noefforts_e2e
 npx playwright install chromium   # first time only
 npx playwright test
 ```
-Override test databases with `NOEFFORTS_TEST_DATABASE_URL` / `NOEFFORTS_E2E_DATABASE_URL`.
+`scripts/validate.sh all` does all of this with a database of its own per suite. A second run
+on the same database, Redis database or port is refused before anything is dropped
+([docs/test-isolation.md](docs/test-isolation.md)).
 
 ## Safety defaults
 

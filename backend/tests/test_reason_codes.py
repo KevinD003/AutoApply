@@ -21,7 +21,7 @@ from app.modules.audit.models import AuditEvent
 from app.modules.audit.service import sanitize
 from app.modules.execution import policy
 from app.modules.providers import routing
-from tests.execution_harness import BASE, Receiver, pilot_on
+from tests.execution_harness import BASE, PILOT_PERMISSIONS, Receiver, pilot_on
 from tests.test_discovery import feed_copy, rows, run_import
 from tests.test_execution_routing import WORKDAY_URL
 from tests.test_greenhouse_dom import LOC_JOB, v2_job
@@ -106,10 +106,12 @@ def _production(c) -> str:
 GH_REAL = "https://job-boards.greenhouse.io/exampleboard/jobs/4000001"  # a fictional board
 
 
-def _pilot_job(c, *, env=None, isolation=None, owner="synthetic.user@example.com") -> str:
+def _pilot_job(c, *, env=None, isolation=None, owner="synthetic.user@example.com",
+               permitted=PILOT_PERMISSIONS) -> str:  # fmt: skip
     """D102: a Greenhouse job post routed with the Greenhouse pilot on: on its stand-in board
-    host in the test environment, on a (fictional) real board host anywhere else."""
-    pilot_on(owner)
+    host in the test environment, on a (fictional) real board host anywhere else. D103: with
+    the owner's recorded permissions `permitted` (synthetic)."""
+    pilot_on(owner, permitted)
     if env is None:
         job_id = v2_job(c.api)
     else:
@@ -147,6 +149,7 @@ PATHS = {
     "live_not_for_this_account": lambda c: _pilot_job(c, owner="someone.else@example.com"),
     "live_needs_production": lambda c: _pilot_job(c, env="development"),
     "live_needs_container": lambda c: _pilot_job(c, env="production", isolation="netns"),
+    "live_not_authorized": lambda c: _pilot_job(c, permitted=()),
 }
 
 

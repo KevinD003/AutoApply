@@ -8,6 +8,10 @@ approval to fill and check, never submit, that succeeded); a check of the page b
 is entered; a stop, never a guess, on anything not understood; no retry after the final click.
 
 It is on only when all of these hold (`refusal`):
+  * D103: the owner's recorded permission for each action it takes (app/core/authorizations.py,
+    `greenhouse_pilot`): read the public job post, open the application page, disclose (fill
+    and upload), submit. Each is separate, as in docs/live-pilot-gate.md §2. None has been
+    given: the switch below is not one, and nothing is read, opened, disclosed or submitted;
   * `NOEFFORTS_LIVE_GREENHOUSE_ENABLED=true`, set by the owner;
   * the account is named in `NOEFFORTS_LIVE_OWNER_EMAILS`;
   * `NOEFFORTS_ENV=production` (fixture origins are then never honoured) and the browser runs
@@ -25,6 +29,7 @@ import re
 import urllib.request
 from urllib.parse import parse_qs, quote, urlsplit
 
+from app.core import authorizations
 from app.core.config import get_settings
 from app.core.urlsafety import fixture_opener, is_fixture_origin, public_https_opener
 from app.modules.preparation import greenhouse as gh
@@ -46,7 +51,12 @@ WHY = {
     "(NOEFFORTS_ENV=production).",
     "needs_container": "Applying to real Greenhouse jobs needs the browser's container isolation "
     "(NOEFFORTS_BROWSER_ISOLATION=container), where Chromium's own sandbox is on.",
+    "not_authorized": "Applying to real Greenhouse jobs needs the server owner's explicit, "
+    "recorded permission for each step (read the job post, open its page, fill it in, submit); "
+    "switching the pilot on is not one.",
 }
+# What a whole application through the pilot needs, short of submitting.
+TO_APPLY = ("read", "open", "disclose")
 
 
 class LiveError(Exception):
@@ -71,15 +81,21 @@ def environment_refusal() -> str | None:
     return None
 
 
-def refusal(user) -> str | None:
-    """Why this account cannot use the pilot now, or None."""
+def permission_refusal(actions: tuple[str, ...]) -> str | None:
+    """D103: "not_authorized" unless the owner's recorded permission covers every action."""
+    ok = all(authorizations.covers(authorizations.GREENHOUSE_PILOT, a) for a in actions)
+    return None if ok else "not_authorized"
+
+
+def refusal(user, actions: tuple[str, ...] = TO_APPLY) -> str | None:
+    """Why this account cannot use the pilot for `actions` now, or None."""
     why = environment_refusal()
     if why:
         return why
     owners = {e.strip().lower() for e in get_settings().live_owner_emails}
     if (user.email or "").strip().lower() not in owners:
         return "not_for_this_account"
-    return None
+    return permission_refusal(actions)
 
 
 def _origin(url: str) -> str:

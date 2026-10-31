@@ -308,6 +308,7 @@ or refusal in the source relies on the default code or names one this table does
 | `live_not_for_this_account` | manual | `route_for_job`, `decide` | the Greenhouse pilot is on, for the server owner's account only |
 | `live_needs_production` | manual | `route_for_job`, `adapter_for` | the Greenhouse pilot runs only with `NOEFFORTS_ENV=production` |
 | `live_needs_container` | manual | `route_for_job`, `adapter_for` | the Greenhouse pilot needs the browser's `container` isolation (Chromium's own sandbox on) |
+| `live_not_authorized` | manual | `route_for_job`, `adapter_for`, `enqueue`, the runner before the page opens, both gates | the owner has not recorded permission for the pilot's step (read, open, disclose, submit; `app/core/authorizations.py`, D103); the switch is not one |
 | `no_supported_provider` | manual | nothing | the fail-closed fallback: the default of `RouteDecision` and `UnsupportedDestination`, and what an unknown code is recorded as. No path produces it (tested over a grid of sample origins, submit addresses, form sources, ATS hosts and API grant states, in the test and production environments) |
 
 - A browser refusal for a fixture destination (`no_captured_destination`,

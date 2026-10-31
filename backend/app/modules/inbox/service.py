@@ -9,14 +9,22 @@
   first read goes back `inbox_first_read_days`) is sorted by fixed rules (rules.py) and kept as
   one event. A rejection, interview or assessment that names exactly one of your submitted
   applications is proposed as its outcome; you accept or dismiss it (outcomes are what you
-  report, D53). A "we received your application" email that names exactly one application whose
-  submission has an unknown outcome (`submitted_unconfirmed`) is proposed as its reconciliation:
-  you confirm it was received, with the email as what you checked. Nothing is sent, deleted,
-  labelled or marked read.
+  report, D53). A "we received your application" email is proposed as the reconciliation of a
+  submission whose outcome is unknown (`submitted_unconfirmed`) only when it correlates strongly
+  (D103, `_settles`): it names exactly one application's employer and also its job title, it
+  arrived after that submission's final click, and no other such proposal is open for it. You
+  confirm it was received, with the email as what you checked; confirming changes the
+  application's state only and never sends, queues or retries anything. Otherwise it is only
+  noted. Nothing is sent, deleted, labelled or marked read.
 
 Only what an event needs is kept: a keyed reference to the message, when it arrived, the
 sender's domain, its kind, the application and the state. Never the text, the subject, the
 sender's name or a code. Errors are kept as fixed codes.
+
+D103: none of this runs on the owner's switch alone. Each action needs the owner's recorded
+authorization (app/core/authorizations.py): reading code emails and entering a code each, and
+reading application emails. None has been given, so nothing is read; a code you type yourself
+at the checkpoint is entered as before.
 """
 
 import uuid
@@ -25,6 +33,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import authorizations
 from app.core.config import get_settings
 from app.core.db import utcnow
 from app.modules.applications.models import Application
@@ -38,7 +47,7 @@ from app.modules.applications.service import (
 from app.modules.applications.states import Actor, AppState, Outcome
 from app.modules.audit.service import record, ref
 from app.modules.execution import service as execution
-from app.modules.execution.models import Checkpoint
+from app.modules.execution.models import Checkpoint, ExecutionAttempt
 from app.modules.identity.models import User
 from app.modules.inbox import rules
 from app.modules.inbox.models import InboxEvent, InboxSettings
@@ -52,6 +61,16 @@ OUTCOME_OF = {
 }
 
 
+def may(action: str) -> bool:
+    """Whether the owner's recorded authorization covers this action (D103)."""
+    return authorizations.covers(authorizations.INBOX, action)
+
+
+def codes_authorized() -> bool:
+    """Entering a code from the mail needs both: reading code emails, and entering what they say."""
+    return may("read_codes") and may("enter_codes")
+
+
 def available_for(user: User) -> str | None:
     """Why reading this user's mail is not available, or None."""
     s = get_settings()
@@ -59,6 +78,8 @@ def available_for(user: User) -> str | None:
         return "not_enabled"
     if user.email.strip().lower() not in {e.strip().lower() for e in s.inbox_owner_emails}:
         return "not_for_this_account"
+    if not (codes_authorized() or may("read_application_email")):
+        return "not_authorized"  # switched on is not authorized (D103)
     if not s.inbox_token_file:
         return "not_connected"
     return None
@@ -107,7 +128,7 @@ def fill_codes(db: Session, user: User, gmail: GmailReader | None = None) -> int
     """Enter a code from your mail for each code step of yours that is waiting. Returns how many
     codes were entered. The caller commits."""
     st = settings_of(db, user.id)
-    if not st.codes_enabled or available_for(user):
+    if not st.codes_enabled or available_for(user) or not codes_authorized():
         return 0
     waiting = db.scalars(
         select(Checkpoint).where(
@@ -154,20 +175,49 @@ def fill_codes(db: Session, user: User, gmail: GmailReader | None = None) -> int
     return entered
 
 
-def _submitted_apps(db: Session, user_id) -> list[tuple[Application, str]]:
+def _submitted_apps(db: Session, user_id) -> list[tuple[Application, str, str]]:
     rows = db.execute(
-        select(Application, Job.employer)
+        select(Application, Job.employer, Job.title)
         .join(Job, Job.id == Application.job_id)
         .where(Application.user_id == user_id)
     ).all()
-    return [(a, emp) for a, emp in rows if emp and ever_submitted(db, a)]
+    return [(a, emp, title or "") for a, emp, title in rows if emp and ever_submitted(db, a)]
+
+
+def _settles(db: Session, user_id, app: Application, title: str, m: Message) -> bool:
+    """D103: whether a "received" email may be proposed as the reconciliation of `app`'s
+    submission of unknown outcome. All of: the application is in submitted_unconfirmed; the email
+    also names its job title (the employer alone is not enough: one employer, several roles);
+    it arrived after the final click of the attempt that left the outcome unknown (an earlier
+    email is about something else); and no other such proposal is open for the application (one
+    at a time, so one email cannot be confirmed over another unseen)."""
+    if app.state != AppState.submitted_unconfirmed:
+        return False
+    if not rules.mentions(title, "", m.subject, m.text):
+        return False
+    sent = db.scalar(
+        select(ExecutionAttempt.send_started_at)
+        .where(ExecutionAttempt.application_id == app.id,
+               ExecutionAttempt.send_started_at.is_not(None))
+        .order_by(ExecutionAttempt.send_started_at.desc())
+        .limit(1)
+    )  # fmt: skip
+    if sent is None or m.received_at < sent:
+        return False
+    open_one = select(InboxEvent.id).where(
+        InboxEvent.user_id == user_id,
+        InboxEvent.application_id == app.id,
+        InboxEvent.kind == "received",
+        InboxEvent.state == "proposed",
+    )
+    return db.scalar(open_one.limit(1)) is None
 
 
 def check(db: Session, user: User, gmail: GmailReader | None = None, now=None) -> dict:
     """Read the messages received since the last read and keep what they say. The caller
     commits. Returns counts by state."""
     st = settings_of(db, user.id)
-    why = available_for(user)
+    why = available_for(user) or (None if may("read_application_email") else "not_authorized")
     if why or not st.tracking_enabled:
         return {"skipped": why or "tracking_off"}
     now = now or utcnow()
@@ -184,14 +234,15 @@ def check(db: Session, user: User, gmail: GmailReader | None = None, now=None) -
             kind = rules.classify(m.subject, m.text)
             if kind == "code":
                 continue  # codes are fill_codes' alone, and only while a step waits
-            named = [a for a, emp in apps if rules.mentions(emp, m.sender_name, m.subject, m.text)]
-            app = named[0] if len(named) == 1 else None
+            named = [(a, title) for a, emp, title in apps
+                     if rules.mentions(emp, m.sender_name, m.subject, m.text)]  # fmt: skip
+            app, title = named[0] if len(named) == 1 else (None, "")
             app_id = app.id if app else None
             if kind == "other" and app_id is None:
                 continue  # not about your applications: nothing kept
             if kind in OUTCOME_OF:
                 state = "proposed" if app_id else "unlinked"
-            elif kind == "received" and app and app.state == AppState.submitted_unconfirmed:
+            elif kind == "received" and app and _settles(db, user.id, app, title, m):
                 state = "proposed"  # it may settle a submission whose outcome is unknown
             else:
                 state = "noted" if app_id else "unlinked"
@@ -277,7 +328,8 @@ def due(db: Session, now: datetime | None = None) -> list[tuple[User, InboxSetti
         if available_for(u):
             continue
         stale = st.last_checked_at is None or st.last_checked_at <= now - every
-        if st.codes_enabled or (st.tracking_enabled and stale):
+        codes = st.codes_enabled and codes_authorized()
+        if codes or (st.tracking_enabled and stale and may("read_application_email")):
             out.append((u, st))
     return out
 

@@ -22,6 +22,8 @@ WHY = {
     "not_enabled": "Reading your email is switched off on this server.",
     "not_for_this_account": "Reading email is set up for the server owner's account only.",
     "not_connected": "No Gmail account is connected on this server yet.",
+    "not_authorized": "Reading your email needs the server owner's explicit, recorded "
+    "authorization; switching it on is not one. Codes you type yourself are unaffected.",
 }
 ERRORS = {
     "not_configured": "No Gmail account is connected.",
@@ -79,8 +81,14 @@ def get_inbox(user: User = Depends(current_user), db: Session = Depends(get_db))
 def put_inbox(
     body: InboxSettingsIn, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> dict:
-    if service.available_for(user) and (body.codes_enabled or body.tracking_enabled):
-        raise conflict(WHY[service.available_for(user)])
+    why = service.available_for(user)
+    if why and (body.codes_enabled or body.tracking_enabled):
+        raise conflict(WHY[why])
+    # D103: each use needs its own recorded authorization; one never stands in for the other.
+    if (body.codes_enabled and not service.codes_authorized()) or (
+        body.tracking_enabled and not service.may("read_application_email")
+    ):
+        raise conflict(WHY["not_authorized"])
     st = service.settings_of(db, user.id)
     st.codes_enabled, st.tracking_enabled = body.codes_enabled, body.tracking_enabled
     record(db, user.id, "inbox.settings", "inbox", None, codes=body.codes_enabled,
@@ -92,8 +100,8 @@ def put_inbox(
 @router.post("/check")
 def check_now(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     why = service.available_for(user)
-    if why:
-        raise conflict(WHY[why])
+    if why or not service.may("read_application_email"):
+        raise conflict(WHY[why or "not_authorized"])
     result = service.check(db, user)
     db.commit()
     return {"result": result, **_view(db, user)}

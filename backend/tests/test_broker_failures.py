@@ -1,4 +1,5 @@
-"""Real broker failures. A disposable Redis process (port 6391, no persistence) and real Celery
+"""Real broker failures. A disposable Redis process (port 6391 by default, held for this test run
+under tests/isolation.py; no persistence) and real Celery
 worker processes; the receiver ledger is the oracle.
 
 Production differences: these tests shorten the visibility timeout to 5s
@@ -20,9 +21,11 @@ import redis
 from app.core.db import SessionLocal, utcnow
 from app.modules.execution import service as svc
 from app.modules.execution.models import AttemptEvent, ExecutionAttempt, OutboxMessage
+from tests import isolation
 from tests.execution_harness import BACKEND, Receiver, attempt, prepared_application, queue
 
-PORT = 6391
+PORT = int(os.environ.get("NOEFFORTS_TEST_BROKER_PORT", "6391"))
+isolation.hold_port(PORT)  # another run's disposable broker is never this one
 BROKER = f"redis://127.0.0.1:{PORT}/0"
 
 
@@ -48,6 +51,8 @@ class Broker:
             stderr=subprocess.DEVNULL,
         )
         for _ in range(100):
+            if self.p.poll() is not None:  # it could not listen: never use what answers there
+                raise RuntimeError(f"disposable redis could not start on port {PORT}")
             try:
                 redis.Redis(port=PORT).ping()
                 return

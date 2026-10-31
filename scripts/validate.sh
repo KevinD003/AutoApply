@@ -41,14 +41,49 @@ finish() {
 
 [ "${VALIDATE_LIB:-0}" = 1 ] && return 0
 
+# D103: the backend suite and the end-to-end run each get a disposable database of their own
+# (tests/isolation.py), and only the databases marked with this run's ids are dropped afterwards,
+# also when interrupted.
+DROP_RUNS=()
+cleanup() {
+  local r
+  for r in "${DROP_RUNS[@]:-}"; do
+    [ -n "$r" ] && (cd "$ROOT/backend" && uv run python -m tests.isolation drop --run "$r" \
+      >/dev/null 2>&1) || true
+  done
+}
+trap cleanup EXIT
+
+# with_test_db NAME VAR COMMAND...: run COMMAND with VAR naming a new disposable database; the
+# step NAME fails if none can be created (never a shared default).
+with_test_db() {
+  local name="$1" var="$2" out url id
+  shift 2
+  if ! out=$(cd "$ROOT/backend" && uv run python -m tests.isolation create 2>&1); then
+    printf '%s\n' "$out" | tail -n 3 | sed "s/^/  [$name] /"
+    echo "FAIL $name (no disposable test database)"
+    FAILED+=("$name")
+    return 0
+  fi
+  url=$(printf '%s\n' "$out" | sed -n 's/^NOEFFORTS_TEST_DATABASE_URL=//p')
+  id=$(printf '%s\n' "$out" | sed -n 's/^NOEFFORTS_TEST_RUN_ID=//p')
+  DROP_RUNS+=("$id")
+  local -x "$var=$url"  # exported to COMMAND only, for the length of this call
+  "$@"
+}
+
 chromium() { ls -d /opt/pw-browsers/chromium-*/chrome-linux/chrome 2>/dev/null | head -1 || true; }
+# The Playwright servers hold their own ports, Redis database and database claim
+# (frontend/playwright.config.ts), so a direct `npx playwright test` is covered too.
 run() {
   case "$1" in
     lint) step lint backend uv run ruff check . ;;
     format) step format backend uv run ruff format --check . ;;
     frontend) step typecheck frontend npx tsc --noEmit && step eslint frontend npm run lint ;;
-    backend) step backend backend uv run pytest tests -o addopts= -q -p no:cacheprovider ;;
-    e2e) step e2e frontend env PW_CHROMIUM_PATH="${PW_CHROMIUM_PATH:-$(chromium)}" npx playwright test ;;
+    backend) with_test_db backend NOEFFORTS_TEST_DATABASE_URL \
+      step backend backend uv run pytest tests -o addopts= -q -p no:cacheprovider ;;
+    e2e) with_test_db e2e NOEFFORTS_E2E_DATABASE_URL step e2e frontend \
+      env PW_CHROMIUM_PATH="${PW_CHROMIUM_PATH:-$(chromium)}" npx playwright test ;;
     quick) run lint; run format; run frontend ;;
     all) run quick; run backend; run e2e ;;
     *) echo "unknown step: $1" >&2; FAILED+=("$1") ;;

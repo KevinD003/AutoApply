@@ -361,6 +361,9 @@ def _live_adapter(destination: dict) -> str:
         raise UnsupportedDestination(live.WHY[why], "live_needs_production")
     if why:  # "needs_container", the only other environment refusal
         raise UnsupportedDestination(live.WHY[why], "live_needs_container")
+    # D103: every attempt opens the page and fills it in; neither without the owner's record.
+    if live.permission_refusal(("open", "disclose")):
+        raise UnsupportedDestination(live.WHY["not_authorized"], "live_not_authorized")
     origin, submit = destination.get("origin"), destination.get("submit_url")
     if not origin or not submit:
         raise UnsupportedDestination(

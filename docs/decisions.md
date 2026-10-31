@@ -2906,3 +2906,92 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   list and a location search: on such a page the pilot stops before entering anything. Real
   uploads, submission and confirmation are the stand-in's design.
 - **Unchanged:** `SCHEMA_VERSION` (3); every other adapter and route; no migration.
+
+## D103 — Built is not authorized; disposable test databases (2026-10-31)
+
+- **Why:** the owner, on 2026-10-31 (17:42 UTC): "Before recommending activation, inspect the
+  actual authorization history … General permission to develop independently is not proof of
+  consent to read a mailbox, disclose applicant data or submit an application. Record only
+  authorization that actually exists. Do not invent it." They added: "A feature toggle or
+  deployment file must not bypass the existing consent and readiness gates." And: "The
+  accidental shared-database reset has happened repeatedly. Make it impossible through the
+  supported test entry points."
+- **The authorization history, as written.**
+  - 2026-10-30, the standing authorization, §7: "This is development delegation, not unlimited
+    real-world authorization. Do not: Read my inbox or retrieve OTPs. … Disclose applicant data or
+    submit real applications outside the existing gates."
+  - 2026-10-31 04:55 UTC, the request D101 and D102 were built for: "Make sure we enable the
+    automatic application totally for the greenhouse. … do not cause any problems in filling,
+    select, dropdown, typing, submitting, OTP, email credentials.json from google cloud
+    console(I will provide). … tracking the application from that email … check all the emails
+    form the last time the portal checked".
+  - 2026-10-31 17:42 UTC: "Unless there is a later explicit instruction clearly superseding the
+    earlier rule: Keep inbox access and automatic OTP entry disabled. Preserve manual OTP entry.
+    Keep real Greenhouse disclosure/upload/submission disabled until the existing pilot
+    permissions are satisfied."
+
+  | Question | Finding | What it covers |
+  |---|---|---|
+  | Was reading the inbox explicitly authorized? | **No.** The 04:55 message asked for the feature to be built and to work end to end. It did not address §7's "Do not: Read my inbox or retrieve OTPs". The credentials it would use were never provided, and the later message (17:42) keeps reading disabled. | Nothing operational. D101 is built and off. |
+  | Was automatic OTP retrieval and entry explicitly authorized? | **No**, for the same reasons. | Nothing. Typing a code yourself at the checkpoint is unchanged. |
+  | Were the Greenhouse pilot permissions granted? | **No.** No posting was named under docs/live-pilot-gate.md §1, and none of the separate permissions in §2 was given: 1 read, 2 open, 3 disclose, 4 submit. D102 said the owner's switch "replaces §1's single named employer". That was wrong and is withdrawn: a request to build the feature is not the gate's permissions. | Nothing. D102 is built and off. |
+  | What did the standing authorization cover? | Development: code, tests, documentation, configuration templates, reviews of public documentation, commits and pushes. | Not inbox reading, codes, or real disclosure or submission outside the gates. |
+
+- **Decision:**
+  - **One register of operational authorizations** (`backend/app/core/authorizations.py`). It is
+    reviewed source code: no setting, deployment file or environment variable can add to it
+    (`tests/test_authorizations.py` checks that it imports neither settings nor `os`). Each entry
+    must quote the owner's words, the actions and the data they cover, the date given and the
+    date it ends, and name its decision here. It is **empty**.
+  - **Inbox (D101)** needs `read_codes` and `enter_codes` for codes, and
+    `read_application_email` for replies, each on its own. Without them nothing is read. The
+    Account view says why ("not_authorized"). Turning a use on is refused (409). The worker and
+    direct calls read nothing: `tests/test_inbox.py`, with the stand-in's request ledger showing
+    no request. A code typed at the checkpoint still completes the step (same test).
+  - **The Greenhouse pilot (D102)** needs each permission for its step, checked independently:
+    - capture: `read`;
+    - the route: `read`, `open` and `disclose`;
+    - queueing: `open` and `disclose`, plus `submit` for an approval to submit;
+    - the worker, before the page is opened: `open` and `disclose`;
+    - the disclosure gate: `open` and `disclose`;
+    - the send gate: `submit`.
+
+    The reason code is `live_not_authorized`. The switch, the owner's account and production
+    mode without a record: the post is not read, nothing is queued and nothing reaches the
+    board (`tests/test_greenhouse_live.py`, the receiver ledger as the oracle). A permission
+    withdrawn after queueing stops the attempt before the page opens, or at the send gate after
+    a permitted fill, with no final click.
+  - **Implementation is kept.** D101 and D102 are unchanged apart from these checks; nothing was
+    deleted. `readiness.DISCLOSURE_PERMISSION_RECORDED` and `SUBMISSION_PERMISSION_RECORDED`
+    stay false. The computed checklist (`providers/readiness.py`) shows 0 of 7 conditions met
+    today, and nothing here claims otherwise.
+- **Approval mode (resolved by the owner; not reopened).** Each application's submission needs
+  its own approval, by default. A future batch-review screen may approve several individually
+  identified packages at once, each immutable; it is never approval of future applications.
+  Each approval is bound to:
+  - the user (`user_id`; another account's is 404);
+  - the application and destination (the destination is in the hashed content and the binding);
+  - the exact package version and content hash;
+  - its scope (`disclose_only` or `submit`);
+  - an expiry and revocation (`expires_at`, `invalidated_at`);
+  - one use where it matters. A rehearsal approval is retired after it runs. An approval to submit
+    sends at most once: a confirmed submission refuses another queue (`already_confirmed`), and an
+    uncertain one is quarantined, never resent.
+
+  Changed content or destination needs a new approval (the gates compare the hash and the
+  binding). A disclosure-only rehearsal is never an approval to submit.
+- **Test isolation** (`docs/test-isolation.md`). The suite runs only on a disposable database:
+  - named explicitly, with no default;
+  - marked as disposable and owned by the test-only role `noefforts_tester`; a superuser is
+    refused;
+  - claimed for the whole run with a PostgreSQL advisory lock taken before any DROP or migration;
+    a second run is refused.
+
+  Every DROP and TRUNCATE waits at most 15 s. A run's own databases are named after it and marked
+  with its id, and cleanup drops only those. Ports, the run's Redis database index and the
+  disposable broker's port are held under OS file locks. The end-to-end servers hold theirs, and
+  claim their database, through the same tool. `scripts/validate.sh` and CI create their
+  databases with it.
+- **Not verified:** any of it against a real mailbox or a real Greenhouse page (nothing is
+  authorized to be).
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration; every other route, adapter and approval rule.

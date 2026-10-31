@@ -4,6 +4,14 @@ Applying to real Greenhouse-hosted job posts through NoEfforts. **Off by default
 account only, and never yet run on a real page: everything below has been tested against a local
 stand-in of a Greenhouse board only (`fixtures/ats_receiver/greenhouse_v2.py`).
 
+> **Not authorized (D103).** Building the pilot was requested. Operating it was not: none of the
+> live-pilot gate's permissions has been given (1 read the job post, 2 open its page, 3 disclose,
+> 4 submit). Each step checks for the owner's recorded permission
+> (`backend/app/core/authorizations.py`, empty), whatever the switch below says. With the switch
+> on and no record, no job post is read, nothing is queued and nothing reaches a board
+> (`live_not_authorized`). Turning it on below is necessary but not sufficient. The full list:
+> `docs/activation-status.md`.
+
 ## What happens when it is on
 
 1. **You add a Greenhouse job** (Discover, a job board you follow, or paste its address:

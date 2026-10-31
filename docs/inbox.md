@@ -1,5 +1,12 @@
 # Your Gmail, read-only (D101)
 
+> **Not authorized (D103).** Building this was requested. Reading the owner's mailbox was not
+> authorized, and the 2026-10-30 rule ("Do not: Read my inbox or retrieve OTPs") still stands.
+> Each use checks for the owner's recorded authorization (`backend/app/core/authorizations.py`,
+> empty): `read_codes` and `enter_codes` for codes, `read_application_email` for replies. Without
+> it nothing is read, whatever is switched on or connected, and Account says so. A code you type
+> yourself at the checkpoint works as before. The full list: `docs/activation-status.md`.
+
 NoEfforts can read your own Gmail, read-only, for two things you turn on separately in
 Account → "Email (your Gmail, read-only)":
 

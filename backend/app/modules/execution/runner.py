@@ -145,9 +145,10 @@ def _content_refusal(attempt_id, content: dict) -> str | None:
     return None
 
 
-def _binding_refusal(attempt_id) -> str | None:
-    """Why this attempt may not run with its recorded adapter now, or None. Checked before any
-    adapter code touches a page; the gates re-check it under lock."""
+def _binding_refusal(attempt_id) -> tuple[str, str | None] | None:
+    """Why this attempt may not run with its recorded adapter now (a message and a reason code,
+    when there is one), or None. Checked before any adapter code touches a page; the gates
+    re-check it under lock."""
     with SessionLocal() as db:
         att = db.get(ExecutionAttempt, attempt_id)
         appr = db.get(PackageApproval, att.approval_id)
@@ -155,9 +156,9 @@ def _binding_refusal(attempt_id) -> str | None:
         try:
             policy.check_binding(appr, dest, att.adapter)
         except policy.BindingChanged:
-            return "the execution method changed after approval"
+            return "the execution method changed after approval", None
         except policy.UnsupportedDestination as e:
-            return str(e)
+            return str(e), e.code
         return None
 
 
@@ -190,9 +191,9 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             svc.fail_safe(aid, worker, gen, refusal)
             return "failed_safe"
         if adapter_name in API_ADAPTERS:
-            refusal = _binding_refusal(aid)
-            if refusal:
-                svc.fail_safe(aid, worker, gen, refusal)
+            bound = _binding_refusal(aid)
+            if bound:
+                svc.fail_safe(aid, worker, gen, bound[0], code=bound[1])
                 return "failed_safe"
             return _run_api(aid, worker, gen, API_ADAPTERS[adapter_name](content, docs, str(aid)))
         adapter = ADAPTERS[adapter_name](content, docs)
@@ -204,9 +205,13 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         if not intercept and s.env not in ("development", "test"):
             svc.fail_safe(aid, worker, gen, "request interception cannot be disabled here")
             return "failed_safe"
-        refusal = _binding_refusal(aid)
-        if refusal:
-            svc.fail_safe(aid, worker, gen, refusal)
+        if adapter_name == live.ADAPTER and live.permission_refusal(("open", "disclose")):
+            # D103: before the page is opened (the pilot's permission 2) or anything entered.
+            svc.fail_safe(aid, worker, gen, live.WHY["not_authorized"], code="live_not_authorized")
+            return "failed_safe"
+        bound = _binding_refusal(aid)
+        if bound:
+            svc.fail_safe(aid, worker, gen, bound[0], code=bound[1])
             return "failed_safe"
         try:
             session = browser_session(

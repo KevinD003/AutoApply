@@ -3,7 +3,17 @@ import { defineConfig } from "@playwright/test";
 // End-to-end tests drive the real Next.js app against the real FastAPI backend, a real Celery
 // worker (with beat) and the synthetic ATS receiver, on a dedicated PostgreSQL database
 // (NOEFFORTS_E2E_DATABASE_URL). All data is synthetic; nothing leaves this machine.
-const db = process.env.NOEFFORTS_E2E_DATABASE_URL ?? "postgresql+psycopg://postgres@127.0.0.1:5432/noefforts_e2e";
+//
+// D103: the database is a disposable one, owned by the test-only role and marked as such
+// (cd backend && uv run python -m tests.isolation create --name noefforts_e2e_test); the API
+// refuses any other before migrating. Each server holds its ports (and the API its Redis
+// database and a claim on the database) for as long as it runs, so a second run, or a backend
+// test run on the same ports, is refused rather than raced.
+export const E2E_DATABASE =
+  process.env.NOEFFORTS_E2E_DATABASE_URL ?? "postgresql+psycopg://noefforts_tester@127.0.0.1:5432/noefforts_e2e_test";
+const db = E2E_DATABASE;
+const hold = (what: string, command: string, cwd = "") =>
+  `uv run python -m tests.isolation hold ${what}${cwd ? ` --cwd ${cwd}` : ""} -- sh -c '${command}'`;
 export const RECEIVER = "http://127.0.0.1:8799";
 export const RECEIVER_TOKEN = "e2e-receiver-admin-token"; // test-only receiver admin token
 const backendEnv = {
@@ -71,14 +81,17 @@ export default defineConfig({
   webServer: [
     {
       // Fresh ledger per run: the receiver is the oracle, so stale rows must not carry over.
-      command: `rm -f /tmp/noefforts-e2e-ledger.db && uv run python ../fixtures/ats_receiver/receiver.py --port 8799 --ledger /tmp/noefforts-e2e-ledger.db --admin-token ${RECEIVER_TOKEN} --smtp-port 8796`,
+      command: hold(
+        "8799,8796",
+        `rm -f /tmp/noefforts-e2e-ledger.db && exec uv run python ../fixtures/ats_receiver/receiver.py --port 8799 --ledger /tmp/noefforts-e2e-ledger.db --admin-token ${RECEIVER_TOKEN} --smtp-port 8796`,
+      ),
       cwd: "../backend",
       url: `${RECEIVER}/apply/health-check`,
       reuseExistingServer: false,
       timeout: 60_000,
     },
     {
-      command: "uv run alembic upgrade head && uv run uvicorn app.main:app --port 8100",
+      command: hold("8100,redis,db", "uv run alembic upgrade head && exec uv run uvicorn app.main:app --port 8100"),
       cwd: "../backend",
       url: "http://127.0.0.1:8100/api/health",
       env: backendEnv,
@@ -86,7 +99,7 @@ export default defineConfig({
       timeout: 60_000,
     },
     {
-      command: "uv run python scripts/e2e_worker.py 8797",
+      command: hold("8797", "exec uv run python scripts/e2e_worker.py 8797"),
       cwd: "../backend",
       url: "http://127.0.0.1:8797/",
       env: backendEnv,
@@ -95,7 +108,8 @@ export default defineConfig({
     },
     {
       // Rewrites are resolved at build time, so build against the test backend first.
-      command: "npx next build && npx next start -p 3100",
+      command: hold("3100", "npx next build && exec npx next start -p 3100", "../frontend"),
+      cwd: "../backend",
       url: "http://127.0.0.1:3100/login",
       env: { NOEFFORTS_BACKEND_URL: "http://127.0.0.1:8100" },
       reuseExistingServer: false,
