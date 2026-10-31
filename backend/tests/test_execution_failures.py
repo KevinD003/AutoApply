@@ -405,13 +405,14 @@ def test_broker_outage_after_commit_loses_nothing(api, receiver):
 def _browser_application(adapter, api, receiver) -> str:
     from tests.test_ashby_adapter import ashby_application
     from tests.test_greenhouse_adapter import gh_application
-    from tests.test_greenhouse_dom import v2_application
+    from tests.test_greenhouse_dom import live_application, v2_application
     from tests.test_lever_adapter import lever_application
     from tests.test_workday_adapter import workday_application
 
     return {"fixture_ats": lambda: prepared_application(api, receiver),
             "greenhouse_hosted": lambda: gh_application(api),
             "greenhouse_dom": lambda: v2_application(api),
+            "greenhouse_live": lambda: live_application(api),
             "fixture_lever": lambda: lever_application(api),
             "fixture_ashby": lambda: ashby_application(api),
             "fixture_workday": lambda: workday_application(api)}[adapter]()  # fmt: skip
@@ -419,7 +420,7 @@ def _browser_application(adapter, api, receiver) -> str:
 
 @pytest.mark.parametrize("finding", ["received", "not_received"])
 @pytest.mark.parametrize("adapter", ["fixture_ats", "greenhouse_hosted", "greenhouse_dom",
-                                     "fixture_lever", "fixture_ashby",
+                                     "greenhouse_live", "fixture_lever", "fixture_ashby",
                                      "fixture_workday"])  # fmt: skip
 def test_reconciling_an_unknown_outcome_never_sends_again(api, receiver, adapter, finding):
     """A browser route's unknown outcome is reconciled by the user's statement. Either answer

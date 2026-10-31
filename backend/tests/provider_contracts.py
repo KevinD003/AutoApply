@@ -105,6 +105,7 @@ RECEIPT_KEYS = {
     "fixture_ats": {"receipt_id", "final_origin", "http_status"},
     "greenhouse_hosted": {"receipt_id", "confirmation", "final_origin", "http_status"},
     "greenhouse_dom": {"receipt_id", "confirmation", "final_origin", "http_status"},
+    "greenhouse_live": {"receipt_id", "confirmation", "final_origin", "http_status"},
     "fake_api": {"route", "receipt_ref_sha256", "http_status"},
     "fixture_lever": {"receipt_id", "confirmation", "final_origin", "http_status"},
     "fixture_ashby": {"receipt_id", "confirmation", "final_origin", "http_status"},
@@ -171,6 +172,24 @@ SCENARIO_TESTS: dict[tuple[str, str], str] = {
     ("greenhouse_dom", "confirmation_bound_to_attempt"):
         f"{_GD}::test_confirmation_bound_to_attempt",
     ("greenhouse_dom", "unlisted_option_is_checkpoint"):
+        f"{_GD}::test_unlisted_option_is_checkpoint",
+    # D102: the Greenhouse pilot runs the same scenarios through its own builder.
+    ("greenhouse_live", "full_run_matches_ledger"):
+        f"{_GD}::test_full_run_sends_exactly_the_approved_values",
+    ("greenhouse_live", "changed_form_stops_before_disclosure"):
+        f"{_GD}::test_drift_after_approval_stops_before_anything_is_disclosed",
+    ("greenhouse_live", "unknown_outcome_never_resent"): f"{_GD}::test_outcome_classification",
+    ("greenhouse_live", "readback_mismatch_stops_before_submit"):
+        f"{_GD}::test_combobox_that_does_not_keep_its_choice_is_caught_by_readback",
+    ("greenhouse_live", "upload_failure_stops_with_evidence"):
+        f"{_UP}::test_a_failed_upload_keeps_the_evidence_of_every_upload_before_it",
+    ("greenhouse_live", "challenge_stops_before_disclosure"):
+        f"{_GD}::test_a_captcha_on_the_form_stops_before_anything_is_disclosed",
+    ("greenhouse_live", "rejection_is_not_confirmation"): f"{_GD}::test_outcome_classification",
+    ("greenhouse_live", "reconcile_never_resends"): _RECONCILE,
+    ("greenhouse_live", "confirmation_bound_to_attempt"):
+        f"{_GD}::test_confirmation_bound_to_attempt",
+    ("greenhouse_live", "unlisted_option_is_checkpoint"):
         f"{_GD}::test_unlisted_option_is_checkpoint",
     ("fake_api", "full_run_matches_ledger"):
         f"{_API}::test_authorized_api_submission_sends_exactly_the_approved_package",
@@ -243,6 +262,7 @@ BUILDERS = {
     "fixture_ats": ("prepared_application", "fixture_ats"),
     "greenhouse_hosted": ("gh_application", "greenhouse_hosted"),
     "greenhouse_dom": ("v2_application", "greenhouse_dom"),
+    "greenhouse_live": ("live_application", "greenhouse_live"),
     "fake_api": ("api_application", "fake_api", "fapi_requests"),
     "fixture_lever": ("lever_application", "fixture_lever"),
     "fixture_ashby": ("ashby_application", "fixture_ashby"),

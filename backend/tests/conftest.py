@@ -47,6 +47,21 @@ def _migrate():
 
 
 @pytest.fixture(autouse=True)
+def _pilot_off():
+    """D102: whatever a test did to the Greenhouse pilot's settings (execution_harness.pilot_on)
+    is undone after it."""
+    from app.core.config import get_settings
+
+    s = get_settings()
+    keep = {k: getattr(s, k) for k in ("live_greenhouse_enabled", "live_owner_emails",
+                                       "live_greenhouse_test_board_base",
+                                       "live_greenhouse_test_api_base")}  # fmt: skip
+    yield
+    for k, v in keep.items():
+        setattr(s, k, v)
+
+
+@pytest.fixture(autouse=True)
 def _clean():
     yield
     tables = ", ".join(t.name for t in reversed(Base.metadata.sorted_tables))

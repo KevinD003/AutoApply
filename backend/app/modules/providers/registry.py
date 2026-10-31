@@ -100,6 +100,43 @@ PROVIDERS: dict[str, ProviderSpec] = {
         status="Fixture filling only. One real posting observed read-only; refused for real"
         " destinations (dropdowns, location, unmatched required controls).",
     ),
+    # D102: the Greenhouse pilot. The same rules as greenhouse_dom on a real board host, off
+    # unless the owner switches it on (execution/live.py). It claims nothing on real pages: its
+    # levels are the fixture's, and only the read-only observations are credited.
+    "greenhouse_live": ProviderSpec(
+        name="greenhouse_live",
+        kind=Kind.browser,
+        description="The Greenhouse pilot: the id and accessible-name mapping of greenhouse_dom "
+        "on a real Greenhouse board, for the owner's account only, in production with container "
+        "isolation, when the owner switched it on.",
+        operations=_BROWSER_OPS,
+        capabilities={
+            C.posting_read: Support(
+                fixture=True,
+                observed=True,
+                note="job data read on one real posting (read-only runs)",
+            ),
+            C.form_extract: Support(
+                fixture=True,
+                observed=True,
+                note="mapping rules applied read-only to one real posting: 19 fields mapped",
+            ),
+            C.deterministic_fill: FIXTURE,
+            C.custom_dropdowns: Support(
+                fixture=True,
+                note="strategies fixture-only; no opening evidence on the real page (run #9)",
+            ),
+            C.file_upload: FIXTURE,
+            C.captcha_checkpoint: Support(fixture=True, note="stop and hand off; never solved"),
+            C.final_submit: FIXTURE,
+            C.confirmation_detection: FIXTURE,
+            C.reconciliation: _USER_RECONCILES,
+        },  # fmt: skip
+        environments=("production", "test"),
+        real_destinations_enabled=True,
+        status="Pilot, off by default; never yet run on a real page. Each application is "
+        "approved by you and rehearsed first per employer; anything not understood stops it.",
+    ),
     "fake_api": ProviderSpec(
         name="fake_api",
         kind=Kind.api,
@@ -292,6 +329,14 @@ _TRAITS: dict[str, dict[Trait, TraitValue]] = {
                                          "appears, never solved"),
         T.multi_step: V("no", "the observed posting was one page"),
     },
+    "greenhouse_live": {
+        T.login_required: V("no", "the observed posting loaded without an account (single-use "
+                                  "read-only runs, providers/evidence.py)"),
+        T.manual_verification_required: V("unknown", "never submitted; not observed"),
+        T.captcha_possible: V("unknown", "none seen in read-only runs #3-#9; a checkpoint if it "
+                                         "appears, never solved"),
+        T.multi_step: V("no", "the observed posting was one page"),
+    },
     "greenhouse_readonly": {
         T.login_required: V("no", "the observed posting loaded without an account (single-use "
                                   "read-only runs, providers/evidence.py)"),
@@ -350,6 +395,7 @@ _TRAITS: dict[str, dict[Trait, TraitValue]] = {
 # The ATS identity each provider serves (jobs.canonical.detect_ats names). Fixture origins are
 # identified as "unknown", so fixture adapters are chosen by the captured form, not by host.
 _ATS = {"greenhouse_hosted": "greenhouse", "greenhouse_dom": "greenhouse",
+        "greenhouse_live": "greenhouse",
         "greenhouse_readonly": "greenhouse", "lever": "lever", "workday": "workday"}  # fmt: skip
 # The local fixtures each provider's `fixture` levels were tested against (repository paths).
 _RECEIVER = "fixtures/ats_receiver"
@@ -357,6 +403,7 @@ _TESTED_AGAINST = {
     "fixture_ats": (_RECEIVER,),  # the generic form, served by its receiver
     "greenhouse_hosted": (f"{_RECEIVER}/greenhouse_like.py",),
     "greenhouse_dom": (f"{_RECEIVER}/greenhouse_v2.py",),
+    "greenhouse_live": (f"{_RECEIVER}/greenhouse_v2.py",),
     "fake_api": (f"{_RECEIVER}/fake_api.py",),
     "fixture_lever": (f"{_RECEIVER}/lever_like.py",),
     "fixture_ashby": (f"{_RECEIVER}/ashby_like.py",),

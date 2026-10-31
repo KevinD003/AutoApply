@@ -68,9 +68,10 @@ class IsolationUnavailable(RuntimeError):
 
 @dataclass(frozen=True)
 class SubresourceRule:
-    """One extra origin a read-only observation may load page dependencies from: exact origin,
-    and only these methods and resource types. Never used by execution (adapters pass none).
-    `allow_private` exists for local test fixtures only."""
+    """One extra origin a page may load its dependencies from: exact origin, and only these
+    methods and resource types. Used by the read-only observation and, on a real Greenhouse
+    board, by the Greenhouse pilot (D102, live.subresources: the same one approved rule); every
+    other execution passes none. `allow_private` exists for local test fixtures only."""
 
     origin: str  # scheme://host[:port], exact
     methods: frozenset
@@ -369,8 +370,9 @@ def browser_session(
 ):
     """`intercept=False` disables the in-process layers; used only by isolation tests to show
     that the namespace + egress proxy alone enforce the policy. `subresources`: extra origins
-    for page dependencies (SubresourceRule), read-only observation only; every layer (resolver
-    rules, interception, egress proxy, runner) is widened by exactly these and nothing else."""
+    for page dependencies (SubresourceRule): the read-only observation's, and the Greenhouse
+    pilot's on a real board (D102); every layer (resolver rules, interception, egress proxy,
+    runner) is widened by exactly these and nothing else."""
     from app.core.urlsafety import fixture_networks
     from app.modules.execution.sandbox.egress_proxy import EgressProxy
 

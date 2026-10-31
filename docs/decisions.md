@@ -2854,3 +2854,55 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Unchanged:** `SCHEMA_VERSION` (3); execution's code checkpoint (codes still go through
   `submit_code`, bound to the user, the application, the step and its round). Migration
   `b7d2f4a91c05`.
+
+## D102 — The Greenhouse pilot: real Greenhouse applications, off by default (2026-10-31)
+
+- **Why:** the owner asked, on 2026-10-31, to "enable the automatic application totally for the
+  greenhouse". Until now every real employer destination was refused in code, and CLAUDE.md
+  keeps them refused "until a live adapter has its own capability entry and receiver-style
+  tests". This is that adapter, entry and tests; it changes no other rule.
+- **Decision:**
+  - **`greenhouse_live`**, a new adapter name for the id-mapping rules of `greenhouse_dom`,
+    unchanged (`adapters/greenhouse_dom.py` `GreenhouseLiveAdapter`), with its own capability
+    entry (`policy.CAPABILITIES`, `real_destinations: True`), version (`greenhouse-live-1`),
+    registry spec and form source (`greenhouse_live`). Approvals, rehearsals and evidence name it.
+  - **Off unless all hold** (`execution/live.py`, one place, checked at capture, routing,
+    approval, queueing, both gates and in the worker): `NOEFFORTS_LIVE_GREENHOUSE_ENABLED`, the
+    account in `NOEFFORTS_LIVE_OWNER_EMAILS`, `NOEFFORTS_ENV=production` and the `container`
+    browser isolation (Chromium's own sandbox on). Switching it off stops a queued application
+    before anything is entered. In the test environment the same code runs only against a local
+    stand-in named by two test-only settings; real hosts are refused there.
+  - **Hosts are fixed in code:** a job post on `boards.greenhouse.io`, `job-boards.greenhouse.io`
+    or their EU hosts (https, no port, no userinfo); its data from `boards-api.greenhouse.io`;
+    GETs only, public addresses only, no redirects, robots.txt honoured, 2 MB, nothing of the
+    user's sent. The browser may reach the one board host of its session plus Greenhouse's static
+    scripts and stylesheets (the B3 rule, `job-boards.cdn.greenhouse.io`, GET/HEAD).
+  - **Capture** reads the job data and the page and keeps the form only if the page's controls
+    map one for one to the job data (`greenhouse_dom.build_schema`); the job data must name the
+    same job. Otherwise nothing is kept and the reason code is shown.
+  - **Unchanged for every application:** your approval of the exact package, revocable; the
+    rehearsal first on each employer's path (E6: `PATH_RULES["greenhouse_live"]`, the board); the
+    page re-checked before anything is entered; anything not understood stops it; one final click,
+    never a retry after it (`submitted_unconfirmed`); no CAPTCHA or login is ever passed.
+    Approval stays per application: the owner's choice between batch approval and none is still
+    open and nothing here decides it.
+  - **Registry and admission.** `model.PILOTS = {"greenhouse_live"}` is the only provider allowed
+    `real_destinations_enabled`, and only while it claims no live support (its levels are the
+    fixture's plus the read-only observations of greenhouse_dom's rules, credited to it in
+    `evidence.py` because the rules are the same). Admission stays advisory; the pilot is
+    admitted to `observed_read_only`, its claim.
+  - **Greenhouse's public documentation and terms reviewed** (`docs/research/greenhouse-terms-review.md`,
+    `evidence.DOC_REVIEWS`): no candidate terms for hosted boards were found; Greenhouse's privacy
+    policy leaves hosted-board applications to the employer; the MyGreenhouse User Agreement
+    forbids automated use of MyGreenhouse, which NoEfforts never uses. The review is mine, as D91
+    decided for terms reviews; it is not legal advice and not the owner's acceptance. It meets
+    `doc_review_recorded` for every Greenhouse provider, so their I2 waivers are no longer used
+    (still tested on tables without it).
+  - **Deployment:** `docker-compose.pilot.yml` sets production mode and gives the egress proxy
+    an outbound network (as the read-only check's override does); the switch and the owner list
+    come from `.env`.
+- **Not verified:** any real Greenhouse page filled, uploaded to or submitted to. The one real
+  posting observed read-only had dropdowns with no opening evidence, controls the job data does not
+  list and a location search: on such a page the pilot stops before entering anything. Real
+  uploads, submission and confirmation are the stand-in's design.
+- **Unchanged:** `SCHEMA_VERSION` (3); every other adapter and route; no migration.

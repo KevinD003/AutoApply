@@ -32,7 +32,7 @@ Routes (on the synthetic receiver; same ledger):
   GET  /gh2/{board}/jobs/{id}              hosted form (v2 structure)
   POST /gh2/{board}/jobs/{id}/attachments  upload (a disclosure)
   POST /gh2/{board}/jobs/{id}/submit       application (an acceptance)
-Modes (cfg["mode"]): gh2_duplicate_id, gh2_label_mismatch, gh2_missing_control,
+Modes (cfg["mode"]): gh2_robots_disallow (D102), gh2_duplicate_id, gh2_label_mismatch, gh2_missing_control,
 gh2_validation_fail, gh2_captcha, gh2_new_question, gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, gh2_many_assets,
 gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, gh2_attach_group(_wrong|_shared), gh2_widgets (cfg widget_bad: submit, fetch, nav, captcha,
 filechooser, required, select, dialog, upload, hash, images, covered),
@@ -754,7 +754,9 @@ def mount(app, ledger, cfg, accept) -> None:
 
     @app.get("/gh2-api/robots.txt")
     def robots():
-        return HTMLResponse("User-agent: *\nAllow: /\n", media_type="text/plain")
+        # D102: gh2_robots_disallow, for the Greenhouse pilot's robots.txt check.
+        rule = "Disallow: /v1/" if cfg["mode"] == "gh2_robots_disallow" else "Allow: /"
+        return HTMLResponse(f"User-agent: *\n{rule}\n", media_type="text/plain")
 
     @app.get("/gh2-api/v1/boards/{board}")
     def board_json(board: str):

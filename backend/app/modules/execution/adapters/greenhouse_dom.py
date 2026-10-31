@@ -332,3 +332,11 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             "final_origin": f"{p.scheme}://{p.netloc}",
             "http_status": out.http_status,
         }
+
+
+class GreenhouseLiveAdapter(GreenhouseDomAdapter):
+    """D102, the Greenhouse pilot: exactly these rules, on a real Greenhouse board host, for a
+    form captured from a real job post while the pilot is on (execution/live.py). Its own name
+    so that approvals, rehearsals and evidence say which one ran."""
+
+    name = "greenhouse_live"

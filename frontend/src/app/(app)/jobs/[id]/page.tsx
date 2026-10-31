@@ -203,6 +203,7 @@ export default function JobPage() {
         onPrepare={prepare}
         onCaptured={() => setFormVersion((v) => v + 1)}
         realDestination={route?.reason === "real_destination_disabled"}
+        greenhousePilot={job.ats_provider === "greenhouse" && route?.reason === "no_form_captured"}
       />
       <div id="match" className="scroll-mt-4">
         <FitCard fit={job.fit} />
@@ -292,11 +293,14 @@ function FormCard({
   onPrepare,
   onCaptured,
   realDestination,
+  greenhousePilot,
 }: {
   jobId: string;
   onPrepare: () => void;
   onCaptured: () => void;
   realDestination: boolean;
+  // D102: a real Greenhouse job post while the Greenhouse pilot is on for this account.
+  greenhousePilot: boolean;
 }) {
   const [form, setForm] = useState<FormInfo | null | undefined>(undefined);
   const [fixtures, setFixtures] = useState<Record<string, string>>({});
@@ -347,6 +351,17 @@ function FormCard({
           This posting is on a real employer&apos;s site. NoEfforts does not read or fill real employer forms in this version: apply
           there, then record it with “Track application”.
         </p>
+      ) : form === null && greenhousePilot ? (
+        <div className="space-y-2 text-sm" data-testid="greenhouse-pilot">
+          <p>
+            This is a Greenhouse job post, and the Greenhouse pilot is on for your account. NoEfforts can read its questions
+            from Greenhouse&apos;s public job data and its page (nothing of yours is sent). Every application still needs your
+            approval, and the first one to this employer is a rehearsal that never submits.
+          </p>
+          <Button variant="secondary" onClick={() => read("greenhouse")}>
+            Read the Greenhouse form
+          </Button>
+        </div>
       ) : form === null ? (
         <div className="space-y-2 text-sm">
           <p>

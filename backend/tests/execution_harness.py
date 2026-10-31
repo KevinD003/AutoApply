@@ -76,6 +76,23 @@ class Receiver:
             self.proc.wait(timeout=5)
 
 
+PILOT_SETTINGS = ("live_greenhouse_enabled", "live_owner_emails", "live_greenhouse_test_board_base",
+                  "live_greenhouse_test_api_base")  # fmt: skip
+
+
+def pilot_on(owner: str = "synthetic.user@example.com") -> None:
+    """D102: the Greenhouse pilot on for `owner` (the `api` fixture's account), with the
+    receiver's second Greenhouse-style approximation playing a real board host and its Job Board
+    API. Test environment only; conftest turns it off after every test."""
+    from app.core.config import get_settings
+
+    s = get_settings()
+    s.live_greenhouse_enabled = True
+    s.live_owner_emails = [owner]
+    s.live_greenhouse_test_board_base = f"{BASE}/gh2"
+    s.live_greenhouse_test_api_base = f"{BASE}/gh2-api"
+
+
 def synthetic_candidate(api) -> None:
     """Fictional candidate: profile, US work authorization (no sponsorship), one resume."""
     api.put(

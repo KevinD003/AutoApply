@@ -231,3 +231,27 @@ def test_verify_local_reports_each_step_and_never_a_value(tmp_path):
     assert "docker: 28.0.0" in out and "compose: 2.40.0" in out
     for value in values.values():
         assert value not in out
+
+
+def test_the_greenhouse_pilot_override_changes_only_what_it_says():
+    """D102: docker-compose.pilot.yml puts the API and worker in production mode and gives the
+    egress proxy, alone, an outbound network. The browser stays on its internal networks, the
+    pilot's switch and owner come from .env through the base file, and nothing else changes."""
+    base = compose()
+    pilot = yaml.safe_load((ROOT / "docker-compose.pilot.yml").read_text())
+    assert set(pilot["services"]) == {"backend", "worker", "egress-proxy"}
+    for name in ("backend", "worker"):
+        env = pilot["services"][name]["environment"]
+        assert env == {"NOEFFORTS_ENV": "production",
+                       "NOEFFORTS_LIVE_OWNER_EMAILS": "${NOEFFORTS_LIVE_OWNER_EMAILS:?name your "
+                       "NoEfforts account in .env}"}  # fmt: skip
+        assert set(pilot["services"][name]) == {"environment"}
+        base_env = base["services"][name]["environment"]
+        assert base_env["NOEFFORTS_LIVE_GREENHOUSE_ENABLED"] == (
+            "${NOEFFORTS_LIVE_GREENHOUSE_ENABLED:-false}"
+        )
+        assert base_env["NOEFFORTS_BROWSER_ISOLATION"] == "container"
+    assert pilot["services"]["egress-proxy"] == {"networks": ["exec_egress", "egress_out"]}
+    assert pilot["networks"] == {"egress_out": {}}
+    assert "egress_out" not in base["services"]["browser-runner"]["networks"]
+    assert base["networks"]["exec_egress"] == {"internal": True}

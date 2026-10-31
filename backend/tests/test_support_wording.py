@@ -10,8 +10,9 @@ from dataclasses import replace
 
 import pytest
 
+from app.modules.execution import live, policy
 from app.modules.providers import registry, routing, wording
-from app.modules.providers.model import Capability, Kind, Support
+from app.modules.providers.model import PILOTS, Capability, Kind, Support
 from tests.execution_harness import Receiver, synthetic_candidate
 from tests.test_greenhouse_adapter import gh_job
 from tests.test_greenhouse_dom import v2_job
@@ -28,7 +29,7 @@ EXPECTED = {
     "greenhouse_readonly": "observed_read_only", "freehire_mock": "fixture_only",
     "freehire": "fixture_only", "workday": "planned", "lever": "planned",
     "manual_handoff": "manual", "fixture_lever": "fixture_only", "fixture_ashby": "fixture_only",
-    "fixture_workday": "fixture_only",
+    "fixture_workday": "fixture_only", "greenhouse_live": "observed_read_only",
 }  # fmt: skip
 
 
@@ -92,9 +93,14 @@ def test_no_label_claims_more_than_its_evidence():
     for state in ("fixture_only", "observed_read_only"):
         assert "test fixtures only" in wording.SUPPORT_LABELS[state]
     assert "never filled" in wording.SUPPORT_LABELS["observed_read_only"]
-    for source in ("fixture", *routing.FORM_SOURCE_ATS):  # the local test stand-ins
+    pilots = {s for s, a in policy.FORM_SOURCE_ADAPTERS.items() if a in PILOTS}
+    for source in ("fixture", *set(routing.FORM_SOURCE_ATS) - pilots):  # the local test stand-ins
         label = wording.FORM_SOURCE_LABELS[source]
         assert "local test" in label.lower() and "(fictional employer)" in label, source
+    # D102: a pilot's source is a real job post; its label says what has not been shown.
+    assert pilots == {"greenhouse_live"}
+    label = wording.FORM_SOURCE_LABELS["greenhouse_live"]
+    assert "never yet run on a real page" in label and "approved by you" in label
 
 
 def test_every_form_source_the_capture_code_stores_is_worded():
@@ -108,6 +114,10 @@ def test_every_form_source_the_capture_code_stores_is_worded():
             stored |= {value.value for name, value in pairs
                        if isinstance(name, ast.Name) and name.id == "source"
                        and isinstance(value, ast.Constant)}  # fmt: skip
+        # D102: the pilot's capture stores `live.FORM_SOURCE`, named, not a literal.
+        if (isinstance(n, ast.Call) and getattr(n.func, "id", None) == "_store_form"
+                and ast.unparse(n.args[4]) == "live.FORM_SOURCE"):  # fmt: skip
+            stored.add(live.FORM_SOURCE)
     assert len(stored) >= 5 and stored == set(wording.FORM_SOURCE_LABELS)
 
 

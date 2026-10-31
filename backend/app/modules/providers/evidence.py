@@ -45,10 +45,13 @@ _READ = frozenset({
     ("greenhouse_readonly", "form_extract", "behaviour"),
     ("greenhouse_dom", "posting_read", "behaviour"),
     ("greenhouse_dom", "form_extract", "behaviour"),
+    # D102: the Greenhouse pilot applies greenhouse_dom's rules unchanged; the same runs credit it.
+    ("greenhouse_live", "posting_read", "behaviour"),
+    ("greenhouse_live", "form_extract", "behaviour"),
 })  # fmt: skip
 _DROPDOWNS_SEEN = frozenset({("greenhouse_readonly", "custom_dropdowns", "structure")})
 _ONE_PAGE_NO_ACCOUNT = frozenset({
-    (p, t, "no") for p in ("greenhouse_readonly", "greenhouse_dom")
+    (p, t, "no") for p in ("greenhouse_readonly", "greenhouse_dom", "greenhouse_live")
     for t in ("login_required", "multi_step")
 })  # fmt: skip
 _GH = "greenhouse_readonly"
@@ -87,13 +90,15 @@ def credited_traits(runs=READ_ONLY_RUNS) -> frozenset[tuple[str, str, str]]:
 
 @dataclass(frozen=True)
 class DocReview:
-    """The owner's approved review of an ATS's public documentation and terms (an external
-    read), recorded as the decision that records it (docs/decisions.md)."""
+    """A recorded review of an ATS's public documentation and terms (an external read), by
+    whom and on what basis stated in the decision that records it (docs/decisions.md; D91: a
+    review of public terms is the reviewer's, never the owner's acceptance)."""
 
     ats: str
     decision: str  # "D<n>"
 
 
-# None has been given or recorded: every ATS stops before `public_doc_reviewed` (a pre-I2
-# provider keeps its claim through a frozen waiver; providers/admission.py).
-DOC_REVIEWS: tuple[DocReview, ...] = ()
+# D102: Greenhouse's public documentation and terms, reviewed on 2026-10-31 at the owner's
+# request to automate Greenhouse applications (docs/research/greenhouse-terms-review.md). Every
+# other ATS stops before `public_doc_reviewed`.
+DOC_REVIEWS: tuple[DocReview, ...] = (DocReview("greenhouse", "D102"),)

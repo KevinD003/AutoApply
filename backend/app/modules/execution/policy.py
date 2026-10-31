@@ -1,18 +1,20 @@
 """Which destinations may be executed, and by which adapter.
 
-Seven adapters exist (`ADAPTER_VERSIONS`): six browser adapters (`fixture_ats`,
-`greenhouse_hosted`, `greenhouse_dom`, `fixture_lever`, `fixture_ashby`, `fixture_workday`) and
-the authorized-API adapter `fake_api`.
-All run only
-against local synthetic fixtures and only outside production. Every real employer destination is
-refused by `adapter_for`, whatever the flags below say: no adapter has been verified against a
-real employer.
+Eight adapters exist (`ADAPTER_VERSIONS`): seven browser adapters (`fixture_ats`,
+`greenhouse_hosted`, `greenhouse_dom`, `greenhouse_live`, `fixture_lever`, `fixture_ashby`,
+`fixture_workday`) and the authorized-API adapter `fake_api`.
+All but `greenhouse_live` run only against local synthetic fixtures and only outside production.
+`greenhouse_live` (D102, the Greenhouse pilot) runs only for a form captured from a real
+Greenhouse job post while the pilot is on (`live.environment_refusal`: the owner's switch,
+production, container isolation) and only on Greenhouse's board hosts. Every other real employer
+destination is refused by `adapter_for`, whatever the flags below say.
 """
 
 from urllib.parse import urlsplit
 
 from app.core.config import get_settings
 from app.core.urlsafety import is_fixture_origin
+from app.modules.execution import live
 from app.modules.preparation import forms
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation import greenhouse_dom as gdom
@@ -93,6 +95,41 @@ CAPABILITIES: dict[str, dict] = {
             "location search pickers and hidden coordinates",
             "multi-choice comboboxes",
             "questions shown by page logic NoEfforts cannot see",
+            "security-code steps",
+            "pasting text instead of attaching a document",
+        ],
+        "tested_against": ["fixtures/ats_receiver/greenhouse_v2.py"],
+    },
+    "greenhouse_live": {
+        "description": (
+            "The Greenhouse pilot (D102): the id-mapping adapter (greenhouse_dom) on a real "
+            "Greenhouse-hosted job post, captured from its public job data, for the owner's "
+            "account only, in production with container isolation, when the owner switched it "
+            "on. Tested against the second labelled local approximation standing in for a "
+            "board host; never yet run on a real page."
+        ),
+        "environments": ["production", "test"],
+        "inspect": True,  # job data from the Job Board API; the page mapped before any entry
+        "extract": True,
+        "fill": True,  # text, email, phone, textarea, single-choice combobox
+        "upload": True,  # attachments uploaded when chosen (counted as disclosures)
+        "checkpoint": True,  # unsupported or unlisted controls stop before anything is entered
+        "submit": True,  # only after a successful rehearsal on the employer's path (E6)
+        "confirm": True,  # the approximation's message; on a real page: unknown until seen
+        "real_destinations": True,  # Greenhouse's board hosts only, while the pilot is on
+        "unverified": {
+            "page": "the real page is mapped by the greenhouse_dom rules, observed read-only on "
+            "one posting only; unlisted controls (e.g. a phone country picker) stop the attempt",
+            "dropdown_strategies": "synthetic only; run #9 saw no opening evidence on a real page",
+            "attachments": "synthetic: a real page's upload acknowledgement has not been seen",
+            "submission": "synthetic: how a real form submits has not been seen",
+            "confirmation": "synthetic: an unrecognised result is unknown, never resent",
+        },
+        "unsupported": [
+            "CAPTCHA or bot checks (stop, never bypassed)",
+            "location search pickers and hidden coordinates",
+            "multi-choice comboboxes",
+            "controls the job data does not list",
             "security-code steps",
             "pasting text instead of attaching a document",
         ],
@@ -205,6 +242,8 @@ ADAPTER_VERSIONS: dict[str, str] = {
     # 3: dropdowns without a list at load are handled by explicit, evidence-checked strategies
     # (adapters/dropdowns.py), verified before disclosure.
     "greenhouse_dom": f"greenhouse-dom-3+{gdom.EXTRACTION_VERSION}",
+    # D102: the same rules on a real board host, from a form captured as `greenhouse_live`.
+    "greenhouse_live": f"greenhouse-live-1+{gdom.EXTRACTION_VERSION}",
     # D85: the Lever-style approximation's form, read by the generic extractor.
     "fixture_lever": f"fixture-lever-1+{forms.EXTRACTION_VERSION}",
     # D87: the Ashby-style approximation's form, read by the generic extractor plus its spam
@@ -298,6 +337,8 @@ REAL_DESTINATION_DISABLED = (
 FORM_SOURCE_ADAPTERS = {
     "greenhouse_api": "greenhouse_hosted",
     "greenhouse_api_dom": "greenhouse_dom",
+    # D102: only adapter_for's pilot branch reaches this entry (it checks the pilot first).
+    "greenhouse_live": "greenhouse_live",
     "fixture_lever": "fixture_lever",
     "fixture_ashby": "fixture_ashby",
     "fixture_workday": "fixture_workday",
@@ -310,8 +351,37 @@ NO_ADAPTER_FOR_SOURCE = (
 )
 
 
+def _live_adapter(destination: dict) -> str:
+    """D102: a form captured from a real Greenhouse job post, on its board host, while the
+    pilot is on; refused otherwise (never handed to another adapter)."""
+    why = live.environment_refusal()
+    if why == "not_enabled":
+        raise UnsupportedDestination(live.WHY[why], "live_not_enabled")
+    if why == "needs_production":
+        raise UnsupportedDestination(live.WHY[why], "live_needs_production")
+    if why:  # "needs_container", the only other environment refusal
+        raise UnsupportedDestination(live.WHY[why], "live_needs_container")
+    origin, submit = destination.get("origin"), destination.get("submit_url")
+    if not origin or not submit:
+        raise UnsupportedDestination(
+            "This job has no captured destination to submit to. Apply on the employer's site "
+            "and record it in the tracker.",
+            "no_captured_destination",
+        )
+    if not live.page_origin_allowed(origin) or live.posting(destination.get("url")) is None:
+        raise UnsupportedDestination(REAL_DESTINATION_DISABLED, "real_destination_disabled")
+    sp = urlsplit(submit)
+    if f"{sp.scheme}://{sp.netloc}".lower() != origin.lower():
+        raise UnsupportedDestination(
+            "The form submits to a different site than the job page.", "submit_origin_mismatch"
+        )
+    return live.ADAPTER
+
+
 def adapter_for(destination: dict) -> str:
     origin, submit = destination.get("origin"), destination.get("submit_url")
+    if destination.get("form_source") == live.FORM_SOURCE:
+        return _live_adapter(destination)
     if get_settings().env == "production":
         raise UnsupportedDestination(PRODUCTION_DISABLED, "production_disabled")
     if not origin or not submit:

@@ -21,6 +21,7 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.urlsafety import is_fixture_origin
+from app.modules.execution import live
 from app.modules.jobs.canonical import ATS_DISPLAY, canonicalize_url, detect_ats
 from app.modules.providers import registry
 from app.modules.providers.model import Capability, Kind
@@ -44,8 +45,18 @@ REASONS = {
     "no_supported_provider": "no provider supports this destination",
     "source_record_incomplete": "the discovery record is incomplete",
     "source_posting_closed": "the posting was closed at its source before it was linked",
+    # D102: the Greenhouse pilot, for a real Greenhouse job post, and why it does not apply.
+    "live_not_enabled": "the Greenhouse pilot is switched off on this server",
+    "live_not_for_this_account": "the Greenhouse pilot is for the server owner's account only",
+    "live_needs_production": "the Greenhouse pilot runs only in production mode",
+    "live_needs_container": "the Greenhouse pilot needs the browser's container isolation",
 }
 AUTHORIZATION_STATES = ("granted", "none", "not_applicable")
+# D102: why the Greenhouse pilot does not apply (live.WHY codes) as reason codes.
+LIVE_REASONS = {"not_enabled": "live_not_enabled",
+                "not_for_this_account": "live_not_for_this_account",
+                "needs_production": "live_needs_production",
+                "needs_container": "live_needs_container"}  # fmt: skip
 
 
 @dataclass
@@ -105,6 +116,7 @@ def active_authorization(user_id, provider: str, origin: str) -> bool:
 # identity (D85), whose form belongs to no job on an identified ATS. The generic sources
 # (policy.GENERIC_FORM_SOURCES) are not listed.
 FORM_SOURCE_ATS = {"greenhouse_api": "greenhouse", "greenhouse_api_dom": "greenhouse",
+                   "greenhouse_live": "greenhouse",
                    "fixture_lever": None, "fixture_ashby": None,
                    "fixture_workday": None}  # fmt: skip
 
@@ -157,6 +169,14 @@ def decide(destination: dict, user_id=None) -> RouteDecision:
         browser, refusal, refusal_code = None, str(e), e.code
     else:
         refusal, refusal_code = "", FALLBACK_REASON
+    if browser == live.ADAPTER:
+        why = _live_user_refusal(user_id)
+        if why:
+            steps.append(f"greenhouse pilot: {why}")
+            return RouteDecision("manual_handoff", "manual_handoff", steps, live.WHY[why],
+                                 LIVE_REASONS[why])  # fmt: skip
+        steps.append(f"browser {browser}: the Greenhouse pilot, on for this account")
+        return RouteDecision("browser", browser, steps, "", "browser_supported")
     real = not is_fixture_origin(origin) or s.env == "production"
     if real:
         steps.append("enabled: no provider is enabled for real destinations")
@@ -200,12 +220,37 @@ def form_checkpoint(schema: dict | None) -> list[str]:
             if f.get("type") == "unsupported" and f.get("required")]  # fmt: skip
 
 
-def _enabled_refusal(url: str | None, steps: list[str]) -> RouteDecision | None:
+def _live_user_refusal(user_id) -> str | None:
+    """Why the Greenhouse pilot does not apply to this account (a live.WHY code), or None. No
+    account known: it does not apply."""
+    from app.core.db import SessionLocal
+    from app.modules.identity.models import User
+
+    why = live.environment_refusal()
+    if why or user_id is None:
+        return why or "not_for_this_account"
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        return live.refusal(user) if user is not None else "not_for_this_account"
+
+
+def _enabled_refusal(url: str | None, steps: list[str], user_id=None) -> RouteDecision | None:
     """In production, or for a job on a real employer's site, no provider is enabled whatever
     form is captured, so the route says that, not "capture the form first" (which could not
-    change it). A local fixture, or a job without an address, goes on to the form."""
+    change it). A local fixture, or a job without an address, goes on to the form. A real
+    Greenhouse job post goes on to the form while the Greenhouse pilot is on for this account
+    (D102); otherwise the route says why it is not."""
     from app.modules.execution import policy
 
+    if live.posting(url) is not None:
+        why = _live_user_refusal(user_id)
+        if why is None:
+            steps.append("greenhouse pilot: on for this account")
+            return None
+        if why != "not_enabled":  # switched on, but not here or not for this account
+            steps.append(f"greenhouse pilot: {why}")
+            return RouteDecision("manual_handoff", "manual_handoff", steps, live.WHY[why],
+                                 LIVE_REASONS[why])  # fmt: skip
     p = urlsplit(url or "")
     origin = f"{p.scheme}://{p.netloc}" if p.netloc else ""
     if get_settings().env == "production":
@@ -232,7 +277,7 @@ def route_for_job(db, job) -> RouteDecision:
     steps: list[str] = []
     refused = _identity_refusal({"url": job.url, "ats_provider": job.ats_provider}, steps)
     if refused is None:
-        refused = _enabled_refusal(job.url, steps)
+        refused = _enabled_refusal(job.url, steps, getattr(job, "user_id", None))
     if refused is not None:
         return refused
     form = db.scalar(select(JobForm).where(JobForm.job_id == job.id,
