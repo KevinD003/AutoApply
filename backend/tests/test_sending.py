@@ -361,14 +361,15 @@ def test_nothing_else_reads_answer_values_for_sending():
     for cls in (fixture_ats.FixtureAtsAdapter, fake_api.FakeApiAdapter):
         assert "sendable_view(content)" in inspect.getsource(cls.__init__), cls
     inheriting = (greenhouse.GreenhouseHostedAdapter, greenhouse_dom.GreenhouseDomAdapter,
-                  lever.LeverFixtureAdapter, ashby.AshbyFixtureAdapter,
-                  workday.WorkdayFixtureAdapter)  # fmt: skip
+                  greenhouse_dom.GreenhouseLiveAdapter, lever.LeverFixtureAdapter,
+                  ashby.AshbyFixtureAdapter, workday.WorkdayFixtureAdapter)  # fmt: skip
     for cls in inheriting:
         assert issubclass(cls, fixture_ats.FixtureAtsAdapter)
     assert set(runner.ADAPTERS.values()) | set(runner.API_ADAPTERS.values()) == {
         fixture_ats.FixtureAtsAdapter,
         greenhouse.GreenhouseHostedAdapter,
         greenhouse_dom.GreenhouseDomAdapter,
+        greenhouse_dom.GreenhouseLiveAdapter,  # D102: greenhouse_dom's code, its own name
         fake_api.FakeApiAdapter,
         lever.LeverFixtureAdapter,
         ashby.AshbyFixtureAdapter,
