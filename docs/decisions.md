@@ -2647,3 +2647,67 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
     your export and deleted with the board or the account.
 - **Not verified:** any real board (local stand-ins only, as D95).
 - **Unchanged:** `SCHEMA_VERSION` (3); execution, routing and admission. Migration `e5a1c3f80d47`.
+
+## D97 — A form's page is ready when its own requests are done; what AI drafting used, with its basis (2026-10-31)
+
+- **Why:** the owner's D97 milestone: inspect the form-readiness wait added for CI #133, then
+  show drafting usage against the budget without presenting estimates as a bill, and fix what
+  the budget ledger got wrong.
+- **Form readiness (runner):**
+  - **Before:** after opening the form the runner called Playwright's `networkidle` (no
+    connection for 500 ms, at most 8 s) and used the page as it was if that never came. It is
+    a condition, but every page paid the 500 ms quiet floor, any long-lived connection (an
+    event stream, a hanging tracking pixel) held it to the full 8 s, and a page still loading
+    after 8 s was used anyway.
+  - **Now:** a tracker attached before the page opens counts the page's own document, script,
+    stylesheet, fetch and XHR requests in flight. The page is ready as soon as none has been in
+    flight for 100 ms (`QUIET_MS`), polled every 25 ms. Images, media, fonts, event streams and
+    WebSockets are not waited on. Still loading after 8 s (`SETTLE_LOAD_MS`, unchanged): the
+    attempt stops safely before anything is entered ("the form's page was still loading after
+    8 seconds"). The wait only waits: nothing is typed, clicked, sent or repeated.
+  - **Kept:** the slow-locale-file reproduction (2.5 s), now with a never-ready case through
+    the receiver's ledger (failed safe, nothing disclosed or accepted, the locale file
+    requested once) and unit cases on a local page server (ready at once, a slow request waited
+    for, never ready, ignored resources, listeners removed).
+  - **Measured** (see `implementation-status.md`): the old wait took a median of 489-491 ms
+    per form (271 waits over the execution tests, about 135 s in all, max 3.0 s, none at 8 s).
+    That is the 500 ms floor. It accounts for about 2 of the roughly 8 minutes the full local
+    backend run grew by (52m15s to 1h00m20s); the rest was not traced to a cause.
+- **Drafting spend (Account → "AI drafting spend"):**
+  - **One ledger.** `drafting_usage` stays the only record: the view, the export and the
+    budget all read it. No second budget system.
+  - **Every amount says what it is** (`cost_basis`): `estimated` (from the tokens the provider
+    reported, at the list prices named by `price_version`, `anthropic-list-2026-10-06`),
+    `unknown` (the worst case kept: the provider may have charged and nothing says what),
+    `reserved` (the worst case held while the request runs; shown as unknown once it is older
+    than the request timeout plus 2 minutes, because the worker stopped) or `not_sent` (refused
+    before it left: 0). The card says the amounts are NoEfforts' own accounting, not an invoice.
+  - **Shown:** the server's daily budget and its reset (00:00 UTC, every account together),
+    today's total for the server and what is left, your requests and tokens today, the last
+    14 days and your last 20 requests with their outcome and basis, the model and the price
+    list. The server total and what is left are shown only to an account drafting is offered
+    to; everyone else sees only their own records. Session only: an API token cannot read it.
+- **Ledger fixes:**
+  - **An error reply keeps its worst case.** An HTTP error from the provider (500, 400, ...)
+    was settled at $0, as if certainly free. Whether such a reply is charged is not reported,
+    so it now keeps its worst case as `unknown`. Only a request refused before it left (the API
+    host failed the public-address check) is recorded as `not_sent` at 0. This can use the day's
+    budget faster after errors; it never under-counts.
+  - **Settled once.** A second settlement of the same request (a retried task, a late reply)
+    changes nothing: the first stands, so an estimate cannot become a worst case or a kept worst
+    case become 0.
+  - **Migration `a4c8e2d61f93`:** existing rows get their basis; a provider error recorded at 0
+    before D97 regains its worst case. Downgrade drops both columns; restored worst cases stay.
+- **Checked and unchanged:** concurrent reservations (one advisory lock; the existing race test),
+  the midnight boundary (a request reserved before midnight stays on its day, settled after it;
+  the new day starts from 0), per-account isolation of the view, timeouts and unknown errors
+  keeping their worst case, a budget of 0 sending nothing.
+- **Not promised:** a hard ceiling on the provider's billing. The budget bounds what NoEfforts
+  sends, using worst cases; the provider bills its own way. Deleting an account deletes its
+  usage rows, so that day's server total drops by what they held (retention rules, D77).
+- **Export:** your `drafting_usage` rows with `cost_basis` and `price_version`, and a
+  `drafting_budget` block (provider, model, daily budget, reset, price list). Never the key, a
+  prompt, a draft or a provider error's text.
+- **No paid request was made and no key exists in the repository:** every test uses a stub
+  client and a stub resolver.
+- **Unchanged:** `SCHEMA_VERSION` (3); routing, admission, discovery. Migration `a4c8e2d61f93`.

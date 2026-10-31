@@ -379,6 +379,131 @@ def test_concurrent_reservations_never_pass_the_budget_together(api, configure, 
     assert sum(u.cost_usd for u in usage()) == Decimal("0.8")
 
 
+def test_a_request_is_settled_once(api, configure):
+    """A duplicate completion (a retried task, a late reply) never replaces the first settlement:
+    an estimate cannot be overwritten by a worst case, nor a kept worst case by 0."""
+    me = uuid.UUID(api.get("/auth/me").json()["user_id"])
+    uid = drafting_access.reserve(me, "anthropic", ap.MODEL_ID, Decimal("0.4"), ap.PRICE_VERSION)
+    assert drafting_access.settle(uid, "drafted", Decimal("0.01"), 100, 10) is True
+    assert drafting_access.settle(uid, "provider_timeout", None) is False
+    assert drafting_access.settle(uid, "x", None, sent=False) is False
+    (row,) = usage()
+    assert (row.outcome, row.cost_usd, row.cost_basis) == ("drafted", Decimal("0.01"), "estimated")
+    uid = drafting_access.reserve(me, "anthropic", ap.MODEL_ID, Decimal("0.4"), ap.PRICE_VERSION)
+    assert drafting_access.settle(uid, "provider_timeout", None) is True
+    assert drafting_access.settle(uid, "drafted", Decimal(0), 0, 0) is False
+    assert usage()[1].cost_usd == Decimal("0.4") and usage()[1].cost_basis == "unknown"
+
+
+def test_the_budget_resets_at_midnight_utc(api, configure, monkeypatch):
+    """A request reserved before midnight stays on its day; the new day starts from 0."""
+    from datetime import UTC, datetime
+
+    monkeypatch.setattr(get_settings(), "drafting_daily_budget_usd", 0.5)
+    me = uuid.UUID(api.get("/auth/me").json()["user_id"])
+    clock = {"now": datetime(2026, 10, 30, 23, 59, 59, tzinfo=UTC)}
+    monkeypatch.setattr(drafting_access, "utcnow", lambda: clock["now"])
+    first = drafting_access.reserve(me, "anthropic", ap.MODEL_ID, Decimal("0.4"))
+    with pytest.raises(drafting_access.BudgetReached):
+        drafting_access.reserve(me, "anthropic", ap.MODEL_ID, Decimal("0.4"))
+    clock["now"] = datetime(2026, 10, 31, 0, 0, 1, tzinfo=UTC)
+    drafting_access.settle(first, "provider_timeout", None)  # settled after midnight
+    drafting_access.reserve(me, "anthropic", ap.MODEL_ID, Decimal("0.4"))
+    days = sorted((str(u.day), u.cost_usd) for u in usage())
+    assert days == [("2026-10-30", Decimal("0.4")), ("2026-10-31", Decimal("0.4"))]
+    with SessionLocal() as db:
+        assert drafting_access.spent_today(db) == Decimal("0.4")
+
+
+# -- the spend view (D97) ----------------------------------------------------------------------
+
+
+def test_the_spend_view_says_what_each_amount_is(api, configure):
+    """Today's requests, the day's total for the server, what is left and each request's basis,
+    from the same ledger that enforces the budget. No prompt, draft or job text in it."""
+    configure(message(tokens=(1200, 300)))
+    app_id = ready(api)
+    agree(api)
+    assert ask(api, app_id).status_code == 200
+    with SessionLocal() as db:
+        db.query(AnswerDraft).delete()
+        db.commit()
+    configure(anthropic.APITimeoutError(request=_REQ))
+    assert ask(api, app_id).status_code == 502
+    est = Decimal(1200 * 4 + 300 * 20) / Decimal(1_000_000)
+    worst = usage()[1].reserved_usd
+    v = api.get("/drafting/usage").json()
+    assert (v["offered"], v["provider"], v["model"]) == (True, "anthropic", ap.MODEL_ID)
+    assert (v["budget_usd"], v["resets"]) == (5.0, "daily at 00:00 UTC")
+    assert v["all_accounts_today_usd"] == pytest.approx(float(est + worst))
+    assert v["remaining_usd"] == pytest.approx(5.0 - float(est + worst))
+    t = v["today"]
+    assert (t["requests"], t["input_tokens"], t["output_tokens"]) == (2, 1200, 300)
+    assert t["estimated_usd"] == pytest.approx(float(est))
+    assert t["worst_case_usd"] == pytest.approx(float(worst))
+    assert [d["requests"] for d in v["days"]] == [2]
+    assert [r["cost_basis"] for r in v["recent"]] == ["unknown", "estimated"]  # newest first
+    assert set(v["recent"][0]) == {"at", "provider", "model", "status", "outcome", "cost_usd",
+                                   "cost_basis", "input_tokens", "output_tokens",
+                                   "price_version"}  # fmt: skip
+    assert v["pricing"] == {"version": ap.PRICE_VERSION, "model": ap.MODEL_ID,
+                            "input_per_mtok": 4.0, "output_per_mtok": 20.0}  # fmt: skip
+    body = json.dumps(v)
+    assert "front desk" not in body.lower() and "why_us" not in body and KEY not in body
+
+
+def test_a_reservation_never_settled_is_shown_as_unknown_and_still_counts(api, configure):
+    from datetime import timedelta
+
+    me = uuid.UUID(api.get("/auth/me").json()["user_id"])
+    uid = drafting_access.reserve(me, "anthropic", ap.MODEL_ID, Decimal("0.4"), ap.PRICE_VERSION)
+    assert api.get("/drafting/usage").json()["recent"][0]["cost_basis"] == "reserved"
+    with SessionLocal() as db:  # the worker stopped while the request was out
+        row = db.get(DraftingUsage, uid)
+        row.created_at = row.created_at - timedelta(hours=1)
+        db.commit()
+    v = api.get("/drafting/usage").json()
+    assert v["recent"][0]["cost_basis"] == "unknown"
+    assert v["today"]["worst_case_usd"] == 0.4 and v["all_accounts_today_usd"] == 0.4
+
+
+def test_the_spend_view_is_per_account_and_says_nothing_of_the_budget_to_others(
+    api, other_api, configure
+):
+    me = uuid.UUID(api.get("/auth/me").json()["user_id"])
+    drafting_access.reserve(me, "anthropic", ap.MODEL_ID, Decimal("0.4"), ap.PRICE_VERSION)
+    v = other_api.get("/drafting/usage").json()
+    assert v["offered"] is False and v["recent"] == [] and v["today"]["requests"] == 0
+    assert v["budget_usd"] is None and v["all_accounts_today_usd"] is None
+    assert v["remaining_usd"] is None and v["pricing"] is None
+    assert api.get("/drafting/usage").json()["today"]["requests"] == 1
+
+
+def test_the_spend_view_with_drafting_off(api):
+    v = api.get("/drafting/usage").json()
+    assert v["offered"] is False and v["budget_usd"] is None and v["recent"] == []
+
+
+def test_the_export_holds_the_usage_records_and_the_budget_settings(api, configure):
+    import io
+    import zipfile
+
+    me = uuid.UUID(api.get("/auth/me").json()["user_id"])
+    uid = drafting_access.reserve(me, "anthropic", ap.MODEL_ID, Decimal("0.4"), ap.PRICE_VERSION)
+    drafting_access.settle(uid, "provider_timeout", None)
+    r = api.get("/account/export")
+    assert r.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+        raw = z.read("noefforts-export.json").decode()
+    data = json.loads(raw)
+    (row,) = data["tables"]["drafting_usage"]
+    assert (row["cost_basis"], row["price_version"]) == ("unknown", ap.PRICE_VERSION)
+    b = data["drafting_budget"]
+    assert (b["provider"], b["model"], b["daily_budget_usd"]) == ("anthropic", ap.MODEL_ID, 5.0)
+    assert b["price_version"] == ap.PRICE_VERSION
+    assert KEY not in raw and "api_key" not in json.dumps(b)
+
+
 # -- failures ----------------------------------------------------------------------------------
 
 _REQ = httpx2.Request("POST", f"{URL}/v1/messages")
@@ -393,12 +518,18 @@ _REQ = httpx2.Request("POST", f"{URL}/v1/messages")
         (message(body='{"text": 3, "evidence": []}'), "provider_unparseable", "reported"),
         (anthropic.APITimeoutError(request=_REQ), "provider_timeout", "worst"),
         (anthropic.APIConnectionError(request=_REQ), "provider_unreachable", "worst"),
+        # An error reply: whether it was charged is not reported, so its worst case stays (D97).
         (
             anthropic.InternalServerError(
                 "x", response=httpx2.Response(500, request=_REQ), body=None
             ),
             "provider_error",
-            "zero",
+            "worst",
+        ),  # fmt: skip
+        (
+            anthropic.BadRequestError("x", response=httpx2.Response(400, request=_REQ), body=None),
+            "provider_error",
+            "worst",
         ),  # fmt: skip
         (anthropic.AnthropicError("an SDK error"), "provider_error", "worst"),
     ],
@@ -414,8 +545,10 @@ def test_a_failure_keeps_nothing_and_says_why(api, configure, reply, code, cost)
     (row,) = usage()
     assert (row.status, row.outcome) == ("settled", code)
     want = {"reported": Decimal(1200 * 4 + 300 * 20) / Decimal(1_000_000),
-            "worst": row.reserved_usd, "zero": Decimal(0)}[cost]  # fmt: skip
+            "worst": row.reserved_usd}[cost]  # fmt: skip
     assert row.cost_usd == want
+    assert row.cost_basis == {"reported": "estimated", "worst": "unknown"}[cost]
+    assert row.price_version == ap.PRICE_VERSION
     (a,) = [a for a in actions() if a.action == "draft.provider_failed"]
     assert a.meta["reason_code"] == code and "text" not in a.meta
 
@@ -428,6 +561,7 @@ def test_an_api_host_resolving_to_a_private_address_is_never_contacted(api, conf
     assert r.status_code == 502
     assert r.json()["detail"].endswith("(reason: provider_destination_refused)")
     assert stub.calls == [] and usage()[0].cost_usd == 0
+    assert usage()[0].cost_basis == "not_sent"  # refused before it left: certainly free
 
 
 # -- tailored documents ------------------------------------------------------------------------

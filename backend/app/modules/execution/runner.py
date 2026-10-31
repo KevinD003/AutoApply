@@ -52,18 +52,59 @@ ADAPTERS = {
 log = logging.getLogger("noefforts.execution")
 
 
-SETTLE_LOAD_MS = 8000
+SETTLE_LOAD_MS = 8000  # how long a form's page may take to finish loading what it needs
+QUIET_MS = 100  # nothing it needs in flight for this long: the page is ready
+_POLL_MS = 25
+# What a form's own set-up waits on. Not waited on: WebSockets and event streams (open by
+# design), images, media and fonts (they change no control's behaviour), pings and beacons.
+_TRACKED = frozenset({"document", "script", "stylesheet", "xhr", "fetch"})
+NOT_READY = "the form's page was still loading after 8 seconds"
 
 
-def _settle(page) -> None:
-    """Let what the page loads by itself (a locale file, its scripts) finish before the form is
-    read or touched: a control may only respond once that has loaded, and on a busy machine it
-    can come late (CI #133). Bounded; a page that never goes quiet is used as it is. Nothing is
-    sent and nothing is repeated: this only waits."""
-    try:
-        page.wait_for_load_state("networkidle", timeout=SETTLE_LOAD_MS)
-    except Exception:  # noqa: BLE001 - a timeout, or a page that cannot report it: carry on
-        pass
+class _Loading:
+    """The page's own requests still in flight, counted from before the form is opened."""
+
+    def __init__(self, page):
+        self.page, self.pending = page, set()
+        page.on("request", self._start)
+        page.on("requestfinished", self._end)
+        page.on("requestfailed", self._end)
+
+    def _start(self, request) -> None:
+        if request.resource_type in _TRACKED:
+            self.pending.add(request)
+
+    def _end(self, request) -> None:
+        self.pending.discard(request)
+
+    def close(self) -> None:
+        for event, fn in (
+            ("request", self._start),
+            ("requestfinished", self._end),
+            ("requestfailed", self._end),
+        ):
+            self.page.remove_listener(event, fn)
+
+
+def _settle(page, loading: _Loading) -> bool:
+    """Wait until the page has finished the requests it made by itself (its scripts, a locale
+    file): a control may only respond once they have arrived, and on a busy machine they come
+    late (CI #133). True as soon as none has been in flight for QUIET_MS; False if the page is
+    still loading after SETTLE_LOAD_MS, and the caller stops safely. It only waits: nothing is
+    typed, clicked, sent or repeated."""
+    deadline = time.monotonic() + SETTLE_LOAD_MS / 1000
+    quiet_since = None
+    while True:
+        now = time.monotonic()
+        if loading.pending:
+            quiet_since = None
+        elif quiet_since is None:
+            quiet_since = now
+        elif now - quiet_since >= QUIET_MS / 1000:
+            return True
+        if now >= deadline:
+            return False
+        page.wait_for_timeout(_POLL_MS)
 
 
 def _snapshot(attempt_id):
@@ -187,12 +228,18 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             ):
                 svc.fail_safe(aid, worker, gen, "the form is not on the destination's site")
                 return "failed_safe"
+            loading = _Loading(page)
             try:
                 page.goto(url)
+                ready = _settle(page, loading)
             except Exception as e:  # noqa: BLE001 - any navigation failure is a safe stop
                 svc.fail_safe(aid, worker, gen, f"could not open the form ({type(e).__name__})")
                 return "failed_safe"
-            _settle(page)
+            finally:
+                loading.close()
+            if not ready:
+                svc.fail_safe(aid, worker, gen, NOT_READY)
+                return "failed_safe"
             reason = adapter.blocked_reason(page) or adapter.schema_matches(page)
             if reason:
                 svc.fail_safe(aid, worker, gen, reason)

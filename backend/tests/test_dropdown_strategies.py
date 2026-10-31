@@ -61,6 +61,27 @@ def test_each_strategy_selects_exactly_the_approved_option(api, receiver, dd, cf
     assert sent["question_8104"] == "0"  # "No": the second option, never the first by default
 
 
+def test_a_form_still_loading_after_the_allowance_stops_before_anything_is_entered(
+    api, receiver, monkeypatch
+):
+    """The locale file never arrives within the allowance: the runner stops safely instead of
+    using a page whose controls may not respond yet. Nothing is typed, disclosed or sent."""
+    monkeypatch.setattr(runner, "SETTLE_LOAD_MS", 1000)
+    receiver.config(mode="gh2_dd", dd="locale_gate")
+    app_id = v2_application(api)
+    receiver.config(locale_delay_ms=30000)
+    before = len(receiver.ledger()["requests"])
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert runner.NOT_READY in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+    # The form and its locale file, each requested once: nothing was repeated while it waited.
+    paths = [r["path"] for r in led["requests"][before:]]
+    assert paths.count("/locales/en/common.json") == 1, paths
+    assert all(r["method"] == "GET" for r in led["requests"][before:])
+
+
 @pytest.mark.parametrize(
     "dd,cfg,reason",
     [

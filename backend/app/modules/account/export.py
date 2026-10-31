@@ -332,6 +332,8 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "cost_usd",
         "input_tokens",
         "output_tokens",
+        "cost_basis",
+        "price_version",
         "created_at",
         "settled_at",
     ),
@@ -613,7 +615,8 @@ def _readme(counts: dict[str, int], files: int, missing: int) -> str:
     lines = [
         "NoEfforts data export",
         "",
-        "noefforts-export.json: every record NoEfforts holds about your account, by table.",
+        "noefforts-export.json: every record NoEfforts holds about your account, by table, and",
+        "the drafting budget settings your drafting_usage records were counted against.",
         f"documents/: {files} document file(s), named by their id in the 'documents' table.",
     ]
     if missing:
@@ -627,6 +630,23 @@ def _readme(counts: dict[str, int], files: int, missing: int) -> str:
     lines += [f"  inside JSON values, '{k}': {why}" for k, why in sorted(KEYED_JSON_KEYS.items())]
     lines.append("  inside JSON values, keyed references (ref:...): " + KEYED)
     return "\n".join(lines) + "\n"
+
+
+def _drafting_budget() -> dict:
+    """D97: the server's drafting budget settings that `drafting_usage` was counted against.
+    Never the provider key or any other secret."""
+    from app.core.config import get_settings
+    from app.modules.preparation import anthropic_provider as ap
+
+    s = get_settings()
+    return {
+        "provider": s.drafting_provider or None,
+        "model": s.drafting_model,
+        "daily_budget_usd": max(s.drafting_daily_budget_usd, 0.0),
+        "resets": "daily at 00:00 UTC, for every account together",
+        "price_version": ap.PRICE_VERSION,
+        "note": "cost_usd is NoEfforts' own accounting (see cost_basis), not the provider's bill",
+    }
 
 
 def build(db: Session, user_id: uuid.UUID, storage: Storage) -> tuple[bytes, dict]:
@@ -655,6 +675,7 @@ def build(db: Session, user_id: uuid.UUID, storage: Storage) -> tuple[bytes, dic
             "format_version": FORMAT_VERSION,
             "exported_at": utcnow().isoformat(),
             "tables": tables,
+            "drafting_budget": _drafting_budget(),
             "left_out": {
                 "tables": EXCLUDED_TABLES,
                 "columns": EXCLUDED_COLUMNS,

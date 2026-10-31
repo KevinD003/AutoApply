@@ -314,11 +314,38 @@ Anthropic's API and DNS; no key exists and nothing was sent. Decision D74.
 | Every sending provider is gated | `::test_every_provider_class_in_the_app_declares_whether_it_sends_anything_out`, `::test_an_unbound_provider_never_sends` | the one class sets `external = True`; an unbound one refuses |
 | The request | `::test_the_request_is_the_rules_and_one_json_message_with_no_sampling_or_tools` | the rules as the system prompt; one ASCII JSON user message with the approved facts; JSON output schema; effort `medium`; no sampling, thinking or tool fields |
 | The budget | `::test_no_budget_sends_nothing`, `::test_a_request_whose_worst_case_does_not_fit_is_never_sent`, `::test_the_worst_case_is_reserved_before_sending_then_the_reported_cost_is_kept`, `::test_a_settled_request_frees_what_it_did_not_use`, `::test_concurrent_reservations_never_pass_the_budget_together` | reserved before sending, then the reported cost; 6 concurrent reservations with room for 2: 2 reserved |
-| Failures keep nothing | `::test_a_failure_keeps_nothing_and_says_why` (8 cases), `::test_an_api_host_resolving_to_a_private_address_is_never_contacted`, `::test_a_provider_draft_is_checked_like_every_draft` | 502 with a fixed code; no draft stored; timeouts keep the worst case, error statuses cost nothing; a private address is never contacted; the draft checks still apply |
+| Failures keep nothing | `::test_a_failure_keeps_nothing_and_says_why` (9 cases), `::test_an_api_host_resolving_to_a_private_address_is_never_contacted`, `::test_a_provider_draft_is_checked_like_every_draft` | 502 with a fixed code; no draft stored; timeouts, unknown errors and (D97) error replies such as 500 and 400 keep the worst case as `unknown`; only a request refused before it left is `not_sent` at 0; a private address is never contacted; the draft checks still apply |
 | Tailored documents | `::test_a_tailored_resume_goes_through_the_same_checks` | the same gates; `document.generation_failed` audited by code |
 | Migration | `tests/test_migrations.py::test_l4_adds_drafting_consents_and_usage_and_downgrade_drops_only_them` | one consent per user and provider; rows deleted with the user; downgrade drops only them |
 | In the browser | `frontend/e2e/drafting-consent.spec.ts` (desktop, mobile; a synthetic consent view) | not configured said; what is sent and never sent shown; agree and turn off; the review page links to the profile card |
 | Sabotage | 17 cases (owner, consent version, withdrawal, budget, lock, reported cost, any version, timeout cost, destination check, `external`, key, retries, refusal, job text in the system prompt, reservation after sending, unbound use, the gate) | 17 caught; the race case caught in 5 of 5 further runs, and passes 8 of 8 when intact |
+
+## Drafting spend view and ledger (D97, 2026-10-31; local only)
+
+A stub SDK client and a stub resolver stand in for Anthropic; no key, no paid request. Decision D97.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Each amount says its basis | `tests/test_drafting_provider.py::test_the_spend_view_says_what_each_amount_is` | an estimate and a kept worst case shown apart; server total, what is left, tokens, 14 days, 20 requests, the price list; no prompt, draft, job text or key in the response |
+| A request left unsettled | `::test_a_reservation_never_settled_is_shown_as_unknown_and_still_counts` | shown as held, then unknown after the timeout; still counted |
+| Settled once | `::test_a_request_is_settled_once` | a second settlement returns False and changes nothing, either way round |
+| The midnight boundary | `::test_the_budget_resets_at_midnight_utc` | a request reserved at 23:59:59 stays on its day when settled after midnight; the new day starts from 0 |
+| Per account | `::test_the_spend_view_is_per_account_and_says_nothing_of_the_budget_to_others`, `::test_the_spend_view_with_drafting_off` | another account sees none of your rows and no server figures; off: nothing offered |
+| Export | `::test_the_export_holds_the_usage_records_and_the_budget_settings` | rows with `cost_basis` and `price_version`; a `drafting_budget` block; no key |
+| Migration | `tests/test_migrations.py::test_d97_gives_every_drafting_amount_its_basis` | reserved, not_sent, estimated, unknown; an old error row at 0 regains its worst case; downgrade drops only the two columns |
+| In the browser | `frontend/e2e/drafting-spend.spec.ts` (desktop, mobile; a synthetic view) | not offered said; budget, reset, what is left, each basis, the price list; no sideways scroll on a phone |
+| Sabotage | 10 drafting cases (see `implementation-status.md`, D97) | 10 caught |
+
+## Form readiness wait (D97, 2026-10-31; local only)
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| A ready page proceeds at once | `tests/test_form_readiness.py::test_a_ready_page_proceeds_at_once` | under 1 s (113 ms median in the adapter tests, 491 ms before) |
+| A slow request of the page is waited for | `::test_a_slow_request_of_the_page_is_waited_for`, `tests/test_dropdown_strategies.py` (`locale_delay_ms` 2500) | waited for the 1.2 s request; the slow locale case still selects the approved option |
+| Never ready stops safely | `::test_a_page_that_never_finishes_loading_is_not_ready`, `tests/test_dropdown_strategies.py::test_a_form_still_loading_after_the_allowance_stops_before_anything_is_entered` | not ready at the allowance; failed safe; the receiver's ledger: nothing disclosed or accepted, the locale file requested once, GET only |
+| Not waited on | `::test_images_and_event_streams_are_not_waited_for` | a hanging image and an open event stream: ready under 1 s |
+| Listeners removed | `::test_the_tracker_stops_listening_when_closed` | nothing counted after close |
+| Sabotage | 5 readiness cases | 5 caught |
 
 ## Public-address check before every real server-side request (R10.5, 2026-10-29; local only)
 

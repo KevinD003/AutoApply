@@ -11,6 +11,7 @@
 9. C18, L2/L3: document provenance and its application added; a downgrade is refused while a
    generated document awaits acceptance
 10. L4: drafting_consents and drafting_usage added, deleted with the user, dropped on downgrade
+11. D97: every drafting amount gets its basis; a provider error recorded at 0 regains its worst case
 """
 
 import hashlib
@@ -719,3 +720,76 @@ def test_d84_adds_api_tokens_and_downgrade_drops_only_them(disposable):
         tables = set(c.execute(text("select tablename from pg_tables")).scalars())
     assert "api_tokens" not in tables
     assert {"users", "notification_reads", "user_sessions"} <= tables
+
+
+D96 = "e5a1c3f80d47"  # board daily check, before the drafting cost basis (D97)
+D97 = "a4c8e2d61f93"
+
+
+def test_d97_gives_every_drafting_amount_its_basis(disposable):
+    """D97: still reserved stays reserved; refused before sending becomes not_sent at 0; settled
+    with reported tokens becomes estimated; settled without tokens, including a provider error
+    recorded at 0 before D97, keeps or regains its worst case as unknown. Every row gets the only
+    price list ever used. A downgrade drops both columns and nothing else."""
+    command.upgrade(_cfg(), D96)
+    uid = uuid.uuid4()
+    rows = {  # outcome: (status, reserved, cost, input_tokens)
+        "pending": ("reserved", "0.4", "0.4", None),
+        "provider_destination_refused": ("settled", "0.4", "0", None),
+        "drafted": ("settled", "0.4", "0.0108", 1200),
+        "provider_timeout": ("settled", "0.4", "0.4", None),
+        "provider_error": ("settled", "0.4", "0", None),  # recorded as free before D97
+    }
+    with disposable.begin() as c:
+        c.execute(
+            text(
+                "insert into users (id,email,password_hash,created_at,updated_at) "
+                "values (:u,'d97.synthetic@example.com','x',now(),now())"
+            ),
+            {"u": uid},
+        )
+        for outcome, (st, res, cost, tin) in rows.items():
+            c.execute(
+                text(
+                    "insert into drafting_usage (id,user_id,day,provider,model,status,outcome,"
+                    "reserved_usd,cost_usd,input_tokens,created_at) values (:i,:u,current_date,"
+                    "'anthropic','claude-opus-5-5',:s,:o,:r,:c,:t,now())"
+                ),
+                {
+                    "i": uuid.uuid4(),
+                    "u": uid,
+                    "s": st,
+                    "o": outcome,
+                    "r": res,
+                    "c": cost,
+                    "t": tin,
+                },  # fmt: skip
+            )
+    command.upgrade(_cfg(), D97)
+    with disposable.connect() as c:
+        got = {
+            o: (b, str(cost), pv)
+            for o, b, cost, pv in c.execute(
+                text("select outcome, cost_basis, cost_usd, price_version from drafting_usage")
+            )
+        }
+    pv = "anthropic-list-2026-10-06"
+    assert got == {
+        "pending": ("reserved", "0.400000", pv),
+        "provider_destination_refused": ("not_sent", "0.000000", pv),
+        "drafted": ("estimated", "0.010800", pv),
+        "provider_timeout": ("unknown", "0.400000", pv),
+        "provider_error": ("unknown", "0.400000", pv),
+    }
+    command.downgrade(_cfg(), D96)
+    with disposable.connect() as c:
+        cols = set(
+            c.execute(
+                text(
+                    "select column_name from information_schema.columns "
+                    "where table_name = 'drafting_usage'"
+                )
+            ).scalars()
+        )
+        assert c.execute(text("select count(*) from drafting_usage")).scalar() == 5
+    assert "cost_basis" not in cols and "price_version" not in cols and "cost_usd" in cols

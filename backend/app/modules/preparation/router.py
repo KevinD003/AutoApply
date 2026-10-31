@@ -1128,6 +1128,20 @@ def withdraw_drafting_consent(
     return _consent_view(db, user)
 
 
+@router.get("/drafting/usage")
+def get_drafting_usage(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """D97: this account's drafting requests against the server's daily budget, each amount
+    with its basis (estimated, worst case kept, held, nothing sent). Never the provider's bill."""
+    from app.modules.preparation import drafting_access as da
+
+    configured = drafting.get_provider()
+    offered = (
+        configured is not None and getattr(configured, "external", False) and da.is_owner(user)
+    )
+    return da.usage_view(db, user, offered, configured.name if offered else None,
+                         configured.model if offered else None)  # fmt: skip
+
+
 _NOT_CONFIGURED = "AI drafting is not configured."
 
 

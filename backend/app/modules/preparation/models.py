@@ -198,8 +198,14 @@ class DraftingConsent(Base):
 class DraftingUsage(Base):
     """L4 (D74): one request to an external drafting provider. Written with the request's worst
     case cost before it is sent (`reserved`), then set to what the provider reported
-    (`settled`); a request whose outcome is unknown keeps its worst case. The day's budget is
-    counted from these rows. Numbers and codes only: no text."""
+    (`settled`, once); a request whose outcome is unknown keeps its worst case. The day's budget
+    is counted from these rows. Numbers and codes only: no text.
+
+    `cost_basis` (D97) says what `cost_usd` is: `reserved` (the worst case held while the request
+    runs), `estimated` (NoEfforts' estimate from the tokens the provider reported, at the list
+    prices named by `price_version`), `unknown` (the worst case kept: the provider may have
+    charged and nothing says what) or `not_sent` (refused before it left: 0). None of these is
+    the provider's bill."""
 
     __tablename__ = "drafting_usage"
 
@@ -216,5 +222,9 @@ class DraftingUsage(Base):
     cost_usd: Mapped[float] = mapped_column(Numeric(10, 6))
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)
+    cost_basis: Mapped[str] = mapped_column(
+        String(20), default="reserved", server_default="reserved"
+    )
+    price_version: Mapped[str | None] = mapped_column(String(40))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

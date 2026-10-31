@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import ApiTokens from "@/components/ApiTokens";
+import DraftingSpend from "@/components/DraftingSpend";
 import EmailReminders from "@/components/EmailReminders";
 import { Button, Card, ErrorBox, Field, inputCls, Loading } from "@/components/ui";
 import { api, setCsrf } from "@/lib/api";
@@ -78,6 +79,7 @@ export default function AccountPage() {
       </Card>
       <EmailReminders />
       <ApiTokens />
+      <DraftingSpend />
       <Card title="Delete my account">
         <p className="text-sm text-slate-700">Deleting takes effect at once and cannot be undone. It deletes:</p>
         <ul className="my-2 list-disc pl-5 text-sm text-slate-700" aria-label="What will be deleted">

@@ -25,6 +25,7 @@ NAME = "anthropic"
 # listed here is never used: its cost could not be bounded.
 MODEL_ID = "claude-opus-5-5"
 PRICES_PER_MTOK = {MODEL_ID: (Decimal("4.00"), Decimal("20.00"))}
+PRICE_VERSION = "anthropic-list-2026-10-06"  # recorded with every request: what an estimate used
 MAX_TOKENS = 16_000  # thinking and the answer together; bounds the output cost
 EFFORT = "medium"
 SCHEMA = {
@@ -110,7 +111,11 @@ class AnthropicProvider:
         )
         system = rules + OUTPUT_RULE
         usage_id = drafting_access.reserve(
-            self.user_id, NAME, self.model, worst_case_usd(self.model, system, user)
+            self.user_id,
+            NAME,
+            self.model,
+            worst_case_usd(self.model, system, user),
+            PRICE_VERSION,
         )
         try:
             resolve_public_destination(self.base_url, self.resolver)
@@ -124,14 +129,14 @@ class AnthropicProvider:
                     "format": {"type": "json_schema", "schema": SCHEMA},
                 },
             )
-        except UnsafeURL:
-            return self._fail(usage_id, "provider_destination_refused", Decimal(0))
+        except UnsafeURL:  # refused before anything was sent
+            return self._fail(usage_id, "provider_destination_refused", None, sent=False)
         except anthropic.APITimeoutError:
             return self._fail(usage_id, "provider_timeout", None)
         except anthropic.APIConnectionError:
             return self._fail(usage_id, "provider_unreachable", None)
-        except anthropic.APIStatusError:
-            return self._fail(usage_id, "provider_error", Decimal(0))
+        except anthropic.APIStatusError:  # an error reply: whether it was charged is not reported
+            return self._fail(usage_id, "provider_error", None)
         except anthropic.AnthropicError:  # anything else the SDK raises: the outcome is unknown
             return self._fail(usage_id, "provider_error", None)
         cost, u = cost_usd(self.model, resp.usage), resp.usage
@@ -154,6 +159,6 @@ class AnthropicProvider:
         return drafting.DraftResult(text=out["text"], evidence=out["evidence"], provider=NAME,
                                     model=resp.model, cost_usd=float(cost))  # fmt: skip
 
-    def _fail(self, usage_id, code: str, cost: Decimal | None):
-        drafting_access.settle(usage_id, code, cost)
+    def _fail(self, usage_id, code: str, cost: Decimal | None, *, sent: bool = True):
+        drafting_access.settle(usage_id, code, cost, sent=sent)
         raise drafting.ProviderFailed(code)
