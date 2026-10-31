@@ -6,6 +6,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import ApiTokens from "@/components/ApiTokens";
 import DraftingSpend from "@/components/DraftingSpend";
 import EmailReminders from "@/components/EmailReminders";
+import InboxCard from "@/components/InboxCard";
 import { Button, Card, ErrorBox, Field, inputCls, Loading } from "@/components/ui";
 import { api, setCsrf } from "@/lib/api";
 
@@ -78,6 +79,7 @@ export default function AccountPage() {
         </a>
       </Card>
       <EmailReminders />
+      <InboxCard />
       <ApiTokens />
       <DraftingSpend />
       <Card title="Delete my account">

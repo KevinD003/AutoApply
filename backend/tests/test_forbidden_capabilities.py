@@ -1,5 +1,6 @@
 """Capabilities NoEfforts must never gain (S4, D54), checked statically: no mailbox, IMAP or
-Gmail client (R7.5: the legacy bot read the user's mail for verification codes, U1, U3, U18), and
+Gmail client (R7.5: the legacy bot read the user's mail for verification codes, U1, U3, U18;
+narrowed by the owner in D101 to one read-only Gmail reader, INBOX_READING below), and
 no screenshot, video, trace, HAR or captured browser session in the code that drives a page
 (R11.4: the legacy bot kept a full-page screenshot of every form it filled, U11).
 
@@ -574,6 +575,31 @@ OUTBOUND_MAIL = {
 }
 
 
+# D101 (the owner's instruction of 2026-10-31, reversing R7.5 for one purpose): reading the
+# owner's own Gmail, read-only, through Google's REST API, is allowed in these files only and
+# only for these names: the API's message path, its host and the read-only scope. No mail
+# library, IMAP, POP or another provider, there or anywhere.
+INBOX_READING = {
+    "backend/app/modules/inbox/provider.py": re.compile(
+        r"mail endpoint '(/gmail/v1/users/me/messages|https://gmail\.googleapis\.com|"
+        r"https://www\.googleapis\.com/auth/gmail\.r)"
+    ),
+    # The stand-in's route: its prefix is a name the scan cannot resolve ("X").
+    "fixtures/ats_receiver/inbox_fixture.py": re.compile(
+        r"mail endpoint '(X)?/gmail/v1/users/me/messages'"
+    ),
+}
+
+
+def _inbox_allowed(hit: str, root: Path) -> bool:
+    m = re.fullmatch(r"(.+?):\d+ (mail endpoint .*)", hit)
+    if not m:
+        return False
+    path = Path(m[1])
+    rel = path.relative_to(root).as_posix() if path.is_relative_to(root) else None
+    return rel in INBOX_READING and bool(INBOX_READING[rel].match(m[2]))
+
+
 def _outbound_allowed(hit: str, root: Path) -> bool:
     m = re.fullmatch(r"(.+):\d+ import (\S+)", hit)
     if not m:
@@ -588,7 +614,7 @@ def repo_mail_hits(root: Path = REPO) -> list[str]:
     files = py_files(root)
     hits = mail_hits([p for p in files if app not in p.parents])
     hits += mail_hits([p for p in files if app in p.parents], computed_imports_fail=True)
-    hits = [h for h in hits if not _outbound_allowed(h, root)]
+    hits = [h for h in hits if not _outbound_allowed(h, root) and not _inbox_allowed(h, root)]
     return hits + mail_hits(js_files(root) + frontend_sources(root))
 
 
@@ -614,6 +640,26 @@ def test_outbound_mail_is_allowed_only_where_listed_and_reading_mail_never(tmp_p
     t.write_text("import smtplib\n")
     other.write_text("import smtplib\n")
     assert repo_mail_hits(tmp_path) == [f"{other}:1 import smtplib"]
+
+
+def test_reading_mail_is_allowed_only_in_the_inbox_reader_and_only_its_names(tmp_path):
+    """D101: the Gmail REST path and the read-only scope in the reader; nothing else there, and
+    none of it anywhere else."""
+    r = tmp_path / "backend/app/modules/inbox/provider.py"
+    r.parent.mkdir(parents=True)
+    r.write_text("MESSAGES = '/gmail/v1/users/me/messages'\n"
+                 "SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'\n")  # fmt: skip
+    assert repo_mail_hits(tmp_path) == []
+    for extra in ("import imaplib\n", "HOST = 'imap.gmail.com'\n",
+                  "SCOPE2 = 'https://www.googleapis.com/auth/gmail.modify'\n",
+                  "from googleapiclient import discovery\n"):  # fmt: skip
+        r.write_text("MESSAGES = '/gmail/v1/users/me/messages'\n" + extra)
+        assert repo_mail_hits(tmp_path), extra
+    r.write_text("MESSAGES = '/gmail/v1/users/me/messages'\n")
+    other = tmp_path / "backend/app/modules/notifications/service.py"
+    other.parent.mkdir(parents=True)
+    other.write_text("MESSAGES = '/gmail/v1/users/me/messages'\n")
+    assert len(repo_mail_hits(tmp_path)) == 1 and str(other) in repo_mail_hits(tmp_path)[0]
 
 
 def test_the_repository_mail_scan_reads_each_place_as_it_should(tmp_path):

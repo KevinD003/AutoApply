@@ -21,6 +21,7 @@ import greenhouse_v2  # second approximation: id-only controls, ARIA comboboxes 
 import lever_like  # labelled approximation of a Lever-hosted posting and form (same ledger)
 import ashby_like  # labelled approximation of an Ashby-hosted posting and form (same ledger)
 import workday_like  # labelled approximation of a Workday-hosted application (same ledger)
+import inbox_fixture  # D101: stand-in for the Gmail REST calls NoEfforts reads (synthetic)
 from mail_sink import MailSink  # D94: a local SMTP sink with its own ledger (test-only)
 import board_feeds  # D95: stand-ins for public job-board feeds (synthetic data only)
 
@@ -71,7 +72,7 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
     cfg = {"mode": "normal", "delay_s": 0.0, "idempotent": True, "canary": None,
            "token_ttl_s": 3600, "autosave": False, "tamper": None, "form_delay_s": 0.0,
            "fh_mode": "normal", "fh_rate_limit": 1000, "upload_fail_field": None,
-           "upload_delay_s": 0.0, "verify_drop": False}
+           "upload_delay_s": 0.0, "verify_drop": False, "inbox_mode": "normal", "email_codes": None}
 
     def admin(tok: str | None):
         if tok != admin_token:
@@ -110,6 +111,8 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                            for i, c, a, d in ch],
             "freehire_requests": [{"route": r, "offset": o, "limit": n, "q": q,
                                    "auth_present": bool(a)} for r, o, n, q, a in fh],
+            "inbox_requests": [{"route": r, "bearer": bool(b)} for r, b in
+                               ledger.run("select route, bearer from inbox_requests order by id")],
             "board_requests": [{"method": m, "path": p, "query": q, "cookie": bool(c),
                                 "auth": bool(a), "body_len": b} for m, p, q, c, a, b in br],
         }
@@ -137,13 +140,21 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
     def reset(x_admin_token: str | None = Header(None)):
         admin(x_admin_token)
         for t in ("acceptances", "disclosures", "tokens", "challenges", "requests", "fh_requests",
-                  "board_requests"):
+                  "board_requests", "inbox_messages", "inbox_requests"):
             ledger.run(f"delete from {t}")
         cfg.update({"mode": "normal", "delay_s": 0.0, "idempotent": True, "autosave": False,
                     "tamper": None, "form_delay_s": 0.0, "fh_mode": "normal", "board_mode": "normal",
                     "fh_rate_limit": 1000, "upload_fail_field": None, "upload_delay_s": 0.0,
-                    "verify_drop": False})
+                    "verify_drop": False, "inbox_mode": "normal", "email_codes": None})
         return {"ok": True}
+
+    @app.post("/_admin/inbox")
+    async def inbox_add(request: Request, x_admin_token: str | None = Header(None)):
+        """D101: deliver a synthetic message to the stand-in mailbox."""
+        admin(x_admin_token)
+        b = await request.json()
+        mid = inbox_fixture.deposit(ledger, b["sender"], b["subject"], b["text"], b.get("at"))
+        return {"id": mid}
 
     @app.get("/apply/{slug}", response_class=HTMLResponse)
     async def form(slug: str):
@@ -197,6 +208,7 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
     fake_api.mount(app, ledger, cfg, _accept)
     freehire_fixture.mount(app, ledger, cfg)
     board_feeds.mount(app, ledger, cfg)
+    inbox_fixture.mount(app, ledger, cfg)
 
     @app.post("/apply/{slug}/submit", response_class=HTMLResponse)
     async def submit(slug: str, request: Request):
@@ -227,6 +239,10 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
             cid, code = secrets.token_hex(6), f"{secrets.randbelow(10**6):06d}"
             ledger.run("insert into challenges (id,token,code,fields,created_at) "
                        "values (?,?,?,?,?)", (cid, token, code, json.dumps(fields), time.time()))
+            if cfg.get("email_codes"):  # D101: the code goes to the stand-in mailbox too
+                inbox_fixture.deposit(ledger, cfg["email_codes"], "Your security code",
+                                      f"Copy and paste this code into the application: {code}. "
+                                      "It expires in 10 minutes.")  # fmt: skip
             return HTMLResponse(page_otp(slug, cid, None))
         if mode == "delay":
             await asyncio.sleep(cfg["delay_s"])

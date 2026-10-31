@@ -38,6 +38,7 @@ EXCLUDED_TABLES = {
 # Columns left out of exported tables, with why.
 EXCLUDED_COLUMNS = {
     "users": {"password_hash": "your password's hash: a login secret"},
+    "inbox_events": {"message_ref": "a keyed reference to the email, meaningless elsewhere"},
     "applications": {"lock_version": "an internal concurrency counter"},
     "documents": {"storage_key": "where the server keeps the file; the file is in documents/"},
     "execution_attempts": {
@@ -319,6 +320,24 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "consent_version",
         "given_at",
         "withdrawn_at",
+    ),
+    "inbox_settings": (
+        "user_id",
+        "codes_enabled",
+        "tracking_enabled",
+        "last_checked_at",
+        "last_error",
+        "updated_at",
+    ),
+    "inbox_events": (
+        "id",
+        "user_id",
+        "received_at",
+        "sender_domain",
+        "kind",
+        "state",
+        "application_id",
+        "created_at",
     ),
     "drafting_usage": (
         "id",

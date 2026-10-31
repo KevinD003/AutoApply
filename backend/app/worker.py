@@ -62,6 +62,9 @@ celery_app.conf.update(
         "check-discovery-watches": {"task": "noefforts.check_discovery_watches", "schedule": 10.0},
         # D96: boards whose owners chose a daily check; nothing unless job boards are enabled.
         "check-board-sources": {"task": "noefforts.check_board_sources", "schedule": 300.0},
+        # D101: the owner's Gmail, read-only; does nothing unless the owner connected it and
+        # turned on codes or application emails.
+        "check-inbox": {"task": "noefforts.check_inbox", "schedule": 15.0},
         # D94: owner email reminders; does nothing unless the owner configured email.
         "email-tick": {
             "task": "noefforts.email_tick",
@@ -121,6 +124,13 @@ def check_board_sources() -> int:
     from app.modules.discovery.board_sync import check_due
 
     return check_due()
+
+
+@celery_app.task(name="noefforts.check_inbox")
+def check_inbox() -> dict:
+    from app.modules.inbox.service import inbox_tick
+
+    return inbox_tick()
 
 
 @celery_app.task(name="noefforts.email_tick")

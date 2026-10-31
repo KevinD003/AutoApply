@@ -30,6 +30,7 @@ OUTBOUND = (
     "NOEFFORTS_ANTHROPIC_API_KEY",
     "NOEFFORTS_EMAIL_ENABLED",
     "NOEFFORTS_BOARD_SOURCES_ENABLED",
+    "NOEFFORTS_INBOX_ENABLED",
 )
 OFF = ("", "[]", '""', "''", "false", "0", "no")
 

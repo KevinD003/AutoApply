@@ -2812,3 +2812,45 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   codes and status) are separate milestones; see the status document.
 - **Unchanged:** `SCHEMA_VERSION` (3); no migration (the platform was already stored with each
   listing as `ats_provider`); watches keep their single query.
+
+## D101 — Your Gmail, read-only, for verification codes and application emails (2026-10-31)
+
+- **Why:** the owner asked, on 2026-10-31, for NoEfforts to use their Gmail (through their own
+  Google Cloud credentials) for verification codes and for tracking what employers reply. This
+  reverses R7.5 (S4, D54: "no mailbox or Gmail client") and D10/D94's "NoEfforts does not read an
+  inbox", for this purpose only, by the owner's instruction.
+- **Decision:**
+  - **Read-only, the owner's own account, off by default.** Google's REST API with the
+    `gmail.readonly` scope, granted by the owner in their own browser (`app/modules/inbox/
+    connect.py`: the installed-app flow, a loopback redirect, state and PKCE); the token file is
+    written readable by the owner only and never printed, stored in the database or committed.
+    Enabled only with `NOEFFORTS_INBOX_ENABLED`, for the accounts in `NOEFFORTS_INBOX_OWNER_EMAILS`,
+    and then each use only when the owner turns it on in Account.
+  - **The guard is narrowed, not removed.** `tests/test_forbidden_capabilities.py` allows the
+    Gmail message path, host and read-only scope in `backend/app/modules/inbox/provider.py` and
+    the stand-in only; every mail library, IMAP, POP and other provider stays forbidden
+    everywhere, these files included.
+  - **Codes:** entered for a waiting code step only from a new email of a code sender
+    (`NOEFFORTS_INBOX_CODE_SENDERS`) that holds exactly one code; otherwise the step stays the
+    user's. Each email is used once; a rejected code is not entered again (the step reopens for
+    the user, as before).
+  - **Application emails:** sorted by fixed wording (rules.py, no LLM). A rejection, interview or
+    assessment naming exactly one submitted application is proposed; the user confirms it, and it
+    is recorded through the same `record_outcome` as the tracker (source `user_reported`, the
+    email's day, a note naming the sender's domain). Never recorded without the user (D53).
+    Mixed wording is "unclear"; an email naming no single application is "unlinked".
+  - **"We received your application":** when it names exactly one application whose submission
+    has an unknown outcome (`submitted_unconfirmed`), it is proposed as that submission's
+    reconciliation. The user's confirmation takes the same transition as reconciling it by hand
+    (`submitted_confirmed`, actor the user, "Reconciled as received", the email's sender and day
+    as what was checked), under the same locks (D46). Refused once the submission is settled
+    another way. Otherwise such an email is only noted.
+  - **Kept:** per email, a keyed reference, the arrival time, the sender's domain, its kind, the
+    application and what happened. Never the text, subject, sender's name or a code. Exported
+    (except the keyed reference) and deleted with the account; audit by counts and fixed codes.
+  - **Hosts:** Google's API and token hosts only (public-address check); a fixture origin only in
+    the test environment.
+- **Not verified:** any real mailbox or real code email (a local stand-in of the API only).
+- **Unchanged:** `SCHEMA_VERSION` (3); execution's code checkpoint (codes still go through
+  `submit_code`, bound to the user, the application, the step and its round). Migration
+  `b7d2f4a91c05`.

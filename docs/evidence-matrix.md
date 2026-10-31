@@ -320,6 +320,26 @@ Anthropic's API and DNS; no key exists and nothing was sent. Decision D74.
 | In the browser | `frontend/e2e/drafting-consent.spec.ts` (desktop, mobile; a synthetic consent view) | not configured said; what is sent and never sent shown; agree and turn off; the review page links to the profile card |
 | Sabotage | 17 cases (owner, consent version, withdrawal, budget, lock, reported cost, any version, timeout cost, destination check, `external`, key, retries, refusal, job text in the system prompt, reservation after sending, unbound use, the gate) | 17 caught; the race case caught in 5 of 5 further runs, and passes 8 of 8 when intact |
 
+## Your Gmail, read-only (D101, 2026-10-31; local only)
+
+A local stand-in of the Gmail API (`fixtures/ats_receiver/inbox_fixture.py`), synthetic messages
+only. Decision D101.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Fixed wording, never guessed | `tests/test_inbox.py::test_messages_are_sorted_by_fixed_wording`, `::test_a_code_is_taken_only_when_exactly_one_follows_the_word` | seven kinds; mixed wording "unclear"; one code or none |
+| Off until connected and turned on | `::test_nothing_is_read_until_the_owner_connects_it`, `::test_codes_are_never_read_while_turned_off` | 409 while off; no request to the mailbox while codes are off |
+| A waiting code step filled once | `::test_a_waiting_code_step_is_filled_from_the_mail_once` | the receiver's challenge done and one acceptance; the message used once; no code in the database or the audit |
+| Unclear codes left to you | `::test_a_code_from_another_sender_or_two_codes_are_left_to_you` | another sender ignored; two codes not entered; you type it |
+| Outcomes proposed, confirmed by you | `::test_application_emails_are_proposed_and_confirmed_by_you` | proposed for the one named application; recorded as `user_reported` with the email's day on confirmation, once; nothing read twice; no text in responses |
+| Per account | same test | another account sees no events; its accept is 404 |
+| A "received" email settles an unknown outcome only with you | `::test_a_received_email_settles_a_submission_of_unknown_outcome_when_you_confirm`, `::test_a_received_email_is_only_noted_once_the_submission_is_settled`, `::test_a_proposed_reconciliation_is_refused_once_settled_another_way` | receiver accepted once, answer lost: `submitted_unconfirmed`; proposed; your confirmation is the reconcile transition (actor you, the email as evidence), once; 404 for another account; 409 once settled; after a receipt only noted; the ledger still shows one acceptance |
+| Failures by code; hosts | `::test_a_refused_connection_is_reported_by_its_code`, `::test_the_reader_contacts_no_other_host`, `::test_an_unknown_id_is_never_requested` | `revoked` reported and audited by code; another host refused before connecting |
+| Connecting | `::test_connecting_asks_for_read_only_mail_and_keeps_the_token_private` | read-only scope, PKCE S256, offline access; a non-Google server or another scope refused; token file 0600 |
+| The guard | `tests/test_forbidden_capabilities.py::test_reading_mail_is_allowed_only_in_the_inbox_reader_and_only_its_names` | the reader's names only; IMAP, another scope or an SDK there fail, and the same names elsewhere fail |
+| In the browser | `frontend/e2e/inbox.spec.ts` (desktop, mobile; a synthetic view) | 4 passed with `account.spec.ts`: not available said; a proposal confirmed; codes switch shown; no overflow |
+| Sabotage | 14 cases | 14 caught (one after a test was added) |
+
 ## Listings by application platform (D100, 2026-10-31; local only)
 
 Synthetic listing addresses, parsed and never fetched. Decision D100.

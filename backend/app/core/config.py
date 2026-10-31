@@ -112,6 +112,27 @@ class Settings(BaseSettings):
     drafting_model: str = "claude-opus-5-5"
     drafting_owner_emails: list[str] = Field(default_factory=list)
     drafting_daily_budget_usd: float = 0.0
+    # D101: reading the owner's own Gmail, read-only (app/modules/inbox). Off unless
+    # `inbox_enabled`, the account is named in `inbox_owner_emails` and `inbox_token_file` points
+    # at the token written by `python -m app.modules.inbox.connect` on the owner's machine (never
+    # in the repository, an image or the database). The API and token hosts are Google's unless a
+    # test points them at a fixture origin. A verification code is taken only from a sender whose
+    # domain ends with one of `inbox_code_senders`.
+    inbox_enabled: bool = False
+    inbox_owner_emails: list[str] = Field(default_factory=list)
+    inbox_token_file: str = ""
+    inbox_api_base: str = ""
+    inbox_token_url: str = ""
+    inbox_code_senders: list[str] = Field(
+        default_factory=lambda: [
+            "greenhouse-mail.io",
+            "hire.lever.co",
+            "ashbyhq.com",
+            "myworkday.com",
+        ]  # fmt: skip
+    )
+    inbox_check_interval_seconds: int = Field(default=900, ge=60, le=86400)
+    inbox_first_read_days: int = Field(default=30, ge=1, le=365)
     drafting_timeout_seconds: int = 120
     anthropic_api_key: SecretStr = SecretStr("")
     anthropic_base_url: str = "https://api.anthropic.com"
