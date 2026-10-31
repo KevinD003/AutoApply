@@ -433,8 +433,12 @@ def main():
     if a.smtp_port:
         mail = MailSink()
         mail.start("127.0.0.1", a.smtp_port)
+    # Idle keep-alive connections stay open longer than any client keeps one (httpx and
+    # Playwright drop theirs after about 5 s): with uvicorn's default of 5 s, a request sent on a
+    # connection idle for just under 5 s raced the server's close and failed with "socket hang
+    # up" (e2e, 2026-10-31; reproduced: 8 of 20 at a 4.99 s gap).
     uvicorn.run(build_app(Ledger(a.ledger), a.admin_token, mail), host=a.host, port=a.port,
-                log_level="warning")
+                log_level="warning", timeout_keep_alive=75)
 
 
 if __name__ == "__main__":
