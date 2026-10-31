@@ -158,8 +158,9 @@ detector behind `text_names_nothing` (`test_text_naming_an_identifier_is_caught`
 | provider | track | claimed | admitted | next | blocking | end |
 |---|---|---|---|---|---|---|
 | `fixture_ats` | `generic_execution` | `fixture_only` | `fixture_only` | – | – | `no_ats_identity` |
-| `greenhouse_hosted` | `ats_execution` | `fixture_only` | `fixture_only` | `observed_read_only` | `doc_review_recorded`, `observed_cells_credited` | – |
-| `greenhouse_dom` | `ats_execution` | `observed_read_only` | `observed_read_only` | `rehearsal_ready` | `doc_review_recorded`, `readiness_dropdowns`, `readiness_unmatched_required_controls`, `readiness_location`, `known_gaps_closed` | – |
+| `greenhouse_hosted` | `ats_execution` | `fixture_only` | `fixture_only` | `observed_read_only` | `observed_cells_credited` | – |
+| `greenhouse_dom` | `ats_execution` | `observed_read_only` | `observed_read_only` | `rehearsal_ready` | `readiness_dropdowns`, `readiness_unmatched_required_controls`, `readiness_location`, `known_gaps_closed` | – |
+| `greenhouse_live` | `ats_execution` | `observed_read_only` | `observed_read_only` | `rehearsal_ready` | `readiness_profile_defined`, `known_gaps_closed` | – |
 | `fake_api` | `generic_execution` | `fixture_only` | `fixture_only` | – | – | `no_ats_identity` |
 | `fixture_lever` | `generic_execution` | `fixture_only` | `fixture_only` | – | – | `no_ats_identity` |
 | `fixture_ashby` | `generic_execution` | `fixture_only` | `fixture_only` | – | – | `no_ats_identity` |
@@ -172,9 +173,13 @@ detector behind `text_names_nothing` (`test_text_naming_an_identifier_is_caught`
 | `manual_handoff` | `manual` | `manual` | `registered` | – | – | `handoff_by_kind` |
 
 Every provider is within its claim. No provider is `rehearsal_ready`. By ATS: Greenhouse is at
-`observed_read_only` (its execution adapters' best) with `doc_review_recorded` waived (the by-ATS
-view shows the waiver), Lever and Workday at `planned`, and Ashby, Workable and SmartRecruiters
-are identified only (`not_admitted`: no provider exists).
+`observed_read_only` (its execution adapters' best), its `doc_review_recorded` met by the D102
+review (`docs/research/greenhouse-terms-review.md`; the I2 waivers below are no longer needed for
+it), Lever and Workday at `planned`, and Ashby, Workable and SmartRecruiters are identified only
+(`not_admitted`: no provider exists). `greenhouse_live` is the Greenhouse pilot (D102): its
+stage is advisory like every other; whether it runs is decided in code by the owner's switch,
+production and container isolation (`execution/live.py`), and each application by your
+approval and, per employer, a rehearsal first.
 
 ## Waivers
 
@@ -255,8 +260,10 @@ and must never be weakened to reach a stage.
   credit every observed cell in the registry and every "no" trait of the Greenhouse providers;
   the dropdown cell is credited as structure only. The "no" traits of `fixture_ats` and
   `fake_api` are their own fixtures' design (no ATS), never a run.
-- **Public-docs reviews** (`evidence.DOC_REVIEWS`) are empty and pinned so
-  (`test_no_doc_review_is_recorded_today`).
+- **Public-docs reviews** (`evidence.DOC_REVIEWS`): Greenhouse's only, recorded by D102
+  (`docs/research/greenhouse-terms-review.md`), pinned with its decision
+  (`test_the_recorded_doc_reviews_are_pinned_to_their_decisions`). The I2 waivers are still
+  tested on tables without it.
 - **The owner's manual observation (Path A)** changes no admission
   (`test_the_owners_manual_observation_changes_no_admission`).
 

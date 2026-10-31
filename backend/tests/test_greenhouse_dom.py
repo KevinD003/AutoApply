@@ -13,7 +13,15 @@ from app.modules.execution import runner
 from app.modules.execution.models import ExecutionAttempt
 from app.modules.preparation import greenhouse_dom as dom
 from app.modules.preparation.forms import FieldType
-from tests.execution_harness import BASE, ROOT, Receiver, attempt, queue, synthetic_candidate
+from tests.execution_harness import (
+    BASE,
+    ROOT,
+    Receiver,
+    attempt,
+    pilot_on,
+    queue,
+    synthetic_candidate,
+)
 
 sys.path.insert(0, str(ROOT / "fixtures" / "ats_receiver"))
 import greenhouse_v2  # noqa: E402
@@ -182,6 +190,14 @@ def v2_application(api, *, worked_before="No", approve=True) -> str:
     return app_id
 
 
+def live_application(api, **kw) -> str:
+    """D102: the same application through the Greenhouse pilot (greenhouse_live): the pilot is
+    on for this account, and this approximation plays a real board host and its Job Board API
+    (test only; conftest turns the pilot off after every test)."""
+    pilot_on()
+    return v2_application(api, **kw)
+
+
 def kinds(led):
     out = {}
     for d in led["disclosures"]:
@@ -189,11 +205,13 @@ def kinds(led):
     return out
 
 
-def test_full_run_sends_exactly_the_approved_values(api, receiver):
-    app_id = v2_application(api)
+@pytest.mark.parametrize("make", [v2_application, live_application], ids=["by_id", "pilot"])
+def test_full_run_sends_exactly_the_approved_values(api, receiver, make):
+    app_id = make(api)
     aid = queue(api, app_id)
     with SessionLocal() as db:
-        assert db.get(ExecutionAttempt, uuid.UUID(aid)).adapter == "greenhouse_dom"
+        want = "greenhouse_live" if make is live_application else "greenhouse_dom"
+        assert db.get(ExecutionAttempt, uuid.UUID(aid)).adapter == want
     assert runner.run_attempt(aid, "w1") == "confirmed"
     led = receiver.ledger()
     assert led["accepted"] == 1
@@ -231,8 +249,9 @@ def test_trigger_answer_reveals_a_question_that_is_left_alone(api, receiver):
     ["gh2_duplicate_id", "gh2_label_mismatch", "gh2_missing_control", "gh2_new_question",
      "gh2_options_changed"],
 )  # fmt: skip
-def test_drift_after_approval_stops_before_anything_is_disclosed(api, receiver, mode):
-    app_id = v2_application(api)
+@pytest.mark.parametrize("make", [v2_application, live_application], ids=["by_id", "pilot"])
+def test_drift_after_approval_stops_before_anything_is_disclosed(api, receiver, mode, make):
+    app_id = make(api)
     aid = queue(api, app_id)
     receiver.config(mode=mode)
     assert runner.run_attempt(aid, "w1") == "failed_safe"
@@ -252,8 +271,9 @@ def test_drift_after_approval_stops_before_anything_is_disclosed(api, receiver, 
         ("upload_fail", "abandoned", 0),
     ],
 )
-def test_outcome_classification(api, receiver, mode, expected, accepted):
-    aid = queue(api, v2_application(api))
+@pytest.mark.parametrize("make", [v2_application, live_application], ids=["by_id", "pilot"])
+def test_outcome_classification(api, receiver, mode, expected, accepted, make):
+    aid = queue(api, make(api))
     receiver.config(mode=mode)
     assert runner.run_attempt(aid, "w1") == expected
     assert receiver.ledger()["accepted"] == accepted
@@ -262,8 +282,9 @@ def test_outcome_classification(api, receiver, mode, expected, accepted):
     assert receiver.ledger()["accepted"] == accepted
 
 
-def test_a_captcha_on_the_form_stops_before_anything_is_disclosed(api, receiver):
-    aid = queue(api, v2_application(api))
+@pytest.mark.parametrize("make", [v2_application, live_application], ids=["by_id", "pilot"])
+def test_a_captcha_on_the_form_stops_before_anything_is_disclosed(api, receiver, make):
+    aid = queue(api, make(api))
     receiver.config(mode="gh2_captcha")
     assert runner.run_attempt(aid, "w1") == "failed_safe"
     assert "does not solve or bypass" in attempt(aid).outcome_detail
@@ -271,8 +292,9 @@ def test_a_captcha_on_the_form_stops_before_anything_is_disclosed(api, receiver)
     assert led["disclosures"] == [] and led["accepted"] == 0
 
 
-def test_combobox_that_does_not_keep_its_choice_is_caught_by_readback(api, receiver):
-    aid = queue(api, v2_application(api))
+@pytest.mark.parametrize("make", [v2_application, live_application], ids=["by_id", "pilot"])
+def test_combobox_that_does_not_keep_its_choice_is_caught_by_readback(api, receiver, make):
+    aid = queue(api, make(api))
     receiver.config(mode="gh2_combobox_ignores")
     assert runner.run_attempt(aid, "w1") == "abandoned"
     detail = attempt(aid).outcome_detail
@@ -351,10 +373,11 @@ def test_full_run_with_group_named_attachments(api, receiver):
         ("gh2_no_confirmation", "unknown", 1),
     ],
 )
-def test_confirmation_bound_to_attempt(api, receiver, mode, expected, accepted):
+@pytest.mark.parametrize("make", [v2_application, live_application], ids=["by_id", "pilot"])
+def test_confirmation_bound_to_attempt(api, receiver, mode, expected, accepted, make):
     """A confirmation-like message already on the form never confirms the click: only one shown
     after this attempt's own POST to this posting does."""
-    aid = queue(api, v2_application(api))
+    aid = queue(api, make(api))
     receiver.config(mode=mode)
     assert runner.run_attempt(aid, "w1") == expected
     assert receiver.ledger()["accepted"] == accepted
@@ -363,10 +386,11 @@ def test_confirmation_bound_to_attempt(api, receiver, mode, expected, accepted):
         assert "before the final click" in attempt(aid).outcome_detail
 
 
-def test_unlisted_option_is_checkpoint(api, receiver):
+@pytest.mark.parametrize("make", [v2_application, live_application], ids=["by_id", "pilot"])
+def test_unlisted_option_is_checkpoint(api, receiver, make):
     """A dropdown offering an option the job data does not list is not the approved question:
     the attempt stops before anything is disclosed, and no option is ever picked by guess."""
-    aid = queue(api, v2_application(api))
+    aid = queue(api, make(api))
     receiver.config(mode="gh2_option_unlisted")
     assert runner.run_attempt(aid, "w1") == "failed_safe"
     detail = attempt(aid).outcome_detail

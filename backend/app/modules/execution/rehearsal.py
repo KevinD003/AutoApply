@@ -254,6 +254,7 @@ BOARD_ADAPTERS = frozenset({"greenhouse_hosted", "greenhouse_dom", "fake_api"})
 # The ATS whose boards each adapter's path rule reads (None: the generic fixture form's slug). An
 # adapter with no entry has no path rule: its paths are unknown, so its prerequisite fails closed.
 PATH_RULES: dict[str, str | None] = {**dict.fromkeys(BOARD_ADAPTERS, "greenhouse"),
+                                     "greenhouse_live": "greenhouse",  # D102
                                      "fixture_ats": None, "fixture_lever": None,
                                      "fixture_ashby": None, "fixture_workday": None}  # fmt: skip
 MET, ESTABLISHED, UNMET, NOT_REQUIRED = "met", "established", "unmet", "not_required"
@@ -362,7 +363,12 @@ def execution_path(destination: dict, adapter: str) -> Path | None:
         u = urlsplit(url)
         if normalize_origin(f"{u.scheme}://{u.netloc}") != origin:
             return None  # the page is not on the destination's origin
-        if adapter in BOARD_ADAPTERS:
+        if adapter == "greenhouse_live":  # D102: a real board host (or its test stand-in)
+            from app.modules.execution import live
+
+            posting = live.posting(url)
+            board = posting.board if posting else None
+        elif adapter in BOARD_ADAPTERS:
             posting = gh.parse_posting(url, fixture_origin=is_fixture_origin(origin))
             board = posting.board if posting else None
         elif adapter == "fixture_ats":

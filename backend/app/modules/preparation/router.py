@@ -174,20 +174,56 @@ def _fetch_fixture(url: str) -> bytes:
         return r.read(2_000_001)[:2_000_000]
 
 
+def _capture_live(db, user, job, url: str, posting) -> dict:
+    """D102: a real Greenhouse job post, read through the Greenhouse pilot: its job data from
+    the public Job Board API and its page from the board's host (GETs only, public addresses,
+    no redirects, where robots.txt allows, nothing of yours sent), mapped by the id rules
+    (greenhouse_dom) or refused.
+    Reading it is not an approval: every application still needs yours."""
+    from app.modules.execution import live
+    from app.modules.preparation import greenhouse_dom
+
+    try:
+        api, page = live.read_posting(posting, url)
+        schema, _ = greenhouse_dom.build_schema(api, page)
+    except live.LiveError as e:  # a fixed code; the message names no posting
+        raise conflict(f"Could not read the job post: {e} (reason: {e.code})") from None
+    except gh.SchemaMismatch as e:
+        raise conflict(
+            "Could not capture the form: its page does not show every question of the job data "
+            "as NoEfforts can map it (the page may need its own scripts to show the form). "
+            f"Nothing was sent; apply on the employer's site. (reason: {e.code})"
+        ) from None
+    except (ValueError, ExtractionError, ValidationError) as e:
+        raise bad_request(f"Could not read the job post ({type(e).__name__})") from None
+    return _store_form(db, user, job, schema, live.FORM_SOURCE, posting.ref,
+                       live.EXTRACTION_VERSION)  # fmt: skip
+
+
 @router.post("/jobs/{job_id}/form/greenhouse", status_code=status.HTTP_201_CREATED)
 def capture_greenhouse_form(
     job_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> dict:
     """Read a Greenhouse-style job post (JSON) and its hosted form (page), cross-check them and
-    store the schema. Only local fixtures are read: reading a real job post is not enabled, and
-    reading one would not be permission to submit an application."""
+    store the schema. Local fixtures, and a real job post only while the Greenhouse pilot is on
+    for this account (D102, `_capture_live`). Reading a job post is never permission to submit
+    an application."""
     import json
     from urllib.parse import urlsplit
 
     from app.core.urlsafety import is_fixture_origin
+    from app.modules.execution import live
 
     job = _owned_job(db, user, job_id)
     url = job.url or job.canonical_url or ""
+    real = live.posting(url)
+    if real is not None and live.environment_refusal() != "not_enabled":
+        # D102: the Greenhouse pilot is switched on: a real job post is read through it alone.
+        why = live.refusal(user)
+        if why:
+            raise conflict(f"{live.WHY[why]} Apply on the employer's site and record it in the "
+                           "tracker.")  # fmt: skip
+        return _capture_live(db, user, job, url, real)
     p = urlsplit(url)
     origin = f"{p.scheme}://{p.netloc}"
     fixture = is_fixture_origin(origin)

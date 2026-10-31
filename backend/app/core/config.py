@@ -133,6 +133,20 @@ class Settings(BaseSettings):
     )
     inbox_check_interval_seconds: int = Field(default=900, ge=60, le=86400)
     inbox_first_read_days: int = Field(default=30, ge=1, le=365)
+    # D102: the Greenhouse pilot (app/modules/execution/live.py). Off unless
+    # `live_greenhouse_enabled`, the account is named in `live_owner_emails`, `env` is
+    # "production" and the browser runs in the `container` isolation mode (Chromium's own sandbox
+    # on). Then a real Greenhouse-hosted job post can be read (its job data from Greenhouse's
+    # public Job Board API, its page from the board's host) and applied to through the
+    # `greenhouse_live` adapter, each application after its own approval and, per employer, only
+    # after a successful rehearsal (E6). Hosts are fixed in code.
+    live_greenhouse_enabled: bool = False
+    live_owner_emails: list[str] = Field(default_factory=list)
+    # TEST ONLY (honoured only when env == "test" and the address is a fixture origin): a local
+    # stand-in playing a board's host (job URLs `<base>/<board>/jobs/<id>`) and the Job Board
+    # API (`<api base>/v1/boards/...`). Ignored everywhere else.
+    live_greenhouse_test_board_base: str = ""
+    live_greenhouse_test_api_base: str = ""
     drafting_timeout_seconds: int = 120
     anthropic_api_key: SecretStr = SecretStr("")
     anthropic_base_url: str = "https://api.anthropic.com"

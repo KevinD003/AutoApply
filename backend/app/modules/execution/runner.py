@@ -21,13 +21,16 @@ from app.core.db import SessionLocal
 from app.core.urlsafety import destination_category, is_fixture_origin
 from app.modules.documents.models import Document
 from app.modules.documents.storage import get_storage
-from app.modules.execution import policy, rehearsal
+from app.modules.execution import live, policy, rehearsal
 from app.modules.execution import service as svc
 from app.modules.execution.adapters.ashby import AshbyFixtureAdapter
 from app.modules.execution.adapters.fake_api import FakeApiAdapter
 from app.modules.execution.adapters.fixture_ats import FixtureAtsAdapter, UploadFailed
 from app.modules.execution.adapters.greenhouse import GreenhouseHostedAdapter
-from app.modules.execution.adapters.greenhouse_dom import GreenhouseDomAdapter
+from app.modules.execution.adapters.greenhouse_dom import (
+    GreenhouseDomAdapter,
+    GreenhouseLiveAdapter,
+)
 from app.modules.execution.adapters.lever import LeverFixtureAdapter
 from app.modules.execution.adapters.workday import WorkdayFixtureAdapter
 from app.modules.execution.browser import IsolationUnavailable, browser_session
@@ -44,6 +47,7 @@ ADAPTERS = {
     "fixture_ats": FixtureAtsAdapter,
     "greenhouse_hosted": GreenhouseHostedAdapter,
     "greenhouse_dom": GreenhouseDomAdapter,
+    "greenhouse_live": GreenhouseLiveAdapter,  # D102: the Greenhouse pilot
     "fixture_lever": LeverFixtureAdapter,
     "fixture_ashby": AshbyFixtureAdapter,
     "fixture_workday": WorkdayFixtureAdapter,
@@ -212,6 +216,10 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                 intercept=intercept,
                 # Local fixture receivers live on loopback; only they get this exception.
                 allow_private_destination=is_fixture_origin(dest["origin"]),
+                # D102: on a real Greenhouse board, its static scripts and stylesheets only.
+                subresources=live.subresources(dest["origin"])
+                if adapter_name == live.ADAPTER
+                else (),
             )
             page, eg = session.__enter__()
         except IsolationUnavailable as e:

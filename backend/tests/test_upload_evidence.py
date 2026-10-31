@@ -17,7 +17,7 @@ from app.modules.execution.models import Evidence
 from tests.execution_harness import Receiver, attempt, prepared_application, queue
 from tests.test_api_provider import TOKEN, grant
 from tests.test_greenhouse_adapter import gh_application
-from tests.test_greenhouse_dom import v2_application
+from tests.test_greenhouse_dom import live_application, v2_application
 
 COVER = b"%PDF-1.4\n% synthetic cover letter for upload-evidence tests\n"
 
@@ -91,8 +91,9 @@ def test_an_upload_is_kept_as_its_digest_and_acknowledgement_never_the_pages_id(
     assert stored[page_id] not in json.dumps(disclosures(aid))
 
 
-@pytest.mark.parametrize("make", [gh_application, v2_application],
-                         ids=["greenhouse_style", "greenhouse_style_by_id"])  # fmt: skip
+@pytest.mark.parametrize("make", [gh_application, v2_application, live_application],
+                         ids=["greenhouse_style", "greenhouse_style_by_id",
+                              "greenhouse_pilot"])  # fmt: skip
 def test_a_failed_upload_keeps_the_evidence_of_every_upload_before_it(api, receiver, make):
     app_id = make(api, approve=False)
     content = with_cover_letter(api, app_id)

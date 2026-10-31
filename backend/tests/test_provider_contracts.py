@@ -140,7 +140,8 @@ def test_the_code_tables_are_the_runner_tables():
     assert set(discovery.PROVIDERS) == registry_keys(Kind.discovery)
     assert {gh_readonly.PROVIDER} == registry_keys(Kind.observation)
     assert set(rehearsal.PATH_RULES) == rehearsal.BOARD_ADAPTERS | {
-        "fixture_ats", "fixture_lever", "fixture_ashby", "fixture_workday"}  # fmt: skip
+        "greenhouse_live", "fixture_ats", "fixture_lever", "fixture_ashby",
+        "fixture_workday"}  # fmt: skip
 
 
 def registry_keys(kind: Kind) -> set[str]:
@@ -161,10 +162,24 @@ def registry_keys(kind: Kind) -> set[str]:
 )
 def test_every_path_rule_reads_its_own_fixture_destination(adapter, url):
     assert set(rehearsal.PATH_RULES) == {"fixture_ats", "greenhouse_hosted", "greenhouse_dom",
-                                         "fake_api", "fixture_lever", "fixture_ashby",
-                                         "fixture_workday"}  # fmt: skip
+                                         "greenhouse_live", "fake_api", "fixture_lever",
+                                         "fixture_ashby", "fixture_workday"}  # fmt: skip
     path = rehearsal.execution_path({"origin": BASE, "url": url}, adapter)
     assert path is not None and path.adapter == adapter
+
+
+def test_the_pilot_path_rule_reads_its_board_on_the_stand_in_only(monkeypatch):
+    """D102: greenhouse_live's path is the board of the job post, on the board host's stand-in
+    (test only); a fixture-shaped address it does not serve has no path."""
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "live_greenhouse_test_board_base", f"{BASE}/gh2")
+    url = f"{BASE}/gh2/northwind/jobs/5020001"
+    path = rehearsal.execution_path({"origin": BASE, "url": url}, "greenhouse_live")
+    assert path is not None and (path.adapter, path.board) == ("greenhouse_live", "northwind")
+    other = rehearsal.execution_path({"origin": BASE, "url": f"{BASE}/gh/x/jobs/1"},
+                                     "greenhouse_live")  # fmt: skip
+    assert other is None
 
 
 def test_legacy_versions_cover_only_the_original_adapters():
@@ -297,7 +312,7 @@ def test_the_documented_capability_matrix_is_the_registry():
                "API": ["fake_api"], "RO": ["greenhouse_readonly"],
                "FH": ["freehire_mock", "freehire"], "MH": ["manual_handoff"],
                "FL": ["fixture_lever"], "AS": ["fixture_ashby"],
-               "WS": ["fixture_workday"]}  # fmt: skip
+               "WS": ["fixture_workday"], "GL": ["greenhouse_live"]}  # fmt: skip
     assert header[1:] == list(columns)
     unplanned = {k for k, p in registry.PROVIDERS.items() if p.stage != "planned"}
     assert {k for keys in columns.values() for k in keys} == unplanned

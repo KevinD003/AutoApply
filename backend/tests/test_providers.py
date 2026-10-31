@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.modules.providers import registry, routing
 from app.modules.providers.checkpoints import POLICY, CheckpointKind
 from app.modules.providers.model import (
+    PILOTS,
     Capability,
     Kind,
     Operation,
@@ -37,14 +38,17 @@ def test_the_policy_tables_cover_exactly_the_adapters_that_exist():
     from app.modules.execution import policy, runner
 
     assert set(policy.ADAPTER_VERSIONS) == set(runner.ADAPTERS) | set(runner.API_ADAPTERS)
-    assert len(policy.ADAPTER_VERSIONS) == 7  # as policy.py's docstring says
+    assert len(policy.ADAPTER_VERSIONS) == 8  # as policy.py's docstring says
     assert set(policy.CAPABILITIES) == set(runner.ADAPTERS)  # browser adapters only
-    assert not any(c.get("real_destinations", False) for c in policy.CAPABILITIES.values())
+    # D102: the Greenhouse pilot alone names real destinations (gated in execution/live.py).
+    real = {k for k, c in policy.CAPABILITIES.items() if c.get("real_destinations", False)}
+    assert real == {"greenhouse_live"}
 
 
-def test_no_provider_is_enabled_for_real_destinations_or_claims_live_support():
+def test_only_the_pilot_is_enabled_for_real_destinations_and_none_claims_live_support():
+    enabled = {s.name for s in registry.PROVIDERS.values() if s.real_destinations_enabled}
+    assert enabled == set(PILOTS) == {"greenhouse_live"}
     for spec in registry.PROVIDERS.values():
-        assert spec.real_destinations_enabled is False, spec.name
         for cap, s in spec.capabilities.items():
             assert not (s.live_fill or s.live_submit), (spec.name, cap)
 
@@ -54,6 +58,7 @@ def test_real_page_evidence_is_recorded_only_where_it_exists():
                 for c, s in p.capabilities.items() if s.observed}  # fmt: skip
     assert observed == {
         ("greenhouse_dom", "posting_read"), ("greenhouse_dom", "form_extract"),
+        ("greenhouse_live", "posting_read"), ("greenhouse_live", "form_extract"),
         ("greenhouse_readonly", "posting_read"), ("greenhouse_readonly", "form_extract"),
         ("greenhouse_readonly", "custom_dropdowns"),
     }  # fmt: skip
@@ -116,6 +121,10 @@ def test_spec_invariants_reject_unsupported_claims(bad, message):
         ("freehire_mock", dict(capabilities={Capability.discovery: Support(fixture=True),
                                              Capability.deterministic_fill: Support(fixture=True)}),
          "capability without the operation behind it"),
+        ("greenhouse_live", dict(capabilities={**registry.get("greenhouse_live").capabilities,
+                                               Capability.deterministic_fill: Support(
+                                                   fixture=True, observed=True, live_fill=True)}),
+         "a pilot claims no live support"),
     ],
 )  # fmt: skip
 def test_spec_invariants_reject_unsupported_claims_of_other_kinds(base, bad, message):
@@ -135,7 +144,7 @@ def test_every_spec_error_branch_has_a_case():
               and getattr(getattr(n.exc, "func", None), "id", None) == "SpecError"]  # fmt: skip
     cases = {m for _, m in _cases(test_spec_invariants_reject_unsupported_claims)}
     cases |= {m for *_, m in _cases(test_spec_invariants_reject_unsupported_claims_of_other_kinds)}
-    assert len(raises) == len(cases) == 20
+    assert len(raises) == len(cases) == 21
 
 
 def _cases(fn):

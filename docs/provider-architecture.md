@@ -98,7 +98,7 @@ their own; `tests/test_support_wording.py` reads the frontend sources to check.
 | `live` | some capability is `live_fill` or `live_submit` | none. The lookup fails until a label is added deliberately, with its evidence, tests and docs |
 
 - **Today:** `fixture_ats`, `greenhouse_hosted`, `fake_api`, `fixture_lever`, `fixture_ashby`,
-  `fixture_workday`, `freehire` and `freehire_mock` are `fixture_only`; `greenhouse_dom` and `greenhouse_readonly` are `observed_read_only`;
+  `fixture_workday`, `freehire` and `freehire_mock` are `fixture_only`; `greenhouse_dom`, `greenhouse_live` and `greenhouse_readonly` are `observed_read_only`;
   `workday` and `lever` are `planned`; `manual_handoff` is
   `manual` (`tests/test_provider_contracts.py` checks this list).
 - **Routes:** a route's label is its kind and the evidence behind it, for example "Browser
@@ -124,28 +124,30 @@ Columns: FA = `fixture_ats`, GH = `greenhouse_hosted`, GD = `greenhouse_dom`, AP
 (discovery; identical rows), MH = `manual_handoff`, FL = `fixture_lever` (the Lever-style
 approximation's adapter, with no Lever identity; D85), AS = `fixture_ashby` (the Ashby-style
 approximation's adapter, with no Ashby identity; D87), WS = `fixture_workday` (the
-Workday-style approximation's checkpoint-first adapter, with no Workday identity; D88). A dash
+Workday-style approximation's checkpoint-first adapter, with no Workday identity; D88), GL =
+`greenhouse_live` (the Greenhouse pilot: GD's rules on a real board host, off by default and
+gated in code; D102). A dash
 means none. The planned providers
 (`workday`, `lever`) have no capabilities, so they have no column here.
 
-| Capability | FA | GH | GD | API | RO | FH | MH | FL | AS | WS |
-|---|---|---|---|---|---|---|---|---|---|---|
-| discovery | – | – | – | – | – | fixture | – | – | – | – |
-| posting_read | fixture | fixture | **observed** | fixture | **observed** | – | – | fixture | fixture | fixture |
-| form_extract | fixture | fixture | **observed** | fixture | **observed** | – | – | fixture | fixture | fixture |
-| deterministic_fill | fixture | fixture | fixture | – | – | – | – | fixture | fixture | fixture |
-| custom_dropdowns | – | – | fixture | – | **observed** | – | – | – | – | – |
-| file_upload | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture | fixture |
-| location_picker | – | – | – | – | – | – | – | – | – | – |
-| login_required | – | – | – | – | – | – | – | – | – | – |
-| email_verification | fixture | fixture | – | – | – | – | – | – | – | – |
-| mobile_verification | – | – | – | – | – | – | – | – | – | – |
-| captcha_checkpoint | – | fixture | fixture | – | – | – | – | fixture | fixture | fixture |
-| final_submit | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture | fixture |
-| confirmation_detection | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture | fixture |
-| reconciliation | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture | fixture |
-| official_api_submission | – | – | – | fixture | – | – | – | – | – | – |
-| real_destinations_enabled | no | no | no | no | no | no | no | no | no | no |
+| Capability | FA | GH | GD | API | RO | FH | MH | FL | AS | WS | GL |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| discovery | – | – | – | – | – | fixture | – | – | – | – | – |
+| posting_read | fixture | fixture | **observed** | fixture | **observed** | – | – | fixture | fixture | fixture | **observed** |
+| form_extract | fixture | fixture | **observed** | fixture | **observed** | – | – | fixture | fixture | fixture | **observed** |
+| deterministic_fill | fixture | fixture | fixture | – | – | – | – | fixture | fixture | fixture | fixture |
+| custom_dropdowns | – | – | fixture | – | **observed** | – | – | – | – | – | fixture |
+| file_upload | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture | fixture | fixture |
+| location_picker | – | – | – | – | – | – | – | – | – | – | – |
+| login_required | – | – | – | – | – | – | – | – | – | – | – |
+| email_verification | fixture | fixture | – | – | – | – | – | – | – | – | – |
+| mobile_verification | – | – | – | – | – | – | – | – | – | – | – |
+| captcha_checkpoint | – | fixture | fixture | – | – | – | – | fixture | fixture | fixture | fixture |
+| final_submit | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture | fixture | fixture |
+| confirmation_detection | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture | fixture | fixture |
+| reconciliation | fixture | fixture | fixture | fixture | – | – | – | fixture | fixture | fixture | fixture |
+| official_api_submission | – | – | – | fixture | – | – | – | – | – | – | – |
+| real_destinations_enabled | no | no | no | no | no | no | no | no | no | no | yes |
 
 Notes on the matrix:
 
@@ -153,8 +155,11 @@ Notes on the matrix:
   `custom_dropdowns` on the observation provider, it means the dropdown controls exist on the
   real page. It does not mean they were opened: run #9 found no opening evidence.
 - No cell is `live_fill` or `live_submit`. A test pins this
-  (`test_no_provider_is_enabled_for_real_destinations_or_claims_live_support`), and another
-  pins the exact set of `observed` cells.
+  (`test_only_the_pilot_is_enabled_for_real_destinations_and_none_claims_live_support`), and
+  another pins the exact set of `observed` cells. `real_destinations_enabled` is `yes` for the
+  Greenhouse pilot alone (`model.PILOTS`, D102): it names real Greenhouse board hosts while the
+  owner has it on, and still claims nothing beyond its fixture levels and the read-only
+  observations.
 - Every `observed` cell is credited by a completed read-only run approved for that one run
   (`providers/evidence.py` `READ_ONLY_RUNS`; `docs/provider-admission.md`). This table is the
   registry (`test_the_documented_capability_matrix_is_the_registry`).
@@ -299,6 +304,10 @@ or refusal in the source relies on the default code or names one this table does
 | `no_adapter` | manual, or a refusal | `decide` (`policy.adapter_for`), `policy.check_binding` | the captured form's source is not one an adapter executes (an unlisted source is refused, never given to the generic fixture adapter: I2, D47); or queueing or running a destination whose route is a manual handoff |
 | `source_record_incomplete` | manual | discovery `application_route` | the discovery record lacks what a tracker job needs (its `missing` list) |
 | `source_posting_closed` | manual | discovery `application_route` | the posting was closed at its source before it was linked, so no tracker job exists |
+| `live_not_enabled` | manual | `adapter_for` (a form captured through the Greenhouse pilot) | the owner switched the Greenhouse pilot off (D102) |
+| `live_not_for_this_account` | manual | `route_for_job`, `decide` | the Greenhouse pilot is on, for the server owner's account only |
+| `live_needs_production` | manual | `route_for_job`, `adapter_for` | the Greenhouse pilot runs only with `NOEFFORTS_ENV=production` |
+| `live_needs_container` | manual | `route_for_job`, `adapter_for` | the Greenhouse pilot needs the browser's `container` isolation (Chromium's own sandbox on) |
 | `no_supported_provider` | manual | nothing | the fail-closed fallback: the default of `RouteDecision` and `UnsupportedDestination`, and what an unknown code is recorded as. No path produces it (tested over a grid of sample origins, submit addresses, form sources, ATS hosts and API grant states, in the test and production environments) |
 
 - A browser refusal for a fixture destination (`no_captured_destination`,

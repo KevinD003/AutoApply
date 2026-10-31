@@ -1,0 +1,26 @@
+# D102: the Greenhouse pilot (docs/greenhouse-live.md). Used on top of docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.pilot.yml up -d
+#
+# The only changes: the API and worker run in production mode (the pilot itself is switched on
+# in .env: NOEFFORTS_LIVE_GREENHOUSE_ENABLED=true, for the account in
+# NOEFFORTS_LIVE_OWNER_EMAILS), and the egress proxy gets an outbound network so
+# the isolated browser can reach exactly the one board host of its session (public addresses
+# only, plus Greenhouse's static scripts and stylesheets). The browser container stays on its
+# internal networks. Every application still needs your approval, and the first one to each
+# employer is a rehearsal that never submits.
+x-pilot-env: &pilot-env
+  NOEFFORTS_ENV: production
+  # Fails fast when no account is named (the base file defaults it to none).
+  NOEFFORTS_LIVE_OWNER_EMAILS: ${NOEFFORTS_LIVE_OWNER_EMAILS:?name your NoEfforts account in .env}
+
+services:
+  backend:
+    environment: *pilot-env
+  worker:
+    environment: *pilot-env
+  egress-proxy:
+    networks: [exec_egress, egress_out]
+
+networks:
+  egress_out: {}

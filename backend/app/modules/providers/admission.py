@@ -34,6 +34,7 @@ from dataclasses import dataclass
 
 from app.modules.providers import wording
 from app.modules.providers.model import (
+    PILOTS,
     Capability,
     Kind,
     Operation,
@@ -495,8 +496,8 @@ def _sources_of(x: Ctx) -> list:
 
 def _route_reaches(x: Ctx) -> bool:
     t, s = x.t, x.spec
-    if "production" in s.environments:
-        return False
+    if "production" in s.environments and x.key not in PILOTS:
+        return False  # D102: only a pilot's route reaches it in production (execution/live.py)
     if s.kind == Kind.api:
         return x.key in t.api_identity & t.api_credentials & t.api_route_adapters
     return bool(_sources_of(x))
@@ -508,7 +509,9 @@ def _sources_match_identity(x: Ctx) -> bool:
         if t.form_source_ats.get(source) != x.spec.ats or source not in t.form_source_labels:
             return False
         label = t.form_source_labels[source]
-        test_stand_in = source in t.form_source_adapters or source == "fixture"
+        # D102: a pilot's source is a real job post read through it, never a test stand-in.
+        pilot = t.form_source_adapters.get(source) in PILOTS
+        test_stand_in = (source in t.form_source_adapters and not pilot) or source == "fixture"
         if test_stand_in and not (label and "local test" in label.lower()
                                   and "(fictional employer)" in label):  # fmt: skip
             return False

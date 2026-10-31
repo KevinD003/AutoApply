@@ -69,6 +69,9 @@ services:
       NOEFFORTS_INBOX_ENABLED: ${NOEFFORTS_INBOX_ENABLED:-false}
       NOEFFORTS_INBOX_OWNER_EMAILS: ${NOEFFORTS_INBOX_OWNER_EMAILS:-[]}
       NOEFFORTS_INBOX_TOKEN_FILE: ${NOEFFORTS_INBOX_TOKEN_FILE:-}
+      # D102: the Greenhouse pilot; it also needs production mode (docker-compose.pilot.yml).
+      NOEFFORTS_LIVE_GREENHOUSE_ENABLED: ${NOEFFORTS_LIVE_GREENHOUSE_ENABLED:-false}
+      NOEFFORTS_LIVE_OWNER_EMAILS: ${NOEFFORTS_LIVE_OWNER_EMAILS:-[]}
     volumes: [storage:/data/storage]
     ports: ["127.0.0.1:8000:8000"]
     depends_on:

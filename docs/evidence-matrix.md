@@ -320,6 +320,27 @@ Anthropic's API and DNS; no key exists and nothing was sent. Decision D74.
 | In the browser | `frontend/e2e/drafting-consent.spec.ts` (desktop, mobile; a synthetic consent view) | not configured said; what is sent and never sent shown; agree and turn off; the review page links to the profile card |
 | Sabotage | 17 cases (owner, consent version, withdrawal, budget, lock, reported cost, any version, timeout cost, destination check, `external`, key, retries, refusal, job text in the system prompt, reservation after sending, unbound use, the gate) | 17 caught; the race case caught in 5 of 5 further runs, and passes 8 of 8 when intact |
 
+## The Greenhouse pilot (D102, 2026-10-31; built and off)
+
+The second local Greenhouse-style approximation (`fixtures/ats_receiver/greenhouse_v2.py`) plays a
+real board host and its Job Board API (test-only settings); real Greenhouse hosts are refused in
+the test environment. Decision D102.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Off by default | `tests/test_greenhouse_live.py::test_off_by_default_a_real_greenhouse_post_is_neither_read_nor_routed` | a real Greenhouse post: capture 409, route `real_destination_disabled`, no form kept |
+| The owner's account only; per account | `::test_the_owner_captures_through_the_pilot_and_no_one_else_can` | owner: form `greenhouse_live`, route `browser`; another account: 409, `live_not_for_this_account`, the owner's job 404 |
+| Production with the browser's own sandbox | `::test_the_pilot_runs_only_in_production_with_the_browsers_own_sandbox` | `needs_container` without `container`, `needs_production` outside production |
+| Greenhouse board hosts only | `::test_only_a_job_post_on_a_greenhouse_board_host_is_the_pilots` | https, no port, no userinfo, exact hosts and paths; look-alikes refused |
+| No real host from tests; public addresses in production | `::test_no_real_greenhouse_host_is_contacted_from_tests`, `::test_in_production_only_greenhouse_hosts_at_public_addresses_are_read` | refused before any connection; a Greenhouse name resolving to this machine refused; the stand-in ignored in production |
+| robots.txt and the post's own data | `::test_robots_and_the_posts_own_identity_are_checked_before_a_form_is_kept` | `robots_disallowed`, `not_this_post`: nothing kept |
+| No redirect; only Greenhouse's static assets | `::test_a_redirect_is_never_followed`, `::test_the_browser_may_load_only_greenhouses_static_assets_on_a_real_board` | redirect refused; the B3 CDN rule on a real board, none on the stand-in |
+| Rehearsal first per employer | `::test_the_first_application_to_an_employer_is_a_rehearsal` | an approval to submit refused before the rehearsal; the rehearsal: disclosures, 0 accepted; then one acceptance |
+| Switching it off stops what was approved | `::test_switching_the_pilot_off_stops_an_approved_application_before_anything_is_sent` | `failed_safe`; the ledger: 0 disclosures, 0 accepted; `live_not_enabled` |
+| Fill, upload, outcome scenarios (the receiver's ledger) | `tests/test_greenhouse_dom.py` `pilot` cases, `tests/test_upload_evidence.py` `greenhouse_pilot`, `tests/test_execution_failures.py::test_reconciling_an_unknown_outcome_never_sends_again[greenhouse_live-*]` | every scenario its fixture levels require (`tests/provider_contracts.py` `SCENARIO_TESTS`) |
+| Registry, admission, reason codes, documentation | `tests/test_providers.py`, `tests/test_provider_contracts.py`, `tests/test_provider_admission.py`, `tests/test_reason_codes.py` | the pilot alone names real destinations and claims no live support; admitted to `observed_read_only`; four `live_*` codes, each produced by a path |
+| In the browser | `frontend/e2e/greenhouse-pilot.spec.ts` (desktop, mobile; a synthetic route) | refused while off; "Read the Greenhouse form" while on |
+
 ## Your Gmail, read-only (D101, 2026-10-31; local only)
 
 A local stand-in of the Gmail API (`fixtures/ats_receiver/inbox_fixture.py`), synthetic messages
@@ -1079,7 +1100,7 @@ the idempotency key).
 
 | Requirement | Evidence | Result |
 |---|---|---|
-| No live claim from a fixture | `test_no_provider_is_enabled_for_real_destinations_or_claims_live_support`, `test_real_page_evidence_is_recorded_only_where_it_exists`, `test_spec_invariants_reject_unsupported_claims` (6) | no `live_fill`/`live_submit` anywhere; `observed` only where run evidence exists; unsupported specs refused on import |
+| No live claim from a fixture | `test_only_the_pilot_is_enabled_for_real_destinations_and_none_claims_live_support`, `test_real_page_evidence_is_recorded_only_where_it_exists`, `test_spec_invariants_reject_unsupported_claims` (6) | no `live_fill`/`live_submit` anywhere; `observed` only where run evidence exists; unsupported specs refused on import |
 | Capabilities machine-readable | `test_capabilities_are_machine_readable_through_the_api` | `GET /api/providers`, `GET /api/execution/capabilities` → `providers` |
 | Routing: real destination, nothing captured | `test_real_destinations_go_to_a_manual_handoff`, `test_no_captured_destination_is_a_manual_handoff` | manual handoff |
 | Browser vs API selection | `test_browser_unless_the_api_is_authorized_configured_and_supported`, `test_observation_and_discovery_providers_are_never_routes` | API only with the user's grant + credentials + support; revoke → browser; observation/discovery never chosen |

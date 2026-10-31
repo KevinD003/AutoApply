@@ -46,17 +46,22 @@ EXPECTED = {
     # D88: the Workday-style approximation's adapter, likewise; real Workday stays `planned`.
     "fixture_workday": ("generic_execution", "fixture_only", "fixture_only", None, [], [], [],
                         "no_ats_identity"),
+    # D102: Greenhouse's public documentation and terms review is recorded, so no Greenhouse
+    # provider needs its frozen waiver any more.
     "greenhouse_hosted": ("ats_execution", "fixture_only", "fixture_only", "observed_read_only",
-                          ["doc_review_recorded", "observed_cells_credited"],
-                          ["doc_review_recorded"], GH_EXEC_GAPS, None),
+                          ["observed_cells_credited"], [], GH_EXEC_GAPS, None),
     "greenhouse_dom": ("ats_execution", "observed_read_only", "observed_read_only",
                        "rehearsal_ready",
-                       ["doc_review_recorded", "readiness_dropdowns",
-                        "readiness_unmatched_required_controls", "readiness_location",
-                        "known_gaps_closed"],
-                       ["doc_review_recorded"], GH_EXEC_GAPS, None),
+                       ["readiness_dropdowns", "readiness_unmatched_required_controls",
+                        "readiness_location", "known_gaps_closed"],
+                       [], GH_EXEC_GAPS, None),
+    # D102: the Greenhouse pilot claims what greenhouse_dom's rules showed read-only, no more;
+    # readiness is defined for greenhouse_dom only.
+    "greenhouse_live": ("ats_execution", "observed_read_only", "observed_read_only",
+                        "rehearsal_ready", ["readiness_profile_defined", "known_gaps_closed"],
+                        [], GH_GAPS, None),
     "greenhouse_readonly": ("observation", "observed_read_only", "observed_read_only", None, [],
-                            ["doc_review_recorded"], GH_GAPS, "read_only_by_kind"),
+                            [], GH_GAPS, "read_only_by_kind"),
     "freehire_mock": ("discovery", "fixture_only", "fixture_only", None, [], [], [],
                       "discovery_by_kind"),
     "freehire": ("discovery", "fixture_only", "fixture_only", None, [], [], [],
@@ -220,8 +225,9 @@ def test_an_owner_boundary_is_never_passed_without_its_record(boundary, remove, 
 
 def test_a_waiver_never_advances_a_provider_beyond_its_claim():
     """greenhouse_dom with every rehearsal condition met in memory and its gaps closed still
-    stops at its claim: its waived doc review counts only up to observed_read_only."""
-    t = admission.current_tables()
+    stops at its claim: its waived doc review counts only up to observed_read_only. (Without
+    the D102 review, which now meets the check, so the waiver itself is exercised.)"""
+    t = _without_reviews()
     rows = [{"id": c, "met": True} for c in readiness.MEETS_BY]
     cells = {**t.credited_cells,
              **{("greenhouse_dom", c): frozenset({"behaviour"})
@@ -240,7 +246,7 @@ def test_waivers_are_frozen_to_the_pre_admission_providers_and_still_real():
     }  # fmt: skip
     for key, stage in admission.PRE_ADMISSION.items():  # each frozen at the claim it had at I2
         assert stage == admission.CLAIM_STAGE[wording.support_state(registry.get(key))], key
-    t = admission.current_tables()
+    t = _without_reviews()  # D102's review meets the Greenhouse check: exercise the waivers
     unwaived = replace(t, waivers={})
     for (key, check), reason in admission.GRANDFATHERED.items():
         assert key in admission.PRE_ADMISSION and admission.WAIVABLE[check] == reason
@@ -330,9 +336,19 @@ def test_every_observed_cell_is_credited_by_a_completed_single_use_run():
         assert all(k in evidence.CREDIT_KINDS for _, _, k in r.cells)
 
 
-def test_no_doc_review_is_recorded_today():
-    """Pinned empty: recording one needs the owner's approval and a decision, and edits this."""
-    assert evidence.DOC_REVIEWS == ()
+def test_the_recorded_doc_reviews_are_pinned_to_their_decisions():
+    """Pinned: Greenhouse's review only (D102, docs/research/greenhouse-terms-review.md).
+    Recording another needs its own review and decision, and edits this."""
+    assert evidence.DOC_REVIEWS == (evidence.DocReview("greenhouse", "D102"),)
+    root = pathlib.Path(__file__).resolve().parents[2]
+    assert "## D102 " in (root / "docs" / "decisions.md").read_text()
+    review = (root / "docs" / "research" / "greenhouse-terms-review.md").read_text()
+    assert "DOC_REVIEWS" in review and "Not reviewed" in review
+
+
+def _without_reviews():
+    """The current tables as if no doc review were recorded (to exercise the I2 waivers)."""
+    return replace(admission.current_tables(), doc_reviews=frozenset())
 
 
 # -- isolation: reads nothing, changes nothing, imported by nothing that acts ---------------------
@@ -461,8 +477,9 @@ def test_the_documented_admission_tables_are_the_code():
 
 def test_raising_a_claim_never_raises_a_waiver():
     """greenhouse_hosted raised in memory to observed, with credited runs: its waived doc review
-    still counts only up to its frozen claim (fixture_only), so the raise is caught."""
-    t = admission.current_tables()
+    still counts only up to its frozen claim (fixture_only), so the raise is caught. (Without
+    the D102 review, which would meet the check.)"""
+    t = _without_reviews()
     gh = t.providers["greenhouse_hosted"]
     seen = Support(fixture=True, observed=True)
     raised = replace(gh, capabilities={**gh.capabilities, Capability.posting_read: seen,
@@ -499,9 +516,11 @@ def test_a_new_adapter_under_a_pre_admission_key_inherits_no_waiver():
 
 
 def test_the_by_ats_view_shows_what_is_held_only_by_a_waiver():
-    gh = admission.summary()["ats"]["greenhouse"]
+    gh = admission.summary(_without_reviews())["ats"]["greenhouse"]
     assert gh["admitted"] == "observed_read_only" and gh["waived"] == ["doc_review_recorded"]
     assert admission.summary()["ats"]["lever"]["waived"] == []
+    now = admission.summary()["ats"]["greenhouse"]  # D102: held by the recorded review instead
+    assert now["admitted"] == "observed_read_only" and now["waived"] == []
 
 
 @pytest.mark.parametrize(

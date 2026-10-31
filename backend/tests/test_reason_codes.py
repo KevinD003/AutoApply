@@ -21,7 +21,7 @@ from app.modules.audit.models import AuditEvent
 from app.modules.audit.service import sanitize
 from app.modules.execution import policy
 from app.modules.providers import routing
-from tests.execution_harness import BASE, Receiver
+from tests.execution_harness import BASE, Receiver, pilot_on
 from tests.test_discovery import feed_copy, rows, run_import
 from tests.test_execution_routing import WORKDAY_URL
 from tests.test_greenhouse_dom import LOC_JOB, v2_job
@@ -103,6 +103,30 @@ def _production(c) -> str:
     return routing.decide(GH2).reason
 
 
+GH_REAL = "https://job-boards.greenhouse.io/exampleboard/jobs/4000001"  # a fictional board
+
+
+def _pilot_job(c, *, env=None, isolation=None, owner="synthetic.user@example.com") -> str:
+    """D102: a Greenhouse job post routed with the Greenhouse pilot on: on its stand-in board
+    host in the test environment, on a (fictional) real board host anywhere else."""
+    pilot_on(owner)
+    if env is None:
+        job_id = v2_job(c.api)
+    else:
+        new = {"url": GH_REAL, "title": "Engineer", "employer": "Example Board (fictional)"}
+        job_id = c.api.post("/jobs", json=new).json()["job"]["id"]
+    if env:
+        c.monkeypatch.setattr(get_settings(), "env", env)
+    if isolation:
+        c.monkeypatch.setattr(get_settings(), "browser_isolation", isolation)
+    return c.api.get(f"/jobs/{job_id}/route").json()["reason"]
+
+
+def _pilot_off(c) -> str:
+    """A form captured through the pilot, after the owner switched it off."""
+    return routing.decide({**GH2, "form_source": "greenhouse_live"}, me(c.api)).reason
+
+
 PATHS = {
     "api_authorized": lambda c: routing.decide(GH2, authorize_api(c.api, c.monkeypatch)).reason,
     "browser_supported": lambda c: routing.decide(GH2).reason,
@@ -119,6 +143,10 @@ PATHS = {
     "no_adapter": _no_adapter,
     "source_record_incomplete": lambda c: _discovery_view(c, "fh-1004"),
     "source_posting_closed": lambda c: _discovery_view(c, "fh-1003", closed=True),
+    "live_not_enabled": _pilot_off,
+    "live_not_for_this_account": lambda c: _pilot_job(c, owner="someone.else@example.com"),
+    "live_needs_production": lambda c: _pilot_job(c, env="development"),
+    "live_needs_container": lambda c: _pilot_job(c, env="production", isolation="netns"),
 }
 
 

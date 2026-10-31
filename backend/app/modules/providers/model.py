@@ -134,6 +134,12 @@ class ProviderSpec:
         return self.traits.get(t, TraitValue())
 
 
+# D102: providers that may name real destinations as a pilot, by the owner's decision: off by
+# default, never claiming live support (their levels stay the fixture's and the read-only
+# observations'), gated in code (execution/live.py). Nothing else may.
+PILOTS = frozenset({"greenhouse_live"})
+
+
 class SpecError(ValueError):
     pass
 
@@ -232,11 +238,13 @@ def check_spec(spec: ProviderSpec) -> None:
         and Capability.captcha_checkpoint not in spec.capabilities
     ):
         raise SpecError(f"{spec.name}: a CAPTCHA may appear but no checkpoint is declared")
-    if spec.real_destinations_enabled:
+    if spec.real_destinations_enabled and spec.name not in PILOTS:
         raise SpecError(
             f"{spec.name}: real destinations stay refused until the live-pilot gate is opened by a "
             "reviewed change to this rule"
         )
+    if spec.real_destinations_enabled and live:
+        raise SpecError(f"{spec.name}: a pilot claims no live support (its evidence is the pilot's)")
 
 
 def matrix(spec: ProviderSpec) -> dict[str, str]:

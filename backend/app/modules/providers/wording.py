@@ -54,6 +54,8 @@ FORM_SOURCE_LABELS: dict[str, str | None] = {
     "greenhouse_api": "Greenhouse-style form: local test approximation (fictional employer)",
     "greenhouse_api_dom": "Greenhouse-style form mapped by id and label: second local test "
     "approximation (fictional employer)",
+    "greenhouse_live": "Greenhouse job post read through the Greenhouse pilot (never yet run on "
+    "a real page; every application approved by you, rehearsed first)",
     "fixture_lever": "Lever-style form: local test approximation (fictional employer)",
     "fixture_ashby": "Ashby-style form: local test approximation (fictional employer)",
     "fixture_workday": "Workday-style application: local test approximation (fictional employer)",
