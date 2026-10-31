@@ -101,6 +101,14 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   (`location_picker` fixture for `greenhouse_dom`) and adapter-version assertions; the receiver
   now resets its v2 per-mode settings (`dd`, `delay_ms`, `locale_delay_ms`, `loc`, `pc`) between
   tests.
+- **Full validation** (`VALIDATE_LOG_DIR=/tmp/v104 scripts/validate.sh all`, on `b010e1b` rebased
+  onto `d65e976`, each suite on a disposable database the script created and dropped):
+  - lint, format, typecheck and eslint: ok;
+  - backend: **4,152 passed** (1h03m29s);
+  - Playwright: **129 passed, 2 skipped** (11.5 min).
+
+  The one failure of the subagent's run below (`test_no_mailbox_client_is_imported_or_addressed_anywhere`)
+  was D103's, fixed on `main` in `d65e976` before this run.
 - **Validation:** commands actually run, in the worktree `d104-controls` on its own disposable database
   (`eval "$(uv run python -m tests.isolation create --export)"`, ports
   `NOEFFORTS_TEST_RECEIVER_PORT=8790 NOEFFORTS_TEST_CANARY_PORT=8791 NOEFFORTS_TEST_BROKER_PORT=6390`,
