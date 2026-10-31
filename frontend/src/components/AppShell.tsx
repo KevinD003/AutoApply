@@ -10,6 +10,7 @@ import { ErrorBox, Loading } from "./ui";
 const NAV = [
   { href: "/jobs", label: "Jobs" },
   { href: "/discover", label: "Discover" },
+  { href: "/review", label: "Review" },
   { href: "/tracker", label: "Tracker" },
   { href: "/documents", label: "Documents" },
   { href: "/answers", label: "Saved answers" },

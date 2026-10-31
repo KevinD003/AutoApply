@@ -3052,3 +3052,29 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   opening on the one real posting observed; its phone-group control (`u1`) remains not
   understood. Nothing was rehearsed or submitted for real.
 - **Unchanged:** `SCHEMA_VERSION` (3); no migration; every other adapter, route and approval rule.
+
+## D105 — Review several packages, approve each on its own (2026-10-31)
+
+- **Why:** the owner, on 2026-10-31: "A future batch-review interface may approve individually
+  identified, immutable packages, but it must not mean unrestricted approval for future
+  applications. Each approval must remain bound to: the user; the application and destination;
+  the exact package/version; its permitted scope; expiry and revocation; one-time consumption
+  where required. Changed content or destination requires renewed approval."
+- **Decision:** a review page, `/review`, and two API routes (`app/modules/preparation/review.py`):
+  - `GET /review/packages` lists your applications that can be approved now, each with its
+    current package. Each row shows the version, the start of its content hash, its destination
+    and what holds it back, if anything.
+  - `POST /review/approve` approves a list of items. Each item names its application, the
+    package version and that version's content hash as shown, and its own scope. The scope is
+    required, so never "submit" by omission.
+  - Each item goes through the same `package.approve` as the package's own page, in its own
+    transaction. A changed package is refused (`package_changed`), never replaced. An approval
+    to submit still needs the path rehearsed first (E6). Another account's application is "not
+    found". One refused item leaves the others as they are.
+  - At most 25 items, each application once, and no "all" or filter. Approving queues, sends and
+    submits nothing.
+  - API tokens cannot use these routes (default deny, D84). An audit event
+    `package.approve_reviewed` records the batch identifier beside each `package.approve`.
+- **Unchanged:** every binding of a single approval (user, application, destination, adapter
+  and version, package hash, scope, expiry, revocation, use once where that matters);
+  per-application approval as the default; `SCHEMA_VERSION` (3); no migration.

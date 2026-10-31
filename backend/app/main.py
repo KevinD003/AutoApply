@@ -21,6 +21,7 @@ from app.modules.inbox.router import router as inbox_router
 from app.modules.jobs.router import router as jobs_router
 from app.modules.mail.router import router as mail_router
 from app.modules.notifications.router import router as notifications_router
+from app.modules.preparation.review import router as review_router
 from app.modules.preparation.router import router as preparation_router
 from app.modules.profiles.router import router as profile_router
 from app.modules.providers.router import router as providers_router
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
         documents_router,
         applications_router,
         preparation_router,
+        review_router,
         execution_router,
         providers_router,
         board_sources_router,
