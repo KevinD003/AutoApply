@@ -22,6 +22,7 @@ import ssl
 import subprocess
 import threading
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -52,7 +53,8 @@ def _https_handler(opener) -> urllib.request.HTTPSHandler:
                                          live._NoRedirect])  # fmt: skip
 def test_public_openers_verify_certificates_and_use_no_proxy(monkeypatch, no_redirect):
     monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:9")  # an environment proxy is ignored
-    opener = urlsafety.public_https_opener("gmail.googleapis.com", no_redirect)
+    host = urllib.parse.urlsplit(provider.TOKEN_URL).hostname  # the reader's own fixed host
+    opener = urlsafety.public_https_opener(host, no_redirect)
     ctx = _https_handler(opener)._context
     assert ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname is True
     kinds = {type(h) for h in opener.handlers}

@@ -99,7 +99,26 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   separate databases and ports.
 - **CI recorded:** **CI #141** on `be16318` (run 41193378664) and **CI #142** on `f70f435` (run
   41196286997) passed on all four jobs (backend, frontend, docker-smoke, execution-compose).
-- **Validation:** see below.
+- **Validation** (`VALIDATE_LOG_DIR=/tmp/v103 scripts/validate.sh all`, on `3eb9789`, each suite on
+  a disposable database the script created and dropped):
+  - lint, format, typecheck and eslint: ok;
+  - Playwright: **129 passed, 2 skipped** (12.8 min), with every server under the isolation
+    hold and the e2e database claimed;
+  - backend: **4,093 passed, 1 failed** (1h03m27s). The failure was my new HTTP-property test
+    naming the Gmail API host, which `test_forbidden_capabilities.py` allows only in the reader.
+    It now takes the host from the reader's own constant. Afterwards
+    `test_forbidden_capabilities.py`, `test_http_properties.py` and `test_repo_hygiene.py`:
+    **161 passed**.
+
+  Before the full run, the gates' own files ran on a second disposable database alongside
+  another run:
+  - `test_greenhouse_live.py` and `test_inbox.py`: **53 passed**;
+  - `test_reason_codes.py`, `test_discovery*.py` and `test_freehire_discovery.py`: **86 passed**,
+    on receiver port 8793. The mock feed's 8799 addresses are rewritten for a run on another
+    port: `conftest.py`.
+- **Sabotage checks:**
+  - the token exchange's old code: 3 of the 4 new cases fail;
+  - the old "received" rule (state only): both new correlation tests fail.
 
 ## The Greenhouse pilot: real Greenhouse applications, built and off (D102, 2026-10-31)
 
