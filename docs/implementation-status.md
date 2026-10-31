@@ -55,8 +55,11 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
 - **Reproduced first, then fixed:** a new case with the locale file delayed by 2.5 seconds
   (`locale_delay_ms`, fixture only) failed exactly as in CI before the change (`1 failed, 7
   passed`) and passes after it; `tests/test_dropdown_strategies.py`: 20 passed.
-- **Full validation on the final tree:** running when this commit was made; its results are
-  recorded in the next commit.
+- **Full validation on the final tree** (commit `79f12d3`, tree `e2de773`, through
+  `scripts/validate.sh all`, run sequentially): lint, format, typecheck and eslint ok; backend
+  **3,858 passed** in 1h00m20s (about 8 minutes longer than before: the wait after each form
+  opens); Playwright **119 passed, 2 skipped** (desktop and mobile) in 12.1 minutes. CI #135
+  (run 41155083813, `79f12d3`) passed on all four jobs.
 
 ## A daily check of a job board you choose (D96, 2026-10-31; local stand-ins only)
 
