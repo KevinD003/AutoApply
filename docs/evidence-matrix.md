@@ -9,6 +9,21 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A daily check of a job board you choose (D96, 2026-10-31; local stand-ins only)
+
+Tests are in `test_board_daily_check.py`; the oracle for requests is the stand-in's ledger.
+
+| Requirement | Implementation | Evidence | Result | Gaps |
+|---|---|---|---|---|
+| Your choice per board; off until chosen | `daily_check`; `board_sync.due` | `test_nothing_is_read_on_its_own_until_you_choose_it_for_a_board` | pass | — |
+| Once a day, through the D95 boundary | `check_due` calls `sync` | `test_a_daily_board_is_read_once_a_day_through_the_same_boundary` (ledger: GET only, no cookie, credential or body) | pass | — |
+| Never while off, paused, backing off or turned off | `due` filters and `sync` refusals (two layers) | `test_not_when_boards_are_off_paused_backing_off_or_turned_off`, `test_a_failed_daily_read_changes_nothing_and_backs_off` | pass | — |
+| New postings noticed, never a job or an email | `notifications/service._boards`; `baseline_at` | `test_new_postings_after_the_first_read_are_one_notice_a_day_never_a_job`, `board-sources.spec.ts` | pass | — |
+| Limit per account; account isolation | `daily_check_limit`; scoped queries | `test_the_daily_limit_and_another_account`, `test_every_query_of_the_feed_is_scoped_to_the_account` | pass | — |
+| A board being read is skipped | the row lock (`NOWAIT`) | `test_a_board_its_owner_is_reading_is_skipped` | pass | — |
+| Export and audit | export columns; `daily_check_on/off`, `daily_check` | `test_your_choice_is_exported`, the once-a-day test (audit) | pass | — |
+| Sabotage | 11 single changes, 3 double | 8 caught alone, 3 caught with both layers removed (`implementation-status.md`) | pass | — |
+
 ## Employer job boards (D95, 2026-10-30; local stand-ins only, no real board read)
 
 The oracle is the stand-in's own request ledger (`board_requests` in the receiver's SQLite,

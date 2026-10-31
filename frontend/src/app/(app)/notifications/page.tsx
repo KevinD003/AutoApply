@@ -16,6 +16,7 @@ const KIND = {
   receipt: { label: "Receipt", tone: "green" },
   failure: { label: "Stopped", tone: "red" },
   follow_up: { label: "Follow-up", tone: "amber" },
+  board_postings: { label: "Job board", tone: "slate" },
 } as const;
 
 interface Feed {
@@ -106,7 +107,7 @@ export default function NotificationsPage() {
                     }}
                     className="min-h-10 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
                   >
-                    Open application
+                    {n.application_id ? "Open application" : "Open Discover"}
                   </Link>
                   <Button variant="secondary" onClick={() => mark(n.read ? "unread" : "read", [n.key])}>
                     {n.read ? "Mark as unread" : "Mark as read"}

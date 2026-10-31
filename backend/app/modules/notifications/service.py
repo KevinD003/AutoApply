@@ -13,17 +13,21 @@ One notification per record, by a key that names it:
   * `attempt:<id>`: a submission ended with an employer receipt, an unknown outcome, a refusal,
     or a stop. Not a rehearsal (its own notification) and not one you cancelled;
   * `follow_up:<id>:<day>`: following up on a submitted application is due (followups/service.py);
-    a new day (after you followed up, or a day you chose) is a new notification.
+    a new day (after you followed up, or a day you chose) is a new notification;
+  * `board:<source id>:<day>`: a job board you added listed postings new to you that day (UTC),
+    first seen after the board's first successful read (D96); the last 30 days. It concerns no
+    application and asks nothing of you.
 Read marks (models.NotificationRead) are the only stored state. Nothing here sends anything:
 no email, text message, push or any other delivery outside this app."""
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.db import utcnow
 from app.modules.applications.models import Application
+from app.modules.discovery.models import BoardSource, DiscoveredJob
 from app.modules.execution import rehearsal
 from app.modules.execution.models import (
     AttemptState,
@@ -65,17 +69,18 @@ _REVOKED = {
 }
 
 
-def _item(key, kind, at, app_id, title, text, *, needs_action=False, evidence=None) -> dict:
+def _item(key, kind, at, app_id, title, text, *, needs_action=False, evidence=None,
+          link=None) -> dict:  # fmt: skip
     return {
         "key": key,
         "kind": kind,
         "at": at,
-        "application_id": str(app_id),
+        "application_id": str(app_id) if app_id is not None else None,
         "title": title,
         "text": text,
         "needs_action": needs_action,
         "evidence_label": evidence,
-        "link": f"/applications/{app_id}",
+        "link": link or f"/applications/{app_id}",
     }
 
 
@@ -189,6 +194,37 @@ def _follow_ups(db: Session, user_id) -> list[dict]:
     return out
 
 
+def _boards(db: Session, user_id, now: datetime) -> list[dict]:
+    rows = db.execute(
+        select(BoardSource.id, BoardSource.employer, BoardSource.provider,
+               DiscoveredJob.first_seen_at)
+        .join(DiscoveredJob, DiscoveredJob.board_source_id == BoardSource.id)
+        .where(BoardSource.user_id == user_id, DiscoveredJob.user_id == user_id,
+               BoardSource.baseline_at.is_not(None),
+               DiscoveredJob.first_seen_at > BoardSource.baseline_at,
+               DiscoveredJob.first_seen_at > now - timedelta(days=30),
+               DiscoveredJob.status != "dismissed")
+    ).all()  # fmt: skip
+    days: dict[tuple, list] = {}
+    for sid, employer, provider, seen in rows:
+        days.setdefault((sid, seen.astimezone(UTC).date()), [employer, provider, []])[2].append(
+            seen
+        )
+    out = []
+    for (sid, day), (employer, provider, seen) in days.items():
+        n = len(seen)
+        item = _item(
+            f"board:{sid}:{day.isoformat()}", "board_postings", max(seen), None,
+            "New postings on a job board you added",
+            f"{n} new posting{'s' if n != 1 else ''} on the {provider.title()} job board you"
+            " added. They are in Discover; none was added to your jobs.",
+            link="/discover",
+        )  # fmt: skip
+        item["job"] = employer
+        out.append(item)
+    return out
+
+
 def feed(db: Session, user_id, now: datetime | None = None) -> list[dict]:
     """Every notification of the account, newest first, each with its read mark and the job
     it concerns. Scoped to the account in every query."""
@@ -199,22 +235,26 @@ def feed(db: Session, user_id, now: datetime | None = None) -> list[dict]:
         + _rehearsals(db, user_id)
         + _attempts(db, user_id)
         + _follow_ups(db, user_id)
+        + _boards(db, user_id, now)
     )
     read = set(
         db.scalars(select(NotificationRead.item_key).where(NotificationRead.user_id == user_id))
     )
     jobs = {}
-    if items:
+    if any(i["application_id"] for i in items):
         rows = db.execute(
             select(Application.id, Job.title, Job.employer)
             .join(Job, Job.id == Application.job_id)
             .where(
                 Application.user_id == user_id,
-                Application.id.in_({i["application_id"] for i in items}),
+                Application.id.in_({i["application_id"] for i in items if i["application_id"]}),
             )
         )
         jobs = {str(app_id): (title, employer) for app_id, title, employer in rows}
     for i in items:
+        if i["application_id"] is None:  # a board's postings: `job` names the employer you gave
+            i["read"] = i["key"] in read
+            continue
         title, employer = jobs.get(i["application_id"], (None, None))
         i["job"] = " — ".join(x for x in (title or "Untitled role", employer) if x)
         i["read"] = i["key"] in read

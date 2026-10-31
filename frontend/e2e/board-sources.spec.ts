@@ -2,10 +2,10 @@ import { expect, test } from "@playwright/test";
 
 import { RECEIVER, RECEIVER_TOKEN } from "../playwright.config";
 
-// D95: an employer's public job board, added, read on request, a posting saved, paused and removed,
-// through the real UI against the receiver's stand-in of the documented Greenhouse feed. Its own
-// request ledger is the oracle for what was asked and that nothing of the user was sent.
-// Fictional boards and synthetic accounts only.
+// D95: an employer's public job board, added, read on request, a posting saved, checked daily
+// (D96), paused and removed, through the real UI against the receiver's stand-in of the
+// documented Greenhouse feed. Its own request ledger is the oracle for what was asked and that
+// nothing of the user was sent. Fictional boards and synthetic accounts only.
 test("add a job board, read it, save a posting, pause and remove it", async ({ page, request }, info) => {
   const board = `northwind-${info.project.name}-${Date.now()}`;
   await page.request.post("/api/auth/register", {
@@ -39,7 +39,13 @@ test("add a job board, read it, save a posting, pause and remove it", async ({ p
     .filter((r) => r.path.includes(board));
   expect(mine).toEqual([{ method: "GET", path: `/gh-board/v1/boards/${board}/jobs`, query: "content=true", cookie: false, auth: false, body_len: 0 }]);
 
+  // D96: a daily check is your choice for this board; the worker reads it (backend tests).
+  await card.getByLabel("Check daily").check();
+  await expect(card.getByRole("status")).toHaveText("This board will be read once a day; new postings appear in your notifications.");
+  await expect(card.getByText("checked daily", { exact: true })).toBeVisible();
+
   await card.getByRole("button", { name: "Pause" }).click();
+  await expect(card.getByText("checked daily", { exact: true })).toHaveCount(0);
   await expect(card.getByText("paused", { exact: true })).toBeVisible();
   await expect(card.getByRole("button", { name: "Read now" })).toBeDisabled();
   await card.getByRole("button", { name: "Remove" }).click();

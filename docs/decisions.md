@@ -2620,3 +2620,30 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Not verified:** any real board. Every request in tests went to local stand-ins of the
   documented shapes (`fixtures/ats_receiver/board_feeds.py`), whose ledger is the oracle.
 - **Unchanged:** `SCHEMA_VERSION` (3); execution, routing and admission. Migration `d7f3b9e41c26`.
+
+## D96 — A daily check of a job board you choose, with a notice of new postings (2026-10-31)
+
+- **Why:** the canonical Phase E row 1 (`product-evidence.md`): bounded, scheduled discovery from
+  permitted feeds, with freshness. D95 reads a board only when you press "Read now".
+- **Decision:**
+  - **Your choice, per board.** "Check daily" on a board you added; off for every board until
+    you tick it, and nothing runs while the owner's `NOEFFORTS_BOARD_SOURCES_ENABLED` is off.
+    At most `NOEFFORTS_BOARD_DAILY_CHECK_LIMIT` (10) boards per account; no crawl, no board you
+    did not add, no other provider.
+  - **Same boundary as D95.** The worker (`noefforts.check_board_sources`, every 5 minutes, at
+    most 5 boards a tick) calls the same `board_sync.sync`: the fixed host, GET only, nothing of
+    yours, public addresses at connect, no redirects, the same limits, the same lock (a board
+    you are reading at that moment is skipped), the same backoff and `Retry-After`, and the
+    same rule that only a complete read says a posting is no longer listed. A board is read at
+    most once in 24 hours, and never while paused or backing off.
+  - **Freshness and new postings.** A board's first successful read is its baseline; postings
+    first seen after it are new to you. The notifications feed shows one notice per board per
+    day (UTC), for the last 30 days: how many new postings, the board and the employer you gave,
+    a link to Discover. It needs nothing of you, so it never reaches the email digest (D94's
+    categories are "needs your attention" and follow-ups). Nothing is added to your jobs;
+    matching stays the posting's match summary; no application, route or approval changes.
+  - **Audit and export.** Turning it on or off is `daily_check_on` / `daily_check_off`; a
+    worker read is `daily_check` with `ok` or `failed`. `daily_check` and `baseline_at` are in
+    your export and deleted with the board or the account.
+- **Not verified:** any real board (local stand-ins only, as D95).
+- **Unchanged:** `SCHEMA_VERSION` (3); execution, routing and admission. Migration `e5a1c3f80d47`.

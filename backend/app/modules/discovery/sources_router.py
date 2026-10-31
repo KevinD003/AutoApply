@@ -1,5 +1,6 @@
 """Your public employer job boards (D95): add, rename, pause, resume or remove a board, read it
-when you choose, see its postings, and save one to your jobs. Every route acts on your account
+when you choose (or once a day, if you choose that for a board: D96), see its postings, and
+save one to your jobs. Every route acts on your account
 only (another account's source or posting is 404). A posting is never an application route."""
 
 import uuid
@@ -43,6 +44,7 @@ class SourceIn(BaseModel):
 class SourcePatch(BaseModel):
     employer: str | None = Field(default=None, min_length=1, max_length=200)
     paused: bool | None = None
+    daily_check: bool | None = None  # D96: read it once a day on its own
 
 
 def _refuse(code: str, message: str, http: int = status.HTTP_409_CONFLICT) -> HTTPException:
@@ -85,10 +87,22 @@ def _view(db: Session, src: BoardSource) -> dict:
         "last_error_code": src.last_error_code,
         "last_error": ERROR_TEXT.get(src.last_error_code) if src.last_error_code else None,
         "next_allowed_at": src.next_allowed_at.isoformat() if src.next_allowed_at else None,
+        "daily_check": src.daily_check,
+        "next_check_after": _next_check(src),
         "listed": counts.get(False, 0),
         "no_longer_listed": counts.get(True, 0),
         "in_your_jobs": saved or 0,
     }
+
+
+def _next_check(src: BoardSource) -> str | None:
+    """When the worker may read a daily-checked board next (at the earliest; it looks every
+    few minutes). None when it is not checked daily or is paused."""
+    if not src.daily_check or src.paused:
+        return None
+    times = [t for t in (src.last_attempt_at and src.last_attempt_at + board_sync.DAY,
+                         src.next_allowed_at) if t]  # fmt: skip
+    return max(times).isoformat() if times else None
 
 
 @router.get("")
@@ -103,6 +117,7 @@ def list_sources(user: User = Depends(current_user), db: Session = Depends(get_d
             for k, v in boards.PROVIDERS.items()
         ],
         "not_built": boards.NOT_BUILT,
+        "daily_check_limit": get_settings().board_daily_check_limit,
         "items": [_view(db, s) for s in rows],
     }
 
@@ -138,6 +153,16 @@ def edit_source(source_id: uuid.UUID, body: SourcePatch, user: User = Depends(cu
         src.employer = body.employer.strip()
     if body.paused is not None and body.paused != src.paused:
         src.paused, change = body.paused, "pause" if body.paused else "resume"
+    if body.daily_check is not None and body.daily_check != src.daily_check:
+        if body.daily_check:
+            limit = get_settings().board_daily_check_limit
+            checked = db.scalar(select(func.count()).where(
+                BoardSource.user_id == user.id, BoardSource.daily_check.is_(True)))  # fmt: skip
+            if checked >= limit:
+                raise _refuse("daily_check_limit", f"At most {limit} boards can be checked "
+                              "daily; turn it off for another board first.")  # fmt: skip
+        src.daily_check = body.daily_check
+        change = "daily_check_on" if body.daily_check else "daily_check_off"
     record(db, user.id, "board_source.update", "board_source", src.id, change=change,
            provider=src.provider)  # fmt: skip
     db.commit()

@@ -360,6 +360,11 @@ Sources and what could not be verified: `docs/research/job-board-apis.md`; the d
   approves or routes an application.
 - **Limits:** one read of a board at a time; at most one read every 5 minutes; a `429` waits its
   `Retry-After` (1 minute to 1 day); other failures back off from 5 minutes doubling to a day.
+- **Daily check (D96):** tick "Check daily" on a board and the worker reads it once a day
+  through the same code and limits (at most 10 boards per account, 5 per worker tick every 5
+  minutes; never while paused, backing off or switched off). Postings first seen after the
+  board's first successful read are new; the notifications feed has one notice per board per
+  day with how many. Nothing is added to your jobs and nothing is emailed.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -367,13 +372,14 @@ Sources and what could not be verified: `docs/research/job-board-apis.md`; the d
 | `NOEFFORTS_BOARD_TIMEOUT_SECONDS` / `_MAX_BYTES` | 10 / 10,000,000 | Per request. |
 | `NOEFFORTS_BOARD_PAGE_SIZE` / `_MAX_PAGES` | 100 / 20 | Lever paging. |
 | `NOEFFORTS_BOARD_MIN_INTERVAL_SECONDS` | 300 | Between two reads of one board. |
+| `NOEFFORTS_BOARD_DAILY_CHECK_LIMIT` / `_CHECK_BATCH` | 10 / 5 | Boards per account that may be checked daily; boards the worker reads per tick (D96). |
 | `NOEFFORTS_BOARD_API_OVERRIDES` | `{}` | Tests only: honoured only with `NOEFFORTS_ENV=test` and a listed fixture origin. |
 
 | Method and path | Purpose |
 |---|---|
 | `GET /api/discovery/sources` | the switch, the providers (with what the identifier is called and their regions), what is not built and why, your boards with their last successful read, last status and counts |
 | `POST /api/discovery/sources` | add a board: `{provider, region, board, employer}`; 400 for an unknown provider or a bad identifier, 409 if you have it already |
-| `PATCH /api/discovery/sources/{id}` | rename the employer, pause or resume |
+| `PATCH /api/discovery/sources/{id}` | rename the employer, pause or resume, turn the daily check on or off (409 `daily_check_limit` beyond the limit) |
 | `DELETE /api/discovery/sources/{id}` | remove it and its postings; jobs you saved stay |
 | `POST /api/discovery/sources/{id}/sync` | read it now: `ok` with counts, or `failed` with a fixed code and a safe message; 409 when off, paused, too soon or already being read |
 | `GET /api/discovery/sources/{id}/postings` | its postings: what the board says, whether it is in your jobs, the match summary |

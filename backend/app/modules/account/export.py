@@ -235,6 +235,8 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "last_count",
         "failures",
         "next_allowed_at",
+        "daily_check",
+        "baseline_at",
     ),
     "discovered_jobs": (
         "id",

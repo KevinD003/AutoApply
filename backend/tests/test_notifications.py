@@ -250,4 +250,5 @@ def test_every_query_of_the_feed_is_scoped_to_the_account():
     """A check on service.py's source, on top of the API tests above: each select filters by
     the account."""
     src = (ROOT / "backend/app/modules/notifications/service.py").read_text()
-    assert src.count("select(") == src.count("user_id == user_id") == 6
+    # D96: the job-board query joins two tables and filters both by the account.
+    assert src.count("select(") == 7 and src.count("user_id == user_id") == 8
