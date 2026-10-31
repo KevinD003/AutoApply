@@ -78,6 +78,15 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     (the card says reading is off on this server; with a synthetic connected view it shows a
     proposed rejection and a code entered for you, and Confirm records it; no horizontal
     overflow).
+- **Full validation** (`scripts/validate.sh all` on the first D101 commit, `5beb7da`): lint,
+  format, typecheck, eslint ok; backend **3,991 passed, 1 failed** (1h11m22s): the repository's
+  address rule (`test_repo_hygiene`) found a real sending domain in a test's sender address; it
+  now uses a reserved domain, with the default senders checked by domain in a new test, and
+  `test_inbox.py` plus `test_repo_hygiene.py` then **25 passed**. Playwright **125 passed, 2
+  failed, 2 skipped** (14.2 min): both failures were the email-reminders spec, whose local mail
+  sink could not start because its port (8796) was held by a backend test run I had started in
+  another worktree on that port; run alone afterwards, `e2e/email.spec.ts` **2 passed**. The
+  pushed commits differ from `5beb7da` only in that test and in documentation.
 - **Not verified:** a real mailbox, a real application system's code email or a real employer's
   reply (a local stand-in of Gmail's API only); the wording rules against real mail.
 - **Earlier commit, recorded here:** D100 (`3b6d370`), through `scripts/validate.sh all`: lint,
