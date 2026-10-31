@@ -81,6 +81,17 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     the board origins themselves are https only and refuse a plain-http address too.
   - `npx playwright test e2e/greenhouse-pilot.spec.ts e2e/routing.spec.ts e2e/journey.spec.ts
     e2e/account.spec.ts` (desktop and mobile): 8 passed.
+  - `scripts/validate.sh all` on `d4cf276` (before the two fixes below): lint, format,
+    typecheck, eslint ok; Playwright **129 passed, 2 skipped**; backend **4,038 passed, 8 failed,
+    3 errors** (1h02m44s). Five failures were contracts not yet taught the pilot: the support
+    wording tests (expected states, the form-source label rule for test stand-ins, the capture
+    sources read from the code, the labels the API serves) and the sending test's list of
+    adapters; fixed, `test_support_wording.py` and `test_sending.py` then **37 passed**. The
+    other three failures and three errors were in `test_greenhouse_adapter.py`, caused by me:
+    two guard runs started in another worktree without a test-database override reset the shared
+    test database while it ran; that file alone then **37 passed**.
+  - Merged from `main`: the Gmail reader's move to the standard library (CI #140's Docker jobs);
+    on the merged tree the new runtime-import guard and `test_inbox.py` **23 passed**.
 - **Not verified:** any real Greenhouse page filled, uploaded to or submitted to; what the first
   real rehearsal will stop on (the one real posting observed read-only had dropdowns with no
   opening evidence, unlisted controls such as a phone country picker, and a location search).
