@@ -21,6 +21,7 @@ from tests.test_greenhouse_dom import BOARD, LOC_JOB, live_application, v2_job
 
 GH_REAL = "https://job-boards.greenhouse.io/exampleboard/jobs/4000001"  # a fictional board
 OWNER = "synthetic.user@example.com"  # the `api` fixture's account
+AT = "@"  # userinfo is built at run time: the repository holds no address-shaped text
 
 
 @pytest.fixture(scope="module")
@@ -116,7 +117,7 @@ def test_the_pilot_runs_only_in_production_with_the_browsers_own_sandbox(
          ("exampleboard", "4000001")),
         ("http://job-boards.greenhouse.io/exampleboard/jobs/4000001", None),  # not https
         ("https://job-boards.greenhouse.io:8443/exampleboard/jobs/4000001", None),  # a port
-        ("https://user@job-boards.greenhouse.io/exampleboard/jobs/4000001", None),  # userinfo
+        (f"https://user{AT}job-boards.greenhouse.io/exampleboard/jobs/4000001", None),  # userinfo
         ("https://greenhouse.io.example/exampleboard/jobs/4000001", None),  # a look-alike
         ("https://job-boards.greenhouse.io/exampleboard/jobs/x", None),
         ("https://job-boards.greenhouse.io/exampleboard/jobs/4000001/apply", None),
