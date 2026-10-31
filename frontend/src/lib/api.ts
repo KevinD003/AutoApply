@@ -515,6 +515,19 @@ export interface BankEntry {
   help_text: string | null;
   /** Why this saved answer no longer answers its own question (D51), or null. */
   not_reused: string | null;
+  /** "proposed": imported from a file (D99) and not used until you approve it. */
+  approval_status: "approved" | "proposed" | "rejected";
+  provenance: "user_entered" | "resume_parse" | "import";
+}
+
+export interface BankImportResult {
+  dry_run: boolean;
+  rows: number;
+  importable: number;
+  added: number;
+  refused: Record<string, number>;
+  reasons: Record<string, string>;
+  outcomes: { row: number; outcome: "import" | "refused"; reason: string | null }[];
 }
 
 export interface BankEdit {

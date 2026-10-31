@@ -320,6 +320,19 @@ Anthropic's API and DNS; no key exists and nothing was sent. Decision D74.
 | In the browser | `frontend/e2e/drafting-consent.spec.ts` (desktop, mobile; a synthetic consent view) | not configured said; what is sent and never sent shown; agree and turn off; the review page links to the profile card |
 | Sabotage | 17 cases (owner, consent version, withdrawal, budget, lock, reported cost, any version, timeout cost, destination check, `external`, key, retries, refusal, job text in the system prompt, reservation after sending, unbound use, the gate) | 17 caught; the race case caught in 5 of 5 further runs, and passes 8 of 8 when intact |
 
+## Saved answers imported from a file (D99, 2026-10-31; local only)
+
+Synthetic rows only. Decision D99.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Each row judged by the saved-answer rules | `tests/test_bank_import.py::test_each_row_is_judged_by_the_rules_for_saved_answers` | 18 rows: 3 importable; protected, sensitive, template, employer, time, credential, place, long text, placeholder, conflict (both rows), duplicate, blank refused; a dry run writes nothing; no row text in the response |
+| Proposals, never used until approved | `::test_imported_answers_are_proposals_until_approved`, `::test_a_proposal_answers_nothing_until_you_approve_it` | `import` / `proposed`; a yes/no answer bound to the options Yes and No; history "imported from a file"; a new application uses it only after approval; approving twice is 409; audit counts only |
+| Nothing replaced; per account | `::test_nothing_already_saved_is_replaced`, `::test_another_accounts_proposal_is_not_found` | `already_saved`; another account's proposal 404 |
+| Limits | `::test_limits` | 0 rows, more than 5,000 rows or a question over 2,000 characters: 422 |
+| In the browser | `frontend/e2e/answers-import.spec.ts` (desktop, mobile) | a JSON file checked and one row added; "Approve"; a review sheet keeps only the rows marked yes or edit, with the corrected answer |
+| Sabotage | 9 cases | 9 caught |
+
 ## Question wordings from the owner's archive (D98, 2026-10-31; local only)
 
 Synthetic paraphrases only; the archive stays private. Decision D98.

@@ -30,6 +30,7 @@ from app.modules.profiles.models import Approval, FactVersion, Provenance
 
 ENTITY = "answer_bank"
 SAVED, EDITED, FIRST = "saved from an application", "edited by you", "as first recorded"
+IMPORTED = "imported from a file"  # D99
 MAX_TEXT = 5000
 
 
@@ -196,7 +197,7 @@ def history(db: Session, user_id: uuid.UUID, entry_id: uuid.UUID) -> list[dict] 
             {
                 "version": entry.version,
                 "value": entry.value,
-                "how": FIRST,
+                "how": IMPORTED if entry.provenance == Provenance.import_ else FIRST,
                 "recorded_at": entry.updated_at,
             },
         )

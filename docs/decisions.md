@@ -2752,3 +2752,37 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   differently, and its approval then follows the usual rules.
 - **Not done here:** importing the owner's answers. That waits for the owner's marked review
   (row 24); only rows marked yes would be imported, each through the same resolver check.
+
+## D99 — Saved answers imported from a file, as proposals you approve (2026-10-31)
+
+- **Why:** the owner wants their old bot's answers in NoEfforts (row 24), and the established
+  rule is that nothing is imported before they approve it. Approving in the product, row by
+  row, is that approval, and it works for any file of questions and answers, not only theirs.
+- **Decision:**
+  - **Saved answers → "Import saved answers":** a JSON (`[{question, answer}]`, also
+    `{answers: [...]}`) or CSV file (`question`, `answer` columns). A review sheet with an
+    `approve` column keeps only the rows marked yes or edit, and an edit uses "your corrected
+    answer". The file is read in the browser; only questions and answers are sent, to your own
+    NoEfforts (`POST /answer-bank/import`, session only).
+  - **Every row is judged by the rules for saved answers**, on its wording alone: refused,
+    with its reason, when the resolver would not save it (employer, time, pay, place, a
+    credential, long free text), when it is sensitive or about work authorization,
+    sponsorship, citizenship or residence (never imported, even the topics that can be saved
+    as sensitive from a form), a template naming the employer (`{company}`), a placeholder
+    answer, a blank row, a question you already have a saved answer for (nothing is
+    replaced), and a question given twice with different answers (all of them refused: never
+    chosen silently; the same answer twice is imported once).
+  - **A check first:** the file is checked without writing anything and the page says how many
+    rows can be added and why the others cannot; you then add them.
+  - **Proposals:** an imported answer is saved as `proposed` with provenance `import`; the
+    resolver uses approved answers only, so it answers nothing until you press "Approve" on it.
+    A yes/no answer is saved for that question with exactly the options Yes and No; any other
+    answer as text. Its history says "imported from a file".
+  - **Privacy:** the response names rows by position and reason codes, never their text; the
+    audit keeps counts (`answer_bank.import`) and each approval (`answer_bank.approve`).
+    Another account's proposal is 404.
+- **Not done:** the owner's own file has not been imported (it is theirs to import, after their
+  review); profile facts (authorization, sponsorship, residence, education) are entered on the
+  Profile page, never from an import.
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration (the provenance and approval columns
+  already existed).

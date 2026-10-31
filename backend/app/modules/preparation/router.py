@@ -1618,6 +1618,74 @@ def bank_history(
     return out
 
 
+class BankImportRow(BaseModel):
+    question: str = Field(max_length=2000)
+    answer: str = Field(max_length=4000)
+
+
+class BankImportIn(BaseModel):
+    rows: list[BankImportRow] = Field(min_length=1, max_length=5000)
+    dry_run: bool = True
+
+
+@router.post("/answer-bank/import")
+def import_bank(
+    body: BankImportIn, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    """D99: question/answer pairs from a file, judged by the rules for saved answers. With
+    `dry_run` nothing is written; otherwise the importable rows become proposals that answer
+    nothing until approved. The response says what happened to each row by its position and a
+    reason code, never by its text; the audit keeps counts only."""
+    from app.modules.preparation import bank_import as bi
+
+    rows = [bi.Row(r.question, r.answer) for r in body.rows]
+    decisions = bi.plan(db, user.id, rows)
+    refused: dict[str, int] = {}
+    for d in decisions:
+        if d.outcome == "refused":
+            refused[d.reason] = refused.get(d.reason, 0) + 1
+    added = 0
+    if not body.dry_run:
+        added = bi.apply(db, user.id, decisions)
+        record(db, user.id, "answer_bank.import", "answer_bank", None, rows=len(rows),
+               added=added, refused=sum(refused.values()))  # fmt: skip
+        db.commit()
+    return {
+        "dry_run": body.dry_run,
+        "rows": len(rows),
+        "importable": sum(d.outcome == "import" for d in decisions),
+        "added": added,
+        "refused": refused,
+        "reasons": {
+            k: bi.REASONS.get(k) or NOT_REUSED.get(k) or bi.REASONS["not_saved"] for k in refused
+        },
+        "outcomes": [
+            {"row": i, "outcome": d.outcome, "reason": d.reason} for i, d in enumerate(decisions)
+        ],  # fmt: skip
+    }
+
+
+@router.post("/answer-bank/{entry_id}/approve", response_model=BankOut)
+def approve_bank(
+    entry_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+):
+    """D99: an imported proposal becomes a saved answer you approved; only then is it reused."""
+    from app.modules.preparation import bank_import as bi
+
+    try:
+        e = bi.approve(db, user.id, entry_id)
+    except ValueError:
+        db.rollback()
+        raise conflict("This saved answer is not waiting for your approval.") from None
+    if e is None:
+        raise not_found("Saved answer")
+    record(db, user.id, "answer_bank.approve", "answer_bank", entry_id)
+    db.commit()
+    return BankOut.model_validate(e).model_copy(
+        update={"not_reused": NOT_REUSED.get(saved_answer_scope(e))}
+    )
+
+
 @router.delete("/answer-bank/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_bank(
     entry_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)

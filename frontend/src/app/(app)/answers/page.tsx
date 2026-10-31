@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import BankImport from "@/components/BankImport";
 import { Badge, Button, Card, Empty, ErrorBox, inputCls, Loading, Notice } from "@/components/ui";
 import { api, BankEdit, BankEntry, BankVersion } from "@/lib/api";
 
@@ -130,6 +131,16 @@ export default function AnswersPage() {
   }, []);
   useEffect(load, [load]);
 
+  async function approve(id: string) {
+    try {
+      await api(`/answer-bank/${id}/approve`, { method: "POST" });
+      setNotice("Approved: it now answers this exact question.");
+      load();
+    } catch (e) {
+      setError(e);
+    }
+  }
+
   async function remove(id: string) {
     try {
       await api(`/answer-bank/${id}`, { method: "DELETE" });
@@ -174,6 +185,11 @@ export default function AnswersPage() {
                   ) : e.help_text === null && !e.not_reused ? (
                     <p className="text-xs text-slate-500">Saved before NoEfforts recorded help text: reused only where the question has none.</p>
                   ) : null}
+                  {e.approval_status === "proposed" && (
+                    <p className="text-xs text-slate-600">
+                      <Badge tone="indigo">Imported</Badge> Not used until you approve it. Check the answer is true for you today.
+                    </p>
+                  )}
                   {e.not_reused && (
                     <p className="text-xs text-slate-600">
                       <Badge tone="amber">Not reused</Badge> {e.not_reused} You can delete it.
@@ -203,6 +219,11 @@ export default function AnswersPage() {
                   {history === e.id && <History id={e.id} />}
                 </div>
                 <div className="flex shrink-0 gap-2">
+                  {e.approval_status === "proposed" && !e.not_reused && (
+                    <Button className="!min-h-8 !px-2 !py-1" onClick={() => approve(e.id)}>
+                      Approve
+                    </Button>
+                  )}
                   {!e.not_reused && (
                     <Button variant="secondary" className="!min-h-8 !px-2 !py-1" onClick={() => setEditing(editing === e.id ? null : e.id)}>
                       Edit
@@ -220,6 +241,7 @@ export default function AnswersPage() {
           </ul>
         )}
       </Card>
+      <BankImport onDone={load} />
     </>
   );
 }
