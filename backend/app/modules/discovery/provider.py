@@ -89,6 +89,9 @@ class DiscoveryFilters:
     sponsorship: str = "any"  # "any" | "offered" (only a source statement of "yes" matches)
     query: str | None = None  # passed to the provider's own search, when it has one
     include_insufficient: bool = True
+    # D100: the application platforms to keep, read from each posting's URL (jobs.canonical's
+    # ATS identity; "unknown" for any other or none). Empty: every platform.
+    platforms: list[str] = field(default_factory=list)
 
 
 @dataclass

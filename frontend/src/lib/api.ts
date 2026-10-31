@@ -200,10 +200,19 @@ export interface SourceFact {
   basis: string;
 }
 
+/** D100: an application platform read from postings' URLs, and how many of yours are on it. */
+export interface DiscoveryPlatform {
+  platform: string;
+  label: string;
+  count: number;
+}
+
 export interface DiscoveredJob {
   id: string;
   provider: string;
   provider_label: string;
+  /** D100: the application platform its URL names ("Other or not recognised" otherwise). */
+  platform_label: string;
   source_job_id: string;
   title: string | null;
   employer: string | null;

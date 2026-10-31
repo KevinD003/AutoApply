@@ -164,6 +164,8 @@ def apply_filters(n: NormalizedJob, f: DiscoveryFilters) -> dict:
             unknown.append("sponsorship")
         elif value != "yes":
             excluded.append("sponsorship")
+    if f.platforms and (n.ats_provider or "unknown") not in f.platforms:
+        excluded.append("platform")  # read from the URL: never "not enough data"
     if excluded:
         return {"result": "excluded", "fields": excluded}
     if unknown:
@@ -172,7 +174,7 @@ def apply_filters(n: NormalizedJob, f: DiscoveryFilters) -> dict:
 
 
 def filters_active(f: DiscoveryFilters) -> bool:
-    return bool(f.titles or f.cities or f.workplaces or f.sponsorship != "any")
+    return bool(f.titles or f.cities or f.workplaces or f.sponsorship != "any" or f.platforms)
 
 
 def _existing_job(db: Session, user_id, n: NormalizedJob) -> tuple[Job | None, str | None]:

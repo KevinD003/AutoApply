@@ -2786,3 +2786,29 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   Profile page, never from an import.
 - **Unchanged:** `SCHEMA_VERSION` (3); no migration (the provenance and approval columns
   already existed).
+
+## D100 — Listings by application platform (2026-10-31)
+
+- **Why:** the owner wants Freehire's listings filtered by the platform they apply through
+  (Greenhouse, Workday, ...) and every listing on a chosen platform added at once.
+- **Decision:**
+  - **The platform is read from the listing's address**, by the same rule as a job's ATS
+    identity (`jobs/canonical.py`: Greenhouse, Lever, Ashby, Workday, Workable,
+    SmartRecruiters), and is "Other or not recognised" otherwise. Freehire's documented API has
+    no reliable field for it (`docs/research/freehire.md`), so its `source` is not used. The
+    address is never fetched to decide.
+  - **Find jobs → "Application platform":** tick one or more platforms to keep only those
+    listings. Every listing kept that has a link, a title and an employer is added to your
+    jobs, as any import does (the existing dedupe links one you already have); a listing on
+    another platform is counted as "filtered out" and not stored. None ticked: every platform.
+    Freehire's search cannot be asked for a platform, so the filter applies to what the search
+    returned (the documented 1,000-result window still bounds one search).
+  - **Discovered → "Application platform":** the list filtered to one platform, with how many of
+    your listings are on each (`GET /discovery/platforms`, `GET /discovery/jobs?platform=`), per
+    account. Each listing shows its platform.
+  - **A platform says nothing about applying.** Whether NoEfforts can apply on a listing is its
+    route, unchanged: a real employer's form stays a manual handoff until a live adapter exists.
+- **Not built here:** the owner's other requests (automatic submission on Greenhouse, Gmail for
+  codes and status) are separate milestones; see the status document.
+- **Unchanged:** `SCHEMA_VERSION` (3); no migration (the platform was already stored with each
+  listing as `ats_provider`); watches keep their single query.

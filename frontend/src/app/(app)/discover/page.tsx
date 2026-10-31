@@ -8,6 +8,7 @@ import { Badge, Button, Card, Credit, Empty, ErrorBox, Field, inputCls, Loading,
 import {
   api,
   DiscoveredJob,
+  DiscoveryPlatform,
   DiscoveryDeleteResult,
   DiscoveryImportResult,
   DiscoveryProviderInfo,
@@ -28,30 +29,45 @@ const SPONSORSHIP_TEXT = { yes: "says yes", no: "says no", unknown: "not stated"
 // without a page reload, within about a minute of reaching Freehire.
 const REFRESH_MS = 20_000;
 
+// D100: the platforms a listing's address can name (jobs/canonical.py), and "unknown".
+const PLATFORM_CHOICES: [string, string][] = [
+  ["greenhouse", "Greenhouse"],
+  ["lever", "Lever"],
+  ["ashby", "Ashby"],
+  ["workday", "Workday"],
+  ["workable", "Workable"],
+  ["smartrecruiters", "SmartRecruiters"],
+  ["unknown", "Other or not recognised"],
+];
+
 export default function DiscoverPage() {
   const [providers, setProviders] = useState<DiscoveryProviderInfo[] | null>(null);
   const [rows, setRows] = useState<DiscoveredJob[] | null>(null);
   const [watches, setWatches] = useState<DiscoveryWatch[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [platform, setPlatform] = useState("");
+  const [platforms, setPlatforms] = useState<DiscoveryPlatform[]>([]);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [p, r, w] = await Promise.all([
+      const [p, r, w, pl] = await Promise.all([
         api<DiscoveryProviderInfo[]>("/discovery/providers"),
-        api<DiscoveredJob[]>("/discovery/jobs"),
+        api<DiscoveredJob[]>(`/discovery/jobs${platform ? `?platform=${encodeURIComponent(platform)}` : ""}`),
         api<DiscoveryWatch[]>("/discovery/watches"),
+        api<DiscoveryPlatform[]>("/discovery/platforms"),
       ]);
       setProviders(p);
       setRows(r);
       setWatches(w);
+      setPlatforms(pl);
     } catch (e) {
       setError(e);
       setProviders([]);
       setRows([]);
     }
-  }, []);
+  }, [platform]);
 
   useEffect(() => {
     load();
@@ -141,6 +157,24 @@ export default function DiscoverPage() {
       {enabled.length > 0 && <RunDiscovery providers={enabled} onDone={load} />}
       {notice && <Notice>{notice}</Notice>}
       <Card title={`Discovered (${rows?.length ?? 0})`}>
+        {platforms.length > 0 && (
+          <label className="mb-2 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-slate-600">Application platform</span>
+            <select
+              aria-label="Application platform"
+              className={`${inputCls} !w-auto`}
+              value={platform}
+              onChange={(e) => setPlatform(e.target.value)}
+            >
+              <option value="">All ({platforms.reduce((n, p) => n + p.count, 0)})</option>
+              {platforms.map((p) => (
+                <option key={p.platform} value={p.platform}>
+                  {p.label} ({p.count})
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {rows === null ? (
           <Loading />
         ) : rows.length === 0 ? (
@@ -196,6 +230,7 @@ function RunDiscovery({ providers, onDone }: { providers: DiscoveryProviderInfo[
   const [query, setQuery] = useState("");
   const [sponsorship, setSponsorship] = useState("any");
   const [usePrefs, setUsePrefs] = useState(false);
+  const [only, setOnly] = useState<string[]>([]);
   const [result, setResult] = useState<DiscoveryImportResult | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -215,6 +250,7 @@ function RunDiscovery({ providers, onDone }: { providers: DiscoveryProviderInfo[
             query: query.trim() || null,
             sponsorship,
             use_preferences: usePrefs,
+            platforms: only,
           },
         }),
       );
@@ -257,6 +293,25 @@ function RunDiscovery({ providers, onDone }: { providers: DiscoveryProviderInfo[
             <option value="offered">Only listings that state sponsorship is offered</option>
           </select>
         </Field>
+        <fieldset className="space-y-1">
+          <legend className="text-sm font-medium">Application platform</legend>
+          <p className="text-xs text-slate-500">
+            Read from each listing&rsquo;s address. Tick one or more to keep only those listings; every one kept is added
+            to your jobs. None ticked: every platform. A platform says nothing about whether NoEfforts can apply there.
+          </p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {PLATFORM_CHOICES.map(([value, label]) => (
+              <label key={value} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={only.includes(value)}
+                  onChange={(e) => setOnly((cur) => (e.target.checked ? [...cur, value] : cur.filter((x) => x !== value)))}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={usePrefs} onChange={(e) => setUsePrefs(e.target.checked)} />
           Use my preferences for empty filters (titles, cities, work modes)
@@ -284,6 +339,7 @@ function DiscoveredRow({ r, onDelete, onRefresh }: { r: DiscoveredJob; onDelete:
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-slate-900">{r.title ?? "Untitled listing"}</span>
         <Badge>Source: {r.provider_label}</Badge>
+        <Badge tone="indigo">Platform: {r.platform_label}</Badge>
         <Credit a={r.attribution} />
         {r.stale && <Badge tone="amber">{r.stale_reason}</Badge>}
         {r.status === "incomplete" && <Badge tone="red">incomplete</Badge>}

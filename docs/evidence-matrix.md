@@ -320,6 +320,18 @@ Anthropic's API and DNS; no key exists and nothing was sent. Decision D74.
 | In the browser | `frontend/e2e/drafting-consent.spec.ts` (desktop, mobile; a synthetic consent view) | not configured said; what is sent and never sent shown; agree and turn off; the review page links to the profile card |
 | Sabotage | 17 cases (owner, consent version, withdrawal, budget, lock, reported cost, any version, timeout cost, destination check, `external`, key, retries, refusal, job text in the system prompt, reservation after sending, unbound use, the gate) | 17 caught; the race case caught in 5 of 5 further runs, and passes 8 of 8 when intact |
 
+## Listings by application platform (D100, 2026-10-31; local only)
+
+Synthetic listing addresses, parsed and never fetched. Decision D100.
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| An import keeps only the chosen platforms | `tests/test_discovery_platforms.py::test_an_import_keeps_only_the_chosen_platforms` | Greenhouse and Lever of five: 2 kept and added to jobs, 3 filtered out and not stored |
+| Listed and counted by platform, per account | `::test_postings_are_listed_and_counted_by_platform` | counts per platform with labels; `?platform=` filters; an unknown name is 422; another account sees none |
+| Known platforms only | `::test_the_import_route_takes_known_platforms_only` | an unknown platform 422; local fixture addresses are "Other or not recognised" |
+| In the browser | `frontend/e2e/discovery-platforms.spec.ts` (desktop, mobile) | Greenhouse only: 5 filtered out, 0 added; Other: 5 added; the list's filter with counts; no sideways scroll |
+| Sabotage | 4 cases | 4 caught |
+
 ## Saved answers imported from a file (D99, 2026-10-31; local only)
 
 Synthetic rows only. Decision D99.

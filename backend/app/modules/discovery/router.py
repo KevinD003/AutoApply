@@ -8,8 +8,8 @@ candidate profile."""
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
-from sqlalchemy import select
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -28,6 +28,7 @@ from app.modules.discovery.provider import (
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
 from app.modules.jobs import signals
+from app.modules.jobs.canonical import ATS_DISPLAY, ATS_NAMES
 from app.modules.jobs.models import Job
 from app.modules.profiles.models import JobPreferences
 from app.modules.providers import registry, wording
@@ -56,6 +57,11 @@ STATUS = {
 }
 
 
+# D100: the application platforms a posting's URL can name, and "unknown" for any other.
+PLATFORMS = (*sorted(ATS_NAMES), "unknown")
+PLATFORM_LABELS = {**ATS_DISPLAY, "unknown": "Other or not recognised"}
+
+
 class ImportIn(BaseModel):
     provider: str = Field(max_length=50)
     titles: list[str] = Field(default_factory=list, max_length=20)
@@ -65,6 +71,14 @@ class ImportIn(BaseModel):
     query: str | None = Field(default=None, max_length=200)
     use_preferences: bool = False
     include_insufficient: bool = True
+    platforms: list[str] = Field(default_factory=list, max_length=10)  # D100
+
+    @field_validator("platforms")
+    @classmethod
+    def _known_platforms(cls, v: list[str]) -> list[str]:
+        if any(p not in PLATFORMS for p in v):
+            raise ValueError(f"platforms must be among: {', '.join(PLATFORMS)}")
+        return sorted(set(v))
 
 
 def _provider(name: str):
@@ -107,6 +121,9 @@ def _row(r: DiscoveredJob, detail: bool = False) -> dict:
         "job_url": n.get("job_url"),
         "application_url": n.get("application_url"),
         "ats_provider": n.get("ats_provider"),
+        "platform_label": PLATFORM_LABELS.get(
+            n.get("ats_provider") or "unknown", PLATFORM_LABELS["unknown"]
+        ),  # fmt: skip
         "published_on": n.get("published_on"),
         "source_updated_at": n.get("source_updated_at"),
         "attribution": n.get("attribution") or _attribution(r.provider),
@@ -191,6 +208,7 @@ def run_import(body: ImportIn, user: User = Depends(current_user), db: Session =
         sponsorship=body.sponsorship,
         query=body.query,
         include_insufficient=body.include_insufficient,
+        platforms=body.platforms,
     )
     if body.use_preferences:
         # Preferences (targets) only. Sponsorship needs are facts and are never used here.
@@ -234,19 +252,48 @@ def run_import(body: ImportIn, user: User = Depends(current_user), db: Session =
     return out
 
 
-@router.get("/jobs")
-def list_rows(
-    provider: str | None = Query(default=None, max_length=50),
-    user: User = Depends(current_user),
-    db: Session = Depends(get_db),
-) -> list[dict]:
-    q = select(DiscoveredJob).where(
-        DiscoveredJob.user_id == user.id,
+def _platform_of(col):
+    return func.coalesce(col["ats_provider"].as_string(), "unknown")
+
+
+def _listed(user_id):
+    return (
+        DiscoveredJob.user_id == user_id,
         DiscoveredJob.status != "dismissed",
         DiscoveredJob.board_source_id.is_(None),  # D95: board postings are listed per source
     )
+
+
+@router.get("/platforms")
+def list_platforms(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list:
+    """D100: how many of your discovered postings are on each application platform, read from
+    each posting's URL. Never fetched; a platform says nothing about whether NoEfforts can
+    apply there (the route does)."""
+    plat = _platform_of(DiscoveredJob.normalized)
+    counts = dict(
+        db.execute(select(plat, func.count()).where(*_listed(user.id)).group_by(plat)).all()
+    )
+    return [
+        {"platform": p, "label": PLATFORM_LABELS[p], "count": counts.get(p, 0)}
+        for p in PLATFORMS
+        if counts.get(p)
+    ]
+
+
+@router.get("/jobs")
+def list_rows(
+    provider: str | None = Query(default=None, max_length=50),
+    platform: str | None = Query(default=None, max_length=50),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    q = select(DiscoveredJob).where(*_listed(user.id))
     if provider:
         q = q.where(DiscoveredJob.provider == provider)
+    if platform:
+        if platform not in PLATFORMS:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown platform.")
+        q = q.where(_platform_of(DiscoveredJob.normalized) == platform)
     found = db.scalars(q.order_by(DiscoveredJob.last_seen_at.desc()).limit(500)).all()
     # S3 (D59): the linked job's own application and possible duplicates, user-scoped.
     jobs = db.scalars(
