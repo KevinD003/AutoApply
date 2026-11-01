@@ -572,6 +572,9 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 #                   marker string is put into the page (it must never reach any output)
 #   locale_on_open  opening requests a locale file, then shows the list
 #   container_noisy as container_only, and the control's own click adds a hidden control
+#   react_locale    react_select's markup from the start, but the lists open only once a locale
+#                   file has loaded at page load, as run #11 observed on the real page (D110);
+#                   until then each press retries the file and nothing opens
 #   react_select    react-select-like markup and behaviour: a press anywhere on the control
 #                   opens the list; a choice leaves the input empty and is shown in a
 #                   `select__single-value` element (D109)
@@ -604,7 +607,7 @@ _DD_JS = """
   let seq = 0;
   const choose = (cb, o) => {
     if (DD === 'ignores_choice') { hide(cb); return; }
-    if (['react_select', 'container_only', 'container_noisy'].includes(DD)) {   // D109: the input keeps only
+    if (['react_select', 'react_locale', 'container_only', 'container_noisy'].includes(DD)) {   // the input keeps only
       // search text (empty); the choice is shown in a single-value element, as react-select
       // shows it. data-value is read only by this fixture's own submit.
       const vc = cb.closest('.select__value-container') || cb.closest('.select__control');
@@ -685,6 +688,26 @@ _DD_JS = """
     p.remove(); open.delete(cb);
     cb.setAttribute('aria-expanded', 'false'); cb.removeAttribute('aria-controls');
   };
+  const reactWrap = (cb) => {   // react-select-like markup around the control (idempotent)
+    const found = cb.closest('.select__control');
+    if (found) return found;
+    const shell = document.createElement('div'); shell.className = 'select__container';
+    const box = document.createElement('div'); box.className = 'select__control css-fx-control';
+    const vc = document.createElement('div'); vc.className = 'select__value-container';
+    const ph = document.createElement('div'); ph.className = 'select__placeholder';
+    ph.textContent = 'Select...';
+    const ic = document.createElement('div'); ic.className = 'select__input-container';
+    const ind = document.createElement('div'); ind.className = 'select__indicators';
+    ind.innerHTML = '<span class="select__indicator-separator"></span>'
+      + '<div class="select__indicator select__dropdown-indicator" aria-hidden="true">v</div>';
+    Object.assign(box.style, {display: 'flex', alignItems: 'center', width: '320px',
+                              padding: '6px', border: '1px solid #999'});
+    Object.assign(vc.style, {display: 'flex', flex: '1', alignItems: 'center'});
+    cb.before(shell); shell.append(box); box.append(vc, ind); vc.append(ph, ic); ic.append(cb);
+    cb.style.width = '6px';
+    cb.setAttribute('aria-autocomplete', 'list'); cb.setAttribute('aria-haspopup', 'true');
+    return box;
+  };
   const attach = (cb) => {
     if (['trigger_button', 'two_triggers'].includes(DD)) {
       for (let i = 0; i < (DD === 'two_triggers' ? 2 : 1); i++) {
@@ -697,23 +720,9 @@ _DD_JS = """
       cb.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown') show(cb); });
     } else if (DD === 'type_only') {
       cb.addEventListener('input', () => show(cb));
-    } else if (DD === 'react_select') {   // D109: react-select-like markup and behaviour: a
-      // press anywhere on the control (the input included) opens the list (FIXTURE ASSUMPTION)
-      const shell = document.createElement('div'); shell.className = 'select__container';
-      const box = document.createElement('div'); box.className = 'select__control css-fx-control';
-      const vc = document.createElement('div'); vc.className = 'select__value-container';
-      const ph = document.createElement('div'); ph.className = 'select__placeholder';
-      ph.textContent = 'Select...';
-      const ic = document.createElement('div'); ic.className = 'select__input-container';
-      const ind = document.createElement('div'); ind.className = 'select__indicators';
-      ind.innerHTML = '<span class="select__indicator-separator"></span>'
-        + '<div class="select__indicator select__dropdown-indicator" aria-hidden="true">v</div>';
-      Object.assign(box.style, {display: 'flex', alignItems: 'center', width: '320px',
-                                padding: '6px', border: '1px solid #999'});
-      Object.assign(vc.style, {display: 'flex', flex: '1', alignItems: 'center'});
-      cb.before(shell); shell.append(box); box.append(vc, ind); vc.append(ph, ic); ic.append(cb);
-      cb.style.width = '6px';
-      cb.setAttribute('aria-autocomplete', 'list'); cb.setAttribute('aria-haspopup', 'true');
+    } else if (DD === 'react_select' || DD === 'react_locale') {   // D109/D110: a press
+      // anywhere on the control (the input included) opens the list (FIXTURE ASSUMPTION)
+      const box = reactWrap(cb);
       box.addEventListener('mousedown', () => { if (!open.has(cb)) show(cb); });
     } else if (DD === 'container_only' || DD === 'container_noisy') {   // D109: only a press on
       // the control container, never on the input itself, opens the list (FIXTURE ASSUMPTION)
@@ -742,7 +751,8 @@ _DD_JS = """
     cb.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(cb); });
   };
   const boxes = Array.from(document.querySelectorAll('input[role=combobox][data-options]'));
-  if (DD === 'locale_gate') {
+  if (DD === 'react_locale') boxes.forEach(reactWrap);   // the markup is there from the start
+  if (DD === 'locale_gate' || DD === 'react_locale') {
     let ready = false, frame = null;
     const get = () => {
       if (VIA === 'xhr') {

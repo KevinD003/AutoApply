@@ -65,6 +65,9 @@ def run(api, receiver, mode="gh2_dd", **cfg):
         # D109: react-select-like markup; the choice is read back from the single-value element
         # (the input keeps only search text), as react-select shows it
         ("react_select", {}),
+        # D110: run #11's observed behaviour: react-select markup at load, usable once the page's
+        # locale file has loaded (here from the page's own origin, as a local stand-in)
+        ("react_locale", {}),
     ],
 )
 def test_each_strategy_selects_exactly_the_approved_option(api, receiver, dd, cfg):
@@ -206,6 +209,22 @@ def test_the_adapter_names_what_an_opening_changed_and_refuses_each():
     assert dropdowns._changed(_controls(("", "x")), _controls(("", "y")), "opening it") == (
         "opening it changed a control that cannot be identified"
     )
+
+
+def test_react_select_markup_whose_locale_file_never_arrives_stops_before_disclosure(api, receiver):
+    """D110: run #11's model with the locale file refused (as the pilot refuses it today): the
+    react-select controls are there but nothing opens, and the attempt stops before anything is
+    entered or sent. (The receiver's settings persist across tests: restored afterwards.)"""
+    try:
+        _, aid, result = run(api, receiver, dd="react_locale",
+                             locale_path="/locales/missing/common.json")  # fmt: skip
+    finally:
+        receiver.config(locale_path=None)
+    assert result == "failed_safe"
+    detail = attempt(aid).outcome_detail
+    assert "dropdown" in detail and "no supported action opened it" in detail, detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
 
 
 @pytest.mark.parametrize("dd", ["ignores_choice", "wrong_value"])
