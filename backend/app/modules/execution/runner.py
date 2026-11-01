@@ -67,6 +67,9 @@ _POLL_MS = 25
 # design), images, media and fonts (they change no control's behaviour), pings and beacons.
 _TRACKED = frozenset({"document", "script", "stylesheet", "xhr", "fetch"})
 NOT_READY = "the form's page was still loading after 8 seconds"
+# D111: the browser followed a redirect of a request only a path-limited rule admits (the
+# pilot's locale files), which the page's fetch guard should have prevented.
+LOCALE_REDIRECTED = "a request for one of the page's locale files was redirected"
 
 
 class _Loading:
@@ -260,7 +263,11 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             if not ready:
                 svc.fail_safe(aid, worker, gen, NOT_READY)
                 return "failed_safe"
-            reason = adapter.blocked_reason(page) or adapter.schema_matches(page)
+            reason = (
+                (LOCALE_REDIRECTED if eg.redirected else None)
+                or adapter.blocked_reason(page)
+                or adapter.schema_matches(page)
+            )
             if reason:
                 svc.fail_safe(aid, worker, gen, reason)
                 return "failed_safe"
@@ -293,7 +300,8 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                 n = len(mismatches)  # which fields is kept in the readback evidence, not here
                 svc.abandon(aid, worker, gen, f"{n} field(s) did not keep their values")
                 return "abandoned"
-            reason = adapter.schema_matches(page)  # conditional fields appear after filling
+            # Conditional fields appear after filling; D111: a followed redirect stops it too.
+            reason = (LOCALE_REDIRECTED if eg.redirected else None) or adapter.schema_matches(page)
             if reason:
                 svc.abandon(aid, worker, gen, reason)
                 return "abandoned"

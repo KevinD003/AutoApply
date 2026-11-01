@@ -98,8 +98,8 @@ def _permissions() -> list[dict]:
     out = []
     for action, label in PERMISSIONS:
         ok = authorizations.covers(authorizations.GREENHOUSE_PILOT, action)
-        out.append(_item(f"permission_{action}", label, ok,
-                         "recorded" if ok else "not recorded (app/core/authorizations.py)"))  # fmt: skip
+        why = "recorded" if ok else "not recorded (app/core/authorizations.py)"
+        out.append(_item(f"permission_{action}", label, ok, why))
     return out
 
 

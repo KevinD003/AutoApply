@@ -239,6 +239,98 @@ def test_a_locale_file_passes_only_from_the_pages_main_frame(receiver):
         receiver.config(locale_origin=None, locale_path=None, locale_via=None)
 
 
+@pytest.mark.parametrize("driver_fetch", [False, True], ids=["browser_fetches", "driver_fetches"])
+def test_a_redirect_of_a_locale_request_is_never_followed_unseen(receiver, driver_fetch):
+    """D111, in case the page's fetch guard is bypassed: with the browser fetching (netns and
+    container modes, where redirects are not routed) a followed redirect is recorded, and the
+    runner stops on it; with the driver fetching, the redirect is refused before its target is
+    requested. The receiver's log is the oracle."""
+    from playwright.sync_api import sync_playwright
+
+    from app.modules.execution.browser import EgressLog, _install_interception
+    from app.modules.execution.runner import LOCALE_REDIRECTED
+    from app.modules.preparation import gh_readonly as ro
+    from tests.conftest import RECEIVER_PORT
+    from tests.test_locale_observation import JOB_PATH
+
+    cdn = f"http://localhost:{RECEIVER_PORT}"  # the CDN stand-in: same receiver, another name
+    moved, target = "/locales/moved/common.json", "/locales/en/common.json"
+    log = EgressLog()
+    receiver.config(mode="gh2_dd", dd="locale_gate", locale_origin=cdn, locale_path=moved,
+                    locale_via="fetch")  # fmt: skip
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            try:
+                ctx = browser.new_context()
+                _install_interception(ctx, BASE, log, driver_fetch=driver_fetch,
+                                      subresources=(ro._locale_rule_c(cdn, allow_private=True),))  # fmt: skip
+                page = ctx.new_page()  # no fetch guard: the case it would prevent
+                page.goto(f"{BASE}{JOB_PATH}")
+                page.wait_for_timeout(1500)
+            finally:
+                browser.close()
+    finally:
+        receiver.config(locale_origin=None, locale_path=None, locale_via=None)
+    paths = [r["path"] for r in receiver.ledger()["requests"]]
+    if driver_fetch:
+        assert target not in paths and log.redirected == [], (paths, log.redirected)
+    else:
+        assert moved in paths and log.redirected == [f"{cdn}{moved}"], (paths, log.redirected)
+    assert LOCALE_REDIRECTED == "a request for one of the page's locale files was redirected"
+
+
+def test_locale_requests_are_bounded_by_path_cs_request_budget(receiver, monkeypatch):
+    """D111: requests passed by the path-limited locale rule are capped per session at read-only
+    path C's page-request budget; beyond it they are refused before sending (here the cap is
+    lowered to 0, so the one locale file is refused). The receiver's log is the oracle."""
+    from playwright.sync_api import sync_playwright
+
+    from app.modules.execution import browser as br
+    from app.modules.preparation import gh_readonly as ro
+    from tests.conftest import RECEIVER_PORT
+    from tests.test_locale_observation import JOB_PATH
+
+    assert br.PATH_LIMITED_REQUESTS == ro.LIMITS.page_requests == 150
+    cdn = f"http://localhost:{RECEIVER_PORT}"
+    hashed = "/locales/en/common.6f8a2c1d.json"
+    try:
+        for cap, reached in ((1, True), (0, False)):
+            receiver.reset()
+            receiver.config(mode="gh2_dd", dd="locale_gate", locale_origin=cdn,
+                            locale_path=hashed, locale_via="fetch")  # fmt: skip
+            monkeypatch.setattr(br, "PATH_LIMITED_REQUESTS", cap)
+            log = br.EgressLog()
+            with sync_playwright() as p:
+                browser = p.chromium.launch()
+                try:
+                    ctx = browser.new_context()
+                    br._install_interception(ctx, BASE, log, driver_fetch=False, subresources=(
+                        ro._locale_rule_c(cdn, allow_private=True),))  # fmt: skip
+                    page = ctx.new_page()
+                    page.goto(f"{BASE}{JOB_PATH}")
+                    page.wait_for_timeout(1500)
+                finally:
+                    browser.close()
+            paths = [r["path"] for r in receiver.ledger()["requests"]]
+            assert (hashed in paths) is reached, (cap, paths, log.blocked)
+            assert (f"{cdn}{hashed}" in log.blocked) is (not reached)
+    finally:
+        receiver.config(locale_origin=None, locale_path=None, locale_via=None)
+
+
+def test_the_runner_stops_on_a_followed_locale_redirect_before_entering_and_before_submitting():
+    import inspect
+
+    from app.modules.execution import runner as rn
+
+    src = inspect.getsource(rn.run_attempt)
+    first = src.index("LOCALE_REDIRECTED if eg.redirected")
+    assert first < src.index("svc.gate_before_disclosure(")  # before anything is entered
+    second = src.index("LOCALE_REDIRECTED if eg.redirected", first + 1)
+    assert src.index("adapter.fill(page)") < second < src.index("_rehearsal(aid)")
+
+
 def test_a_pilot_page_never_follows_a_redirect_of_its_own_fetches():
     """D110: on a real board the page gets path C's fetch guard before its own scripts run, and
     the runner applies it before navigating; the stand-in gets nothing."""

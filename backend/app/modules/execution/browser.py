@@ -43,6 +43,10 @@ class EgressLog:
     allowed: int = 0
     blocked: list[str] = field(default_factory=list)
     proxy: object | None = None  # EgressProxy when network isolation is active
+    # D111: a redirect the browser followed for a request admitted only by a path-limited rule
+    # (the pilot's locale files). The page's fetch guard prevents these; one seen anyway stops
+    # the attempt (runner), as read-only path C stopped on it.
+    redirected: list[str] = field(default_factory=list)
 
     def proxy_denied(self) -> list[str]:
         if self.proxy is None:
@@ -350,6 +354,9 @@ class RemoteBrowser:
 
 
 WORKDIR_PREFIX = "ne-browser-"
+# D111: at most this many requests per session pass by a path-limited rule (the pilot's locale
+# files): read-only path C's page-request budget, which bounded them when run #11 loaded them.
+PATH_LIMITED_REQUESTS = 150
 
 
 def cleanup_stale_workdirs() -> int:
@@ -502,6 +509,7 @@ def _install_interception(
     passes only from the page's main frame, where that guard runs; a child frame's or a service
     worker's is refused, as read-only path C refused them."""
     rules = _rules_by_origin(subresources)
+    path_limited = [0]  # requests passed by a path-limited rule so far (PATH_LIMITED_REQUESTS)
 
     def matching(url: str, method: str, rtype: str):
         """The rule permitting this request (one without a path limit first), or None."""
@@ -520,13 +528,11 @@ def _install_interception(
         if not permitted(url, method, rtype):
             log.blocked.append(url[:200])
             return r.abort("blockedbyclient")
-        if (
-            _origin(url) != allowed
-            and matching(url, method, rtype).path is not None
-            and (not _from_main_frame(r.request))
-        ):
-            log.blocked.append(url[:200])
-            return r.abort("blockedbyclient")
+        if _origin(url) != allowed and matching(url, method, rtype).path is not None:
+            if not _from_main_frame(r.request) or path_limited[0] >= PATH_LIMITED_REQUESTS:
+                log.blocked.append(url[:200])
+                return r.abort("blockedbyclient")
+            path_limited[0] += 1
         if _origin(url) != allowed:
             # An approved dependency origin (GET/HEAD only, by its rule). In container mode
             # the browser fetches it through the proxy; otherwise fetch without following
@@ -581,6 +587,24 @@ def _install_interception(
         return r.fulfill(response=resp)
 
     ctx.route("**/*", route)
+
+    def on_request(request):
+        # Redirect hops the browser follows itself are never routed: detect them here.
+        first = request.redirected_from
+        if first is None:
+            return
+        while first.redirected_from is not None:
+            first = first.redirected_from
+        try:
+            rule = None if _origin(first.url) == allowed else matching(
+                first.url, first.method, first.resource_type)  # fmt: skip
+        except Exception:  # noqa: BLE001 - unreadable: treat as a followed redirect
+            rule = True
+        if rule is True or (rule is not None and rule.path is not None):
+            log.redirected.append(first.url[:200])
+
+    if subresources:
+        ctx.on("request", on_request)
     if not driver_fetch:
         return  # WebSockets stay in the browser and reach the proxy like everything else
 
