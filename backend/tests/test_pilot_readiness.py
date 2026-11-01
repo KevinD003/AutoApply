@@ -10,12 +10,14 @@ from dataclasses import replace
 import pytest
 from sqlalchemy import select
 
+from app.core import authorizations
 from app.core.db import SessionLocal
 from app.modules.execution import runner
 from app.modules.execution.models import RehearsalRecord
 from app.modules.providers import path_a, readiness, registry
 from app.modules.providers.evidence import EVIDENCE_CLASSES
 from app.modules.providers.model import Capability, Support
+from tests.authorized import authorize
 from tests.execution_harness import Receiver, queue
 from tests.test_greenhouse_dom import v2_application
 
@@ -41,10 +43,55 @@ def receiver():
 
 def test_no_condition_is_met_today():
     s = readiness.summary()
+    assert s["provider"] == readiness.PILOT  # D106: the activation checklist is the pilot's
     assert (s["met"], s["total"], s["proposable"], s["path_a"]) == (0, 7, False, "pending")
     assert [r["id"] for r in s["conditions"]] == [
         "dropdowns", "unmatched_required_controls", "location", "real_upload",
         "real_submission", "pilot_gate", "capability_entry"]  # fmt: skip
+    assert readiness.summary(provider=readiness.PROVIDER)["met"] == 0  # the rules provider too
+
+
+def test_each_condition_says_what_it_needs_and_what_stops_a_real_attempt_meanwhile():
+    for r in readiness.conditions(None):
+        path = r["path"]
+        assert path["needs"] and set(path["needs"]) <= set(readiness.NEEDS), r["id"]
+        for k in ("why", "next_action", "independent", "owner", "enforced_by", "verified_by"):
+            assert path[k].strip(), (r["id"], k)
+        for test_file in re.findall(r"tests/(test_[a-z_]+\.py)", path["verified_by"]):
+            assert (ROOT / "backend" / "tests" / test_file).exists(), (r["id"], test_file)
+
+
+def test_the_gate_condition_follows_the_owners_recorded_permissions(monkeypatch):
+    """D106: one source of truth, the register (app/core/authorizations.py)."""
+    gate = lambda: next(r for r in readiness.conditions(None) if r["id"] == "pilot_gate")  # noqa: E731
+    assert (
+        not gate()["met"] and "recorded in app/core/authorizations.py: none" in gate()["evidence"]
+    )
+    assert not readiness.disclosure_permission_recorded()
+    authorize(monkeypatch, authorizations.GREENHOUSE_PILOT, "read", "open", "disclose")
+    assert readiness.disclosure_permission_recorded()
+    assert not readiness.submission_permission_recorded()
+    assert not gate()["met"] and gate()["evidence"].endswith("missing: submit")
+    authorize(monkeypatch, authorizations.GREENHOUSE_PILOT, "submit")
+    assert readiness.submission_permission_recorded() and gate()["met"]
+
+
+def test_the_capability_entry_needs_both_its_parts(monkeypatch):
+    entry = lambda p=readiness.PILOT: next(  # noqa: E731
+        r for r in readiness.conditions(None, provider=p) if r["id"] == "capability_entry"
+    )
+    assert not entry()["met"]
+    assert entry()["evidence"].startswith("real-destination entry: reviewed (D102)")
+    assert "file_upload" in entry()["evidence"] and "final_submit" in entry()["evidence"]
+    assert "real_destinations_enabled: false" in entry(readiness.PROVIDER)["evidence"]
+    live = registry.get(readiness.PILOT)
+    observed = Support(fixture=True, observed=True)
+    raised = replace(
+        live,
+        capabilities={**live.capabilities, **{c: observed for c in readiness.USED_ON_A_REAL_PAGE}},
+    )
+    monkeypatch.setitem(registry.PROVIDERS, readiness.PILOT, raised)
+    assert entry()["met"] and entry()["evidence"].endswith("still at fixture: none")
 
 
 def test_the_owners_manual_observation_meets_no_condition():
@@ -55,13 +102,13 @@ def test_the_owners_manual_observation_meets_no_condition():
 
 
 def test_a_condition_follows_the_registry_alone(monkeypatch):
-    gd = registry.get("greenhouse_dom")
+    gd = registry.get(readiness.PILOT)
     observed = Support(fixture=True, observed=True)
     raised = replace(gd, capabilities={**gd.capabilities, Capability.custom_dropdowns: observed})
-    monkeypatch.setitem(registry.PROVIDERS, "greenhouse_dom", raised)
+    monkeypatch.setitem(registry.PROVIDERS, readiness.PILOT, raised)
     met = {r["id"]: r["met"] for r in readiness.conditions(None)}
     assert met["dropdowns"] and sum(met.values()) == 1
-    monkeypatch.setattr(readiness, "GATE_PERMISSIONS_RECORDED", True)
+    authorize(monkeypatch, authorizations.GREENHOUSE_PILOT)  # synthetic: every step recorded
     assert sum(r["met"] for r in readiness.conditions(None)) == 2  # still not proposable
 
 
@@ -73,11 +120,14 @@ def test_the_documented_status_equals_the_computed_one():
 
 
 def test_the_api_serves_readiness(api):
+    none = readiness.RecordedEvidence(scope="user")
+    r = api.get("/providers/greenhouse_live/readiness")
+    assert r.status_code == 200 and r.json() == readiness.summary(evidence=none)
     r = api.get("/providers/greenhouse_dom/readiness")
-    assert r.status_code == 200
-    assert r.json() == readiness.summary(evidence=readiness.RecordedEvidence(scope="user"))
+    assert r.json() == readiness.summary(evidence=none, provider=readiness.PROVIDER)
+    assert api.get("/providers/workday/readiness").status_code == 404
     api.client.cookies.clear()
-    assert api.get("/providers/greenhouse_dom/readiness").status_code == 401
+    assert api.get("/providers/greenhouse_live/readiness").status_code == 401
 
 
 EVERY_COUNT = readiness.RecordedEvidence(
@@ -85,24 +135,20 @@ EVERY_COUNT = readiness.RecordedEvidence(
     rehearsals_valid_with_upload=4, rehearsals_not_valid=4, real_submissions=4)  # fmt: skip
 
 
-def real_destinations_enabled(monkeypatch):
-    """A patched registry only: nothing is enabled anywhere."""
-    gd = registry.get("greenhouse_dom")
-    monkeypatch.setitem(registry.PROVIDERS, "greenhouse_dom",
-                        replace(gd, real_destinations_enabled=True))  # fmt: skip
-
-
-def met(evidence, observation=None) -> dict:
-    return {r["id"]: r["met"] for r in readiness.conditions(observation, evidence=evidence)}
+def met(evidence, observation=None, provider=readiness.PILOT) -> dict:
+    rows = readiness.conditions(observation, evidence=evidence, provider=provider)
+    return {r["id"]: r["met"] for r in rows}
 
 
 def test_recorded_evidence_meets_nothing_while_real_destinations_are_disabled():
-    assert sum(met(EVERY_COUNT).values()) == 0
-    assert readiness.summary(None, evidence=EVERY_COUNT)["met"] == 0
+    """The rules provider never runs on a real destination: no evidence can meet a condition."""
+    assert sum(met(EVERY_COUNT, provider=readiness.PROVIDER).values()) == 0
+    assert readiness.summary(None, evidence=EVERY_COUNT, provider=readiness.PROVIDER)["met"] == 0
 
 
 def test_a_real_condition_needs_real_destinations_and_evidence_of_its_own_class(monkeypatch):
-    real_destinations_enabled(monkeypatch)
+    # The pilot is the provider with real destinations (D102); its own evidence class alone
+    # meets each real condition.
     for evidence in (readiness.NO_EVIDENCE, readiness.RecordedEvidence(
             scope="user", fixture_rehearsals=9, fixture_submissions=9,
             rehearsals_valid=9, rehearsals_not_valid=9)):  # fmt: skip

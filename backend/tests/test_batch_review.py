@@ -195,3 +195,25 @@ def test_unanswered_questions_show_why_and_cannot_be_approved(api, receiver):
     r = api.post("/review/approve", json={"items": [item(row, "submit")]})
     assert r.json()["results"][0]["status"] == "refused"
     assert counts()[0] == 0
+
+
+def test_the_same_batch_twice_creates_nothing_new_and_each_approval_keeps_its_own_expiry(
+    api, receiver
+):
+    """D106: repeating a batch returns the approvals already given (no second approval, no new
+    expiry); items approved at different times expire at different times, each from its own
+    approval."""
+    a, b = two(api, receiver)
+    rows = listed(api)
+    first = api.post("/review/approve", json={"items": [item(rows[a], "submit")]}).json()
+    again = api.post("/review/approve", json={"items": [item(rows[a], "submit")]}).json()
+    assert first["results"][0]["status"] == again["results"][0]["status"] == "approved"
+    assert first["results"][0]["expires_at"] == again["results"][0]["expires_at"]
+    later = api.post("/review/approve", json={"items": [item(rows[b], "disclose_only")]}).json()
+    assert later["results"][0]["status"] == "approved"
+    with SessionLocal() as db:
+        appr = {str(x.application_id): x for x in db.scalars(select(PackageApproval))}
+    assert set(appr) == {a, b}  # one approval each, never a shared one
+    assert appr[a].expires_at < appr[b].expires_at  # each from its own approval
+    assert (appr[a].scope, appr[b].scope) == ("submit", "disclose_only")
+    assert counts()[1:] == (0, 0)  # nothing queued, nothing to send

@@ -333,3 +333,36 @@ def test_every_permission_recorded_still_refuses_every_other_real_destination(de
     with pytest.raises(policy.UnsupportedDestination) as e:
         policy.adapter_for(destination)
     assert e.value.code in ("real_destination_disabled", "no_captured_destination")
+
+
+def test_an_authorization_that_ends_while_queued_stops_before_the_page_opens(
+    api, receiver, monkeypatch
+):
+    """D106: the register is read at every protected step, with today's date: an authorization
+    that ends while an attempt waits stops it at the next step, in the same running process.
+    (Removing an entry from the code takes effect when the API and worker restart: a running
+    process keeps the register it imported. See docs/activation-status.md, "Stop".)"""
+    from datetime import date, timedelta
+
+    from app.core import authorizations as a
+
+    aid = queue(api, live_application(api))  # every permission, no end date
+    today = date.today()
+    pilot_on(OWNER, permitted=())
+    a.RECORDED += (a.Authorization(
+        what=a.GREENHOUSE_PILOT, decision="TEST", given_on=today - timedelta(days=1),
+        words="(synthetic: tests only)", actions=a.ACTIONS[a.GREENHOUSE_PILOT],
+        data="synthetic test data only", ends_on=today),)  # fmt: skip
+    assert live.permission_refusal(("open", "disclose")) is None  # still valid today
+
+    class Tomorrow(date):
+        @classmethod
+        def today(cls):
+            return today + timedelta(days=1)
+
+    monkeypatch.setattr(a, "date", Tomorrow)
+    assert live.permission_refusal(("open", "disclose")) == "not_authorized"
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert _reason(aid) == "live_not_authorized"
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0

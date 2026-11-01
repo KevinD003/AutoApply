@@ -11,8 +11,8 @@ recorded evidence take it on the admission ladder. Computed, never declared.
     provider is "not_applicable".
   * The owner approves four boundaries (`OWNER_BOUNDARIES`): a public-docs and terms review,
     each read-only run, permission to disclose (C) and permission to submit (D). Code can only
-    point at a recorded approval (providers/evidence.py; readiness.DISCLOSURE_PERMISSION_RECORDED
-    and SUBMISSION_PERMISSION_RECORDED);
+    point at a recorded approval (providers/evidence.py; readiness.disclosure_permission_recorded
+    and submission_permission_recorded, read from app/core/authorizations.py);
     it can never give one. None is recorded for a new stage today.
   * Nothing passes `MAX_REACHABLE`: a real disclosure or submission stays refused whatever the
     tables say (`real_destinations_refused`).
@@ -312,9 +312,12 @@ def current_tables() -> Tables:
         credited_traits=evidence.credited_traits(),
         doc_reviews=frozenset(r.ats for r in evidence.DOC_REVIEWS),
         # Path A meets no condition, so passing no observation changes nothing and reads no file.
-        readiness={readiness.PROVIDER: lambda: readiness.conditions(None)},
-        disclosure_permission_recorded=readiness.DISCLOSURE_PERMISSION_RECORDED,
-        submission_permission_recorded=readiness.SUBMISSION_PERMISSION_RECORDED,
+        readiness={
+            readiness.PROVIDER: lambda: readiness.conditions(None, provider=readiness.PROVIDER)
+        },
+        # D106: read from the owner's recorded authorizations (app/core/authorizations.py).
+        disclosure_permission_recorded=readiness.disclosure_permission_recorded(),
+        submission_permission_recorded=readiness.submission_permission_recorded(),
         manual_evidence={readiness.PROVIDER: (path_a.PROVENANCE,)},
         manual_evidence_inert={readiness.PROVIDER: _path_a_changes_no_condition},
         scenario_gaps=SCENARIO_GAPS,

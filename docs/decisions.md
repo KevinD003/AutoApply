@@ -3078,3 +3078,55 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Unchanged:** every binding of a single approval (user, application, destination, adapter
   and version, package hash, scope, expiry, revocation, use once where that matters);
   per-application approval as the default; `SCHEMA_VERSION` (3); no migration.
+
+## D106 — Activation reconciled with the checklist; authorization at run time (2026-11-01)
+
+- **Why:** the owner, on 2026-11-01: "reconcile the computed readiness checklist with the
+  implementation and produce an actionable path to meeting each condition … Do not relax a
+  condition just to raise the count. Do not keep a completed condition falsely unmet. Do not
+  count synthetic proof as real-page evidence."
+- **Found and fixed:**
+  - **The checklist measured the wrong adapter.** It was computed for `greenhouse_dom`, the
+    fixture-only rules provider. That provider never runs on a real destination, so conditions
+    4 (real upload), 5 (real submission) and 7 (capability entry) could never be met however the
+    pilot went. It is now computed for the pilot, `greenhouse_live`, the only adapter whose real
+    rehearsals and submissions could be recorded (`GET /api/providers/greenhouse_live/readiness`).
+    Provider admission keeps computing `greenhouse_dom`'s own row, unchanged.
+  - **Two sources of truth for the owner's permissions.** `readiness.DISCLOSURE_PERMISSION_RECORDED`
+    and `SUBMISSION_PERMISSION_RECORDED` (constants) existed beside D103's register. They are
+    replaced by functions that read the register, and `pilot_gate` follows it.
+  - **Condition 7 split into its two parts.** The pilot's reviewed real-destination entry exists
+    (D102). The capabilities a real application uses are still at fixture, and only their own
+    real evidence can raise them. It stays unmet, with both parts shown.
+  - **Each condition now carries its path:** what it needs (code, observation, configuration,
+    consent, owner machine), why it is unmet, the smallest next action, what NoEfforts can do,
+    what the owner must do, what stops a real attempt meanwhile, and which tests verify it.
+- **Result: still 0 of 7, each for a stated reason** (`docs/activation-status.md`). Nothing was
+  relaxed. No synthetic evidence counts, and no observation or consent was recorded.
+- **Authorization at run time:**
+  - The register is read at every protected step, with today's date. An authorization that ends
+    while an attempt waits stops it at the next step, in the running process (tested).
+  - Removing an entry is a code change. A running API or worker keeps the register it imported,
+    so a withdrawal takes effect when they restart. To stop at once: stop the worker
+    (`docker compose stop worker`), or revoke an application's approval in the app. Both take
+    effect immediately (D65, tested).
+  - Per-application approvals live in the database, never in code, so no ordinary approval needs
+    a code change.
+- **Production configuration** means `NOEFFORTS_ENV=production` on the owner's own machine, ports
+  bound to `127.0.0.1`. It needs no public hosting, domain, TLS or paid infrastructure. It is
+  required because it is where fixture origins are refused, real Greenhouse hosts are reachable,
+  and container isolation is enforced.
+- **D104 timing:**
+  - A list is read every 250 ms. It counts as settled after three identical reads (at least
+    500 ms unchanged) with nothing loading, within 1.5 s, or 5 s on a stand-in.
+  - Three reads are not proof that the list cannot change later. The re-read at selection, the
+    readback before the send gate and the drift checks before the disclosure gate catch later
+    changes.
+- **D105 semantics:**
+  - Each item is approved in its own transaction. A refused item leaves the others, and the
+    answer lists each result.
+  - The same batch sent twice creates nothing new: the existing approval is returned, with its
+    own expiry.
+  - Items approved at different times expire at different times.
+  - Nothing is ever all-or-nothing, and nothing is queued (tested).
+- **Unchanged:** every gate; `SCHEMA_VERSION` (3); no migration.

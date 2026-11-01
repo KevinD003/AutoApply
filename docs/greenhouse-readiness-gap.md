@@ -156,21 +156,26 @@ Where each row's evidence lives:
 7. **A capability entry raised from `fixture` to `observed`** for exactly the capabilities
    used, with a reviewed change to `real_destinations`. This is never done to claim progress.
 
-**Status** (computed by `providers/readiness.py` from recorded evidence and served at
-`GET /api/providers/greenhouse_dom/readiness`. The table is the baseline, with no user's records
-read; the endpoint also counts the signed-in user's own records by evidence class, and none of
-them can meet a real condition while real destinations are disabled.
-`tests/test_pilot_readiness.py` fails when this table and the code disagree):
+**Status** (computed by `providers/readiness.py` from recorded evidence, for the pilot adapter
+`greenhouse_live` (D106), and served at `GET /api/providers/greenhouse_live/readiness`.
+Before D106 it was computed for `greenhouse_dom`, the fixture-only rules the pilot applies. That
+provider never runs on a real destination, so conditions 4, 5 and 7 could never have been met
+there. `GET /api/providers/greenhouse_dom/readiness` still serves that provider's own checklist.
+The table is the baseline, with no user's records read; the endpoint also counts the signed-in
+user's own records for that adapter by evidence class. Each condition also carries what it needs
+next (`path`: needs, why, next action, what NoEfforts can do, what the owner must do, what stops a
+real attempt meanwhile, which tests verify it). `docs/activation-status.md` lists the same per
+condition. `tests/test_pilot_readiness.py` fails when this table and the code disagree):
 
 | Condition | Status | Evidence |
 |---|---|---|
-| `dropdowns` | not met | `custom_dropdowns` is `fixture`; Path A pending |
-| `unmatched_required_controls` | not met | no mapping rule exists for `u1` or `u2`; Path A pending |
-| `location` | not met | `location_picker` is `fixture` (a local stand-in only, D104) |
-| `real_upload` | not met | `file_upload` is `fixture`; met only by rehearsal evidence on a real destination; real destinations are disabled, so NoEfforts cannot have made one |
-| `real_submission` | not met | `final_submit` is `fixture`; met only by real-submission evidence (an attempt-bound confirmation); real destinations are disabled, so NoEfforts cannot have made one |
-| `pilot_gate` | not met | no permission given (`docs/live-pilot-gate.md`) |
-| `capability_entry` | not met | `real_destinations_enabled` is false |
+| `dropdowns` | not met | `custom_dropdowns` is `fixture` for the pilot; run #9 (600 ms, every data request refused, the page's own locale files included) saw no list open; Path A pending |
+| `unmatched_required_controls` | not met | no mapping rule exists for `u1` or `u2` on a real page (D104's phone country rule runs on local stand-ins only); Path A pending |
+| `location` | not met | the pilot has no `location_picker` (D104's search is a local stand-in only, refused on a real page) |
+| `real_upload` | not met | `file_upload` is `fixture`; met only by a rehearsal record that still holds on a real destination; none can exist: permissions 1-3 are not recorded |
+| `real_submission` | not met | `final_submit` is `fixture`; met only by a real submission with an attempt-bound confirmation after the rehearsal prerequisite held; permission 4 is not recorded |
+| `pilot_gate` | not met | recorded in `app/core/authorizations.py`: none; missing: read, open, disclose, submit |
+| `capability_entry` | not met | part 1 done: the pilot's reviewed real-destination entry (D102); part 2 not: deterministic_fill, custom_dropdowns, file_upload, final_submit and confirmation_detection are still at fixture |
 
 - A condition is met only by evidence of its own kind: a capability level the registry records
   (reaching `observed` needs an approved read-only run), the gate's separate permissions, or,

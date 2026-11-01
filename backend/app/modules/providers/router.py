@@ -4,7 +4,7 @@ given for the browser route stops matching and is retired when queued (policy.ch
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -45,15 +45,22 @@ def provider_admission(user: User = Depends(current_user)) -> dict:
     return admission.summary()
 
 
-@router.get("/providers/greenhouse_dom/readiness")
-def greenhouse_readiness(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+@router.get("/providers/{name}/readiness")
+def greenhouse_readiness(
+    name: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
     """Whether a live filling pilot could be proposed (providers/readiness.py): each condition
-    derived from recorded evidence. The caller's own records are counted by evidence class
-    beside the global inputs (registry, Path A, gate); counts only. Approves and enables
-    nothing."""
+    derived from recorded evidence, with what it needs next (D106). `greenhouse_live`, the pilot,
+    is the activation checklist; `greenhouse_dom`, the fixture-only rules it applies, keeps its
+    own. The caller's own records for that adapter are counted by evidence class beside the
+    global inputs (registry, Path A, the owner's recorded permissions); counts only. Approves
+    and enables nothing."""
     from app.modules.execution.rehearsal import readiness_evidence
 
-    return readiness.summary(evidence=readiness_evidence(db, user.id))
+    if name not in (readiness.PILOT, readiness.PROVIDER):
+        raise HTTPException(status_code=404, detail="No readiness checklist for this provider")
+    return readiness.summary(evidence=readiness_evidence(db, user.id, adapter=name),
+                             provider=name)  # fmt: skip
 
 
 @router.get("/api-authorizations")

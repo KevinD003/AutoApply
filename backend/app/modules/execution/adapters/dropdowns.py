@@ -26,6 +26,18 @@ nothing is typed. Selection is then proven by readback (adapter).
 
 Every strategy has been exercised only against local fixtures (FIXTURE ASSUMPTIONS); none has
 been seen working on a real page, and real destinations stay refused (`real_destinations`).
+
+Timing (D106). After one action, the list is read every SAMPLE_MS (250 ms). It counts as settled
+once nothing is loading, no data request is in flight, and STABLE_SAMPLES (3) consecutive reads
+are identical, so the same list was seen for at least 500 ms. It must settle within SETTLE_MS
+(1.5 s), or LATE_MS (5 s) on a local stand-in whose list arrives late; otherwise the dropdown is
+refused. Three equal reads show the list did not change during that half second. They are not
+proof that it cannot change later. Later changes are caught by:
+  * the list being read again, and required to be exactly the approved one, when an option is
+    chosen (`select`);
+  * the readback of every answer before the send gate (adapter);
+  * the form drift checks before the disclosure gate, which stop the attempt before anything is
+    entered.
 """
 
 from urllib.parse import urlsplit

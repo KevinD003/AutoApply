@@ -40,27 +40,19 @@ or a location search), a dropdown it cannot open and read exactly, an answer tha
 back, an upload the page does not acknowledge, the page changing after your approval, or the
 pilot being switched off.
 
-## Turning it on (on your own machine)
+## Turning it on
 
-1. Read `docs/research/greenhouse-terms-review.md` (Greenhouse's public terms, as reviewed on
-   2026-10-31; not legal advice). In short: no Greenhouse terms for candidates on hosted boards
-   were found; Greenhouse forbids automated use of **MyGreenhouse**, which NoEfforts never uses; each
-   employer may have its own applicant notice.
-2. In `.env`:
-   ```
-   NOEFFORTS_LIVE_GREENHOUSE_ENABLED=true
-   NOEFFORTS_LIVE_OWNER_EMAILS=["you@…"]   # your NoEfforts account's email
-   ```
-3. Start the stack with the pilot override (production mode, container isolation, and an outbound
-   route for the egress proxy only):
-   ```
-   docker compose -f docker-compose.yml -f docker-compose.pilot.yml up -d
-   ```
-   Production mode switches off the local test fixtures. The browser runs in its own container
-   with Chromium's sandbox on and can reach only the one board host of its session, plus
-   Greenhouse's static scripts and stylesheets (`job-boards.cdn.greenhouse.io`).
-4. Turning it off: set `NOEFFORTS_LIVE_GREENHOUSE_ENABLED=false` and restart. An application
-   already queued then stops before anything is entered.
+The one guide is `docs/activation-status.md`. It covers:
+- what "production configuration" means (your own machine; no public hosting);
+- the permission form for each step;
+- startup;
+- the rehearsal and submission plans;
+- how to stop, revoke or reconcile.
+
+Greenhouse's public terms as reviewed on 2026-10-31 (not legal advice) are in
+`docs/research/greenhouse-terms-review.md`. In short: no Greenhouse terms for candidates on
+hosted boards were found; Greenhouse forbids automated use of **MyGreenhouse**, which NoEfforts
+never uses; each employer may have its own applicant notice.
 
 ## What is not verified
 

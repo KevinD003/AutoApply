@@ -291,7 +291,8 @@ def test_a_structure_only_observation_never_meets_a_rehearsal_condition(monkeypa
     gd = registry.PROVIDERS["greenhouse_dom"]
     raised = {**gd.capabilities, Capability.custom_dropdowns: Support(fixture=True, observed=True)}
     monkeypatch.setitem(registry.PROVIDERS, "greenhouse_dom", replace(gd, capabilities=raised))
-    assert {r["id"]: r["met"] for r in readiness.conditions(None)}["dropdowns"]
+    rows = readiness.conditions(None, provider="greenhouse_dom")
+    assert {r["id"]: r["met"] for r in rows}["dropdowns"]
     t = admission.current_tables()
     cells = {**t.credited_cells, ("greenhouse_dom", "custom_dropdowns"): frozenset({"structure"})}
     assert status(row("greenhouse_dom", replace(t, credited_cells=cells)),
