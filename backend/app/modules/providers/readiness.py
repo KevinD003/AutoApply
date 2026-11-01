@@ -96,26 +96,27 @@ NEEDS = ("code", "observation", "configuration", "consent", "owner_machine")
 PATHS: dict[str, dict] = {
     "dropdowns": {
         "needs": ["observation", "code"],
-        "why": "custom_dropdowns is fixture-only for the pilot; run #9 (600 ms window, every "
-        "data request refused) saw no list open; run #10 (path B, 1.5 s) allowed no locale "
-        "file, since the real locale paths failed the approved rule, so it did not test whether "
-        "the lists wait on them, and 6 of the 7 dropdowns it reached showed no opening evidence",
-        "next_action": "one read-only run C (D109, built; its own single-use approval): locale "
-        "files in run #10's observed shape allowed and their outcomes recorded, one react-select "
-        "container click where the control's click shows nothing; Path A if it does not settle it",
+        "why": "run #11 (read-only, locale files loaded) opened all 12 dropdowns at the "
+        "control's click and read 11 lists completely, the 7 mapped ones equal to their job "
+        "data; but a required one (u3) showed no readable options, the pilot still refuses the "
+        "locale files, and custom_dropdowns stays fixture-level for the pilot",
+        "next_action": "the owner's approval of the pilot's locale exception (prepared, D110) "
+        "with the first rehearsal, on a posting whose required dropdowns all have readable lists",
         "independent": "path C, click_container and the react-select readback (D109); after "
         "evidence that the lists open, a fixture mirroring it, the pilot's locale exception if "
         "the evidence requires it, and a reviewed change raising custom_dropdowns",
-        "owner": "a single-use approval of run C; Path A answers if run C does not settle it",
+        "owner": "approval of the pilot's locale exception, as part of the rehearsal request",
         "enforced_by": "dropdowns.verify before the disclosure gate: a list it cannot open, "
         "read completely and match exactly stops the attempt before anything is entered",
         "verified_by": "tests/test_dropdown_strategies.py; tests/test_pilot_readiness.py",
     },
     "unmatched_required_controls": {
         "needs": ["observation", "code"],
-        "why": "u1 (in the phone group) and u2 are required and match no question; their kind "
-        "was never observed, and no rule maps them on a real page",
-        "next_action": "Path A questions 8a and 8b (run #10 stopped before reaching u1 and u2)",
+        "why": "run #11: u1 (required, in the phone group) opened with 244 options and u3 "
+        "(required, standalone) opened without readable options; neither matches a question, "
+        "and no rule maps them on a real page",
+        "next_action": "for a first rehearsal, a posting without such controls; for this one, "
+        "the owner's manual note of what u1 and u3 ask (Path A 8a, 8b)",
         "independent": "once their kind is observed: a fixture mirroring them, a mapping rule "
         "for that structure on real pages, its tests, a reviewed change",
         "owner": "Path A answers",

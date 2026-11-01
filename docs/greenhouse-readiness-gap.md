@@ -173,8 +173,8 @@ condition. `tests/test_pilot_readiness.py` fails when this table and the code di
 
 | Condition | Status | Evidence |
 |---|---|---|
-| `dropdowns` | not met | `custom_dropdowns` is `fixture` for the pilot; run #9 (600 ms, every data request refused) saw no list open; run #10 (path B) allowed no locale file, since the real paths failed the rule, so it tested nothing about them; Path A pending |
-| `unmatched_required_controls` | not met | no mapping rule exists for `u1` or `u2` on a real page (D104's phone country rule runs on local stand-ins only); Path A pending |
+| `dropdowns` | not met | run #11 (read-only, locale files loaded): 12 of 12 opened at the control's click, 11 lists read, the 7 mapped ones equal to their job data; a required one (`u3`) had no readable options; the pilot still refuses the locale files; `custom_dropdowns` is `fixture` for the pilot |
+| `unmatched_required_controls` | not met | run #11: `u1` (required, phone group) a 244-option list, `u3` (required) no readable options; no mapping rule for either on a real page (D104's phone country rule runs on local stand-ins only) |
 | `location` | not met | the pilot has no `location_picker` (D104's search is a local stand-in only, refused on a real page) |
 | `real_upload` | not met | `file_upload` is `fixture`; met only by a rehearsal record that still holds on a real destination; none can exist: permissions 1-3 are not recorded |
 | `real_submission` | not met | `final_submit` is `fixture`; met only by a real submission with an attempt-bound confirmation after the rehearsal prerequisite held; permission 4 is not recorded |

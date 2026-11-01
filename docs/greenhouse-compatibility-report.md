@@ -617,6 +617,81 @@ None of them means "absent".
 - **Follow-up (local only; no request):** the summary now says which properties of a refused
   locale path failed (D107). No further run is approved.
 
+## Dropdown observation, path C (manual run #11, authorized once): completed; the lists opened
+
+- **Authorization:** the owner's single-use approval of 2026-11-01 (D110). Used.
+- **Run:** [41330028697](https://github.com/KevinD003/AutoApply/actions/runs/41330028697), workflow
+  run #11, from the pinned branch `readonly-inspect-efceea4`.
+  - The run record's head SHA is `efceea434cf50111f78a17c271da94cbb28a4d36`, the revision on
+    which CI #151 passed all four jobs.
+  - The workflow checks out the dispatched ref.
+  - Before dispatch, the limits in code at that revision matched the approval:
+    - 1.5 s per action, 40 actions, 80 s of inspection, 120 s observation, 180 s run, inside
+      the 200 s outer kill;
+    - 3 API GETs, 1 navigation, 150 page requests, 20 MB.
+- **Inputs:** only `inspect_dropdowns` was true. `observe`, `mapping`, `b3`, `inspect_widgets`,
+  `inspect_widgets_locales` and `identify_only` were explicitly false.
+  - The secret check passed; its value was never displayed.
+- **Workflow:** success. Outcome `completed`, `inspection_complete: true`, 0 internal errors.
+  No stop, no retry.
+- **Requests:**
+  - **API:** 3 GETs, all 200. Identity checks all true.
+  - **Page:** 1 navigation (200); 24 browser requests; 398,920 bytes received. No bot-challenge
+    element.
+  - **Locale files: 2 requested, 2 allowed, 2 loaded** (outcome `2xx`), both at load. Path shape
+    `GET /locales/*/*.json`, no query. None was refused (0 path refusals).
+  - **Refused before sending** (never transmitted):
+    - 3 data requests outside the rule: `boards.greenhouse.io` once and `my.greenhouse.io`
+      twice, one of them during `u3`'s action;
+    - 6 fonts and 1 image on the CDN, 1 image on `recruiting.cdn.greenhouse.io`, 2 scripts from
+      a host the summary withholds;
+    - one POST fetch to `c.spl.greenhouse.io`, blocked by the method filter.
+  - **The blocked POST at page load did not stop the run.** The code blocks and records a
+    non-GET at load in every mode (as in runs #3-#10) and stops only on one made during an
+    inspection action. The request to the owner listed "any POST or other non-GET request"
+    among the stops without that distinction. That was an imprecise description by NoEfforts,
+    not a change in the code. Nothing was transmitted.
+- **Actions:** 12 dropdowns, 24 actions (12 clicks and 12 Escapes), in 37.5 s. No container
+  click was needed.
+  - Every click completed, focus stayed on the control, and every list closed with Escape.
+  - Nothing was typed or selected, no value changed, no control was added or removed, and the
+    address never changed.
+- **Each dropdown:**
+  - **The 7 mapped to job-data questions** (`q01`, `q02`, `q03`, `q04`, `q07`, `q09`, `q11`):
+    `observed_sufficiently` at the control's own click.
+    - Evidence: expanded state, popup, role-based options, and a class hint.
+    - Each list equals the job data's options exactly (`options_match_api: true`), with 2, 2,
+      250, 26, 2, 2 and 2 options.
+  - **`u1`** (inside the phone group; required by ARIA and a label marker):
+    `observed_sufficiently`, 244 options. Its purpose is not inferred, and its option texts were
+    not recorded.
+  - **`u2`** (a hidden, unrequired `search` input in a group): skipped as not visible.
+  - **`u3`** (standalone; required by ARIA and a label marker): `opened_options_not_observable`.
+    It opened (expanded state, popup), but no option appeared. A data request to
+    `my.greenhouse.io` was refused during its action.
+  - **`u4`, `u5`, `u6`** (standalone, not required): `observed_sufficiently`, 3 options each.
+  - Aliases are numbered per run: this run's `u2`/`u3` need not be run #9's.
+- **React-select markup:** 12 of 12 inspected controls sit in a `select__control` container,
+  with a placeholder, an indicator and the input in the value container. No choice is shown
+  at load.
+- **Mapping:** as in runs #9 and #10. 19 fields are mapped uniquely, `location` is absent, and
+  `latitude`/`longitude` are page-managed.
+- **What it shows, and what it does not:**
+  - **Requested, loaded, opened and usable are kept apart:**
+    - 2 locale files were requested and loaded;
+    - 12 lists opened;
+    - 11 lists were read completely;
+    - 7 lists are usable as mapped controls (they equal their job-data options);
+    - `u1`, `u4`-`u6` were read but are not mapped, and `u3` was not read.
+  - **Causality:** in run #10 the same click, with the same 1.5 s window and the locale files
+    refused, opened 0 of the 7 mapped dropdowns. Here, with the files loaded, all opened. That
+    strongly supports the locale gate. It does not prove it alone: the page also differs between
+    the runs (41 vs 24 requests, 12 vs 13 dropdowns), and this was one combined experiment.
+  - **Not shown:** that selecting an option, typing, uploading or submitting works, or how the
+    pilot would behave. The pilot still refuses the locale files.
+- **Exposure:** no applicant or form data was sent. As for any page view, Greenhouse and its CDN
+  received ordinary connection metadata from the GitHub-hosted runner.
+
 ## Log cleanup (run #3's logs deleted with authorization; runs #1 and #2 untouched)
 
 Manual "Greenhouse read-only check" runs. None has artifacts: the workflow uploads none and

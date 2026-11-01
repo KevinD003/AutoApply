@@ -3300,3 +3300,45 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   - No change to the pilot's network rules or to readiness.
   - No reclassification of runs #9 and #10.
   - Every forbidden legacy behaviour (addendum) is excluded.
+
+## D110 — Read-only run C (run #11): the real dropdowns open once their locale files load (2026-11-01)
+
+- **Why:** the owner, on 2026-11-01: "I approve one read-only run C (inspect_dropdowns) of the
+  Greenhouse read-only check on branch readonly-inspect-efceea4, single use, within the Path C
+  limits." The approval excludes any further live run, disclosure, upload, submission and pilot
+  network change without a new approval.
+- **Run:** manual run #11 (Actions run 41330028697), on `efceea4`, where CI #151 passed all four
+  jobs. It completed with no stop. Record: `docs/greenhouse-compatibility-report.md`.
+- **Result:**
+  - The 2 locale files the page requested at load were allowed and loaded (2xx).
+  - All 12 dropdowns inspected opened at the control's own click, and 11 lists were read
+    completely. The container fallback was never needed.
+  - The 7 dropdowns mapped to job-data questions show exactly the job data's options.
+  - All 12 sit in react-select markup.
+  - Still open:
+    - `u1` (required, in the phone group): a 244-option list, read but not mapped;
+    - `u3` (required, standalone): opened without readable options, while a request to
+      `my.greenhouse.io` was refused;
+    - location: absent at load.
+- **Interpretation:** with run #10 (same click and window, locale files refused, nothing
+  opened), this strongly supports the locale gate. It is one combined observation on one
+  posting, and the page also changed between the runs, so it does not prove causation alone.
+- **Correction:** the request said the run would stop on "any POST or other non-GET request".
+  The code, unchanged since path B, blocks and records a non-GET made at page load and stops only
+  on one made during an inspection action. One telemetry POST at load was blocked, never sent,
+  and did not stop the run. The proposal now states the distinction. Any future request will
+  quote it exactly.
+- **Decided:**
+  - **No further live dropdown experiment.** The question it was for is answered on this
+    posting.
+  - **The pilot is not changed on main.** The same narrow locale exception for the pilot
+    (`live.subresources` gains path C's rule, and pilot pages get the fetch redirect guard) is
+    prepared on a branch for the owner's approval as part of milestone B. It is not merged.
+  - **Readiness is unchanged (0 of 7):**
+    - condition 1 needs every required dropdown's complete list (`u3`'s was not readable) and
+      the pilot able to open them;
+    - condition 2 needs `u1` and `u3` mapped by evidence.
+  - **Milestone B cannot use this posting:** it requires a location (with page-managed
+    coordinates) and two unmapped required dropdowns, so capture would stop it. A first
+    disclosure-only rehearsal needs a posting without them; the request lists every remaining
+    prerequisite.

@@ -780,7 +780,7 @@ run #10)".
 - **What would need a new approval:** any further run, including one that only collects the new
   detail. Any wider rule would also be its own reviewed change. Neither is requested here.
 
-### C. Dropdown observation with the observed locale shape (D109) — built and tested locally; not approved
+### C. Dropdown observation with the observed locale shape (D109) — approved 2026-11-01 for one run; run once as manual run #11 (authorization used)
 
 **Why another run can reduce uncertainty.**
 - Runs #9 and #10 showed that clicking a real dropdown makes the page ask for locale files. All
@@ -804,7 +804,7 @@ run #10)".
 | Refused before sending | every other data request (incl. `boards.greenhouse.io`, `my.greenhouse.io`), every non-GET (incl. the `c.spl.greenhouse.io` POST, which stops the run), other hosts, fonts and images |
 | Interactions | per dropdown present at load: one click on the control; only if that shows no opening and a react-select container exists, one click on the container; one Escape after each click. Nothing typed, selected, uploaded or submitted; no login |
 | Limits | 1.5 s settle per action; at most 40 actions and 80 s of inspection; 120 s observation, 180 s run, 200 s outer kill; 150 page requests, 20 MB |
-| Stops | any non-GET request; a value change, selection, or control added or removed; a submission attempt; a dialog or file chooser; a challenge; a navigation or address change; a redirected locale request; any budget. Not retried |
+| Stops | during an inspection action: any non-GET request; a value change, selection, or control added or removed; a submission attempt; a dialog or file chooser; a challenge; a navigation or address change; a redirected locale request. At any time: any budget. A non-GET at page load is blocked before sending and recorded; it does not stop the run (as in every mode since path B). Not retried |
 | Applicant data | none: no field is filled; the page and the CDN see ordinary connection metadata from the GitHub runner (address, user agent, timing) |
 | Evidence | the anonymous summary only: per dropdown its open state, `opened_by`, the separate observations (D108), react-select markup as booleans; allowed locale requests with their outcome classes and path shapes; refusal counts with path properties (D107). No URL, name, class name, value or body |
 
@@ -832,8 +832,16 @@ run #10)".
   - no class name or path in the summary.
 - `tests/test_readonly_cli_process.py::test_dropdown_mode_entry_point_completes_with_path_c_and_states_its_rule`.
 
-**The request** (needs the owner's explicit single-use approval; not approved): see the next
-message to the owner, which names the pinned revision after CI has passed on it.
+**Result of run #11 (2026-11-01; D110):** completed, no stop.
+- The 2 locale files were loaded (2xx).
+- 12 of 12 dropdowns opened at the control's own click (the container was never needed), and
+  11 lists were read completely.
+- The 7 job-data dropdowns equal their job-data options. All 12 are react-select.
+- Still open: `u1` (244 options, unmapped), `u3` (no readable options; a `my.greenhouse.io`
+  request was refused), and location.
+- A telemetry POST at page load was blocked before sending and, as the code always did, did not
+  stop the run; the request had described the stops imprecisely (corrected above).
+- Full record: `docs/greenhouse-compatibility-report.md`, "Dropdown observation, path C".
 
 ## Deliverable: the comparison (once A/B are separately approved and run)
 
