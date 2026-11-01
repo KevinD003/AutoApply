@@ -33,7 +33,7 @@ per scope you choose, for example "postings I approve in the app, one at a time,
 | Greenhouse pilot, 4 submit | Yes | Yes (receiver ledger) | No | **No** | No |
 | Phone country, location search, late dropdowns (D104) | Yes | Yes, local stand-ins only | n/a | n/a | No; refused on a real page |
 | Review page: approve several packages (D105) | Yes | Yes | n/a: each approval is yours | n/a | No |
-| Read-only check, path B: the locale exception (`inspect_widgets_locales`, D106) | Yes | Yes: the v2 fixture's locale gate, the receiver's log | n/a: dispatched by hand | **No**: needs your single-use approval and a pinned revision with passing CI | No |
+| Read-only check, path B: the locale exception (`inspect_widgets_locales`, D106) | Yes | Yes: the v2 fixture's locale gate, the receiver's log | n/a: dispatched by hand | Approved once (D107) and **used** | Yes, once: run #10, a policy stop. No locale file was allowed (the real paths failed the rule), so it did not test the dropdowns' dependence on them (D107) |
 | Gmail: codes and replies (D101, optional) | Yes | Yes | No | **No** | No |
 | Typing a verification code yourself | Yes | Yes | Not needed | Not needed | No real code step reached |
 
@@ -46,23 +46,23 @@ control is not blocked by them, but no condition is met by that.
 
 | # | Condition | Why it is not met | Needs | Smallest next action | NoEfforts can do | You must do | Stopped at run time by | Verified by |
 |---|---|---|---|---|---|---|---|---|
-| 1 | Each required dropdown opens through one bounded, tested strategy, with the complete list | The pilot's `custom_dropdowns` is fixture-only. Run #9 waited 600 ms with every data request refused, the page's own locale files included, and saw no list open | Observation, then code | Path A (your browser, ~10 min), then one single-use read-only **run B**: locale files permitted, the adapter's 1.5 s window | Run B's rule and tests (D106). After a run that shows the lists opening: a mirroring fixture and a reviewed level change | Path A answers; approval of run B | `dropdowns.verify` before the disclosure gate: a list it cannot open, read completely and match exactly stops the attempt with nothing entered | `test_dropdown_strategies.py`, `test_pilot_readiness.py` |
-| 2 | The two required controls no question matches (`u1` in the phone group, `u2`) are understood and mapped by evidence | Their kind was never observed. No rule maps them on a real page; D104's phone country rule is a local stand-in | Observation, then code | Path A questions 8a and 8b; run B also opens them read-only | After observation: a mirroring fixture, a real-page rule, its tests | Path A; run B approval | Capture refuses a required control the job data does not list (E3); one appearing later stops the attempt before disclosure | `test_greenhouse_dom.py`, `test_greenhouse_controls.py` |
+| 1 | Each required dropdown opens through one bounded, tested strategy, with the complete list | The pilot's `custom_dropdowns` is fixture-only. Run #9 (600 ms, every data request refused) saw no list open. Run #10 (path B, 1.5 s) allowed no locale file, because the real paths failed the approved rule. So it did not test whether the lists wait on them; 6 of the 7 dropdowns it reached showed no opening evidence | Observation, then code | Path A (your browser, ~10 min). Any further read-only run needs a rule that fits the real locale paths, and its own approval | Done after run #10: the summary names which properties of a refused locale path failed (D107). After evidence that the lists open: a mirroring fixture and a reviewed level change | Path A answers; any further run is a separate approval | `dropdowns.verify` before the disclosure gate: a list it cannot open, read completely and match exactly stops the attempt with nothing entered | `test_dropdown_strategies.py`, `test_pilot_readiness.py` |
+| 2 | The two required controls no question matches (`u1` in the phone group, `u2`) are understood and mapped by evidence | Their kind was never observed. No rule maps them on a real page; D104's phone country rule is a local stand-in | Observation, then code | Path A questions 8a and 8b (run #10 stopped before reaching them) | After observation: a mirroring fixture, a real-page rule, its tests | Path A answers | Capture refuses a required control the job data does not list (E3); one appearing later stops the attempt before disclosure | `test_greenhouse_dom.py`, `test_greenhouse_controls.py` |
 | 3 | A supported, evidence-backed way to set the location without writing hidden coordinates | No location control at load on the observed posting; D104's search is a local stand-in | Observation, consent, code | For a first rehearsal, choose a posting with no location question. For this posting, note how its location control appears (typing in it is a disclosure: permission 3) | After an observation: a mirroring fixture and a reviewed change letting D104's search run on that structure | Choice of posting; a Path A note | A location search on a real page stops the attempt before anything is entered; hidden coordinates are never written | `test_greenhouse_controls.py` |
 | 4 | Real upload evidence | It needs a disclosure-only rehearsal that uploaded to a real form and still holds. None can run: permissions 1-3 are not recorded, and the pilot runs nowhere | Consent, configuration, your machine | Record permissions 1-3; start the production configuration (§5); approve and watch one rehearsal (§6) | Nothing further in code; the rehearsal machinery and its counting exist | The permission, the start, the approval | The rehearsal stops before the send gate, which refuses a disclose-only approval | `test_rehearsal_stop.py`, `test_pilot_readiness.py` |
 | 5 | Real submission evidence | It needs a real final submit, confirmed, after a valid rehearsal on that path (E6). Permission 4 is not recorded | Consent, your machine | After the rehearsal holds: record permission 4, approve "Submit once" (§7) | Nothing further in code | Permission 4; the approval | The rehearsal prerequisite at approval, queueing and both gates; the send gate needs permission 4; no retry after the final click | `test_rehearsal_prerequisite.py`, `test_greenhouse_live.py` |
 | 6 | Your separate, recorded permission for each step; the posting named by your approval of its package | None of the four permissions is recorded | Consent | Your words in the form in §4, entered by a reviewed change | Entering your words exactly, with the decision and its test; never without them | The words | `live.permission_refusal` at capture, routing, queueing, before the page opens and at both gates | `test_greenhouse_live.py`, `test_authorizations.py` |
-| 7 | Capabilities raised from fixture to observed, with a reviewed real-destination change | Part 1 is done: the pilot's reviewed real-destination entry (D102). Part 2 is not: `deterministic_fill`, `custom_dropdowns`, `file_upload`, `final_submit` and `confirmation_detection` are still at fixture | Code, after evidence | After run B, the first rehearsal and the first submission: a reviewed change raising exactly what has evidence | That change and its tests, never before the evidence | Nothing beyond the evidence steps | Registry levels and `policy.CAPABILITIES`; `model.PILOTS` allows real destinations to the pilot alone | `test_pilot_readiness.py`, `test_provider_contracts.py` |
+| 7 | Capabilities raised from fixture to observed, with a reviewed real-destination change | Part 1 is done: the pilot's reviewed real-destination entry (D102). Part 2 is not: `deterministic_fill`, `custom_dropdowns`, `file_upload`, `final_submit` and `confirmation_detection` are still at fixture | Code, after evidence | After evidence that the dropdowns open, the first rehearsal and the first submission: a reviewed change raising exactly what has evidence | That change and its tests, never before the evidence | Nothing beyond the evidence steps | Registry levels and `policy.CAPABILITIES`; `model.PILOTS` allows real destinations to the pilot alone | `test_pilot_readiness.py`, `test_provider_contracts.py` |
 
 **Order:** 6 (permissions 1-3) → §5 → 4 (one rehearsal) → 6 (permission 4) → 5 (one
-submission) → 7. Conditions 1-3 run in parallel through Path A and run B, or are avoided for a
-first posting that has no such controls.
+submission) → 7. Conditions 1-3 run in parallel through Path A (run B was used by run #10), or
+are avoided for a first posting that has no such controls.
 
 **Dropdowns on a real rehearsal today.** If the real dropdowns wait on their locale files, a
 real rehearsal stops at them before anything is entered. The pilot's browser may load only the
-board host and Greenhouse's static scripts and stylesheets, not those files. Run B answers
-whether the files are needed. Allowing them during a rehearsal would be a separate reviewed
-change.
+board host and Greenhouse's static scripts and stylesheets, not those files. Run #10 could not
+answer whether the files are needed: its rule allowed none of the real ones. Allowing them
+during a rehearsal would be a separate reviewed change.
 
 ## 1. Local verification (your machine; nothing real)
 
@@ -90,11 +90,15 @@ Nothing leaves your machine. Passing it says the product works on stand-ins, not
 - **Path A** (`docs/manual-dropdown-checklist.md`): your own browser, on the observed posting,
   about 10 minutes. You record answers only (`docs/evidence/path-a.json` is still `pending`).
   It meets no condition, but it chooses the next check.
-- **Run B** (`docs/greenhouse-readonly-compatibility-proposal.md`, path B): one read-only run.
-  - It permits only `GET job-boards.cdn.greenhouse.io/locales/<x>/<y>.json`, and waits 1.5 s per
-    dropdown, as the adapter does.
-  - It needs your single-use approval and a pinned revision with passing CI.
-  - It never types, selects, uploads or submits.
+- **Run B** (`docs/greenhouse-readonly-compatibility-proposal.md`, path B): **used.** It ran
+  once as run #10 on 2026-11-01 (D107; `docs/greenhouse-compatibility-report.md`).
+  - Result: a policy stop. The rule allowed no locale file: all 12 real requests failed its
+    path element. The dropdowns' dependence on those files was therefore **not tested**.
+  - 6 of the 7 dropdowns reached showed no opening evidence within 1.5 s. On one, the page
+    tried a POST to another Greenhouse host, which was blocked before sending and stopped the
+    run.
+  - Since then, the summary names which properties of a refused path failed. Any further run
+    is a new approval and is not requested here.
 - **Location:** a note from Path A on how the location control appears. Or choose a first
   posting without a location question.
 
@@ -198,8 +202,7 @@ from you.
 
 | You | Then possible |
 |---|---|
-| Path A answers | Choose between run B and a longer window for the dropdowns |
-| Approve run B | Evidence on whether the real dropdowns open (conditions 1, 2) |
+| Path A answers | The next check for the dropdowns (conditions 1, 2); run B is used (run #10) |
 | Permissions 1-3 + the start | One disclosure-only rehearsal on a posting you choose (condition 4) |
 | Permission 4 | One submission of an application whose rehearsal held (condition 5) |
 | Both done | A reviewed change raising exactly the capabilities with evidence (condition 7) |

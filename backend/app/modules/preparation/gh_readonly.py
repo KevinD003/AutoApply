@@ -407,6 +407,54 @@ def locale_refusal(rule, url: str, method: str, resource_type: str, *, main_fram
     return None
 
 
+# Run #10 (2026-11-01) refused all 12 locale-shaped requests on the path element, and "path"
+# alone could not say why. For such a refusal: which properties of the path failed, from this
+# fixed vocabulary and in this order, and a bucket for its longest segment's length. Never the
+# path, a segment or an exact length. Diagnostic only: it allows nothing (locale_refusal does).
+LOCALE_PATH_PROPERTIES = ("unprintable", "prefix", "segments", "extension", "dots", "characters",
+                          "length")  # fmt: skip
+LOCALE_LENGTH_BUCKETS = ((32, "0-32"), (64, "33-64"), (128, "65-128"))  # beyond: "129+"
+
+
+def locale_path_detail(url: str) -> tuple[list[str], str]:
+    """(properties, longest-segment bucket) of a URL's path against LOCALE_PATH:
+    - unprintable: a character outside printable ASCII anywhere in the URL;
+    - prefix: the path does not start with "/locales/" (then nothing else is evaluated);
+    - segments: not exactly two segments after it;
+    - extension: the last segment does not end in ".json" (its own extension is set aside);
+    - dots: a dot in a segment, other than that extension (a content hash, "..");
+    - characters: a character outside [A-Za-z0-9_.-] in a segment (%, ~, + and the like);
+    - length: a segment empty or longer than 32 characters.
+    Empty properties: the path matches the rule."""
+    path = urlsplit(url).path
+    failed = set()
+    if re.fullmatch(r"[!-~]+", url) is None:
+        failed.add("unprintable")
+    if path.startswith("/locales/"):
+        segs = path[len("/locales/") :].split("/")
+        if len(segs) != 2:
+            failed.add("segments")
+        last = segs[-1]
+        if last.endswith(".json"):
+            segs[-1] = last[: -len(".json")]
+        else:
+            failed.add("extension")
+            segs[-1] = last.rpartition(".")[0] if "." in last else last
+        for seg in segs:
+            if "." in seg:
+                failed.add("dots")
+            if re.search(r"[^A-Za-z0-9_.-]", seg):
+                failed.add("characters")
+            if not 1 <= len(seg) <= 32:
+                failed.add("length")
+    else:
+        failed.add("prefix")
+        segs = [x for x in path.split("/") if x]
+    longest = max((len(x) for x in segs), default=0)
+    bucket = next((name for top, name in LOCALE_LENGTH_BUCKETS if longest <= top), "129+")
+    return [p for p in LOCALE_PATH_PROPERTIES if p in failed], bucket
+
+
 # --inspect-widgets-locales only. The browser follows a redirect without asking the request
 # filter (Playwright continues a redirect hop itself, and the isolated modes never fetch from
 # the driver), so before any page script runs, every fetch() the page makes is given
@@ -591,6 +639,9 @@ def observe_page(
                 if why is not None:
                     if locale_rule is not None:
                         entry["locale_check"] = why
+                    if why == "path":  # which properties failed (run #10)
+                        entry["locale_path"], entry["locale_path_longest"] = (
+                            locale_path_detail(request.url))  # fmt: skip
                     data_refused.append(entry)
                     return route.abort()
                 locale = entry
@@ -1174,6 +1225,8 @@ LOCALE_WORDS = frozenset({
     "inspect_widgets_locales", "limits", "locale_rule", "locale_requests_allowed",
     "locale_allowed", "locale_refusals", "total", "path", "query", "redirects", "initiator",
     "main_frame", "refused", "origin", "redirect", LOCALE_PATH_TEXT, *LIMIT_NAMES,
+    "locale_path_refusals", "properties", "longest_segment", *LOCALE_PATH_PROPERTIES,
+    *(name for _, name in LOCALE_LENGTH_BUCKETS), "129+",
 })  # fmt: skip
 _STATUSES ={"mapped", "mapped_via_group", "matched_via_attachment_group", "search_picker",
              "protocol", "absent", "ambiguous", "type_mismatch", "label_mismatch"}  # fmt: skip
@@ -2233,6 +2286,17 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
             "shapes_at_load": refused_shapes(at_load),
             "shapes_during_actions": refused_shapes(acting)}  # fmt: skip
         out["locale_refusals"] = why
+        props: dict[str, int] = {}
+        longest: dict[str, int] = {}
+        on_path = [d for d in data_refused if d.get("locale_check") == "path"]
+        for d in on_path:
+            for prop in d.get("locale_path", ()):
+                props[prop] = props.get(prop, 0) + 1
+            b = d.get("locale_path_longest")
+            if b:
+                longest[b] = longest.get(b, 0) + 1
+        out["locale_path_refusals"] = {"total": len(on_path), "properties": props,
+                                       "longest_segment": longest}  # fmt: skip
     return out
 
 

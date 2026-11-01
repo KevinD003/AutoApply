@@ -536,6 +536,85 @@ None of them means "absent".
   - the element that opens them is not the input (for example a container or an indicator);
   - they open on another event, such as a key press.
 
+## Locale observation, path B (manual run #10, authorized once): policy stop; no locale file allowed
+
+- **Authorization:** the owner's single-use approval of 2026-11-01 (D107). Used; not retried.
+- **Run:** [41279694718](https://github.com/KevinD003/AutoApply/actions/runs/41279694718), workflow
+  run #10, from the pinned branch `readonly-inspect-a8d07af`.
+  - The run record's head SHA is `a8d07af8d32f97e8ada8ee187017ca958bddc8b2`, the revision on
+    which CI #147 passed all four jobs.
+  - The workflow checks out the dispatched ref (no `ref:` override).
+- **Inputs:** `inspect_widgets_locales` true. `observe`, `mapping`, `b3`, `inspect_widgets` and
+  `identify_only` were explicitly false.
+  - The workflow's first step confirmed that `GH_READONLY_POSTING` is set and well formed. Its
+    value is masked and was never displayed.
+- **Workflow:** failure, because the CLI exited 7. That code means a policy stop: partial
+  evidence, not a compatibility result. 0 internal errors; the summary passed the privacy guard.
+- **Outcome:** `policy_stop`, `inspection_complete: false`.
+  - Stop: "a non-GET request was attempted", during the action on the 7th dropdown.
+- **Requests:**
+  - **API:** 3 GETs, all 200. Identity checks (job id, company against board, absolute URL)
+    all true.
+  - **Page:** 1 navigation (200); 41 browser requests (run #9: 26); 405,584 bytes received.
+    No bot-challenge element.
+  - **The locale rule allowed 0 requests**, 0 at load and 0 during actions.
+    - 12 locale-shaped fetches to `job-boards.cdn.greenhouse.io`, path shape
+      `GET /locales/*/*.json` with no query, were refused before sending: 4 at load, 8 during
+      actions. Every one failed the rule's `path` element.
+    - 2 other data requests failed its `origin` element: the fetches to other Greenhouse hosts
+      below.
+  - **Other refusals, never sent:**
+    - at load: 12 fonts (CDN), 2 images (`recruiting.cdn.greenhouse.io`), 1 script from a
+      reCAPTCHA host and 1 script from a host the summary withholds;
+    - during the 7th action: a GET fetch to `boards.greenhouse.io` (2 query parameters), a GET
+      fetch to `my.greenhouse.io` (1 query parameter), and a POST fetch to
+      `c.spl.greenhouse.io`. The method filter blocked the POST before sending, which stopped the
+      inspection.
+- **Actions:** 7 of 12 dropdowns, 14 actions (7 clicks and 7 Escapes), in 21.7 s.
+  - Every click completed. Nothing was typed or selected, there was no submission attempt,
+    and the address never changed.
+- **Each widget:**
+  - **`q01`, `q02`, `q03`, `q04`, `q07`, `q09`:** `not_opened` within the 1.5 s window.
+    - `aria-expanded` stayed `false`. No popup and no option-like element appeared, and 0
+      visible elements were added. `q03` had 16 DOM mutations, none visible.
+    - Focus reached the control each time.
+    - Locale requests refused during the action: `q01` 1, `q03` 4, `q04` 1, `q07` 1.
+  - **`q11`:** `opened_options_not_observable`, on one weak signal only: a class-name hint on
+    one popup-like element.
+    - Focus did not end on the control. One hidden control was added, with 41 DOM mutations.
+      `aria-expanded` stayed `false`, and 0 options were observed.
+    - The page made the three requests to other Greenhouse hosts during this action.
+    - `value_changed` is true. The inspection sets it whenever the list of control values
+      differs, and the added control alone makes it differ, so the record cannot show whether an
+      existing value changed. The inspection typed and selected nothing.
+    - What reacted to the click is not inferred.
+  - **Not reached:** the remaining 5 targets, the unmatched controls `u1`–`u5`, including the
+    required `u1` and `u2`.
+- **Mapping:** as in run #9. 19 fields are mapped uniquely, `location` is absent, and
+  `latitude`/`longitude` are not observable.
+  - The page has 1 form, 12 comboboxes, 2 file inputs and no frames.
+  - The original extractor still raises `ExtractionError` (no `name` attributes), as in every
+    run.
+- **What it shows, and what it does not:**
+  - **Language files loaded: no.** None was allowed, so none loaded. The run did not test
+    whether the dropdowns wait on them. The language-file explanation is neither confirmed nor
+    ruled out.
+  - **Dropdowns opened: not shown.** 6 of 7 had no opening evidence within the adapter's 1.5 s,
+    with their locale requests still refused; run #9 saw the same at 600 ms. `q11`'s class hint
+    is not evidence that a list opened.
+  - **The real locale paths do not fit the approved rule** (`/locales/<segment>/<segment>.json`,
+    each segment 1–32 of `[A-Za-z0-9_-]`). The summary could not say why: a dot in a name, a
+    longer segment or another character. That is the "known limit of the rule" recorded in
+    the proposal before the run.
+  - **The page differs from run #9:** 41 requests instead of 26, script hosts not seen then (a
+    reCAPTCHA host and a withheld one), and the requests to other Greenhouse hosts on `q11`.
+  - **Exposure:** no candidate data and no form data was sent. As with any public page load,
+    Greenhouse and its CDN received ordinary connection metadata from the GitHub-hosted runner:
+    its IP address, request headers such as the user agent, and timing, for the page, its
+    scripts and stylesheets, and the 3 API GETs. That is not zero disclosure.
+- **Follow-up (local only; no request):** the summary now says which properties of a refused
+  locale path failed (D107). No further run is approved.
+
 ## Log cleanup (run #3's logs deleted with authorization; runs #1 and #2 untouched)
 
 Manual "Greenhouse read-only check" runs. None has artifacts: the workflow uploads none and

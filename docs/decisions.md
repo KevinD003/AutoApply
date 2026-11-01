@@ -3151,3 +3151,42 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   - Items approved at different times expire at different times.
   - Nothing is ever all-or-nothing, and nothing is queued (tested).
 - **Unchanged:** every gate; `SCHEMA_VERSION` (3); no migration.
+
+## D107 — Read-only path B run once (run #10): no locale file allowed; path refusals made explainable (2026-11-01)
+
+- **Why:** the owner, on 2026-11-01: "I approve one read-only run B (inspect_widgets_locales)
+  of the Greenhouse read-only check on branch readonly-inspect-a8d07af, single use, within the
+  Path B limits in docs/greenhouse-readonly-compatibility-proposal.md." It also said: "This
+  approval does not authorize another live run, applicant-data disclosure, uploads,
+  submission, or a live-support upgrade."
+- **Run:** manual run #10 (Actions run 41279694718), from `readonly-inspect-a8d07af`.
+  - Head SHA `a8d07af`, verified before dispatch and in the run record; CI #147 passed on it.
+  - Only `inspect_widgets_locales` was enabled.
+  - Result: a policy stop, exit 7. Record: `docs/greenhouse-compatibility-report.md`.
+- **What it showed:**
+  - The approved rule allowed **no** locale request: all 12 failed its `path` element. So the
+    run did not test whether the dropdowns wait on the language files, and that explanation
+    stays open.
+  - 6 of the 7 dropdowns reached were `not_opened` within the adapter's 1.5 s.
+  - On `q11` the page reacted, with a class-name hint, a hidden control and requests to other
+    Greenhouse hosts. Its POST was blocked before sending and stopped the inspection, as the
+    approved scope says.
+  - Readiness is unchanged: 0 of 7.
+- **Decided:**
+  - **No retry and no wider rule.** The run is used up. A rule that fits the real locale paths
+    would be a new reviewed change, and running it a new approval. Neither is requested.
+  - **The next justified local work is diagnostic.** "path" alone could not say why the real
+    paths failed. A refused locale path now records which properties failed (`unprintable`,
+    `prefix`, `segments`, `extension`, `dots`, `characters`, `length`) and a bucket of its
+    longest segment's length (`0-32`, `33-64`, `65-128`, `129+`). It never records the path, a
+    segment or an exact length (`gh_readonly.locale_path_detail`; summary key
+    `inspection.locale_path_refusals`).
+    - It allows nothing: `locale_refusal` and the context layer's path rule are unchanged.
+    - The pinned branch was not moved.
+  - **The pilot is unaffected.** It never gets the locale exception (`live.subresources`).
+    `dropdowns.verify` refuses any data request made during a dropdown action. So `q11`'s
+    behaviour on a real rehearsal would stop the attempt before anything is entered.
+    `_data_refusal` refuses any data request during the action, whatever its origin or method.
+    The test is `test_greenhouse_controls.py`,
+    `test_on_a_destination_that_is_not_a_stand_in_they_stop_before_anything_is_entered`, with
+    a same-origin GET; the code makes no exception for other origins.

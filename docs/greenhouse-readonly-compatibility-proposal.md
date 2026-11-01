@@ -573,9 +573,10 @@ for every control (attachments included), and path shapes of the refused data re
 ## Next decision point — two alternatives, neither authorized
 
 **Update (2026-10-21):** the owner chose A, carried out by the owner in their own browser;
-B remains unauthorized (`docs/implementation-status.md`).
+B remained unauthorized until 2026-11-01, when the owner approved it for one run (run #10, below).
 
-Run #9 is the last external activity. Neither path below runs without explicit approval.
+Path B ran once, as manual run #10 on 2026-11-01 (below); it is the last external activity.
+Path A still waits on the owner. Nothing below runs again without a new, explicit approval.
 
 ### A. Manual structural feedback (recommended first)
 
@@ -596,7 +597,7 @@ Run #9 is the last external activity. Neither path below runs without explicit a
 | Hundreds of options | likely partial or virtualized rendering | none: stays unsupported (no scrolling) |
 | Locale files load in your browser | consistent with the locale-gate hypothesis | path B |
 
-### B. Narrow locale-resource observation (only if A, or your judgement, points at it)
+### B. Narrow locale-resource observation — approved 2026-11-01 for one run; run once as manual run #10 (authorization used)
 
 - **Technical basis:** all 11 data requests refused in run #9 have one shape. The widgets
   showed no DOM reaction to clicks. A locale-gated fixture reproduces that signature under
@@ -620,12 +621,12 @@ Run #9 is the last external activity. Neither path below runs without explicit a
 - **What it would answer:** whether the widgets react to a click once their locale files
   load. Opening them would still not mean that filling or submission works.
 
-#### Implemented and tested locally (2026-11-01); not run, not approved
+#### Implemented and tested locally (2026-11-01); run once as manual run #10
 
-Nothing below has been run against Greenhouse or any real site. The run itself still needs
-**the owner's explicit single-use approval** and **a pinned revision on which CI has passed**,
-dispatched from a branch created at exactly that revision, as for runs #8 and #9. Neither
-exists yet.
+The run needed **the owner's explicit single-use approval** and **a pinned revision on which
+CI has passed**, dispatched from a branch created at exactly that revision, as for runs #8 and
+#9. Both existed on 2026-11-01: the approval (D107), and the branch `readonly-inspect-a8d07af`
+at `a8d07af`, on which CI #147 passed. The description below is the code as it ran.
 
 - **Flag:** `--inspect-widgets-locales` (manual workflow input `inspect_widgets_locales`,
   default off). It is `--inspect-widgets` with exactly the exception above. Every earlier mode
@@ -742,7 +743,9 @@ exists yet.
   `common.3f2a.json`). A real file like that is refused by this exact rule. The summary would
   then show it under `locale_refusals.path`, and the dropdowns would stay closed. Widening the
   rule would be a separate decision.
-- **The request (send back, or say no; not approved):**
+  - **Run #10 hit this limit:** all 12 locale-shaped requests failed `path`, none was allowed,
+    and the dropdowns stayed closed (see "Result of run #10" below).
+- **The request (approved 2026-11-01 for one run, and used by run #10):**
 
 > I approve one `inspect_widgets_locales` run on the existing approved posting (secret
 > `GH_READONLY_POSTING`), dispatched from a branch created at the pinned revision `<sha>`
@@ -754,6 +757,28 @@ exists yet.
 > 1500 ms settle window and a 50 s inspection budget; all other limits as in run #9. No
 > option selection, typing, upload, location search, OTP, candidate data or submission. Locale
 > responses are never retained or printed. Run once; do not retry; report anonymously.
+
+#### Result of run #10 (2026-11-01): policy stop; no locale file allowed
+
+Full record: `docs/greenhouse-compatibility-report.md`, "Locale observation, path B (manual
+run #10)".
+
+- **Language files loaded: no.** The rule allowed 0 requests. All 12 locale-shaped fetches were
+  refused on `path`, so the real file paths do not fit `/locales/<segment>/<segment>.json`
+  (segments 1–32 of `[A-Za-z0-9_-]`). Whether the dropdowns wait on those files was **not
+  tested**. The explanation is neither confirmed nor ruled out.
+- **Dropdowns opened: not shown.**
+  - 6 of the 7 reached were `not_opened` within 1.5 s.
+  - `q11` was classed `opened_options_not_observable` on a class-name hint only. During that
+    action the page tried a POST to another Greenhouse host; it was blocked before sending
+    and stopped the inspection (exit 7).
+  - `u1`–`u5` were not reached.
+- **What follows, locally:** the summary now records which properties of a refused locale path
+  failed, never the path itself: `unprintable`, `prefix`, `segments`, `extension`, `dots`,
+  `characters` or `length`, plus a length bucket of its longest segment
+  (`inspection.locale_path_refusals`). The rule is unchanged, and the pinned branch is unchanged.
+- **What would need a new approval:** any further run, including one that only collects the new
+  detail. Any wider rule would also be its own reviewed change. Neither is requested here.
 
 ## Deliverable: the comparison (once A/B are separately approved and run)
 

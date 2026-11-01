@@ -5,10 +5,10 @@ but real filling and submission remain disabled.
 
 This is not a claim that Greenhouse is supported. Everything marked "real page" is from one
 anonymous public posting, observed read-only at load, with clicks and Escapes on its dropdowns
-only (run #9). No candidate data, typing, selection, upload, login, verification code or
+only (runs #9 and #10). No candidate data, typing, selection, upload, login, verification code or
 submission has ever been sent to a real page.
 
-Primary evidence: `docs/greenhouse-compatibility-report.md` (runs #3–#9);
+Primary evidence: `docs/greenhouse-compatibility-report.md` (runs #3–#10);
 `docs/evidence-matrix.md` (fixture tests); `docs/provider-architecture.md` §8.
 
 ## Support matrix
@@ -46,6 +46,10 @@ Where each row's evidence lives:
 - **Dropdowns.**
   - Run #9: all 12 `not_opened`, meaning no opening evidence within 600 ms of a click on the
     control, and 0 DOM change.
+  - Run #10 (path B, 1.5 s): no locale file was allowed, because all 12 real requests failed the
+    rule's path element. 6 of the 7 dropdowns reached were `not_opened`. `q11` showed only a
+    class-name hint, and the page tried a POST to another Greenhouse host, which was blocked and
+    stopped the run. Whether the lists wait on the locale files was not tested.
   - Strategies (D31) are fixture-only: `tests/test_dropdown_strategies.py`.
 - **Location picker.** The job data asks for `location` plus required hidden `latitude` and
   `longitude`. No location control was found on the page, and the coordinates are
@@ -169,7 +173,7 @@ condition. `tests/test_pilot_readiness.py` fails when this table and the code di
 
 | Condition | Status | Evidence |
 |---|---|---|
-| `dropdowns` | not met | `custom_dropdowns` is `fixture` for the pilot; run #9 (600 ms, every data request refused, the page's own locale files included) saw no list open; Path A pending |
+| `dropdowns` | not met | `custom_dropdowns` is `fixture` for the pilot; run #9 (600 ms, every data request refused) saw no list open; run #10 (path B) allowed no locale file, since the real paths failed the rule, so it tested nothing about them; Path A pending |
 | `unmatched_required_controls` | not met | no mapping rule exists for `u1` or `u2` on a real page (D104's phone country rule runs on local stand-ins only); Path A pending |
 | `location` | not met | the pilot has no `location_picker` (D104's search is a local stand-in only, refused on a real page) |
 | `real_upload` | not met | `file_upload` is `fixture`; met only by a rehearsal record that still holds on a real destination; none can exist: permissions 1-3 are not recorded |
@@ -208,9 +212,10 @@ authorized, are:
 - **A:** your manual structural feedback (`docs/manual-dropdown-checklist.md`). No automated
   access.
 - **B:** run #9's scope with only the locale JSON files permitted, with the adapter's 1500 ms
-  settle window. This tests whether the widgets are waiting on them. Built and tested locally
-  on 2026-11-01 (`--inspect-widgets-locales`, D106); not run and not approved. It needs the
-  owner's single-use approval and a pinned revision with passing CI. Readiness is unchanged
+  settle window. Approved once and run as run #10 on 2026-11-01 (D107). Its exact rule allowed
+  none of the real locale files, so it did not answer whether the widgets wait on them. The
+  summary now names which properties of a refused path failed. A rule that fits the real paths,
+  and running it, would each need their own review and approval. Readiness is unchanged
   (0 of 7).
 
 See "Next decision point" in `docs/greenhouse-readonly-compatibility-proposal.md`.

@@ -97,12 +97,15 @@ PATHS: dict[str, dict] = {
     "dropdowns": {
         "needs": ["observation", "code"],
         "why": "custom_dropdowns is fixture-only for the pilot; run #9 (600 ms window, every "
-        "data request refused, including the page's own locale files) saw no list open",
-        "next_action": "the owner's manual checklist (Path A, own browser), then one "
-        "single-use read-only run B: locale files permitted, the adapter's 1.5 s window",
-        "independent": "run B's request rule and its tests; after a run that shows the lists "
-        "opening, a fixture mirroring it and a reviewed change raising custom_dropdowns",
-        "owner": "Path A answers; a single-use approval of run B",
+        "data request refused) saw no list open; run #10 (path B, 1.5 s) allowed no locale "
+        "file, since the real locale paths failed the approved rule, so it did not test whether "
+        "the lists wait on them, and 6 of the 7 dropdowns it reached showed no opening evidence",
+        "next_action": "the owner's manual checklist (Path A, own browser); any further "
+        "read-only run needs a rule that fits the real locale paths and its own approval",
+        "independent": "the summary now names which properties of a refused locale path failed "
+        "(D107); after evidence that the lists open, a fixture mirroring it and a reviewed "
+        "change raising custom_dropdowns",
+        "owner": "Path A answers; any further read-only run is a separate approval",
         "enforced_by": "dropdowns.verify before the disclosure gate: a list it cannot open, "
         "read completely and match exactly stops the attempt before anything is entered",
         "verified_by": "tests/test_dropdown_strategies.py; tests/test_pilot_readiness.py",
@@ -111,10 +114,10 @@ PATHS: dict[str, dict] = {
         "needs": ["observation", "code"],
         "why": "u1 (in the phone group) and u2 are required and match no question; their kind "
         "was never observed, and no rule maps them on a real page",
-        "next_action": "Path A questions 8a and 8b; then run B, which opens u1 and u2 read-only",
+        "next_action": "Path A questions 8a and 8b (run #10 stopped before reaching u1 and u2)",
         "independent": "once their kind is observed: a fixture mirroring them, a mapping rule "
         "for that structure on real pages, its tests, a reviewed change",
-        "owner": "Path A answers; the run B approval",
+        "owner": "Path A answers",
         "enforced_by": "capture refuses a required control the job data does not list (E3); "
         "one that appears after approval stops the attempt before disclosure",
         "verified_by": "tests/test_greenhouse_dom.py (unlisted dropdowns); "
@@ -179,7 +182,8 @@ PATHS: dict[str, dict] = {
         "why": "the reviewed real-destination entry exists (D102); the capabilities a real "
         "application uses are still at fixture level, and only their own real evidence can "
         "raise them",
-        "next_action": "after run B, the first real rehearsal and submission: a reviewed change "
+        "next_action": "after evidence that the dropdowns open, the first real rehearsal and "
+        "submission: a reviewed change "
         "raising exactly the capabilities whose evidence then exists",
         "independent": "that change and its tests, once the evidence exists; never before",
         "owner": "nothing beyond the steps that produce the evidence",

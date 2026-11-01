@@ -151,6 +151,41 @@ def test_each_rule_element_is_refused_when_violated(receiver, cfg, why):
     assert set(ins["locale_refusals"]) == {why} and ins["locale_refusals"][why] >= 2
     assert ins["locale_requests_allowed"]["total"] == 0
     assert w["requests_during"]["data_refused"] >= 1
+    lp = ins["locale_path_refusals"]  # run #10: why the path failed, never the path itself
+    if why == "path":
+        assert lp["total"] == ins["locale_refusals"]["path"] and lp["properties"]
+        assert sum(lp["longest_segment"].values()) == lp["total"]
+    else:
+        assert lp == {"total": 0, "properties": {}, "longest_segment": {}}
+    assert sent(receiver) == [("GET", JOB_PATH)], sent(receiver)
+    nothing_disclosed(receiver)
+
+
+@pytest.mark.parametrize(
+    "path,props,bucket",
+    [
+        ("/locales/en/common.6f8a2c1d.json", {"dots"}, "0-32"),  # a content hash in the name
+        (f"/locales/en/{'a' * 40}.json", {"length"}, "33-64"),
+        (f"/locales/{'a' * 70}/common.v2.json", {"dots", "length"}, "65-128"),
+    ],
+    ids=["hashed_name", "long_name", "long_and_dotted"],
+)
+def test_a_path_refusal_says_which_properties_failed_and_nothing_more(receiver, path, props,
+                                                                      bucket):  # fmt: skip
+    """Run #10 refused all 12 locale-shaped requests on the path, and "path" alone could not say
+    why. The summary now counts which properties failed and a bucket of the longest segment's
+    length; the request is still refused before it is sent, and no path text is published."""
+    obs = observe(receiver, limits=ONE, locale_path=path)
+    ins = obs["inspection"]
+    n = ins["locale_refusals"]["path"]
+    assert n >= 2 and set(ins["locale_refusals"]) == {"path"}
+    want = {"total": n, "properties": {p: n for p in props}, "longest_segment": {bucket: n}}
+    assert ins["locale_path_refusals"] == want
+    assert {w["open_state"] for w in ins["widgets"]} == {"not_opened"}
+    pub = ro.publishable(api(), {"name": "x"}, JOB, obs)
+    text = ro.guard(pub, ro.sensitive_values(BOARD, JOB, api(), None))
+    for leaked in ("6f8a2c1d", "a" * 33, "common", "/locales/en/"):
+        assert leaked not in text, leaked
     assert sent(receiver) == [("GET", JOB_PATH)], sent(receiver)
     nothing_disclosed(receiver)
 
@@ -323,6 +358,55 @@ def test_each_element_is_checked(url, why):
 
 
 @pytest.mark.parametrize(
+    "path,props,bucket",
+    [
+        ("/locales/en/common.json", [], "0-32"),
+        (f"/locales/{'a' * 32}/{'B' * 32}.json", [], "0-32"),
+        ("/locales/en/common.6f8a2c1d.json", ["dots"], "0-32"),
+        ("/locales/en/x.v2.json", ["dots"], "0-32"),
+        (f"/locales/en/{'a' * 33}.json", ["length"], "33-64"),
+        (f"/locales/{'a' * 64}/x.json", ["length"], "33-64"),
+        (f"/locales/en/{'a' * 65}.json", ["length"], "65-128"),
+        (f"/locales/en/{'a' * 129}.json", ["length"], "129+"),
+        ("/locales//x.json", ["length"], "0-32"),
+        ("/locales/en/x/y.json", ["segments"], "0-32"),
+        ("/locales/en.json", ["segments"], "0-32"),
+        ("/locales/en/x.js", ["extension"], "0-32"),
+        ("/locales/en/x.JSON", ["extension"], "0-32"),
+        ("/locales/en/x", ["extension"], "0-32"),
+        ("/locales/en/x.json.map", ["extension", "dots"], "0-32"),
+        ("/locales/en/x%20y.json", ["characters"], "0-32"),
+        ("/locales/%2e%2e/x.json", ["characters"], "0-32"),
+        ("/locales/en~1/x+y.json", ["characters"], "0-32"),
+        ("/locales/../en/x.json", ["segments", "dots"], "0-32"),
+        ("/Locales/en/x.json", ["prefix"], "0-32"),
+        (f"/cdn/{'a' * 40}/x.json", ["prefix"], "33-64"),
+    ],
+)
+def test_a_path_refusal_names_the_properties_that_failed(path, props, bucket):
+    assert ro.locale_path_detail(f"{REAL}{path}") == (props, bucket)
+
+
+def test_a_url_outside_printable_ascii_is_named_as_such():
+    assert ro.locale_path_detail(f"{REAL}/locales/en/x.json\n") == (["unprintable"], "0-32")
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/locales/en/x.json", "/locales/en-US/job_board.json", "/locales/en/x.v2.json",
+     f"/locales/en/{'a' * 33}.json", "/locales/en/x/y.json", "/locales/en.json",
+     "/locales//x.json", "/locales/en/x.json/", "/locales/en/x.js", "/locales/en/x.JSON",
+     "/locales/en/x.json.map", "/locales/en/x", "/locales/en/x%20y.json", "/locales/%2e%2e/x.json",
+     "/Locales/en/x.json", "/cdn/locales/en/x.json", "/locales/../en/x.json"],
+)  # fmt: skip
+def test_the_detail_explains_exactly_the_path_refusals(path):
+    """Never an unexplained "path" refusal, and never a property for a path the rule allows."""
+    url = f"{REAL}{path}"
+    props, _ = ro.locale_path_detail(url)
+    assert bool(props) == (ro.locale_refusal(ro._locale_rule(), url, "GET", "fetch") == "path")
+
+
+@pytest.mark.parametrize(
     "kw,why",
     [
         ({"method": "POST"}, "method"),
@@ -387,5 +471,8 @@ def test_the_printed_rule_and_limits_pass_the_guard():
     assert ro._STOP_TEXT.fullmatch(f"Stop: {ro.LOCALE_REDIRECTED}")
     ro.guard({"limits": asdict(ro.LOCALE_LIMITS), "mode": "inspect_widgets_locales",
               "locale_refusals": {k: 1 for k in ("origin", "path", "query", "method",
-                                                 "resource_type", "initiator", "redirect")}},
+                                                 "resource_type", "initiator", "redirect")},
+              "locale_path_refusals": {
+                  "total": 1, "properties": {p: 1 for p in ro.LOCALE_PATH_PROPERTIES},
+                  "longest_segment": {b: 1 for b in ("0-32", "33-64", "65-128", "129+")}}},
              set())  # fmt: skip
