@@ -687,6 +687,18 @@ None of them means "absent".
     refused, opened 0 of the 7 mapped dropdowns. Here, with the files loaded, all opened. That
     strongly supports the locale gate. It does not prove it alone: the page also differs between
     the runs (41 vs 24 requests, 12 vs 13 dropdowns), and this was one combined experiment.
+  - **Correction (2026-11-01, D111):**
+    - **Causality:** on this posting, locale loading and opening at an ordinary click were
+      observed together. The experiment did not establish that the first caused the second.
+    - **Compliance:** the approval said the run would stop on any non-GET request. A POST at
+      page load was reported blocked but did not stop it, and its 24 actions followed.
+      Run #11 did not comply with that stop condition. Its observations are kept as
+      observations, not as evidence of protocol compliance.
+    - **"Nothing was transmitted"** above rests on the run's own record of what it blocked;
+      no independent observer checked it.
+    - The wording above ("an imprecise description … not a change in the code") is kept as
+      written on 2026-10-31; this correction supersedes it.
+    - Fixed in code: D111, and the proposal's dated correction.
   - **Not shown:** that selecting an option, typing, uploading or submitting works, or how the
     pilot would behave. The pilot still refuses the locale files.
 - **Exposure:** no applicant or form data was sent. As for any page view, Greenhouse and its CDN

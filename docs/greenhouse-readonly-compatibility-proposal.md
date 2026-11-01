@@ -804,9 +804,30 @@ run #10)".
 | Refused before sending | every other data request (incl. `boards.greenhouse.io`, `my.greenhouse.io`), every non-GET (incl. the `c.spl.greenhouse.io` POST, which stops the run), other hosts, fonts and images |
 | Interactions | per dropdown present at load: one click on the control; only if that shows no opening and a react-select container exists, one click on the container; one Escape after each click. Nothing typed, selected, uploaded or submitted; no login |
 | Limits | 1.5 s settle per action; at most 40 actions and 80 s of inspection; 120 s observation, 180 s run, 200 s outer kill; 150 page requests, 20 MB |
-| Stops | during an inspection action: any non-GET request; a value change, selection, or control added or removed; a submission attempt; a dialog or file chooser; a challenge; a navigation or address change; a redirected locale request. At any time: any budget. A non-GET at page load is blocked before sending and recorded; it does not stop the run (as in every mode since path B). Not retried |
+| Stops | any non-GET request; a value change, selection, or control added or removed; a submission attempt; a dialog or file chooser; a challenge; a navigation or address change; a redirected locale request; any budget. Not retried |
 | Applicant data | none: no field is filled; the page and the CDN see ordinary connection metadata from the GitHub runner (address, user agent, timing) |
 | Evidence | the anonymous summary only: per dropdown its open state, `opened_by`, the separate observations (D108), react-select markup as booleans; allowed locale requests with their outcome classes and path shapes; refusal counts with path properties (D107). No URL, name, class name, value or body |
+
+**Correction (2026-11-01, D111; the approved scope above is left as it was approved):**
+- **Authorized:** the run stops on "any non-GET request", together with the other listed stops.
+- **Implemented at the pinned revision:**
+  - a non-GET request made during an inspection action stopped the run;
+  - one made while the page loaded was blocked before sending and recorded, but did **not** stop
+    the run.
+  This was the behaviour of every mode since path B, and it was not disclosed in the request.
+- **What happened in run #11:** one POST fetch to `c.spl.greenhouse.io` at page load was
+  reported by the run's own summary as blocked (`blocked_non_get`). The run did not stop, and
+  then performed its 24 inspection actions.
+- **Limit on any compliance claim:** run #11 did not comply with the authorized stop condition.
+  The actions after that POST were outside the approved protocol.
+  - The record shows no request outside the approved rule being transmitted. That rests on the
+    run's own report of what it blocked, not on an independent observer.
+  - The observations stand as observations. They are not evidence that the protocol was
+    followed.
+- **Fixed in code (D111):** in every widget-inspection mode, a non-GET request now stops the
+  run wherever it happens. It is blocked before sending and the stop is latched at once; no
+  later request is sent and no action is taken. Tested against an independent listener for a
+  page-load beacon and a dropdown beacon.
 
 **What each result enables:**
 - **Files load (2xx) and the lists open at the control's click:**
@@ -840,7 +861,8 @@ run #10)".
 - Still open: `u1` (244 options, unmapped), `u3` (no readable options; a `my.greenhouse.io`
   request was refused), and location.
 - A telemetry POST at page load was blocked before sending and, as the code always did, did not
-  stop the run; the request had described the stops imprecisely (corrected above).
+  stop the run; the request had described the stops imprecisely. See the dated correction
+  above: the run did not comply with the authorized stop condition.
 - Full record: `docs/greenhouse-compatibility-report.md`, "Dropdown observation, path C".
 
 ## Deliverable: the comparison (once A/B are separately approved and run)

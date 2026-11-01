@@ -3342,3 +3342,6 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
     coordinates) and two unmapped required dropdowns, so capture would stop it. A first
     disclosure-only rehearsal needs a posting without them; the request lists every remaining
     prerequisite.
+- **Corrected 2026-11-01 by D111:** run #11 did not comply with the authorized stop on any
+  non-GET request. Its result shows locale loading and ordinary-click opening observed together,
+  not causation.
