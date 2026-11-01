@@ -147,7 +147,8 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                     "fh_rate_limit": 1000, "upload_fail_field": None, "upload_delay_s": 0.0,
                     "verify_drop": False, "inbox_mode": "normal", "email_codes": None,
                     # the v2 approximation's per-mode settings, so none leaks into the next test
-                    "dd": None, "delay_ms": 0, "locale_delay_ms": 0, "loc": None, "pc": None})
+                    "dd": None, "delay_ms": 0, "locale_delay_ms": 0, "loc": None, "pc": None,
+                    "locale_origin": None, "locale_path": None, "locale_via": None})
         return {"ok": True}
 
     @app.post("/_admin/inbox")

@@ -601,25 +601,159 @@ Run #9 is the last external activity. Neither path below runs without explicit a
 - **Technical basis:** all 11 data requests refused in run #9 have one shape. The widgets
   showed no DOM reaction to clicks. A locale-gated fixture reproduces that signature under
   the same policy. That is consistent with a locale gate, not proof of one.
-- **Proposed scope:** run #9's scope, with exactly one exception:
+- **Scope (as implemented; see below):** run #9's scope, with exactly one exception:
 
 | Item | Value |
 |---|---|
-| Host | `job-boards.cdn.greenhouse.io:443` only |
+| Host | `job-boards.cdn.greenhouse.io:443` only (`https`; no user info) |
 | Method | GET only |
 | Resource type | `fetch` only |
 | Path | `/locales/<segment>/<segment>.json`; each segment 1–32 of `[A-Za-z0-9_-]` |
-| Query string | none (a request with any query is refused) |
+| Query string | none (a request with any query, even an empty `?`, is refused) |
 | Redirects | none followed |
+| Initiator | the page's main frame only (narrower than first proposed; see "Redirects" below) |
 | Everything else | unchanged: other CDN data, fonts, images, other hosts and every other data request refused; no API calls beyond the 3 GETs |
-| Actions and limits | run #9's: at most 12 dropdowns, 24 click/Escape actions, all budgets and stops |
-| Privacy | locale responses are never retained or printed; only the guarded anonymous summary |
+| Actions and limits | run #9's (at most 12 dropdowns, 24 click/Escape actions, all budgets and stops), **except two timing values**: a 1500 ms settle window and a 50 s inspection budget (see "Timing") |
+| Privacy | locale responses are never read, retained or printed; only the guarded anonymous summary |
 | Excluded | answer selection, typing, uploads, location search, login, OTP, submission |
 
-- **Before such a run:** the exact path rule would have to be implemented and tested, and CI
-  passed on a pinned revision. None of that exists yet.
 - **What it would answer:** whether the widgets react to a click once their locale files
   load. Opening them would still not mean that filling or submission works.
+
+#### Implemented and tested locally (2026-11-01); not run, not approved
+
+Nothing below has been run against Greenhouse or any real site. The run itself still needs
+**the owner's explicit single-use approval** and **a pinned revision on which CI has passed**,
+dispatched from a branch created at exactly that revision, as for runs #8 and #9. Neither
+exists yet.
+
+- **Flag:** `--inspect-widgets-locales` (manual workflow input `inspect_widgets_locales`,
+  default off). It is `--inspect-widgets` with exactly the exception above. Every earlier mode
+  is unchanged, including its limits.
+- **The rule as code** (`gh_readonly.locale_refusal`, `gh_readonly._locale_rule()`). Every
+  element is fixed in code: no input or environment variable widens it, a real page accepts
+  only `_locale_rule()` (anything else is refused with `NotApproved`), and a local fixture may
+  change only the origin. A data request is allowed only if every element holds. Otherwise it
+  is refused before sending, like every other data request, and the first element it fails is
+  counted:
+
+| Element (checked in this order) | Allowed |
+|---|---|
+| `origin` | scheme `https`, host `job-boards.cdn.greenhouse.io`, port 443; no user name or password |
+| `path` | the whole path matches `/locales/[A-Za-z0-9_-]{1,32}/[A-Za-z0-9_-]{1,32}\.json` (case-sensitive, so `.JSON` fails); no whitespace or control character anywhere in the URL |
+| `query` | no `?` at all (not even an empty query), no fragment |
+| `method` | `GET` (a POST is already blocked by the method filter; HEAD is refused here) |
+| `resource_type` | `fetch` (`xhr`, `eventsource` and the rest are refused) |
+| `initiator` | the page's main frame (a child frame's or a worker's request is refused) |
+| `redirect` | not a redirect hop, whatever its target |
+
+- **Where it is enforced:**
+  - the page's request filter (`observe_page`'s `decide`), which checks every element above;
+  - the browser context's own interception layer, a second, coarser check: the exception is
+    passed as a `SubresourceRule` with a `path`, so origin, method, type, path and "no query"
+    are checked there too. The B3 rule for scripts and stylesheets is unchanged, and so is
+    the Greenhouse pilot's (`live.subresources`), which never gets the locale rule;
+  - the egress proxy and Chromium's host resolver, unchanged: they allow the same host as B3.
+- **Redirects:** the browser follows a redirect without asking the request filter. Playwright
+  continues a redirect hop by itself, and the isolated browser modes never fetch from the
+  driver (D86). So in this mode only, an init script gives every `fetch()` of the page
+  `redirect: 'error'` before any page script runs. A redirect response then fails the request,
+  and its target is never requested. Main-frame-only (above) keeps a child frame's own
+  `fetch()` out of the exception.
+  - Second layer: a redirect hop of an allowed locale request that is seen anyway stops the
+    observation (`Stop: a locale request was redirected`). This layer detects, it cannot
+    prevent; the test below shows both.
+- **Output:** the locale response is never read (the code reads status and sizes only; a test
+  checks it calls no body accessor). The anonymous summary adds only:
+  - `inspection.locale_requests_allowed`: total, at load, during actions, and path shapes with
+    the existing `PATH_WORDS` shaping (e.g. `/locales/*/*.json`);
+  - per widget, `requests_during.locale_allowed`;
+  - `inspection.locale_refusals`: refused data requests counted by the first rule element
+    they fail;
+  - `page.locale_requests_allowed`: a count;
+  - `locale_rule` and `limits`: the exception and every enforced limit, as printed by the run,
+    so an approval can quote them.
+- **Timing (this mode only; `gh_readonly.LOCALE_LIMITS`):**
+
+| Limit | Run #9 / `--inspect-widgets` (unchanged) | `--inspect-widgets-locales` |
+|---|---|---|
+| settle per action (`widget_settle_ms`) | 600 ms | **1500 ms** |
+| inspection time (`widget_seconds`) | 30 s | **50 s** |
+| widget actions | 24 | 24 |
+| observation / whole run / outer kill | 90 s / 150 s / 200 s | 90 s / 150 s / 200 s |
+| page requests, received data, retained DOM, output | 150, 20 MB, 2M characters, 256 KiB | the same |
+
+  - **Why 1500 ms:** it is the adapter's own bound (`execution/adapters/dropdowns.SETTLE_MS`;
+    a test checks that the two are equal). Run #9's 600 ms is shorter than what the adapter
+    waits, so it could not show whether a list opens within the adapter's bound.
+  - **Why 50 s:** each dropdown waits at least two settle windows (3 s). The time check
+    admits a dropdown only if its worst case (two 2 s click limits plus two windows, 7 s) still
+    fits. 11 × 3 s + 7 s = 40 s, so the twelfth starts within 50 s when clicks are as quick as
+    in run #9 (24 actions in 15.6 s at 600 ms). If clicks were much slower, the inspection
+    would stop with `inspection time budget reached`, reported and not retried. 50 s stays
+    inside the unchanged 90 s observation and 150 s run limits.
+- **Tests** (local fixture only; Chromium in its network namespace behind the egress proxy; the
+  CDN is the same receiver under another host name, so the receiver's request log is the
+  oracle; the locale-gated dropdowns of fixture mode `gh2_dd`/`locale_gate` are a FIXTURE
+  ASSUMPTION):
+  - `tests/test_locale_observation.py`:
+    - with the flag, a locale-gated dropdown opens and its list is observed and matches the
+      job data. Exactly the page and one `GET /locales/en/common.json` reach the receiver;
+    - without the flag, the same page shows run #9's signature (`not_opened`, the locale
+      request refused, never sent);
+    - each element violated in the browser is refused and never sent, and the dropdown stays
+      closed: another host, another port, HEAD, POST (blocked, and it stops the inspection),
+      XHR, a child frame's `fetch()`, a query string, an empty `?`, `../` (normalised and
+      percent-encoded), an extra or missing segment, a 33-character segment, `.js`, `.JSON`
+      and a dotted name;
+    - a redirect, even to a valid locale path, is not followed (its target never reaches the
+      receiver). With the page-side prevention removed, the followed hop stops the observation;
+    - no response body (a marker the fixture puts in the locale file and the page) appears in
+      the observation or the published summary, and no body accessor is called;
+    - the settle window equals the adapter's; earlier modes' limits are unchanged; the 50 s
+      budget admits 12 dropdowns inside the observation; an 800 ms list is missed at 600 ms and
+      read at 1500 ms;
+    - the rule, element by element, without a browser (allowed and refused URLs, methods,
+      types, initiator, redirect), and in the context layer;
+    - a real page takes only the approved rule, and a fixture may change only the origin.
+  - `tests/test_readonly_cli_process.py`: the flag as the workflow runs it, a fresh process:
+    exit 0, the printed `locale_rule` and `limits`, 3 API GETs + the page + 1 locale GET and
+    nothing else, no locale body in stdout.
+  - **Sabotage check:** each guard was broken once in the committed tree, the tests that
+    guard it were run, and the file was restored from git and checked clean. All 25
+    mutations made at least one test fail:
+    - origin: host, port, scheme, user info;
+    - path: segment length (33), segment count, extension, characters (dots, `%`), control
+      characters;
+    - query, method, resource type, initiator, and the redirect-hop element;
+    - the page's redirect prevention, and the stop on a followed hop;
+    - the context layer's path rule;
+    - the exception applied without the flag;
+    - a response body read and kept;
+    - the settle window differing from the adapter's; the earlier modes' settle window
+      changed; a 35 s inspection budget;
+    - a real page accepting another rule; a fixture changing more than the origin; the rule
+      outside widget inspection.
+
+    The scheme mutation first survived, because an `http` URL also failed the port check. A
+    case with the right port and the wrong scheme was added, and the mutation then failed it.
+- **Known limit of the rule:** run #9's path shape `/locales/*/*.json` hides two things: each
+  segment's length, and whether the file name contains a dot (e.g. a content hash such as
+  `common.3f2a.json`). A real file like that is refused by this exact rule. The summary would
+  then show it under `locale_refusals.path`, and the dropdowns would stay closed. Widening the
+  rule would be a separate decision.
+- **The request (send back, or say no; not approved):**
+
+> I approve one `inspect_widgets_locales` run on the existing approved posting (secret
+> `GH_READONLY_POSTING`), dispatched from a branch created at the pinned revision `<sha>`
+> after CI passed on it. It may make B3's 3 API GETs and one page load under B3's destinations
+> and methods, with every data request refused except GET `fetch` requests from the page's
+> main frame to `job-boards.cdn.greenhouse.io:443` for `/locales/<segment>/<segment>.json`
+> (each segment 1–32 of `[A-Za-z0-9_-]`), with no query string and no redirect followed. It
+> may then open and close each combobox present at load, at most 24 actions in total, with a
+> 1500 ms settle window and a 50 s inspection budget; all other limits as in run #9. No
+> option selection, typing, upload, location search, OTP, candidate data or submission. Locale
+> responses are never retained or printed. Run once; do not retry; report anonymously.
 
 ## Deliverable: the comparison (once A/B are separately approved and run)
 

@@ -29,6 +29,10 @@ on:
         description: "Only: B3 plus opening and closing each combobox present at load (no selection, typing or submission; data requests refused). NOT APPROVED: needs its own recorded approval"
         type: boolean
         default: false
+      inspect_widgets_locales:
+        description: "Only: path B, inspect_widgets with one exception (GET fetch of /locales/<segment>/<segment>.json from job-boards.cdn.greenhouse.io:443, no query, no redirect) and a 1500 ms settle window. NOT APPROVED: needs the owner's explicit single-use approval and a pinned revision with passing CI"
+        type: boolean
+        default: false
       identify_only:
         description: "Only: one page load with the same allow-list, no API requests; prints the exact blocked hosts (needs its own recorded approval)"
         type: boolean
@@ -60,8 +64,11 @@ jobs:
           IDENTIFY: ${{ inputs.identify_only && '--identify-only' || '' }}
           B3: ${{ inputs.b3 && '--b3' || '' }}
           INSPECT: ${{ inputs.inspect_widgets && '--inspect-widgets' || '' }}
+          LOCALES: ${{ inputs.inspect_widgets_locales && '--inspect-widgets-locales' || '' }}
         run: |
-          if [ -n "$INSPECT" ]; then
+          if [ -n "$LOCALES" ]; then
+            ./scripts/greenhouse-readonly-check.sh $LOCALES
+          elif [ -n "$INSPECT" ]; then
             ./scripts/greenhouse-readonly-check.sh $INSPECT
           elif [ -n "$B3" ]; then
             ./scripts/greenhouse-readonly-check.sh $B3

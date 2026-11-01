@@ -38,8 +38,9 @@ gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_laz
 filechooser, required, select, dialog, upload, hash, images, covered),
 gh2_widget_variants (cfg variant, delay_ms; see _VARIANTS_JS), gh2_required_unmarked,
 gh2_required_extra, gh2_required_marker_only, gh2_required_answered, gh2_required_group, gh2_required_cover_group,
-gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS), GET /locales/{lang}/{ns}.json (cfg
-locale_delay_ms), D104 stand-ins: gh2_phone_country (cfg pc; see PHONE_COUNTRIES),
+gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS; for dd locale_gate also locale_origin,
+locale_path, locale_via), GET /locales/{lang}/{ns}.json (cfg locale_delay_ms; lang "moved"
+redirects), D104 stand-ins: gh2_phone_country (cfg pc; see PHONE_COUNTRIES),
 gh2_loc_search (cfg loc; see _LOC_JS) with GET /gh2/{board}/jobs/{id}/places (a disclosure: the
 search text), GET|POST /gh2/{board}/jobs/{id}/dd-options/{qid}.json (dd late_*),
 gh2_cdn_app (cfg cdn,
@@ -546,7 +547,11 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 #   trigger_button  only a separate button next to the control opens it
 #   two_triggers    two such buttons (ambiguous)
 #   locale_gate     handlers are attached only after a locale file loads at page load; until
-#                   then each press retries that request and nothing opens
+#                   then each press retries that request and nothing opens. The locale file is
+#                   cfg locale_origin + locale_path (default: the page's own origin,
+#                   /locales/en/common.json), requested by cfg locale_via: fetch (default),
+#                   xhr, post, head, or iframe (fetch() of a same-origin child frame); its
+#                   marker string is put into the page (it must never reach any output)
 #   locale_on_open  opening requests a locale file, then shows the list
 #   delayed         busy first, options after delay_ms
 #   virtualized     only the first 5 options are rendered (aria-setsize says more)
@@ -567,7 +572,7 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 #   late_post       the options are requested with a POST
 _DD_JS = """
 (() => {
-  const DD = %DD%, DELAY = %DELAY%, BASE = %BASE%;
+  const DD = %DD%, DELAY = %DELAY%, BASE = %BASE%, LOCALE = %LOCALE%, VIA = %VIA%;
   const open = new Map();
   let seq = 0;
   const choose = (cb, o) => {
@@ -663,10 +668,29 @@ _DD_JS = """
   };
   const boxes = Array.from(document.querySelectorAll('input[role=combobox][data-options]'));
   if (DD === 'locale_gate') {
-    let ready = false;
-    const load = () => fetch('/locales/en/common.json').then((x) => {
-      if (!x.ok) throw new Error('locale'); return x.json();
-    }).then(() => { if (!ready) { ready = true; boxes.forEach(attach); } });
+    let ready = false, frame = null;
+    const get = () => {
+      if (VIA === 'xhr') {
+        return new Promise((ok, no) => {
+          const x = new XMLHttpRequest(); x.open('GET', LOCALE);
+          x.onload = () => (x.status === 200 ? ok(JSON.parse(x.responseText)) : no());
+          x.onerror = no; x.send();
+        });
+      }
+      let f = fetch;
+      if (VIA === 'iframe') {
+        if (!frame) { frame = document.createElement('iframe'); frame.hidden = true; document.body.append(frame); }
+        f = frame.contentWindow.fetch;
+      }
+      const init = VIA === 'post' ? {method: 'POST'} : VIA === 'head' ? {method: 'HEAD'} : {};
+      return f(LOCALE, init).then((x) => { if (!x.ok) throw new Error('locale'); return x.json(); });
+    };
+    const load = () => get().then((j) => {
+      if (ready) return;
+      ready = true;
+      document.documentElement.dataset.locale = (j.strings && j.strings.marker) || '';
+      boxes.forEach(attach);
+    });
     load().catch(() => {});
     for (const cb of boxes) cb.addEventListener('mousedown', () => { if (!ready) load().catch(() => {}); });
   } else {
@@ -774,8 +798,12 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
         if mode == "gh2_dd_extras":  # unmatched dropdowns, one required (FIXTURE ASSUMPTION)
             qs += _extra_dropdown("extra-1", "How did you hear about this job?",
                                   ["Job board", "Referral", "Other"], True)
+        locale = (cfg.get("locale_origin") or "") + (cfg.get("locale_path")
+                                                      or "/locales/en/common.json")
         qs += ("<script>" + _DD_JS.replace("%DD%", json.dumps(cfg.get("dd") or "click_popup"))
                .replace("%DELAY%", str(int(cfg.get("delay_ms") or 0)))
+               .replace("%LOCALE%", json.dumps(locale))
+               .replace("%VIA%", json.dumps(cfg.get("locale_via") or "fetch"))
                .replace("%BASE%", json.dumps(base)) + "</script>")
     if mode in ("gh2_widgets", "gh2_widget_variants"):
         # FIXTURE ASSUMPTIONS: two standalone labelled comboboxes not in the job data (one
@@ -839,6 +867,11 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
         f"structure; fictional employer.</p>{body}</body></html>")
 
 
+# In every locale file's body and, once loaded, in the page: a test checks it never reaches the
+# read-only check's output (path B never reads, keeps or prints a locale response).
+LOCALE_MARKER = "fixture-locale-body-0b7e"
+
+
 def mount(app, ledger, cfg, accept) -> None:
     def job_or_404(board, job_id):
         if (board, job_id) not in JOBS:
@@ -879,9 +912,15 @@ def mount(app, ledger, cfg, accept) -> None:
     @app.get("/locales/{lang}/{ns}.json")
     async def locale_file(lang: str, ns: str):  # FIXTURE ASSUMPTION: static translation strings
         # cfg locale_delay_ms: a slow locale file, as on a busy machine (the page is still
-        # loading when the form is first looked at).
+        # loading when the form is first looked at). Readable from another origin (the page
+        # asks the CDN stand-in for it in path B's tests). Lang "moved": a redirect to a path
+        # that is itself a valid locale file (path B never follows it).
+        cors = {"Access-Control-Allow-Origin": "*"}
+        if lang == "moved":
+            return RedirectResponse(f"/locales/en/{ns}.json", 302, headers=cors)
         await asyncio.sleep(int(cfg.get("locale_delay_ms") or 0) / 1000)
-        return JSONResponse({"locale": "fixture", "strings": {}})
+        return JSONResponse({"locale": "fixture", "strings": {"marker": LOCALE_MARKER}},
+                            headers=cors)
 
     @app.get("/gh2/{board}/jobs/{job_id}/places")
     async def places(board: str, job_id: str, q: str = ""):

@@ -21,7 +21,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -325,6 +325,18 @@ class Limits:
 
 LIMITS = Limits()
 
+# --inspect-widgets-locales (path B) only; every other mode keeps LIMITS, which earlier
+# approvals covered. Two values differ, nothing else:
+# - widget_settle_ms equals the adapter's bound (execution/adapters/dropdowns.SETTLE_MS, a
+#   test checks the equality): run #9's 600 ms is shorter than what the adapter waits, so it
+#   could not show whether a list opens within the adapter's own bound;
+# - widget_seconds: a dropdown starts only if its worst case (2 x (2 s click limit + 1.5 s) =
+#   7 s) still fits. The 11 before the 12th wait at least two settle windows each (33 s), so
+#   the 12th starts within 50 s with 10 s to spare for overheads; run #9's were about 0.1 s
+#   per dropdown (24 actions in 15.6 s at 600 ms). Inside observe_seconds and run_seconds,
+#   which are unchanged.
+LOCALE_LIMITS = replace(LIMITS, widget_settle_ms=1500, widget_seconds=50.0)
+
 
 def _b3_rules() -> tuple:
     from app.modules.execution.browser import SubresourceRule
@@ -339,6 +351,74 @@ def _b3_rules() -> tuple:
             frozenset({"script", "stylesheet"}),
         ),
     )
+
+
+# Path B (docs/greenhouse-readonly-compatibility-proposal.md, "B. Narrow locale-resource
+# observation"): the ONE data request --inspect-widgets-locales allows. Every element is fixed
+# in code; no input or environment variable can widen it, and a local test fixture may change
+# only the origin. Everything else stays refused exactly as in --inspect-widgets.
+LOCALE_ORIGIN = "https://job-boards.cdn.greenhouse.io"  # https, so port 443 only
+LOCALE_SEGMENT = r"[A-Za-z0-9_-]{1,32}"
+LOCALE_PATH = rf"/locales/{LOCALE_SEGMENT}/{LOCALE_SEGMENT}\.json"
+LOCALE_PATH_TEXT = "/locales/<segment>/<segment>.json, each segment 1-32 of [A-Za-z0-9_-]"
+LOCALE_METHODS = frozenset({"GET"})
+LOCALE_TYPES = frozenset({"fetch"})
+LOCALE_REDIRECTED = "a locale request was redirected"
+_DEFAULT_PORTS = {"https": 443, "http": 80}
+
+
+def _locale_rule(origin: str = LOCALE_ORIGIN, allow_private: bool = False):
+    """The exception as a dependency rule (SubresourceRule with a path limit), so the context's
+    own interception layer enforces origin, method, type, path and "no query" too."""
+    from app.modules.execution.browser import SubresourceRule
+
+    return SubresourceRule(origin, LOCALE_METHODS, LOCALE_TYPES, allow_private=allow_private,
+                           path=LOCALE_PATH)  # fmt: skip
+
+
+def locale_refusal(rule, url: str, method: str, resource_type: str, *, main_frame: bool = True,
+                   redirect_hop: bool = False) -> str | None:  # fmt: skip
+    """None if the request is the allowed locale request; otherwise the first rule element it
+    fails: origin (scheme, host and port exactly the rule's, no user info), path (LOCALE_PATH
+    in full; no whitespace or control character anywhere, which urlsplit would drop), query
+    (any, even an empty "?"; a fragment too), method (GET only), resource_type (fetch only),
+    initiator (the page's main frame only: the frame whose fetch() is given redirect: 'error'),
+    redirect (a redirect hop is never allowed, whatever its target)."""
+    try:
+        u, o = urlsplit(url), urlsplit(rule.origin)
+        same = (u.scheme, (u.hostname or "").lower(), u.port or _DEFAULT_PORTS.get(u.scheme)) == (
+            o.scheme, o.hostname, o.port or _DEFAULT_PORTS.get(o.scheme))  # fmt: skip
+    except ValueError:  # e.g. an unparsable port
+        return "origin"
+    if not same or u.username is not None or u.password is not None:
+        return "origin"
+    if re.fullmatch(LOCALE_PATH, u.path) is None or re.fullmatch(r"[!-~]+", url) is None:
+        return "path"
+    if "?" in url or u.query or u.fragment:
+        return "query"
+    if method not in LOCALE_METHODS:
+        return "method"
+    if resource_type not in LOCALE_TYPES:
+        return "resource_type"
+    if not main_frame:
+        return "initiator"
+    if redirect_hop:
+        return "redirect"
+    return None
+
+
+# --inspect-widgets-locales only. The browser follows a redirect without asking the request
+# filter (Playwright continues a redirect hop itself, and the isolated modes never fetch from
+# the driver), so before any page script runs, every fetch() the page makes is given
+# redirect: 'error': a redirect response then fails the request, and its target is never
+# requested. A redirect hop of a locale request seen anyway stops the observation.
+_NO_REDIRECT_JS = """(() => {
+  const f = window.fetch;
+  if (typeof f !== 'function') return;
+  window.fetch = function fetch(input, init) {
+    return f.call(window, input, Object.assign({}, init, {redirect: 'error'}));
+  };
+})();"""
 
 
 # An internal error inside the request filter: the request is refused and the run stops.
@@ -364,6 +444,7 @@ def observe_page(
     limits: Limits = LIMITS,
     subresources: tuple = (),
     inspect_widgets: bool = False,
+    locale_rule=None,
     fault: str | None = None,
 ) -> dict:
     """Permission B: ONE page load in the isolated browser, observe only.
@@ -379,6 +460,11 @@ def observe_page(
     resource types (SubresourceRule); still observe-only, and the same rules hold for requests
     the page's scripts start. Methods: GET only for the page origin; GET/HEAD only where a
     rule allows them; everything else is blocked before sending and recorded.
+    `locale_rule` (path B, --inspect-widgets-locales; widget inspection only): the one data
+    request widget inspection then allows (`locale_refusal`), with fetch() redirects disabled
+    in the page (_NO_REDIRECT_JS). A real page takes only `_locale_rule()`; a fixture may
+    change its origin and nothing else. Allowed locale requests are counted (path shapes only);
+    their responses are never read, kept or printed.
     `base` is for tests against the local fixture (a fixture origin). `fault` (fixture only,
     ignored otherwise) injects a failure for tests: "request_filter".
     Errors inside event handlers never escape (a raising handler would leave a request
@@ -400,6 +486,15 @@ def observe_page(
         raise NotApproved("only the approved dependency origin may be added to a real page")
     if inspect_widgets and not fixture and tuple(subresources) != _b3_rules():
         raise NotApproved("widget inspection of a real page runs only with the B3 policy")
+    if locale_rule is not None and (
+        not inspect_widgets
+        or (locale_rule.methods, locale_rule.resource_types, locale_rule.path)
+        != (LOCALE_METHODS, LOCALE_TYPES, LOCALE_PATH)
+        or (not fixture and locale_rule != _locale_rule())
+    ):
+        raise NotApproved(
+            "only the approved locale rule may be added, and only to widget inspection"
+        )
     if any(r.allow_private for r in subresources) and not fixture:
         raise NotApproved("a non-default page origin is allowed only for test fixtures")
     if not fixture and s.browser_isolation != "container":
@@ -428,6 +523,7 @@ def observe_page(
     seen = {"requests": 0, "navigations": 0, "received": 0}
     phase = ["load"]  # "load", or "action:<n>" while the widget inspection acts
     data_refused: list[dict] = []
+    locale_allowed: list[dict] = []  # path B: the allowed locale requests (shapes only)
     events: list[dict] = []
     stops: list[str] = []
     failed: list[dict] = []
@@ -440,7 +536,7 @@ def observe_page(
         left_ms(PAGE_SECONDS * 1000),
         isolation=s.browser_isolation,
         allow_private_destination=fixture,
-        subresources=tuple(subresources),
+        subresources=tuple(subresources) + ((locale_rule,) if locale_rule is not None else ()),
     ) as (page, log):
 
         def method_ok(request) -> bool:
@@ -463,6 +559,15 @@ def observe_page(
                 except Exception:  # noqa: BLE001 - already handled
                     pass
 
+        def locale_check(request) -> str | None:
+            try:
+                main = request.frame == page.main_frame
+            except Exception:  # noqa: BLE001 - no frame (e.g. a worker's request): refused
+                main = False
+            return locale_refusal(locale_rule, request.url, request.method,
+                                  request.resource_type, main_frame=main,
+                                  redirect_hop=request.redirected_from is not None)  # fmt: skip
+
         def decide(route, request):
             seen["requests"] += 1
             if fault == "request_filter":
@@ -470,17 +575,25 @@ def observe_page(
             if not method_ok(request):
                 blocked.append({"method": request.method, "path": urlsplit(request.url).path})
                 return route.abort()
+            locale = None
             if inspect_widgets and request.resource_type in DATA_REQUEST_TYPES:
                 # Widget inspection approves no data endpoint, GET included: a widget that
-                # needs one is reported as such, never given access.
+                # needs one is reported as such, never given access. Path B's one exception:
+                # the locale rule, element by element (locale_refusal).
                 u = urlsplit(request.url)
-                data_refused.append({"phase": phase[0], "resource_type": request.resource_type,
-                                     "kind": _category(u.netloc) if u.netloc else "no-host",
-                                     "host": u.hostname or "", "method": request.method,
-                                     "path_shape": path_shape(u.path),
-                                     "query_params": len([q for q in u.query.split("&") if q]),
-                                     "same_origin": _origin_of(request.url) == origin})  # fmt: skip
-                return route.abort()
+                entry = {"phase": phase[0], "resource_type": request.resource_type,
+                         "kind": _category(u.netloc) if u.netloc else "no-host",
+                         "host": u.hostname or "", "method": request.method,
+                         "path_shape": path_shape(u.path),
+                         "query_params": len([q for q in u.query.split("&") if q]),
+                         "same_origin": _origin_of(request.url) == origin}  # fmt: skip
+                why = locale_check(request) if locale_rule is not None else "origin"
+                if why is not None:
+                    if locale_rule is not None:
+                        entry["locale_check"] = why
+                    data_refused.append(entry)
+                    return route.abort()
+                locale = entry
             if request.is_navigation_request() and request.frame == page.main_frame:
                 if request.redirected_from is None:
                     seen["navigations"] += 1
@@ -493,10 +606,20 @@ def observe_page(
             if seen["received"] > limits.page_received_bytes:
                 stops.append("received data limit reached")
                 return route.abort()
+            if locale is not None:
+                locale_allowed.append(locale)  # counted; its response is never read
             return route.fallback()
 
         def on_request(request):
             # Redirect hops (seen here even when the browser follows them without a route).
+            if locale_rule is not None and request.redirected_from is not None:
+                # Path B: a locale request's redirect is prevented in the page
+                # (_NO_REDIRECT_JS); one that is followed anyway stops the observation.
+                r = request.redirected_from
+                while r.redirected_from is not None:
+                    r = r.redirected_from
+                if locale_refusal(locale_rule, r.url, r.method, r.resource_type) is None:
+                    stops.append(LOCALE_REDIRECTED)
             if not (request.is_navigation_request() and request.frame == page.main_frame):
                 return
             hops, r = 0, request
@@ -546,6 +669,8 @@ def observe_page(
         page.on("request", safe(on_request))
         page.on("requestfinished", safe(on_finished))
         page.on("requestfailed", safe(lambda r: failed.append(_failure(r, origin))))
+        if locale_rule is not None:
+            page.add_init_script(script=_NO_REDIRECT_JS)
         try:
             resp = page.goto(url, wait_until="load", timeout=left_ms(PAGE_SECONDS * 1000))
         except Exception:  # noqa: BLE001 - an aborted or stopped navigation; say which
@@ -589,6 +714,7 @@ def observe_page(
                 CHALLENGE_SELECTORS,
                 lambda: {"requests": seen["requests"], "blocked": len(blocked),
                          "failed": len(failed)},
+                locale_allowed=locale_allowed if locale_rule is not None else None,
             )  # fmt: skip
         frames = []
         for f in page.frames[1:]:
@@ -635,6 +761,8 @@ def observe_page(
         },
         "mapping": evidence,
         "inspection": inspection,
+        # Path B only (None otherwise): the allowed locale requests, shapes only.
+        "locale_allowed": locale_allowed if locale_rule is not None else None,
         "internal_errors": internal_errors,
     }
 
@@ -940,6 +1068,8 @@ def _page_summary(observed: dict) -> dict:
         "dom": dom or None,
         "frames": frames,
     }
+    if observed.get("locale_allowed") is not None:  # path B: a count, nothing else
+        page["locale_requests_allowed"] = len(observed["locale_allowed"])
     r = observed.get("rendering")
     if r is not None:
         page["rendering"] = {
@@ -1036,9 +1166,16 @@ INSPECTION_STOPS = frozenset({
     "the page address changed", "challenge", "dialog", "file_chooser",
     "a second top-level navigation was attempted", "page request budget reached",
     "received data limit reached", "redirected to another origin", "too many redirects",
-    FILTER_FAILED,
+    FILTER_FAILED, LOCALE_REDIRECTED,
 })  # fmt: skip
-_STATUSES = {"mapped", "mapped_via_group", "matched_via_attachment_group", "search_picker",
+# Path B: the limits table and the locale rule as printed, and why a data request failed it.
+LIMIT_NAMES = frozenset(asdict(LIMITS))
+LOCALE_WORDS = frozenset({
+    "inspect_widgets_locales", "limits", "locale_rule", "locale_requests_allowed",
+    "locale_allowed", "locale_refusals", "total", "path", "query", "redirects", "initiator",
+    "main_frame", "refused", "origin", "redirect", LOCALE_PATH_TEXT, *LIMIT_NAMES,
+})  # fmt: skip
+_STATUSES ={"mapped", "mapped_via_group", "matched_via_attachment_group", "search_picker",
              "protocol", "absent", "ambiguous", "type_mismatch", "label_mismatch"}  # fmt: skip
 _OUTPUT_WORDS = {
     # keys this module emits
@@ -1110,7 +1247,7 @@ _OUTPUT_WORDS = {
 VOCAB = frozenset(
     _OUTPUT_WORDS | STANDARD_NAMES | {f"{n}[]" for n in STANDARD_NAMES} | GH_TYPES
     | COMPLIANCE_TYPES | API_KEYS | INPUT_TYPES | METHODS | READY_STATES | RESOURCE_TYPES
-    | FRAME_KINDS | ERROR_NAMES | {t.value for t in gh.FieldType}
+    | FRAME_KINDS | ERROR_NAMES | {t.value for t in gh.FieldType} | LOCALE_WORDS
 )  # fmt: skip
 _ALIAS = re.compile(r"q\d{2,3}(\[\])?|u\d{1,2}")
 # Our own stop messages: the constants raised in this module, HTTP status codes only.
@@ -1121,7 +1258,7 @@ _STOPS = (
     "page request budget reached", "overall time limit reached",
     "a second top-level navigation was attempted", "too many redirects",
     "received data limit reached", "page larger than the retained-data limit",
-    FILTER_FAILED,
+    FILTER_FAILED, LOCALE_REDIRECTED,
 )  # fmt: skip
 _NOT_APPROVED = (
     "board token or job id has an unexpected shape",
@@ -1130,6 +1267,8 @@ _NOT_APPROVED = (
     "a real page is opened only in the isolated browser container",
     "only the approved dependency origin may be added to a real page",
     "widget inspection of a real page runs only with the B3 policy",
+    "only the approved locale rule may be added, and only to widget inspection",
+    "the locale exception needs the fixture dependency origin",
 )
 _STOP_TEXT = re.compile(
     rf"Stop: ({'|'.join(_STOPS)})|NotApproved: ({'|'.join(_NOT_APPROVED)})"
@@ -1233,8 +1372,9 @@ def path_shape(path: str) -> str:
 
 
 def refused_shapes(entries: list[dict]) -> list[dict]:
-    """Refused data requests grouped by printable host (else its category), method, type,
-    path shape and number of query parameters (names and values never kept)."""
+    """Refused data requests (and, in path B, the allowed locale requests) grouped by printable
+    host (else its category), method, type, path shape and number of query parameters (names
+    and values never kept)."""
     groups: dict[tuple, int] = {}
     for d in entries:
         host = d.get("host") or ""
@@ -1369,13 +1509,20 @@ def main(argv=None, capture_stderr: bool = False) -> int:
         help="--b3 plus, after load, opening and closing each combobox present at load "
         "(at most Limits.widget_actions actions); data requests refused; nothing selected",
     )
+    ap.add_argument(
+        "--inspect-widgets-locales",
+        action="store_true",
+        help="path B: --inspect-widgets with exactly one exception, GET fetch requests to "
+        "job-boards.cdn.greenhouse.io:443 for /locales/<segment>/<segment>.json (no query, no "
+        "redirect followed); LOCALE_LIMITS (settle window and inspection time) instead of LIMITS",
+    )
     a = ap.parse_args(argv)
     if capture_stderr:
         a.out.mkdir(parents=True, exist_ok=True)
         fd = os.open(a.out / "stderr.log", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         os.dup2(fd, 2)  # file descriptor level: child processes (the driver) inherit it
         os.close(fd)
-    watchdog = start_watchdog(LIMITS.run_seconds)
+    watchdog = start_watchdog(_limits(a).run_seconds)
     try:
         return _run(a)
     finally:
@@ -1436,6 +1583,19 @@ def _fixture_target() -> str | None:
     return base.rstrip("/")
 
 
+def _limits(a) -> Limits:
+    return LOCALE_LIMITS if a.inspect_widgets_locales else LIMITS
+
+
+def _fixture_locale_rule():
+    """Tests only: path B's rule with the fixture dependency origin (NOEFFORTS_READONLY_FIXTURE_
+    CDN) in place of the real one; every other element is the real rule's."""
+    cdn = os.environ.get("NOEFFORTS_READONLY_FIXTURE_CDN")
+    if not cdn:
+        raise NotApproved("the locale exception needs the fixture dependency origin")
+    return _locale_rule(cdn, allow_private=True)
+
+
 def _fixture_rules() -> tuple:
     from app.modules.execution.browser import SubresourceRule
 
@@ -1473,8 +1633,12 @@ def _run(a) -> int:
         board_json = json.loads((a.out / "board.json").read_text())
         sensitive = sensitive_values(board, job_id, api_json, board_json)
         page_stop, internal = None, False
-        b3 = a.b3 or a.inspect_widgets
+        inspect = a.inspect_widgets or a.inspect_widgets_locales
+        b3 = a.b3 or inspect
         rules = (_fixture_rules() if fx else _b3_rules()) if b3 else ()
+        locale = None
+        if a.inspect_widgets_locales:
+            locale = _fixture_locale_rule() if fx else _locale_rule()
         try:
             observed = (
                 observe_page(
@@ -1484,7 +1648,9 @@ def _run(a) -> int:
                     prefix="gh2" if fx else "gh",
                     api_json=api_json if (a.mapping or b3) else None,
                     subresources=rules,
-                    inspect_widgets=a.inspect_widgets,
+                    limits=_limits(a),
+                    inspect_widgets=inspect,
+                    locale_rule=locale,
                     fault=os.environ.get("NOEFFORTS_READONLY_FAULT") if fx else None,
                 )
                 if (a.observe or b3)
@@ -1502,20 +1668,31 @@ def _run(a) -> int:
                   **publishable(api_json, board_json, job_id, observed)}  # fmt: skip
         if page_stop:
             result["page_stopped"] = page_stop
-        if a.inspect_widgets:
-            result["mode"] = "inspect_widgets"
+        if inspect:
+            result["mode"] = "inspect_widgets_locales" if locale is not None else "inspect_widgets"
         if fx:
             result["target"] = "fixture"
-        result["outcome"] = outcome(a.inspect_widgets, observed, page_stop, internal)
+        result["outcome"] = outcome(inspect, observed, page_stop, internal)
         result["internal_errors"] = len((observed or {}).get("internal_errors", [])) + internal
-        if a.inspect_widgets:
+        if inspect:
             result["inspection_complete"] = result["outcome"] == "completed"
-        if rules:
+        if rules:  # a fixture's dependency origin is a local name: printed as "fixture"
             result["subresources"] = [
-                {"host": r.host_port[0], "port": r.host_port[1],
+                {"host": "fixture" if fx else r.host_port[0],
+                 "port": None if fx else r.host_port[1],
                  "methods": sorted(r.methods), "resource_types": sorted(r.resource_types)}
                 for r in rules
             ]  # fmt: skip
+        if locale is not None:
+            # Path B: the exception and every limit as enforced, so an approval can quote them.
+            result["locale_rule"] = {
+                "host": "fixture" if fx else locale.host_port[0],
+                "port": None if fx else locale.host_port[1],
+                "scheme": urlsplit(locale.origin).scheme,
+                "methods": sorted(locale.methods), "resource_types": sorted(locale.resource_types),
+                "path": LOCALE_PATH_TEXT, "query": "refused", "redirects": "refused",
+                "initiator": "main_frame"}  # fmt: skip
+            result["limits"] = asdict(_limits(a))
     except (NotApproved, Stop) as e:
         emit({"stopped": f"{type(e).__name__}: {e}"}, sensitive)
         return 2
@@ -1822,7 +1999,8 @@ def classify_open(pre: dict, post: dict, series: list[int], api_count: int | Non
 
 
 def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_refused,
-                       left_ms, challenge_selectors, counts) -> dict:  # fmt: skip
+                       left_ms, challenge_selectors, counts,
+                       locale_allowed=None) -> dict:  # fmt: skip
     """Open, then close, each combobox present at load (API-mapped ones first, then unmatched
     ones), within limits.widget_actions: one click on the control itself, one Escape. Never
     clicks anything else, never types, never selects an option. Per widget it records
@@ -1831,7 +2009,8 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
     and classifies the result (`classify_open`). Stops the inspection at the first selection or
     value change, submission attempt, file chooser, dialog, challenge, navigation attempt,
     address change or blocked non-GET request (e.g. an upload).
-    `counts()` returns {"requests", "blocked", "failed"} so far."""
+    `counts()` returns {"requests", "blocked", "failed"} so far. `locale_allowed` (path B only,
+    else None): the allowed locale requests so far, counted per action and in total."""
     from app.modules.preparation import greenhouse_dom as gdom
 
     fields = gh.schema_from_api(api_json).fields
@@ -1878,6 +2057,7 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
         before = page.evaluate(_STATE_JS)
         req = page.evaluate(gdom.REQUIRED_SIGNALS_JS, c.id)
         n_stops, n_data, base = len(stops), len(data_refused), counts()
+        n_locale = len(locale_allowed or ())
         shape = page.evaluate(_PRE_JS, c.id)
         pre = page.evaluate(_PROBE_JS, c.id)
         actions += 1
@@ -1983,6 +2163,8 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
                                 "blocked_non_get": now["blocked"] - base["blocked"],
                                 "failed": now["failed"] - base["failed"]},
         }  # fmt: skip
+        if locale_allowed is not None:
+            r["requests_during"]["locale_allowed"] = len(locale_allowed) - n_locale
         results.append(r)
         # The cause first (a refused navigation also replaces the page, changing values).
         if reason:
@@ -2010,7 +2192,7 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
     for w in results:
         s = w.get("open_state") or "skipped"
         states[s] = states.get(s, 0) + 1
-    return {
+    out = {
         "targets": len(targets),
         "actions": actions,
         "action_limit": limits.widget_actions,
@@ -2037,6 +2219,21 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
         "events": len(events),
         "action_seconds": round(time.monotonic() - started, 1),
     }  # fmt: skip
+    if locale_allowed is not None:
+        # Path B: counts and path shapes (PATH_WORDS shaping) of the allowed locale requests,
+        # and why each refused data request failed the locale rule (first failing element).
+        at_load = [d for d in locale_allowed if d["phase"] == "load"]
+        acting = [d for d in locale_allowed if d["phase"].startswith("action:")]
+        why: dict[str, int] = {}
+        for d in data_refused:
+            if "locale_check" in d:
+                why[d["locale_check"]] = why.get(d["locale_check"], 0) + 1
+        out["locale_requests_allowed"] = {
+            "total": len(locale_allowed), "at_load": len(at_load), "during_actions": len(acting),
+            "shapes_at_load": refused_shapes(at_load),
+            "shapes_during_actions": refused_shapes(acting)}  # fmt: skip
+        out["locale_refusals"] = why
+    return out
 
 
 # Last statement of the module: everything above is defined before main() runs as a script

@@ -25,6 +25,7 @@ In-process layers on top (defence in depth):
 """
 
 import os
+import re
 import shutil
 import socket
 import sys
@@ -71,21 +72,37 @@ class SubresourceRule:
     """One extra origin a page may load its dependencies from: exact origin, and only these
     methods and resource types. Used by the read-only observation and, on a real Greenhouse
     board, by the Greenhouse pilot (D102, live.subresources: the same one approved rule); every
-    other execution passes none. `allow_private` exists for local test fixtures only."""
+    other execution passes none. `allow_private` exists for local test fixtures only.
+    `path` (optional): a regular expression the request's path must match in full; a request
+    with any query string (even an empty one) does not match. Only the read-only check's
+    locale exception sets it (gh_readonly.LOCALE_PATH). Several rules may name one origin; a
+    request passes if any of them permits it."""
 
     origin: str  # scheme://host[:port], exact
     methods: frozenset
     resource_types: frozenset
     allow_private: bool = False
+    path: str | None = None
 
     @property
     def host_port(self) -> tuple[str, int]:
         u = urlsplit(self.origin)
         return (u.hostname or "").lower(), u.port or (443 if u.scheme == "https" else 80)
 
+    def permits(self, url: str, method: str, rtype: str) -> bool:
+        """Method, resource type and (if set) path; the origin is matched by the caller."""
+        if method not in self.methods or rtype not in self.resource_types:
+            return False
+        if self.path is None:
+            return True
+        return "?" not in url and re.fullmatch(self.path, urlsplit(url).path) is not None
+
 
 def _rules_by_origin(rules) -> dict:
-    return {_origin(r.origin): r for r in rules}
+    out: dict[str, tuple] = {}
+    for r in rules:
+        out[_origin(r.origin)] = out.get(_origin(r.origin), ()) + (r,)
+    return out
 
 
 def _free_port() -> int:
@@ -282,9 +299,11 @@ class RemoteBrowser:
     def open(self) -> str:
         self._check_runner()
         dest = [[self.host, self.port]]
-        extra = [list(r.host_port) for r in self.subresources]
+        # Several rules may name one origin (gh_readonly's locale exception): one entry each.
+        extra = [list(hp) for hp in dict.fromkeys(r.host_port for r in self.subresources)]
         private = (dest if self.allow_private else []) + [
-            list(r.host_port) for r in self.subresources if r.allow_private
+            list(hp)
+            for hp in dict.fromkeys(r.host_port for r in self.subresources if r.allow_private)
         ]
         self.proxy_session = self._proxy(
             "POST", "/sessions", {"allow": dest + extra, "allow_private": private}
@@ -467,17 +486,23 @@ def _install_interception(
     its proxy settings (container); every allowed request is left to the browser, so it can
     only leave through the egress proxy, which checks every hop and the address it reaches.
     `subresources`: a request to one of those origins passes only with one of its methods and
-    resource types; so must every redirect target."""
+    resource types (and path, if the rule limits it); so must every redirect target. A request
+    passed only by a path-limited rule has no redirect followed here; in netns and container
+    modes the browser follows redirects itself, so its caller must prevent them (gh_readonly
+    does, for the one path-limited rule that exists)."""
     rules = _rules_by_origin(subresources)
+
+    def matching(url: str, method: str, rtype: str):
+        """The rule permitting this request (one without a path limit first), or None."""
+        found = [x for x in rules.get(_origin(url), ()) if x.permits(url, method, rtype)]
+        return min(found, key=lambda x: x.path is not None, default=None)
 
     def permitted(url: str, method: str, rtype: str) -> bool:
         if not url.startswith(("http://", "https://")):
             return False
-        o = _origin(url)
-        if o == allowed:
+        if _origin(url) == allowed:
             return True
-        rule = rules.get(o)
-        return rule is not None and method in rule.methods and rtype in rule.resource_types
+        return matching(url, method, rtype) is not None
 
     def route(r):
         url, method, rtype = r.request.url, r.request.method, r.request.resource_type
@@ -502,7 +527,9 @@ def _install_interception(
             loc = resp.headers.get("location")
             if 300 <= resp.status < 400 and loc:
                 target = urljoin(url, loc)
-                if not permitted(target, method, rtype):
+                if matching(url, method, rtype).path is not None or not permitted(
+                    target, method, rtype
+                ):
                     log.blocked.append(target[:200])
                     return r.abort("blockedbyclient")
             log.allowed += 1

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -42,7 +43,7 @@ def _reset(receiver):
     receiver.config(mode="gh2_widgets")
 
 
-def run_cli(tmp_path: Path, **extra_env):
+def run_cli(tmp_path: Path, flag: str = "--inspect-widgets", **extra_env):
     """Returns (completed process, out dir, the process's browser work-directory prefix,
     seconds taken). Browser work directories are named ne-browser-<pid>-..."""
     out = tmp_path / "raw"
@@ -50,8 +51,7 @@ def run_cli(tmp_path: Path, **extra_env):
            "NOEFFORTS_READONLY_FIXTURE_BASE": BASE, **extra_env}  # fmt: skip
     t0 = time.monotonic()
     proc = subprocess.Popen(
-        [sys.executable, "-m", "app.modules.preparation.gh_readonly", "--out", str(out),
-         "--inspect-widgets"],
+        [sys.executable, "-m", "app.modules.preparation.gh_readonly", "--out", str(out), flag],
         cwd=ROOT / "backend", env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True,
     )  # fmt: skip
@@ -126,6 +126,44 @@ def test_injected_filter_failure_stops_at_once_and_fails_the_check(receiver, tmp
     got = sent(receiver)
     assert ("GET", JOB_PATH) not in got, got  # the navigation was refused, never sent
     assert {p for _, p in got} == API_PATHS
+    cleaned_up(out, prefix)
+
+
+def test_locale_mode_entry_point_completes_with_its_own_limits_and_one_exception(
+    receiver, tmp_path
+):
+    """Path B (--inspect-widgets-locales) as the workflow would run it: the fixture's
+    locale-gated dropdowns (FIXTURE ASSUMPTION) open once their one locale file is allowed from
+    the CDN stand-in. The summary states the exception and every limit; it counts the locale
+    request and never contains its body."""
+    cdn = BASE.replace("127.0.0.1", "localhost")  # the CDN stand-in: another host name
+    receiver.config(mode="gh2_dd", dd="locale_gate", locale_origin=cdn)
+    p, out, prefix, _ = run_cli(tmp_path, "--inspect-widgets-locales",
+                                NOEFFORTS_READONLY_FIXTURE_CDN=cdn)  # fmt: skip
+    res = public_output_is_clean(p)
+    assert p.returncode == ro.EXIT_COMPLETED, res
+    assert res["mode"] == "inspect_widgets_locales" and res["outcome"] == "completed"
+    assert res["inspection_complete"] is True and res["internal_errors"] == 0
+    assert res["limits"] == asdict(ro.LOCALE_LIMITS)
+    assert res["limits"]["widget_settle_ms"] == 1500 and res["limits"]["widget_seconds"] == 50.0
+    assert res["locale_rule"] == {
+        "host": "fixture", "port": None, "scheme": "http", "methods": ["GET"],
+        "resource_types": ["fetch"], "path": ro.LOCALE_PATH_TEXT, "query": "refused",
+        "redirects": "refused", "initiator": "main_frame"}  # fmt: skip
+    ins = res["inspection"]
+    assert ins["stopped"] is None and ins["targets"] == 3 and ins["actions"] == 6
+    assert {w["open_state"] for w in ins["widgets"]} == {"observed_sufficiently"}
+    assert ins["locale_requests_allowed"]["total"] == 1
+    assert ins["locale_requests_allowed"]["shapes_at_load"][0]["path_shape"] == (
+        "/locales/*/*.json"
+    )
+    assert res["page"]["locale_requests_allowed"] == 1
+    assert greenhouse_v2.LOCALE_MARKER not in p.stdout and "strings" not in p.stdout
+    got = sent(receiver)
+    assert {p for _, p in got} == API_PATHS | {JOB_PATH, "/locales/en/common.json"}, got
+    assert len(got) == 5 and all(m == "GET" for m, _ in got)
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
     cleaned_up(out, prefix)
 
 
