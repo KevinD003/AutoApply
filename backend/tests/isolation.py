@@ -33,6 +33,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection, make_url
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.pool import NullPool
 
 MARK = "noefforts-disposable-test"
@@ -99,6 +100,22 @@ def claim(url: str) -> Connection:
     return conn
 
 
+def _drop(conn: Connection, name: str) -> None:
+    """Drop one database, waiting at most LOCK_TIMEOUT. A plain DROP first: PostgreSQL itself
+    ends autovacuum workers on that database. WITH (FORCE) would have to terminate them, which a
+    role without pg_signal_backend may not do (CI #146: "permission denied to terminate
+    process"). Only if sessions remain (55006, "being accessed by other users"): FORCE, which
+    this role may use on its own sessions (a test's connection not yet closed) and nobody
+    else's."""
+    conn.execute(text(f"SET lock_timeout = '{LOCK_TIMEOUT}'"))
+    try:
+        conn.execute(text(f'DROP DATABASE IF EXISTS "{name}"'))
+    except DBAPIError as e:
+        if getattr(e.orig, "sqlstate", None) != "55006":
+            raise
+        conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+
+
 def run_of(conn: Connection) -> str:
     return (_db_mark(conn) or "").removeprefix(MARK + " run=")
 
@@ -123,8 +140,7 @@ def recreate_sibling(url: str, purpose: str) -> str:
         if existing.scalar():
             if _db_mark(c, name) != mark_for(run):
                 raise Refused(f"{name!r} exists and is not this run's")
-            c.execute(text(f"SET lock_timeout = '{LOCK_TIMEOUT}'"))
-            c.execute(text(f'DROP DATABASE "{name}" WITH (FORCE)'))
+            _drop(c, name)
         c.execute(text(f'CREATE DATABASE "{name}"'))
         c.execute(text(f"COMMENT ON DATABASE \"{name}\" IS '{mark_for(run)}'"))
     return target
@@ -134,8 +150,7 @@ def drop_sibling(url: str, purpose: str) -> None:
     target = make_url(sibling(url, purpose)).database
     with _connect(url) as c:
         if _db_mark(c, target) == mark_for(run_of(c)):
-            c.execute(text(f"SET lock_timeout = '{LOCK_TIMEOUT}'"))
-            c.execute(text(f'DROP DATABASE IF EXISTS "{target}" WITH (FORCE)'))
+            _drop(c, target)
 
 
 def create(admin_url: str, name: str | None = None, run: str | None = None) -> dict[str, str]:
@@ -171,8 +186,7 @@ def drop_run(admin_url: str, run: str) -> list[str]:
                  "WHERE shobj_description(oid, 'pg_database') = :m"),
             {"m": mark_for(run)}).scalars())  # fmt: skip
         for n in names:
-            c.execute(text(f"SET lock_timeout = '{LOCK_TIMEOUT}'"))
-            c.execute(text(f'DROP DATABASE "{n}" WITH (FORCE)'))
+            _drop(c, n)
     return names
 
 

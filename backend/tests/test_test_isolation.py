@@ -222,3 +222,62 @@ def test_the_test_role_cannot_change_an_owners_database():
     finally:
         with admin.connect() as c:
             c.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+
+
+class _Conn:
+    """Records statements; raises `fail` (a DBAPIError) on the first plain DROP, if given."""
+
+    def __init__(self, fail=None):
+        self.sql, self.fail = [], fail
+
+    def execute(self, stmt):
+        s = str(stmt)
+        self.sql.append(s)
+        if self.fail is not None and s.startswith("DROP") and "FORCE" not in s:
+            raise self.fail
+
+
+def _dbapi_error(sqlstate: str):
+    from sqlalchemy.exc import DBAPIError
+
+    class Orig(Exception):
+        pass
+
+    orig = Orig("synthetic")
+    orig.sqlstate = sqlstate
+    return DBAPIError("DROP DATABASE", {}, orig)
+
+
+def test_a_drop_never_has_to_terminate_sessions_it_may_not():
+    """CI #146: WITH (FORCE) must terminate every session on the database, an autovacuum
+    worker included, which the test role may not. A plain DROP comes first (PostgreSQL itself
+    ends autovacuum workers); FORCE only when sessions remain, and any other error is raised."""
+    c = _Conn()
+    isolation._drop(c, "x_test")
+    assert c.sql == [f"SET lock_timeout = '{isolation.LOCK_TIMEOUT}'",
+                     'DROP DATABASE IF EXISTS "x_test"']  # fmt: skip
+    c = _Conn(_dbapi_error("55006"))  # object in use: the run's own session left open
+    isolation._drop(c, "x_test")
+    assert c.sql[-1] == 'DROP DATABASE IF EXISTS "x_test" WITH (FORCE)'
+    c = _Conn(_dbapi_error("42501"))  # anything else is not handled by forcing
+    with pytest.raises(Exception, match="synthetic"):
+        isolation._drop(c, "x_test")
+    assert not any("FORCE" in s for s in c.sql)
+
+
+def test_a_runs_own_leftover_session_does_not_block_its_cleanup():
+    target = isolation.recreate_sibling(TEST_DB, "leftover")
+    held = create_engine(target, poolclass=NullPool).connect()  # this run's own, left open
+    try:
+        isolation.recreate_sibling(TEST_DB, "leftover")  # dropped and made again regardless
+    finally:
+        try:
+            held.close()
+        except Exception:  # noqa: BLE001 - its server session was ended by the drop
+            pass
+    isolation.drop_sibling(TEST_DB, "leftover")
+    name = make_url(target).database
+    admin = create_engine(ADMIN, poolclass=NullPool)
+    with admin.connect() as c:
+        assert c.execute(text("SELECT 1 FROM pg_database WHERE datname = :n"),
+                         {"n": name}).scalar() is None  # fmt: skip

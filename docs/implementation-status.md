@@ -96,6 +96,22 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   - lint, format, typecheck and eslint: ok;
   - backend: **4,237 passed** (1h04m35s);
   - Playwright: **131 passed, 2 skipped** (11.9 min).
+- **CI #146 on `3ddfce5` (run 41266709102): failed, now fixed.**
+  - frontend, docker-smoke and execution-compose passed. Backend: **4,235 passed, 1 skipped,
+    1 error**.
+  - The error was in the clean-up of `test_migrations.py`.
+    `DROP DATABASE … WITH (FORCE)` must terminate every session on that database. Since D103 the
+    suite runs as a test role without `pg_signal_backend`, and the session was a PostgreSQL
+    autovacuum worker (the server log shows autovacuum busy), so the drop failed: "permission
+    denied to terminate process". It depends on autovacuum timing, so CI #143-#145 did not
+    hit it.
+  - Fix (`tests/isolation.py` `_drop`): a plain `DROP DATABASE` first, which ends autovacuum
+    workers itself. `WITH (FORCE)` is used only if sessions remain (SQLSTATE 55006), and the
+    role may end only its own. Any other error is raised. The role is not given
+    `pg_signal_backend`: that would let test credentials end other roles' sessions.
+  - Tests: the order and the fallback, with statements recorded (the old code fails it); a run's
+    own leftover session does not block its clean-up (real database).
+    `test_test_isolation.py`, `test_migrations.py` and `test_audit_repair.py`: **32 passed**.
 - **Not run:** path B, a rehearsal, or anything on a real page. Run #9 remains the last
   external activity.
 
