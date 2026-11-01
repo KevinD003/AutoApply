@@ -87,7 +87,19 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     passed.
 - **Also updated:** `readiness.PATHS` (conditions 1, 2, 7: run B is used; Path A remains), the
   activation guide, the readiness-gap handoff and the proposal.
-- **Validation (this sandbox, on disposable databases):** see the commit's record below.
+- **Validation (this sandbox, each run on a disposable database of its own):**
+  - `ruff check .` and `ruff format --check .`: clean.
+  - The files that exercise `gh_readonly`: `test_locale_observation`, `test_gh_readonly`,
+    `test_readonly_cli_process`, `test_widget_inspection`, `test_b3_policy`,
+    `test_widget_detector`, `test_required_signals`, `test_forbidden_capabilities`,
+    `test_provider_contracts`, `test_workday_ashby_fixtures` and `test_pilot_readiness`.
+    **450 passed** (exit 0).
+  - After the `readiness.PATHS` text change, `test_pilot_readiness`, `test_provider_admission`
+    and `test_provider_contracts`: **211 passed** (exit 0).
+  - Not run locally: the full backend suite and Playwright. CI runs them on this commit.
+- **CI #148 on `df3962b`** (the FORCE wording correction): frontend, docker-smoke and
+  execution-compose passed. The backend job was still running when this was written; its result
+  will be recorded with the next change.
 
 ## Activation reconciled; read-only path B built (D106, 2026-11-01; local only, nothing real run)
 
