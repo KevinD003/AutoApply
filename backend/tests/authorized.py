@@ -1,6 +1,7 @@
 """Tests only: record a synthetic operational authorization (app/core/authorizations.py) for the
-length of one test, as an owner's would be recorded. The shipped register stays empty
-(tests/test_authorizations.py)."""
+length of one test, as an owner's would be recorded. The shipped register (the owner's real
+words, D112) never applies in a test: conftest empties it for each one
+(tests/test_authorizations.py checks its entries)."""
 
 from datetime import date
 

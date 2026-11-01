@@ -176,9 +176,9 @@ def _verify_copy(tmp_path: Path) -> Path:
     return root
 
 
-def _run_verify(root: Path, path: str) -> subprocess.CompletedProcess:
+def _run_verify(root: Path, path: str, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["bash", str(root / "scripts" / "verify-local.sh")],
+        ["bash", str(root / "scripts" / "verify-local.sh"), *args],
         env={"PATH": path, "HOME": str(root)},
         capture_output=True,
         text=True,
@@ -255,3 +255,73 @@ def test_the_greenhouse_pilot_override_changes_only_what_it_says():
     assert pilot["networks"] == {"egress_out": {}}
     assert "egress_out" not in base["services"]["browser-runner"]["networks"]
     assert base["networks"]["exec_egress"] == {"internal": True}
+
+
+# -- D112: checking the Greenhouse pilot's settings before it starts ------------------------------
+
+OWNER = "owner.synthetic" + "@" + "example.com"  # built at run time: no address-shaped text
+
+
+def test_the_pilot_check_needs_the_switch_on_and_exactly_one_owner_account():
+    check_pilot = checker().check_pilot
+    good = {"NOEFFORTS_LIVE_GREENHOUSE_ENABLED": "true",
+            "NOEFFORTS_LIVE_OWNER_EMAILS": f'["{OWNER}"]'}  # fmt: skip
+    assert check_pilot(good) == []
+    assert check_pilot({**good, "NOEFFORTS_LIVE_GREENHOUSE_ENABLED": "false"}) == [
+        "NOEFFORTS_LIVE_GREENHOUSE_ENABLED: not true (the pilot stays switched off)"]  # fmt: skip
+    for owners in ("[]", f'["{OWNER}", "{OWNER}"]', '["not-an-address"]'):
+        assert check_pilot({**good, "NOEFFORTS_LIVE_OWNER_EMAILS": owners}) == [
+            "NOEFFORTS_LIVE_OWNER_EMAILS: name exactly one account, your own"], owners  # fmt: skip
+    for owners in (OWNER, "{", "[1]"):
+        assert "not a JSON list" in check_pilot({**good, "NOEFFORTS_LIVE_OWNER_EMAILS": owners})[0]
+
+
+def test_the_pilot_flag_fails_the_file_without_printing_values(tmp_path):
+    values = good_values() | {"NOEFFORTS_LIVE_OWNER_EMAILS": f'["{OWNER}"]'}
+    path = write_env(tmp_path, values)
+    plain = run_checker(path)
+    assert plain.returncode == 0, plain.stdout  # without --pilot: the pilot is not asked for
+    result = subprocess.run([sys.executable, "-I", str(CHECKER), "--pilot", str(path)],
+                            capture_output=True, text=True)  # fmt: skip
+    assert result.returncode == 1
+    assert "NOEFFORTS_LIVE_GREENHOUSE_ENABLED: not true" in result.stdout
+    assert OWNER not in result.stdout + result.stderr
+    write_env(tmp_path, values | {"NOEFFORTS_LIVE_GREENHOUSE_ENABLED": "true"})
+    result = subprocess.run([sys.executable, "-I", str(CHECKER), "--pilot", str(path)],
+                            capture_output=True, text=True)  # fmt: skip
+    assert result.returncode == 0, result.stdout
+    for value in values.values():
+        assert value not in result.stdout + result.stderr
+
+
+def test_verify_local_pilot_checks_the_pilot_settings_and_overlay(tmp_path):
+    root = _verify_copy(tmp_path)
+    (root / "docker-compose.pilot.yml").write_text((ROOT / "docker-compose.pilot.yml").read_text())
+    values = good_values() | {"NOEFFORTS_LIVE_GREENHOUSE_ENABLED": "true",
+                              "NOEFFORTS_LIVE_OWNER_EMAILS": f'["{OWNER}"]'}  # fmt: skip
+    write_env(root, values)
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    calls = tmp_path / "calls"
+    (fake / "docker").write_text(
+        f'#!/bin/sh\necho "$*" >> {calls}\ncase "$*" in\n'
+        '  "compose version --short") echo 2.40.0;;\n'
+        '  "compose version") echo "Docker Compose version v2.40.0";;\n'
+        '  "compose config --quiet") exit 0;;\n'
+        '  "compose -f docker-compose.yml -f docker-compose.pilot.yml config --quiet") exit 0;;\n'
+        '  "version --format"*) echo 28.0.0;;\n  *) exit 3;;\nesac\n'
+    )
+    (fake / "docker").chmod(0o755)
+    result = _run_verify(root, f"{fake}:/usr/bin:/bin", "--pilot")
+    out = result.stdout + result.stderr
+    for step in ("env check", "compose config", "pilot env check", "pilot compose config"):
+        assert f"passed: {step}" in out, (step, out)
+    assert "compose -f docker-compose.yml -f docker-compose.pilot.yml config --quiet" in (
+        calls.read_text())  # fmt: skip
+    assert OWNER not in out
+    for value in values.values():
+        assert value not in out
+    write_env(root, values | {"NOEFFORTS_LIVE_GREENHOUSE_ENABLED": "false"})
+    result = _run_verify(root, f"{fake}:/usr/bin:/bin", "--pilot")
+    assert result.returncode == 1
+    assert "result: FAILED at step: pilot env check" in result.stdout

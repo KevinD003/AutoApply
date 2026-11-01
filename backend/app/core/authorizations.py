@@ -15,6 +15,8 @@ general instruction to keep working. tests/test_authorizations.py checks every e
 docs/decisions.md.
 
 Recorded (2026-10-31, D103): none.
+Recorded (2026-11-01, D112): the Greenhouse pilot, all four steps, through 2026-11-06, at most 5
+attempts that reach the disclosure gate, for postings the owner approves in the app one at a time.
 
 * `inbox`: reading the owner's mailbox (D101). The feature was requested (2026-10-31). Reading
   was never authorized, so neither verification codes nor application emails are read.
@@ -51,10 +53,57 @@ class Authorization:
     actions: frozenset[str]  # what it covers, a subset of ACTIONS[what]
     data: str  # which data it covers, in the owner's terms
     ends_on: date | None  # the last day it holds; None only if the owner's words say so
+    # D112: at most this many attempts may pass the disclosure gate under it (counted from
+    # `given_on`, rehearsals and submissions alike); None only if the owner's words set none.
+    max_attempts: int | None = None
 
 
-# The register. Empty: nothing has been authorized (D103).
-RECORDED: tuple[Authorization, ...] = ()
+# The register: only the owner's own words (each quoted in docs/decisions.md).
+RECORDED: tuple[Authorization, ...] = (
+    Authorization(
+        what=GREENHOUSE_PILOT,
+        decision="D112",
+        given_on=date(2026, 11, 1),
+        words=(
+            '"I have all my approval. Do and make it production ready." Asked which steps, until '
+            'when and how many, the owner chose: "Everything before next week end." and "5 '
+            'applications (Recommended)".'
+        ),
+        actions=frozenset({"read", "open", "disclose", "submit"}),
+        data=(
+            "only what each package the owner approves in the NoEfforts app contains, for "
+            "postings approved there one at a time"
+        ),
+        # "Before next week end", read conservatively: the last weekday before next weekend.
+        ends_on=date(2026, 11, 6),
+        max_attempts=5,
+    ),
+)
+
+
+def _covering(what: str, action: str, today: date) -> list[Authorization]:
+    if action not in ACTIONS.get(what, ()):
+        return []
+    return [
+        a
+        for a in RECORDED
+        if a.what == what
+        and action in a.actions
+        and a.given_on <= today
+        and (a.ends_on is None or today <= a.ends_on)
+    ]
+
+
+def limit(what: str, action: str, today: date | None = None) -> tuple[int, date] | None:
+    """D112: (the most attempts allowed, counted from which day) under the recorded
+    authorization covering `action` today with the smallest limit; None when none sets one."""
+    capped = [
+        a for a in _covering(what, action, today or date.today()) if a.max_attempts is not None
+    ]
+    if not capped:
+        return None
+    a = min(capped, key=lambda x: x.max_attempts)
+    return a.max_attempts, a.given_on
 
 
 def covers(what: str, action: str, today: date | None = None) -> bool:

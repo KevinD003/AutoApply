@@ -8,6 +8,7 @@ switching it off stops what was approved before anything is sent. No real host i
 in the test environment real Greenhouse hosts are refused before any connection."""
 
 import socket
+import uuid
 
 import pytest
 
@@ -350,6 +351,28 @@ def test_a_pilot_page_never_follows_a_redirect_of_its_own_fetches():
 
 
 # -- applying ------------------------------------------------------------------------------------
+
+
+def test_the_owners_attempt_limit_stops_the_next_attempt_before_anything_is_entered(api, receiver):
+    """D112: the recorded permission's limit (here 1) counts attempts that passed the disclosure
+    gate; the next one stops at that gate with nothing entered. The ledger is the oracle."""
+    app1 = live_application(api, approve=False)
+    pilot_on(max_attempts=1)
+    assert approve(api, app1, "disclose_only").status_code == 200
+    assert runner.run_attempt(queue(api, app1), "w1") == "rehearsed"
+    before = receiver.ledger()
+    assert before["disclosures"] and before["accepted"] == 0
+    assert approve(api, app1, "disclose_only").status_code == 200  # a second rehearsal
+    aid = queue(api, app1)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    with SessionLocal() as db:
+        from app.modules.execution.models import ExecutionAttempt
+
+        att = db.get(ExecutionAttempt, uuid.UUID(aid))
+        assert att.disclosure_started_at is None
+        assert "at most 1 attempts" in (att.outcome_detail or "")
+    after = receiver.ledger()
+    assert after["disclosures"] == before["disclosures"] and after["accepted"] == 0
 
 
 def test_the_first_application_to_an_employer_is_a_rehearsal(api, receiver, monkeypatch):

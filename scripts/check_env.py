@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Check a Docker Compose `.env` file before starting NoEfforts (docs/deployment.md).
 
-    python3 scripts/check_env.py [.env]
+    python3 scripts/check_env.py [--pilot] [.env]
+
+`--pilot` (D112) also checks what the Greenhouse pilot needs to start
+(docker-compose.pilot.yml): the switch on and exactly the owner's account named. The owner's
+recorded permission lives in reviewed code, never here; the server checks it at every step.
 
 Reads the file only. Prints key names and what is wrong with them, never a value. Exit status:
 0 when nothing blocks a start, 1 when something does (a missing key, an empty or placeholder
@@ -90,12 +94,36 @@ def check(values: dict[str, str]) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
+def check_pilot(values: dict[str, str]) -> list[str]:
+    """D112: what docker-compose.pilot.yml needs from .env. Key names only, never a value."""
+    import json
+
+    errors = []
+    if values.get("NOEFFORTS_LIVE_GREENHOUSE_ENABLED", "").lower() not in ("true", "1", "yes"):
+        errors.append("NOEFFORTS_LIVE_GREENHOUSE_ENABLED: not true (the pilot stays switched off)")
+    raw = values.get("NOEFFORTS_LIVE_OWNER_EMAILS", "")
+    try:
+        owners = json.loads(raw) if raw else []
+    except ValueError:
+        owners = None
+    if not isinstance(owners, list) or not all(isinstance(o, str) for o in owners):
+        errors.append('NOEFFORTS_LIVE_OWNER_EMAILS: not a JSON list, e.g. ["you@example.com"]')
+    elif len(owners) != 1 or "@" not in owners[0]:
+        errors.append("NOEFFORTS_LIVE_OWNER_EMAILS: name exactly one account, your own")
+    return errors
+
+
 def main(argv: list[str]) -> int:
-    path = Path(argv[0] if argv else ".env")
+    pilot = "--pilot" in argv
+    rest = [a for a in argv if a != "--pilot"]
+    path = Path(rest[0] if rest else ".env")
     if not path.is_file():
         print(f"{path}: not found. Copy .env.example to .env first (docs/deployment.md).")
         return 1
-    errors, warnings = check(parse(path.read_text()))
+    values = parse(path.read_text())
+    errors, warnings = check(values)
+    if pilot:
+        errors += check_pilot(values)
     for e in errors:
         print(f"ERROR   {e}")
     for w in warnings:

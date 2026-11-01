@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Safe local verification of the Docker Compose stack (docs/owner-mac-verification.md).
 #
-#   ./scripts/verify-local.sh
+#   ./scripts/verify-local.sh [--pilot]
 #
 # 1. Checks your .env (scripts/check_env.py): required secrets set, no example placeholders.
 #    Key names only are printed, never a value.
@@ -18,6 +18,9 @@
 # provider: the smoke test registers a synthetic account on the throwaway stack only.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# --pilot (D112): also check the Greenhouse pilot's settings and its Compose overlay.
+PILOT=0
+[ "${1:-}" = "--pilot" ] && PILOT=1
 
 STEP="prerequisites"
 PASSED=()
@@ -53,6 +56,17 @@ echo "== 2/3 docker-compose.yml"
 docker compose config --quiet
 echo "docker-compose.yml is valid with your .env"
 PASSED+=("compose config")
+
+if [ "$PILOT" = 1 ]; then
+  # D112: what starting the Greenhouse pilot needs (docs/activation-status.md §5).
+  STEP="pilot env check"
+  python3 scripts/check_env.py --pilot .env
+  PASSED+=("pilot env check")
+  STEP="pilot compose config"
+  docker compose -f docker-compose.yml -f docker-compose.pilot.yml config --quiet
+  echo "the pilot overlay is valid with your .env"
+  PASSED+=("pilot compose config")
+fi
 
 STEP="ports free"
 echo "== 3/3 smoke test (throwaway project noefforts_smoke)"

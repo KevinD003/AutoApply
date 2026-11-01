@@ -198,6 +198,10 @@ stack's data is never read or changed, and nothing contacts an employer, Freehir
 provider. It ends with a summary block that is safe to share (step results and versions, never a
 value or a log line).
 
+Before starting the Greenhouse pilot (`docs/activation-status.md` §5), run
+`./scripts/verify-local.sh --pilot`. It also checks that `.env` switches the pilot on and names
+exactly your account, and that `docker-compose.pilot.yml` is valid with it (D112).
+
 ## 10. On a Mac (not yet verified)
 
 The runbook, and what to send back (the summary block only), is

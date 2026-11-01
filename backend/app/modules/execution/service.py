@@ -28,10 +28,11 @@ import uuid
 from datetime import timedelta
 from typing import NamedTuple
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.core import authorizations
 from app.core.config import get_settings
 from app.core.db import SessionLocal, utcnow
 from app.modules.applications.models import Application
@@ -422,6 +423,23 @@ def _pilot_permission(att: ExecutionAttempt, actions: tuple[str, ...]) -> None:
         raise GateRefused(live.WHY["not_authorized"], "live_not_authorized")
 
 
+_PILOT_LIMIT_LOCK = 7_402_112  # pg_advisory_xact_lock key: one disclosure gate at a time counts
+
+
+def _pilot_limit(db: Session, att: ExecutionAttempt) -> None:
+    """D112: through the Greenhouse pilot, no more attempts pass the disclosure gate than the
+    owner's recorded authorization allows (rehearsals and submissions alike, counted from the day
+    of the owner's words). Counted under one lock, so two gates cannot both take the last one."""
+    if att.adapter != live.ADAPTER:
+        return
+    cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose")
+    if cap is None:
+        return
+    db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _PILOT_LIMIT_LOCK})
+    if live.attempts_used(db, cap[1], exclude=att.id) >= cap[0]:
+        raise GateRefused(live.WHY["limit_reached"].format(n=cap[0]), "live_limit_reached")
+
+
 def _gate_prerequisite(db: Session, att: ExecutionAttempt, ctx: GateContext, layer: str):
     """The rehearsal prerequisite inside a gate, with what it relies on locked; GateRefused (with
     its code) if unmet. Returns the verdict, or None for an attempt that does not submit."""
@@ -460,6 +478,7 @@ def gate_before_disclosure(attempt_id, worker: str, gen: int) -> None:
         att = _locked_attempt(db, attempt_id, worker, gen, S.claimed)
         try:
             _gate_prerequisite(db, att, _gate_checks(db, att), "disclosure")
+            _pilot_limit(db, att)
         except GateRefused as e:
             db.rollback()
             raise GateRefused(str(e), e.code) from None

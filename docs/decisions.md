@@ -3517,3 +3517,49 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Permissions:** 1-3 and an application-specific rehearsal approval must exist before any
   rehearsal; permission 4 stays separate.
 - **Not authorized and not done:** no live run, rehearsal, upload or submission.
+
+## D112 — The owner's permission for the Greenhouse pilot, recorded; its limit enforced (2026-11-01)
+
+- **The owner's words (2026-11-01, verbatim):**
+  - "I have all my approval. Do and make it production ready."
+  - Asked which steps, until when and how many (the §4 form's blanks), the owner chose
+    "Everything before next week end." and "5 applications (Recommended)".
+- **Recorded** (`app/core/authorizations.py`, one entry):
+  - **Steps:** all four pilot steps: 1 read, 2 open, 3 disclose (rehearsal), 4 submit.
+  - **Postings and data:** only postings the owner approves in the NoEfforts app, one at a time,
+    and only what each approved package contains.
+  - **Ends:** 2026-11-06. "Before next week end" is read conservatively, as the last weekday
+    before next weekend. If the owner meant through the weekend, a new entry with their words
+    extends it.
+  - **Limit:** at most 5 attempts that pass the disclosure gate, rehearsals and submissions
+    alike, counted from 2026-11-01.
+- **Enforced:**
+  - The limit is checked at the disclosure gate, under one advisory lock, so two attempts
+    cannot both take the last place.
+  - Beyond it, an attempt stops with nothing entered (`live_limit_reached`).
+  - The end date is checked at every gate. After it, the pilot refuses again on its own.
+  - The in-app handoff shows "Attempts left".
+- **Unchanged:**
+  - Every application still needs the owner's in-app approval of its exact package.
+  - The first application to each employer path is a rehearsal (E6).
+  - Anything not understood stops the attempt, and nothing is retried after the final click.
+  - The inbox stays unauthorized.
+  - The server must still be switched on, in production mode, with container isolation and the
+    owner's account named (`docs/activation-status.md` §5). That happens on the owner's
+    machine; nothing was started from this repository.
+- **Tests:**
+  - conftest empties the real register for every test, so tests never run under the owner's
+    permission.
+  - `test_authorizations.py` checks the shipped entry against these words and its days.
+  - `test_greenhouse_live.py` checks that the limit stops the next attempt before anything is
+    entered (receiver ledger).
+  - `test_rehearsal_handoff.py` checks the count.
+- **Production check:** `scripts/verify-local.sh --pilot` (with `scripts/check_env.py --pilot`)
+  checks that the switch is on, exactly one owner account is named and the pilot overlay is
+  valid, printing key names only. The overlay was validated here with a synthetic `.env`; this
+  sandbox has no Docker daemon, so the stack was not started.
+- **Readiness:** 1 of 7: condition 6 (the recorded permissions) is met by this entry, and only
+  while it holds. The other six still need their own evidence: a real rehearsal, a real
+  submission, and the controls of the chosen posting.
+- **Not done by NoEfforts:** no posting was read, opened, filled or submitted. Those run only on
+  the owner's server, for packages the owner approves there.

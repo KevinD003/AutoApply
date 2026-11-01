@@ -89,7 +89,8 @@ PILOT_SETTINGS = ("live_greenhouse_enabled", "live_owner_emails", "live_greenhou
 PILOT_PERMISSIONS = ("read", "open", "disclose", "submit")
 
 
-def pilot_on(owner: str = "synthetic.user@example.com", permitted=PILOT_PERMISSIONS) -> None:
+def pilot_on(owner: str = "synthetic.user@example.com", permitted=PILOT_PERMISSIONS,
+             max_attempts: int | None = None) -> None:  # fmt: skip
     """D102: the Greenhouse pilot on for `owner` (the `api` fixture's account), with the
     receiver's second Greenhouse-style approximation playing a real board host and its Job Board
     API. D103: with a synthetic record of the owner's permission for `permitted` (none: the
@@ -111,7 +112,7 @@ def pilot_on(owner: str = "synthetic.user@example.com", permitted=PILOT_PERMISSI
         authorizations.RECORDED += (authorizations.Authorization(
             what=authorizations.GREENHOUSE_PILOT, decision="TEST", given_on=date(2000, 1, 1),
             words="(synthetic: tests only)", actions=frozenset(permitted),
-            data="synthetic test data only", ends_on=None),)  # fmt: skip
+            data="synthetic test data only", ends_on=None, max_attempts=max_attempts),)  # fmt: skip
 
 
 def synthetic_candidate(api) -> None:

@@ -89,6 +89,21 @@ def test_with_every_prerequisite_met_a_rehearsal_runs_and_stops_before_submittin
     assert led["accepted"] == 0 and led["acceptances"] == [] and led["disclosures"]
 
 
+def test_the_permissions_attempt_limit_is_a_prerequisite_counted_from_the_gate(api, receiver):
+    """D112: a recorded limit shows how many attempts passed the disclosure gate; once used up
+    it is outstanding."""
+    app_id = live_application(api, approve=False)
+    pilot_on(max_attempts=1)
+    assert approve(api, app_id, "disclose_only").status_code == 200
+    h = handoff(api, app_id)
+    assert met(h)["attempts_left"] is True and h["ready"] is True
+    assert next(p for p in h["prerequisites"] if p["code"] == "attempts_left")["detail"] == (
+        "0 of 1 used")  # fmt: skip
+    assert runner.run_attempt(queue(api, app_id), "w1") == "rehearsed"
+    h = handoff(api, app_id)
+    assert met(h)["attempts_left"] is False and "attempts_left" in h["outstanding"]
+
+
 def test_a_permission_that_is_not_recorded_is_outstanding_whatever_the_switch_says(api, receiver):
     app_id = live_application(api, approve=False)
     pilot_on(permitted=("read", "open"))

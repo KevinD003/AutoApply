@@ -54,6 +54,9 @@ WHY = {
     "not_authorized": "Applying to real Greenhouse jobs needs the server owner's explicit, "
     "recorded permission for each step (read the job post, open its page, fill it in, submit); "
     "switching the pilot on is not one.",
+    # D112: the recorded permission's own limit (a format string: n).
+    "limit_reached": "The server owner's recorded permission covers at most {n} attempts on real "
+    "Greenhouse pages, and they have been used; it must be renewed before another.",
 }
 # What a whole application through the pilot needs, short of submitting.
 TO_APPLY = ("read", "open", "disclose")
@@ -85,6 +88,29 @@ def permission_refusal(actions: tuple[str, ...]) -> str | None:
     """D103: "not_authorized" unless the owner's recorded permission covers every action."""
     ok = all(authorizations.covers(authorizations.GREENHOUSE_PILOT, a) for a in actions)
     return None if ok else "not_authorized"
+
+
+def attempts_used(db, since, *, exclude=None) -> int:
+    """D112: attempts through the pilot that passed the disclosure gate on or after `since` (a
+    date), rehearsals and submissions alike; `exclude` leaves one attempt out."""
+    from datetime import UTC, datetime, time
+
+    from sqlalchemy import func, select
+
+    from app.modules.execution.models import ExecutionAttempt
+
+    q = (
+        select(func.count())
+        .select_from(ExecutionAttempt)
+        .where(
+            ExecutionAttempt.adapter == ADAPTER,
+            ExecutionAttempt.disclosure_started_at.is_not(None),
+            ExecutionAttempt.disclosure_started_at >= datetime.combine(since, time.min, UTC),
+        )
+    )
+    if exclude is not None:
+        q = q.where(ExecutionAttempt.id != exclude)
+    return int(db.scalar(q) or 0)
 
 
 def refusal(user, actions: tuple[str, ...] = TO_APPLY) -> str | None:

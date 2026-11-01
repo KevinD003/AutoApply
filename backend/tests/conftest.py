@@ -74,6 +74,15 @@ def _migrate():
     yield
 
 
+def _shipped_register():
+    from app.core import authorizations
+
+    return authorizations.RECORDED
+
+
+SHIPPED_REGISTER = _shipped_register()  # as imported, before any test touched it
+
+
 @pytest.fixture(autouse=True)
 def _pilot_off():
     """D102: whatever a test did to the Greenhouse pilot's settings (execution_harness.pilot_on)
@@ -86,6 +95,10 @@ def _pilot_off():
                                        "live_greenhouse_test_board_base",
                                        "live_greenhouse_test_api_base")}  # fmt: skip
     recorded = authorizations.RECORDED
+    # D112: the owner's real authorization (the shipped register, SHIPPED_REGISTER) never
+    # applies in a test; tests that need one record a synthetic one (tests/authorized.py,
+    # execution_harness.pilot_on). tests/test_authorizations.py checks the shipped entries.
+    authorizations.RECORDED = ()
     yield
     for k, v in keep.items():
         setattr(s, k, v)

@@ -111,12 +111,18 @@ def _server(user: User, url: str | None) -> list[dict]:
     ]
 
 
-def _permissions() -> list[dict]:
+def _permissions(db: Session) -> list[dict]:
     out = []
     for action, label in PERMISSIONS:
         ok = authorizations.covers(authorizations.GREENHOUSE_PILOT, action)
         why = "recorded" if ok else "not recorded (app/core/authorizations.py)"
         out.append(_item(f"permission_{action}", label, ok, why))
+    # D112: the permission's own limit on attempts that pass the disclosure gate.
+    cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose")
+    if cap is not None:
+        used = live.attempts_used(db, cap[1])
+        out.append(_item("attempts_left", "Attempts left under the recorded permission",
+                         used < cap[0], f"{used} of {cap[0]} used"))  # fmt: skip
     return out
 
 
@@ -168,7 +174,7 @@ def handoff(db: Session, user: User, app: Application) -> dict:
             "none" if scope is None else f"approved as {scope}",
         ),  # fmt: skip
     ]
-    prerequisites = _server(user, url) + _permissions() + application
+    prerequisites = _server(user, url) + _permissions(db) + application
     submit_ok = authorizations.covers(authorizations.GREENHOUSE_PILOT, SUBMIT[0])
     return {
         "application_id": str(app.id),

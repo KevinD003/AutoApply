@@ -1,14 +1,16 @@
 """D103: the register of operational authorizations (app/core/authorizations.py).
 
-It holds only what the owner actually authorized, and today that is nothing. No setting, deployment
-file or environment variable can add to it: it is reviewed source code, read by every gate that
-needs it (the inbox's uses, the Greenhouse pilot's steps)."""
+It holds only what the owner actually authorized: since D112, one entry, the Greenhouse pilot's
+four steps through 2026-11-06, at most 5 attempts. No setting, deployment file or environment
+variable can add to it: it is reviewed source code, read by every gate that needs it (the inbox's
+uses, the Greenhouse pilot's steps). conftest empties it for every other test."""
 
 import ast
 from datetime import date
 from pathlib import Path
 
 from app.core import authorizations as a
+from tests.conftest import SHIPPED_REGISTER
 
 SOURCE = Path(a.__file__)
 DECISIONS = Path(__file__).resolve().parents[2] / "docs" / "decisions.md"
@@ -23,11 +25,33 @@ def _assigned(name: str) -> ast.expr:
     raise AssertionError(f"{name} is not assigned in {SOURCE.name}")
 
 
-def test_nothing_is_authorized_in_the_shipped_register():
-    """Recorded on 2026-10-31 (D103): no operational authorization exists. Adding one means
-    changing this test with the owner's words in docs/decisions.md, never a setting."""
+def test_the_shipped_register_holds_exactly_the_owners_recorded_words():
+    """D103 recorded nothing; D112 recorded the owner's permission for the Greenhouse pilot.
+    Changing the register means changing this test with the owner's words in
+    docs/decisions.md, never a setting."""
     value = _assigned("RECORDED")
-    assert isinstance(value, ast.Tuple) and value.elts == [], ast.unparse(value)
+    assert isinstance(value, ast.Tuple) and len(value.elts) == 1, ast.unparse(value)
+    (entry,) = SHIPPED_REGISTER
+    assert entry.what == a.GREENHOUSE_PILOT and entry.decision == "D112"
+    assert entry.actions == {"read", "open", "disclose", "submit"}
+    assert (entry.given_on, entry.ends_on, entry.max_attempts) == (
+        date(2026, 11, 1), date(2026, 11, 6), 5)  # fmt: skip
+    assert '"Everything before next week end."' in entry.words
+    assert '"5 applications (Recommended)"' in entry.words
+    assert "one at a time" in entry.data
+
+
+def test_the_owners_permission_holds_only_on_its_days_and_never_inside_another_test(monkeypatch):
+    assert a.RECORDED == ()  # conftest: the real register never applies in a test
+    monkeypatch.setattr(a, "RECORDED", SHIPPED_REGISTER)
+    for step in ("read", "open", "disclose", "submit"):
+        assert a.covers(a.GREENHOUSE_PILOT, step, date(2026, 11, 1))
+        assert a.covers(a.GREENHOUSE_PILOT, step, date(2026, 11, 6))
+        assert not a.covers(a.GREENHOUSE_PILOT, step, date(2026, 10, 31))
+        assert not a.covers(a.GREENHOUSE_PILOT, step, date(2026, 11, 7))  # ended
+    assert not a.covers(a.INBOX, "read_codes", date(2026, 11, 2))  # the inbox stays unauthorized
+    assert a.limit(a.GREENHOUSE_PILOT, "disclose", date(2026, 11, 2)) == (5, date(2026, 11, 1))
+    assert a.limit(a.GREENHOUSE_PILOT, "disclose", date(2026, 11, 7)) is None
 
 
 def test_no_configuration_can_supply_an_authorization():
@@ -69,8 +93,9 @@ def test_each_pilot_permission_is_separate():
 
 
 def test_every_recorded_authorization_names_a_recorded_decision():
-    """Vacuous today (nothing is recorded); it holds any future entry to the owner's words."""
+    """Each shipped entry quotes the owner and names the decision that records the words."""
     text = DECISIONS.read_text()
-    for entry in a.RECORDED:
+    for entry in SHIPPED_REGISTER:
+        assert entry.words.split('"')[1] in text, entry  # the owner's words, quoted there too
         assert entry.actions <= a.ACTIONS[entry.what], entry
         assert entry.words and entry.data and f"## {entry.decision}" in text, entry
