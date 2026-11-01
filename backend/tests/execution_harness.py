@@ -255,3 +255,15 @@ def attempt(attempt_id: str) -> ExecutionAttempt:
 
 def dump(obj) -> str:
     return json.dumps(obj, default=str)
+
+
+# D111: when a page names no icon, Chromium itself may GET the page origin's /favicon.ico after
+# the load, outside Playwright's request routing (seen locally in 2 of 6 runs that stopped right
+# after the load: the latch refuses every routed request, and this one still arrived). It is the
+# browser's own request, a GET to the page's own origin carrying nothing of the applicant.
+# Request lists compare everything else exactly.
+BROWSER_OWN = (("GET", "/favicon.ico"),)
+
+
+def without_browser_own(requests: list) -> list:
+    return [r for r in requests if tuple(r) not in BROWSER_OWN]

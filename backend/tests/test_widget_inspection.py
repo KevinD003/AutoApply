@@ -17,7 +17,7 @@ import pytest
 
 from app.modules.preparation import gh_readonly as ro
 from tests.conftest import CANARY_PORT
-from tests.execution_harness import BASE, ROOT, Receiver
+from tests.execution_harness import BASE, ROOT, Receiver, without_browser_own
 
 sys.path.insert(0, str(ROOT / "fixtures" / "ats_receiver"))
 import greenhouse_v2  # noqa: E402
@@ -51,7 +51,8 @@ def inspect(receiver, bad="", limits=ro.LIMITS, inspect_widgets=True):
 
 
 def sent(receiver):
-    return [(r["method"], r["path"]) for r in receiver.ledger()["requests"]]
+    # Chromium's own favicon GET is left out (execution_harness.BROWSER_OWN).
+    return without_browser_own([(r["method"], r["path"]) for r in receiver.ledger()["requests"]])
 
 
 def only_the_page_was_requested(receiver):

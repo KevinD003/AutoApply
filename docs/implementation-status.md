@@ -103,7 +103,26 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     - dropping the redirect listener failed the browser-fetch case.
   - `npx tsc --noEmit`, `npm run lint`: exit 0.
   - `uv run ruff format .`, `uv run ruff check .`: clean.
-  - `scripts/validate.sh lint format frontend backend`: lint, format, typecheck and eslint ok; the backend suite result is recorded below once it finishes.
+  - `scripts/validate.sh lint format frontend backend` (exit 1):
+    - lint, format, typecheck and eslint ok;
+    - backend: **1 failed, 4,393 passed** (1:15:15).
+    - **The failure:** `test_locale_observation.py::test_a_post_is_refused_before_it_is_sent`
+      still expected the behaviour before D111 (a POST at load recorded and passed over, the stop
+      at the first action). It now expects the corrected stop, at load, with the POST never sent.
+  - **A flake found while checking that, root-caused:** the new page-load beacon test failed 2
+    of 6 repeated runs.
+    - **Cause:** with a page that names no icon, Chromium itself may GET the page origin's
+      `/favicon.ico` after the load, outside Playwright's request routing. The latch refuses every
+      routed request, and this one still arrived.
+    - **What it is:** the browser's own GET to the page's own origin, carrying nothing of the
+      applicant. Read-only summaries never counted it, so earlier real runs may have made it
+      unrecorded.
+    - **Fix:** request lists in the three read-only test files leave exactly that request out
+      (`execution_harness.BROWSER_OWN`) and compare everything else exactly. After it: 6 of 6
+      repeated runs passed.
+  - **Re-run after both fixes:** `test_locale_observation.py`, `test_widget_inspection.py`,
+    `test_readonly_cli_process.py` and `test_dropdown_observation_c.py`: %FOUR%. The rest of the
+    suite was unchanged by the fixes (test files only); CI runs it in full on the merged commit.
 
 ## Run C (run #11): the real dropdowns open once their locale files load (D110, 2026-11-01)
 

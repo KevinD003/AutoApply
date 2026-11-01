@@ -3493,6 +3493,19 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **No personal facts were entered or derived.** Tests use synthetic data
   (`tests/test_rehearsal_handoff.py`).
 
+### Found while validating
+
+- **Chromium's favicon request:** when a page names no icon, Chromium itself may GET the page
+  origin's `/favicon.ico` after the load, outside Playwright's request routing. It happened in 2
+  of 6 local runs that stopped right after the load: the latch had refused every routed request,
+  and this one still arrived.
+- **What it is:** a GET to the page's own origin that carries nothing of the applicant.
+- **Effect on earlier records:** read-only summaries count routed requests only, so a real run
+  may have made this request without recording it. Their request counts are counts of routed
+  requests.
+- **Tests:** request lists leave out exactly that request (`BROWSER_OWN`) and compare everything
+  else exactly.
+
 ### Decided
 
 - **Readiness is unchanged (0 of 7):**

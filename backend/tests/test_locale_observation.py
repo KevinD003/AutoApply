@@ -25,7 +25,7 @@ from app.modules.execution.adapters import dropdowns
 from app.modules.execution.browser import SubresourceRule
 from app.modules.preparation import gh_readonly as ro
 from tests.conftest import CANARY_PORT, RECEIVER_PORT
-from tests.execution_harness import BASE, ROOT, Receiver
+from tests.execution_harness import BASE, ROOT, Receiver, without_browser_own
 
 sys.path.insert(0, str(ROOT / "fixtures" / "ats_receiver"))
 import greenhouse_v2  # noqa: E402
@@ -71,7 +71,8 @@ def observe(receiver, *, locales=True, limits=None, dd="locale_gate", **cfg):
 
 
 def sent(receiver):
-    return [(r["method"], r["path"]) for r in receiver.ledger()["requests"]]
+    # Chromium's own favicon GET is left out (execution_harness.BROWSER_OWN).
+    return without_browser_own([(r["method"], r["path"]) for r in receiver.ledger()["requests"]])
 
 
 def nothing_disclosed(receiver):
@@ -192,15 +193,13 @@ def test_a_path_refusal_says_which_properties_failed_and_nothing_more(receiver, 
 
 
 def test_a_post_is_refused_before_it_is_sent(receiver):
-    """A POST never reaches the locale check: the method filter blocks it first, and one
-    attempted during an action stops the inspection."""
-    obs = observe(receiver, limits=ONE, locale_via="post")
-    assert {"method": "POST", "path": VALID} in obs["blocked_non_get"]
-    ins = obs["inspection"]
-    assert ins["stopped"] == "a non-GET request was attempted"
-    assert ins["widgets"][0]["open_state"] == "not_opened"
-    assert ins["locale_requests_allowed"]["total"] == 0
-    assert sent(receiver) == [("GET", JOB_PATH)]
+    """A POST never reaches the locale check: the method filter blocks it before it is sent.
+    D111: in widget inspection a non-GET request stops the run wherever it happens. This page
+    POSTs while it loads, so the run stops then, before any action (until D111 it stopped only at
+    the first action's retry, after the load-time POST had been recorded and passed over)."""
+    with pytest.raises(ro.Stop, match=ro.NON_GET_STOP):
+        observe(receiver, limits=ONE, locale_via="post")
+    assert sent(receiver) == [("GET", JOB_PATH)]  # the POST was never sent
     nothing_disclosed(receiver)
 
 

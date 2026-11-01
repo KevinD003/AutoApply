@@ -18,7 +18,7 @@ import pytest
 
 from app.modules.execution.browser import WORKDIR_PREFIX
 from app.modules.preparation import gh_readonly as ro
-from tests.execution_harness import BASE, ROOT, Receiver
+from tests.execution_harness import BASE, ROOT, Receiver, without_browser_own
 
 sys.path.insert(0, str(ROOT / "fixtures" / "ats_receiver"))
 import greenhouse_v2  # noqa: E402
@@ -61,7 +61,8 @@ def run_cli(tmp_path: Path, flag: str = "--inspect-widgets", **extra_env):
 
 
 def sent(receiver):
-    return [(r["method"], r["path"]) for r in receiver.ledger()["requests"]]
+    # Chromium's own favicon GET is left out (execution_harness.BROWSER_OWN).
+    return without_browser_own([(r["method"], r["path"]) for r in receiver.ledger()["requests"]])
 
 
 def public_output_is_clean(p: subprocess.CompletedProcess):
