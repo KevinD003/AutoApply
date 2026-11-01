@@ -121,7 +121,7 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
       (`execution_harness.BROWSER_OWN`) and compare everything else exactly. After it: 6 of 6
       repeated runs passed.
   - **Re-run after both fixes:** `test_locale_observation.py`, `test_widget_inspection.py`,
-    `test_readonly_cli_process.py` and `test_dropdown_observation_c.py`: %FOUR%. The rest of the
+    `test_readonly_cli_process.py` and `test_dropdown_observation_c.py`: 174 passed, exit 0. The rest of the
     suite was unchanged by the fixes (test files only); CI runs it in full on the merged commit.
 
 ## Run C (run #11): the real dropdowns open once their locale files load (D110, 2026-11-01)
