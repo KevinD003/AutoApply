@@ -91,7 +91,11 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     - dropdown strategies, controls and doc references: **80 passed**;
     - 25 guards sabotaged one at a time: each made a test fail.
 - **CI recorded:** **CI #145** on `9dcd8b4` (run 41253512210), D105, passed on all four jobs.
-- **Validation:** see below.
+- **Full validation** (`VALIDATE_LOG_DIR=/tmp/v106 scripts/validate.sh all`, the tree of `f79dc4a`,
+  each suite on a disposable database the script created and dropped):
+  - lint, format, typecheck and eslint: ok;
+  - backend: **4,237 passed** (1h04m35s);
+  - Playwright: **131 passed, 2 skipped** (11.9 min).
 - **Not run:** path B, a rehearsal, or anything on a real page. Run #9 remains the last
   external activity.
 
