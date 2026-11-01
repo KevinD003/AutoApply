@@ -28,6 +28,7 @@ import secrets
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -100,25 +101,39 @@ def claim(url: str) -> Connection:
     return conn
 
 
-def _drop(conn: Connection, name: str) -> None:
-    """Drop one database, waiting at most LOCK_TIMEOUT. A plain DROP first: PostgreSQL itself
-    ends autovacuum workers on that database. WITH (FORCE) would have to terminate them, which a
-    role without pg_signal_backend may not do (CI #146: "permission denied to terminate
-    process"). Only if sessions remain (55006, "being accessed by other users"): FORCE.
+# Sessions on the database being dropped that the cleanup may end: the connecting role's own
+# and the test role's, never anyone else's (a role may always end its own sessions; the
+# administrator may end the test role's).
+_OWN_SESSIONS = (
+    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+    "WHERE datname = :n AND pid <> pg_backend_pid() AND usename IN (current_user, :role)"
+)
+DROP_TRIES = 3
 
-    FORCE is not limited to this run. It ends every session on that database, and PostgreSQL
-    refuses it, dropping nothing, if any of them belongs to a role the connecting role may not
-    signal. As the shared test role (siblings) that covers any test run's session there; as the
-    administrator (drop_run), anyone's. Other runs are protected by which database is dropped,
-    not by FORCE: callers drop only a database marked with this run's id, named after this run's
-    own database and owned by the test role."""
+
+def _drop(conn: Connection, name: str) -> None:
+    """Drop one database, each attempt waiting at most LOCK_TIMEOUT. A plain drop: PostgreSQL
+    itself ends autovacuum workers on that database. Never WITH (FORCE): FORCE must terminate
+    every session there, an autovacuum worker included, and refuses (dropping nothing) when the
+    connecting role may not signal one. That failed CI #146 and again CI #150, whenever an
+    autovacuum worker happened to be on a database that still had a leftover session.
+
+    If sessions remain (55006, "being accessed by other users"), only the connecting role's own
+    and the test role's sessions on that database are ended (`_OWN_SESSIONS`), and the plain
+    drop is tried again, at most DROP_TRIES times in all. Anything else is raised. This can end
+    another test run's session only if one were connected to this database. Other runs are
+    protected by which database is dropped: callers drop only a database marked with this run's
+    id, named after this run's own database and owned by the test role."""
     conn.execute(text(f"SET lock_timeout = '{LOCK_TIMEOUT}'"))
-    try:
-        conn.execute(text(f'DROP DATABASE IF EXISTS "{name}"'))
-    except DBAPIError as e:
-        if getattr(e.orig, "sqlstate", None) != "55006":
-            raise
-        conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+    for attempt in range(DROP_TRIES):
+        try:
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{name}"'))
+            return
+        except DBAPIError as e:
+            if getattr(e.orig, "sqlstate", None) != "55006" or attempt == DROP_TRIES - 1:
+                raise
+        conn.execute(text(_OWN_SESSIONS), {"n": name, "role": ROLE})
+        time.sleep(0.25 * (attempt + 1))  # let the ended sessions exit
 
 
 def run_of(conn: Connection) -> str:

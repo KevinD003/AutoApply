@@ -225,15 +225,16 @@ def test_the_test_role_cannot_change_an_owners_database():
 
 
 class _Conn:
-    """Records statements; raises `fail` (a DBAPIError) on the first plain DROP, if given."""
+    """Records statements; raises `fail` (a DBAPIError) on the first `times` plain drops."""
 
-    def __init__(self, fail=None):
-        self.sql, self.fail = [], fail
+    def __init__(self, fail=None, times=1):
+        self.sql, self.fail, self.times = [], fail, times
 
-    def execute(self, stmt):
+    def execute(self, stmt, params=None):
         s = str(stmt)
         self.sql.append(s)
-        if self.fail is not None and s.startswith("DROP") and "FORCE" not in s:
+        if self.fail is not None and s.startswith("DROP") and self.times > 0:
+            self.times -= 1
             raise self.fail
 
 
@@ -248,21 +249,33 @@ def _dbapi_error(sqlstate: str):
     return DBAPIError("DROP DATABASE", {}, orig)
 
 
-def test_a_drop_never_has_to_terminate_sessions_it_may_not():
-    """CI #146: WITH (FORCE) must terminate every session on the database, an autovacuum
-    worker included, which the test role may not. A plain DROP comes first (PostgreSQL itself
-    ends autovacuum workers); FORCE only when sessions remain, and any other error is raised."""
+def test_a_drop_never_forces_and_ends_only_its_own_roles_sessions(monkeypatch):
+    """CI #146 and CI #150: WITH (FORCE) must terminate every session on the database, an
+    autovacuum worker included, which the test role may not. The cleanup never forces. While
+    sessions remain (55006) it ends only its own role's and the test role's sessions there and
+    drops again plainly (PostgreSQL ends autovacuum workers itself), a bounded number of times;
+    any other error is raised at once."""
+    monkeypatch.setattr(isolation.time, "sleep", lambda s: None)
+    set_timeout = f"SET lock_timeout = '{isolation.LOCK_TIMEOUT}'"
+    drop = 'DROP DATABASE IF EXISTS "x_test"'
     c = _Conn()
     isolation._drop(c, "x_test")
-    assert c.sql == [f"SET lock_timeout = '{isolation.LOCK_TIMEOUT}'",
-                     'DROP DATABASE IF EXISTS "x_test"']  # fmt: skip
-    c = _Conn(_dbapi_error("55006"))  # object in use: the run's own session left open
+    assert c.sql == [set_timeout, drop]
+    c = _Conn(_dbapi_error("55006"))  # a leftover session of this role, then free
     isolation._drop(c, "x_test")
-    assert c.sql[-1] == 'DROP DATABASE IF EXISTS "x_test" WITH (FORCE)'
-    c = _Conn(_dbapi_error("42501"))  # anything else is not handled by forcing
+    assert c.sql == [set_timeout, drop, isolation._OWN_SESSIONS, drop]
+    c = _Conn(_dbapi_error("55006"), times=99)  # still in use: bounded, then raised
     with pytest.raises(Exception, match="synthetic"):
         isolation._drop(c, "x_test")
-    assert not any("FORCE" in s for s in c.sql)
+    assert c.sql.count(drop) == isolation.DROP_TRIES
+    c = _Conn(_dbapi_error("42501"))  # anything else is raised, nothing is ended
+    with pytest.raises(Exception, match="synthetic"):
+        isolation._drop(c, "x_test")
+    assert c.sql == [set_timeout, drop]
+    for conn in (c,):
+        assert not any("FORCE" in s for s in conn.sql)
+    assert "FORCE" not in isolation._OWN_SESSIONS
+    assert "usename IN (current_user, :role)" in isolation._OWN_SESSIONS
 
 
 def test_a_runs_own_leftover_session_does_not_block_its_cleanup():

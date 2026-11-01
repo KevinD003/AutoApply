@@ -76,6 +76,20 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
 - **CI:**
   - #148 on `df3962b`: passed, all four jobs.
   - #149 on `d40df2f` (D107): passed, all four jobs. D107 is closed.
+  - **#150 on `9fb5cf1` (D108 + D109): failed.**
+    - frontend, docker-smoke and execution-compose passed. Backend: 4,329 passed, 1 skipped,
+      2 failed.
+    - (1) `test_repo_hygiene`: a path in a new test read as an email address. Fixed by writing
+      the `@` as in the other locale tests.
+    - (2) `test_test_isolation::test_a_runs_own_leftover_session_does_not_block_its_cleanup`
+      failed as in CI #146, "permission denied to terminate process". The cleanup's
+      `WITH (FORCE)` fallback must terminate every session on the database, and an autovacuum
+      worker was there.
+    - Fixed in `tests/isolation.py` `_drop`: never FORCE. While sessions remain, only the
+      connecting role's own and the test role's sessions on that database are ended, and the
+      plain drop is retried (3 tries).
+    - Locally: `test_test_isolation.py`, `test_repo_hygiene.py` and `test_migrations.py` passed.
+      Neither failure was in the dropdown code.
 - **Validation (this sandbox, each run on its own disposable database and ports):**
   - **D108** (`b999d8c`): `scripts/validate.sh lint backend` passed, exit 0. Lint was clean, and
     the full backend suite gave **4,302 passed**, 0 failed (1 h 12 min). Sabotage checks:

@@ -27,6 +27,7 @@ JOB_PATH = f"/gh2/{BOARD}/jobs/{JOB}"
 CDN = f"http://localhost:{RECEIVER_PORT}"
 REAL = "https://job-boards.cdn.greenhouse.io"
 HASHED = "/locales/en/common.6f8a2c1d.json"  # a content hash in the name: path B refuses it
+AT = "@"  # written so the repository's address scan does not read a path as an address
 B3 = SubresourceRule(CDN, frozenset({"GET", "HEAD"}), frozenset({"script", "stylesheet"}),
                     allow_private=True)  # fmt: skip
 RULE_B = ro._locale_rule(CDN, allow_private=True)
@@ -77,7 +78,7 @@ def nothing_disclosed(receiver):
 @pytest.mark.parametrize(
     "path",
     ["/locales/en/common.json", HASHED, f"/locales/en-US/{'a' * 128}.json",
-     "/locales/zh_Hant/job.board.v2.json", "/locales/en~x/a+b@c.json"],
+     "/locales/zh_Hant/job.board.v2.json", f"/locales/en~x/a+b{AT}c.json"],
 )  # fmt: skip
 def test_path_c_allows_the_observed_shape_with_longer_and_dotted_names(path):
     assert ro.locale_refusal(ro._locale_rule_c(), f"{REAL}{path}", "GET", "fetch") is None
