@@ -207,7 +207,10 @@ authorized, are:
 
 - **A:** your manual structural feedback (`docs/manual-dropdown-checklist.md`). No automated
   access.
-- **B:** run #9's scope with only the locale JSON files permitted. This tests whether the
-  widgets are waiting on them.
+- **B:** run #9's scope with only the locale JSON files permitted, with the adapter's 1500 ms
+  settle window. This tests whether the widgets are waiting on them. Built and tested locally
+  on 2026-11-01 (`--inspect-widgets-locales`, D106); not run and not approved. It needs the
+  owner's single-use approval and a pinned revision with passing CI. Readiness is unchanged
+  (0 of 7).
 
 See "Next decision point" in `docs/greenhouse-readonly-compatibility-proposal.md`.

@@ -3101,6 +3101,27 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   - **Each condition now carries its path:** what it needs (code, observation, configuration,
     consent, owner machine), why it is unmet, the smallest next action, what NoEfforts can do,
     what the owner must do, what stops a real attempt meanwhile, and which tests verify it.
+- **Read-only path B built, not run** (the first independent step for conditions 1 and 2). Run #9
+  found all 12 dropdowns `not_opened`. All 11 data requests it refused were
+  `GET /locales/*/*.json` on `job-boards.cdn.greenhouse.io`.
+  - `--inspect-widgets-locales` (workflow input `inspect_widgets_locales`, default off) is
+    `--inspect-widgets` with exactly one exception. It allows GET `fetch` requests from the
+    page's main frame to `https://job-boards.cdn.greenhouse.io:443` for
+    `/locales/<segment>/<segment>.json`, each segment 1-32 of `[A-Za-z0-9_-]`. A query string or
+    a redirect is refused.
+  - It is enforced twice: by the page's request filter, which counts the first failing element,
+    and by the browser context's interception layer (`SubresourceRule.path`).
+  - In this mode only, the page's `fetch()` is given `redirect: 'error'` before any page script
+    runs. A followed redirect of a locale request stops the observation. The owner's approval
+    should know this changes the page's environment slightly.
+  - Timing, this mode only: a 1500 ms settle window, equal to the adapter's `SETTLE_MS`, and a
+    50 s inspection. Every earlier mode and limit is unchanged.
+  - Locale responses are never read, kept or printed.
+  - Known limit: a locale file whose name has a dot (`common.3f2a.json`), or a segment over 32
+    characters, would be refused and counted as such.
+  - **The run needs the owner's single-use approval and a pinned revision with passing CI.**
+    Nothing was run against any real site. The pilot's own rule (`live.subresources`) is
+    unchanged: it does not get the locale exception.
 - **Result: still 0 of 7, each for a stated reason** (`docs/activation-status.md`). Nothing was
   relaxed. No synthetic evidence counts, and no observation or consent was recorded.
 - **Authorization at run time:**

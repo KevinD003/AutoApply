@@ -33,6 +33,7 @@ per scope you choose, for example "postings I approve in the app, one at a time,
 | Greenhouse pilot, 4 submit | Yes | Yes (receiver ledger) | No | **No** | No |
 | Phone country, location search, late dropdowns (D104) | Yes | Yes, local stand-ins only | n/a | n/a | No; refused on a real page |
 | Review page: approve several packages (D105) | Yes | Yes | n/a: each approval is yours | n/a | No |
+| Read-only check, path B: the locale exception (`inspect_widgets_locales`, D106) | Yes | Yes: the v2 fixture's locale gate, the receiver's log | n/a: dispatched by hand | **No**: needs your single-use approval and a pinned revision with passing CI | No |
 | Gmail: codes and replies (D101, optional) | Yes | Yes | No | **No** | No |
 | Typing a verification code yourself | Yes | Yes | Not needed | Not needed | No real code step reached |
 
