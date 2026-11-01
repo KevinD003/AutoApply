@@ -67,7 +67,12 @@ KEY_PATTERN = r"^[A-Za-z0-9_.:\[\]-]+$"  # a field key as extracted from a form
 #   location_search      a text question asked through the page's search-as-you-type picker
 #   location_structured  a hidden value that picker's own script sets (coordinates); never
 #                        written by NoEfforts, checked after a suggestion is chosen
-WIDGETS = ("phone_country", "location_search", "location_structured")
+STAND_IN_WIDGETS = ("phone_country", "location_search", "location_structured")
+# D111 (from a real page, read-only run #11; greenhouse_dom `hidden_search_*`):
+#   hidden_search        a search input the page keeps hidden inside one question's group: not
+#                        a question while the live page hides it, requires nothing in it and
+#                        holds nothing in it; never filled; anything else stops the attempt
+WIDGETS = (*STAND_IN_WIDGETS, "hidden_search")
 
 
 class FormField(BaseModel):
@@ -82,7 +87,7 @@ class FormField(BaseModel):
     accept: str | None = Field(default=None, max_length=200)
     condition: Condition | None = None
     unsupported_reason: str | None = Field(default=None, max_length=300)
-    widget: str | None = Field(default=None, max_length=50)  # D104: one of WIDGETS
+    widget: str | None = Field(default=None, max_length=50)  # D104/D111: one of WIDGETS
 
     @model_validator(mode="after")
     def _options(self):
@@ -91,7 +96,8 @@ class FormField(BaseModel):
         if self.type not in CHOICE_TYPES | MULTI_TYPES and self.options:
             raise ValueError(f"field '{self.key}' of type {self.type} cannot have options")
         shape = {"phone_country": FieldType.select, "location_search": FieldType.text,
-                 "location_structured": FieldType.unsupported}  # fmt: skip
+                 "location_structured": FieldType.unsupported,
+                 "hidden_search": FieldType.unsupported}  # fmt: skip
         if self.widget is not None and shape.get(self.widget) != self.type:
             raise ValueError(f"field '{self.key}' cannot be a {self.widget} control")
         return self

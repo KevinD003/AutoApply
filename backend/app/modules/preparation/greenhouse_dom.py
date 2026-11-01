@@ -420,6 +420,81 @@ def page_marks_required(signals: dict | None) -> bool | None:
     return None if signals is None else any(signals.values())
 
 
+# -- D111: a search input the page keeps hidden inside one question's group ------------------
+# Observed on a real page (read-only run #11, `u2`): a `search` input with the combobox role,
+# no hidden attribute but not visible, no required signal of any kind, inside the group of a
+# control that a job-data question maps to. What it is for is not known and never inferred
+# (not from its position, its label or what else is in the group). What is established is
+# narrower: the applicant is not shown it, the page does not require it, and nothing is in it.
+# So it is not treated as an unanswered question, and NoEfforts never touches it, but only
+# while the live page shows exactly that: anything else stops the attempt before anything is
+# entered (and again before submitting, after filling). Any other unlisted control, a
+# standalone hidden search input included, stays a blocking checkpoint.
+HIDDEN_SEARCH_LABEL = "Search box inside another question's group (hidden by the page)"
+HIDDEN_SEARCH_REASON = (
+    "not a question while the page keeps it hidden, unrequired and empty; never filled; "
+    "the attempt stops if the page shows it, requires it or puts a value in it"
+)
+HIDDEN_SEARCH_CHANGED = "a hidden search box is shown, required or holds a value"
+
+
+def group_owner(fields: list[FormField], controls: list[Control], c: Control) -> Control | None:
+    """The one control in `c`'s group that a job-data question maps to, else None (no group,
+    none, or several). Unsupported fields (page-managed values, NoEfforts' own) do not count."""
+    if c.group_key is None:
+        return None
+    asked = [f for f in fields if f.type != FieldType.unsupported]
+    owners = [m.control for m in map_fields(asked, controls)
+              if m.status in ("mapped", "mapped_via_group") and m.control is not c
+              and m.control.group_key == c.group_key]  # fmt: skip
+    return owners[0] if len(owners) == 1 else None
+
+
+def hidden_search_shape(fields: list[FormField], controls: list[Control], c: Control) -> bool:
+    """The markup half of the D111 rule: a search input with the combobox role, in the form, no
+    required attribute, in a group with exactly one job-data control. Whether the page hides
+    it, requires it or fills it is read only from the live page (`hidden_search_state`)."""
+    return (c.tag == "input" and c.type == "search" and c.role == "combobox" and c.in_form
+            and not c.required and group_owner(fields, controls, c) is not None)  # fmt: skip
+
+
+def hidden_search_candidates(fields: list[FormField], controls: list[Control]) -> list[Control]:
+    """Unlisted controls with the D111 shape (see `hidden_search_shape`)."""
+    return [c for c in unlisted_controls(fields, controls)
+            if hidden_search_shape(fields, controls, c)]  # fmt: skip
+
+
+# What the live page shows for one control and its group's job-data control: visibility as
+# Playwright and the read-only check judge it (rendered box, not visibility:hidden), the
+# value, and the required signals (REQUIRED_SIGNALS_JS).
+HIDDEN_SEARCH_STATE_JS = (
+    """([id, owner]) => {
+  const el = document.getElementById(id), own = document.getElementById(owner);
+  if (!el || !own) return null;
+  const shown = (n) => {
+    const s = getComputedStyle(n), r = n.getBoundingClientRect();
+    return s.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+  };
+  const signals = ("""
+    + REQUIRED_SIGNALS_JS
+    + """)(id);
+  return {shown: shown(el), owner_shown: shown(own), value: el.value, signals};
+}"""
+)
+
+
+def hidden_search_ok(state: dict | None) -> bool:
+    """True only when the live page hides the control, requires nothing in it, holds nothing
+    in it, and shows the question whose group it is in."""
+    return (
+        isinstance(state, dict)
+        and state.get("shown") is False
+        and state.get("owner_shown") is True
+        and state.get("value") == ""
+        and page_marks_required(state.get("signals")) is False
+    )
+
+
 def required_evidence(api_required: bool, signals: dict | None) -> str:
     """How the page's marking relates to the job data's requirement (for review, never to
     change it): consistent, api_required_page_unmarked (still required), page_required_api_
@@ -490,10 +565,20 @@ def build_schema(api: dict, page_html: str, *, stand_ins: bool = False
         taken.add(phone.key)
     unlisted = [c for c in unlisted_controls(from_api.fields, controls)
                 if phone is None or c.id != phone.key]  # fmt: skip
+    hidden_search = {c.id for c in hidden_search_candidates(from_api.fields, controls)}
     for n, c in enumerate(unlisted, 1):
         valid = bool(c.id) and re.fullmatch(KEY_PATTERN, c.id) and c.id not in taken
         key = c.id if valid else f"page_control_{n}"
         taken.add(key)
+        if valid and c.id in hidden_search:
+            # D111: not an unanswered question, on condition that the live page hides it,
+            # requires nothing in it and holds nothing in it (re-proven by the adapter).
+            fields.append(
+                FormField(key=key, label=HIDDEN_SEARCH_LABEL, type=FieldType.unsupported,
+                          required=False, unsupported_reason=HIDDEN_SEARCH_REASON,
+                          widget="hidden_search")  # fmt: skip
+            )
+            continue
         fields.append(
             FormField(
                 key=key,

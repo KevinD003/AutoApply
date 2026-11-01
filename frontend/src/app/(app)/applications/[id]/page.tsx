@@ -444,7 +444,9 @@ export default function ReviewPage() {
                     {q.display ??
                       (q.widget === "location_structured"
                         ? "(set by the page's location search, never by NoEfforts)"
-                        : q.status === "blank_optional"
+                        : q.widget === "hidden_search"
+                          ? "(not a question while the page hides it; never filled)"
+                          : q.status === "blank_optional"
                           ? "(left blank)"
                           : "—")}
                   </span>

@@ -403,8 +403,9 @@ export interface PackageAnswer {
   bankable: boolean;
   user_input_allowed: boolean;
   draftable: boolean;
-  /** D104, local stand-ins only: the control's kind, set by NoEfforts' capture. */
-  widget?: "phone_country" | "location_search" | "location_structured";
+  /** The control's kind, set by NoEfforts' capture: D104 stand-ins (local only), or D111
+   * hidden_search (a search box the page hides inside another question's group). */
+  widget?: "phone_country" | "location_search" | "location_structured" | "hidden_search";
 }
 
 export interface PackageView {

@@ -84,6 +84,8 @@ NO_BANK = PROFILE_ONLY | {
     # D104: the phone country picker and the hidden values a location search sets
     "phone_country",
     "location_structured",
+    # D111: a search box the page keeps hidden inside another question's group
+    "hidden_search",
 }
 SCOPE_EXPLANATION = {
     "employer": "Answer it for this application: it refers to the employer or the job (how you "
@@ -403,6 +405,8 @@ def _resolve_field(
         return _phone_country(f, _base(f, Intent("phone_country")), ctx)
     if f.widget == "location_structured":
         return _location_structured(f, _base(f, Intent("location_structured")))
+    if f.widget == "hidden_search":
+        return _hidden_search(f, _base(f, Intent("hidden_search")))
     intent = _inherit(f, classify(f), parent)
     r = _base(f, intent)
     # C6 (D51): only narrows; `scope` is set only on a row that was bankable until now.
@@ -693,6 +697,22 @@ def _location_structured(f: FormField, r: Resolution) -> Resolution:
         "Set by the page's own location search when NoEfforts chooses the suggestion that is "
         "exactly your location. NoEfforts never writes it; if the page does not set it, the "
         "attempt stops before submitting."
+    )
+    return r
+
+
+def _hidden_search(f: FormField, r: Resolution) -> Resolution:
+    """D111: a search box the page keeps hidden inside another question's group. Not a question
+    while the page hides it, requires nothing in it and holds nothing in it: nothing is asked,
+    entered or sent for it, and the attempt stops if the page shows it, requires it or fills
+    it. What it is for is not inferred."""
+    r.user_input_allowed, r.bankable, r.draftable = False, False, False
+    r.status, r.value, r.display = "blank_optional", None, None
+    r.explanation = (
+        "Not a question: a search box the employer's page keeps hidden inside another "
+        "question's group. NoEfforts never types into it. Before entering anything (and again "
+        "before submitting) it checks that the page still hides it, does not require it and "
+        "has put nothing in it; otherwise the attempt stops."
     )
     return r
 

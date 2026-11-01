@@ -37,10 +37,12 @@ gh2_validation_fail, gh2_captcha, gh2_new_question, gh2_options_changed, gh2_no_
 gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, gh2_attach_group(_wrong|_shared), gh2_widgets (cfg widget_bad: submit, fetch, nav, captcha,
 filechooser, required, select, dialog, upload, hash, images, covered, hint_only, other_value,
 remove_control, anon_change, load_beacon, open_beacon; cfg beacon for the last two),
-gh2_widget_variants (cfg variant, delay_ms; see _VARIANTS_JS), gh2_required_unmarked,
+gh2_widget_variants (cfg variant, delay_ms; see _VARIANTS_JS), gh2_hidden_search (D111; cfg hs, see
+_hidden_search), gh2_required_unmarked,
 gh2_required_extra, gh2_required_marker_only, gh2_required_answered, gh2_required_group, gh2_required_cover_group,
 gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS; for dd locale_gate also locale_origin,
-locale_path, locale_via; for dd open_beacon also beacon, beacon_via), GET /locales/{lang}/{ns}.json (cfg locale_delay_ms; lang "moved"
+locale_path, locale_via; for dd open_beacon also beacon, beacon_via; for dd late_other_host
+other_origin), GET /locales/{lang}/{ns}.json (cfg locale_delay_ms; lang "moved"
 redirects), D104 stand-ins: gh2_phone_country (cfg pc; see PHONE_COUNTRIES),
 gh2_loc_search (cfg loc; see _LOC_JS) with GET /gh2/{board}/jobs/{id}/places (a disclosure: the
 search text), GET|POST /gh2/{board}/jobs/{id}/dd-options/{qid}.json (dd late_*),
@@ -176,6 +178,36 @@ def _phone_country(cfg) -> str:
             f'hidden>{items}</ul>')
 
 
+def _hidden_search(phone_html, cfg) -> str:
+    """D111 (structure observed on a real page in read-only run #11, `u2`; what it is for was not
+    observed and is not modelled): a `search` input with the combobox role inside the group of
+    one job-data question, not shown, no required signal, empty. cfg hs varies one property:
+    shown (visible), required (aria-required), value (the page put a value in it), late (shown
+    once the phone number is entered), js (added by the page's script, absent from the HTML),
+    outside (in no group), group_required (the group carries aria-required)."""
+    hs = (cfg or {}).get("hs") or ""
+    cls = "" if hs == "shown" else ' class="fx-gone"'
+    req = ' aria-required="true"' if hs == "required" else ""
+    val = ' value="fx-page-value"' if hs == "value" else ""
+    search = ('<input type="search" id="phone-search" role="combobox" aria-autocomplete="list" '
+              f'aria-expanded="false" aria-label="Search" autocomplete="off"{cls}{req}{val}>')
+    style = "<style>.fx-gone{display:none}</style>"
+    # As observed: the group carries no required signal of its own (no aria-required, and no
+    # label with a "*"); group_required gives it aria-required.
+    group = ('<div class="field" role="group" id="phone-group"'
+             + (' aria-required="true"' if hs == "group_required" else "") + ">")
+    if hs == "js":
+        script = ("<script>document.getElementById('phone-group').insertAdjacentHTML('beforeend',"
+                  f"{json.dumps(search)});</script>")
+        return f"{group}{phone_html}</div>{style}{script}"
+    if hs == "late":
+        style += ("<script>document.getElementById('phone').addEventListener('input', () => "
+                  "document.getElementById('phone-search').classList.remove('fx-gone'));</script>")
+    if hs == "outside":
+        return f'<div class="field">{phone_html}</div><div class="field">{search}</div>{style}'
+    return f"{group}{phone_html}{search}</div>{style}"
+
+
 def _render(q, mode, cfg=None) -> str:
     f = q["fields"][0]
     qid, t, req = f["name"], f["type"], q["required"]
@@ -280,6 +312,8 @@ def _render(q, mode, cfg=None) -> str:
                     f'<div class="field">{_phone_country(cfg)}</div>')
         return (f'<div class="field" role="group" aria-labelledby="{qid}-label">{body}'
                 f'{_phone_country(cfg)}</div>')
+    if qid == "phone" and mode == "gh2_hidden_search":
+        return _hidden_search(body, cfg)
     if qid == "phone" and mode in ("gh2_widgets", "gh2_widget_variants", "gh2_dd_extras"):
         # FIXTURE ASSUMPTION (structure observed in B3): a combobox inside the phone field's
         # group, labelled differently from any question; here a dialling-country list equal to
@@ -603,10 +637,14 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 #                   several times in a row shows it never settles
 #   late_partial    one option, and the list stays busy
 #   late_post       the options are requested with a POST
+#   late_other_host the options are requested (GET) from another host, cfg other_origin (D111,
+#                   after run #11's `u3`: a required dropdown that opened while a data request
+#                   to another Greenhouse host was refused; what that request was for is not
+#                   known)
 _DD_JS = """
 (() => {
   const DD = %DD%, DELAY = %DELAY%, BASE = %BASE%, LOCALE = %LOCALE%, VIA = %VIA%;
-  const BEACON = %BEACON%, BEACON_VIA = %BEACON_VIA%;
+  const BEACON = %BEACON%, BEACON_VIA = %BEACON_VIA%, OTHER = %OTHER%;
   const open = new Map();
   let seq = 0;
   const choose = (cb, o) => {
@@ -662,7 +700,8 @@ _DD_JS = """
       const bar = document.createElement('li');
       bar.setAttribute('role', 'progressbar'); bar.textContent = 'Loading options';
       p.append(bar);
-      const url = BASE + '/dd-options/' + encodeURIComponent(cb.id) + '.json';
+      const url = (DD === 'late_other_host' ? OTHER : '') + BASE + '/dd-options/'
+        + encodeURIComponent(cb.id) + '.json';
       fetch(url, DD === 'late_post' ? {method: 'POST'} : {}).then((x) => x.json()).then((got) => {
         setTimeout(() => {
           if (!p.isConnected) return;
@@ -895,6 +934,7 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
                .replace("%VIA%", json.dumps(cfg.get("locale_via") or "fetch"))
                .replace("%BEACON%", json.dumps(cfg.get("beacon") or ""))
                .replace("%BEACON_VIA%", json.dumps(cfg.get("beacon_via") or "fetch"))
+               .replace("%OTHER%", json.dumps(cfg.get("other_origin") or ""))
                .replace("%BASE%", json.dumps(base)) + "</script>")
     if mode in ("gh2_widgets", "gh2_widget_variants"):
         # FIXTURE ASSUMPTIONS: two standalone labelled comboboxes not in the job data (one

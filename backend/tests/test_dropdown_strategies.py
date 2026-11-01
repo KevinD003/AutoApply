@@ -285,3 +285,73 @@ def test_capabilities_stay_fixture_only_and_real_destinations_refused():
     assert all(dropdowns.CAPABILITIES[s] == "fixture_only" for s in dropdowns.STRATEGIES)
     assert dropdowns.CAPABILITIES["options_loaded_from_network"].startswith("checkpoint")
     assert policy.CAPABILITIES["greenhouse_dom"]["real_destinations"] is False
+
+
+# ------------------------------------------------------------------ D111: options from another host
+# After run #11's `u3`: a required dropdown opened, no option appeared, and a data request to
+# another Greenhouse host was refused during that action. What the request was for is not
+# known; nothing here assumes it. The rule stays: no host or endpoint is allowed because a
+# widget asks for it, and a dropdown whose list needs one is never verified.
+
+OTHER = f"http://127.0.0.1:{CANARY_PORT}"
+
+
+@pytest.mark.parametrize("stand_in", [True, False], ids=["stand_in", "as_on_a_real_board"])
+def test_a_list_that_needs_another_host_stops_before_disclosure_and_the_host_never_hears(
+    api, receiver, canary, monkeypatch, stand_in
+):
+    """Mapped dropdowns whose options come from another host: the request is refused before
+    sending (an independent listener receives nothing), the list is never verified, and the
+    attempt stops before anything is entered."""
+    if not stand_in:  # as on a real board, where no origin is a fixture
+        monkeypatch.setattr(gd_adapter, "stand_ins", lambda content: False)
+    try:
+        _, aid, result = run(api, receiver, dd="late_other_host", other_origin=OTHER,
+                             delay_ms=0)  # fmt: skip
+    finally:
+        receiver.config(other_origin="")  # the receiver keeps cfg between tests
+    assert result == "failed_safe", attempt(aid).outcome_detail
+    detail = attempt(aid).outcome_detail
+    assert "dropdown: its options load from the network" in detail, detail
+    time.sleep(0.5)  # anything in flight would have arrived by now
+    assert canary == [], canary
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+def test_a_required_unlisted_dropdown_that_needs_another_host_is_a_checkpoint(
+    api, receiver, canary
+):
+    """The `u3` shape itself: a required dropdown the job data does not list. Capture makes it a
+    blocking checkpoint (what it asks is never inferred), so nothing can be approved, and
+    no request reaches the other host."""
+    receiver.config(mode="gh2_dd_extras", dd="late_other_host", other_origin=OTHER)
+    try:
+        synthetic_candidate(api)
+        job_id = v2_job(api)
+        assert api.post(f"/jobs/{job_id}/form/greenhouse").status_code == 201
+        app_id = api.post("/applications", json={"job_id": job_id}).json()["id"]
+        p = api.get(f"/applications/{app_id}/package").json()["package"]
+    finally:
+        receiver.config(other_origin="")
+    extra = next(a for a in p["content"]["answers"] if a["key"] == "extra-1")
+    assert (extra["status"], extra["value"]) == ("needs_user", None)
+    assert "extra-1" in p["content"]["unresolved"]
+    r = api.post(f"/applications/{app_id}/package/approve",
+                 json={"version": p["version"], "content_hash": p["content_hash"]})  # fmt: skip
+    assert r.status_code != 200
+    assert canary == [] and receiver.ledger()["disclosures"] == []
+
+
+def test_no_pilot_rule_admits_another_greenhouse_host_or_a_data_endpoint():
+    """The pilot's subresource rules are read-only path B3's assets plus path C's locale rule;
+    the hosts refused in run #11 stay refused (a widget asking for them changes nothing)."""
+    from app.modules.execution import live
+
+    rules = live.subresources("https://job-boards.greenhouse.io")
+    assert {r.origin for r in rules} == {"https://job-boards.cdn.greenhouse.io"}
+    for url in ("https://my.greenhouse.io/x.json", "https://boards.greenhouse.io/x/jobs/1.json",
+                "https://job-boards.cdn.greenhouse.io/x/options.json",
+                "https://job-boards.cdn.greenhouse.io/locales/en/x.json?q=1"):  # fmt: skip
+        for rtype in ("fetch", "xhr"):
+            assert not any(r.permits(url, "GET", rtype) for r in rules), (url, rtype)

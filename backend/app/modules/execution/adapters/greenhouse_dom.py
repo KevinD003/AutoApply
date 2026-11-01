@@ -45,7 +45,7 @@ from app.modules.execution.adapters.greenhouse import (
     approved_fields,
 )
 from app.modules.preparation import greenhouse_dom as dom
-from app.modules.preparation.forms import FieldType
+from app.modules.preparation.forms import STAND_IN_WIDGETS, FieldType
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
 _OPTIONS_JS = """id => { const lb = document.getElementById(id);
@@ -172,10 +172,19 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         fields = approved_fields(self.content)
         changed, pending = [], []  # NoEfforts' fixed reasons, one per field; never field keys
         answered = {a["key"] for a in self.content["answers"] if a["value"] is not None}
-        if any(f.widget for f in fields) and not self._stand_in:
+        if any(f.widget in STAND_IN_WIDGETS for f in fields) and not self._stand_in:
             return STAND_IN_ONLY  # D104: before anything is entered
         structured = [f.key for f in fields if f.widget == "location_structured"]
+        by_id = {c.id: c for c in controls}
         for f, m in zip(fields, dom.map_fields(fields, controls), strict=True):
+            if f.widget == "hidden_search":
+                # D111: re-proven on the live page, before anything is entered and again
+                # after filling (the runner's recheck): still that shape, hidden, unrequired
+                # and empty, beside a question that is shown. Never touched.
+                c = by_id.get(f.key) if m.candidates == 1 else None
+                if c is None or not self._hidden_search_ok(page, fields, controls, c):
+                    changed.append(dom.HIDDEN_SEARCH_CHANGED)
+                continue
             if f.type == FieldType.unsupported:
                 continue  # never filled; a required one could not have been approved
             ok = (
@@ -218,7 +227,13 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 want = [[o.value, o.label] for o in f.options]
                 if got != want:
                     changed.append("options")
-        new = sorted(c.id for c in dom.unlisted_controls(fields, controls))
+        # D111: an unlisted control is not a new question when the live page shows it to be a
+        # hidden search box (as at capture, which reads the page without its scripts).
+        new = sorted(
+            c.id
+            for c in dom.unlisted_controls(fields, controls)
+            if not self._hidden_search_ok(page, fields, controls, c)
+        )
         if not (changed or new) and not self._dd_checked:
             # Only once, before the disclosure gate: open, read, close; nothing is selected.
             for f, cid in pending:
@@ -262,6 +277,23 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         if page.locator("form button[type=submit]").count() != 1:
             return "the form's submit button cannot be identified"
         return None
+
+    @staticmethod
+    def _hidden_search_ok(page: Page, fields, controls, c) -> bool:
+        """D111: `c` has the hidden-search shape and the live page hides it, requires nothing
+        in it, holds nothing in it and shows the question whose group it is in."""
+        if not dom.hidden_search_shape(fields, controls, c) or not _SAFE_ID.match(c.id):
+            return False
+        if sum(x.id == c.id for x in controls) != 1:  # the page is read by id: it must be one
+            return False
+        owner = dom.group_owner(fields, controls, c)
+        if owner is None or not _SAFE_ID.match(owner.id):
+            return False
+        try:
+            state = page.evaluate(dom.HIDDEN_SEARCH_STATE_JS, [c.id, owner.id])
+        except PWError:
+            return False
+        return dom.hidden_search_ok(state)
 
     # -- fill -------------------------------------------------------------------------------
     def fill(self, page: Page) -> list[dict]:
