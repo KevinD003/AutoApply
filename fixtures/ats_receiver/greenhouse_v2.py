@@ -35,11 +35,12 @@ Routes (on the synthetic receiver; same ledger):
 Modes (cfg["mode"]): gh2_robots_disallow (D102), gh2_duplicate_id, gh2_label_mismatch, gh2_missing_control,
 gh2_validation_fail, gh2_captcha, gh2_new_question, gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, gh2_many_assets,
 gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, gh2_attach_group(_wrong|_shared), gh2_widgets (cfg widget_bad: submit, fetch, nav, captcha,
-filechooser, required, select, dialog, upload, hash, images, covered),
+filechooser, required, select, dialog, upload, hash, images, covered, hint_only, other_value,
+remove_control, anon_change),
 gh2_widget_variants (cfg variant, delay_ms; see _VARIANTS_JS), gh2_required_unmarked,
 gh2_required_extra, gh2_required_marker_only, gh2_required_answered, gh2_required_group, gh2_required_cover_group,
 gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS; for dd locale_gate also locale_origin,
-locale_path, locale_via), GET /locales/{lang}/{ns}.json (cfg locale_delay_ms; lang "moved"
+locale_path, locale_via; for dd open_beacon also beacon, beacon_via), GET /locales/{lang}/{ns}.json (cfg locale_delay_ms; lang "moved"
 redirects), D104 stand-ins: gh2_phone_country (cfg pc; see PHONE_COUNTRIES),
 gh2_loc_search (cfg loc; see _LOC_JS) with GET /gh2/{board}/jobs/{id}/places (a disclosure: the
 search text), GET|POST /gh2/{board}/jobs/{id}/dd-options/{qid}.json (dd late_*),
@@ -387,6 +388,16 @@ _WIDGETS_JS = """
       cb.after(ul); cb.setAttribute('aria-controls', ul.id); cb.setAttribute('aria-expanded', 'true');
       return ul;
     };
+    if (cb.id === 'extra-1' && BAD === 'hint_only') {   // D108: no list opens; a menu-like
+      // class name appears, a hidden control is added and focus leaves the control
+      const m = Object.assign(document.createElement('div'), {className: 'select__menu-portal'});
+      m.style.minHeight = '4px'; m.textContent = '\u00a0';
+      document.body.append(m);
+      document.getElementById('application-form').append(
+        Object.assign(document.createElement('input'), {type: 'hidden', id: 'extra-1-state'}));
+      cb.blur();
+      return;
+    }
     if (cb.id === 'extra-1' && BAD === 'fetch') {   // options from a data endpoint
       fetch(BASE + '/options.json').then(r => r.json()).then(build).catch(() => {});
       return;
@@ -403,6 +414,11 @@ _WIDGETS_JS = """
     if (BAD === 'select') { const o = ul.firstChild; o.setAttribute('aria-selected', 'true');
                             cb.value = o.textContent; cb.dataset.value = o.dataset.value; }
     if (BAD === 'dialog') alert('Are you sure?');
+    if (BAD === 'other_value')   // D108: opening rewrites another, existing answer
+      document.getElementById('first_name').value = 'Changed';
+    if (BAD === 'remove_control') document.getElementById('extra-2').remove();   // D108
+    if (BAD === 'anon_change')   // D108: a control without an id changes: cannot be attributed
+      document.querySelector('input[name=anon_note]').value = 'Changed';
     if (BAD === 'upload') fetch(BASE + '/attachments', {method: 'POST', body: 'x'}).catch(() => {});
     if (BAD === 'hash') history.pushState({}, '', '#step-2');
     if (BAD === 'images') for (let i = 0; i < 5; i++)
@@ -414,6 +430,8 @@ _WIDGETS_JS = """
     if (ul) ul.remove();
     cb.removeAttribute('aria-controls'); cb.setAttribute('aria-expanded', 'false');
   };
+  if (BAD === 'anon_change') document.getElementById('application-form').append(
+    Object.assign(document.createElement('input'), {type: 'text', name: 'anon_note'}));
   if (BAD === 'covered') {   // a transparent element drawn over the first standalone combobox
     const cb = document.getElementById('extra-1'), r = cb.getBoundingClientRect();
     const cover = Object.assign(document.createElement('div'), {id: 'cover'});
@@ -553,6 +571,8 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 #                   xhr, post, head, or iframe (fetch() of a same-origin child frame); its
 #                   marker string is put into the page (it must never reach any output)
 #   locale_on_open  opening requests a locale file, then shows the list
+#   open_beacon     as click_popup, and opening also POSTs to cfg beacon (another origin) by
+#                   fetch() or, with cfg beacon_via sendbeacon, navigator.sendBeacon (D108)
 #   delayed         busy first, options after delay_ms
 #   virtualized     only the first 5 options are rendered (aria-setsize says more)
 #   inert           never opens
@@ -573,6 +593,7 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 _DD_JS = """
 (() => {
   const DD = %DD%, DELAY = %DELAY%, BASE = %BASE%, LOCALE = %LOCALE%, VIA = %VIA%;
+  const BEACON = %BEACON%, BEACON_VIA = %BEACON_VIA%;
   const open = new Map();
   let seq = 0;
   const choose = (cb, o) => {
@@ -635,6 +656,10 @@ _DD_JS = """
       }).catch(() => {});
     } else {
       render(cb, p, pairs);
+      if (DD === 'open_beacon' && BEACON) {   // opening also POSTs to another origin (D108)
+        if (BEACON_VIA === 'sendbeacon') navigator.sendBeacon(BEACON, 'opened');
+        else fetch(BEACON, {method: 'POST', body: 'opened', mode: 'no-cors'}).catch(() => {});
+      }
     }
   };
   const hide = (cb) => {
@@ -804,6 +829,8 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
                .replace("%DELAY%", str(int(cfg.get("delay_ms") or 0)))
                .replace("%LOCALE%", json.dumps(locale))
                .replace("%VIA%", json.dumps(cfg.get("locale_via") or "fetch"))
+               .replace("%BEACON%", json.dumps(cfg.get("beacon") or ""))
+               .replace("%BEACON_VIA%", json.dumps(cfg.get("beacon_via") or "fetch"))
                .replace("%BASE%", json.dumps(base)) + "</script>")
     if mode in ("gh2_widgets", "gh2_widget_variants"):
         # FIXTURE ASSUMPTIONS: two standalone labelled comboboxes not in the job data (one

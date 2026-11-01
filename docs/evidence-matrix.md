@@ -9,6 +9,21 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A dropdown that sends when opened; widget observations kept apart (D108, 2026-11-01; local only)
+
+Synthetic data and local stand-ins only. Nothing here was run against a real page; run #10's
+record is not reclassified.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| A dropdown that POSTs to another origin when opened (fetch or `navigator.sendBeacon`) stops the attempt; the POST never arrives; nothing is filled, uploaded or submitted | `test_dropdown_strategies.py::test_a_dropdown_that_posts_to_another_origin_when_opened_stops_the_attempt` (fetch/sendbeacon, stand-in/real destination) | An independent HTTP listener on the other origin records nothing; the receiver's ledger has no disclosure and no acceptance, and only GETs; `failed_safe` with the dropdown reason |
+| The same dropdown without the POST goes through (the stop comes from the POST) | `test_the_beacon_dropdown_is_otherwise_an_ordinary_one` | `confirmed`, 1 acceptance, listener empty |
+| Sabotage: a beacon POST is not a fetch/XHR, so before D108 it did not count | the test above with the non-GET rule removed | both `sendbeacon` cases ended `confirmed` (the attempt went on and submitted); the listener still saw nothing |
+| An existing answer changing, a control added or removed, focus leaving the control, a class-name hint and a visible option list are separate observations | `test_widget_inspection.py::test_each_thing_an_opening_does_is_observed_on_its_own` (hint_only, other_value, remove_control, anon_change) | `observations` per widget; each stops the inspection with its own reason; no value or identifier in the published summary |
+| A hidden control added is never an existing answer changing; an id-less change is unknown, not a change | `test_widget_detector.py::test_control_changes_are_kept_apart`, `::test_an_id_used_twice_is_compared_only_when_it_is_unambiguous` | `compare_controls`; sabotage (an added id counted as a change) fails 2 cases |
+| A class-name hint alone is not an opening | `test_widget_detector.py::test_a_class_name_hint_alone_is_not_an_opening` | `undetermined`; with an expanded state it stays `opened_options_not_observable`; sabotage fails 3 cases |
+| The adapter refuses each change with its own reason | `test_dropdown_strategies.py::test_the_adapter_names_what_an_opening_changed_and_refuses_each` | `dropdowns._changed` |
+
 ## Greenhouse controls on local stand-ins (D104, 2026-10-31; local stand-ins only)
 
 Tests are in `test_greenhouse_controls.py` unless noted; the oracle is the receiver's ledger

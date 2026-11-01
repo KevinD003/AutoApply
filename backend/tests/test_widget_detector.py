@@ -48,7 +48,8 @@ def inspect(receiver, variant, delay_ms=0):
     ins = obs["inspection"]
     assert ins["stopped"] is None and ins["targets"] == 6 and ins["actions"] == 12
     for w in ins["widgets"]:  # protections unchanged in every variant
-        assert w["selected_after_open"] == 0 and w["value_changed"] is False
+        assert w["selected_after_open"] == 0
+        assert w["observations"]["existing_value_changed"] is False
         assert w["submit_attempts"] == 0 and w["url_changed"] is False
         assert w["requests_during"]["blocked_non_get"] == 0
         assert w["click"] == {"completed": True, "error": None}
@@ -187,6 +188,56 @@ def test_classification_rules(post, series, api_count, expected):
 
 def test_a_click_that_did_not_happen_is_its_own_outcome():
     assert ro.classify_open(_probe(), _probe(), [], 2, False)[0] == "click_failed"
+
+
+@pytest.mark.parametrize("hint", [{"hint_popups": 1}, {"hint_options": 2},
+                                  {"hint_popups": 1, "added_visible": 3}])  # fmt: skip
+def test_a_class_name_hint_alone_is_not_an_opening(hint):
+    """D108: an element whose class name suggests a menu or an option is recorded, but on its
+    own it is undetermined, never "opened"; with an expanded state or a popup it still counts."""
+    state, evidence, _ = ro.classify_open(_probe(), _probe(**hint), [0, 0, 0], 2, True)
+    assert (state, evidence) == ("undetermined", ["class_hint"])
+    state, evidence, _ = ro.classify_open(_probe(), _probe(expanded="true", **hint), [0], 2, True)
+    assert state == "opened_options_not_observable" and evidence == ["expanded", "class_hint"]
+
+
+def _controls(*pairs):
+    return {"ids": [i for i, _ in pairs], "values": [v for _, v in pairs]}
+
+
+@pytest.mark.parametrize(
+    "after,want",
+    [
+        # nothing changed
+        (_controls(("a", "1"), ("b", "2"), ("", "x")), (False, 0, 0)),
+        # an existing answer changed
+        (_controls(("a", "9"), ("b", "2"), ("", "x")), (True, 0, 0)),
+        # a hidden control added: added, never an existing value changing
+        (_controls(("a", "1"), ("b", "2"), ("", "x"), ("h", "")), (False, 1, 0)),
+        # a control removed: removed, never a value change
+        (_controls(("a", "1"), ("", "x")), (False, 0, 1)),
+        # added and an existing answer changed: both, each on its own
+        (_controls(("a", "9"), ("b", "2"), ("", "x"), ("h", "")), (True, 1, 0)),
+        # a control without an id changed: cannot be attributed
+        (_controls(("a", "1"), ("b", "2"), ("", "y")), (None, 0, 0)),
+        # a control without an id added: which one is new cannot be told either
+        (_controls(("a", "1"), ("b", "2"), ("", "x"), ("", "")), (None, 1, 0)),
+    ],
+)
+def test_control_changes_are_kept_apart(after, want):
+    before = _controls(("a", "1"), ("b", "2"), ("", "x"))
+    got = ro.compare_controls(before, after)
+    assert (got["existing_value_changed"], got["controls_added"],
+            got["controls_removed"]) == want  # fmt: skip
+
+
+def test_an_id_used_twice_is_compared_only_when_it_is_unambiguous():
+    before = _controls(("d", "1"), ("d", "2"), ("a", "1"))
+    assert ro.compare_controls(before, before)["existing_value_changed"] is False
+    swapped = _controls(("d", "2"), ("d", "1"), ("a", "1"))
+    assert ro.compare_controls(before, swapped)["existing_value_changed"] is None
+    other = _controls(("d", "1"), ("d", "2"), ("a", "9"))  # a unique id still decides
+    assert ro.compare_controls(before, other)["existing_value_changed"] is True
 
 
 def test_refused_request_paths_are_published_as_shapes_only(receiver):

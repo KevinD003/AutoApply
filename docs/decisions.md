@@ -3190,3 +3190,52 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
     The test is `test_greenhouse_controls.py`,
     `test_on_a_destination_that_is_not_a_stand_in_they_stop_before_anything_is_entered`, with
     a same-origin GET; the code makes no exception for other origins.
+
+## D108 — A dropdown that sends is refused whatever it sends with; widget observations kept apart (2026-11-01)
+
+- **Why:** the owner, on 2026-11-01, after D107: resolve two local evidence gaps, "A. A
+  synthetic dropdown that attempts a cross-origin POST when opened … B. Separate widget
+  observations", without repeating the experiment or widening its network permissions.
+- **A. A dropdown that sends when opened.**
+  - **Coverage before:** `late_post` (a same-origin POST fetch) and the `hostile` page (beacons
+    and fetches at page load, `test_browser_cannot_reach_other_origins`). Nothing covered a
+    POST that opening a dropdown sends to another origin.
+  - **Gap found:** the adapter counted only XHR, fetch, event-source and WebSocket requests made
+    during a dropdown action. A `navigator.sendBeacon` POST is none of these. The browser's
+    isolation blocked it, so it never arrived, but the attempt went on and submitted. That was
+    shown by sabotage: both beacon cases ended `confirmed`.
+  - **Fix:** any request that is not a GET, of any type, made during a dropdown action now
+    counts like a data request (`dropdowns._observe`). The existing reasons apply: "its options
+    load from the network (not verified)" on a real destination, "… in a way NoEfforts does not
+    accept" on a stand-in. Nothing is allowed that was refused before.
+  - **Tests:** the fixture dropdown `open_beacon` opens normally and also POSTs to another
+    origin, by fetch or by beacon. Each way, on a stand-in and as on a real destination:
+    - an independent listener on that origin records nothing;
+    - the attempt ends `failed_safe` at the dropdown check;
+    - the receiver saw only GETs, with no disclosure and no acceptance.
+    A control without the POST goes through.
+- **B. Widget observations kept apart** (the read-only inspection, `gh_readonly`):
+  - Each widget now carries `observations`:
+    - `existing_value_changed`: true, false, or null for unknown;
+    - `controls_added` and `controls_removed`;
+    - `focus_left_target`;
+    - `class_hint_appeared`;
+    - `visible_option_list`.
+    They replace `value_changed`, which was true whenever the list of control values differed,
+    so a control merely added set it.
+  - `compare_controls` compares only controls present before and after under an id used once.
+    A control without an id, or with an id used twice, whose value differs gives "unknown". A
+    control added or removed is counted as such and never as a value change.
+  - **A class-name hint alone is not an opening:** `classify_open` returns `undetermined` (with
+    evidence `class_hint`). With an expanded state or a popup it is unchanged. The adapter
+    shares the classifier and refuses either way.
+  - **Each change still stops the inspection, now with its own reason:** "opening changed a
+    value or selected an option"; "opening added or removed a control"; "opening changed a
+    control that cannot be identified". The adapter refuses each with the matching reason.
+  - Values, identifiers and class names are compared inside the worker. The summary carries
+    only booleans and counts (tested: none of the fixture's values, ids or class names appears
+    in the published text).
+- **Not done, deliberately:**
+  - No live run, no wider rule, and no reclassification of run #10. Its `q11` record was made by
+    the earlier code, and these categories do not explain it after the fact.
+  - The pilot's network rules are unchanged.

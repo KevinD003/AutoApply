@@ -460,7 +460,9 @@ that time. Run #8 cannot say:
 - `click_failed`;
 - `not_opened`: the click completed; no state, popup, option-like element or added visible
   element;
-- `undetermined`: visible elements were added, but nothing identifies an opening;
+- `undetermined`: something appeared, but nothing identifies an opening: visible elements
+  without a state, popup or option-like element, or, since D108, only a class-name hint
+  (runs up to #10 counted a class-name hint alone as `opened_options_not_observable`);
 - `opened_options_not_observable`;
 - `partially_observed`: still changing, loading, `aria-setsize` larger than rendered, or fewer
   options than the job data lists;

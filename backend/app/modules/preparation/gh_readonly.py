@@ -1210,9 +1210,12 @@ ERROR_NAMES = frozenset({
     "JSONDecodeError", "URLError", "HTTPError", "IsolationUnavailable", "OtherError",
 })  # fmt: skip
 # Why a widget inspection ended early (plain strings in its `stopped` field).
+CONTROLS_ADDED_OR_REMOVED = "opening added or removed a control"
+CONTROL_UNIDENTIFIED = "opening changed a control that cannot be identified"
 INSPECTION_STOPS = frozenset({
     "action budget reached", "inspection time budget reached",
-    "opening changed a value or selected an option", "a submission was attempted",
+    "opening changed a value or selected an option", CONTROLS_ADDED_OR_REMOVED,
+    CONTROL_UNIDENTIFIED, "a submission was attempted",
     "a non-GET request was attempted",
     "the page address changed", "challenge", "dialog", "file_chooser",
     "a second top-level navigation was attempted", "page request budget reached",
@@ -1268,7 +1271,9 @@ _OUTPUT_WORDS = {
     # widget inspection
     "inspection", "targets", "actions", "action_limit", "widgets", "target", "opened",
     "options_via", "options_count", "options_equal_to_fields", "selected_after_open",
-    "value_changed", "closed", "required_signals", "html", "aria", "group_aria",
+    "observations", "existing_value_changed", "controls_removed", "focus_left_target",
+    "class_hint_appeared", "visible_option_list", "closed", "required_signals", "html", "aria",
+    "group_aria",
     "label_marker", "changes", "controls", "hidden", "invalid", "alerts", "controls_added",
     "submit_attempts", "data_requests_refused", "requests_during_actions", "url_changed",
     "location_control_present", "controls_labelled_like_location", "controls_at_end",
@@ -2004,6 +2009,43 @@ def _vocab(v, allowed: frozenset) -> str:
     return v if v in allowed else "other"
 
 
+def compare_controls(before: dict, after: dict) -> dict:
+    """What an action did to the form's controls, each kept apart (D108). `before` and `after`
+    are {"ids": [...], "values": [...]} in document order (_STATE_JS, dropdowns._CONTROLS_JS).
+    - existing_value_changed: True when a control present before and after, identified by an
+      id used once, holds another value. None when that cannot be told: controls without an
+      id, or with an id used more than once, whose values differ. False otherwise. A control
+      that was only added or removed never counts here.
+    - controls_added / controls_removed: how many, by id (controls without an id by number).
+    Values are compared inside the worker and never leave it."""
+
+    def split(state):
+        by_id: dict[str, list] = {}
+        anon = []
+        for cid, value in zip(state["ids"], state["values"], strict=True):
+            if cid:
+                by_id.setdefault(cid, []).append(value)
+            else:
+                anon.append(value)
+        return by_id, anon
+
+    b, b_anon = split(before)
+    a, a_anon = split(after)
+    common = set(a) & set(b)
+    unique = {i for i in common if len(a[i]) == len(b[i]) == 1}
+    if any(a[i] != b[i] for i in unique):
+        changed: bool | None = True
+    elif any(a[i] != b[i] for i in common - unique) or a_anon != b_anon:
+        changed = None
+    else:
+        changed = False
+    return {
+        "existing_value_changed": changed,
+        "controls_added": len(set(a) - set(b)) + max(0, len(a_anon) - len(b_anon)),
+        "controls_removed": len(set(b) - set(a)) + max(0, len(b_anon) - len(a_anon)),
+    }
+
+
 def classify_open(pre: dict, post: dict, series: list[int], api_count: int | None,
                   click_ok: bool) -> tuple[str, list[str], list[str]]:  # fmt: skip
     """(open_state, opening_evidence, partial_reasons). Never "absent": an action that shows no
@@ -2011,10 +2053,11 @@ def classify_open(pre: dict, post: dict, series: list[int], api_count: int | Non
     - click_failed: the target was not actionable (e.g. something else would get the click);
     - not_opened: the click completed and nothing indicates an opening, and no visible
       element was added;
-    - undetermined: visible elements were added, but nothing that identifies an opening
-      (no expanded state, popup, option-like or class-hinted element);
-    - opened_options_not_observable: it opened (state, popup or option-like elements) but no
-      role-based option list could be read;
+    - undetermined: something appeared, but nothing that identifies an opening: visible
+      elements without an expanded state, popup or option-like element, or only an element
+      whose class name hints at a menu or option (a class name alone is not an opening, D108);
+    - opened_options_not_observable: it opened (expanded state, popup or option-like elements)
+      but no role-based option list could be read;
     - partially_observed: options read, but still changing or loading, fewer than the list
       says it has (aria-setsize), or fewer than the job data lists;
     - observed_sufficiently: options read, stable, nothing loading, complete as far as can be
@@ -2034,6 +2077,8 @@ def classify_open(pre: dict, post: dict, series: list[int], api_count: int | Non
         evidence.append("class_hint")
     if not evidence:
         return ("undetermined" if post["added_visible"] else "not_opened"), evidence, []
+    if evidence == ["class_hint"]:
+        return "undetermined", evidence, []
     n = len(post["texts"])
     if not n:
         return "opened_options_not_observable", evidence, []
@@ -2049,6 +2094,22 @@ def classify_open(pre: dict, post: dict, series: list[int], api_count: int | Non
     if api_count is not None and n < api_count:
         partial.append("fewer_than_api")
     return ("partially_observed" if partial else "observed_sufficiently"), evidence, partial
+
+
+def _observations(before, mid, after, post, click_ok, opts) -> dict:
+    """The widget action's separate observations (D108). A class-name hint, a control added or
+    removed and focus leaving the control are each recorded on their own: none of them is an
+    opening, and none is an existing answer changing."""
+    seen = [compare_controls(before, mid), compare_controls(before, after)]
+    vals = [c["existing_value_changed"] for c in seen]
+    return {
+        "existing_value_changed": True if True in vals else None if None in vals else False,
+        "controls_added": max(c["controls_added"] for c in seen),
+        "controls_removed": max(c["controls_removed"] for c in seen),
+        "focus_left_target": bool(click_ok and not post["focus"]),
+        "class_hint_appeared": bool(post["hint_popups"] or post["hint_options"]),
+        "visible_option_list": bool(opts),
+    }
 
 
 def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_refused,
@@ -2202,13 +2263,12 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
             if sufficient else [],
             "closed": closed,
             "selected_after_open": mid["selected"] - before["selected"],
-            "value_changed": mid["values"] != before["values"]
-            or after["values"] != before["values"],
+            # D108: what the action did, each observation on its own; none implies another.
+            "observations": _observations(before, mid, after, post, click_ok, opts),
             "url_changed": mid["href"] != before["href"] or after["href"] != before["href"],
             "required_signals": req,
             "changes": {k: after[k] - before[k]
                         for k in ("controls", "required", "hidden", "invalid", "alerts")},
-            "controls_added": len(set(after["ids"]) - set(before["ids"])),
             "submit_attempts": after["submits"] - before["submits"],
             "requests_during": {"routed": now["requests"] - base["requests"],
                                 "data_refused": len(data_refused) - n_data,
@@ -2228,8 +2288,13 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
             stopped = "a non-GET request was attempted"
         elif r["url_changed"]:
             stopped = "the page address changed"
-        elif r["value_changed"] or r["selected_after_open"] > 0:
+        elif (r["selected_after_open"] > 0
+              or r["observations"]["existing_value_changed"] is True):  # fmt: skip
             stopped = "opening changed a value or selected an option"
+        elif r["observations"]["existing_value_changed"] is None:
+            stopped = CONTROL_UNIDENTIFIED
+        elif r["observations"]["controls_added"] or r["observations"]["controls_removed"]:
+            stopped = CONTROLS_ADDED_OR_REMOVED
         if stopped:
             break
     phase[0] = "after"

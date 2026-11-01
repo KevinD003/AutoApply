@@ -94,7 +94,8 @@ def test_with_the_flag_a_locale_gated_dropdown_opens_and_its_list_is_observed(re
     for w in ins["widgets"]:
         assert w["open_state"] == "observed_sufficiently" and w["closed"] is True
         assert w["options_match_api"] is True
-        assert w["selected_after_open"] == 0 and w["value_changed"] is False
+        assert w["selected_after_open"] == 0
+        assert w["observations"]["existing_value_changed"] is False
         assert w["submit_attempts"] == 0 and w["url_changed"] is False
         assert w["requests_during"]["locale_allowed"] == 0  # loaded once, at page load
     # Counted, shaped with PATH_WORDS, nothing else: the one locale file, at load.

@@ -4,10 +4,17 @@ run #9 saw no opening evidence on the real page, so none of these is known to ma
 passing test here says the adapter handles that assumed behaviour safely, not that any real
 form can be filled or submitted. The receiver's ledger is the oracle for what was sent."""
 
+import http.server
+import threading
+import time
+
 import pytest
 
 from app.modules.execution import runner
+from app.modules.execution.adapters import dropdowns
+from app.modules.execution.adapters import greenhouse_dom as gd_adapter
 from app.modules.preparation import greenhouse_dom as dom
+from tests.conftest import CANARY_PORT
 from tests.execution_harness import Receiver, attempt, queue, synthetic_candidate
 from tests.test_greenhouse_dom import v2_application, v2_job
 
@@ -116,6 +123,84 @@ def test_unverifiable_dropdowns_stop_before_anything_is_disclosed(api, receiver,
     assert "dropdown" in detail and reason in detail, detail
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+class _Canary(http.server.BaseHTTPRequestHandler):
+    """An independent listener on another origin: anything that reaches it is recorded."""
+
+    hits: list[tuple[str, str]] = []
+
+    def do_GET(self):  # noqa: N802
+        _Canary.hits.append((self.command, self.path))
+        self.send_response(204)
+        self.end_headers()
+
+    do_POST = do_PUT = do_OPTIONS = do_GET
+
+    def log_message(self, *a):
+        pass
+
+
+@pytest.fixture
+def canary():
+    _Canary.hits = []
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", CANARY_PORT), _Canary)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield _Canary.hits
+    srv.shutdown()
+    srv.server_close()
+
+
+@pytest.mark.parametrize("via", ["fetch", "sendbeacon"])
+@pytest.mark.parametrize("stand_in", [True, False], ids=["stand_in", "real_destination"])
+def test_a_dropdown_that_posts_to_another_origin_when_opened_stops_the_attempt(
+    api, receiver, canary, monkeypatch, via, stand_in
+):
+    """D108 (run #10 saw a real page POST to another host when a dropdown was clicked): opening
+    a synthetic dropdown also POSTs to another origin, by fetch() or navigator.sendBeacon, while
+    its list opens normally. The POST never arrives (an independent listener on that origin
+    records nothing), the attempt stops at the dropdown check, and nothing is filled, uploaded
+    or submitted afterwards (the receiver saw only GETs)."""
+    if not stand_in:  # as on a real board, where no origin is a fixture
+        monkeypatch.setattr(gd_adapter, "stand_ins", lambda content: False)
+    _, aid, result = run(api, receiver, dd="open_beacon", beacon_via=via,
+                         beacon=f"http://127.0.0.1:{CANARY_PORT}/beacon")  # fmt: skip
+    assert result == "failed_safe"
+    detail = attempt(aid).outcome_detail
+    assert "dropdown" in detail and "its options load from the network" in detail, detail
+    time.sleep(0.5)  # anything in flight would have arrived by now
+    assert canary == [], canary
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+    assert {r["method"] for r in led["requests"]} == {"GET"}, led["requests"]
+
+
+def test_the_beacon_dropdown_is_otherwise_an_ordinary_one(api, receiver, canary):
+    """The control for the test above: without a beacon address the same dropdown is verified
+    and the application goes through, so the stop above comes from the POST alone."""
+    _, aid, result = run(api, receiver, dd="open_beacon", beacon="")  # (config persists)
+    assert result == "confirmed", attempt(aid).outcome_detail
+    assert receiver.ledger()["accepted"] == 1 and canary == []
+
+
+def _controls(*pairs):
+    return {"ids": [i for i, _ in pairs], "values": [v for _, v in pairs]}
+
+
+def test_the_adapter_names_what_an_opening_changed_and_refuses_each():
+    """D108: a control added or removed is refused as such, never reported as a value change."""
+    before = _controls(("a", "1"), ("b", "2"))
+    assert dropdowns._changed(before, before, "opening it") is None
+    assert dropdowns._changed(before, _controls(("a", "9"), ("b", "2")),
+                              "opening it") == "opening it changed a value"  # fmt: skip
+    assert dropdowns._changed(before, _controls(("a", "1"), ("b", "2"), ("h", "")),
+                              "opening it") == "opening it added or removed a control"  # fmt: skip
+    assert dropdowns._changed(before, _controls(("a", "1")), "an attempt to open it") == (
+        "an attempt to open it added or removed a control"
+    )
+    assert dropdowns._changed(_controls(("", "x")), _controls(("", "y")), "opening it") == (
+        "opening it changed a control that cannot be identified"
+    )
 
 
 @pytest.mark.parametrize("dd", ["ignores_choice", "wrong_value"])

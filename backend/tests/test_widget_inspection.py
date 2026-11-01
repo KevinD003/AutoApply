@@ -71,7 +71,8 @@ def test_opening_reveals_options_without_selecting_anything(receiver):
         assert w["open_state"] == "observed_sufficiently" and w["closed"] is True
         assert w["click"] == {"completed": True, "error": None} and w["focus_on_target"]
         assert w["expanded"]["before"] == "false" and w["expanded"]["after"] == "true"
-        assert w["selected_after_open"] == 0 and w["value_changed"] is False
+        assert w["selected_after_open"] == 0
+        assert w["observations"]["existing_value_changed"] is False
         assert w["submit_attempts"] == 0 and w["url_changed"] is False
         assert w["changes"] == {"controls": 0, "required": 0, "hidden": 0, "invalid": 0,
                                 "alerts": 0}  # fmt: skip
@@ -191,6 +192,49 @@ def test_a_widget_that_selects_on_open_stops(receiver):
     only_the_page_was_requested(receiver)
 
 
+NONE = {
+    "existing_value_changed": False,
+    "controls_added": 0,
+    "controls_removed": 0,
+    "focus_left_target": False,
+    "class_hint_appeared": False,
+    "visible_option_list": True,
+}
+
+
+@pytest.mark.parametrize(
+    "bad,want,stop",
+    [
+        # no list; a menu-like class name, a hidden control added, focus elsewhere: undetermined
+        ("hint_only", NONE | {"controls_added": 1, "focus_left_target": True,
+                              "class_hint_appeared": True, "visible_option_list": False},
+         ro.CONTROLS_ADDED_OR_REMOVED),
+        ("other_value", NONE | {"existing_value_changed": True},
+         "opening changed a value or selected an option"),
+        ("remove_control", NONE | {"controls_removed": 1}, ro.CONTROLS_ADDED_OR_REMOVED),
+        ("anon_change", NONE | {"existing_value_changed": None}, ro.CONTROL_UNIDENTIFIED),
+    ],
+)  # fmt: skip
+def test_each_thing_an_opening_does_is_observed_on_its_own(receiver, bad, want, stop):
+    """D108: an existing answer changing, a control added or removed, focus leaving the control,
+    a class-name hint and a visible option list are separate observations; none implies another.
+    A hidden control added is never an existing answer changing, and a class hint alone is not
+    an opening. Every one of these stops the inspection, with its own reason."""
+    obs = inspect(receiver, bad)
+    u2 = widgets(obs)["u2"]
+    assert u2["observations"] == want
+    assert obs["inspection"]["stopped"] == stop
+    if bad == "hint_only":
+        assert (u2["open_state"], u2["opening_evidence"]) == ("undetermined", ["class_hint"])
+    else:
+        assert u2["open_state"] == "observed_sufficiently"
+    pub = ro.publishable(api(), {"name": "x"}, JOB, obs)
+    text = ro.guard(pub, ro.sensitive_values(BOARD, JOB, api(), None))
+    for leaked in ("Changed", "extra-1-state", "anon_note", "select__menu"):
+        assert leaked not in text, leaked
+    only_the_page_was_requested(receiver)
+
+
 def test_a_required_change_is_recorded(receiver):
     obs = inspect(receiver, "required")
     assert obs["inspection"]["stopped"] is None
@@ -204,7 +248,8 @@ def test_a_covered_widget_is_not_clicked_through_its_cover(receiver):
     obs = inspect(receiver, "covered")
     u2 = widgets(obs)["u2"]
     assert u2["open_state"] == "click_failed" and u2["click"]["error"] == "pointer_intercepted"
-    assert u2["value_changed"] is False and obs["inspection"]["stopped"] is None
+    assert u2["observations"]["existing_value_changed"] is False
+    assert obs["inspection"]["stopped"] is None
     assert widgets(obs)["u3"]["open_state"] == "observed_sufficiently"
     only_the_page_was_requested(receiver)
 

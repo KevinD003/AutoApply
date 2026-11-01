@@ -120,9 +120,12 @@ _OPTION_JS = (
   return opts[i] || null;
 }"""
 )
-_VALUES_JS = """() => Array.from(document.querySelectorAll('input, textarea, [role=combobox]'))
-  .map((c) => c.type === 'file' ? String(c.files ? c.files.length : 0)
-                                : (c.value || '') + '|' + (c.dataset.value || ''))"""
+_CONTROLS_JS = """() => {
+  const ctl = Array.from(document.querySelectorAll('input, textarea, [role=combobox]'));
+  const val = (c) => c.type === 'file' ? String(c.files ? c.files.length : 0)
+                                       : (c.value || '') + '|' + (c.dataset.value || '');
+  return {ids: ctl.map((c) => c.id || ''), values: ctl.map(val)};
+}"""
 _READBACK_JS = (
     "(id) => { const el = document.getElementById(id); "
     "return el ? {text: el.value || '', value: el.dataset.value ?? null} : null; }"
@@ -179,7 +182,8 @@ def _observe(page: Page, cid: str, strategy: str, api_count: int, late: bool = F
     done: set[int] = set()
 
     def on_request(r):
-        if r.resource_type in _DATA:
+        # A data request, or anything else that sends (a POST beacon, a form post): D108.
+        if r.resource_type in _DATA or r.method != "GET":
             data.append(r)
 
     def on_done(r):
@@ -231,10 +235,24 @@ def _close(page: Page, cid: str) -> None:
     page.evaluate(ro._END_PROBE_JS)
 
 
+def _changed(before: dict, after: dict, what: str) -> str | None:
+    """Why the form's controls changed during an action, or None (D108). Every case refuses;
+    the reason says which: an existing value, a control that cannot be identified, or a
+    control only added or removed (never reported as a value change)."""
+    c = ro.compare_controls(before, after)
+    if c["existing_value_changed"] is True:
+        return f"{what} changed a value"
+    if c["existing_value_changed"] is None:
+        return f"{what} changed a control that cannot be identified"
+    if c["controls_added"] or c["controls_removed"]:
+        return f"{what} added or removed a control"
+    return None
+
+
 def _open(page: Page, cid: str, labels: list[str], late: bool = False) -> tuple[str, list[str]]:
     """Open with the first strategy that shows a verifiable list; (strategy, texts)."""
     for strategy in STRATEGIES:
-        values = page.evaluate(_VALUES_JS)
+        controls = page.evaluate(_CONTROLS_JS)
         try:
             got = _observe(page, cid, strategy, len(labels), late)
         except PWError as e:
@@ -242,8 +260,9 @@ def _open(page: Page, cid: str, labels: list[str], late: bool = False) -> tuple[
         if got["state"] in ("not_applicable", "not_opened"):
             if got["state"] == "not_opened":
                 _close(page, cid)
-            if page.evaluate(_VALUES_JS) != values:
-                raise Refused("an attempt to open it changed a value")
+            why = _changed(controls, page.evaluate(_CONTROLS_JS), "an attempt to open it")
+            if why:
+                raise Refused(why)
             continue
         if got["data"]:
             _close(page, cid)
@@ -260,9 +279,10 @@ def _open(page: Page, cid: str, labels: list[str], late: bool = False) -> tuple[
         if texts != [dom._norm(x) for x in labels]:
             _close(page, cid)
             raise Refused("its options differ from the approved ones")
-        if page.evaluate(_VALUES_JS) != values:
+        why = _changed(controls, page.evaluate(_CONTROLS_JS), "opening it")
+        if why:
             _close(page, cid)
-            raise Refused("opening it changed a value")
+            raise Refused(why)
         return strategy, texts
     raise Refused("no supported action opened it")
 
