@@ -203,3 +203,15 @@ def delete_evidence(
         raise conflict(str(e)) from None
     db.commit()
     return {"deleted": n}
+
+
+@router.get("/applications/{app_id}/rehearsal-handoff")
+def rehearsal_handoff(
+    app_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    """D111 §5: for your own application, what a disclosure-only rehearsal through the
+    Greenhouse pilot would disclose, how it stops before submitting, and which prerequisites
+    hold now. Read-only; grants nothing (execution/handoff.py)."""
+    from app.modules.execution import handoff
+
+    return handoff.handoff(db, user, _owned_app(db, user, app_id))

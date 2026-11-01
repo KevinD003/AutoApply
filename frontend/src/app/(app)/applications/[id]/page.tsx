@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AnswerInput from "@/components/AnswerInput";
 import ExecutionCard from "@/components/ExecutionCard";
 import FollowUpCard from "@/components/FollowUpCard";
+import RehearsalHandoff from "@/components/RehearsalHandoff";
 import { Badge, Button, Card, ErrorBox, inputCls, Loading, Notice } from "@/components/ui";
 import { api, ApiError, Doc, DraftingStatus, GeneratedDoc, PackageAnswer, PackageDiff, PackageDraft, PackageView, ReviewControls } from "@/lib/api";
 
@@ -299,6 +300,7 @@ export default function ReviewPage() {
       />
 
       <FollowUpCard appId={id} refreshKey={view.state} hideUntilSubmitted />
+      <RehearsalHandoff appId={id} refreshKey={`${view.state}:${view.package.version}:${view.approval.status}`} />
 
       <Card title="Documents">
         {resumes.length === 0 ? (

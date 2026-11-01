@@ -408,6 +408,32 @@ export interface PackageAnswer {
   widget?: "phone_country" | "location_search" | "location_structured" | "hidden_search";
 }
 
+// D111 §5: the milestone-B handoff for one application (backend execution/handoff.py).
+export interface HandoffItem {
+  code: string;
+  label: string;
+  met: boolean;
+  detail: string;
+}
+
+export interface RehearsalHandoff {
+  application_id: string;
+  milestone: string;
+  destination: { url: string | null; origin: string | null; employer: string | null; title: string | null; form_source: string | null };
+  package: { version: number; content_hash: string; approved: boolean; approval_scope: string | null; approved_at: string | null; expires_at: string | null } | null;
+  will_disclose: { key: string; label: string; source: string; how: "typed" | "chosen" | "uploaded" | "searched"; display: string | null }[];
+  documents: { field: string; display: string | null; version: number; size_bytes: number; content_type: string }[];
+  not_disclosed: { key: string; label: string; source: string; status: string; why: string | null }[];
+  exposure: string[];
+  stop_before_submit: string[];
+  prerequisites: HandoffItem[];
+  outstanding: string[];
+  ready: boolean;
+  submit_permission: HandoffItem;
+  expected_evidence: string[];
+  not_a_permission: string;
+}
+
 export interface PackageView {
   application_id: string;
   state: string;
