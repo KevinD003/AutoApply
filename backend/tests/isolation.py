@@ -104,9 +104,14 @@ def _drop(conn: Connection, name: str) -> None:
     """Drop one database, waiting at most LOCK_TIMEOUT. A plain DROP first: PostgreSQL itself
     ends autovacuum workers on that database. WITH (FORCE) would have to terminate them, which a
     role without pg_signal_backend may not do (CI #146: "permission denied to terminate
-    process"). Only if sessions remain (55006, "being accessed by other users"): FORCE, which
-    this role may use on its own sessions (a test's connection not yet closed) and nobody
-    else's."""
+    process"). Only if sessions remain (55006, "being accessed by other users"): FORCE.
+
+    FORCE is not limited to this run. It ends every session on that database, and PostgreSQL
+    refuses it, dropping nothing, if any of them belongs to a role the connecting role may not
+    signal. As the shared test role (siblings) that covers any test run's session there; as the
+    administrator (drop_run), anyone's. Other runs are protected by which database is dropped,
+    not by FORCE: callers drop only a database marked with this run's id, named after this run's
+    own database and owned by the test role."""
     conn.execute(text(f"SET lock_timeout = '{LOCK_TIMEOUT}'"))
     try:
         conn.execute(text(f'DROP DATABASE IF EXISTS "{name}"'))

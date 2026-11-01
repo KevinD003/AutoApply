@@ -106,12 +106,24 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     denied to terminate process". It depends on autovacuum timing, so CI #143-#145 did not
     hit it.
   - Fix (`tests/isolation.py` `_drop`): a plain `DROP DATABASE` first, which ends autovacuum
-    workers itself. `WITH (FORCE)` is used only if sessions remain (SQLSTATE 55006), and the
-    role may end only its own. Any other error is raised. The role is not given
-    `pg_signal_backend`: that would let test credentials end other roles' sessions.
+    workers itself. `WITH (FORCE)` is used only if sessions remain (SQLSTATE 55006). Any other
+    error is raised. The role is not given `pg_signal_backend`: that would let test credentials
+    end other roles' sessions.
+  - Correction (2026-11-01): FORCE is not limited to "this run's own sessions", as this entry
+    first said. It ends every session on that database. As the shared test role (siblings)
+    that covers any test run's session there; as the administrator (`drop --run`), anyone's.
+    PostgreSQL refuses it, dropping nothing, if a session belongs to a role the connecting role
+    may not signal. Other runs are protected by which database is dropped. Only a database
+    marked with this run's id, named after its own database and owned by the test role, is
+    dropped, and that is unchanged. Inspection found no case where another run's session is on
+    such a database, so nothing else was changed. Only docstrings and docs changed. Checked with
+    ruff check and format (clean) and, on a disposable database,
+    `pytest tests/test_test_isolation.py tests/test_migrations.py`: **28 passed** (exit 0).
   - Tests: the order and the fallback, with statements recorded (the old code fails it); a run's
     own leftover session does not block its clean-up (real database).
     `test_test_isolation.py`, `test_migrations.py` and `test_audit_repair.py`: **32 passed**.
+- **CI #147 on `a8d07af` (run 41271405216): passed.** All four jobs succeeded: frontend,
+  docker-smoke, backend and execution-compose. This closes the CI #146 repair.
 - **Not run:** path B, a rehearsal, or anything on a real page. Run #9 remains the last
   external activity.
 
