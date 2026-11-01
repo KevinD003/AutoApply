@@ -602,6 +602,8 @@ def observe_page(
     data_refused: list[dict] = []
     locale_allowed: list[dict] = []  # path B: the allowed locale requests (shapes only)
     locale_by_request: dict[int, dict] = {}  # D109: allowed locale requests by request object
+    latched: list[str] = []  # D111: a widget-inspection stop latched by the request filter
+    blocked_after_stop = [0]  # D111: requests refused because a stop was already latched
     events: list[dict] = []
     stops: list[str] = []
     failed: list[dict] = []
@@ -650,8 +652,18 @@ def observe_page(
             seen["requests"] += 1
             if fault == "request_filter":
                 raise RuntimeError("injected request-filter failure (test fixture only)")
+            if latched:
+                # D111: after a stop is latched (widget inspection), nothing else is sent.
+                blocked_after_stop[0] += 1
+                return route.abort()
             if not method_ok(request):
                 blocked.append({"method": request.method, "path": urlsplit(request.url).path})
+                if inspect_widgets:
+                    # D111: in every widget-inspection mode, a non-GET request stops the run
+                    # wherever it happens (page load included, as the owner's approval of run C
+                    # stated): blocked before sending, latched at once, no action after it.
+                    latched.append(NON_GET_STOP)
+                    stops.append(NON_GET_STOP)
                 return route.abort()
             locale = None
             if inspect_widgets and request.resource_type in DATA_REQUEST_TYPES:
@@ -781,6 +793,8 @@ def observe_page(
             if deadline - time.monotonic() <= 0:
                 raise Stop("overall time limit reached") from None
             raise
+        if latched:  # D111: stopped during the page load; nothing is waited for or acted on
+            raise Stop(latched[0])
         try:  # client-side rendering may still be fetching; bounded, nothing is touched
             page.wait_for_load_state("networkidle", timeout=left_ms(15_000))
             idle = True
@@ -806,6 +820,8 @@ def observe_page(
         if api_json is not None and not bot_check:
             evidence = mapping_evidence(page, html, api_json)
         inspection = None
+        if latched:  # D111: latched while the page was read: no inspection action
+            raise Stop(latched[0])
         if inspect_widgets and api_json is not None and not bot_check:
             inspection = inspect_comboboxes(
                 page, html, api_json, limits, phase, stops, events, data_refused, left_ms,
@@ -1258,13 +1274,13 @@ ERROR_NAMES = frozenset({
     "JSONDecodeError", "URLError", "HTTPError", "IsolationUnavailable", "OtherError",
 })  # fmt: skip
 # Why a widget inspection ended early (plain strings in its `stopped` field).
+NON_GET_STOP = "a non-GET request was attempted"
 CONTROLS_ADDED_OR_REMOVED = "opening added or removed a control"
 CONTROL_UNIDENTIFIED = "opening changed a control that cannot be identified"
 INSPECTION_STOPS = frozenset({
     "action budget reached", "inspection time budget reached",
     "opening changed a value or selected an option", CONTROLS_ADDED_OR_REMOVED,
-    CONTROL_UNIDENTIFIED, "a submission was attempted",
-    "a non-GET request was attempted",
+    CONTROL_UNIDENTIFIED, "a submission was attempted", NON_GET_STOP,
     "the page address changed", "challenge", "dialog", "file_chooser",
     "a second top-level navigation was attempted", "page request budget reached",
     "received data limit reached", "redirected to another origin", "too many redirects",
@@ -1368,7 +1384,7 @@ _STOPS = (
     "page request budget reached", "overall time limit reached",
     "a second top-level navigation was attempted", "too many redirects",
     "received data limit reached", "page larger than the retained-data limit",
-    FILTER_FAILED, LOCALE_REDIRECTED,
+    FILTER_FAILED, LOCALE_REDIRECTED, NON_GET_STOP,
 )  # fmt: skip
 _NOT_APPROVED = (
     "board token or job id has an unexpected shape",
@@ -2260,6 +2276,10 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
         return None
 
     for key, c, kind in targets:
+        if stops:  # D111: a stop latched between actions; nothing more is acted on
+            stopped = stops[0]
+            del stops[:]
+            break
         if actions + 2 > limits.widget_actions:
             stopped = "action budget reached"
             break
@@ -2472,7 +2492,7 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
         elif r["submit_attempts"]:
             stopped = "a submission was attempted"
         elif r["requests_during"]["blocked_non_get"]:
-            stopped = "a non-GET request was attempted"
+            stopped = NON_GET_STOP
         elif r["url_changed"]:
             stopped = "the page address changed"
         elif (r["selected_after_open"] > 0

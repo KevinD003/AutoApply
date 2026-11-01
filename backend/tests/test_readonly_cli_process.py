@@ -207,3 +207,29 @@ def test_dropdown_mode_entry_point_completes_with_path_c_and_states_its_rule(rec
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
     cleaned_up(out, prefix)
+
+
+def test_dropdown_mode_stops_at_a_beacon_sent_while_the_page_loads(receiver, tmp_path):
+    """D111 as the workflow runs it: in path C, a non-GET request at page load (a beacon) is
+    blocked before sending and stops the run at once: exit 7, a policy stop naming it, and no
+    inspection action. Run #11's approval said any non-GET stops the run; its code stopped only
+    on one made during an action."""
+    from tests.conftest import CANARY_PORT
+
+    cdn = BASE.replace("127.0.0.1", "localhost")
+    receiver.config(mode="gh2_widgets", widget_bad="load_beacon",
+                    beacon=f"http://127.0.0.1:{CANARY_PORT}")  # fmt: skip
+    try:
+        p, out, prefix, _ = run_cli(tmp_path, "--inspect-dropdowns",
+                                    NOEFFORTS_READONLY_FIXTURE_CDN=cdn)  # fmt: skip
+    finally:
+        receiver.config(widget_bad=None, beacon=None)
+    res = public_output_is_clean(p)
+    assert p.returncode == ro.EXIT_POLICY_STOP, res
+    assert res["outcome"] == "policy_stop" and res["mode"] == "inspect_dropdowns"
+    assert res["page_stopped"] == f"Stop: {ro.NON_GET_STOP}"
+    assert "inspection" not in res or res["inspection"] is None
+    got = sent(receiver)
+    assert {p for _, p in got} == API_PATHS | {JOB_PATH}, got
+    assert all(m == "GET" for m, _ in got)
+    cleaned_up(out, prefix)

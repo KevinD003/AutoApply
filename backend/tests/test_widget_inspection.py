@@ -7,12 +7,16 @@ FIXTURE ASSUMPTIONS, not observations of a real page. The receiver's request log
 for what was sent."""
 
 import dataclasses
+import http.server
 import json
 import sys
+import threading
+import time
 
 import pytest
 
 from app.modules.preparation import gh_readonly as ro
+from tests.conftest import CANARY_PORT
 from tests.execution_harness import BASE, ROOT, Receiver
 
 sys.path.insert(0, str(ROOT / "fixtures" / "ats_receiver"))
@@ -232,6 +236,71 @@ def test_each_thing_an_opening_does_is_observed_on_its_own(receiver, bad, want, 
     text = ro.guard(pub, ro.sensitive_values(BOARD, JOB, api(), None))
     for leaked in ("Changed", "extra-1-state", "anon_note", "select__menu"):
         assert leaked not in text, leaked
+    only_the_page_was_requested(receiver)
+
+
+class _Canary(http.server.BaseHTTPRequestHandler):
+    """An independent listener on another origin: anything that reaches it is recorded."""
+
+    hits: list[tuple[str, str]] = []
+
+    def do_GET(self):  # noqa: N802
+        _Canary.hits.append((self.command, self.path))
+        self.send_response(204)
+        self.end_headers()
+
+    do_POST = do_PUT = do_OPTIONS = do_GET
+
+    def log_message(self, *a):
+        pass
+
+
+@pytest.fixture
+def canary():
+    _Canary.hits = []
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", CANARY_PORT), _Canary)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield _Canary.hits
+    srv.shutdown()
+    srv.server_close()
+
+
+def _with_beacon(receiver, bad, **kw):
+    receiver.config(beacon=f"http://127.0.0.1:{CANARY_PORT}")
+    try:
+        return inspect(receiver, bad, **kw)
+    finally:
+        receiver.config(beacon=None)  # the receiver's settings persist across tests
+
+
+def test_a_beacon_while_the_page_loads_stops_before_any_action(receiver, canary):
+    """D111: in widget inspection a non-GET request stops the run wherever it happens. A beacon
+    sent while the page loads is blocked before it is sent, the stop is latched at once, and no
+    inspection action follows; the independent listener receives nothing. Observation without
+    inspection keeps blocking and recording it, as every observe-only mode did."""
+    with pytest.raises(ro.Stop, match=ro.NON_GET_STOP):
+        _with_beacon(receiver, "load_beacon")
+    time.sleep(0.5)  # anything in flight would have arrived
+    assert canary == [], canary
+    only_the_page_was_requested(receiver)
+    receiver.reset()
+    obs = _with_beacon(receiver, "load_beacon", inspect_widgets=False)
+    assert obs["blocked_non_get"] == [{"method": "POST", "path": "/load"}]
+    assert obs["inspection"] is None
+    assert canary == [], canary
+
+
+def test_a_beacon_from_a_dropdown_stops_the_inspection_at_that_action(receiver, canary):
+    """D111: a beacon sent when a dropdown opens is blocked before it is sent and ends the
+    inspection at that action: the next dropdown is never acted on."""
+    obs = _with_beacon(receiver, "open_beacon")
+    ins = obs["inspection"]
+    assert ins["stopped"] == ro.NON_GET_STOP
+    by = widgets(obs)
+    assert by["u2"]["requests_during"]["blocked_non_get"] == 1
+    assert "u3" not in by  # nothing after the stop
+    time.sleep(0.5)
+    assert canary == [], canary
     only_the_page_was_requested(receiver)
 
 

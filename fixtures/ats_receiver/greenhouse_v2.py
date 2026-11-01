@@ -36,7 +36,7 @@ Modes (cfg["mode"]): gh2_robots_disallow (D102), gh2_duplicate_id, gh2_label_mis
 gh2_validation_fail, gh2_captcha, gh2_new_question, gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, gh2_many_assets,
 gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, gh2_attach_group(_wrong|_shared), gh2_widgets (cfg widget_bad: submit, fetch, nav, captcha,
 filechooser, required, select, dialog, upload, hash, images, covered, hint_only, other_value,
-remove_control, anon_change),
+remove_control, anon_change, load_beacon, open_beacon; cfg beacon for the last two),
 gh2_widget_variants (cfg variant, delay_ms; see _VARIANTS_JS), gh2_required_unmarked,
 gh2_required_extra, gh2_required_marker_only, gh2_required_answered, gh2_required_group, gh2_required_cover_group,
 gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS; for dd locale_gate also locale_origin,
@@ -374,7 +374,10 @@ form.addEventListener('submit', async (e) => {
 
 _WIDGETS_JS = """
 (() => {
-  const BAD = %BAD%, BASE = %BASE%;
+  const BAD = %BAD%, BASE = %BASE%, BEACON = %BEACON%;
+  if (BAD === 'load_beacon' && BEACON) {   // D111: the page sends a beacon while it loads
+    navigator.sendBeacon(BEACON + '/load', 'loaded');
+  }
   const open = (cb) => {
     if (document.getElementById(cb.id + '-listbox')) return;
     const build = (pairs) => {
@@ -414,6 +417,7 @@ _WIDGETS_JS = """
     if (BAD === 'select') { const o = ul.firstChild; o.setAttribute('aria-selected', 'true');
                             cb.value = o.textContent; cb.dataset.value = o.dataset.value; }
     if (BAD === 'dialog') alert('Are you sure?');
+    if (BAD === 'open_beacon' && BEACON) navigator.sendBeacon(BEACON + '/open', 'opened');   // D111
     if (BAD === 'other_value')   // D108: opening rewrites another, existing answer
       document.getElementById('first_name').value = 'Changed';
     if (BAD === 'remove_control') document.getElementById('extra-2').remove();   // D108
@@ -907,7 +911,8 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
                                                           "Any time"], False)
         if mode == "gh2_widgets":
             qs += "<script>" + _WIDGETS_JS.replace("%BAD%", json.dumps(cfg.get("widget_bad") or ""))\
-                .replace("%BASE%", json.dumps(base)) + "</script>"
+                .replace("%BASE%", json.dumps(base))\
+                .replace("%BEACON%", json.dumps(cfg.get("beacon") or "")) + "</script>"
         else:
             if cfg.get("variant") == "portal_unlinked":  # a list that is visible from the start
                 qs += ('<ul role="listbox" id="fx-decoy" aria-label="Language">'
