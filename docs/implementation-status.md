@@ -70,7 +70,7 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
   - `python3 scripts/check_env.py --pilot <synthetic .env>`: exit 0; on `.env.example`: exit 1.
   - `docker compose --env-file <synthetic .env> -f docker-compose.yml -f docker-compose.pilot.yml
     config --quiet`: exit 0.
-  - `scripts/validate.sh`: %VALIDATE112%
+  - `scripts/validate.sh lint format frontend backend` on `83fa400`: lint, format, typecheck and eslint ok; backend **4,400 passed** (1:11:47); exit 0.
 
 ## Locale exception integrated; run #11 corrected; hidden search inputs; milestone-B handoff (D111, 2026-11-01; local only, nothing real run)
 
