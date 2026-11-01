@@ -9,6 +9,23 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Locale exception, the non-GET stop, hidden search inputs, the handoff (D111, 2026-11-01; local only)
+
+Nothing here ran against a real page. Fixtures are built from run #11's single observation or are
+FIXTURE ASSUMPTIONS.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| A non-GET request while the page loads stops widget inspection before any action, and never arrives | `test_widget_inspection.py::test_a_beacon_while_the_page_loads_stops_before_any_action`; `test_readonly_cli_process.py::test_dropdown_mode_stops_at_a_beacon_sent_while_the_page_loads` | independent listener: nothing; 0 actions; reason "a non-GET request was attempted" |
+| A non-GET request from a dropdown stops the inspection at that action, and no later request is sent | `test_widget_inspection.py::test_a_beacon_from_a_dropdown_stops_the_inspection_at_that_action` | independent listener: nothing; no later action |
+| The pilot's locale requests pass only from the main frame | `test_greenhouse_live.py::test_a_locale_file_passes_only_from_the_pages_main_frame` | receiver log |
+| A followed redirect of a locale request is recorded (browser-fetch modes) or refused before its target (driver-fetch mode); the runner stops on it before entering and before submitting | `::test_a_redirect_of_a_locale_request_is_never_followed_unseen[browser_fetches/driver_fetches]`, `::test_the_runner_stops_on_a_followed_locale_redirect_before_entering_and_before_submitting` | receiver log; `EgressLog.redirected`; sabotage (no listener) fails the browser-fetch case |
+| Locale requests are capped per session at path C's page-request budget | `::test_locale_requests_are_bounded_by_path_cs_request_budget` | receiver log; `blocked` |
+| A search input the page hides in one question's group is not a question while hidden, unrequired and empty; shown, required (control or group) or holding a value stops before entering; shown after filling stops before submitting | `test_hidden_search.py` (by id and pilot) | receiver ledger: accepted with nothing sent for it; or no disclosure; or no acceptance; sabotage (visibility condition removed) fails the "shown" cases |
+| Required or standalone ones stay blocking checkpoints | `test_hidden_search.py::test_required_or_outside_a_group_nothing_can_be_approved`, `::test_anything_else_stays_a_blocking_unlisted_control`, `::test_the_shape_needs_every_property_and_exactly_one_question_in_the_group` | unresolved; approval refused; no disclosure |
+| A list needing another host stops before disclosure; that host hears nothing; no pilot rule admits it | `test_dropdown_strategies.py::test_a_list_that_needs_another_host_stops_before_disclosure_and_the_host_never_hears`, `::test_a_required_unlisted_dropdown_that_needs_another_host_is_a_checkpoint`, `::test_no_pilot_rule_admits_another_greenhouse_host_or_a_data_endpoint` | independent listener: nothing; receiver ledger: no disclosure |
+| The milestone-B handoff shows exactly what would be disclosed and each prerequisite as it is; it is ready only with permissions 1-3 and a rehearsal approval; a rehearsal then stops before submitting | `test_rehearsal_handoff.py` | package content; receiver ledger: disclosures, no acceptance; 404 cross-tenant |
+
 ## Greenhouse dropdowns: react-select readback, container click, read-only path C (D109, 2026-11-01; local only)
 
 Fixture behaviours are FIXTURE ASSUMPTIONS modelled on react-select and on the owner's previous

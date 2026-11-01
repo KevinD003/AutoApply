@@ -700,7 +700,8 @@ None of them means "absent".
       written on 2026-10-31; this correction supersedes it.
     - Fixed in code: D111, and the proposal's dated correction.
   - **Not shown:** that selecting an option, typing, uploading or submitting works, or how the
-    pilot would behave. The pilot still refuses the locale files.
+    pilot would behave. The pilot still refuses the locale files. (2026-11-01, D111: the pilot
+    may now load them under path C's exact rule; it has not run.)
 - **Exposure:** no applicant or form data was sent. As for any page view, Greenhouse and its CDN
   received ordinary connection metadata from the GitHub-hosted runner.
 

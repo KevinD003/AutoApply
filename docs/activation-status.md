@@ -32,6 +32,9 @@ per scope you choose, for example "postings I approve in the app, one at a time,
 | Greenhouse pilot, 3 disclose (the rehearsal) | Yes | Yes (receiver ledger) | No | **No** | No |
 | Greenhouse pilot, 4 submit | Yes | Yes (receiver ledger) | No | **No** | No |
 | Phone country, location search, late dropdowns (D104) | Yes | Yes, local stand-ins only | n/a | n/a | No; refused on a real page |
+| Pilot locale exception: path C's rule, fetch guard, redirect stop, 150-request cap (D110, D111) | Yes, on main | Yes (receiver log; both fetch modes) | Part of permission 2 (open): not recorded | Code change authorized 2026-11-01; use **No** | No |
+| Hidden search input in a question's group (D111) | Yes | Yes (fixture from run #11's one observation, receiver ledger) | n/a | n/a | No |
+| Milestone-B handoff on the application page (D111) | Yes | Yes (synthetic) | n/a: read-only | n/a | No |
 | Review page: approve several packages (D105) | Yes | Yes | n/a: each approval is yours | n/a | No |
 | Read-only check, path B: the locale exception (`inspect_widgets_locales`, D106) | Yes | Yes: the v2 fixture's locale gate, the receiver's log | n/a: dispatched by hand | Approved once (D107) and **used** | Yes, once: run #10, a policy stop. No locale file was allowed (the real paths failed the rule), so it did not test the dropdowns' dependence on them (D107) |
 | Read-only check, path C: dropdown observation (`inspect_dropdowns`, D109) | Yes | Yes: hashed locale names, 404 outcomes, a container-only list, react-select markup | n/a: dispatched by hand | Approved once (D110) and **used** | Yes, once: run #11, completed. Both locale files loaded; 12 of 12 dropdowns opened at the control's click; the 7 mapped lists equal their job data (D110) |
@@ -47,8 +50,8 @@ control is not blocked by them, but no condition is met by that.
 
 | # | Condition | Why it is not met | Needs | Smallest next action | NoEfforts can do | You must do | Stopped at run time by | Verified by |
 |---|---|---|---|---|---|---|---|---|
-| 1 | Each required dropdown opens through one bounded, tested strategy, with the complete list | The pilot's `custom_dropdowns` is fixture-only. Run #9 (600 ms, every data request refused) saw no list open. Run #10 (path B, 1.5 s) allowed no locale file, because the real paths failed the approved rule. So it did not test whether the lists wait on them; 6 of the 7 dropdowns it reached showed no opening evidence | Observation, then code | Approve the pilot's locale exception (prepared on a branch, D110) with the first rehearsal, on a posting whose required dropdowns all have readable lists | Done: path C and run #11 (lists open once the locale files load; 7 mapped lists equal their job data); the react-select readback; the pilot's exception prepared, not merged | Approval of that exception, in the rehearsal request | `dropdowns.verify` before the disclosure gate: a list it cannot open, read completely and match exactly stops the attempt with nothing entered | `test_dropdown_strategies.py`, `test_pilot_readiness.py` |
-| 2 | The two required controls no question matches (`u1` in the phone group, `u2`) are understood and mapped by evidence | Their kind was never observed. No rule maps them on a real page; D104's phone country rule is a local stand-in | Observation, then code | Path A questions 8a and 8b (run #10 stopped before reaching them) | After observation: a mirroring fixture, a real-page rule, its tests | Path A answers | Capture refuses a required control the job data does not list (E3); one appearing later stops the attempt before disclosure | `test_greenhouse_dom.py`, `test_greenhouse_controls.py` |
+| 1 | Each required dropdown opens through one bounded, tested strategy, with the complete list | The pilot's `custom_dropdowns` is fixture-only. Run #9 (600 ms, every data request refused) saw no list open. Run #10 (path B, 1.5 s) allowed no locale file, because the real paths failed the approved rule. So it did not test whether the lists wait on them; 6 of the 7 dropdowns it reached showed no opening evidence | Observation, then code | One rehearsal on a posting whose required dropdowns all have readable lists | Done: path C and run #11 (lists open once the locale files load; 7 mapped lists equal their job data); the react-select readback; the pilot's locale exception integrated with redirect detection and a request cap (D111) | Choose the posting; permissions 1-3; approve its rehearsal | `dropdowns.verify` before the disclosure gate: a list it cannot open, read completely and match exactly stops the attempt with nothing entered | `test_dropdown_strategies.py`, `test_pilot_readiness.py` |
+| 2 | The two required controls no question matches (run #11's `u1` in the phone group and `u3`; aliases are numbered per run) are understood and mapped by evidence | `u1`: its label and whether its options state calling codes were not recorded, and its react-select options exist only once opened. `u3`: no readable options, while a request to another Greenhouse host was refused. No rule maps them on a real page; D104's phone country rule is a local stand-in. D111: the page's hidden search input is not one of them | Observation (private), then code | `u1`: a private, in-app read of its label and options under permission 2 (a browser capture, not built yet). `u3`: none without new evidence | Built: the hidden-search rule and `u3` regressions (D111). Next: the browser capture for `u1` | Permission 2, once that capture exists | Capture refuses a required control the job data does not list (E3); one appearing later stops the attempt before disclosure | `test_greenhouse_dom.py`, `test_greenhouse_controls.py` |
 | 3 | A supported, evidence-backed way to set the location without writing hidden coordinates | No location control at load on the observed posting; D104's search is a local stand-in | Observation, consent, code | For a first rehearsal, choose a posting with no location question. For this posting, note how its location control appears (typing in it is a disclosure: permission 3) | After an observation: a mirroring fixture and a reviewed change letting D104's search run on that structure | Choice of posting; a Path A note | A location search on a real page stops the attempt before anything is entered; hidden coordinates are never written | `test_greenhouse_controls.py` |
 | 4 | Real upload evidence | It needs a disclosure-only rehearsal that uploaded to a real form and still holds. None can run: permissions 1-3 are not recorded, and the pilot runs nowhere | Consent, configuration, your machine | Record permissions 1-3; start the production configuration (§5); approve and watch one rehearsal (§6) | Nothing further in code; the rehearsal machinery and its counting exist | The permission, the start, the approval | The rehearsal stops before the send gate, which refuses a disclose-only approval | `test_rehearsal_stop.py`, `test_pilot_readiness.py` |
 | 5 | Real submission evidence | It needs a real final submit, confirmed, after a valid rehearsal on that path (E6). Permission 4 is not recorded | Consent, your machine | After the rehearsal holds: record permission 4, approve "Submit once" (§7) | Nothing further in code | Permission 4; the approval | The rehearsal prerequisite at approval, queueing and both gates; the send gate needs permission 4; no retry after the final click | `test_rehearsal_prerequisite.py`, `test_greenhouse_live.py` |
@@ -60,11 +63,19 @@ submission) → 7. Conditions 1-3 run in parallel through run C (D109; run B was
 are avoided for a first posting that has no such controls.
 
 **Dropdowns on a real rehearsal.** Run #11 found the real dropdowns open once the page's
-locale files load. The pilot's browser refuses those files on main. This branch's change
-(`live.subresources` gains read-only path C's exact locale rule; pilot pages get the fetch
-redirect guard) lets the pilot load them. It takes effect only with your approval and the
-recorded permissions; without it, a real rehearsal stops at the first dropdown before anything
-is entered.
+locale files load. Since D111 (your authorization of the code change, 2026-11-01) the pilot may
+load them under read-only path C's exact rule:
+- GET `fetch` from the main frame, no query, no redirect;
+- the page's fetch guard;
+- a followed redirect stops the attempt;
+- at most 150 such requests per session.
+
+Nothing has used it. It acts only while the pilot runs, which needs the recorded permissions
+(none exist) and your approval of each application.
+
+**The in-app handoff (D111).** For a real Greenhouse job, the application's page shows what a
+rehearsal would disclose, how it stops before submitting, and which prerequisites hold now
+(`GET /api/applications/{id}/rehearsal-handoff`). It grants nothing.
 
 ## 1. Local verification (your machine; nothing real)
 
@@ -144,8 +155,8 @@ What happens with it:
 
   It does **not** mean public hosting, a domain, TLS, paid infrastructure or other users. Compose
   binds every port to `127.0.0.1`. Only the egress proxy gets an outbound network, and only to
-  the session's board host and Greenhouse's static assets, and (with the locale exception,
-  D110, once approved) the page's locale files under read-only path C's exact rule.
+  the session's board host and Greenhouse's static assets, and (the locale exception, D111)
+  the page's locale files under read-only path C's exact rule.
 - **Needs:** Docker (Compose v2). On a Mac this is unverified (`docs/owner-mac-verification.md`).
 - **`.env`:**
   - `NOEFFORTS_LIVE_GREENHOUSE_ENABLED=true`;
@@ -206,7 +217,7 @@ from you.
 
 | You | Then possible |
 |---|---|
-| Approve the rehearsal request (with the pilot's locale exception) | One disclosure-only rehearsal on a posting you choose (conditions 1, 4) |
+| Choose a posting whose required controls are all mapped; read it, then approve its package as a rehearsal (after permissions 1-3 + the start) | One disclosure-only rehearsal (conditions 1, 4); the locale exception is already in code (D111) |
 | Path A answers | What this posting's `u1` and `u3` ask, if this posting is ever to be used |
 | Permissions 1-3 + the start | One disclosure-only rehearsal on a posting you choose (condition 4) |
 | Permission 4 | One submission of an application whose rehearsal held (condition 5) |
