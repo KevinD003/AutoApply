@@ -263,8 +263,9 @@ def test_a_redirect_of_a_locale_request_is_never_followed_unseen(receiver, drive
             browser = p.chromium.launch()
             try:
                 ctx = browser.new_context()
+                rule = ro._locale_rule_c(cdn, allow_private=True)
                 _install_interception(ctx, BASE, log, driver_fetch=driver_fetch,
-                                      subresources=(ro._locale_rule_c(cdn, allow_private=True),))  # fmt: skip
+                                      subresources=(rule,))  # fmt: skip
                 page = ctx.new_page()  # no fetch guard: the case it would prevent
                 page.goto(f"{BASE}{JOB_PATH}")
                 page.wait_for_timeout(1500)

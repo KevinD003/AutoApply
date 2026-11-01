@@ -73,9 +73,7 @@ def test_it_shows_exactly_what_filling_and_uploading_would_disclose(api, receive
     assert any("never reaches that step" in s for s in h["stop_before_submit"])
 
 
-def test_with_every_prerequisite_met_a_rehearsal_runs_and_stops_before_submitting(
-    api, receiver
-):
+def test_with_every_prerequisite_met_a_rehearsal_runs_and_stops_before_submitting(api, receiver):
     """Ready only once you approved the exact package as a rehearsal; the gates still decide."""
     app_id = live_application(api, approve=False)  # captured through the pilot
     pilot_on(permitted=("read", "open", "disclose"))  # now without permission 4

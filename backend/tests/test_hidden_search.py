@@ -186,7 +186,9 @@ def test_hidden_unrequired_and_empty_it_is_left_alone_and_the_application_goes_t
 
 @pytest.mark.parametrize("hs", ["shown", "value", "group_required"])
 @MAKE
-def test_shown_required_or_holding_a_value_it_stops_before_anything_is_entered(api, receiver, make, hs):
+def test_shown_required_or_holding_a_value_it_stops_before_anything_is_entered(
+    api, receiver, make, hs
+):
     receiver.config(mode=MODE, hs=hs)
     aid = queue(api, make(api))
     assert runner.run_attempt(aid, "w1") == "failed_safe"

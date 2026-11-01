@@ -3345,3 +3345,162 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **Corrected 2026-11-01 by D111:** run #11 did not comply with the authorized stop on any
   non-GET request. Its result shows locale loading and ordinary-click opening observed together,
   not causation.
+
+## D111 — Locale exception integrated; run #11's stop discrepancy corrected and fixed; hidden search inputs; the milestone-B handoff (2026-11-01)
+
+- **Why:** the owner, on 2026-11-01: "I authorize integrating the narrow locale exception and
+  redirect guard prepared on milestone-b-pilot-locale, subject to review and validation. …
+  This authorizes a code change, not a live rehearsal, upload or submission." The same message
+  required a dated correction of run #11's compliance claim, the promised non-GET stop in code,
+  local work on `u1`, `u3`, location and hidden search inputs, and one in-app handoff.
+
+### 1. The locale exception, integrated after review
+
+- **Reviewed diff** (`5230841`, `2d17597`, plus this entry's commits): `live.subresources`
+  gains read-only path C's exact rule, and pilot pages get its fetch redirect guard.
+  - **The rule:** GET `fetch` only, from the page's main frame, on
+    `https://job-boards.cdn.greenhouse.io:443`, path `/locales/<segment>/<segment>.json`, no
+    query, no `..`.
+  - **Init script:** `live.init_scripts` adds `redirect: 'error'` to every page `fetch()`, and
+    the runner installs it before navigating.
+- **Review findings, fixed before integration:**
+  - **Main frame:** a request admitted only by the path-limited rule now passes only from the
+    page's main frame, where the guard runs (`2d17597`).
+  - **Followed redirects:** a redirect the browser follows for such a request (netns and
+    container modes do not route redirect hops) is detected (`EgressLog.redirected`). It stops
+    the attempt before anything is entered and again before submitting
+    (`LOCALE_REDIRECTED`). Path C stopped on the same thing.
+  - **Request cap:** such requests are capped per session at path C's page-request budget (150);
+    beyond it they are refused before sending.
+- **Unchanged:**
+  - The pilot is off by default.
+  - Every gate still needs the owner's recorded permissions (none are recorded) and the
+    per-application approval.
+  - The stand-in gets no rule and no init script.
+
+### 2. Run #11: what was authorized and what the code did (dated correction)
+
+- **Authorized** (run C approval): the run stops on "Any POST or other non-GET request", among
+  other stops.
+- **Implemented at `efceea4`:**
+  - a non-GET request during an inspection action stopped the run;
+  - one during page load was blocked before sending and recorded, but did not stop the run.
+  That had been the behaviour since path B; the request did not say so.
+- **What happened:** the run's own summary reports one POST fetch to `c.spl.greenhouse.io` at
+  page load as blocked. The run continued and took its 24 actions.
+- **Limits on the compliance claim:**
+  - Run #11 did not comply with the authorized stop condition. The actions after that POST
+    were outside the approved protocol.
+  - "Not transmitted" rests on the run's own record of what it blocked, not on an independent
+    observer.
+- **What the observations still show:** on this posting, locale loading and opening at an
+  ordinary click were observed together. The experiment did not establish that one caused the
+  other.
+- **History is kept:**
+  - The proposal's Stops row is restored to the approved wording. D110 had edited it in place,
+    and its "Correction" bullet says the proposal states the distinction; that edit is reverted.
+  - Dated corrections are added to the proposal, the compatibility report and D110.
+
+### 3. The stop, fixed locally
+
+- In every widget-inspection mode, a non-GET request now stops the run wherever it happens:
+  - **Blocked before sending.**
+  - **Latched at once:** every later request is refused.
+  - **No inspection action follows,** at load or between actions.
+  - **The sanitized reason is kept** ("a non-GET request was attempted").
+  - **Never retried.**
+- **Tests:**
+  - a page-load beacon and a dropdown beacon, each against an independent listener that
+    receives nothing;
+  - the CLI process (`test_widget_inspection.py`, `test_readonly_cli_process.py`).
+- No live run was needed or made.
+
+### 4. The remaining gaps, worked from the evidence
+
+- **Hidden search input (run #11's `u2`):** observed as
+  - a `search` input with the combobox role;
+  - no hidden attribute, but not visible;
+  - no required signal of any kind;
+  - in the group of a control that a job-data question maps to.
+  - **The finding:** capture and the adapter read only attributes, so they would have made it
+    a required, blocking "unanswered question" (and, on the live page, a new field).
+  - **The rule:** it is not an unanswered question, and NoEfforts never touches it, only while
+    the live page shows all of these:
+    - it is hidden, unrequired and empty;
+    - the question whose group it is in is shown.
+    - **Where the live page is checked:** before anything is entered, and after filling (the
+      runner's re-check).
+  - **Anything else stops the attempt:** shown, required by the control or its group, or holding
+    a value. A standalone hidden search input, or one whose group holds two questions, stays a
+    blocking checkpoint.
+  - **Never inferred:** what it is for, its position or its label.
+  - **Implementation:** `widget="hidden_search"`; the fixture `gh2_hidden_search`, built from
+    that one observation; `tests/test_hidden_search.py` (receiver ledger).
+  - **Package shape:** unchanged, so `SCHEMA_VERSION` stays 3. Only a form with such an input
+    carries `.answers[].widget`, as for D104.
+- **`u3` (required, standalone, no readable options; a request to `my.greenhouse.io` refused
+  during its action):**
+  - No host or endpoint is added because a widget asks for one.
+  - **New regressions:**
+    - mapped dropdowns whose options need another host stop before disclosure, and an
+      independent listener receives nothing;
+    - a required unlisted dropdown with that dependency is a checkpoint, and nothing can be
+      approved;
+    - no pilot rule admits another Greenhouse host or a data endpoint.
+  - What the request was for is not known; `u3` stays blocking.
+- **`u1` (required, in the phone group, 244 options):**
+  - The existing rule already meets the owner's conditions: an approved phone number that
+    states its calling code, and exactly one option with that code; never a shared code, never
+    residence.
+  - **It cannot apply to `u1` yet. Three facts are missing:**
+    - its label (the rule accepts four exact names, and the label was not recorded);
+    - whether its option texts state calling codes (not recorded);
+    - its options at capture: react-select lists exist only once opened, and capture reads
+      the page without its scripts.
+  - Recognising it by its position or its 244 options is refused.
+  - **The gap is specific:** a private, in-app read of that one control's label and options on
+    the live page. That needs a browser-based capture under permission 2 (open), which does not
+    exist yet. That is the next implementation step for `u1`; it needs no public experiment.
+  - Until then, `u1` stays an unlisted, blocking control.
+- **Location:**
+  - The job data requires `location` (text), with page-managed `latitude`/`longitude`.
+  - No location control was at load, and none appeared after the 24 actions.
+  - Capture therefore refuses this posting (`controls_do_not_match`, an absent required
+    field).
+  - Nothing shows whether the page asks for a location at all, or how. Nothing is changed:
+    filling a value the page does not show would be a guess.
+  - **The gap:** how and whether the page presents the location question.
+
+### 5. The milestone-B handoff, in the app
+
+- **Where:** `GET /api/applications/{id}/rehearsal-handoff` and a panel on the application's
+  page.
+- **What it shows, for a real Greenhouse job (or a form read through the pilot):**
+  - the destination;
+  - the exact answers and documents of the current package, and which of them filling and
+    uploading would disclose;
+  - what that exposes;
+  - the stop before submit and what enforces it;
+  - every prerequisite, read from the system as it is now: switch, production mode, container
+    isolation, owner account, a Greenhouse posting, permissions 1-3 each, capture through the
+    pilot, no open or blocking question, and the per-application rehearsal approval;
+  - permission 4, kept separate;
+  - the evidence a rehearsal leaves, including that a real employer has no independent ledger.
+- **Limits:**
+  - It reads and grants nothing.
+  - It is 404 for anyone else.
+  - It is never logged.
+- **No personal facts were entered or derived.** Tests use synthetic data
+  (`tests/test_rehearsal_handoff.py`).
+
+### Decided
+
+- **Readiness is unchanged (0 of 7):**
+  - condition 1: `u3`'s list was not readable, and the pilot has not run;
+  - condition 2: `u1` and `u3` are not mapped;
+  - condition 3: location.
+- **Milestone B on the observed posting** is blocked by its absent location control, `u1` and
+  `u3`, at capture, before anything is sent.
+- **Permissions:** 1-3 and an application-specific rehearsal approval must exist before any
+  rehearsal; permission 4 stays separate.
+- **Not authorized and not done:** no live run, rehearsal, upload or submission.

@@ -239,7 +239,9 @@ def conditions(
         ("unmatched_required_controls", "the two required controls no question matches are "
          "understood and mapped by evidence", False,
          f"no mapping rule exists for a real page (D104's phone country rule runs on local "
-         f"stand-ins only); Path A: u1 {advice['u1']['state']}, u2 {advice['u2']['state']}"),
+         f"stand-ins only; run #11's u1 and u3; D111: its hidden search input is not one); "
+         f"Path A (run #9's aliases): u1 {advice['u1']['state']}, "
+         f"u2 {advice['u2']['state']}"),
         ("location", "a supported, evidence-backed way to set the location without writing "
          "hidden coordinates", level(Capability.location_picker) in OBSERVED,
          f"location_picker: {level(Capability.location_picker)}"),

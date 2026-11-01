@@ -574,9 +574,14 @@ def build_schema(api: dict, page_html: str, *, stand_ins: bool = False
             # D111: not an unanswered question, on condition that the live page hides it,
             # requires nothing in it and holds nothing in it (re-proven by the adapter).
             fields.append(
-                FormField(key=key, label=HIDDEN_SEARCH_LABEL, type=FieldType.unsupported,
-                          required=False, unsupported_reason=HIDDEN_SEARCH_REASON,
-                          widget="hidden_search")  # fmt: skip
+                FormField(
+                    key=key,
+                    label=HIDDEN_SEARCH_LABEL,
+                    type=FieldType.unsupported,
+                    required=False,
+                    unsupported_reason=HIDDEN_SEARCH_REASON,
+                    widget="hidden_search",
+                )  # fmt: skip
             )
             continue
         fields.append(

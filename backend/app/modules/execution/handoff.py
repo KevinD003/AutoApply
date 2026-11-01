@@ -80,17 +80,34 @@ def _server(user: User, url: str | None) -> list[dict]:
     owners = {e.strip().lower() for e in s.live_owner_emails}
     note = "test environment: the local stand-in only" if stand_in else ""
     return [
-        _item("pilot_switch", "The pilot is switched on (NOEFFORTS_LIVE_GREENHOUSE_ENABLED)",
-              bool(s.live_greenhouse_enabled), "a switch, not a permission"),  # fmt: skip
-        _item("production", "Production mode (NOEFFORTS_ENV=production)",
-              s.env == "production" or stand_in, note or s.env),  # fmt: skip
-        _item("container", "The browser's container isolation (Chromium's own sandbox on)",
-              s.browser_isolation == "container" or stand_in,
-              note or s.browser_isolation),  # fmt: skip
-        _item("owner_account", "This account is the server owner's (NOEFFORTS_LIVE_OWNER_EMAILS)",
-              (user.email or "").strip().lower() in owners),  # fmt: skip
-        _item("greenhouse_posting", "The job is a Greenhouse-hosted job post the pilot accepts",
-              live.posting(url) is not None),  # fmt: skip
+        _item(
+            "pilot_switch",
+            "The pilot is switched on (NOEFFORTS_LIVE_GREENHOUSE_ENABLED)",
+            bool(s.live_greenhouse_enabled),
+            "a switch, not a permission",
+        ),  # fmt: skip
+        _item(
+            "production",
+            "Production mode (NOEFFORTS_ENV=production)",
+            s.env == "production" or stand_in,
+            note or s.env,
+        ),  # fmt: skip
+        _item(
+            "container",
+            "The browser's container isolation (Chromium's own sandbox on)",
+            s.browser_isolation == "container" or stand_in,
+            note or s.browser_isolation,
+        ),  # fmt: skip
+        _item(
+            "owner_account",
+            "This account is the server owner's (NOEFFORTS_LIVE_OWNER_EMAILS)",
+            (user.email or "").strip().lower() in owners,
+        ),  # fmt: skip
+        _item(
+            "greenhouse_posting",
+            "The job is a Greenhouse-hosted job post the pilot accepts",
+            live.posting(url) is not None,
+        ),  # fmt: skip
     ]
 
 
@@ -132,14 +149,24 @@ def handoff(db: Session, user: User, app: Application) -> dict:
     scope = None if appr is None else str(getattr(appr.scope, "value", appr.scope))
     rehearsal_ok = scope == ApprovalScope.disclose_only.value
     application = [
-        _item("captured_through_pilot", "The form was read through the pilot", captured,
-              "" if form is None else f"form version {form.version}"),  # fmt: skip
-        _item("no_checkpoints", "No question is left open or blocking",
-              pkg is not None and not unresolved and not blocking,
-              f"{len(unresolved)} open, {len(blocking)} blocking"),  # fmt: skip
-        _item("rehearsal_approval", "You approved this exact package as a rehearsal",
-              rehearsal_ok,
-              "none" if scope is None else f"approved as {scope}"),  # fmt: skip
+        _item(
+            "captured_through_pilot",
+            "The form was read through the pilot",
+            captured,
+            "" if form is None else f"form version {form.version}",
+        ),  # fmt: skip
+        _item(
+            "no_checkpoints",
+            "No question is left open or blocking",
+            pkg is not None and not unresolved and not blocking,
+            f"{len(unresolved)} open, {len(blocking)} blocking",
+        ),  # fmt: skip
+        _item(
+            "rehearsal_approval",
+            "You approved this exact package as a rehearsal",
+            rehearsal_ok,
+            "none" if scope is None else f"approved as {scope}",
+        ),  # fmt: skip
     ]
     prerequisites = _server(user, url) + _permissions() + application
     submit_ok = authorizations.covers(authorizations.GREENHOUSE_PILOT, SUBMIT[0])
@@ -172,8 +199,9 @@ def handoff(db: Session, user: User, app: Application) -> dict:
         "outstanding": [p["code"] for p in prerequisites if not p["met"]],
         "ready": all(p["met"] for p in prerequisites),
         # Permission 4 stays separate: never part of a rehearsal, shown so it is not assumed.
-        "submit_permission": _item(f"permission_{SUBMIT[0]}", SUBMIT[1], submit_ok,
-                                   "not needed for a rehearsal"),  # fmt: skip
+        "submit_permission": _item(
+            f"permission_{SUBMIT[0]}", SUBMIT[1], submit_ok, "not needed for a rehearsal"
+        ),  # fmt: skip
         "expected_evidence": list(EVIDENCE),
         "not_a_permission": "This page grants nothing: every gate checks again when an attempt "
         "runs.",
