@@ -76,8 +76,26 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
 - **CI:**
   - #148 on `df3962b`: passed, all four jobs.
   - #149 on `d40df2f` (D107): passed, all four jobs. D107 is closed.
-- **Validation (this sandbox, each on its own disposable database and ports):** see the commit's
-  record below this section's merge.
+- **Validation (this sandbox, each run on its own disposable database and ports):**
+  - **D108** (`b999d8c`): `scripts/validate.sh lint backend` passed, exit 0. Lint was clean, and
+    the full backend suite gave **4,302 passed**, 0 failed (1 h 12 min). Sabotage checks:
+    - without the non-GET rule, both beacon cases ended `confirmed`;
+    - without the class-hint rule, 3 tests failed;
+    - with an added control counted as a change, 2 tests failed.
+  - **D109** (the files it touches): the first run of 16 files gave 659 passed and 3 failed. It
+    ran while two other suites shared the machine.
+    - Two were real expectations to update: path B's summary now carries `outcomes`, and the
+      response tripwire was tightened (one `response` subscription whose handler reads only
+      status and request; header accessors are now forbidden too).
+    - The third, `test_widget_detector::test_options_within_the_window_are_observed_and_their_arrival_recorded`,
+      is load-sensitive (its first sample came after the fixture's 300 ms delay). It passed 3 of
+      3 on its own. Not changed.
+  - After the fixes, each passed in full on its own: `test_locale_observation.py`,
+    `test_dropdown_observation_c.py`, `test_widget_inspection.py`, `test_widget_detector.py`,
+    `test_dropdown_strategies.py`, `test_greenhouse_controls.py`, `test_readonly_cli_process.py`.
+    Sabotage: with the old input-value readback, the react-select-like cases were abandoned.
+  - Not run locally on the merged tree: the full suite and Playwright. CI runs them on the
+    merged commit, and the run request names that commit only after its CI passes.
 - **Next executable step:** the owner's single-use approval of run C, on the pinned revision
   named in the request (after CI passes on it).
 
