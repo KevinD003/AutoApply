@@ -244,10 +244,28 @@ def fetch(url: str) -> bytes:
 
 def subresources(origin: str) -> tuple:
     """The page's own dependencies the browser may load on a real board: Greenhouse's static
-    scripts and stylesheets (GET/HEAD) from the one CDN approved for observation (B3), and
-    nothing else. The test stand-in needs none."""
-    if (origin or "").lower().rstrip("/") not in BOARD_ORIGINS:
+    scripts and stylesheets (GET/HEAD) from the one CDN approved for observation (B3) and, D110,
+    the page's locale files under read-only path C's exact rule (GET `fetch` from the main
+    frame, `/locales/<segment>/<segment>.json`, no query; redirects refused by `init_scripts`).
+    Run #11 found the real dropdowns open only once those files load. Nothing else. The test
+    stand-in needs none."""
+    if not _board(origin):
         return ()
-    from app.modules.preparation.gh_readonly import _b3_rules
+    from app.modules.preparation.gh_readonly import _b3_rules, _locale_rule_c
 
-    return _b3_rules()
+    return (*_b3_rules(), _locale_rule_c())
+
+
+def init_scripts(origin: str) -> tuple[str, ...]:
+    """Scripts a pilot page gets before any of its own runs (D110): on a real board, the guard
+    that gives every fetch() of the page `redirect: 'error'`, so a redirect of an allowed locale
+    request is never followed, as in read-only path C."""
+    if not _board(origin):
+        return ()
+    from app.modules.preparation.gh_readonly import _NO_REDIRECT_JS
+
+    return (_NO_REDIRECT_JS,)
+
+
+def _board(origin: str) -> bool:
+    return (origin or "").lower().rstrip("/") in BOARD_ORIGINS

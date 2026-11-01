@@ -245,6 +245,9 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             ):
                 svc.fail_safe(aid, worker, gen, "the form is not on the destination's site")
                 return "failed_safe"
+            if adapter_name == live.ADAPTER:  # D110: before any page script runs
+                for js in live.init_scripts(dest["origin"]):
+                    page.add_init_script(script=js)
             loading = _Loading(page)
             try:
                 page.goto(url)

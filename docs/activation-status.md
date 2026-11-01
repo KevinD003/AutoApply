@@ -59,11 +59,12 @@ control is not blocked by them, but no condition is met by that.
 submission) → 7. Conditions 1-3 run in parallel through run C (D109; run B was used by run #10), or
 are avoided for a first posting that has no such controls.
 
-**Dropdowns on a real rehearsal today.** If the real dropdowns wait on their locale files, a
-real rehearsal stops at them before anything is entered. The pilot's browser may load only the
-board host and Greenhouse's static scripts and stylesheets, not those files. Run #10 could not
-answer whether the files are needed: its rule allowed none of the real ones. Allowing them
-during a rehearsal would be a separate reviewed change.
+**Dropdowns on a real rehearsal.** Run #11 found the real dropdowns open once the page's
+locale files load. The pilot's browser refuses those files on main. This branch's change
+(`live.subresources` gains read-only path C's exact locale rule; pilot pages get the fetch
+redirect guard) lets the pilot load them. It takes effect only with your approval and the
+recorded permissions; without it, a real rehearsal stops at the first dropdown before anything
+is entered.
 
 ## 1. Local verification (your machine; nothing real)
 
@@ -143,7 +144,8 @@ What happens with it:
 
   It does **not** mean public hosting, a domain, TLS, paid infrastructure or other users. Compose
   binds every port to `127.0.0.1`. Only the egress proxy gets an outbound network, and only to
-  the session's board host and Greenhouse's static assets.
+  the session's board host and Greenhouse's static assets, and (with the locale exception,
+  D110, once approved) the page's locale files under read-only path C's exact rule.
 - **Needs:** Docker (Compose v2). On a Mac this is unverified (`docs/owner-mac-verification.md`).
 - **`.env`:**
   - `NOEFFORTS_LIVE_GREENHOUSE_ENABLED=true`;

@@ -188,12 +188,43 @@ def test_a_redirect_is_never_followed():
     assert e.value.code == "redirected"
 
 
-def test_the_browser_may_load_only_greenhouses_static_assets_on_a_real_board():
-    (rule,) = live.subresources("https://job-boards.greenhouse.io")
-    assert rule.origin == "https://job-boards.cdn.greenhouse.io"
-    assert rule.methods == frozenset({"GET", "HEAD"})
-    assert rule.resource_types == frozenset({"script", "stylesheet"})
+def test_the_browser_may_load_only_greenhouses_static_assets_and_locale_files_on_a_real_board():
+    """D110 (prepared for the owner's approval with the first rehearsal): B3's scripts and
+    stylesheets, and read-only path C's exact locale rule, which run #11 used; nothing else."""
+    from app.modules.preparation import gh_readonly as ro
+
+    assets, locales = live.subresources("https://job-boards.greenhouse.io")
+    assert assets.origin == locales.origin == "https://job-boards.cdn.greenhouse.io"
+    assert assets.methods == frozenset({"GET", "HEAD"})
+    assert assets.resource_types == frozenset({"script", "stylesheet"}) and assets.path is None
+    assert locales == ro._locale_rule_c()
+    assert locales.methods == frozenset({"GET"}) and locales.resource_types == frozenset({"fetch"})
+    cdn = "https://job-boards.cdn.greenhouse.io"
+    assert locales.permits(f"{cdn}/locales/en/common.6f8a2c1d.json", "GET", "fetch")
+    for url, method, rtype in [(f"{cdn}/locales/en/x.json?v=1", "GET", "fetch"),
+                               (f"{cdn}/locales/en/x.json", "POST", "fetch"),
+                               (f"{cdn}/locales/en/x.json", "GET", "xhr"),
+                               (f"{cdn}/gh/data.json", "GET", "fetch"),
+                               (f"{cdn}/locales/../x.json", "GET", "fetch")]:  # fmt: skip
+        assert not locales.permits(url, method, rtype), (url, method, rtype)
     assert live.subresources(BASE) == ()
+
+
+def test_a_pilot_page_never_follows_a_redirect_of_its_own_fetches():
+    """D110: on a real board the page gets path C's fetch guard before its own scripts run, and
+    the runner applies it before navigating; the stand-in gets nothing."""
+    import ast
+    import inspect
+
+    from app.modules.execution import runner as rn
+    from app.modules.preparation import gh_readonly as ro
+
+    assert live.init_scripts("https://job-boards.greenhouse.io") == (ro._NO_REDIRECT_JS,)
+    assert live.init_scripts(BASE) == ()
+    src = inspect.getsource(rn)
+    assert src.index("live.init_scripts(") < src.index("page.goto(url)")
+    assert "add_init_script" in src
+    ast.parse(src)
 
 
 # -- applying ------------------------------------------------------------------------------------
