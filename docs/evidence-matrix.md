@@ -9,6 +9,22 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Greenhouse dropdowns: react-select readback, container click, read-only path C (D109, 2026-11-01; local only)
+
+Fixture behaviours are FIXTURE ASSUMPTIONS modelled on react-select and on the owner's previous
+bot. None of this has run on a real page.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| A choice on react-select markup is read back from its single-value element (the input keeps only search text) | `test_dropdown_strategies.py::test_each_strategy_selects_exactly_the_approved_option[react_select]`, `[container_only]` | receiver acceptance holds the approved options; sabotage (input-value readback): both cases abandoned with "3 field(s) did not keep their values" |
+| A list that opens only from its react-select container is opened by `click_container` and verified like any list | `[container_only]` above | the same exact-list checks; `confirmed` |
+| Path C's rule: the observed `/locales/*/*.json` shape, segments 1-128 with single dots; `..`, `%`, leading dot, other shapes, queries, other hosts, methods, types, initiators, redirects refused | `test_dropdown_observation_c.py::test_path_c_allows_*`, `::test_path_c_refuses_*`, `::test_a_real_page_takes_path_b_or_path_c_and_nothing_wider` | `locale_refusal` and the context layer agree |
+| A hashed locale name refused by path B loads under path C (2xx) and the list opens at the control's click | `::test_a_hashed_locale_name_refused_by_path_b_loads_under_path_c_and_the_list_opens` | receiver log: the page and the one locale file, GETs only |
+| An allowed locale request that fails is not counted as loaded | `::test_an_allowed_locale_request_that_fails_is_not_counted_as_loaded` | outcome `4xx` |
+| The container fallback: one click, only without an opening, only with a container, only within budget | `::test_a_list_that_opens_only_from_its_container_is_opened_by_the_fallback`, `::test_without_a_container_or_budget_there_is_no_second_click` | `container_attempt`, `opened_by`; no class name in the summary |
+| React-select markup recorded as booleans only | `::test_react_select_markup_is_recorded_as_booleans_only` | `markup`; guard passes; no `select__` text |
+| The workflow entry point | `test_readonly_cli_process.py::test_dropdown_mode_entry_point_completes_with_path_c_and_states_its_rule` | fresh process, exit 0; 3 API GETs, the page and one hashed locale file |
+
 ## A dropdown that sends when opened; widget observations kept apart (D108, 2026-11-01; local only)
 
 Synthetic data and local stand-ins only. Nothing here was run against a real page; run #10's

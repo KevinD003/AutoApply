@@ -780,6 +780,61 @@ run #10)".
 - **What would need a new approval:** any further run, including one that only collects the new
   detail. Any wider rule would also be its own reviewed change. Neither is requested here.
 
+### C. Dropdown observation with the observed locale shape (D109) — built and tested locally; not approved
+
+**Why another run can reduce uncertainty.**
+- Runs #9 and #10 showed that clicking a real dropdown makes the page ask for locale files. All
+  of them were refused: in run #10 all 12, by run B's exact rule.
+- Run C allows exactly the shape those requests had, with longer or dotted names. It records
+  whether each file actually loaded, and it adds the one click the owner's previous bot used, on
+  the react-select container.
+- It answers three questions at once:
+  - **H1:** do the files load, and do the lists then open at the control's own click?
+  - **H2:** if not, does one click on the container open them?
+  - **H3:** do the controls sit in react-select markup? That decides how a choice is read back
+    (D109).
+
+**Scope as implemented** (`--inspect-dropdowns`; `gh_readonly._locale_rule_c`,
+`LOCALE_C_LIMITS`):
+
+| Item | Value |
+|---|---|
+| Destination | the posting already approved for runs #3-#10 (repository secret `GH_READONLY_POSTING`; never named here) |
+| Requests | run #10's: the 3 job-data GETs, one page load, B3's scripts and stylesheets from `job-boards.cdn.greenhouse.io`; plus GET `fetch` from the main frame to `job-boards.cdn.greenhouse.io:443` for `/locales/<segment>/<segment>.json`, each segment 1-128 of `[A-Za-z0-9_~+@-]` or single dots (never first or doubled), no query, no redirect followed |
+| Refused before sending | every other data request (incl. `boards.greenhouse.io`, `my.greenhouse.io`), every non-GET (incl. the `c.spl.greenhouse.io` POST, which stops the run), other hosts, fonts and images |
+| Interactions | per dropdown present at load: one click on the control; only if that shows no opening and a react-select container exists, one click on the container; one Escape after each click. Nothing typed, selected, uploaded or submitted; no login |
+| Limits | 1.5 s settle per action; at most 40 actions and 80 s of inspection; 120 s observation, 180 s run, 200 s outer kill; 150 page requests, 20 MB |
+| Stops | any non-GET request; a value change, selection, or control added or removed; a submission attempt; a dialog or file chooser; a challenge; a navigation or address change; a redirected locale request; any budget. Not retried |
+| Applicant data | none: no field is filled; the page and the CDN see ordinary connection metadata from the GitHub runner (address, user agent, timing) |
+| Evidence | the anonymous summary only: per dropdown its open state, `opened_by`, the separate observations (D108), react-select markup as booleans; allowed locale requests with their outcome classes and path shapes; refusal counts with path properties (D107). No URL, name, class name, value or body |
+
+**What each result enables:**
+- **Files load (2xx) and the lists open at the control's click:**
+  - the dropdowns wait on the locale files;
+  - the pilot then needs the same narrow locale exception (a reviewed change to
+    `live.subresources`), and the react-select readback applies if `markup` confirms it;
+  - next: the request for one disclosure-only rehearsal (milestone B).
+- **They open only from the container:** `click_container` (built) is the strategy; whether the
+  pilot needs the files follows from their outcome.
+- **Files allowed but not loaded, or refused again** (the D107 properties say why): the locale
+  question is still open. No further run is proposed; the owner's manual check (Path A) is next.
+- **Nothing opens although the files loaded and the container was clicked:** neither the files
+  nor the click target is the blocker. Live experiments on dropdowns stop, and Path A decides.
+
+**Tests (local fixture only):**
+- `tests/test_dropdown_observation_c.py`:
+  - the rule element by element;
+  - a hashed locale name refused by path B and loaded under path C, after which the list opens;
+  - a 404 locale file counted as `4xx`, not loaded;
+  - a container-only list opened by the fallback;
+  - no second click without a container or budget;
+  - react-select markup recorded as booleans;
+  - no class name or path in the summary.
+- `tests/test_readonly_cli_process.py::test_dropdown_mode_entry_point_completes_with_path_c_and_states_its_rule`.
+
+**The request** (needs the owner's explicit single-use approval; not approved): see the next
+message to the owner, which names the pinned revision after CI has passed on it.
+
 ## Deliverable: the comparison (once A/B are separately approved and run)
 
 | Area | Compared |

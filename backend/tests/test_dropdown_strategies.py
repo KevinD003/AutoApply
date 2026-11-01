@@ -60,6 +60,11 @@ def run(api, receiver, mode="gh2_dd", **cfg):
         ("delayed", {"delay_ms": 2500}),
         ("locale_on_open", {}),
         ("late_fetch", {"delay_ms": 1200}),
+        # D109: react-select-like markup where only the `select__control` container opens it
+        ("container_only", {}),
+        # D109: react-select-like markup; the choice is read back from the single-value element
+        # (the input keeps only search text), as react-select shows it
+        ("react_select", {}),
     ],
 )
 def test_each_strategy_selects_exactly_the_approved_option(api, receiver, dd, cfg):
@@ -256,7 +261,8 @@ def test_capabilities_stay_fixture_only_and_real_destinations_refused():
     from app.modules.execution import policy
     from app.modules.execution.adapters import dropdowns
 
-    assert set(dropdowns.STRATEGIES) == {"click_control", "arrow_down", "trigger_button"}
+    assert set(dropdowns.STRATEGIES) == {"click_control", "click_container", "arrow_down",
+                                         "trigger_button"}  # fmt: skip
     assert all(dropdowns.CAPABILITIES[s] == "fixture_only" for s in dropdowns.STRATEGIES)
     assert dropdowns.CAPABILITIES["options_loaded_from_network"].startswith("checkpoint")
     assert policy.CAPABILITIES["greenhouse_dom"]["real_destinations"] is False

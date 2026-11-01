@@ -336,6 +336,14 @@ LIMITS = Limits()
 #   per dropdown (24 actions in 15.6 s at 600 ms). Inside observe_seconds and run_seconds,
 #   which are unchanged.
 LOCALE_LIMITS = replace(LIMITS, widget_settle_ms=1500, widget_seconds=50.0)
+# --inspect-dropdowns (path C, D109) only: path B's limits with room for one container click per
+# dropdown that did not open on the control (at most four actions per dropdown):
+# - widget_actions 40: twelve dropdowns that open at the first click take 24; each fallback 2;
+# - widget_seconds 80: run #10 took about 1.55 s per action (14 in 21.7 s), so 40 actions take
+#   about 62 s; a dropdown, and a fallback, starts only if its worst case (7 s) still fits;
+# - observe_seconds 120 and run_seconds 180, inside the script's outer 200 s kill.
+LOCALE_C_LIMITS = replace(LOCALE_LIMITS, widget_actions=40, widget_seconds=80.0,
+                          observe_seconds=120.0, run_seconds=180.0)  # fmt: skip
 
 
 def _b3_rules() -> tuple:
@@ -361,19 +369,34 @@ LOCALE_ORIGIN = "https://job-boards.cdn.greenhouse.io"  # https, so port 443 onl
 LOCALE_SEGMENT = r"[A-Za-z0-9_-]{1,32}"
 LOCALE_PATH = rf"/locales/{LOCALE_SEGMENT}/{LOCALE_SEGMENT}\.json"
 LOCALE_PATH_TEXT = "/locales/<segment>/<segment>.json, each segment 1-32 of [A-Za-z0-9_-]"
+# Path C (D109, --inspect-dropdowns): run #10 found every real locale request in the shape
+# /locales/*/*.json with no query, all failing path B's character and length limits. Path C
+# keeps that exact shape, host, method, type and initiator, and allows each segment 1-128 of
+# [A-Za-z0-9_~+@-] and single dots (not first, never two in a row): a content hash or a dotted
+# name passes; "..", a leading dot, "%", "/" inside a segment, a query or any other shape do not.
+LOCALE_SEGMENT_C = r"(?!\.)(?:[A-Za-z0-9_~+@-]|\.(?!\.)){1,128}"
+LOCALE_PATH_C = rf"/locales/{LOCALE_SEGMENT_C}/{LOCALE_SEGMENT_C}\.json"
+LOCALE_PATH_C_TEXT = ("/locales/<segment>/<segment>.json, each segment 1-128 of "
+                      "[A-Za-z0-9_~+@-] or single dots, never first or doubled")  # fmt: skip
 LOCALE_METHODS = frozenset({"GET"})
 LOCALE_TYPES = frozenset({"fetch"})
 LOCALE_REDIRECTED = "a locale request was redirected"
 _DEFAULT_PORTS = {"https": 443, "http": 80}
 
 
-def _locale_rule(origin: str = LOCALE_ORIGIN, allow_private: bool = False):
+def _locale_rule(origin: str = LOCALE_ORIGIN, allow_private: bool = False, path: str = LOCALE_PATH):
     """The exception as a dependency rule (SubresourceRule with a path limit), so the context's
-    own interception layer enforces origin, method, type, path and "no query" too."""
+    own interception layer enforces origin, method, type, path and "no query" too. `path` is
+    LOCALE_PATH (path B) or LOCALE_PATH_C (path C); nothing else is accepted for a real page."""
     from app.modules.execution.browser import SubresourceRule
 
     return SubresourceRule(origin, LOCALE_METHODS, LOCALE_TYPES, allow_private=allow_private,
-                           path=LOCALE_PATH)  # fmt: skip
+                           path=path)  # fmt: skip
+
+
+def _locale_rule_c(origin: str = LOCALE_ORIGIN, allow_private: bool = False):
+    """Path C's rule (D109): path B's, with LOCALE_PATH_C."""
+    return _locale_rule(origin, allow_private, path=LOCALE_PATH_C)
 
 
 def locale_refusal(rule, url: str, method: str, resource_type: str, *, main_frame: bool = True,
@@ -392,7 +415,9 @@ def locale_refusal(rule, url: str, method: str, resource_type: str, *, main_fram
         return "origin"
     if not same or u.username is not None or u.password is not None:
         return "origin"
-    if re.fullmatch(LOCALE_PATH, u.path) is None or re.fullmatch(r"[!-~]+", url) is None:
+    path = getattr(rule, "path", None) or LOCALE_PATH
+    if (re.fullmatch(path, u.path) is None or ".." in u.path
+            or re.fullmatch(r"[!-~]+", url) is None):  # fmt: skip
         return "path"
     if "?" in url or u.query or u.fragment:
         return "query"
@@ -493,6 +518,7 @@ def observe_page(
     subresources: tuple = (),
     inspect_widgets: bool = False,
     locale_rule=None,
+    container_fallback: bool = False,
     fault: str | None = None,
 ) -> dict:
     """Permission B: ONE page load in the isolated browser, observe only.
@@ -536,13 +562,16 @@ def observe_page(
         raise NotApproved("widget inspection of a real page runs only with the B3 policy")
     if locale_rule is not None and (
         not inspect_widgets
-        or (locale_rule.methods, locale_rule.resource_types, locale_rule.path)
-        != (LOCALE_METHODS, LOCALE_TYPES, LOCALE_PATH)
-        or (not fixture and locale_rule != _locale_rule())
+        or (locale_rule.methods, locale_rule.resource_types) != (LOCALE_METHODS, LOCALE_TYPES)
+        or locale_rule.path not in (LOCALE_PATH, LOCALE_PATH_C)
+        or (not fixture and locale_rule not in (_locale_rule(), _locale_rule_c()))
     ):
         raise NotApproved(
             "only the approved locale rule may be added, and only to widget inspection"
         )
+    if container_fallback and (not inspect_widgets or locale_rule is None
+                               or locale_rule.path != LOCALE_PATH_C):  # fmt: skip
+        raise NotApproved("the container fallback belongs to path C only")
     if any(r.allow_private for r in subresources) and not fixture:
         raise NotApproved("a non-default page origin is allowed only for test fixtures")
     if not fixture and s.browser_isolation != "container":
@@ -572,6 +601,7 @@ def observe_page(
     phase = ["load"]  # "load", or "action:<n>" while the widget inspection acts
     data_refused: list[dict] = []
     locale_allowed: list[dict] = []  # path B: the allowed locale requests (shapes only)
+    locale_by_request: dict[int, dict] = {}  # D109: allowed locale requests by request object
     events: list[dict] = []
     stops: list[str] = []
     failed: list[dict] = []
@@ -658,7 +688,9 @@ def observe_page(
                 stops.append("received data limit reached")
                 return route.abort()
             if locale is not None:
-                locale_allowed.append(locale)  # counted; its response is never read
+                locale["outcome"] = "pending"  # D109: set from the response's status only
+                locale_by_request[id(request)] = locale
+                locale_allowed.append(locale)  # counted; its response body is never read
             return route.fallback()
 
         def on_request(request):
@@ -721,6 +753,21 @@ def observe_page(
         page.on("requestfinished", safe(on_finished))
         page.on("requestfailed", safe(lambda r: failed.append(_failure(r, origin))))
         if locale_rule is not None:
+            # D109: an allowed locale request is not a loaded one. Its outcome is the status
+            # class of its response (status only; the body is never read) or "failed".
+            def on_locale_response(response):
+                entry = locale_by_request.get(id(response.request))
+                if entry is not None:
+                    entry["outcome"] = f"{min(max(response.status // 100, 1), 5)}xx"
+
+            def on_locale_failed(request):
+                entry = locale_by_request.get(id(request))
+                if entry is not None:
+                    entry["outcome"] = "failed"
+
+            page.on("response", safe(on_locale_response))
+            page.on("requestfailed", safe(on_locale_failed))
+        if locale_rule is not None:
             page.add_init_script(script=_NO_REDIRECT_JS)
         try:
             resp = page.goto(url, wait_until="load", timeout=left_ms(PAGE_SECONDS * 1000))
@@ -766,6 +813,7 @@ def observe_page(
                 lambda: {"requests": seen["requests"], "blocked": len(blocked),
                          "failed": len(failed)},
                 locale_allowed=locale_allowed if locale_rule is not None else None,
+                container_fallback=container_fallback,
             )  # fmt: skip
         frames = []
         for f in page.frames[1:]:
@@ -1229,6 +1277,10 @@ LOCALE_WORDS = frozenset({
     "locale_allowed", "locale_refusals", "total", "path", "query", "redirects", "initiator",
     "main_frame", "refused", "origin", "redirect", LOCALE_PATH_TEXT, *LIMIT_NAMES,
     "locale_path_refusals", "properties", "longest_segment", *LOCALE_PATH_PROPERTIES,
+    "inspect_dropdowns", LOCALE_PATH_C_TEXT, "outcomes", "pending", "failed", "1xx", "2xx", "3xx",
+    "4xx", "5xx", "container_attempt", "present", "opened_by", "control", "container",
+    "skipped", "budget", "click", "markup", "select_control", "placeholder", "single_value",
+    "indicator", "in_value_container", "react_select_markup",
     *(name for _, name in LOCALE_LENGTH_BUCKETS), "129+",
 })  # fmt: skip
 _STATUSES ={"mapped", "mapped_via_group", "matched_via_attachment_group", "search_picker",
@@ -1574,6 +1626,14 @@ def main(argv=None, capture_stderr: bool = False) -> int:
         "job-boards.cdn.greenhouse.io:443 for /locales/<segment>/<segment>.json (no query, no "
         "redirect followed); LOCALE_LIMITS (settle window and inspection time) instead of LIMITS",
     )
+    ap.add_argument(
+        "--inspect-dropdowns",
+        action="store_true",
+        help="path C (D109): path B with LOCALE_PATH_C (the observed /locales/*/*.json shape, "
+        "segments 1-128 incl. single dots), allowed locale requests' outcomes (status class "
+        "only), and one click on the react-select control container where the control's own "
+        "click showed no opening; LOCALE_C_LIMITS",
+    )
     a = ap.parse_args(argv)
     if capture_stderr:
         a.out.mkdir(parents=True, exist_ok=True)
@@ -1642,16 +1702,19 @@ def _fixture_target() -> str | None:
 
 
 def _limits(a) -> Limits:
+    if getattr(a, "inspect_dropdowns", False):
+        return LOCALE_C_LIMITS
     return LOCALE_LIMITS if a.inspect_widgets_locales else LIMITS
 
 
-def _fixture_locale_rule():
-    """Tests only: path B's rule with the fixture dependency origin (NOEFFORTS_READONLY_FIXTURE_
-    CDN) in place of the real one; every other element is the real rule's."""
+def _fixture_locale_rule(path: str = LOCALE_PATH):
+    """Tests only: path B's (or C's) rule with the fixture dependency origin
+    (NOEFFORTS_READONLY_FIXTURE_CDN) in place of the real one; every other element is the real
+    rule's."""
     cdn = os.environ.get("NOEFFORTS_READONLY_FIXTURE_CDN")
     if not cdn:
         raise NotApproved("the locale exception needs the fixture dependency origin")
-    return _locale_rule(cdn, allow_private=True)
+    return _locale_rule(cdn, allow_private=True, path=path)
 
 
 def _fixture_rules() -> tuple:
@@ -1691,11 +1754,13 @@ def _run(a) -> int:
         board_json = json.loads((a.out / "board.json").read_text())
         sensitive = sensitive_values(board, job_id, api_json, board_json)
         page_stop, internal = None, False
-        inspect = a.inspect_widgets or a.inspect_widgets_locales
+        inspect = a.inspect_widgets or a.inspect_widgets_locales or a.inspect_dropdowns
         b3 = a.b3 or inspect
         rules = (_fixture_rules() if fx else _b3_rules()) if b3 else ()
         locale = None
-        if a.inspect_widgets_locales:
+        if a.inspect_dropdowns:
+            locale = _fixture_locale_rule(LOCALE_PATH_C) if fx else _locale_rule_c()
+        elif a.inspect_widgets_locales:
             locale = _fixture_locale_rule() if fx else _locale_rule()
         try:
             observed = (
@@ -1709,6 +1774,7 @@ def _run(a) -> int:
                     limits=_limits(a),
                     inspect_widgets=inspect,
                     locale_rule=locale,
+                    container_fallback=a.inspect_dropdowns,
                     fault=os.environ.get("NOEFFORTS_READONLY_FAULT") if fx else None,
                 )
                 if (a.observe or b3)
@@ -1727,7 +1793,9 @@ def _run(a) -> int:
         if page_stop:
             result["page_stopped"] = page_stop
         if inspect:
-            result["mode"] = "inspect_widgets_locales" if locale is not None else "inspect_widgets"
+            result["mode"] = ("inspect_dropdowns" if a.inspect_dropdowns
+                              else "inspect_widgets_locales" if locale is not None
+                              else "inspect_widgets")  # fmt: skip
         if fx:
             result["target"] = "fixture"
         result["outcome"] = outcome(inspect, observed, page_stop, internal)
@@ -1748,7 +1816,8 @@ def _run(a) -> int:
                 "port": None if fx else locale.host_port[1],
                 "scheme": urlsplit(locale.origin).scheme,
                 "methods": sorted(locale.methods), "resource_types": sorted(locale.resource_types),
-                "path": LOCALE_PATH_TEXT, "query": "refused", "redirects": "refused",
+                "path": LOCALE_PATH_C_TEXT if a.inspect_dropdowns else LOCALE_PATH_TEXT,
+                "query": "refused", "redirects": "refused",
                 "initiator": "main_frame"}  # fmt: skip
             result["limits"] = asdict(_limits(a))
     except (NotApproved, Stop) as e:
@@ -1862,6 +1931,11 @@ _SUBMIT_GUARD_JS = """() => {
 # worker and never leave it.
 _STATE_JS = """() => {
   const ctl = Array.from(document.querySelectorAll('input, select, textarea, [role=combobox]'));
+  const shown = (c) => {
+    const b = c.parentElement && c.parentElement.closest('[class*="select__control"]');
+    const sel = '[class*="select__single-value"],[class*="select__multi-value"]';
+    return b ? Array.from(b.querySelectorAll(sel)).map((n) => n.textContent).join('|') : '';
+  };
   const vis = (e) => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
   return {
     controls: ctl.length,
@@ -1869,8 +1943,10 @@ _STATE_JS = """() => {
     required: ctl.filter(c => c.required || c.getAttribute('aria-required') === 'true').length,
     hidden: ctl.filter(c => !vis(c)).length,
     invalid: ctl.filter(c => c.getAttribute('aria-invalid') === 'true').length,
+    // D109: a react-select control shows its choice outside the input (compared, never kept)
     values: ctl.map(c => c.type === 'file' ? String(c.files ? c.files.length : 0)
-                                           : (c.value || '') + '|' + (c.dataset.value || '')),
+                                           : (c.value || '') + '|' + (c.dataset.value || '')
+                                             + '|' + shown(c)),
     selected: document.querySelectorAll('[role=option][aria-selected=true]').length,
     listboxes: Array.from(document.querySelectorAll('[role=listbox]')).filter(vis).length,
     alerts: document.querySelectorAll('[role=alert]').length,
@@ -1990,6 +2066,30 @@ _PROBE_JS = (
 }"""
 )
 _END_PROBE_JS = "() => { if (window.__neObs) window.__neObs.disconnect(); window.__neObs = null; }"
+# Path C (D109): the control's react-select-style container, if any: the nearest ancestor whose
+# class names a `select__control` (react-select's default class scheme), visible and holding
+# the control. Only how the fallback click finds its target; never published, never evidence.
+_CONTAINER_JS = """(id) => {
+  const el = document.getElementById(id);
+  const c = el && el.parentElement && el.parentElement.closest('[class*="select__control"]');
+  if (!c || !c.contains(el)) return null;
+  const vis = c.checkVisibility ? c.checkVisibility({visibilityProperty: true})
+                                : !!(c.offsetWidth || c.offsetHeight);
+  return vis ? c : null;
+}"""
+# Path C (D109): whether the control sits in react-select-style markup, as booleans only (the
+# adapter's readback of a choice depends on it). Class names are matched, never published.
+_MARKUP_JS = """(id) => {
+  const el = document.getElementById(id);
+  const b = el && el.parentElement && el.parentElement.closest('[class*="select__control"]');
+  const has = (sel) => !!(b && b.querySelector(sel));
+  return {select_control: !!b, placeholder: has('[class*="select__placeholder"]'),
+          single_value: has('[class*="select__single-value"]'),
+          indicator: has('[class*="select__indicator"]'),
+          in_value_container: !!(el && el.closest('[class*="select__value-container"]'))};
+}"""
+_OPENED = frozenset({"opened_options_not_observable", "partially_observed",
+                     "observed_sufficiently"})  # fmt: skip
 
 _CLICK_MS = 2000  # per action; an element that is not actionable by then is not acted on
 _SAMPLES = 3  # probes spread over the settle window (the window itself is not extended)
@@ -2114,7 +2214,7 @@ def _observations(before, mid, after, post, click_ok, opts) -> dict:
 
 def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_refused,
                        left_ms, challenge_selectors, counts,
-                       locale_allowed=None) -> dict:  # fmt: skip
+                       locale_allowed=None, container_fallback=False) -> dict:  # fmt: skip
     """Open, then close, each combobox present at load (API-mapped ones first, then unmatched
     ones), within limits.widget_actions: one click on the control itself, one Escape. Never
     clicks anything else, never types, never selects an option. Per widget it records
@@ -2124,7 +2224,12 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
     value change, submission attempt, file chooser, dialog, challenge, navigation attempt,
     address change or blocked non-GET request (e.g. an upload).
     `counts()` returns {"requests", "blocked", "failed"} so far. `locale_allowed` (path B only,
-    else None): the allowed locale requests so far, counted per action and in total."""
+    else None): the allowed locale requests so far, counted per action and in total.
+    `container_fallback` (path C only, D109): when the click on the control showed no opening,
+    one click on its react-select-style control container (`_CONTAINER_JS`: the nearest
+    ancestor whose class names a `select__control`), then Escape. Recorded on its own
+    (`container_attempt`); the same stops apply, and a class name is only how the target is
+    found, never evidence of an opening."""
     from app.modules.preparation import greenhouse_dom as gdom
 
     fields = gh.schema_from_api(api_json).fields
@@ -2169,6 +2274,7 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
             results.append({"target": key, "kind": kind, "skipped": "not_visible_or_not_unique"})
             continue
         before = page.evaluate(_STATE_JS)
+        markup = page.evaluate(_MARKUP_JS, c.id) if container_fallback else None
         req = page.evaluate(gdom.REQUIRED_SIGNALS_JS, c.id)
         n_stops, n_data, base = len(stops), len(data_refused), counts()
         n_locale = len(locale_allowed or ())
@@ -2225,6 +2331,79 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
                 )
             after = page.evaluate(_STATE_JS)
             reason = reason or check_stop(n_stops)
+        container = None
+        # The second click only after a first that changed nothing: no value, selection or
+        # control change, no address change, no submission, no blocked non-GET request (those
+        # stop the inspection below, before anything else is acted on).
+        quiet = (
+            click_ok and not gone
+            and all(x["existing_value_changed"] is False and not x["controls_added"]
+                    and not x["controls_removed"]
+                    for x in (compare_controls(before, mid), compare_controls(before, after)))
+            and mid["selected"] == before["selected"]
+            and before["href"] == mid["href"] == after["href"]
+            and after["submits"] == before["submits"]
+            and counts()["blocked"] == base["blocked"]
+        )  # fmt: skip
+        if (container_fallback and reason is None and quiet
+                and state in ("not_opened", "undetermined")):  # fmt: skip
+            handle = page.evaluate_handle(_CONTAINER_JS, c.id).as_element()
+            container = {"present": handle is not None, "click": None, "open_state": None,
+                         "opening_evidence": [], "visible_option_list": False,
+                         "options_match_api": None}  # fmt: skip
+            if handle is not None and (actions + 2 > limits.widget_actions
+                                       or time.monotonic() + per_widget_s > ends):  # fmt: skip
+                container["skipped"] = "budget"
+            elif handle is not None:
+                page.evaluate(_END_PROBE_JS)
+                page.evaluate(_PRE_JS, c.id)
+                pre2 = page.evaluate(_PROBE_JS, c.id)
+                actions += 1
+                phase[0] = f"action:{actions}"
+                ok2, err2, series2, post2, gone2 = True, None, [], pre2, False
+                try:
+                    handle.click(timeout=left_ms(_CLICK_MS))  # open, through the container
+                except Stop:
+                    raise
+                except Exception as e:  # noqa: BLE001 - a finding, as for the first click
+                    ok2 = False
+                    err2 = ("pointer_intercepted" if "intercepts pointer events" in str(e)
+                            else "open_failed")  # fmt: skip
+                if ok2:
+                    for _ in range(_SAMPLES):
+                        page.wait_for_timeout(left_ms(step_ms))
+                        got = page.evaluate(_PROBE_JS, c.id)
+                        if got is None:
+                            gone2 = True
+                            break
+                        post2 = got
+                        series2.append(len(post2["texts"]))
+                mid = page.evaluate(_STATE_JS)  # the widget's observations cover both clicks
+                reason = check_stop(n_stops)
+                st2, ev2, _ = classify_open(pre2, post2, series2, api_count, ok2)
+                if gone2:
+                    st2, ev2 = "undetermined", ["control_gone"]
+                opts2 = [] if gone2 else [gdom._norm(t) for t in post2["texts"]]
+                container.update(
+                    click={"completed": ok2, "error": err2}, open_state=st2,
+                    opening_evidence=ev2, visible_option_list=bool(opts2),
+                    options_match_api=(option_lists.get(key) == opts2)
+                    if kind == "api_field" and st2 == "observed_sufficiently" else None,
+                )  # fmt: skip
+                after = mid
+                if ok2 and not gone2:
+                    actions += 1
+                    phase[0] = f"action:{actions}"
+                    if reason is None:
+                        try:
+                            loc.press("Escape", timeout=left_ms(_CLICK_MS))  # close
+                            page.wait_for_timeout(left_ms(limits.widget_settle_ms))
+                        except Stop:
+                            raise
+                        except Exception:  # noqa: BLE001
+                            pass
+                    after = page.evaluate(_STATE_JS)
+                    reason = reason or check_stop(n_stops)
         page.evaluate(_END_PROBE_JS)
         opts = [] if gone else [gdom._norm(t) for t in post["texts"]]
         sufficient = state == "observed_sufficiently"
@@ -2278,6 +2457,14 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
         }  # fmt: skip
         if locale_allowed is not None:
             r["requests_during"]["locale_allowed"] = len(locale_allowed) - n_locale
+        if container_fallback:
+            r["markup"] = markup
+            r["container_attempt"] = container
+            r["opened_by"] = (
+                "control" if state in _OPENED
+                else "container" if container and container.get("open_state") in _OPENED
+                else None
+            )  # fmt: skip
         results.append(r)
         # The cause first (a refused navigation also replaces the page, changing values).
         if reason:
@@ -2313,6 +2500,11 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
     out = {
         "targets": len(targets),
         "actions": actions,
+        **({"opened_by": {k: sum(1 for w in results if w.get("opened_by") == k)
+                          for k in ("control", "container")},
+            "react_select_markup": sum(1 for w in results
+                                       if (w.get("markup") or {}).get("select_control"))}
+           if container_fallback else {}),
         "action_limit": limits.widget_actions,
         "stopped": stopped,
         "open_states": states,
@@ -2346,8 +2538,13 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
         for d in data_refused:
             if "locale_check" in d:
                 why[d["locale_check"]] = why.get(d["locale_check"], 0) + 1
+        outcomes: dict[str, int] = {}
+        for d in locale_allowed:
+            o = d.get("outcome") or "pending"
+            outcomes[o] = outcomes.get(o, 0) + 1
         out["locale_requests_allowed"] = {
             "total": len(locale_allowed), "at_load": len(at_load), "during_actions": len(acting),
+            "outcomes": outcomes,
             "shapes_at_load": refused_shapes(at_load),
             "shapes_during_actions": refused_shapes(acting)}  # fmt: skip
         out["locale_refusals"] = why

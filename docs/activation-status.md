@@ -34,6 +34,7 @@ per scope you choose, for example "postings I approve in the app, one at a time,
 | Phone country, location search, late dropdowns (D104) | Yes | Yes, local stand-ins only | n/a | n/a | No; refused on a real page |
 | Review page: approve several packages (D105) | Yes | Yes | n/a: each approval is yours | n/a | No |
 | Read-only check, path B: the locale exception (`inspect_widgets_locales`, D106) | Yes | Yes: the v2 fixture's locale gate, the receiver's log | n/a: dispatched by hand | Approved once (D107) and **used** | Yes, once: run #10, a policy stop. No locale file was allowed (the real paths failed the rule), so it did not test the dropdowns' dependence on them (D107) |
+| Read-only check, path C: dropdown observation (`inspect_dropdowns`, D109) | Yes | Yes: hashed locale names, 404 outcomes, a container-only list, react-select markup | n/a: dispatched by hand | **No**: needs your single-use approval of a pinned revision with passing CI | No |
 | Gmail: codes and replies (D101, optional) | Yes | Yes | No | **No** | No |
 | Typing a verification code yourself | Yes | Yes | Not needed | Not needed | No real code step reached |
 
@@ -46,7 +47,7 @@ control is not blocked by them, but no condition is met by that.
 
 | # | Condition | Why it is not met | Needs | Smallest next action | NoEfforts can do | You must do | Stopped at run time by | Verified by |
 |---|---|---|---|---|---|---|---|---|
-| 1 | Each required dropdown opens through one bounded, tested strategy, with the complete list | The pilot's `custom_dropdowns` is fixture-only. Run #9 (600 ms, every data request refused) saw no list open. Run #10 (path B, 1.5 s) allowed no locale file, because the real paths failed the approved rule. So it did not test whether the lists wait on them; 6 of the 7 dropdowns it reached showed no opening evidence | Observation, then code | Path A (your browser, ~10 min). Any further read-only run needs a rule that fits the real locale paths, and its own approval | Done after run #10: the summary names which properties of a refused locale path failed (D107). After evidence that the lists open: a mirroring fixture and a reviewed level change | Path A answers; any further run is a separate approval | `dropdowns.verify` before the disclosure gate: a list it cannot open, read completely and match exactly stops the attempt with nothing entered | `test_dropdown_strategies.py`, `test_pilot_readiness.py` |
+| 1 | Each required dropdown opens through one bounded, tested strategy, with the complete list | The pilot's `custom_dropdowns` is fixture-only. Run #9 (600 ms, every data request refused) saw no list open. Run #10 (path B, 1.5 s) allowed no locale file, because the real paths failed the approved rule. So it did not test whether the lists wait on them; 6 of the 7 dropdowns it reached showed no opening evidence | Observation, then code | One read-only run C (D109, built): locale files in run #10's observed shape allowed and their outcomes recorded; one react-select container click where the control's click shows nothing. Path A only if it does not settle the question | Done (D109): path C, `click_container`, and a readback that reads react-select's displayed choice (the input-value readback would have abandoned a real react-select form). After evidence: a mirroring fixture, the pilot's locale exception if needed, a reviewed level change | A single-use approval of run C | `dropdowns.verify` before the disclosure gate: a list it cannot open, read completely and match exactly stops the attempt with nothing entered | `test_dropdown_strategies.py`, `test_pilot_readiness.py` |
 | 2 | The two required controls no question matches (`u1` in the phone group, `u2`) are understood and mapped by evidence | Their kind was never observed. No rule maps them on a real page; D104's phone country rule is a local stand-in | Observation, then code | Path A questions 8a and 8b (run #10 stopped before reaching them) | After observation: a mirroring fixture, a real-page rule, its tests | Path A answers | Capture refuses a required control the job data does not list (E3); one appearing later stops the attempt before disclosure | `test_greenhouse_dom.py`, `test_greenhouse_controls.py` |
 | 3 | A supported, evidence-backed way to set the location without writing hidden coordinates | No location control at load on the observed posting; D104's search is a local stand-in | Observation, consent, code | For a first rehearsal, choose a posting with no location question. For this posting, note how its location control appears (typing in it is a disclosure: permission 3) | After an observation: a mirroring fixture and a reviewed change letting D104's search run on that structure | Choice of posting; a Path A note | A location search on a real page stops the attempt before anything is entered; hidden coordinates are never written | `test_greenhouse_controls.py` |
 | 4 | Real upload evidence | It needs a disclosure-only rehearsal that uploaded to a real form and still holds. None can run: permissions 1-3 are not recorded, and the pilot runs nowhere | Consent, configuration, your machine | Record permissions 1-3; start the production configuration (§5); approve and watch one rehearsal (§6) | Nothing further in code; the rehearsal machinery and its counting exist | The permission, the start, the approval | The rehearsal stops before the send gate, which refuses a disclose-only approval | `test_rehearsal_stop.py`, `test_pilot_readiness.py` |
@@ -55,7 +56,7 @@ control is not blocked by them, but no condition is met by that.
 | 7 | Capabilities raised from fixture to observed, with a reviewed real-destination change | Part 1 is done: the pilot's reviewed real-destination entry (D102). Part 2 is not: `deterministic_fill`, `custom_dropdowns`, `file_upload`, `final_submit` and `confirmation_detection` are still at fixture | Code, after evidence | After evidence that the dropdowns open, the first rehearsal and the first submission: a reviewed change raising exactly what has evidence | That change and its tests, never before the evidence | Nothing beyond the evidence steps | Registry levels and `policy.CAPABILITIES`; `model.PILOTS` allows real destinations to the pilot alone | `test_pilot_readiness.py`, `test_provider_contracts.py` |
 
 **Order:** 6 (permissions 1-3) → §5 → 4 (one rehearsal) → 6 (permission 4) → 5 (one
-submission) → 7. Conditions 1-3 run in parallel through Path A (run B was used by run #10), or
+submission) → 7. Conditions 1-3 run in parallel through run C (D109; run B was used by run #10), or
 are avoided for a first posting that has no such controls.
 
 **Dropdowns on a real rehearsal today.** If the real dropdowns wait on their locale files, a
@@ -97,8 +98,9 @@ Nothing leaves your machine. Passing it says the product works on stand-ins, not
   - 6 of the 7 dropdowns reached showed no opening evidence within 1.5 s. On one, the page
     tried a POST to another Greenhouse host, which was blocked before sending and stopped the
     run.
-  - Since then, the summary names which properties of a refused path failed. Any further run
-    is a new approval and is not requested here.
+  - Since then, the summary names which properties of a refused path failed.
+- **Run C** (path C, D109; built, not approved): the observed locale shape allowed with outcomes
+  recorded, plus one react-select container click. The request is in the proposal, path C.
 - **Location:** a note from Path A on how the location control appears. Or choose a first
   posting without a location question.
 
@@ -202,7 +204,8 @@ from you.
 
 | You | Then possible |
 |---|---|
-| Path A answers | The next check for the dropdowns (conditions 1, 2); run B is used (run #10) |
+| Approve run C | Whether the dropdowns open once their locale files load, or from the container (conditions 1, 2); then the rehearsal request |
+| Path A answers | Only if run C does not settle it |
 | Permissions 1-3 + the start | One disclosure-only rehearsal on a posting you choose (condition 4) |
 | Permission 4 | One submission of an application whose rehearsal held (condition 5) |
 | Both done | A reviewed change raising exactly the capabilities with evidence (condition 7) |

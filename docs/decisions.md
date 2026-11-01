@@ -3239,3 +3239,64 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   - No live run, no wider rule, and no reclassification of run #10. Its `q11` record was made by
     the earlier code, and these categories do not explain it after the fact.
   - The pilot's network rules are unchanged.
+
+## D109 — Greenhouse first: the dropdown blocker, react-select readback, and read-only path C (2026-11-01)
+
+- **Why:** the owner, on 2026-11-01: make NoEfforts work on real employer application flows,
+  Greenhouse first. "Identify the smallest concrete change needed to advance real compatibility.
+  Separate implementation defects from restrictions imposed by the inspection harness. Do not
+  relax production safeguards merely to make an inspection succeed." No live run, applicant
+  data, upload, login or submission is authorized by that message.
+- **The blocker, from the evidence:**
+  - Runs #9 and #10 clicked each real dropdown's input (`role=combobox`, `aria-haspopup`,
+    `aria-autocomplete=list`, a box under 8 px). No list opened.
+  - Those clicks made the page request locale files: 7 in run #9 and 8 in run #10, all refused.
+    So the clicks reached live page code, and the page asked for translations when a dropdown
+    was used. This is the strongest single indication, still unconfirmed, that the lists wait on
+    those files.
+  - Run #10's exact rule matched none of them: all failed `path`.
+- **The owner's previous bot** (static review of its newer version, uploaded 2026-11-01;
+  `docs/legacy-audit.md`, addendum) points the same way and adds two concrete differences:
+  - it clicked the react-select wrapper `.select__control`, not the input;
+  - it read a choice from the wrapper's displayed text, never from the input's value.
+  It ran with nothing refused, so its locale files loaded. Which difference mattered cannot be
+  told statically.
+- **Defects separated from harness restrictions:**
+  - **A real defect in the adapter (fixed):** the readback of a chosen dropdown read the
+    input's value. On react-select markup the input holds only typed search text; the choice is
+    a `select__single-value` element.
+    - The previous readback would have abandoned a real react-select form after correct choices.
+      Shown on a react-select-like fixture by sabotage: "3 field(s) did not keep their values".
+    - Now, when the control sits in a `select__control` container, readback requires exactly
+      one single value whose text is the approved label, no leftover search text and no
+      multi-value chips. Elsewhere it is unchanged. The adapter's "did opening change a value"
+      check and the inspection's state include the displayed choice too.
+  - **A missing strategy (added):** `click_container`, one click on the control's react-select
+    container, tried after `click_control`. It is not applicable without such a container, and
+    the same verification applies (exact list, nothing changed, no data request).
+  - **A harness restriction, kept:** the pilot (`live.subresources`) and the read-only check
+    refuse locale files. It is not relaxed. Allowing them in the pilot would be a reviewed change,
+    made only if a read-only run shows they are needed and sufficient.
+- **Read-only path C** (`--inspect-dropdowns`, workflow input `inspect_dropdowns`, default off,
+  NOT APPROVED). It is path B with:
+  - **A rule that keeps run #10's observed shape:** GET `fetch` from the main frame to
+    `job-boards.cdn.greenhouse.io:443`, `/locales/<segment>/<segment>.json`, no query, no
+    redirect. Each segment is 1-128 characters of `[A-Za-z0-9_~+@-]` plus single dots, never
+    first and never doubled. A hashed or long name passes; `..`, `%`, a leading dot, another
+    segment count or a query do not. The context layer enforces the same pattern.
+  - **Outcomes of allowed locale requests,** by status class (`2xx`, `4xx`, `failed`, …) from
+    the response status only. The body is never read. An allowed request is not a loaded one.
+  - **One click on the react-select container** when the control's own click showed no
+    opening, then Escape. It is recorded separately (`container_attempt`, `opened_by`).
+  - **Whether each control sits in react-select markup,** as booleans (`markup`). The adapter's
+    readback depends on it. No class name is published.
+  - **Limits:** 40 actions, 80 s inspection, 120 s observation, 180 s run (inside the 200 s
+    outer kill); everything else is path B's.
+  - Every stop is unchanged (any non-GET request, a value change, a control added or removed,
+    a submission attempt, a dialog, a file chooser, a challenge, a navigation, a redirected
+    locale request), and nothing is retried.
+- **Not done:**
+  - No live run.
+  - No change to the pilot's network rules or to readiness.
+  - No reclassification of runs #9 and #10.
+  - Every forbidden legacy behaviour (addendum) is excluded.

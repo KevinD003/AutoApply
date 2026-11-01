@@ -382,3 +382,67 @@ outcomes is a HYPOTHESIS):**
 None of these is established as a cause. Answering the question needs the evidence and
 permissions listed in `outcome-diagnostics.md`, and any future measurement should come from
 NoEfforts' own outcome funnel, never from legacy tallies.
+
+## Addendum (2026-11-01): a newer version of the legacy bot
+
+The owner uploaded the current version of the legacy sources (about 33 modules, including new
+ones: Workday, SmartRecruiters, Workable, Recruitee, Breezy, aggregators, board finders, a runner
+and a mailbox reconciler) together with private data files. The sources were read statically by
+an independent reviewer, as text only. No code was run, nothing was imported, and the data files
+(answers, profiles, board lists, databases, a resume) were not opened. Citations below use the
+new files' line numbers.
+
+**What changes NoEfforts' Greenhouse plan (D109):**
+- **CONFIRMED:** custom dropdowns are found as `.select__control`, the react-select wrapper, and
+  that wrapper is clicked, not the input (`apply.py:1564-1578`). Inputs inside it are skipped as
+  react-select's internal search input (`:1208-1209,1336-1337`).
+  - Options are read by class (`.select__menu .select__option`) within 3 s (`:1580-1583,
+    1956-1991`).
+  - "Already filled" is judged by the wrapper's displayed text, never by the input's value
+    (`:1569-1571`).
+  NoEfforts' read-only runs clicked the input. Its readback read the input's value, which
+  react-select leaves empty. Both are now addressed (D109); the real page is still unobserved.
+- **CONFIRMED:** async options (typing, top suggestion taken) are used for some fields
+  (`:1584-1595,1927-1954`). NoEfforts keeps search-as-you-type unsupported on real pages
+  (D104).
+- **CONFIRMED** in code; the stated causes are HYPOTHESIS: the uploader is waited for after
+  `networkidle` plus 700 ms because it "hydrates late". The bot re-sets the file until its name
+  shows, and reloads once on an uploader error before any field is filled (`apply.py:823-896`).
+  NoEfforts' page-readiness wait (D97) and upload acknowledgement (E5) cover the same risk
+  without a reload.
+- **Real-page notes for later adapters** (author's notes, HYPOTHESIS):
+  - Workday: `data-automation-id` widgets; listbox buttons with a body-level option portal;
+    virtualised long lists (`workday.py:1-41,1848-1931`).
+  - Ashby: `_fieldEntry_` wrappers and `#_systemfield_*` ids (`ashby.py:3-21`).
+  - Lever: a hidden `#selected-location` that must hold the picked suggestion (`lever.py:161-176`).
+  They feed the fixture-only adapters' backlog, not support claims.
+
+**Forbidden behaviours found (none adopted; they stay excluded):**
+- stealth: an automation-flag override, persistent "warmed" profiles, a natural-looking locale
+  (`apply.py:31-68,403-449`; `dashboard.py:235-266`);
+- behaviour mimicry: random pauses, jittered typing, mouse and scroll moves "for reCAPTCHA v3",
+  arriving via the posting first (`apply.py:2151-2201` and in the Ashby, SmartRecruiters,
+  Workday and Breezy modules);
+- a direct location API call with an empty hCaptcha response (`lever.py:161-215`);
+- unattended mailbox use: Greenhouse and Workday codes, activation links and password resets,
+  and a send scope (`workday.py:626-880`; `email_verify.py:39-43,286-321`);
+- automatic accounts on every Workday tenant with one shared password stored in plain text
+  (`workday.py:77-127,549-680`);
+- global auto-submit; a retry or second submit after a raised final click (`apply.py:521-539,
+  2952-2966`; `workday.py:3876-3880`; `ashby.py:103-129`);
+- inferred eligibility answers and LLM-signed self-identification
+  (`apply.py:2547-2723`; `workday.py:3420-3451`);
+- the resume and an "about me" sent to several LLMs (`llm.py:114-131,332-363`).
+
+**Personal data in the sources:** the owner's contact and eligibility details, a residence city,
+employer names and a third party's name appear in code and comments (categories only here;
+reviewer's list kept out of the repository). No hard-coded secret was found; credentials come
+from environment variables.
+
+**Earlier statements now outdated for this version** (still true of the audited one):
+- §3.3 "no persistent context";
+- U15 "no webdriver patch";
+- LD-35: a cover letter is now uploaded;
+- LD-03: only `error` is retried now;
+- U2: the email subject must now name the company;
+- LD-52: mailbox reconciliation now exists.

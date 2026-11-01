@@ -571,6 +571,12 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 #                   xhr, post, head, or iframe (fetch() of a same-origin child frame); its
 #                   marker string is put into the page (it must never reach any output)
 #   locale_on_open  opening requests a locale file, then shows the list
+#   container_noisy as container_only, and the control's own click adds a hidden control
+#   react_select    react-select-like markup and behaviour: a press anywhere on the control
+#                   opens the list; a choice leaves the input empty and is shown in a
+#                   `select__single-value` element (D109)
+#   container_only  react-select-like: the input sits in a `select__control` container, and only
+#                   a press on the container (never on the input) opens the list (D109)
 #   open_beacon     as click_popup, and opening also POSTs to cfg beacon (another origin) by
 #                   fetch() or, with cfg beacon_via sendbeacon, navigator.sendBeacon (D108)
 #   delayed         busy first, options after delay_ms
@@ -598,6 +604,17 @@ _DD_JS = """
   let seq = 0;
   const choose = (cb, o) => {
     if (DD === 'ignores_choice') { hide(cb); return; }
+    if (['react_select', 'container_only', 'container_noisy'].includes(DD)) {   // D109: the input keeps only
+      // search text (empty); the choice is shown in a single-value element, as react-select
+      // shows it. data-value is read only by this fixture's own submit.
+      const vc = cb.closest('.select__value-container') || cb.closest('.select__control');
+      vc.querySelectorAll('.select__placeholder, .select__single-value').forEach((n) => n.remove());
+      const sv = document.createElement('div');
+      sv.className = 'select__single-value css-fx-singleValue'; sv.textContent = o.textContent;
+      vc.prepend(sv);
+      cb.value = ''; cb.dataset.value = o.dataset.value;
+      cb.dispatchEvent(new Event('change')); hide(cb); return;
+    }
     cb.value = o.textContent; cb.dataset.value = DD === 'wrong_value' ? 'zz' : o.dataset.value;
     cb.dispatchEvent(new Event('change')); hide(cb);
   };
@@ -680,6 +697,39 @@ _DD_JS = """
       cb.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown') show(cb); });
     } else if (DD === 'type_only') {
       cb.addEventListener('input', () => show(cb));
+    } else if (DD === 'react_select') {   // D109: react-select-like markup and behaviour: a
+      // press anywhere on the control (the input included) opens the list (FIXTURE ASSUMPTION)
+      const shell = document.createElement('div'); shell.className = 'select__container';
+      const box = document.createElement('div'); box.className = 'select__control css-fx-control';
+      const vc = document.createElement('div'); vc.className = 'select__value-container';
+      const ph = document.createElement('div'); ph.className = 'select__placeholder';
+      ph.textContent = 'Select...';
+      const ic = document.createElement('div'); ic.className = 'select__input-container';
+      const ind = document.createElement('div'); ind.className = 'select__indicators';
+      ind.innerHTML = '<span class="select__indicator-separator"></span>'
+        + '<div class="select__indicator select__dropdown-indicator" aria-hidden="true">v</div>';
+      Object.assign(box.style, {display: 'flex', alignItems: 'center', width: '320px',
+                                padding: '6px', border: '1px solid #999'});
+      Object.assign(vc.style, {display: 'flex', flex: '1', alignItems: 'center'});
+      cb.before(shell); shell.append(box); box.append(vc, ind); vc.append(ph, ic); ic.append(cb);
+      cb.style.width = '6px';
+      cb.setAttribute('aria-autocomplete', 'list'); cb.setAttribute('aria-haspopup', 'true');
+      box.addEventListener('mousedown', () => { if (!open.has(cb)) show(cb); });
+    } else if (DD === 'container_only' || DD === 'container_noisy') {   // D109: only a press on
+      // the control container, never on the input itself, opens the list (FIXTURE ASSUMPTION)
+      const box = document.createElement('div');
+      box.className = 'select__control css-fx-control';
+      Object.assign(box.style, {display: 'flex', alignItems: 'center', width: '320px',
+                                padding: '6px', border: '1px solid #999'});
+      cb.style.width = '24px';
+      cb.before(box); box.append(cb);
+      const ph = document.createElement('div');
+      ph.className = 'select__placeholder'; ph.textContent = 'Select...'; ph.style.flex = '1';
+      box.append(ph);
+      box.addEventListener('mousedown', (e) => { if (e.target !== cb) show(cb); });
+      if (DD === 'container_noisy')   // D109: the control's own click adds a hidden control
+        cb.addEventListener('mousedown', () => box.append(Object.assign(
+          document.createElement('input'), {type: 'hidden', id: cb.id + '-state'})), {once: true});
     } else {
       cb.addEventListener('mousedown', () => show(cb));
     }
@@ -945,6 +995,8 @@ def mount(app, ledger, cfg, accept) -> None:
         cors = {"Access-Control-Allow-Origin": "*"}
         if lang == "moved":
             return RedirectResponse(f"/locales/en/{ns}.json", 302, headers=cors)
+        if lang == "missing":  # D109: allowed and sent, but not loaded
+            return JSONResponse({"error": "not found"}, status_code=404, headers=cors)
         await asyncio.sleep(int(cfg.get("locale_delay_ms") or 0) / 1000)
         return JSONResponse({"locale": "fixture", "strings": {"marker": LOCALE_MARKER}},
                             headers=cors)

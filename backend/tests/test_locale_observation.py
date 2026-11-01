@@ -100,7 +100,7 @@ def test_with_the_flag_a_locale_gated_dropdown_opens_and_its_list_is_observed(re
         assert w["requests_during"]["locale_allowed"] == 0  # loaded once, at page load
     # Counted, shaped with PATH_WORDS, nothing else: the one locale file, at load.
     assert ins["locale_requests_allowed"] == {
-        "total": 1, "at_load": 1, "during_actions": 0,
+        "total": 1, "at_load": 1, "during_actions": 0, "outcomes": {"2xx": 1},  # loaded (D109)
         "shapes_at_load": [{**SHAPE, "count": 1}], "shapes_during_actions": []}  # fmt: skip
     assert ins["data_requests_refused_total"] == 0 and ins["locale_refusals"] == {}
     assert sent(receiver) == [("GET", JOB_PATH), ("GET", VALID)]
@@ -246,17 +246,36 @@ def test_no_locale_response_body_appears_in_the_output(receiver):
     assert greenhouse_v2.LOCALE_MARKER not in raw and '"strings"' not in raw
 
 
+FORBIDDEN_RESPONSE_ATTRS = ("body", "text", "json", "response", "all_headers", "headers",
+                            "headers_array", "header_value", "header_values", "finished",
+                            "server_addr", "security_details")  # fmt: skip
+
+
 def test_the_page_code_never_reads_a_response_body():
-    """Tripwire: the observation and the inspection read no response body at all (status and
-    sizes only), so a locale file's content cannot be kept or printed."""
+    """Tripwire: the observation and the inspection read no response body or header at all, so
+    a locale file's content cannot be kept or printed. D109: observe_page subscribes to
+    "response" exactly once, for the allowed locale requests' status class, and that handler
+    touches nothing of its response but `.status` and `.request`."""
     for fn in (ro.observe_page, ro.inspect_comboboxes):
         tree = ast.parse(pyinspect.getsource(fn))
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute):
-                assert node.attr not in ("body", "text", "json", "response", "all_headers"), (
-                    fn.__name__, node.attr)  # fmt: skip
+                assert node.attr not in FORBIDDEN_RESPONSE_ATTRS, (fn.__name__, node.attr)
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                assert node.value not in ("response", "requestfinished:body"), fn.__name__
+                assert node.value != "requestfinished:body", fn.__name__
+    tree = ast.parse(pyinspect.getsource(ro.observe_page))
+    events = [n for n in ast.walk(tree) if isinstance(n, ast.Constant) and n.value == "response"]
+    assert len(events) == 1
+    (handler,) = [n for n in ast.walk(tree)
+                  if isinstance(n, ast.FunctionDef) and n.name == "on_locale_response"]  # fmt: skip
+    param = handler.args.args[0].arg
+    used = {n.attr for n in ast.walk(handler)
+            if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
+            and n.value.id == param}  # fmt: skip
+    assert used == {"status", "request"}
+    assert "response" not in pyinspect.getsource(ro.inspect_comboboxes).replace(
+        "requests_during", ""
+    )  # the inspection never touches a response
 
 
 # ---- timing ----------------------------------------------------------------------------------

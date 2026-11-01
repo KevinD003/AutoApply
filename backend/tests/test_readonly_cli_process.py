@@ -174,3 +174,36 @@ def test_fixture_target_is_refused_for_an_unlisted_origin(receiver, tmp_path):
         "stopped": "NotApproved: a non-default page origin is allowed only for test fixtures"
     }
     assert sent(receiver) == []
+
+
+def test_dropdown_mode_entry_point_completes_with_path_c_and_states_its_rule(receiver, tmp_path):
+    """Path C (--inspect-dropdowns, D109) as the workflow would run it: a locale file whose name
+    path B refuses (a content hash) is allowed, sent once and counted as loaded (2xx); the
+    locale-gated dropdowns (FIXTURE ASSUMPTION) open at the first click. The summary states path
+    C's rule and limits, and holds no path, class name or body."""
+    cdn = BASE.replace("127.0.0.1", "localhost")
+    hashed = "/locales/en/common.6f8a2c1d.json"
+    receiver.config(mode="gh2_dd", dd="locale_gate", locale_origin=cdn, locale_path=hashed)
+    try:
+        p, out, prefix, _ = run_cli(tmp_path, "--inspect-dropdowns",
+                                    NOEFFORTS_READONLY_FIXTURE_CDN=cdn)  # fmt: skip
+    finally:
+        receiver.config(locale_path=None)
+    res = public_output_is_clean(p)
+    assert p.returncode == ro.EXIT_COMPLETED, res
+    assert res["mode"] == "inspect_dropdowns" and res["outcome"] == "completed"
+    assert res["limits"] == asdict(ro.LOCALE_C_LIMITS)
+    assert res["locale_rule"]["path"] == ro.LOCALE_PATH_C_TEXT
+    ins = res["inspection"]
+    assert ins["stopped"] is None and ins["targets"] == 3 and ins["actions"] == 6
+    assert {w["open_state"] for w in ins["widgets"]} == {"observed_sufficiently"}
+    assert ins["opened_by"] == {"control": 3, "container": 0}
+    assert ins["locale_requests_allowed"]["total"] == 1
+    assert ins["locale_requests_allowed"]["outcomes"] == {"2xx": 1}
+    assert "6f8a2c1d" not in p.stdout and greenhouse_v2.LOCALE_MARKER not in p.stdout
+    got = sent(receiver)
+    assert {p for _, p in got} == API_PATHS | {JOB_PATH, hashed}, got
+    assert len(got) == 5 and all(m == "GET" for m, _ in got)
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+    cleaned_up(out, prefix)

@@ -100,12 +100,13 @@ PATHS: dict[str, dict] = {
         "data request refused) saw no list open; run #10 (path B, 1.5 s) allowed no locale "
         "file, since the real locale paths failed the approved rule, so it did not test whether "
         "the lists wait on them, and 6 of the 7 dropdowns it reached showed no opening evidence",
-        "next_action": "the owner's manual checklist (Path A, own browser); any further "
-        "read-only run needs a rule that fits the real locale paths and its own approval",
-        "independent": "the summary now names which properties of a refused locale path failed "
-        "(D107); after evidence that the lists open, a fixture mirroring it and a reviewed "
-        "change raising custom_dropdowns",
-        "owner": "Path A answers; any further read-only run is a separate approval",
+        "next_action": "one read-only run C (D109, built; its own single-use approval): locale "
+        "files in run #10's observed shape allowed and their outcomes recorded, one react-select "
+        "container click where the control's click shows nothing; Path A if it does not settle it",
+        "independent": "path C, click_container and the react-select readback (D109); after "
+        "evidence that the lists open, a fixture mirroring it, the pilot's locale exception if "
+        "the evidence requires it, and a reviewed change raising custom_dropdowns",
+        "owner": "a single-use approval of run C; Path A answers if run C does not settle it",
         "enforced_by": "dropdowns.verify before the disclosure gate: a list it cannot open, "
         "read completely and match exactly stops the attempt before anything is entered",
         "verified_by": "tests/test_dropdown_strategies.py; tests/test_pilot_readiness.py",

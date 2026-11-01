@@ -4,6 +4,10 @@ A dropdown whose list is not in the page at load is handled only through an expl
 strategy, one bounded action each, tried in a fixed order:
 
   click_control   one click on the control itself
+  click_container one click on the control's react-select-style container (`select__control`),
+                  as the owner's previous bot opened Greenhouse dropdowns (D109; a HYPOTHESIS
+                  about real pages until observed): only how the target is found, never
+                  evidence; not applicable when there is no such container
   arrow_down      ArrowDown on the control (it receives focus first)
   trigger_button  one click on the single trigger next to the control
 
@@ -48,10 +52,11 @@ from playwright.sync_api import Page
 from app.modules.preparation import gh_readonly as ro
 from app.modules.preparation import greenhouse_dom as dom
 
-STRATEGIES = ("click_control", "arrow_down", "trigger_button")
+STRATEGIES = ("click_control", "click_container", "arrow_down", "trigger_button")
 # What is supported, and on what evidence. Nothing here is verified on a real page.
 CAPABILITIES = {
     "click_control": "fixture_only",
+    "click_container": "fixture_only",
     "arrow_down": "fixture_only",
     "trigger_button": "fixture_only",
     "type_to_filter": "unsupported (never types into a dropdown)",
@@ -122,14 +127,31 @@ _OPTION_JS = (
 )
 _CONTROLS_JS = """() => {
   const ctl = Array.from(document.querySelectorAll('input, textarea, [role=combobox]'));
+  const shown = (c) => {   // D109: a react-select control shows its choice outside the input
+    const b = c.parentElement && c.parentElement.closest('[class*="select__control"]');
+    const sel = '[class*="select__single-value"],[class*="select__multi-value"]';
+    return b ? Array.from(b.querySelectorAll(sel)).map((n) => n.textContent).join('|') : '';
+  };
   const val = (c) => c.type === 'file' ? String(c.files ? c.files.length : 0)
-                                       : (c.value || '') + '|' + (c.dataset.value || '');
+                     : (c.value || '') + '|' + (c.dataset.value || '') + '|' + shown(c);
   return {ids: ctl.map((c) => c.id || ''), values: ctl.map(val)};
 }"""
-_READBACK_JS = (
-    "(id) => { const el = document.getElementById(id); "
-    "return el ? {text: el.value || '', value: el.dataset.value ?? null} : null; }"
-)
+# D109: on react-select markup (the control inside a `select__control` container, as the owner's
+# previous bot found Greenhouse's dropdowns) the input holds only typed search text, never the
+# choice; the choice is the single-value element's text. Elsewhere: the input's value and
+# data-value, as before.
+_READBACK_JS = """(id) => {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const b = el.parentElement && el.parentElement.closest('[class*="select__control"]');
+  if (b && b.contains(el)) {
+    const one = Array.from(b.querySelectorAll('[class*="select__single-value"]'));
+    return {react: true, text: one.length === 1 ? one[0].textContent : '', value: null,
+            search: el.value || '', shown: one.length,
+            multi: b.querySelectorAll('[class*="select__multi-value"]').length};
+  }
+  return {text: el.value || '', value: el.dataset.value ?? null};
+}"""
 
 
 def _act(page: Page, cid: str, strategy: str) -> bool:
@@ -137,6 +159,11 @@ def _act(page: Page, cid: str, strategy: str) -> bool:
     loc = page.locator(f'[id="{cid}"]')
     if strategy == "click_control":
         loc.click(timeout=_ACTION_MS)
+    elif strategy == "click_container":
+        box = page.evaluate_handle(ro._CONTAINER_JS, cid).as_element()
+        if box is None:
+            return False
+        box.click(timeout=_ACTION_MS)
     elif strategy == "arrow_down":
         loc.press("ArrowDown", timeout=_ACTION_MS)
     elif strategy == "trigger_button":
@@ -335,6 +362,14 @@ def readback(page: Page, cid: str, options: list, value) -> bool:
     got = page.evaluate(_READBACK_JS, cid)
     if got is None:
         return False
+    if got.get("react"):  # one single value, no leftover search text, no multi-value chips
+        if got["search"] or got["multi"]:
+            return False
+        if value is None:
+            return got["shown"] == 0
+        target = next((o for o in options if str(o.value) == str(value)), None)
+        return (target is not None and got["shown"] == 1
+                and dom._norm(got["text"]) == dom._norm(target.label))  # fmt: skip
     if value is None:
         return got["text"] == "" and not got["value"]
     target = next((o for o in options if str(o.value) == str(value)), None)

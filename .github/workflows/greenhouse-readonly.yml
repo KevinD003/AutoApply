@@ -33,6 +33,10 @@ on:
         description: "Only: path B, inspect_widgets with one exception (GET fetch of /locales/<segment>/<segment>.json from job-boards.cdn.greenhouse.io:443, no query, no redirect) and a 1500 ms settle window. NOT APPROVED: needs the owner's explicit single-use approval and a pinned revision with passing CI"
         type: boolean
         default: false
+      inspect_dropdowns:
+        description: "Only: path C (D109), inspect_widgets_locales with the observed locale shape (segments 1-128, single dots), the allowed locale requests' outcomes, and one react-select container click where the control's click showed no opening. NOT APPROVED: needs the owner's explicit single-use approval and a pinned revision with passing CI"
+        type: boolean
+        default: false
       identify_only:
         description: "Only: one page load with the same allow-list, no API requests; prints the exact blocked hosts (needs its own recorded approval)"
         type: boolean
@@ -65,8 +69,11 @@ jobs:
           B3: ${{ inputs.b3 && '--b3' || '' }}
           INSPECT: ${{ inputs.inspect_widgets && '--inspect-widgets' || '' }}
           LOCALES: ${{ inputs.inspect_widgets_locales && '--inspect-widgets-locales' || '' }}
+          DROPDOWNS: ${{ inputs.inspect_dropdowns && '--inspect-dropdowns' || '' }}
         run: |
-          if [ -n "$LOCALES" ]; then
+          if [ -n "$DROPDOWNS" ]; then
+            ./scripts/greenhouse-readonly-check.sh $DROPDOWNS
+          elif [ -n "$LOCALES" ]; then
             ./scripts/greenhouse-readonly-check.sh $LOCALES
           elif [ -n "$INSPECT" ]; then
             ./scripts/greenhouse-readonly-check.sh $INSPECT
