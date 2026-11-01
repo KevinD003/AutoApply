@@ -98,6 +98,15 @@ class SubresourceRule:
         return "?" not in url and re.fullmatch(self.path, urlsplit(url).path) is not None
 
 
+def _from_main_frame(request) -> bool:
+    """The request was started by a page's main frame (not a child frame; a service worker's
+    request has no frame and is refused)."""
+    try:
+        return request.frame.parent_frame is None
+    except Exception:  # noqa: BLE001 - no frame (a service worker's request)
+        return False
+
+
 def _rules_by_origin(rules) -> dict:
     out: dict[str, tuple] = {}
     for r in rules:
@@ -488,8 +497,10 @@ def _install_interception(
     `subresources`: a request to one of those origins passes only with one of its methods and
     resource types (and path, if the rule limits it); so must every redirect target. A request
     passed only by a path-limited rule has no redirect followed here; in netns and container
-    modes the browser follows redirects itself, so its caller must prevent them (gh_readonly
-    does, for the one path-limited rule that exists)."""
+    modes the browser follows redirects itself, so its caller must prevent them (gh_readonly and
+    the Greenhouse pilot do, with the fetch guard in the page's main frame). D110: such a request
+    passes only from the page's main frame, where that guard runs; a child frame's or a service
+    worker's is refused, as read-only path C refused them."""
     rules = _rules_by_origin(subresources)
 
     def matching(url: str, method: str, rtype: str):
@@ -507,6 +518,13 @@ def _install_interception(
     def route(r):
         url, method, rtype = r.request.url, r.request.method, r.request.resource_type
         if not permitted(url, method, rtype):
+            log.blocked.append(url[:200])
+            return r.abort("blockedbyclient")
+        if (
+            _origin(url) != allowed
+            and matching(url, method, rtype).path is not None
+            and (not _from_main_frame(r.request))
+        ):
             log.blocked.append(url[:200])
             return r.abort("blockedbyclient")
         if _origin(url) != allowed:

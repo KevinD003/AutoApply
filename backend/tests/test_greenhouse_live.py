@@ -210,6 +210,35 @@ def test_the_browser_may_load_only_greenhouses_static_assets_and_locale_files_on
     assert live.subresources(BASE) == ()
 
 
+def test_a_locale_file_passes_only_from_the_pages_main_frame(receiver):
+    """D110: in the browser the pilot uses, a request admitted only by the path-limited locale
+    rule passes from the page's main frame (where the fetch redirect guard runs) and is refused
+    from a child frame, as read-only path C refused it. The receiver's log is the oracle."""
+    from app.modules.execution.browser import browser_session
+    from app.modules.preparation import gh_readonly as ro
+    from tests.conftest import RECEIVER_PORT
+    from tests.test_locale_observation import JOB_PATH
+
+    cdn = f"http://localhost:{RECEIVER_PORT}"  # the CDN stand-in: same receiver, another name
+    hashed = "/locales/en/common.6f8a2c1d.json"
+    rule = ro._locale_rule_c(cdn, allow_private=True)
+    try:
+        for via, reached in (("fetch", True), ("iframe", False)):
+            receiver.reset()
+            receiver.config(mode="gh2_dd", dd="locale_gate", locale_origin=cdn,
+                            locale_path=hashed, locale_via=via)  # fmt: skip
+            with browser_session(BASE, 8000, isolation=get_settings().browser_isolation,
+                                 allow_private_destination=True,
+                                 subresources=(rule,)) as (page, log):  # fmt: skip
+                page.goto(f"{BASE}{JOB_PATH}")
+                page.wait_for_timeout(1500)
+            paths = [r["path"] for r in receiver.ledger()["requests"]]
+            assert (hashed in paths) is reached, (via, paths)
+            assert all(r["method"] == "GET" for r in receiver.ledger()["requests"])
+    finally:
+        receiver.config(locale_origin=None, locale_path=None, locale_via=None)
+
+
 def test_a_pilot_page_never_follows_a_redirect_of_its_own_fetches():
     """D110: on a real board the page gets path C's fetch guard before its own scripts run, and
     the runner applies it before navigating; the stand-in gets nothing."""
