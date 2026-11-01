@@ -127,6 +127,9 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     - the evidence a rehearsal leaves.
   - It grants nothing and is 404 for anyone else.
 - **CI on main before this change:** CI #152 (`f36f92c`) and CI #153 (`205db94`) passed.
+- **CI on the merged commit:** CI #154 (run 41349419984, `c838316`) passed all four jobs:
+  backend, frontend (typecheck, lint, end-to-end desktop and mobile), docker-smoke and
+  execution-compose.
 - **Commands actually run (exit codes from the commands, never a `| tail`):**
   - `uv run pytest tests/test_hidden_search.py tests/test_greenhouse_controls.py
     tests/test_greenhouse_dom.py`: passed.
