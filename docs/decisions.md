@@ -3728,3 +3728,45 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   owner's Gmail token, made once with `python -m app.modules.inbox.connect` on the owner's
   machine. Other accounts type their own codes: the server's mailbox is the owner's (D114).
 - **Not kept:** a code is never stored, logged, put in audit or evidence, or shown.
+
+## D118 — The generic extractor reads only the application form and its aria-labelledby labels (2026-11-02)
+
+- Ported from the legacy ATS adapters' page handling (their `.py` sources only; rebuilt).
+- **One application form.** A page may hold a job-alert sign-up or newsletter form with its own
+  email field and button (Recruitee, Breezy, Workable). `forms.extract_form_schema` now reads
+  only the application form: the form holding a file upload, or the single form on the page.
+  Two upload-bearing forms, or several forms and none with an upload, is ambiguous and falls
+  back to the whole page, so nothing is dropped silently. The chosen form's action is recorded.
+- **aria-labelledby labels.** A question whose text is linked by `aria-labelledby`, with no
+  `<label>` (Recruitee, SmartRecruiters), is read, joining several ids in order. Only text the
+  page links counts; a field with no label of any kind still stops the capture.
+- Tests: `tests/test_form_scope_labels.py`. No real markup.
+
+## D119 — The Greenhouse field catalogue is the official Job Board API; every documented field type is filled (2026-11-02)
+
+- **The owner's request (2026-11-02):** use the official Greenhouse API docs
+  (`grnhse/greenhouse-api-docs`) so the DOM filler covers every field, down to the minor ones.
+- **Source of truth.** NoEfforts already builds the Greenhouse field catalogue from the
+  official Job Board API, `GET /boards/{token}/jobs/{id}?questions=true`
+  (`greenhouse.schema_from_api`): the API's own `questions`, `location_questions` and the
+  `data_compliance` consent. The docs confirm the field types, and every documented question
+  field type is mapped and filled by the DOM adapter (Playwright/Chromium), by the field's
+  exact `name`/`id`:
+  - `input_text` → text (email and phone by name), `textarea` → textarea, `input_file` → file,
+    `multi_value_single_select` → a dropdown, `multi_value_multi_select` → checkboxes,
+    `input_hidden` → a value the page itself sets (map coordinates): never typed, a checkpoint.
+  - A field type the docs add later is an unsupported checkpoint, never silently dropped
+    (`tests/test_greenhouse_api_coverage.py` pins the documented set to the mapper).
+- **Not auto-filled, by rule.** The docs also describe `demographic_questions` and the
+  government-contractor `compliance` section (EEOC: gender, race, veteran, disability) and the
+  structured `educations[]` / `employments[]` history. These are not auto-answered:
+  - demographics and legal attestations are **never inferred** (a non-negotiable rule); an EEOC
+    answer is the applicant's own explicit per-application choice and is never saved for reuse;
+  - education and employment history are filled from the applicant's own approved records, which
+    is separate structured-field work.
+  On the hosted page these appear as controls the job data's standard questions do not cover, so
+  the adapter stops before disclosure (a checkpoint) rather than guessing. Surfacing them as
+  questions the applicant answers is the next step, not auto-filling.
+- **No API key, no API submission.** The pilot fills and submits through the browser only
+  (D102/D116). The API is read-only here, for the catalogue; submitting through it would need
+  the employer's key and is out of scope.
