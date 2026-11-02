@@ -240,7 +240,24 @@ def _live_user_refusal(user_id) -> str | None:
         return live.refusal(user) if user is not None else "not_for_this_account"
 
 
-def _enabled_refusal(url: str | None, steps: list[str], user_id=None) -> RouteDecision | None:
+# Why a real Greenhouse job is a manual handoff here (appended to the generic message; the reason
+# code stays real_destination_disabled).
+PILOT_OFF_HINT = (
+    " This is a Greenhouse job post: NoEfforts can apply to it through the Greenhouse pilot, which "
+    "is switched off on this server. The server owner turns it on with the pilot configuration "
+    "(docs/activation-status.md, section 5)."
+)
+NOT_A_BOARD_ADDRESS_HINT = (
+    " This job uses Greenhouse, but its address is the employer's own page, not a Greenhouse "
+    "address, so the Greenhouse pilot cannot read it. To use the pilot, add the job with its "
+    "Greenhouse address: https://job-boards.greenhouse.io/<board>/jobs/<number>, or the embedded "
+    "form's address (https://job-boards.greenhouse.io/embed/job_app?for=<board>&token=<number>)."
+)
+
+
+def _enabled_refusal(
+    url: str | None, steps: list[str], user_id=None, ats_provider: str | None = None
+) -> RouteDecision | None:
     """In production, or for a job on a real employer's site, no provider is enabled whatever
     form is captured, so the route says that, not "capture the form first" (which could not
     change it). A local fixture, or a job without an address, goes on to the form. A real
@@ -248,6 +265,7 @@ def _enabled_refusal(url: str | None, steps: list[str], user_id=None) -> RouteDe
     (D102); otherwise the route says why it is not."""
     from app.modules.execution import policy
 
+    hint = ""
     if live.posting(url) is not None:
         why = _live_user_refusal(user_id)
         if why is None:
@@ -257,6 +275,11 @@ def _enabled_refusal(url: str | None, steps: list[str], user_id=None) -> RouteDe
             steps.append(f"greenhouse pilot: {why}")
             return RouteDecision("manual_handoff", "manual_handoff", steps, live.WHY[why],
                                  LIVE_REASONS[why])  # fmt: skip
+        steps.append("greenhouse pilot: switched off on this server")
+        hint = PILOT_OFF_HINT
+    elif (ats_provider or "").lower() == "greenhouse":
+        steps.append("greenhouse pilot: not a Greenhouse job-board address")
+        hint = NOT_A_BOARD_ADDRESS_HINT
     p = urlsplit(url or "")
     origin = f"{p.scheme}://{p.netloc}" if p.netloc else ""
     if get_settings().env == "production":
@@ -266,7 +289,7 @@ def _enabled_refusal(url: str | None, steps: list[str], user_id=None) -> RouteDe
     else:
         return None
     steps.append("enabled: no provider is enabled for real destinations")
-    return RouteDecision("manual_handoff", "manual_handoff", steps, message, code)
+    return RouteDecision("manual_handoff", "manual_handoff", steps, message + hint, code)
 
 
 def route_for_job(db, job) -> RouteDecision:
@@ -283,7 +306,8 @@ def route_for_job(db, job) -> RouteDecision:
     steps: list[str] = []
     refused = _identity_refusal({"url": job.url, "ats_provider": job.ats_provider}, steps)
     if refused is None:
-        refused = _enabled_refusal(job.url, steps, getattr(job, "user_id", None))
+        refused = _enabled_refusal(job.url, steps, getattr(job, "user_id", None),
+                                   getattr(job, "ats_provider", None))  # fmt: skip
     if refused is not None:
         return refused
     form = db.scalar(select(JobForm).where(JobForm.job_id == job.id,

@@ -72,6 +72,14 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     config --quiet`: exit 0.
   - `scripts/validate.sh lint format frontend backend` on `83fa400`: lint, format, typecheck and eslint ok; backend **4,400 passed** (1:11:47); exit 0.
 - **CI on the merged commit:** CI #155 (run 41360331095, `192815a`) passed.
+- **Follow-up (owner's first local try):** the job page now explains a Greenhouse job's manual
+  handoff. It says either that the pilot is switched off on this server, or, for an address on
+  the employer's own page (Greenhouse's id in `gh_jid`), which Greenhouse address the pilot
+  needs. The board is never guessed and nothing is fetched. Reason codes are unchanged.
+  Commands: `pytest tests/test_greenhouse_live.py tests/test_reason_codes.py
+  tests/test_execution_routing.py tests/test_ashby_adapter.py tests/test_rehearsal_prerequisite.py
+  tests/test_execution_security.py` (160 passed, exit 0), `npx tsc --noEmit`, `npm run lint`
+  (exit 0).
 
 ## Locale exception integrated; run #11 corrected; hidden search inputs; milestone-B handoff (D111, 2026-11-01; local only, nothing real run)
 

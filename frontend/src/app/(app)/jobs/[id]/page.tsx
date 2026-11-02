@@ -348,8 +348,9 @@ function FormCard({
       ) : form === null && realDestination ? (
         // A real employer's site: the test-only controls below could not change that.
         <p className="text-sm">
-          This posting is on a real employer&apos;s site. NoEfforts does not read or fill real employer forms in this version: apply
-          there, then record it with “Track application”.
+          This posting is on a real employer&apos;s site. NoEfforts reads and fills a real employer&apos;s form only through the
+          Greenhouse pilot, for a Greenhouse job post on a server where it is switched on (“How NoEfforts could apply” above says
+          why not here). Otherwise apply there, then record it with “Track application”.
         </p>
       ) : form === null && greenhousePilot ? (
         <div className="space-y-2 text-sm" data-testid="greenhouse-pilot">

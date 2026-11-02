@@ -17,6 +17,7 @@ from app.core.db import SessionLocal
 from app.modules.execution import live, policy, runner
 from app.modules.identity.models import User
 from app.modules.preparation.models import JobForm
+from app.modules.providers import routing
 from tests.execution_harness import BASE, Receiver, pilot_on, queue
 from tests.test_greenhouse_dom import BOARD, LOC_JOB, live_application, v2_job
 
@@ -60,6 +61,27 @@ def test_off_by_default_a_real_greenhouse_post_is_neither_read_nor_routed(api):
     assert r.status_code == 409 and "not enabled" in r.text
     route = api.get(f"/jobs/{job['id']}/route").json()
     assert (route["route"], route["reason"]) == ("manual_handoff", "real_destination_disabled")
+    assert route["message"].endswith(routing.PILOT_OFF_HINT)  # says what would change it
+    assert forms(job["id"]) == []
+
+
+@pytest.mark.parametrize("url", [
+    "https://careers.example.com/jobs?gh_jid=4000001",  # the employer's own page (fictional)
+    "https://careers.example.com/open-roles/analyst?gh_jid=4000002&utm_source=x",
+])  # fmt: skip
+def test_a_greenhouse_job_on_the_employers_own_page_says_which_address_the_pilot_needs(api, url):
+    """D112 follow-up: a job whose address is the employer's page (Greenhouse's id in gh_jid) is
+    a Greenhouse job, but not one the pilot can read; the route says which address it needs,
+    whether the pilot is on or off. The board is never guessed and nothing is fetched."""
+    new = {"url": url, "title": "Analyst", "employer": "Example Employer (fictional)"}
+    job = api.post("/jobs", json=new).json()["job"]
+    assert job["ats_provider"] == "greenhouse"
+    for on in (False, True):
+        if on:
+            pilot_on()
+        route = api.get(f"/jobs/{job['id']}/route").json()
+        assert (route["route"], route["reason"]) == ("manual_handoff", "real_destination_disabled")
+        assert route["message"].endswith(routing.NOT_A_BOARD_ADDRESS_HINT), route["message"]
     assert forms(job["id"]) == []
 
 
