@@ -1,11 +1,33 @@
-# Your Gmail, read-only (D101)
+# Your Gmail, read-only (D101, D117)
 
-> **Not authorized (D103).** Building this was requested. Reading the owner's mailbox was not
-> authorized, and the 2026-10-30 rule ("Do not: Read my inbox or retrieve OTPs") still stands.
-> Each use checks for the owner's recorded authorization (`backend/app/core/authorizations.py`,
-> empty): `read_codes` and `enter_codes` for codes, `read_application_email` for replies. Without
-> it nothing is read, whatever is switched on or connected, and Account says so. A code you type
-> yourself at the checkpoint works as before. The full list: `docs/activation-status.md`.
+> **Verification codes are authorized (D117); application-email reading is not.** The owner's
+> words on 2026-11-02 ("read my email and search for the greenhouse the most recent otp ...
+> paste it in the greenhouse applications") lifted the earlier "Do not read my inbox or retrieve
+> OTPs" **for verification codes only**. Recorded in `backend/app/core/authorizations.py`:
+> `read_codes` and `enter_codes` for the owner's own mailbox, through 2026-11-06. Reading
+> **application emails** (`read_application_email`) is still not authorized, so that half stays
+> off whatever is switched on. On by default for the owner outside tests; it still needs the
+> token from the connect step below. A code you type yourself at the checkpoint works as before.
+
+## What access this grants — and what it does not
+
+The point of the setup below is that you can see exactly what NoEfforts can do with your mail
+before you grant anything:
+
+| | |
+|---|---|
+| **Scope requested** | `https://www.googleapis.com/auth/gmail.readonly` — read only. Nothing else. |
+| **Can** | read message headers and bodies, to find a verification code. |
+| **Cannot** | send, reply, forward, delete, trash, archive, label, mark read, or change any setting — the read-only scope has no permission to, and the code calls no such method. |
+| **Reads only** | messages from the application systems' code senders (`NOEFFORTS_INBOX_CODE_SENDERS`), and only while one of your applications is waiting at a code step. Not your whole mailbox, not continuously. |
+| **Keeps** | per code email: a keyed reference (so it is read once), the day, the sender's domain. **Never** the code, the subject, the body, or the sender's name. The code is entered and discarded, never stored, logged, put in audit/evidence, or shown. |
+| **Token** | the OAuth refresh token is written to a file on your machine, readable by you only, and never printed or committed. You point NoEfforts at that file. |
+| **Revoke** | delete the token file, and remove NoEfforts in your Google Account's "Third-party access" page. Access ends at once. |
+| **You can audit it** | the whole read path is one file, `backend/app/modules/inbox/service.py` (`fill_codes`), and the only scope is in `backend/app/modules/inbox/provider.py` (`SCOPE`). |
+
+The flow is Google's documented one for installed apps: a loopback redirect to 127.0.0.1 on a
+free port, a `state` value, and PKCE (S256). No client secret is shipped; you create your own
+OAuth client in your own Google Cloud project, so the trust is between you and Google.
 
 NoEfforts can read your own Gmail, read-only, for two things you turn on separately in
 Account → "Email (your Gmail, read-only)":
@@ -60,6 +82,23 @@ never the text, the subject, the sender's name or a code. Your Gmail token stays
 
 Turn both off in Account, delete the token file, and remove NoEfforts in your Google Account's
 "Third-party access" page.
+
+## Keeping it connected (the 7-day token)
+
+Google expires the refresh token of an OAuth app left in **"Testing"** status after 7 days, so
+reading would stop after a week. Two ways to avoid re-running the connect step every week, both
+in your own Google Cloud Console:
+
+- **Simplest:** on the **OAuth consent screen**, press **"Publish app"** to move it to
+  **"In production"**. For a `gmail.readonly` app used only by you, Google shows an
+  "unverified app" notice you click past (you are the developer and the only user); the refresh
+  token then does not expire on the 7-day schedule. No Google verification review is needed for
+  your own use.
+- **Or** keep it in "Testing" and re-run the connect step when reading stops with "Gmail refused
+  the connection".
+
+Either way the scope stays `gmail.readonly`; publishing changes only the token lifetime, not
+what NoEfforts can access.
 
 ## What is not verified
 

@@ -1010,6 +1010,12 @@ def classify(f: FormField) -> Intent:
         or _SENSITIVE_OPTION_STRONG.fullmatch(label)
     )
 
+    # D120: a Greenhouse-Inclusion demographic question (keyed demographic_question_<id>) is
+    # sensitive whatever its wording ("Favorite Color"): the applicant's explicit choice, never
+    # inferred, never saved for reuse.
+    if f.key.startswith("demographic_question_"):
+        return Intent("demographic", {"topic": "demographic_survey"}, sensitive=True, no_bank=True)
+
     # 1. Unchanged: a legacy sensitive word (any field type), now unless eligibility words too.
     if legacy and not elig:
         return Intent("demographic", {"topic": legacy.group(0)}, sensitive=True)

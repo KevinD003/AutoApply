@@ -3770,3 +3770,32 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
 - **No API key, no API submission.** The pilot fills and submits through the browser only
   (D102/D116). The API is read-only here, for the catalogue; submitting through it would need
   the employer's key and is out of scope.
+
+## D121 — EEOC and demographic questions surfaced as the applicant's own answers (2026-11-02)
+
+- **The owner's request (2026-11-02):** "EEOC" — handle the EEOC questions.
+- **What changes:** `greenhouse.schema_from_api` now extracts the Job Board API's `compliance[]`
+  (EEOC: gender, race, veteran status, disability status) and `demographic_questions{}`
+  (Greenhouse Inclusion) sections, which it skipped before. On the hosted page these would
+  otherwise be controls the standard questions do not cover, so the adapter stopped the whole
+  application (a blocking checkpoint). Now they are proper questions the applicant can answer.
+- **Always the applicant's explicit choice, by rule:** every such field classifies as sensitive
+  (`classify`: EEOC labels already do; demographic questions are keyed `demographic_question_<id>`
+  and a classify rule marks them sensitive even when neutrally worded, e.g. "Favorite Color").
+  Sensitive means: never inferred, never auto-filled, never saved for reuse, never drafted
+  (C5/C15, a non-negotiable rule). The resolver leaves them for the applicant; the adapter fills
+  only the exact option the applicant chose. The exact EEOC option labels, including the two
+  decline options ("Decline To Self Identify", "I don't wish to answer"), come straight from the
+  API and match our decline mapping (D79).
+- **Consequence for automatic applying:** an application with EEOC/demographic questions is not
+  fully resolved until the applicant answers them, so the standing rule (D113) does not
+  auto-submit it — it waits (open_questions). That is correct: a demographic answer is never
+  given without the person's own choice.
+- **Fail-closed:** a `compliance`/`demographic` entry whose shape does not parse is skipped, so
+  the section stays a page checkpoint rather than being guessed. A demographic question that
+  offers a free-form ("type your own") option is shown as unsupported for the applicant to
+  answer, never auto-filled.
+- **Tests:** `tests/test_greenhouse_api_coverage.py` (extraction, sensitivity, decline options,
+  malformed-entry skip). The end-to-end fill of an EEOC react-select on a real Greenhouse page
+  is unobserved, so like the D104 location stand-ins it stays checkpoint-first until the pilot
+  sees one.

@@ -129,9 +129,53 @@ def _safe_key(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.:\[\]-]+", "_", s)[:200] or "field"
 
 
+DEMOGRAPHIC_PREFIX = "demographic_question_"
+
+
+def _demographic_field(q: dict) -> FormField:
+    """D120: one Greenhouse-Inclusion demographic question
+    (demographic_questions.questions[]). Keyed with DEMOGRAPHIC_PREFIX so classify treats it as
+    sensitive even when its wording is neutral (e.g. "Favorite Color"): the applicant's own
+    explicit choice, never inferred, never saved. A question that offers a free-form ("type your
+    own") option is shown but left for the applicant to answer, so a changed option set and
+    free-text entry are never guessed."""
+    opts = q.get("answer_options") or []
+    label = str(q.get("label") or "Demographic question")[:2000]
+    required = bool(q.get("required"))
+    key = f"{DEMOGRAPHIC_PREFIX}{_safe_key(str(q.get('id')))}"
+    common = {"key": key, "label": label, "required": required}
+    if any(o.get("free_form") for o in opts) or not opts:
+        return FormField(
+            type=FieldType.unsupported,
+            unsupported_reason="a demographic question with a free-form answer: you answer it",
+            **common,
+        )
+    options = [Option(value=str(o["id"]), label=str(o["label"])) for o in opts]
+    t = q.get("type")
+    if t == "multi_value_multi_select":
+        return FormField(type=FieldType.checkbox_group, options=options, **common)
+    return FormField(type=FieldType.select, options=options, **common)
+
+
 def schema_from_api(data: dict) -> FormSchema:
     fields = [_field(q) for q in (data.get("questions") or [])]
     fields += [_field(q) for q in (data.get("location_questions") or [])]
+    # D120: EEOC (compliance[]) has the same shape as questions; its labels (Gender, Race,
+    # Veteran Status, Disability Status) classify as sensitive on their own. Greenhouse-Inclusion
+    # demographic questions (demographic_questions{}) are keyed so they are sensitive too. Both
+    # are the applicant's own explicit choice: never inferred, never saved for reuse. A parse
+    # failure leaves the section out, so it stays a checkpoint on the page (fail-closed).
+    for q in data.get("compliance") or []:
+        try:
+            fields.append(_field(q))
+        except (KeyError, TypeError, ValueError):
+            continue
+    demo = data.get("demographic_questions") or {}
+    for q in demo.get("questions") or []:
+        try:
+            fields.append(_demographic_field(q))
+        except (KeyError, TypeError, ValueError):
+            continue
     if any(d.get("requires_consent") for d in data.get("data_compliance") or []):
         fields.append(
             FormField(key=CONSENT_KEY, label=CONSENT_LABEL, type=FieldType.checkbox, required=True)
