@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -77,10 +77,12 @@ class Settings(BaseSettings):
     fake_api_token: str = ""
     api_timeout_seconds: int = 10
 
-    # Job discovery (app/modules/discovery). Off unless a provider is named here, e.g.
-    # ["freehire"]. The Freehire client accepts a fixture base URL, or https://freehire.me only
-    # for an account named in discovery_owner_emails and only with that account's single-use run
-    # approval (D55; `python -m app.modules.discovery.approve`). Personal prototype only (D34).
+    # Job discovery (app/modules/discovery). D113: Freehire is on by default outside tests
+    # (_d113_defaults). The Freehire client accepts a fixture base URL, or https://freehire.me
+    # only for the owner's account (discovery_owner_emails, or live_owner_emails when that is
+    # empty). The owner's own search on Discover is the run approval (D113); a single-use
+    # approval from `python -m app.modules.discovery.approve` still works (D55). Each search
+    # with words is then checked again once a day (`discovery_search_watch_days`).
     # The optional key stays server-side (never returned by the API, never passed to the browser
     # or the frontend). No request rate is configured: pacing follows Freehire's X-RateLimit-*
     # headers only.
@@ -95,6 +97,10 @@ class Settings(BaseSettings):
     # request a minute for a day; it also stays under Freehire's pending strict mode (2,000 a
     # day per address). A check that could pass it waits for the next UTC day instead.
     freehire_daily_request_budget: int = 1440
+    # D113: the owner's own search on Discover is the run approval for it (False: only a
+    # recorded single-use approval, D55), and how long its daily re-check lasts (0: none).
+    discovery_search_approves: bool = True
+    discovery_search_watch_days: int = Field(default=90, ge=0, le=90)
     # TEST ONLY: turn off the worker's in-process request interception so a test can show
     # that the container boundary (runner launch settings + session proxy) alone holds.
     # Refused outside development/test.
@@ -142,6 +148,16 @@ class Settings(BaseSettings):
     # after a successful rehearsal (E6). Hosts are fixed in code.
     live_greenhouse_enabled: bool = False
     live_owner_emails: list[str] = Field(default_factory=list)
+    # D113 (the owner's choice, 2026-11-02, "Fully automatic"): the owner's standing rule to
+    # apply automatically (app/modules/autoapply). It acts only where the pilot itself may (the
+    # switch, the owner's account, production, container isolation, the recorded permission and
+    # its attempt limit), only for a package with every answer resolved from the owner's own
+    # approved facts and answers, no open question and no checkpoint, the first application to
+    # each employer path a rehearsal, at most `auto_apply_daily_cap` approvals a day. The owner
+    # pauses it in the app. On by default outside tests (see _d113_defaults).
+    auto_apply_enabled: bool = False
+    auto_apply_daily_cap: int = Field(default=5, ge=0, le=50)
+    auto_apply_interval_seconds: int = Field(default=300, ge=60, le=86400)
     # TEST ONLY (honoured only when env == "test" and the address is a fixture origin): a local
     # stand-in playing a board's host (job URLs `<base>/<board>/jobs/<id>`) and the Job Board
     # API (`<api base>/v1/boards/...`). Ignored everywhere else.
@@ -192,6 +208,26 @@ class Settings(BaseSettings):
     # choice), and how many boards one tick of the worker reads at most.
     board_daily_check_limit: int = Field(default=10, ge=1, le=50)
     board_check_batch: int = Field(default=5, ge=1, le=50)
+
+    @model_validator(mode="after")
+    def _d113_defaults(self):
+        """D113, the owner's choice: outside tests, Freehire discovery (live, for the owner's
+        account), the Greenhouse pilot switch and automatic applying are on unless the
+        environment or .env sets them. Tests keep every outside service off unless a test turns
+        it on. Every other gate is unchanged (production, container, owner, recorded permission,
+        approvals or the owner's standing rule)."""
+        if self.env == "test":
+            return self
+        given = self.model_fields_set
+        if "discovery_providers" not in given:
+            self.discovery_providers = ["freehire"]
+        if "freehire_base_url" not in given:
+            self.freehire_base_url = "https://freehire.me"
+        if "live_greenhouse_enabled" not in given:
+            self.live_greenhouse_enabled = True
+        if "auto_apply_enabled" not in given:
+            self.auto_apply_enabled = True
+        return self
 
     @field_validator("fixture_networks")
     @classmethod

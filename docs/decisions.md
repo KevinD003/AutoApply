@@ -3563,3 +3563,69 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   submission, and the controls of the chosen posting.
 - **Not done by NoEfforts:** no posting was read, opened, filled or submitted. Those run only on
   the owner's server, for packages the owner approves there.
+
+## D113 — Freehire discovery and automatic applying, on by default (2026-11-02)
+
+- **The owner's words (2026-11-02, verbatim):**
+  - "enable freehire job discovery on default and also enable auto job apply on default."
+  - Asked what "auto job apply on by default" should mean, given that two of the options change
+    rules the owner set earlier, the owner chose **"Fully automatic"**: "Discover, fill and
+    submit without asking you, for fully answered packages only, within a daily cap and your
+    recorded permission. This drops the rule that every real submission needs your explicit
+    approval."
+  - For Freehire, the owner chose **"Search + daily auto-check"**: "Freehire is on by default
+    for your account: typing a search on Discover and importing reads freehire.me directly, with
+    no command-line approval. Nothing runs on its own." and "your Discover searches are also
+    re-checked automatically once a day, with new postings added to your jobs and noted in
+    notifications."
+- **What changes:**
+  - **Defaults:** outside tests (`Settings._d113_defaults`, Compose and `.env.example`):
+    Freehire discovery (`["freehire"]`, `https://freehire.me`), the Greenhouse pilot switch and
+    automatic applying are on. Anything set explicitly keeps its value; tests keep every outside
+    service off.
+  - **Freehire:**
+    - The owner's own search on Discover is the run approval for that read. It is recorded as
+      one, with the D55 row and audit, and used at once.
+    - A search with words is re-checked once a day for 90 days, as a D56 watch.
+    - The owner is `DISCOVERY_OWNER_EMAILS`, or the pilot's owner when that is empty.
+    - `discovery_search_approves=false` restores D55 exactly.
+  - **The rule changes:** CLAUDE.md's "No real submission without explicit user approval" now
+    reads "without the owner's explicit approval: per application, or the owner's recorded
+    standing rule (D113) within its limits".
+- **The owner's standing rule to apply automatically** (`app/modules/autoapply`):
+  - **When it runs:** a worker task every 5 minutes, for the pilot's owner only.
+  - **Where it may act:** only where the pilot may: switch, production, container isolation,
+    the owner's account, and every step of the recorded permission. That permission is D112's
+    end (2026-11-06) and limit (5 attempts past the disclosure gate, shared), with D113's
+    register entry for packages the rule approves.
+  - **For each Greenhouse job post** among the owner's jobs that is not closed, excluded or a
+    possible duplicate, and with no checked preference unmet, it:
+    1. reads the post (once a day at most);
+    2. makes the application;
+    3. builds the package.
+  - **It approves only a package with nothing open or awaiting consent, no validation error and
+    no control NoEfforts cannot fill.** The approval is the same one the owner gives in the app
+    (exact version and content hash).
+  - **The first application to each employer path is a rehearsal (E6);** the submission follows
+    once it held.
+  - **Caps:** at most `auto_apply_daily_cap` (5) approvals a day.
+  - **No retries:** an attempt that stopped, failed or ended unknown is never retried.
+  - **Every gate still applies:** live re-checks, readback, the rehearsal stop, the send gate,
+    no retry after the final click, `submitted_unconfirmed`.
+  - **What the owner sees:** each action or skip is an event with a fixed reason code, on the
+    Tracker's "Automatic applying" card. The owner pauses or resumes it there.
+- **Unchanged:**
+  - Facts and preferences stay apart. Unknown stays unknown: anything not resolved from the
+    owner's own approved facts and answers waits for the owner.
+  - No CAPTCHA or MFA bypass. OTP stays a manual checkpoint.
+  - Inbox reading stays unauthorized.
+  - Applying runs only on the owner's server; nothing was applied to from this repository.
+- **Tests:**
+  - `tests/test_auto_apply.py`: the whole rule against the stand-in board, with the receiver
+    ledger as oracle:
+    - it waits for open questions, then rehearses, then submits once, then stops;
+    - pause; the daily cap and the permission limit; never retrying a stopped attempt;
+    - another account; the defaults.
+  - Sabotage checks: dropping the pause check failed, and so did dropping the no-retry check.
+  - `tests/test_freehire_live_read.py`: D55 kept behind the setting; the search as the approval
+    and its daily watch; another account refused.

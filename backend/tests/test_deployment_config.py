@@ -248,7 +248,7 @@ def test_the_greenhouse_pilot_override_changes_only_what_it_says():
         assert set(pilot["services"][name]) == {"environment"}
         base_env = base["services"][name]["environment"]
         assert base_env["NOEFFORTS_LIVE_GREENHOUSE_ENABLED"] == (
-            "${NOEFFORTS_LIVE_GREENHOUSE_ENABLED:-false}"
+            "${NOEFFORTS_LIVE_GREENHOUSE_ENABLED:-true}"  # D113: on by default
         )
         assert base_env["NOEFFORTS_BROWSER_ISOLATION"] == "container"
     assert pilot["services"]["egress-proxy"] == {"networks": ["exec_egress", "egress_out"]}

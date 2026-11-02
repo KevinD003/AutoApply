@@ -17,6 +17,8 @@ docs/decisions.md.
 Recorded (2026-10-31, D103): none.
 Recorded (2026-11-01, D112): the Greenhouse pilot, all four steps, through 2026-11-06, at most 5
 attempts that reach the disclosure gate, for postings the owner approves in the app one at a time.
+Recorded (2026-11-02, D113): the same steps, end and limit for packages the owner's standing rule
+to apply automatically approves.
 
 * `inbox`: reading the owner's mailbox (D101). The feature was requested (2026-10-31). Reading
   was never authorized, so neither verification codes nor application emails are read.
@@ -75,6 +77,27 @@ RECORDED: tuple[Authorization, ...] = (
             "postings approved there one at a time"
         ),
         # "Before next week end", read conservatively: the last weekday before next weekend.
+        ends_on=date(2026, 11, 6),
+        max_attempts=5,
+    ),
+    Authorization(
+        what=GREENHOUSE_PILOT,
+        decision="D113",
+        given_on=date(2026, 11, 2),
+        words=(
+            '"enable freehire job discovery on default and also enable auto job apply on '
+            'default." Asked what that should mean, the owner chose "Fully automatic": "Discover, '
+            "fill and submit without asking you, for fully answered packages only, within a daily "
+            'cap and your recorded permission."'
+        ),
+        actions=frozenset({"read", "open", "disclose", "submit"}),
+        data=(
+            "packages the owner's standing rule approves (app/modules/autoapply): every answer "
+            "resolved from the owner's own approved facts, answers and documents, for Greenhouse "
+            "job posts the owner adds or NoEfforts finds"
+        ),
+        # "within ... your recorded permission": D112's end date and limit, shared (the smaller
+        # limit counts every attempt since D112's day).
         ends_on=date(2026, 11, 6),
         max_attempts=5,
     ),

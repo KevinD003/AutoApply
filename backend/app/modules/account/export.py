@@ -531,6 +531,18 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "updated_at",
     ),
     "notification_reads": ("id", "user_id", "item_key", "read_at"),
+    # D113: the owner's standing rule to apply automatically: their pause switch, and what it
+    # did for each job (fixed reason codes only).
+    "auto_apply_prefs": ("user_id", "paused", "updated_at"),
+    "auto_apply_events": (
+        "id",
+        "user_id",
+        "job_id",
+        "application_id",
+        "action",
+        "reason",
+        "created_at",
+    ),  # fmt: skip
     "package_approvals": (
         "id",
         "package_id",

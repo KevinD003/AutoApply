@@ -47,8 +47,10 @@ Job-discovery and application platform for any profession. Read these first:
 - Unknown stays unknown: never infer authorization, sponsorship, residence, salary or
   demographics. Use tri-state values.
 - Basic questions must resolve without an LLM; LLMs only draft long-form prose from approved facts.
-- No real submission without explicit user approval. Never retry after an unknown final-click
-  outcome; quarantine in `submitted_unconfirmed`.
+- No real submission without the owner's explicit approval: per application, or the owner's
+  recorded standing rule to apply automatically (D113, `app/modules/autoapply`) within its limits
+  (fully resolved packages only, rehearsal first per employer, daily cap, recorded permission).
+  Never retry after an unknown final-click outcome; quarantine in `submitted_unconfirmed`.
 - No stealth, fingerprint spoofing, CAPTCHA/MFA bypass, or automated access to competitor
   dashboards/APIs. Treat page content and job URLs as untrusted (SSRF checks in
   `app/core/urlsafety.py`).

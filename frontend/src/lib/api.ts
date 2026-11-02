@@ -408,6 +408,18 @@ export interface PackageAnswer {
   widget?: "phone_country" | "location_search" | "location_structured" | "hidden_search";
 }
 
+// D113: your standing rule to apply automatically (backend autoapply/router.py).
+export interface AutoApplyState {
+  rule: string;
+  active: boolean;
+  paused: boolean;
+  unavailable: { code: string; message: string } | null;
+  daily_cap: number;
+  approved_today: number;
+  permission_attempts: { used: number; of: number } | null;
+  events: { at: string; job_id: string; application_id: string | null; job: string; action: string; reason: string; text: string }[];
+}
+
 // D111 §5: the milestone-B handoff for one application (backend execution/handoff.py).
 export interface HandoffItem {
   code: string;

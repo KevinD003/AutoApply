@@ -26,12 +26,18 @@ def _assigned(name: str) -> ast.expr:
 
 
 def test_the_shipped_register_holds_exactly_the_owners_recorded_words():
-    """D103 recorded nothing; D112 recorded the owner's permission for the Greenhouse pilot.
+    """D103 recorded nothing; D112 recorded the owner's permission for the Greenhouse pilot, and
+    D113 the same for the owner's standing rule to apply automatically.
     Changing the register means changing this test with the owner's words in
     docs/decisions.md, never a setting."""
     value = _assigned("RECORDED")
-    assert isinstance(value, ast.Tuple) and len(value.elts) == 1, ast.unparse(value)
-    (entry,) = SHIPPED_REGISTER
+    assert isinstance(value, ast.Tuple) and len(value.elts) == 2, ast.unparse(value)
+    entry, auto = SHIPPED_REGISTER
+    assert (auto.what, auto.decision, auto.actions) == (
+        a.GREENHOUSE_PILOT, "D113", entry.actions)  # fmt: skip
+    assert (auto.given_on, auto.ends_on, auto.max_attempts) == (
+        date(2026, 11, 2), date(2026, 11, 6), 5)  # fmt: skip
+    assert '"Fully automatic"' in auto.words and "standing rule" in auto.data
     assert entry.what == a.GREENHOUSE_PILOT and entry.decision == "D112"
     assert entry.actions == {"read", "open", "disclose", "submit"}
     assert (entry.given_on, entry.ends_on, entry.max_attempts) == (

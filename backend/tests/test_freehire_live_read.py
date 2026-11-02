@@ -41,7 +41,9 @@ def checked(receiver, monkeypatch):
     s = get_settings()
     for k, v in (("discovery_providers", ["freehire"]), ("freehire_base_url", FIXTURE),
                  ("freehire_api_key", ""), ("freehire_page_size", 2), ("freehire_max_pages", 10),
-                 ("freehire_timeout_seconds", 2), ("discovery_owner_emails", [OWNER])):  # fmt: skip
+                 ("freehire_timeout_seconds", 2), ("discovery_owner_emails", [OWNER]),
+                 # D55 as recorded: only a single-use approval (D113's search approval: below).
+                 ("discovery_search_approves", False)):  # fmt: skip
         monkeypatch.setattr(s, k, v)
     monkeypatch.setattr(fh, "LIVE_ORIGIN", FIXTURE)
     monkeypatch.setattr(fh, "is_fixture_origin", lambda url: False)
@@ -226,3 +228,32 @@ def test_a_run_held_back_by_retry_after_does_not_use_its_approval(api, receiver)
         b.not_before = utcnow() - timedelta(seconds=1)
         db.commit()
     assert run(api, query="i").status_code == 200 and used(second)
+
+
+# -- D113: the owner's own search is the approval; each search with words is re-checked daily ----
+
+
+def test_d113_the_owners_search_is_its_own_approval_and_is_watched_daily(api, receiver,
+                                                                       monkeypatch):  # fmt: skip
+    from app.modules.discovery.models import DiscoveryWatch
+
+    monkeypatch.setattr(get_settings(), "discovery_search_approves", True)
+    r = run(api, query="support")
+    assert r.status_code == 200, r.text
+    with SessionLocal() as db:
+        (appr,) = db.scalars(select(DiscoveryRunApproval)).all()
+        assert (appr.query, appr.consumed_at is not None) == ("support", True)
+        assert appr.retention == "Discovered postings are kept until I delete them."
+        (w,) = db.scalars(select(DiscoveryWatch)).all()
+        assert (w.query, w.interval_seconds, w.revoked_at) == ("support", 86400, None)
+    assert run(api, query="support").status_code == 200  # a new search: a new approval
+    with SessionLocal() as db:
+        assert len(db.scalars(select(DiscoveryRunApproval)).all()) == 2
+        assert len(db.scalars(select(DiscoveryWatch)).all()) == 1  # one watch per search
+
+
+def test_d113_another_account_is_still_refused_and_asks_nothing(other_api, receiver, monkeypatch):
+    monkeypatch.setattr(get_settings(), "discovery_search_approves", True)
+    r = run(other_api, query="support")
+    assert r.status_code == 403
+    assert fh_requests(receiver) == []

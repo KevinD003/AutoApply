@@ -65,6 +65,12 @@ celery_app.conf.update(
         # D101: the owner's Gmail, read-only; does nothing unless the owner connected it and
         # turned on codes or application emails.
         "check-inbox": {"task": "noefforts.check_inbox", "schedule": 15.0},
+        # D113: the owner's standing rule to apply automatically; does nothing unless it is on
+        # and the Greenhouse pilot may act on this server (autoapply/service.py).
+        "auto-apply": {
+            "task": "noefforts.auto_apply",
+            "schedule": float(settings.auto_apply_interval_seconds),
+        },
         # D94: owner email reminders; does nothing unless the owner configured email.
         "email-tick": {
             "task": "noefforts.email_tick",
@@ -153,3 +159,11 @@ def purge_expired_evidence() -> int:
     from app.modules.execution.service import purge_expired_evidence as purge
 
     return purge()
+
+
+@celery_app.task(name="noefforts.auto_apply")
+def auto_apply() -> int:
+    """D113: the owner's standing rule to apply automatically (autoapply/service.py)."""
+    from app.modules.autoapply.service import tick
+
+    return tick()
