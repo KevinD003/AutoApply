@@ -20,6 +20,7 @@ from app.modules.profiles.models import (
     EmploymentRecord,
     FactVersion,
     JobPreferences,
+    SelfIdentification,
     WorkAuthorization,
 )
 from app.modules.profiles.service import apply_fact_update
@@ -66,6 +67,29 @@ def put_preferences(
     db.commit()
     db.refresh(prefs)
     return prefs
+
+
+@router.get("/self-identification", response_model=s.SelfIdentificationOut)
+def get_self_identification(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """D122: the owner's own voluntary EEOC/demographic self-identification (opt-in auto-fill)."""
+    return db.get(SelfIdentification, user.id) or s.SelfIdentificationOut()
+
+
+@router.put("/self-identification", response_model=s.SelfIdentificationOut)
+def put_self_identification(
+    body: s.SelfIdentificationIn, user: User = Depends(current_user), db: Session = Depends(get_db)
+):
+    row = db.get(SelfIdentification, user.id)
+    if row is None:
+        row = SelfIdentification(user_id=user.id)
+        db.add(row)
+    row.enabled, row.labels = body.enabled, body.labels
+    # The change only; never the values (they are the owner's demographic data).
+    record(db, user.id, "self_identification.update", "self_identification", None,
+           enabled=body.enabled, count=len(body.labels))  # fmt: skip
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 @router.get("/history/{entity_id}")

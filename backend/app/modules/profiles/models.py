@@ -185,6 +185,30 @@ class JobPreferences(Base):
     )
 
 
+class SelfIdentification(Base):
+    """D122: the owner's own voluntary self-identification (EEOC/demographic), opt-in. When
+    `enabled`, an EEOC or demographic question on an application is answered from `labels` — the
+    option labels the owner chose — but only by exact match (so "Male" never lands on a race
+    question, and anything the stored labels do not match exactly stays a checkpoint). It is
+    the owner's own stated value, never inferred; enabling it is the owner's standing choice to
+    include it, so it needs no per-application confirmation. Never saved to the answer bank,
+    never drafted, never used for anyone else or for any decision, and "Decline to self-identify"
+    is always still selectable."""
+
+    __tablename__ = "self_identification"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # The option labels the owner identifies with, e.g. ["Male", "Asian"]. Matched to a
+    # question's options by exact (normalized) label; no inference, no fuzzy matching.
+    labels: Mapped[list] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class FactVersion(Base):
     """Immutable snapshot of a fact each time it changes."""
 

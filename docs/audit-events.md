@@ -72,6 +72,7 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `api_token.revoke` | `api_token` | - | an API token was revoked (D84) |
 | `profile.update` | `profile` | `version` | profile version number |
 | `preferences.update` | `preferences` | - | |
+| `self_identification.update` | `self_identification` | `count`, `enabled` | the owner changed their voluntary self-identification (D122): whether auto-fill is on and how many option labels are saved; never the labels themselves (demographic data) |
 | `{entity}.create` | `{entity}` | - | `entity` is one of `work_authorization`, `employment`, `education`, `credential` |
 | `{entity}.update` | `{entity}` | `version` | record version number |
 | `{entity}.approve` | `{entity}` | `version` | record version number |

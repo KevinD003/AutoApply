@@ -132,6 +132,9 @@ class Context:
     owner: str | None = None
     changed: set = field(default_factory=set)
     consent_digests: dict = field(default_factory=dict)
+    # D122: the owner's voluntary self-identification (EEOC/demographic), or None. Used only
+    # when enabled, only by exact option match, only for sensitive demographic questions.
+    self_id: object | None = None
 
 
 @dataclass
@@ -1309,6 +1312,22 @@ def _resolve_fact_statement(f, r, ctx, intent: Intent) -> Resolution:
     return r
 
 
+def _self_id_match(f, self_id) -> dict | None:
+    """D122: the value a sensitive choice/multi question takes from the owner's saved
+    self-identification, by exact (normalized) option label only, or None. A single-choice
+    question fills only when exactly one option matches (never a guess between two); a
+    multi-select fills every matching option. No fuzzy matching, no inference."""
+    if f.type not in CHOICE_TYPES | MULTI_TYPES:
+        return None
+    wanted = {normalize(x) for x in (getattr(self_id, "labels", None) or []) if x}
+    if not wanted:
+        return None
+    hits = [o for o in f.options if normalize(o.label) in wanted]
+    if f.type in CHOICE_TYPES:
+        return _choice(hits[0]) if len(hits) == 1 else None
+    return {"options": [_choice(o) for o in hits]} if hits else None
+
+
 def _resolve_sensitive(f, r, ctx) -> Resolution:
     choice = ctx.consents.get(f.key)
     inp = ctx.inputs.get(f.key)
@@ -1319,6 +1338,20 @@ def _resolve_sensitive(f, r, ctx) -> Resolution:
         hit = _from_bank(f, Resolution(key=f.key, status="", source="", sensitive=True), ctx)
         if hit is not None and hit.status == "resolved":
             proposed, source, r.fact_refs = hit.value, "answer_bank", hit.fact_refs
+    # D122: your own saved self-identification, opt-in. Enabling it is your standing choice to
+    # include it, so a matched answer resolves directly (no per-application confirmation). It is
+    # never saved to the bank, never inferred, and only an exact option match is taken.
+    if proposed is None and ctx.self_id is not None and getattr(ctx.self_id, "enabled", False):
+        match = _self_id_match(f, ctx.self_id)
+        if match is not None:
+            r.status, r.source, r.value = "resolved", "self_identification", match
+            r.display = display_value(f, match)
+            r.explanation = (
+                "From your saved self-identification, which you chose to include on your "
+                "applications. Change it in your profile, or answer this one yourself."
+            )
+            r.bankable = False
+            return r
     if choice == "disclose" and not _disclose_covers(ctx, f.key, proposed):
         # C7 (D60): a "disclose" covers the exact answer it was given for, and no other.
         choice = None
