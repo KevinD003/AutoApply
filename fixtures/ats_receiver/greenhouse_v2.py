@@ -48,7 +48,8 @@ gh2_loc_search (cfg loc; see _LOC_JS) with GET /gh2/{board}/jobs/{id}/places (a 
 search text), GET|POST /gh2/{board}/jobs/{id}/dd-options/{qid}.json (dd late_*),
 gh2_cdn_app (cfg cdn,
 redirect_away), S5 variants gh2_phrase_in_body, gh2_phrase_no_confirmation, gh2_option_unlisted,
-gh2_challenge_after_submit, gh2_autofill_overwrite, gh2_two_steps (FIXTURE ASSUMPTIONS from the
+gh2_challenge_after_submit, gh2_autofill_overwrite, gh2_two_steps, D116 gh2_live_like (cfg ll_code,
+ll_code_value, ll_invalid; see _LIVE_LIKE_JS) (FIXTURE ASSUMPTIONS from the
 legacy author's notes, legacy-audit.md R7; see fixtures/ats_receiver/README.md), plus the
 receiver-wide upload_fail, error_before_accept, error_after_accept, drop_after_accept.
 All employers, jobs and people are fictional.
@@ -261,11 +262,12 @@ def _render(q, mode, cfg=None) -> str:
         alt_html = (f'<button type="button" class="manual-toggle" data-for="{alt}">'
                     f'Enter manually</button><textarea id="{alt}" hidden '
                     f'aria-labelledby="{qid}-label"></textarea>') if alt else ""
+        status = ("" if mode == "gh2_live_like" else  # no status element (_LIVE_LIKE_JS)
+                  f'<span id="{qid}-status" class="attachment-status"></span>')
         return (f'<div class="field" role="group" aria-labelledby="{qid}-label"{greq}>'
                 f'{_label(qid, label_text, star, for_id=False)}'
                 f'<input type="file" id="{qid}" aria-labelledby="{qid}-label"{areq} '
-                f'accept=".pdf,.doc,.docx,.txt,.rtf"><span id="{qid}-status" '
-                f'class="attachment-status"></span>{alt_html}</div>')
+                f'accept=".pdf,.doc,.docx,.txt,.rtf">{status}{alt_html}</div>')
     if t == "multi_value_single_select":
         values = f["values"]
         if mode == "gh2_options_changed" and qid == "question_8101":
@@ -356,7 +358,8 @@ for (const [qid, [trig, want]] of Object.entries(COND)) {
 for (const b of document.querySelectorAll('.manual-toggle')) {
   b.addEventListener('click', () => { document.getElementById(b.dataset.for).hidden = false; });
 }
-for (const inp of document.querySelectorAll('input[type=file]')) {
+const LIVE_LIKE = form.dataset.mode === 'gh2_live_like';  // its own script (_LIVE_LIKE_JS)
+for (const inp of LIVE_LIKE ? [] : document.querySelectorAll('input[type=file]')) {
   inp.addEventListener('change', async (e) => {
     const st = document.getElementById(inp.id + '-status');
     const fd = new FormData(); fd.append('file', e.target.files[0]); fd.append('field', inp.id);
@@ -373,7 +376,7 @@ for (const inp of document.querySelectorAll('input[type=file]')) {
     } catch (err) { st.dataset.attachmentError = '1'; st.textContent = 'Upload failed'; }
   });
 }
-form.addEventListener('submit', async (e) => {
+if (!LIVE_LIKE) form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const fields = {};
   for (const el of form.querySelectorAll('input[id], textarea[id]')) {
@@ -405,6 +408,105 @@ form.addEventListener('submit', async (e) => {
 });
 """
 
+
+
+# D116 (gh2_live_like): how the legacy author's notes describe a real Greenhouse job-board form
+# (legacy apply.py; FIXTURE ASSUMPTIONS, never observed by NoEfforts): the form declares no
+# submit address and posts to the job page's own path; an upload is acknowledged only by the
+# file's name shown in its field (an error by "Failed to upload"); the first click asks for a
+# security code emailed to the candidate (8 one-character boxes, Submit disabled until they are
+# full), unless cfg ll_code is "none" ("before_click": the boxes appear once the email is
+# typed); a wrong code shows "Incorrect security code"; success navigates to .../confirmation.
+# cfg ll_invalid: the page's own validation blocks the click and nothing is sent.
+_LIVE_LIKE_JS = """
+(() => {
+  const form = document.getElementById('application-form');
+  const BASE = form.dataset.base, CODE = %CODE%, INVALID = %INVALID%;
+  const uploads = {};
+  const btn = document.getElementById('submit_app');
+  let gate = null;
+  const showGate = () => {
+    if (gate) return;
+    gate = document.createElement('div'); gate.id = 'security-code-gate';
+    gate.innerHTML = '<p>Enter the 8-character security code sent to your email.</p>';
+    for (let i = 0; i < 8; i++) {
+      const b = document.createElement('input');
+      b.type = 'text'; b.maxLength = 1; b.id = 'security-input-' + i;
+      b.setAttribute('aria-label', 'Security code character ' + (i + 1));
+      b.addEventListener('input', () => {
+        const n = document.getElementById('security-input-' + (i + 1));
+        if (b.value && n) n.focus();
+        btn.disabled = !all();
+      });
+      gate.append(b);
+    }
+    form.insertBefore(gate, btn); btn.disabled = true;
+  };
+  const all = () => [...form.querySelectorAll('[id^=security-input-]')].every(b => b.value);
+  const code = () => [...form.querySelectorAll('[id^=security-input-]')].map(b => b.value).join('');
+  if (CODE === 'before_click') {
+    document.getElementById('email').addEventListener('change', () => {
+      fetch(BASE + '/security-code', {method: 'POST'}).then(showGate);
+    });
+  }
+  for (const inp of form.querySelectorAll('input[type=file]')) {
+    inp.addEventListener('change', async (e) => {
+      const field = inp.closest('.field');
+      for (const old of field.querySelectorAll('.ll-file, .ll-error')) old.remove();
+      const fd = new FormData(); fd.append('file', e.target.files[0]); fd.append('field', inp.id);
+      try {
+        const r = await fetch(BASE + '/attachments', {method: 'POST', body: fd});
+        if (!r.ok) throw new Error('upload');
+        const j = await r.json(); uploads[inp.id] = j.id;
+        field.append(Object.assign(document.createElement('span'),
+                                   {className: 'll-file', textContent: j.filename}));
+      } catch (err) {
+        field.append(Object.assign(document.createElement('span'),
+                                   {className: 'll-error', textContent: 'Failed to upload'}));
+      }
+    });
+  }
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (INVALID) {
+      let box = document.getElementById('first_name-error');
+      if (!box) { box = Object.assign(document.createElement('div'),
+                    {id: 'first_name-error', className: 'helper-text--error'});
+                  document.getElementById('first_name').after(box); }
+      box.textContent = 'First Name is required.';
+      return;
+    }
+    if (gate && !all()) return;
+    const fields = {};
+    for (const el of form.querySelectorAll('input[id], textarea[id]')) {
+      if (el.type === 'file' || el.closest('[hidden]') || el.hidden) continue;
+      if (el.id.startsWith('security-input-')) continue;
+      const v = el.getAttribute('role') === 'combobox' ? (el.dataset.value || '') : el.value;
+      if (v) fields[el.id] = v;
+    }
+    const body = {token: form.dataset.token, fields, attachments: uploads};
+    if (gate) body.security_code = code();
+    btn.disabled = true;
+    const r = await fetch(BASE, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                 body: JSON.stringify(body)});
+    const j = await r.json().catch(() => ({}));
+    btn.disabled = false;
+    if (j.verify) { showGate(); return; }
+    if (j.wrong_code) {
+      let m = document.getElementById('security-code-error');
+      if (!m) { m = Object.assign(document.createElement('div'), {id: 'security-code-error'});
+                gate.append(m); }
+      m.textContent = 'Incorrect security code. Please try again.';
+      for (const b of form.querySelectorAll('[id^=security-input-]')) b.value = '';
+      btn.disabled = true;
+      return;
+    }
+    if (r.ok) { location.assign(BASE + '/confirmation'); return; }
+    let box = document.getElementById('form-errors'); box.hidden = false;
+    box.textContent = (j.errors || ['There was an error processing your application.']).join('; ');
+  });
+})();
+"""
 
 _WIDGETS_JS = """
 (() => {
@@ -986,10 +1088,15 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
             f'<div role="note" id="ai-disclaimer">{html.escape(AI_NOTICE)} '
             f'<a href="{base.rsplit("/jobs", 1)[0]}/ai-opt-out">Request human review</a></div>'
             f'<form id="application-form" novalidate data-base="{base}" '
-            f'data-submit-path="{base}/submit" data-token="{token}" data-mode="{html.escape(mode)}">'
+            + ("" if mode == "gh2_live_like" else f'data-submit-path="{base}/submit" ')
+            + f'data-token="{token}" data-mode="{html.escape(mode)}">'
             f'<div id="form-errors" role="alert" hidden></div>{qs}'
             f'<button type="submit" id="submit_app">Submit application</button></form>'
             f'</main><script>{script}</script>'
+            + ("<script>" + _LIVE_LIKE_JS.replace("%CODE%", json.dumps(cfg.get("ll_code")
+                                                                         or "after_click"))
+               .replace("%INVALID%", json.dumps(bool(cfg.get("ll_invalid")))) + "</script>"
+               if mode == "gh2_live_like" else "")
             + ('<script src="https://assets.fixture-cdn.invalid/widget.js"></script>'
                if mode == "gh2_external_asset" else ""))
     return HTMLResponse(
@@ -1176,10 +1283,46 @@ def mount(app, ledger, cfg, accept) -> None:
                                 "sha256": hashlib.sha256(data).hexdigest()}), time.time()))
         return {"id": aid, "filename": f.filename}
 
+    @app.post("/gh2/{board}/jobs/{job_id}/security-code")
+    async def security_code(board: str, job_id: str):  # D116: "emails" the code (nothing sent)
+        job_or_404(board, job_id)
+        ledger.run("insert into disclosures (kind,slug,detail,created_at) values (?,?,?,?)",
+                   ("code_requested", f"gh2-{board}-{job_id}", "", time.time()))
+        return {"sent": True}
+
+    @app.get("/gh2/{board}/jobs/{job_id}/confirmation", response_class=HTMLResponse)
+    async def confirmation(board: str, job_id: str):  # D116 (gh2_live_like)
+        job_or_404(board, job_id)
+        return HTMLResponse("<!doctype html><html><body><main><h1>Thank you for applying."
+                            "</h1><p>Your application has been received.</p></main>"
+                            "</body></html>")
+
+    @app.post("/gh2/{board}/jobs/{job_id}")
+    async def submit_live_like(board: str, job_id: str, request: Request):
+        """D116 (gh2_live_like): the job page's own path takes the application; the first
+        post asks for the security code unless cfg ll_code is "none"."""
+        job_or_404(board, job_id)
+        body = await request.json()
+        want = cfg.get("ll_code_value") or "AB12CD34"
+        if (cfg.get("ll_code") or "after_click") != "none":
+            if "security_code" not in body:
+                ledger.run("insert into disclosures (kind,slug,detail,created_at) "
+                           "values (?,?,?,?)",
+                           ("code_requested", f"gh2-{board}-{job_id}", "", time.time()))
+                return {"verify": True}
+            if str(body["security_code"]).upper() != want:
+                ledger.run("insert into disclosures (kind,slug,detail,created_at) "
+                           "values (?,?,?,?)",
+                           ("code_wrong", f"gh2-{board}-{job_id}", "", time.time()))
+                return {"wrong_code": True}
+        return await _take(board, job_id, body)
+
     @app.post("/gh2/{board}/jobs/{job_id}/submit")
     async def submit(board: str, job_id: str, request: Request):
         job_or_404(board, job_id)
-        body = await request.json()
+        return await _take(board, job_id, await request.json())
+
+    async def _take(board: str, job_id: str, body: dict):
         token = str(body.get("token", ""))
         if not ledger.run("select 1 from tokens where token=?", (token,)):
             return JSONResponse({"errors": ["Session expired"]}, status_code=419)

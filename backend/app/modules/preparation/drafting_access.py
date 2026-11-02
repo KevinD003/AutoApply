@@ -63,8 +63,10 @@ class BudgetReached(RuntimeError):
 
 
 def is_owner(user) -> bool:
-    owners = {e.strip().lower() for e in get_settings().drafting_owner_emails}
-    return user.email.strip().lower() in owners
+    """D114: every account when the server serves all accounts; each still consents."""
+    from app.core.accounts import named
+
+    return named(user.email, get_settings().drafting_owner_emails)
 
 
 def consent_of(db: Session, user_id, provider: str) -> DraftingConsent | None:

@@ -92,6 +92,7 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `discovery.import` | `discovery` | `created`, `fetched`, `provider`, `updated` | counts; the discovery provider key |
 | `discovery.run_approval.create` | `discovery_run_approval` | `hours`, `max_pages`, `provider` | the owner recorded one live-read approval (D55); its search and retention statement stay in `discovery_run_approvals`, never here |
 | `discovery.run_approval.use` | `discovery_run_approval` | `max_pages`, `provider` | an import used that approval, before its first request |
+| `discovery.run_approval.search` | `discovery_run_approval` | `max_pages`, `provider` | the owner's own Freehire search was recorded as its run approval (D113); the search stays in `discovery_run_approvals`, never here |
 | `discovery.job.delete` | `discovered_job` | `job_deleted`, `provider` | the user deleted a discovered posting (D56): its content erased, its id kept so that it is never imported again; whether its tracker job was deleted too |
 | `discovery.watch.create` | `discovery_watch` | `days`, `interval_seconds`, `provider` | the owner recorded a watched search (D56); its search and retention statement stay in `discovery_watches`, never here |
 | `discovery.watch.found` | `discovery_watch` | `created`, `provider` | a check of a watched search added postings (written only when it found new ones) |
@@ -103,6 +104,11 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `route.decision` | `job` | `adapter_version`, `api_grant`, `evidence`, `provider`, `reason_code`, `route` | see "Route decisions" below |
 | `application.create` | `application` | - | |
 | `application.transition` | `application` | `to` | the new application state |
+| `application.create` | `application` | `by` | made by the owner's standing rule to apply automatically (D113): `by` is its fixed name `auto_apply` |
+| `application.transition` | `application` | `by`, `to` | queued by the standing rule (D113): `by` is `auto_apply`, `to` the new state |
+| `auto_apply.paused` / `auto_apply.resumed` | `user` | - | the account switched its automatic applying off or on (D113, D114) |
+| `auto_apply.{action}` | `job` | `reason_code` | what the standing rule did for one job (D113): `approved_rehearsal`, `approved_submit` or `skipped`, and a fixed reason code (`autoapply/service.py` `REASONS`); never the job's title, employer or address |
+| `answer_brain.rejected` | `application` | `field_ref` | you said a suggested saved answer does not answer this question (D115); reference only, never the question, its key or the answer. Accepting one is an `application.answer` |
 | `application.reconcile` | `application` | `finding` | `received` or `not_received` |
 | `application.outcome` | `application` | `source`, `to` | the outcome the user recorded (`applications/states.py` `Outcome`); `user_reported`, the only source of an outcome a user records. Never the date the user gave, their note or the previous outcome, which stay on the application's timeline |
 | `follow_up.update` | `application` | `change` | what you did about following up on a submitted application (D92): `done` (you followed up), `remind` (you chose a day), `stop` or `resume`. Never the day you chose or the message |

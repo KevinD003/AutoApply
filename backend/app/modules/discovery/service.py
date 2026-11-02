@@ -334,8 +334,7 @@ def use_live_approval(db: Session, user, provider_name: str, query: str | None, 
     looked up or requested before the first two: the account must be named in
     NOEFFORTS_DISCOVERY_OWNER_EMAILS; such an approval must exist (locked); `preflight` (the
     public-address check) must pass. A refusal at any step uses nothing."""
-    owners = {e.strip().lower() for e in get_settings().discovery_owner_emails if e.strip()}
-    if user.email.lower() not in owners:
+    if not may_discover(user.email):
         raise DiscoveryError(
             "not_authorized",
             "Live Freehire reads are limited to the owner's account; nothing was requested.",
@@ -355,12 +354,16 @@ def use_live_approval(db: Session, user, provider_name: str, query: str | None, 
         .limit(1)
         .with_for_update()
     )
-    if approval is None:
+    if approval is None and not get_settings().discovery_search_approves:
         raise DiscoveryError(
             "not_authorized",
             "No unused run approval covers this exact search now; nothing was requested. The "
             "owner records one with `python -m app.modules.discovery.approve`.",
         )
+    if approval is None:
+        # D113: the owner's own search is the approval for it.
+        pages = get_settings().freehire_max_pages
+        approval = search_approval(db, user, provider_name, query, pages)
     preflight()
     approval.consumed_at = now
     record(
@@ -499,7 +502,71 @@ WATCH_MAX_BACKOFF = 3600  # seconds
 
 
 def owners() -> set[str]:
-    return {e.strip().lower() for e in get_settings().discovery_owner_emails if e.strip()}
+    """The owner's account(s) for live discovery: discovery_owner_emails, or (D113) the
+    Greenhouse pilot's owner when that is empty."""
+    s = get_settings()
+    named = s.discovery_owner_emails or s.live_owner_emails
+    return {e.strip().lower() for e in named if e.strip()}
+
+
+def may_discover(email: str | None) -> bool:
+    """D114: every account when the server serves all accounts, else the owner's."""
+    from app.core.accounts import named
+
+    s = get_settings()
+    return named(email, s.discovery_owner_emails or s.live_owner_emails)
+
+
+SEARCH_RETENTION = "Discovered postings are kept until I delete them."
+SEARCH_LABEL = "(filters only)"  # an approval's query for a search with no words
+
+
+def search_approval(db: Session, user, provider_name: str, query: str | None, pages: int):
+    """D113: the owner's own search on Discover is the run approval for it: recorded as one
+    (same row, same audit as D55's), for this exact search, now, then used like any other."""
+    now = utcnow()
+    row = DiscoveryRunApproval(
+        user_id=user.id,
+        provider=provider_name,
+        query=(query or "").strip() or SEARCH_LABEL,
+        max_pages=max(1, min(pages, 5)),
+        not_before=now,
+        not_after=now + timedelta(minutes=10),
+        retention=SEARCH_RETENTION,
+    )
+    db.add(row)
+    db.flush()
+    record(db, user.id, "discovery.run_approval.search", "discovery_run_approval", row.id,
+           provider=provider_name, max_pages=row.max_pages)  # fmt: skip
+    return row
+
+
+def watch_search(db: Session, user, provider_name: str, query: str | None) -> None:
+    """D113: a search with words the owner ran on Discover is checked again once a day, for
+    `discovery_search_watch_days`, unless such a watch already holds; stopped like any watch."""
+    days = get_settings().discovery_search_watch_days
+    q = (query or "").strip()
+    if not q or days <= 0:
+        return
+    now = utcnow()
+    held = db.scalar(
+        select(DiscoveryWatch.id).where(
+            DiscoveryWatch.user_id == user.id, DiscoveryWatch.provider == provider_name,
+            DiscoveryWatch.query == q, DiscoveryWatch.revoked_at.is_(None),
+            DiscoveryWatch.not_after > now,
+        ).limit(1)
+    )  # fmt: skip
+    if held is not None:
+        return
+    w = DiscoveryWatch(
+        user_id=user.id, provider=provider_name, query=q, interval_seconds=86400,
+        not_before=now, not_after=now + timedelta(days=days), retention=SEARCH_RETENTION,
+        next_check_at=now + timedelta(days=1),
+    )  # fmt: skip
+    db.add(w)
+    db.flush()
+    record(db, user.id, "discovery.watch.create", "discovery_watch", w.id,
+           provider=provider_name, interval_seconds=86400, days=days)  # fmt: skip
 
 
 def check_due_watches(now: datetime | None = None, limit: int = 20) -> int:
@@ -549,7 +616,7 @@ def _check_watch(db: Session, w: DiscoveryWatch, now: datetime) -> None:
     cap, then the newest postings until a known one. Never retried inside a check."""
     s = get_settings()
     user = db.get(User, w.user_id)
-    if user is None or user.email.lower() not in owners():
+    if user is None or not may_discover(user.email):
         _pause(db, w, "not_owner")
         return
     p = PROVIDERS[w.provider]()

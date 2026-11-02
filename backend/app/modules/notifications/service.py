@@ -27,6 +27,8 @@ from sqlalchemy.orm import Session
 
 from app.core.db import utcnow
 from app.modules.applications.models import Application
+from app.modules.applications.states import AppState
+from app.modules.autoapply.models import AutoApplyEvent
 from app.modules.discovery.models import BoardSource, DiscoveredJob
 from app.modules.execution import rehearsal
 from app.modules.execution.models import (
@@ -225,6 +227,30 @@ def _boards(db: Session, user_id, now: datetime) -> list[dict]:
     return out
 
 
+def _auto_apply(db: Session, user_id) -> list[dict]:
+    """D115: the automatic rule read a job's form and some questions need your answer (the
+    "pop-up" of the earlier bot): one item per application, while it still waits for you."""
+    rows = db.execute(
+        select(AutoApplyEvent.id, AutoApplyEvent.application_id, AutoApplyEvent.created_at)
+        .join(Application, Application.id == AutoApplyEvent.application_id)
+        .where(AutoApplyEvent.user_id == user_id, Application.user_id == user_id,
+               AutoApplyEvent.reason == "open_questions",
+               Application.state == AppState.needs_user_action)
+        .order_by(AutoApplyEvent.created_at.desc())
+    ).all()  # fmt: skip
+    out, seen = [], set()
+    for eid, app_id, at in rows:
+        if app_id in seen:
+            continue
+        seen.add(app_id)
+        out.append(_item(f"autoapply:{eid}", "auto_apply_questions", at, app_id,
+                         "Questions are waiting for your answers",
+                         "Automatic applying read this job's form. Answer the open questions "
+                         "(suggestions from your saved answers are shown there) and it "
+                         "continues by itself.", needs_action=True))  # fmt: skip
+    return out
+
+
 def feed(db: Session, user_id, now: datetime | None = None) -> list[dict]:
     """Every notification of the account, newest first, each with its read mark and the job
     it concerns. Scoped to the account in every query."""
@@ -236,6 +262,7 @@ def feed(db: Session, user_id, now: datetime | None = None) -> list[dict]:
         + _attempts(db, user_id)
         + _follow_ups(db, user_id)
         + _boards(db, user_id, now)
+        + _auto_apply(db, user_id)
     )
     read = set(
         db.scalars(select(NotificationRead.item_key).where(NotificationRead.user_id == user_id))

@@ -11,6 +11,7 @@ from app.modules.account.router import router as account_router
 from app.modules.apitokens.router import router as apitokens_router
 from app.modules.applications.router import router as applications_router
 from app.modules.audit.service import check_ref_key
+from app.modules.autoapply.router import router as auto_apply_router
 from app.modules.discovery.router import router as discovery_router
 from app.modules.discovery.sources_router import router as board_sources_router
 from app.modules.documents.router import router as documents_router
@@ -19,6 +20,7 @@ from app.modules.followups.router import router as followups_router
 from app.modules.identity.router import router as auth_router
 from app.modules.inbox.router import router as inbox_router
 from app.modules.jobs.router import router as jobs_router
+from app.modules.learning.router import router as learning_router
 from app.modules.mail.router import router as mail_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.preparation.review import router as review_router
@@ -79,6 +81,8 @@ def create_app() -> FastAPI:
         mail_router,
         apitokens_router,
         inbox_router,
+        auto_apply_router,
+        learning_router,
     ):
         app.include_router(r, prefix=API_PREFIX)
 

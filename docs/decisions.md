@@ -3563,3 +3563,239 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   submission, and the controls of the chosen posting.
 - **Not done by NoEfforts:** no posting was read, opened, filled or submitted. Those run only on
   the owner's server, for packages the owner approves there.
+
+## D113 — Freehire discovery and automatic applying, on by default (2026-11-02)
+
+- **The owner's words (2026-11-02, verbatim):**
+  - "enable freehire job discovery on default and also enable auto job apply on default."
+  - Asked what "auto job apply on by default" should mean, given that two of the options change
+    rules the owner set earlier, the owner chose **"Fully automatic"**: "Discover, fill and
+    submit without asking you, for fully answered packages only, within a daily cap and your
+    recorded permission. This drops the rule that every real submission needs your explicit
+    approval."
+  - For Freehire, the owner chose **"Search + daily auto-check"**: "Freehire is on by default
+    for your account: typing a search on Discover and importing reads freehire.me directly, with
+    no command-line approval. Nothing runs on its own." and "your Discover searches are also
+    re-checked automatically once a day, with new postings added to your jobs and noted in
+    notifications."
+- **What changes:**
+  - **Defaults:** outside tests (`Settings._d113_defaults`, Compose and `.env.example`):
+    Freehire discovery (`["freehire"]`, `https://freehire.me`), the Greenhouse pilot switch and
+    automatic applying are on. Anything set explicitly keeps its value; tests keep every outside
+    service off.
+  - **Freehire:**
+    - The owner's own search on Discover is the run approval for that read. It is recorded as
+      one, with the D55 row and audit, and used at once.
+    - A search with words is re-checked once a day for 90 days, as a D56 watch.
+    - The owner is `DISCOVERY_OWNER_EMAILS`, or the pilot's owner when that is empty.
+    - `discovery_search_approves=false` restores D55 exactly.
+  - **The rule changes:** CLAUDE.md's "No real submission without explicit user approval" now
+    reads "without the owner's explicit approval: per application, or the owner's recorded
+    standing rule (D113) within its limits".
+- **The owner's standing rule to apply automatically** (`app/modules/autoapply`):
+  - **When it runs:** a worker task every 5 minutes, for the pilot's owner only.
+  - **Where it may act:** only where the pilot may: switch, production, container isolation,
+    the owner's account, and every step of the recorded permission. That permission is D112's
+    end (2026-11-06) and limit (5 attempts past the disclosure gate, shared), with D113's
+    register entry for packages the rule approves.
+  - **For each Greenhouse job post** among the owner's jobs that is not closed, excluded or a
+    possible duplicate, and with no checked preference unmet, it:
+    1. reads the post (once a day at most);
+    2. makes the application;
+    3. builds the package.
+  - **It approves only a package with nothing open or awaiting consent, no validation error and
+    no control NoEfforts cannot fill.** The approval is the same one the owner gives in the app
+    (exact version and content hash).
+  - **The first application to each employer path is a rehearsal (E6);** the submission follows
+    once it held.
+  - **Caps:** at most `auto_apply_daily_cap` (5) approvals a day.
+  - **No retries:** an attempt that stopped, failed or ended unknown is never retried.
+  - **Every gate still applies:** live re-checks, readback, the rehearsal stop, the send gate,
+    no retry after the final click, `submitted_unconfirmed`.
+  - **What the owner sees:** each action or skip is an event with a fixed reason code, on the
+    Tracker's "Automatic applying" card. The owner pauses or resumes it there.
+- **Unchanged:**
+  - Facts and preferences stay apart. Unknown stays unknown: anything not resolved from the
+    owner's own approved facts and answers waits for the owner.
+  - No CAPTCHA or MFA bypass. OTP stays a manual checkpoint.
+  - Inbox reading stays unauthorized.
+  - Applying runs only on the owner's server; nothing was applied to from this repository.
+- **Tests:**
+  - `tests/test_auto_apply.py`: the whole rule against the stand-in board, with the receiver
+    ledger as oracle:
+    - it waits for open questions, then rehearses, then submits once, then stops;
+    - pause; the daily cap and the permission limit; never retrying a stopped attempt;
+    - another account; the defaults.
+  - Sabotage checks: dropping the pause check failed, and so did dropping the no-retry check.
+  - `tests/test_freehire_live_read.py`: D55 kept behind the setting; the search as the approval
+    and its daily watch; another account refused.
+
+## D114 — Every account served; each account's own choice to apply automatically (2026-11-02)
+
+- **The owner's words (2026-11-02, verbatim):**
+  "It should fill the stuffs perfect and enable all the stuffs for everyone. enable each and everything on default regardless of the user hierarchy."
+- **Every account is served** (`Settings.all_accounts`, on by default outside tests;
+  `app/core/accounts.py`). Features that served only the accounts named in a setting now serve
+  every account:
+  - the Greenhouse pilot;
+  - live Freehire discovery, its search approval and daily watches;
+  - AI drafting, where each account still gives its own consent and the server's daily budget
+    is shared;
+  - employer job boards (`board_sources_enabled`), now on by default.
+- **Automatic applying is open to every account, but each account turns it on for itself.** It
+  is on by default for the server owner (`NOEFFORTS_LIVE_OWNER_EMAILS`), who chose it (D113).
+  Every other account starts off, with the consent text shown, until that account turns it on.
+  - **Why not on for everyone:** submitting applications in someone's name, with their personal
+    data, needs that person's own choice. The server owner's words cannot give it for them.
+  - The worker examines every account and acts only for those whose choice is on.
+- **Not opened:** the mailbox (D101). The server holds one Gmail token, the owner's, and reading
+  it stays unauthorized (D103).
+- **Recorded** (`authorizations.py`, D114): the pilot's four steps for every account's own
+  packages, each approved by that account or by that account's own standing rule.
+  - Same end date (2026-11-06).
+  - Same **shared** limit of 5 attempts past the disclosure gate, now counting every account's
+    attempts. It needs renewing for wider use.
+- **Tests** (`tests/test_auto_apply.py`):
+  - another account is served by the pilot, starts off, never has anything done in its name
+    before it chooses, and once it turns the rule on is rehearsed like the owner;
+  - the mailbox stays the owner's;
+  - `test_authorizations.py` checks the register.
+
+## D115 — The answer brain: your saved answers suggested for reworded questions, learned per account (2026-11-02)
+
+- **The owner's words (2026-11-02, verbatim):**
+  "Older application was using self learning, whatever question shown on the application gets me the pop up, then I select the answer from it and then it was storing that answer into the anaswer_brain and then whenever the same question appear, it writes the answer from that. I have used some self learning XGBoost and LightGBM. Make sure we use it here too."
+- **The same question:** the answer you give is saved for that exact question by default
+  ("Reuse for this exact question" starts ticked where reuse is allowed, D51) and the resolver
+  reuses it without asking (`_from_bank`), as the earlier bot did.
+- **A reworded question** (`app/modules/learning`): one of your own saved answers is suggested.
+  Nothing is filled in until you choose "Use this" (answered here, and saved for this wording
+  too) or "Not this" (never suggested again for it).
+  - Ranking: your own model, LightGBM, else XGBoost, trained on your verdicts only, after each
+    one. Below 12 verdicts with both kinds, a fixed blend of similarities ranks instead.
+  - Never suggested: a different kind of answer; wording that differs on numbers, negation or
+    countries ("…in the US?" vs "…in Canada?"); options the form no longer has; sensitive,
+    protected or legal questions; anything the bank rules never reuse (D51: authorization,
+    sponsorship, pay, place, the employer, time-bound).
+  - A verdict keeps numbers only (similarities), never question or answer text. Both tables are
+    in the account export and deleted with the account; "Forget" deletes them.
+- **The "pop-up":** when automatic applying (D113) is held by open questions, the notification
+  "Questions are waiting for your answers" links to the application, where the suggestions are.
+- **Not found in the shared legacy files:** the XGBoost/LightGBM code itself (only the `.py`
+  files shared were read); this is written fresh.
+
+## D116 — Greenhouse real-page mechanics rebuilt from the legacy bot (2026-11-02)
+
+- **The owner's words (2026-11-02, verbatim):**
+  "I want you to make it 100% working for greenhouse. Because my previous application was working perfect. I want to improve that one into this."
+- **Why:** a review of the legacy `apply.py` found that the live Greenhouse adapter relied on
+  three details only the local approximation has (a declared submit path, an upload status
+  element, a confirmation element) and had no security-code step. The legacy author's notes,
+  from about 700 real applications, describe the real behaviour. Each is rebuilt as a
+  fail-closed recognition, never copied, and is still unobserved by NoEfforts itself:
+  - a form that declares no submit address is bound to its own job page: only a POST to that
+    page, on the same host, counts as this attempt's answer;
+  - the emailed security code is a checkpoint, also when its boxes appear before the click;
+    typed as keystrokes, read back, sent with one click; a wrong code is reported by the page;
+  - an upload is acknowledged by the approved file name in the control's own group, with no
+    upload error there; attachments are uploaded first, then the page settles;
+  - a confirmation page (`…/confirmation`) or text on the same posting, absent before the click;
+  - the page's own validation blocking the click is `rejected` only when no request left the
+    page; a click that raised is watched, never repeated; a firewall block page stops before
+    anything is entered; answer shapes the page type cannot fill are refused before disclosure.
+- **Not ported:** stealth, behaviour imitation, CAPTCHA handling, automatic consent, clicking
+  again after a rejection, guessing answers.
+- **Tested** against the receiver's `gh2_live_like` mode (FIXTURE ASSUMPTIONS).
+
+## D117 — Verification codes read from the owner's own mailbox (2026-11-02)
+
+- **The owner's words (2026-11-02, verbatim):**
+  "I want you to read my email and search for the greenhouse the most recent otp copy it and paste it in the greenhouse applications. And what about the rest greenhouse applications." and "Continue and you are approved for all."
+- **What changes:** this lifts the owner's earlier "Do not: Read my inbox or retrieve OTPs" for
+  verification codes only. Recorded (`authorizations.py`, D117): `read_codes` and `enter_codes`
+  for the owner's own mailbox and the owner's own applications, through 2026-11-06 (the owner's
+  words set no end; read with the pilot permission the codes serve). Application emails are
+  still not read (`read_application_email` is not recorded).
+- **How** (D101's code reader, `inbox/service.fill_codes`, every 15 seconds): while one of the
+  owner's applications waits at a code step, mail from the code senders received since that
+  attempt began filling in is read; a code is entered only when exactly one reads as a code.
+  When several applications overlap, the email naming this application's employer in its
+  subject is used ("Security code for your application to <employer>", legacy notes).
+  Greenhouse's letters-only, mixed-case codes are read exactly as written. A message is used
+  once; a rejected code is never entered again; Resend is never clicked.
+- **Defaults:** outside tests the inbox is on (`inbox_enabled`) for the owner
+  (`inbox_owner_emails` defaults to `live_owner_emails`), with codes on. It still needs the
+  owner's Gmail token, made once with `python -m app.modules.inbox.connect` on the owner's
+  machine. Other accounts type their own codes: the server's mailbox is the owner's (D114).
+- **Not kept:** a code is never stored, logged, put in audit or evidence, or shown.
+
+## D118 — The generic extractor reads only the application form and its aria-labelledby labels (2026-11-02)
+
+- Ported from the legacy ATS adapters' page handling (their `.py` sources only; rebuilt).
+- **One application form.** A page may hold a job-alert sign-up or newsletter form with its own
+  email field and button (Recruitee, Breezy, Workable). `forms.extract_form_schema` now reads
+  only the application form: the form holding a file upload, or the single form on the page.
+  Two upload-bearing forms, or several forms and none with an upload, is ambiguous and falls
+  back to the whole page, so nothing is dropped silently. The chosen form's action is recorded.
+- **aria-labelledby labels.** A question whose text is linked by `aria-labelledby`, with no
+  `<label>` (Recruitee, SmartRecruiters), is read, joining several ids in order. Only text the
+  page links counts; a field with no label of any kind still stops the capture.
+- Tests: `tests/test_form_scope_labels.py`. No real markup.
+
+## D119 — The Greenhouse field catalogue is the official Job Board API; every documented field type is filled (2026-11-02)
+
+- **The owner's request (2026-11-02):** use the official Greenhouse API docs
+  (`grnhse/greenhouse-api-docs`) so the DOM filler covers every field, down to the minor ones.
+- **Source of truth.** NoEfforts already builds the Greenhouse field catalogue from the
+  official Job Board API, `GET /boards/{token}/jobs/{id}?questions=true`
+  (`greenhouse.schema_from_api`): the API's own `questions`, `location_questions` and the
+  `data_compliance` consent. The docs confirm the field types, and every documented question
+  field type is mapped and filled by the DOM adapter (Playwright/Chromium), by the field's
+  exact `name`/`id`:
+  - `input_text` → text (email and phone by name), `textarea` → textarea, `input_file` → file,
+    `multi_value_single_select` → a dropdown, `multi_value_multi_select` → checkboxes,
+    `input_hidden` → a value the page itself sets (map coordinates): never typed, a checkpoint.
+  - A field type the docs add later is an unsupported checkpoint, never silently dropped
+    (`tests/test_greenhouse_api_coverage.py` pins the documented set to the mapper).
+- **Not auto-filled, by rule.** The docs also describe `demographic_questions` and the
+  government-contractor `compliance` section (EEOC: gender, race, veteran, disability) and the
+  structured `educations[]` / `employments[]` history. These are not auto-answered:
+  - demographics and legal attestations are **never inferred** (a non-negotiable rule); an EEOC
+    answer is the applicant's own explicit per-application choice and is never saved for reuse;
+  - education and employment history are filled from the applicant's own approved records, which
+    is separate structured-field work.
+  On the hosted page these appear as controls the job data's standard questions do not cover, so
+  the adapter stops before disclosure (a checkpoint) rather than guessing. Surfacing them as
+  questions the applicant answers is the next step, not auto-filling.
+- **No API key, no API submission.** The pilot fills and submits through the browser only
+  (D102/D116). The API is read-only here, for the catalogue; submitting through it would need
+  the employer's key and is out of scope.
+
+## D121 — EEOC and demographic questions surfaced as the applicant's own answers (2026-11-02)
+
+- **The owner's request (2026-11-02):** "EEOC" — handle the EEOC questions.
+- **What changes:** `greenhouse.schema_from_api` now extracts the Job Board API's `compliance[]`
+  (EEOC: gender, race, veteran status, disability status) and `demographic_questions{}`
+  (Greenhouse Inclusion) sections, which it skipped before. On the hosted page these would
+  otherwise be controls the standard questions do not cover, so the adapter stopped the whole
+  application (a blocking checkpoint). Now they are proper questions the applicant can answer.
+- **Always the applicant's explicit choice, by rule:** every such field classifies as sensitive
+  (`classify`: EEOC labels already do; demographic questions are keyed `demographic_question_<id>`
+  and a classify rule marks them sensitive even when neutrally worded, e.g. "Favorite Color").
+  Sensitive means: never inferred, never auto-filled, never saved for reuse, never drafted
+  (C5/C15, a non-negotiable rule). The resolver leaves them for the applicant; the adapter fills
+  only the exact option the applicant chose. The exact EEOC option labels, including the two
+  decline options ("Decline To Self Identify", "I don't wish to answer"), come straight from the
+  API and match our decline mapping (D79).
+- **Consequence for automatic applying:** an application with EEOC/demographic questions is not
+  fully resolved until the applicant answers them, so the standing rule (D113) does not
+  auto-submit it — it waits (open_questions). That is correct: a demographic answer is never
+  given without the person's own choice.
+- **Fail-closed:** a `compliance`/`demographic` entry whose shape does not parse is skipped, so
+  the section stays a page checkpoint rather than being guessed. A demographic question that
+  offers a free-form ("type your own") option is shown as unsupported for the applicant to
+  answer, never auto-filled.
+- **Tests:** `tests/test_greenhouse_api_coverage.py` (extraction, sensitivity, decline options,
+  malformed-entry skip). The end-to-end fill of an EEOC react-select on a real Greenhouse page
+  is unobserved, so like the D104 location stand-ins it stays checkpoint-first until the pilot
+  sees one.

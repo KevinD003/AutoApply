@@ -274,7 +274,10 @@ def test_each_use_needs_its_own_authorization(api, receiver, connected, monkeypa
 
 
 def test_codes_are_never_read_while_turned_off(api, receiver, connected):
-    app_id = prepared_application(api, receiver)  # codes are off by default
+    app_id = prepared_application(api, receiver)
+    # D117: on by default for the owner; turned off, nothing is read.
+    assert api.put("/inbox", json={"codes_enabled": False, "tracking_enabled": False}) \
+        .status_code == 200  # fmt: skip
     aid = queue(api, app_id)
     receiver.config(mode="otp", email_codes=CODE_SENDER)
     w = start_worker(aid)
@@ -527,3 +530,94 @@ def test_connecting_asks_for_read_only_mail_and_keeps_the_token_private(tmp_path
 def test_an_unknown_id_is_never_requested(connected):
     with pytest.raises(InboxUnavailable):
         service.reader().read("../../other")
+
+
+# -- D117: the owner's words "read my email ... the most recent otp ... paste it" ---------------
+
+
+@pytest.mark.parametrize(
+    "subject,text,code",
+    [
+        # Greenhouse's wording and its letters-only, mixed-case codes (legacy notes), as written.
+        ("Security code for your application to Example Health Clinic",
+         "Copy and paste this code into the security code field on your application: lHqphDRk "
+         "This code expires soon.", "lHqphDRk"),
+        ("Security code for your application to Example Health Clinic",
+         "Your security code is: 4XJ9K2LM", "4XJ9K2LM"),
+        ("Your security code", "Your security code is: SECURITY", None),  # a word, not a code
+        ("Your security code", "code: AAAA1111 or code: BBBB2222", None),  # two: never guessed
+        ("Your security code", "Visit https://x.example/code:AB12CD34ZZ to see it", None),
+    ],
+)  # fmt: skip
+def test_greenhouse_codes_are_read_exactly_as_written(subject, text, code):
+    assert rules.extract_code(subject, text) == code
+
+
+def test_codes_are_on_by_default_for_the_owner_only_and_application_emails_stay_unread():
+    from app.core.config import Settings
+
+    s = Settings(_env_file=None, env="production", live_owner_emails=[OWNER])
+    assert s.inbox_enabled is True and s.inbox_owner_emails == [OWNER]
+    off = Settings(_env_file=None, env="production", inbox_enabled=False, inbox_owner_emails=[])
+    assert (off.inbox_enabled, off.inbox_owner_emails) == (False, [])
+    t = Settings(_env_file=None, env="test", live_owner_emails=[OWNER])
+    assert (t.inbox_enabled, t.inbox_owner_emails) == (False, [])
+    from tests.conftest import SHIPPED_REGISTER
+
+    (codes,) = [x for x in SHIPPED_REGISTER if x.what == authorizations.INBOX]
+    assert codes.actions == {"read_codes", "enter_codes"}  # never application emails
+
+
+def test_the_owners_settings_start_with_codes_on_and_another_account_never_reads(
+    api, other_api, connected
+):
+    with SessionLocal() as db:
+        st = service.settings_of(db, user().id)
+        assert (st.codes_enabled, st.tracking_enabled) == (True, False)
+        other = db.scalar(select(User).where(User.email == "another.synthetic@example.com"))
+        assert service.available_for(other) == "not_for_this_account"
+        db.rollback()
+
+
+def test_of_two_code_emails_the_one_naming_this_employer_is_used(api, receiver, connected):
+    """Legacy notes: applications that overlap each get "Security code for your application to
+    <employer>"; the one naming another employer is never entered here."""
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    receiver.config(mode="otp")
+    w = start_worker(aid)
+    open_checkpoint(api, app_id, 1)
+    real = wait_for(lambda: receiver.ledger()["challenges"])[-1]["code"]
+    deliver(receiver, CODE_SENDER, "Security code for your application to Northwind Example",
+            "Your security code is: ZZZZ9999")  # fmt: skip
+    deliver(receiver, CODE_SENDER, "Security code for your application to Example Health Clinic",
+            f"Your security code is: {real}")  # fmt: skip
+    assert fill() == 1
+    out, err = w.communicate(timeout=60)
+    assert out.strip() == "confirmed", err[-800:]
+    assert {(e.kind, e.state) for e in events()} == {("code", "code_used")}
+
+
+def test_a_code_mailed_while_the_form_was_being_filled_counts(api, receiver, connected):
+    """Legacy notes: the code can be emailed once the address is typed, before the code step
+    opens. Mail from the start of this attempt's filling in is read; older mail is not."""
+    import uuid
+    from datetime import timedelta
+
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    receiver.config(mode="otp")
+    w = start_worker(aid)
+    open_checkpoint(api, app_id, 1)
+    real = wait_for(lambda: receiver.ledger()["challenges"])[-1]["code"]
+    with SessionLocal() as db:
+        att = db.get(ExecutionAttempt, uuid.UUID(aid))
+        started = att.disclosure_started_at.timestamp()
+        cp = db.scalar(select(Checkpoint).where(Checkpoint.attempt_id == att.id))
+        cp.created_at += timedelta(seconds=60)
+        db.commit()  # as if the step opened a minute after the code was mailed
+    deliver(receiver, CODE_SENDER, "Your security code", "Your code is 999111.", at=started - 120)
+    deliver(receiver, CODE_SENDER, "Your security code", f"Your code is {real}.", at=started + 1)
+    assert fill() == 1  # the older message is not this attempt's
+    out, err = w.communicate(timeout=60)
+    assert out.strip() == "confirmed", err[-800:]

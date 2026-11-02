@@ -15,7 +15,6 @@ from datetime import timedelta
 
 from sqlalchemy import func, select
 
-from app.core.config import get_settings
 from app.core.db import SessionLocal, utcnow
 from app.modules.audit.service import record
 from app.modules.discovery.models import DiscoveryRunApproval
@@ -35,9 +34,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"refused: {why}; nothing was recorded.", file=sys.stderr)
         return 2
 
-    owners = {e.strip().lower() for e in get_settings().discovery_owner_emails if e.strip()}
+    from app.modules.discovery.service import may_discover
+
     email = a.email.strip().lower()
-    if email not in owners:
+    if not may_discover(email):
         return refuse("the account is not the owner's (NOEFFORTS_DISCOVERY_OWNER_EMAILS)")
     query, retention = a.query.strip(), a.retention.strip()
     if not 1 <= len(query) <= 200:

@@ -17,10 +17,15 @@ docs/decisions.md.
 Recorded (2026-10-31, D103): none.
 Recorded (2026-11-01, D112): the Greenhouse pilot, all four steps, through 2026-11-06, at most 5
 attempts that reach the disclosure gate, for postings the owner approves in the app one at a time.
+Recorded (2026-11-02, D113): the same steps, end and limit for packages the owner's standing rule
+to apply automatically approves.
+Recorded (2026-11-02, D114): the same steps, end and shared limit for every account's own packages.
+Recorded (2026-11-02, D117): the inbox's verification codes (read and enter), for the owner's own
+mailbox and the owner's own applications, through 2026-11-06. Application emails stay unread.
 
-* `inbox`: reading the owner's mailbox (D101). The feature was requested (2026-10-31). Reading
-  was never authorized, so neither verification codes nor application emails are read.
-  Entering a code you type yourself (the checkpoint) is unaffected.
+* `inbox`: reading the owner's mailbox (D101). The feature was requested (2026-10-31). D117
+  authorizes verification codes only (read the code email, enter its code); application emails
+  are not read. Entering a code you type yourself (the checkpoint) is unaffected.
 * `greenhouse_pilot`: the Greenhouse pilot's separate permissions (D102,
   docs/live-pilot-gate.md §2): 1 read the public job post, 2 open the application page,
   3 disclose (fill and upload), 4 submit. None has been given for any posting, so nothing is
@@ -77,6 +82,64 @@ RECORDED: tuple[Authorization, ...] = (
         # "Before next week end", read conservatively: the last weekday before next weekend.
         ends_on=date(2026, 11, 6),
         max_attempts=5,
+    ),
+    Authorization(
+        what=GREENHOUSE_PILOT,
+        decision="D113",
+        given_on=date(2026, 11, 2),
+        words=(
+            '"enable freehire job discovery on default and also enable auto job apply on '
+            'default." Asked what that should mean, the owner chose "Fully automatic": "Discover, '
+            "fill and submit without asking you, for fully answered packages only, within a daily "
+            'cap and your recorded permission."'
+        ),
+        actions=frozenset({"read", "open", "disclose", "submit"}),
+        data=(
+            "packages the owner's standing rule approves (app/modules/autoapply): every answer "
+            "resolved from the owner's own approved facts, answers and documents, for Greenhouse "
+            "job posts the owner adds or NoEfforts finds"
+        ),
+        # "within ... your recorded permission": D112's end date and limit, shared (the smaller
+        # limit counts every attempt since D112's day).
+        ends_on=date(2026, 11, 6),
+        max_attempts=5,
+    ),
+    Authorization(
+        what=GREENHOUSE_PILOT,
+        decision="D114",
+        given_on=date(2026, 11, 2),
+        words=(
+            '"It should fill the stuffs perfect and enable all the stuffs for everyone. enable '
+            'each and everything on default regardless of the user hierarchy."'
+        ),
+        actions=frozenset({"read", "open", "disclose", "submit"}),
+        data=(
+            "every account's own packages, each approved by that account or by that account's "
+            "own standing rule to apply automatically (never by the server owner for it)"
+        ),
+        # The same end date and the same shared limit: every account's attempts count.
+        ends_on=date(2026, 11, 6),
+        max_attempts=5,
+    ),
+    Authorization(
+        what=INBOX,
+        decision="D117",
+        given_on=date(2026, 11, 2),
+        words=(
+            '"I want you to read my email and search for the greenhouse the most recent otp copy '
+            "it and paste it in the greenhouse applications. And what about the rest greenhouse "
+            'applications." and "Continue and you are approved for all."'
+        ),
+        # Codes only: reading application emails for outcomes was not asked for (stays off).
+        actions=frozenset({"read_codes", "enter_codes"}),
+        data=(
+            "verification-code emails in the owner's own mailbox from the application systems' "
+            "code senders (inbox_code_senders), received after one of the owner's applications "
+            "started filling in; each code is entered once into that application's code step "
+            "and never kept, logged or shown"
+        ),
+        # The owner's words set no end; read with the pilot permission the codes serve.
+        ends_on=date(2026, 11, 6),
     ),
 )
 

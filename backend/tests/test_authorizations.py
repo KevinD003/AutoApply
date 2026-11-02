@@ -26,12 +26,25 @@ def _assigned(name: str) -> ast.expr:
 
 
 def test_the_shipped_register_holds_exactly_the_owners_recorded_words():
-    """D103 recorded nothing; D112 recorded the owner's permission for the Greenhouse pilot.
+    """D103 recorded nothing; D112 recorded the owner's permission for the Greenhouse pilot, and
+    D113 the same for the owner's standing rule to apply automatically.
     Changing the register means changing this test with the owner's words in
     docs/decisions.md, never a setting."""
     value = _assigned("RECORDED")
-    assert isinstance(value, ast.Tuple) and len(value.elts) == 1, ast.unparse(value)
-    (entry,) = SHIPPED_REGISTER
+    assert isinstance(value, ast.Tuple) and len(value.elts) == 4, ast.unparse(value)
+    entry, auto, everyone, codes = SHIPPED_REGISTER
+    # D117: the owner's own mailbox, verification codes only, until the pilot's end date.
+    assert (codes.what, codes.decision, codes.actions, codes.ends_on, codes.max_attempts) == (
+        a.INBOX, "D117", {"read_codes", "enter_codes"}, date(2026, 11, 6), None)  # fmt: skip
+    assert "the most recent otp" in codes.words and "approved for all" in codes.words
+    assert (everyone.decision, everyone.actions, everyone.ends_on, everyone.max_attempts) == (
+        "D114", entry.actions, date(2026, 11, 6), 5)  # fmt: skip
+    assert "regardless of the user hierarchy" in everyone.words
+    assert (auto.what, auto.decision, auto.actions) == (
+        a.GREENHOUSE_PILOT, "D113", entry.actions)  # fmt: skip
+    assert (auto.given_on, auto.ends_on, auto.max_attempts) == (
+        date(2026, 11, 2), date(2026, 11, 6), 5)  # fmt: skip
+    assert '"Fully automatic"' in auto.words and "standing rule" in auto.data
     assert entry.what == a.GREENHOUSE_PILOT and entry.decision == "D112"
     assert entry.actions == {"read", "open", "disclose", "submit"}
     assert (entry.given_on, entry.ends_on, entry.max_attempts) == (
@@ -49,7 +62,10 @@ def test_the_owners_permission_holds_only_on_its_days_and_never_inside_another_t
         assert a.covers(a.GREENHOUSE_PILOT, step, date(2026, 11, 6))
         assert not a.covers(a.GREENHOUSE_PILOT, step, date(2026, 10, 31))
         assert not a.covers(a.GREENHOUSE_PILOT, step, date(2026, 11, 7))  # ended
-    assert not a.covers(a.INBOX, "read_codes", date(2026, 11, 2))  # the inbox stays unauthorized
+    assert a.covers(a.INBOX, "read_codes", date(2026, 11, 2))  # D117: codes only
+    assert a.covers(a.INBOX, "enter_codes", date(2026, 11, 2))
+    assert not a.covers(a.INBOX, "read_application_email", date(2026, 11, 2))
+    assert not a.covers(a.INBOX, "read_codes", date(2026, 11, 7))  # ended
     assert a.limit(a.GREENHOUSE_PILOT, "disclose", date(2026, 11, 2)) == (5, date(2026, 11, 1))
     assert a.limit(a.GREENHOUSE_PILOT, "disclose", date(2026, 11, 7)) is None
 

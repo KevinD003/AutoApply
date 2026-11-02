@@ -192,6 +192,13 @@ def _capture_live(db, user, job, url: str, posting) -> dict:
         # D104: the stand-in structures only on a local stand-in (never in production, where no
         # origin is a fixture); on a real board they stay checkpoints.
         schema, _ = greenhouse_dom.build_schema(api, page, stand_ins=is_fixture_origin(url))
+        if schema.action is None:
+            # D116 (legacy notes): a real job-board form declares no submit address and sends
+            # from its scripts to its own job page. The application is bound to that page: the
+            # adapter accepts only a POST to it, on the same host (`_ours`).
+            from urllib.parse import urlsplit
+
+            schema = schema.model_copy(update={"action": urlsplit(url).path, "method": "post"})
     except live.LiveError as e:  # a fixed code; the message names no posting
         raise conflict(f"Could not read the job post: {e} (reason: {e.code})") from None
     except gh.SchemaMismatch as e:
@@ -255,6 +262,8 @@ def capture_greenhouse_form(
             # here, so the D104 stand-in structures are recognised.
             schema, _ = greenhouse_dom.build_schema(api, page, stand_ins=True)
             source, extraction = "greenhouse_api_dom", greenhouse_dom.EXTRACTION_VERSION
+            if schema.action is None:  # D116: bound to its own job page (as `_capture_live`)
+                schema = schema.model_copy(update={"action": p.path, "method": "post"})
     except gh.SchemaMismatch as e:  # generic wording plus the fixed code; no form structure
         raise conflict(
             "Could not capture the form: its structure is unsupported or incomplete. Nothing was "

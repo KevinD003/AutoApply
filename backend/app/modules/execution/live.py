@@ -118,8 +118,9 @@ def refusal(user, actions: tuple[str, ...] = TO_APPLY) -> str | None:
     why = environment_refusal()
     if why:
         return why
-    owners = {e.strip().lower() for e in get_settings().live_owner_emails}
-    if (user.email or "").strip().lower() not in owners:
+    from app.core.accounts import named
+
+    if not named(user.email, get_settings().live_owner_emails):  # D114: every account
         return "not_for_this_account"
     return permission_refusal(actions)
 

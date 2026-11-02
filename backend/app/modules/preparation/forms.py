@@ -289,9 +289,24 @@ def extract_form_schema(html: str, *, challenges: bool = False) -> FormSchema:
         for a in n.ancestors():
             if a.tag == "label":
                 return a.all_text()
+        # D118 (legacy notes: Recruitee, SmartRecruiters): the question's text is linked by
+        # aria-labelledby, with no <label>. Only text the page itself links counts; a missing
+        # label still stops the capture (nothing guessed from siblings or ancestors).
+        ids = (n.attrs.get("aria-labelledby") or "").split()
+        linked = " ".join(t for t in (by_id[i].all_text() for i in ids if i in by_id) if t)
+        if linked.strip():
+            return linked.strip()
         if n.attrs.get("aria-label"):
             return n.attrs["aria-label"]
         raise ExtractionError(f"no label for field '{n.attrs.get('name')}'")
+
+    # D118 (legacy notes: Recruitee, Breezy, Workable): a page can hold another form, such as a
+    # job-alert sign-up with its own email field and button. Only the application form is read:
+    # the single form, or of several the one with a file upload; more than one such form, or
+    # none, is refused rather than guessed.
+    app_form = _application_form(nodes)
+    if app_form is not None:
+        nodes = [n for n in nodes if n is app_form or app_form in n.ancestors()]
 
     fields: list[FormField] = []
     seen_groups: set[str] = set()
@@ -421,13 +436,33 @@ def extract_form_schema(html: str, *, challenges: bool = False) -> FormSchema:
         raise ExtractionError("no form fields found")
     if challenges and _CHALLENGE.search(html) and all(f.key != BOT_CHECK_KEY for f in fields):
         fields.append(_bot_check())
-    form_node = next((n for n in nodes if n.tag == "form"), None)
+    form_node = app_form or next((n for n in nodes if n.tag == "form"), None)
     return FormSchema(
         title=title_node.all_text() if title_node else None,
         action=form_node.attrs.get("action") if form_node else None,
         method=(form_node.attrs.get("method") or "get").lower() if form_node else None,
         fields=fields,
     )
+
+
+def _application_form(nodes: list["_Node"]) -> "_Node | None":
+    """D118: the one application form among several, or None when it cannot be singled out.
+    The application form is the form that holds a file upload (a résumé), else the only form on
+    the page. Several forms with an upload, or none and more than one form, is ambiguous: None,
+    and the caller falls back to reading the whole page (and refuses on the usual grounds)."""
+    forms = [n for n in nodes if n.tag == "form"]
+    if len(forms) <= 1:
+        return forms[0] if forms else None
+
+    def has_upload(form: "_Node") -> bool:
+        return any(
+            d.tag == "input" and d.attrs.get("type", "").lower() == "file"
+            for d in form.walk()
+            if isinstance(d, _Node)
+        )
+
+    with_upload = [f for f in forms if has_upload(f)]
+    return with_upload[0] if len(with_upload) == 1 else None
 
 
 def _aria_widgets(nodes, by_id, step_of, taken: set[str]) -> list[FormField]:

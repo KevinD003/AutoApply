@@ -93,7 +93,7 @@ export interface JobMatch {
  * outside the app). */
 export interface AppNotification {
   key: string;
-  kind: "checkpoint" | "approval_invalidated" | "rehearsal" | "receipt" | "failure" | "follow_up" | "board_postings";
+  kind: "checkpoint" | "approval_invalidated" | "rehearsal" | "receipt" | "failure" | "follow_up" | "board_postings" | "auto_apply_questions";
   at: string;
   application_id: string | null; // null for a job board's new postings (D96)
   job: string;
@@ -408,6 +408,20 @@ export interface PackageAnswer {
   widget?: "phone_country" | "location_search" | "location_structured" | "hidden_search";
 }
 
+// D113: your standing rule to apply automatically (backend autoapply/router.py).
+export interface AutoApplyState {
+  rule: string;
+  active: boolean;
+  paused: boolean;
+  chosen: boolean;
+  consent: string;
+  unavailable: { code: string; message: string } | null;
+  daily_cap: number;
+  approved_today: number;
+  permission_attempts: { used: number; of: number } | null;
+  events: { at: string; job_id: string; application_id: string | null; job: string; action: string; reason: string; text: string }[];
+}
+
 // D111 §5: the milestone-B handoff for one application (backend execution/handoff.py).
 export interface HandoffItem {
   code: string;
@@ -614,4 +628,34 @@ export interface AttemptView {
   events: { kind: string; generation: number; detail?: Record<string, unknown>; at: string }[];
   checkpoints: { id: string; status: string; round: number; message: string | null; expires_at: string; wrong_attempts: number; max_attempts: number }[];
   evidence: { kind: string; strength: string; data: Record<string, unknown>; at: string }[];
+}
+
+// D115: the answer brain. A suggestion is one of your own saved answers, given to a question
+// worded differently; nothing is filled in until you choose "Use this".
+export interface AnswerBrainState {
+  engine: "lightgbm" | "xgboost" | "rules";
+  installed: string[];
+  verdicts: number;
+  accepted: number;
+  rejected: number;
+  needed: number;
+  trained_at: string | null;
+  trained_on: number;
+  saved_answers: number;
+}
+
+export interface AnswerSuggestion {
+  key: string;
+  label: string;
+  bank_entry_id: string;
+  saved_question: string;
+  value: Record<string, unknown>;
+  display: string;
+  score: number;
+  engine: AnswerBrainState["engine"];
+}
+
+export interface SuggestionsView {
+  brain: AnswerBrainState;
+  suggestions: AnswerSuggestion[];
 }

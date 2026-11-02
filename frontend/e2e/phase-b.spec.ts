@@ -94,7 +94,7 @@ test("phase B preparation and approval", async ({ page }, info) => {
   const edu = page.getByRole("listitem").filter({ has: page.getByLabel("Highest level of education completed") });
   await expect(edu).toHaveCount(1);
   await edu.getByLabel("Highest level of education completed").selectOption("Bachelor's degree");
-  await edu.getByText("Reuse for this exact question in future applications").click();
+  await edu.getByRole("checkbox", { name: "Reuse for this exact question in future applications" }).check();
   await edu.getByRole("button", { name: "Save answer" }).click();
   await expect(page.getByText("Answer saved.")).toBeVisible();
 

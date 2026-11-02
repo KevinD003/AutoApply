@@ -37,6 +37,21 @@ _RECEIVED = re.compile(
     r"application (received|confirmation))\b"
 )
 _TOKEN = re.compile(r"(?<![\w-])([A-Z0-9]{4,10}|\d{4,10})(?![\w-])")
+# D117 (legacy email_verify.py, from real Greenhouse mail): "Your security code is: 4XJ9K2LM",
+# and often letters only in mixed case ("lHqphDRk"). Taken only right after "code is" or "code:",
+# never a dictionary word, never from a link or an address.
+_STATED = re.compile(
+    r"(?i)\bcode(?:\s+is)?\s*[:\-]\s*([A-Za-z0-9]{6,10})\b"
+    r"|\bcode\s+is\s+([A-Za-z0-9]{6,10})\b"
+    # "Copy and paste this code into the security code field on your application: lHqphDRk"
+    r"|\b(?:security|verification) code\b[^:\n]{0,80}:\s*([A-Za-z0-9]{6,10})\b"
+)
+_LINKS = re.compile(r"(?:https?://|www\.)\S+|\S+@\S+")
+_NOT_CODES = {
+    "security", "verified", "response", "question", "position", "download", "feedback",
+    "regarded", "personal", "complete", "continue", "resubmit", "applying", "required",
+    "district", "business", "expires", "minutes", "application", "below", "please",
+}  # fmt: skip
 
 
 def classify(subject: str, text: str) -> str:
@@ -56,11 +71,24 @@ def extract_code(subject: str, text: str) -> str | None:
     """The one code in a code email, or None (none, or more than one candidate)."""
     if classify(subject, text) != "code":
         return None
+    plain = _LINKS.sub(" ", text)
+    stated = {a or b or c for a, b, c in _STATED.findall(plain)} - {""}
+    stated = {c for c in stated if c.lower() not in _NOT_CODES}
+    if len(stated) == 1:
+        return stated.pop()  # exactly as written: mixed-case codes keep their case
+    if len(stated) > 1:
+        return None  # never guessed
     found = set()
-    for m in re.finditer(r"(?i)\b(code|passcode)\b", text):
-        window = text[m.end() : m.end() + 120]
+    for m in re.finditer(r"(?i)\b(code|passcode)\b", plain):
+        window = plain[m.end() : m.end() + 120]
         found |= {c for c in _TOKEN.findall(window) if any(ch.isdigit() for ch in c)}
     return found.pop() if len(found) == 1 else None
+
+
+def names_employer(employer: str, subject: str) -> bool:
+    """D117 (legacy notes): Greenhouse's code email is "Security code for your application to
+    <employer>", so overlapping applications are told apart by the employer in the subject."""
+    return mentions(employer, "", subject, "")
 
 
 def mentions(employer: str, sender_name: str, subject: str, text: str) -> bool:

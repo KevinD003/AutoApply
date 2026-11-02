@@ -231,6 +231,8 @@ def run_import(body: ImportIn, user: User = Depends(current_user), db: Session =
             max_pages = min(max_pages, used)
             p.live = True
         res = service.import_from(db, user.id, p, f, max_pages=max_pages)
+        if getattr(p, "live", False):
+            service.watch_search(db, user, p.name, f.query)  # D113: checked again daily
     except DiscoveryError as e:
         db.rollback()
         _remember_wait(db, user, p, e)

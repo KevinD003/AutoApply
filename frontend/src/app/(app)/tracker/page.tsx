@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, Empty, ErrorBox, inputCls, Loading } from "@/components/ui";
+import AutoApplyCard from "@/components/AutoApplyCard";
 import FollowUpCard from "@/components/FollowUpCard";
 import { api, Application, FollowUp, Funnel, Outcome } from "@/lib/api";
 
@@ -206,6 +207,7 @@ function Tracker() {
         </Card>
       )}
       {funnel && <FunnelCard f={funnel} />}
+      <AutoApplyCard />
       <Card title="All applications">
         {apps === null ? (
           <Loading />

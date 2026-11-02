@@ -59,6 +59,8 @@ EXCLUDED_COLUMNS = {
     "attempt_events": {"generation": WORKER},
     "checkpoints": {"code": "a verification code: a secret, erased once used"},
     "rehearsal_records": {"path_ref": KEYED},
+    # D115: the trained model is a serialized classifier, rebuilt from your verdicts (exported).
+    "learning_models": {"blob": "the trained model's bytes, rebuilt from your exported verdicts"},
 }
 
 # Inside JSON values: keys holding keyed digests, and strings that are keyed references
@@ -531,6 +533,30 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "updated_at",
     ),
     "notification_reads": ("id", "user_id", "item_key", "read_at"),
+    # D113: the owner's standing rule to apply automatically: their pause switch, and what it
+    # did for each job (fixed reason codes only).
+    "auto_apply_prefs": ("user_id", "paused", "updated_at"),
+    "auto_apply_events": (
+        "id",
+        "user_id",
+        "job_id",
+        "application_id",
+        "action",
+        "reason",
+        "created_at",
+    ),  # fmt: skip
+    # D115: the answer brain: your verdicts on its suggestions (numbers only, no question or
+    # answer text) and which engine your model uses.
+    "learning_labels": (
+        "id",
+        "user_id",
+        "question_key",
+        "bank_entry_id",
+        "accepted",
+        "features",
+        "created_at",
+    ),  # fmt: skip
+    "learning_models": ("user_id", "engine", "samples", "trained_at"),
     "package_approvals": (
         "id",
         "package_id",

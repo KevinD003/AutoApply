@@ -19,6 +19,8 @@ dependencies = [
     "playwright==1.56.0",
     "pypdf>=5.1,<7",
     "anthropic>=2.3,<3",
+    "lightgbm>=4.7.0",
+    "xgboost-cpu>=3.4.1",
 ]
 
 [dependency-groups]

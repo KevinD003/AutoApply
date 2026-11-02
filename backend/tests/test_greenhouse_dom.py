@@ -400,17 +400,18 @@ def test_unlisted_option_is_checkpoint(api, receiver, make):
     assert led["disclosures"] == [] and led["accepted"] == 0
 
 
-def test_readback_mismatch_stops_before_submit_when_an_upload_rewrites_fields(api, receiver):
-    """R2.7: after the resume upload is acknowledged, the page rewrites the phone and blanks
-    the last name ("autofill from your resume"). The readback catches it; nothing is
-    submitted; the upload is kept as a disclosure."""
+def test_an_upload_that_rewrites_fields_comes_first_so_the_approved_values_are_sent(api, receiver):
+    """R2.7, D116: after the resume upload is acknowledged, the page rewrites the phone and
+    blanks the last name ("autofill from your resume"). Attachments now go first (legacy
+    notes), so the approved values are typed after that and are what the employer receives;
+    the readback before the send gate still checks every value."""
     aid = queue(api, v2_application(api))
     receiver.config(mode="gh2_autofill_overwrite")
-    assert runner.run_attempt(aid, "w1") == "abandoned"
-    assert "2 field(s) did not keep their values" in attempt(aid).outcome_detail
+    assert runner.run_attempt(aid, "w1") == "confirmed"
     led = receiver.ledger()
-    assert led["accepted"] == 0 and kinds(led) == {"upload": 1}
-    assert attempt(aid).send_started_at is None
+    sent = led["acceptances"][0]["fields"]
+    assert sent["phone"] == "+1 555 0100" and sent["last_name"] == "Synthetic"
+    assert kinds(led) == {"upload": 1}
 
 
 def test_a_challenge_after_the_final_click_is_never_confirmed_or_clicked_again(api, receiver):
