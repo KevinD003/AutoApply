@@ -66,7 +66,10 @@ Phase A/B tests below were run against `29a1960`. Phase C results are in the nex
     edit that had dropped the code typing);
   - `tests/test_inbox.py tests/test_authorizations.py tests/test_audit_inventory.py`;
   - `tests/test_forbidden_capabilities.py tests/test_rehearsal_handoff.py` (after the fix);
-  - the Greenhouse, deployment and answer-brain suites together: %VALIDATE116%;
+  - 18 suites together (answer brain, forbidden capabilities, Greenhouse dom/live/controls/
+    adapter/real mechanics, hidden search, rehearsal handoff, auto-apply, deployment config,
+    inbox, authorizations, audit inventory, notifications, dropdown strategies, account,
+    migrations): 544 passed, exit 0;
   - `ruff check`, `ruff format --check`; `npx tsc --noEmit`, `npm run lint`.
 
 ## Freehire discovery and automatic applying on by default (D113, 2026-11-02)
