@@ -10,7 +10,7 @@ from app.core import authorizations
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.modules.autoapply import service
-from app.modules.autoapply.models import AutoApplyEvent
+from app.modules.autoapply.models import AutoApplyEvent, AutoApplyPrefs
 from app.modules.execution import live
 from app.modules.identity.deps import current_user
 from app.modules.identity.models import User
@@ -35,8 +35,12 @@ def _state(db: Session, user: User) -> dict:
     ).all()
     return {
         "rule": service.RULE,
-        "active": refusal is None and not service.paused(db, user.id),
-        "paused": service.paused(db, user.id),
+        "active": refusal is None and not service.paused(db, user),
+        "paused": service.paused(db, user),
+        # D114: whether this account made its own choice (else the default applies: on for the
+        # server owner, off for everyone else until they turn it on).
+        "chosen": db.get(AutoApplyPrefs, user.id) is not None,
+        "consent": service.CONSENT_TEXT,
         "unavailable": None if refusal is None else {"code": refusal, "message": WHY[refusal]},
         "daily_cap": s.auto_apply_daily_cap,
         "approved_today": service.approved_today(db, user.id),

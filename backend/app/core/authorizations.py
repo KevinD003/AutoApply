@@ -19,6 +19,7 @@ Recorded (2026-11-01, D112): the Greenhouse pilot, all four steps, through 2026-
 attempts that reach the disclosure gate, for postings the owner approves in the app one at a time.
 Recorded (2026-11-02, D113): the same steps, end and limit for packages the owner's standing rule
 to apply automatically approves.
+Recorded (2026-11-02, D114): the same steps, end and shared limit for every account's own packages.
 
 * `inbox`: reading the owner's mailbox (D101). The feature was requested (2026-10-31). Reading
   was never authorized, so neither verification codes nor application emails are read.
@@ -98,6 +99,23 @@ RECORDED: tuple[Authorization, ...] = (
         ),
         # "within ... your recorded permission": D112's end date and limit, shared (the smaller
         # limit counts every attempt since D112's day).
+        ends_on=date(2026, 11, 6),
+        max_attempts=5,
+    ),
+    Authorization(
+        what=GREENHOUSE_PILOT,
+        decision="D114",
+        given_on=date(2026, 11, 2),
+        words=(
+            '"It should fill the stuffs perfect and enable all the stuffs for everyone. enable '
+            'each and everything on default regardless of the user hierarchy."'
+        ),
+        actions=frozenset({"read", "open", "disclose", "submit"}),
+        data=(
+            "every account's own packages, each approved by that account or by that account's "
+            "own standing rule to apply automatically (never by the server owner for it)"
+        ),
+        # The same end date and the same shared limit: every account's attempts count.
         ends_on=date(2026, 11, 6),
         max_attempts=5,
     ),

@@ -21,7 +21,7 @@ from sqlalchemy import func, select
 from app.core.db import SessionLocal, utcnow
 from app.modules.audit.service import record
 from app.modules.discovery.models import DiscoveryWatch
-from app.modules.discovery.service import owners
+from app.modules.discovery.service import may_discover
 from app.modules.identity.models import User
 
 
@@ -32,7 +32,7 @@ def _refuse(why: str) -> int:
 
 def _owner(db, email: str):
     email = email.strip().lower()
-    if email not in owners():
+    if not may_discover(email):
         return None, "the account is not the owner's (NOEFFORTS_DISCOVERY_OWNER_EMAILS)"
     user = db.scalar(select(User).where(func.lower(User.email) == email))
     if user is None:

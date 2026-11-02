@@ -3629,3 +3629,34 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   - Sabotage checks: dropping the pause check failed, and so did dropping the no-retry check.
   - `tests/test_freehire_live_read.py`: D55 kept behind the setting; the search as the approval
     and its daily watch; another account refused.
+
+## D114 — Every account served; each account's own choice to apply automatically (2026-11-02)
+
+- **The owner's words (2026-11-02, verbatim):**
+  "It should fill the stuffs perfect and enable all the stuffs for everyone. enable each and everything on default regardless of the user hierarchy."
+- **Every account is served** (`Settings.all_accounts`, on by default outside tests;
+  `app/core/accounts.py`). Features that served only the accounts named in a setting now serve
+  every account:
+  - the Greenhouse pilot;
+  - live Freehire discovery, its search approval and daily watches;
+  - AI drafting, where each account still gives its own consent and the server's daily budget
+    is shared;
+  - employer job boards (`board_sources_enabled`), now on by default.
+- **Automatic applying is open to every account, but each account turns it on for itself.** It
+  is on by default for the server owner (`NOEFFORTS_LIVE_OWNER_EMAILS`), who chose it (D113).
+  Every other account starts off, with the consent text shown, until that account turns it on.
+  - **Why not on for everyone:** submitting applications in someone's name, with their personal
+    data, needs that person's own choice. The server owner's words cannot give it for them.
+  - The worker examines every account and acts only for those whose choice is on.
+- **Not opened:** the mailbox (D101). The server holds one Gmail token, the owner's, and reading
+  it stays unauthorized (D103).
+- **Recorded** (`authorizations.py`, D114): the pilot's four steps for every account's own
+  packages, each approved by that account or by that account's own standing rule.
+  - Same end date (2026-11-06).
+  - Same **shared** limit of 5 attempts past the disclosure gate, now counting every account's
+    attempts. It needs renewing for wider use.
+- **Tests** (`tests/test_auto_apply.py`):
+  - another account is served by the pilot, starts off, never has anything done in its name
+    before it chooses, and once it turns the rule on is rehearsed like the owner;
+  - the mailbox stays the owner's;
+  - `test_authorizations.py` checks the register.

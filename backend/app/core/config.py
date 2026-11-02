@@ -156,6 +156,9 @@ class Settings(BaseSettings):
     # each employer path a rehearsal, at most `auto_apply_daily_cap` approvals a day. The owner
     # pauses it in the app. On by default outside tests (see _d113_defaults).
     auto_apply_enabled: bool = False
+    # D114: features that named owner accounts serve every account (app/core/accounts.py). On
+    # by default outside tests (_d113_defaults). The mailbox stays the owner's alone.
+    all_accounts: bool = False
     auto_apply_daily_cap: int = Field(default=5, ge=0, le=50)
     auto_apply_interval_seconds: int = Field(default=300, ge=60, le=86400)
     # TEST ONLY (honoured only when env == "test" and the address is a fixture origin): a local
@@ -227,6 +230,10 @@ class Settings(BaseSettings):
             self.live_greenhouse_enabled = True
         if "auto_apply_enabled" not in given:
             self.auto_apply_enabled = True
+        if "all_accounts" not in given:
+            self.all_accounts = True
+        if "board_sources_enabled" not in given:
+            self.board_sources_enabled = True
         return self
 
     @field_validator("fixture_networks")

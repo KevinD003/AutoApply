@@ -31,8 +31,11 @@ def test_the_shipped_register_holds_exactly_the_owners_recorded_words():
     Changing the register means changing this test with the owner's words in
     docs/decisions.md, never a setting."""
     value = _assigned("RECORDED")
-    assert isinstance(value, ast.Tuple) and len(value.elts) == 2, ast.unparse(value)
-    entry, auto = SHIPPED_REGISTER
+    assert isinstance(value, ast.Tuple) and len(value.elts) == 3, ast.unparse(value)
+    entry, auto, everyone = SHIPPED_REGISTER
+    assert (everyone.decision, everyone.actions, everyone.ends_on, everyone.max_attempts) == (
+        "D114", entry.actions, date(2026, 11, 6), 5)  # fmt: skip
+    assert "regardless of the user hierarchy" in everyone.words
     assert (auto.what, auto.decision, auto.actions) == (
         a.GREENHOUSE_PILOT, "D113", entry.actions)  # fmt: skip
     assert (auto.given_on, auto.ends_on, auto.max_attempts) == (

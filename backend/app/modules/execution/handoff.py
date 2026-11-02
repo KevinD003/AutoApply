@@ -77,7 +77,8 @@ def _item(code: str, label: str, met: bool, detail: str = "") -> dict:
 def _server(user: User, url: str | None) -> list[dict]:
     s = get_settings()
     stand_in = s.env == "test"  # the pilot then reaches only its local stand-in
-    owners = {e.strip().lower() for e in s.live_owner_emails}
+    from app.core.accounts import named
+
     note = "test environment: the local stand-in only" if stand_in else ""
     return [
         _item(
@@ -101,7 +102,7 @@ def _server(user: User, url: str | None) -> list[dict]:
         _item(
             "owner_account",
             "This account is the server owner's (NOEFFORTS_LIVE_OWNER_EMAILS)",
-            (user.email or "").strip().lower() in owners,
+            named(user.email, s.live_owner_emails),
         ),  # fmt: skip
         _item(
             "greenhouse_posting",

@@ -172,3 +172,41 @@ def test_d113_defaults_are_on_outside_tests_and_explicit_settings_win():
     t = Settings(_env_file=None, env="test")
     assert (t.discovery_providers, t.live_greenhouse_enabled, t.auto_apply_enabled) == (
         [], False, False)  # fmt: skip
+
+
+# -- D114: every account is served; applying in someone's name needs that account's own choice --
+
+
+def test_d114_every_account_may_use_the_pilot_and_opts_in_to_automatic_applying_itself(
+    api, other_api, receiver, monkeypatch
+):
+    pilot_on()  # names only the `api` account as the server owner
+    monkeypatch.setattr(get_settings(), "all_accounts", True)
+    synthetic_candidate(other_api)
+    job = v2_job(other_api)
+    state = other_api.get("/auto-apply").json()
+    assert state["unavailable"] is None  # the pilot serves this account too
+    assert (state["paused"], state["chosen"], state["active"]) == (True, False, False)
+    assert "in your name" in state["consent"]
+    assert tick() == 0 and events(job) == []  # never in its name before it chose
+    assert receiver.ledger()["requests"] == []
+    state = other_api.put("/auto-apply", json={"paused": False}).json()
+    assert (state["active"], state["chosen"]) == (True, True)
+    assert tick() == 0 and events(job) == [("skipped", "open_questions")]  # now it acts
+    answer(other_api, app_of(other_api, job))
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert receiver.ledger()["accepted"] == 0
+
+
+def test_d114_the_mailbox_and_the_owner_default_stay_the_owners(api, other_api, monkeypatch):
+    from app.core import accounts
+    from app.modules.inbox import service as inbox
+
+    monkeypatch.setattr(get_settings(), "all_accounts", True)
+    monkeypatch.setattr(get_settings(), "live_owner_emails", ["synthetic.user@example.com"])
+    assert accounts.named("anyone@example.com", []) is True
+    assert accounts.owner("anyone@example.com") is False
+    src = open(inbox.__file__).read()
+    # One mailbox token on the server, the owner's: never opened to every account.
+    assert "app.core.accounts" not in src and "all_accounts" not in src

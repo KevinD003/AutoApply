@@ -334,7 +334,7 @@ def use_live_approval(db: Session, user, provider_name: str, query: str | None, 
     looked up or requested before the first two: the account must be named in
     NOEFFORTS_DISCOVERY_OWNER_EMAILS; such an approval must exist (locked); `preflight` (the
     public-address check) must pass. A refusal at any step uses nothing."""
-    if user.email.lower() not in owners():
+    if not may_discover(user.email):
         raise DiscoveryError(
             "not_authorized",
             "Live Freehire reads are limited to the owner's account; nothing was requested.",
@@ -509,6 +509,14 @@ def owners() -> set[str]:
     return {e.strip().lower() for e in named if e.strip()}
 
 
+def may_discover(email: str | None) -> bool:
+    """D114: every account when the server serves all accounts, else the owner's."""
+    from app.core.accounts import named
+
+    s = get_settings()
+    return named(email, s.discovery_owner_emails or s.live_owner_emails)
+
+
 SEARCH_RETENTION = "Discovered postings are kept until I delete them."
 SEARCH_LABEL = "(filters only)"  # an approval's query for a search with no words
 
@@ -608,7 +616,7 @@ def _check_watch(db: Session, w: DiscoveryWatch, now: datetime) -> None:
     cap, then the newest postings until a known one. Never retried inside a check."""
     s = get_settings()
     user = db.get(User, w.user_id)
-    if user is None or user.email.lower() not in owners():
+    if user is None or not may_discover(user.email):
         _pause(db, w, "not_owner")
         return
     p = PROVIDERS[w.provider]()

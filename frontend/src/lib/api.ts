@@ -413,6 +413,8 @@ export interface AutoApplyState {
   rule: string;
   active: boolean;
   paused: boolean;
+  chosen: boolean;
+  consent: string;
   unavailable: { code: string; message: string } | null;
   daily_cap: number;
   approved_today: number;

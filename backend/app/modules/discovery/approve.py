@@ -34,10 +34,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"refused: {why}; nothing was recorded.", file=sys.stderr)
         return 2
 
-    from app.modules.discovery.service import owners
+    from app.modules.discovery.service import may_discover
 
     email = a.email.strip().lower()
-    if email not in owners():
+    if not may_discover(email):
         return refuse("the account is not the owner's (NOEFFORTS_DISCOVERY_OWNER_EMAILS)")
     query, retention = a.query.strip(), a.retention.strip()
     if not 1 <= len(query) <= 200:

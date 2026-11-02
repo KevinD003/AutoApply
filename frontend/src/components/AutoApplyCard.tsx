@@ -32,7 +32,7 @@ export default function AutoApplyCard() {
       title="Automatic applying"
       actions={
         s.paused ? (
-          <Button onClick={() => toggle(false)}>Resume</Button>
+          <Button onClick={() => toggle(false)}>{s.chosen ? "Resume" : "Turn on"}</Button>
         ) : (
           <Button variant="secondary" onClick={() => toggle(true)}>
             Pause
@@ -44,12 +44,13 @@ export default function AutoApplyCard() {
         {s.active ? (
           <Badge tone="green">On</Badge>
         ) : s.paused ? (
-          <Badge tone="amber">Paused by you</Badge>
+          <Badge tone="amber">{s.chosen ? "Paused by you" : "Off until you turn it on"}</Badge>
         ) : (
           <Badge tone="slate">Not acting here</Badge>
         )}{" "}
         {s.unavailable && !s.paused && <span className="text-slate-600">{s.unavailable.message}</span>}
       </p>
+      {s.paused && !s.chosen && <p className="mb-2 text-sm">{s.consent}</p>}
       <p className="mb-2 text-sm text-slate-600">
         Fully answered Greenhouse applications only; the first one to each employer is a rehearsal that never submits. Today:{" "}
         {s.approved_today} of {s.daily_cap}.

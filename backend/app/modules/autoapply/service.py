@@ -44,6 +44,13 @@ from app.modules.jobs.models import Job, JobStatus
 log = logging.getLogger(__name__)
 
 RULE = "D113"
+# D114: what an account agrees to when it turns the rule on (shown before it does).
+CONSENT_TEXT = (
+    "NoEfforts approves and submits, in your name, Greenhouse applications whose every answer "
+    "comes from your own approved profile, saved answers and documents. Anything open waits for "
+    "you; the first application to each employer is a rehearsal that never submits; at most "
+    "the daily limit; an attempt that stops is never retried. Pause it here at any time."
+)
 QUEUE_REASON = "automatic: the owner's standing rule (D113)"
 APPROVED = ("approved_rehearsal", "approved_submit")
 # Fixed reason codes, each with the words the owner sees.
@@ -85,9 +92,16 @@ FINAL_STATES = (
 )
 
 
-def paused(db: Session, user_id) -> bool:
-    row = db.get(AutoApplyPrefs, user_id)
-    return bool(row and row.paused)
+def paused(db: Session, user: User) -> bool:
+    """The account's own choice. With none recorded: on for the server owner, who chose it
+    (D113); off for every other account until that account turns it on (D114): applying in
+    someone's name needs that person's own choice, never only the server owner's."""
+    from app.core.accounts import owner
+
+    row = db.get(AutoApplyPrefs, user.id)
+    if row is None:
+        return not owner(user.email)
+    return bool(row.paused)
 
 
 def set_paused(db: Session, user_id, value: bool) -> None:
@@ -296,7 +310,7 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
 def run_for(db: Session, user: User, now: datetime | None = None) -> int:
     """The rule for one account; how many applications it queued."""
     now = now or utcnow()
-    if owner_refusal(user) or paused(db, user.id):
+    if owner_refusal(user) or paused(db, user):
         return 0
     queued = 0
     for job in _candidates(db, user):
@@ -319,7 +333,10 @@ def tick(now: datetime | None = None) -> int:
     owners = {e.strip().lower() for e in s.live_owner_emails if e.strip()}
     total = 0
     with SessionLocal() as db:
-        users = db.scalars(select(User).where(func.lower(User.email).in_(owners))).all()
+        if s.all_accounts:  # D114: every account; each acts only if not paused (its choice)
+            users = db.scalars(select(User)).all()
+        else:
+            users = db.scalars(select(User).where(func.lower(User.email).in_(owners))).all()
         for user in users:
             total += run_for(db, user, now)
     return total
