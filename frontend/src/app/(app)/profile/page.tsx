@@ -535,7 +535,7 @@ function SelfIdentificationCard() {
             <input className={inputCls} value={text} onChange={(e) => setText(e.target.value)} placeholder="Male, Asian, I am not a protected veteran" />
           </Field>
           {notice && <Notice>{notice}</Notice>}
-          <Button type="submit">Save</Button>
+          <Button type="submit">Save self-identification</Button>
         </form>
       )}
     </Card>
