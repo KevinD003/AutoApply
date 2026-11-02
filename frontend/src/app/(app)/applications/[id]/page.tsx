@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import AnswerInput from "@/components/AnswerInput";
+import AnswerSuggestions from "@/components/AnswerSuggestions";
 import ExecutionCard from "@/components/ExecutionCard";
 import FollowUpCard from "@/components/FollowUpCard";
 import RehearsalHandoff from "@/components/RehearsalHandoff";
@@ -359,6 +360,8 @@ export default function ReviewPage() {
       </Card>
 
       <Tailored appId={id} status={view.drafting_status} onChange={load} />
+
+      <AnswerSuggestions appId={id} version={view.package.version} onView={setView} />
 
       <Card title={`Needs your answer (${pending.length})`}>
         {pending.length === 0 ? (

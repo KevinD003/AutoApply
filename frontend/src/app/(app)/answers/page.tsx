@@ -169,7 +169,7 @@ export default function AnswersPage() {
         {items === null ? (
           <Loading />
         ) : items.length === 0 ? (
-          <Empty>No saved answers yet. Tick “Reuse for this exact question” when answering an application.</Empty>
+          <Empty>No saved answers yet. Answers you give on an application are saved for reuse unless you untick “Reuse for this exact question”.</Empty>
         ) : (
           <ul className="divide-y divide-slate-100">
             {items.map((e) => (

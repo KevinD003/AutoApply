@@ -89,7 +89,13 @@ def test_it_reads_the_post_waits_for_answers_then_rehearses_then_submits(api, re
     assert receiver.ledger()["disclosures"] == []
     assert tick() == 0 and events(job) == [("skipped", "open_questions")]  # not repeated
     app_id = app_of(api, job)  # the application the rule made
+    waiting = [i for i in api.get("/notifications").json()["items"]
+               if i["kind"] == "auto_apply_questions"]  # fmt: skip
+    assert len(waiting) == 1 and waiting[0]["needs_action"] is True  # D115: the "pop-up"
+    assert waiting[0]["application_id"] == app_id
     answer(api, app_id)
+    assert not [i for i in api.get("/notifications").json()["items"]
+                if i["kind"] == "auto_apply_questions"]  # fmt: skip
     assert tick() == 1
     assert events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
     assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"

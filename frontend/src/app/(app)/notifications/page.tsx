@@ -17,6 +17,7 @@ const KIND = {
   failure: { label: "Stopped", tone: "red" },
   follow_up: { label: "Follow-up", tone: "amber" },
   board_postings: { label: "Job board", tone: "slate" },
+  auto_apply_questions: { label: "Your answers needed", tone: "amber" },
 } as const;
 
 interface Feed {

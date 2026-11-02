@@ -596,8 +596,8 @@ def build_schema(api: dict, page_html: str, *, stand_ins: bool = False
     return (
         FormSchema(
             title=from_api.title,
-            action=form.get("data-submit-path"),
-            method="post" if form.get("data-submit-path") else None,
+            action=form.get("data-submit-path") or form.get("action"),
+            method="post" if (form.get("data-submit-path") or form.get("action")) else None,
             fields=fields,
         ),
         mappings,

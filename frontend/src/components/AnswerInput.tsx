@@ -26,7 +26,8 @@ export default function AnswerInput({
   const [multi, setMulti] = useState<string[]>(
     ((current.options as { label: string }[]) ?? []).map((o) => o.label),
   );
-  const [bank, setBank] = useState(false);
+  // D115: remembered by default where reuse is allowed (untick to keep it to this application).
+  const [bank, setBank] = useState(offerReuse && q.bankable);
   const id = `in-${q.key}`;
 
   function build(): Record<string, unknown> | null {

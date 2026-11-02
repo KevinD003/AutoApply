@@ -17,6 +17,7 @@ from app.modules.followups.models import FollowUp  # noqa: F401
 from app.modules.identity.models import User, UserSession  # noqa: F401
 from app.modules.inbox.models import InboxEvent, InboxSettings  # noqa: F401
 from app.modules.jobs.models import ImportBatch, Job  # noqa: F401
+from app.modules.learning.models import LearningLabel, LearningModel  # noqa: F401
 from app.modules.mail.models import EmailDelivery, EmailSettings  # noqa: F401
 from app.modules.notifications.models import NotificationRead  # noqa: F401
 from app.modules.preparation.models import (  # noqa: F401
