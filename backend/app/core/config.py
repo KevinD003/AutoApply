@@ -234,6 +234,13 @@ class Settings(BaseSettings):
             self.all_accounts = True
         if "board_sources_enabled" not in given:
             self.board_sources_enabled = True
+        # D117, the owner's words: "read my email ... the most recent otp ... paste it in the
+        # greenhouse applications". The owner's own mailbox, codes only (the register says so);
+        # it still needs the owner's token from `python -m app.modules.inbox.connect`.
+        if "inbox_enabled" not in given:
+            self.inbox_enabled = True
+        if not self.inbox_owner_emails and self.live_owner_emails:
+            self.inbox_owner_emails = list(self.live_owner_emails)  # an empty list is unset
         return self
 
     @field_validator("fixture_networks")

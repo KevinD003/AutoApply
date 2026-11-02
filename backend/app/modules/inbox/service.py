@@ -93,7 +93,9 @@ def reader() -> GmailReader:
 def settings_of(db: Session, user_id) -> InboxSettings:
     st = db.get(InboxSettings, user_id)
     if st is None:
-        st = InboxSettings(user_id=user_id, codes_enabled=False, tracking_enabled=False)
+        # D117: codes on by default (the owner asked for them; only the owner's account can use
+        # the mailbox, `available_for`); application emails stay off (not authorized).
+        st = InboxSettings(user_id=user_id, codes_enabled=True, tracking_enabled=False)
         db.add(st)
         db.flush()
     return st
@@ -142,7 +144,14 @@ def fill_codes(db: Session, user: User, gmail: GmailReader | None = None) -> int
     gmail = gmail or reader()
     entered = 0
     for cp in waiting:
-        since = cp.created_at - timedelta(seconds=5)
+        # D117 (legacy notes): the code can be emailed once the address is typed, before the
+        # step opens: messages from the start of this attempt's filling in count too.
+        started = db.scalar(select(ExecutionAttempt.disclosure_started_at)
+                            .where(ExecutionAttempt.id == cp.attempt_id))  # fmt: skip
+        since = min(cp.created_at, started or cp.created_at) - timedelta(seconds=5)
+        employer = db.scalar(select(Job.employer).join(Application, Application.job_id == Job.id)
+                             .where(Application.id == cp.application_id,
+                                    Application.user_id == user.id))  # fmt: skip
         try:
             found = []
             for mid in gmail.received_after(since - timedelta(seconds=1), limit=20):
@@ -156,9 +165,14 @@ def fill_codes(db: Session, user: User, gmail: GmailReader | None = None) -> int
         except InboxUnavailable as e:
             st.last_error = e.code
             return entered
-        codes = {c for _, _, c in found if c}
         if not found:
             continue
+        # D117: when several applications wait at once, the email naming this one's employer
+        # in its subject is this one's (legacy notes); the others stay for their own steps.
+        named = [x for x in found if employer and rules.names_employer(employer, x[0].subject)]
+        if named and len(named) < len(found):
+            found = named
+        codes = {c for _, _, c in found if c}
         if len(codes) != 1 or any(c is None for _, _, c in found):
             for m, mref, _ in found:  # never guessed: the step stays yours
                 _event(db, user.id, m, mref, "code", "code_unclear", cp.application_id)
@@ -341,6 +355,14 @@ def inbox_tick() -> dict:
 
     out = {"codes": 0, "reads": 0, "errors": 0}
     with SessionLocal() as db:
+        # D117: the owner's settings exist from the start (codes on by default), without first
+        # opening the inbox page.
+        owners = {e.strip().lower() for e in get_settings().inbox_owner_emails}
+        if get_settings().inbox_enabled and owners:
+            for u in db.scalars(select(User)):
+                if u.email.strip().lower() in owners:
+                    settings_of(db, u.id)
+            db.commit()
         accounts = [(u.id, st.codes_enabled, st.tracking_enabled) for u, st in due(db)]
     every = timedelta(seconds=get_settings().inbox_check_interval_seconds)
     for user_id, codes, tracking in accounts:

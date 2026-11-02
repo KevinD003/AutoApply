@@ -20,10 +20,12 @@ attempts that reach the disclosure gate, for postings the owner approves in the 
 Recorded (2026-11-02, D113): the same steps, end and limit for packages the owner's standing rule
 to apply automatically approves.
 Recorded (2026-11-02, D114): the same steps, end and shared limit for every account's own packages.
+Recorded (2026-11-02, D117): the inbox's verification codes (read and enter), for the owner's own
+mailbox and the owner's own applications, through 2026-11-06. Application emails stay unread.
 
-* `inbox`: reading the owner's mailbox (D101). The feature was requested (2026-10-31). Reading
-  was never authorized, so neither verification codes nor application emails are read.
-  Entering a code you type yourself (the checkpoint) is unaffected.
+* `inbox`: reading the owner's mailbox (D101). The feature was requested (2026-10-31). D117
+  authorizes verification codes only (read the code email, enter its code); application emails
+  are not read. Entering a code you type yourself (the checkpoint) is unaffected.
 * `greenhouse_pilot`: the Greenhouse pilot's separate permissions (D102,
   docs/live-pilot-gate.md §2): 1 read the public job post, 2 open the application page,
   3 disclose (fill and upload), 4 submit. None has been given for any posting, so nothing is
@@ -118,6 +120,26 @@ RECORDED: tuple[Authorization, ...] = (
         # The same end date and the same shared limit: every account's attempts count.
         ends_on=date(2026, 11, 6),
         max_attempts=5,
+    ),
+    Authorization(
+        what=INBOX,
+        decision="D117",
+        given_on=date(2026, 11, 2),
+        words=(
+            '"I want you to read my email and search for the greenhouse the most recent otp copy '
+            "it and paste it in the greenhouse applications. And what about the rest greenhouse "
+            'applications." and "Continue and you are approved for all."'
+        ),
+        # Codes only: reading application emails for outcomes was not asked for (stays off).
+        actions=frozenset({"read_codes", "enter_codes"}),
+        data=(
+            "verification-code emails in the owner's own mailbox from the application systems' "
+            "code senders (inbox_code_senders), received after one of the owner's applications "
+            "started filling in; each code is entered once into that application's code step "
+            "and never kept, logged or shown"
+        ),
+        # The owner's words set no end; read with the pilot permission the codes serve.
+        ends_on=date(2026, 11, 6),
     ),
 )
 

@@ -19,7 +19,15 @@ CODE = "AB12CD34"
 
 @pytest.fixture(autouse=True)
 def _live_like(receiver):
-    receiver.config(mode="gh2_live_like", ll_code="none")
+    receiver.reset()
+    live_like(receiver)
+
+
+def live_like(receiver, **cfg) -> None:
+    """Every gh2_live_like option set each time: the receiver keeps its settings across tests."""
+    base = {"mode": "gh2_live_like", "ll_code": "none", "ll_code_value": CODE,
+            "ll_invalid": False, "upload_fail_field": None}  # fmt: skip
+    receiver.config(**(base | cfg))
 
 
 @pytest.fixture(scope="module")
@@ -67,7 +75,7 @@ def attempt_of(api, app_id):
 
 def test_the_pages_own_checks_blocking_the_click_is_rejected_with_nothing_sent(api, receiver):
     app_id = v2_application(api)
-    receiver.config(mode="gh2_live_like", ll_code="none", ll_invalid=True)
+    live_like(receiver, ll_invalid=True)
     assert runner.run_attempt(queue(api, app_id), "w1") == "rejected"
     assert "nothing was sent" in attempt_of(api, app_id).outcome_detail
     led = receiver.ledger()
@@ -76,7 +84,7 @@ def test_the_pages_own_checks_blocking_the_click_is_rejected_with_nothing_sent(a
 
 def test_an_upload_the_page_marks_failed_stops_after_the_upload_and_never_submits(api, receiver):
     app_id = v2_application(api)
-    receiver.config(mode="gh2_live_like", ll_code="none", upload_fail_field="resume")
+    live_like(receiver, upload_fail_field="resume")
     assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
     assert receiver.ledger()["accepted"] == 0
 
@@ -85,7 +93,7 @@ def test_the_security_code_wrong_then_right_comes_only_from_the_users_checkpoint
     """The first click asks for the emailed code: a checkpoint; a wrong code is reported by
     the page and asked again; the right one is typed into the 8 boxes and sent once."""
     app_id = v2_application(api)
-    receiver.config(mode="gh2_live_like", ll_code="after_click", ll_code_value=CODE)
+    live_like(receiver, ll_code="after_click")
     aid = queue(api, app_id)
     w = start_worker(aid, "w-ll")
     cp = open_checkpoint(api, app_id, 1)
@@ -111,7 +119,7 @@ def test_a_code_asked_for_before_the_click_is_a_checkpoint_not_a_new_question(ap
     while filling. They are recognised (not "the form has changed"); nothing is clicked until
     the user gives the code."""
     app_id = v2_application(api)
-    receiver.config(mode="gh2_live_like", ll_code="before_click", ll_code_value=CODE)
+    live_like(receiver, ll_code="before_click")
     aid = queue(api, app_id)
     w = start_worker(aid, "w-ll2")
     cp = open_checkpoint(api, app_id, 1)

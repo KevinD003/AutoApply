@@ -3660,3 +3660,71 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
     before it chooses, and once it turns the rule on is rehearsed like the owner;
   - the mailbox stays the owner's;
   - `test_authorizations.py` checks the register.
+
+## D115 — The answer brain: your saved answers suggested for reworded questions, learned per account (2026-11-02)
+
+- **The owner's words (2026-11-02, verbatim):**
+  "Older application was using self learning, whatever question shown on the application gets me the pop up, then I select the answer from it and then it was storing that answer into the anaswer_brain and then whenever the same question appear, it writes the answer from that. I have used some self learning XGBoost and LightGBM. Make sure we use it here too."
+- **The same question:** the answer you give is saved for that exact question by default
+  ("Reuse for this exact question" starts ticked where reuse is allowed, D51) and the resolver
+  reuses it without asking (`_from_bank`), as the earlier bot did.
+- **A reworded question** (`app/modules/learning`): one of your own saved answers is suggested.
+  Nothing is filled in until you choose "Use this" (answered here, and saved for this wording
+  too) or "Not this" (never suggested again for it).
+  - Ranking: your own model, LightGBM, else XGBoost, trained on your verdicts only, after each
+    one. Below 12 verdicts with both kinds, a fixed blend of similarities ranks instead.
+  - Never suggested: a different kind of answer; wording that differs on numbers, negation or
+    countries ("…in the US?" vs "…in Canada?"); options the form no longer has; sensitive,
+    protected or legal questions; anything the bank rules never reuse (D51: authorization,
+    sponsorship, pay, place, the employer, time-bound).
+  - A verdict keeps numbers only (similarities), never question or answer text. Both tables are
+    in the account export and deleted with the account; "Forget" deletes them.
+- **The "pop-up":** when automatic applying (D113) is held by open questions, the notification
+  "Questions are waiting for your answers" links to the application, where the suggestions are.
+- **Not found in the shared legacy files:** the XGBoost/LightGBM code itself (only the `.py`
+  files shared were read); this is written fresh.
+
+## D116 — Greenhouse real-page mechanics rebuilt from the legacy bot (2026-11-02)
+
+- **The owner's words (2026-11-02, verbatim):**
+  "I want you to make it 100% working for greenhouse. Because my previous application was working perfect. I want to improve that one into this."
+- **Why:** a review of the legacy `apply.py` found that the live Greenhouse adapter relied on
+  three details only the local approximation has (a declared submit path, an upload status
+  element, a confirmation element) and had no security-code step. The legacy author's notes,
+  from about 700 real applications, describe the real behaviour. Each is rebuilt as a
+  fail-closed recognition, never copied, and is still unobserved by NoEfforts itself:
+  - a form that declares no submit address is bound to its own job page: only a POST to that
+    page, on the same host, counts as this attempt's answer;
+  - the emailed security code is a checkpoint, also when its boxes appear before the click;
+    typed as keystrokes, read back, sent with one click; a wrong code is reported by the page;
+  - an upload is acknowledged by the approved file name in the control's own group, with no
+    upload error there; attachments are uploaded first, then the page settles;
+  - a confirmation page (`…/confirmation`) or text on the same posting, absent before the click;
+  - the page's own validation blocking the click is `rejected` only when no request left the
+    page; a click that raised is watched, never repeated; a firewall block page stops before
+    anything is entered; answer shapes the page type cannot fill are refused before disclosure.
+- **Not ported:** stealth, behaviour imitation, CAPTCHA handling, automatic consent, clicking
+  again after a rejection, guessing answers.
+- **Tested** against the receiver's `gh2_live_like` mode (FIXTURE ASSUMPTIONS).
+
+## D117 — Verification codes read from the owner's own mailbox (2026-11-02)
+
+- **The owner's words (2026-11-02, verbatim):**
+  "I want you to read my email and search for the greenhouse the most recent otp copy it and paste it in the greenhouse applications. And what about the rest greenhouse applications." and "Continue and you are approved for all."
+- **What changes:** this lifts the owner's earlier "Do not: Read my inbox or retrieve OTPs" for
+  verification codes only. Recorded (`authorizations.py`, D117): `read_codes` and `enter_codes`
+  for the owner's own mailbox and the owner's own applications, through 2026-11-06 (the owner's
+  words set no end; read with the pilot permission the codes serve). Application emails are
+  still not read (`read_application_email` is not recorded).
+- **How** (D101's code reader, `inbox/service.fill_codes`, every 15 seconds): while one of the
+  owner's applications waits at a code step, mail from the code senders received since that
+  attempt began filling in is read; a code is entered only when exactly one reads as a code.
+  When several applications overlap, the email naming this application's employer in its
+  subject is used ("Security code for your application to <employer>", legacy notes).
+  Greenhouse's letters-only, mixed-case codes are read exactly as written. A message is used
+  once; a rejected code is never entered again; Resend is never clicked.
+- **Defaults:** outside tests the inbox is on (`inbox_enabled`) for the owner
+  (`inbox_owner_emails` defaults to `live_owner_emails`), with codes on. It still needs the
+  owner's Gmail token, made once with `python -m app.modules.inbox.connect` on the owner's
+  machine. Other accounts type their own codes: the server's mailbox is the owner's (D114).
+- **Not kept:** a code is never stored, logged, put in audit or evidence, or shown.

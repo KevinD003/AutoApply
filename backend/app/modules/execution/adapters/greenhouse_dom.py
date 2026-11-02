@@ -687,7 +687,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         return self._click_and_watch(page, btn, timeout_ms, before, code=False)
 
     def _click_and_watch(self, page: Page, btn, timeout_ms: int, before: bool,
-                         code: bool) -> Outcome:  # fmt: skip
+                         code: bool, stale: bool = False) -> Outcome:  # fmt: skip
         responses, sent = [], []
 
         def on_response(r):
@@ -706,12 +706,13 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 btn.click(timeout=10_000)
             except PWError:
                 raised = True  # it may still have landed: watch, never click again
-            return self._watch(page, timeout_ms, before, code, responses, sent, raised)
+            return self._watch(page, timeout_ms, before, code, responses, sent, raised, stale)
         finally:
             page.remove_listener("response", on_response)
             page.remove_listener("request", on_request)
 
-    def _watch(self, page, timeout_ms, before, code, responses, sent, raised) -> Outcome:
+    def _watch(self, page, timeout_ms, before, code, responses, sent, raised,
+               stale=False) -> Outcome:  # fmt: skip
         real = not self._stand_in
         wait_ms = max(timeout_ms, REAL_WAIT_MS) if real else timeout_ms
         confirm_ms = REAL_CONFIRM_MS if real else 5000
@@ -720,23 +721,38 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         step, waited, answered_at, prev_errs = 250, 0, None, None
         while waited <= wait_ms:
             status = responses[0].status if responses else None
+            if responses and answered_at is None:
+                answered_at = waited
             if not code and self._code_boxes(page) is not None:
                 return Outcome("otp", "security code requested", None, status)
-            if code and self._code_rejected(page):
-                return Outcome("wrong_code", "the employer rejected the security code", None,
-                               status)  # fmt: skip
-            if self._confirmed(page):
-                if before:
-                    return Outcome("unknown", PRE_CONFIRMATION, None, status)
+            if before:
+                # S5 (D62, R6.4): a confirmation already shown is never evidence; only the
+                # answer to this attempt's own send decides (a 2xx stays unknown).
+                if responses and 200 <= responses[0].status < 300:
+                    return Outcome("unknown", PRE_CONFIRMATION, None, responses[0].status)
+            elif self._confirmed(page):
                 if not responses:
                     return Outcome("unknown", "a confirmation was shown without an answer to "
                                    "this application", None, None)  # fmt: skip
+                status = responses[0].status  # it may have arrived during the checks above
                 if not self._same_posting(page.url):
                     return Outcome("unknown", "a confirmation was shown, but not on this "
                                    "posting", None, status)  # fmt: skip
                 if 200 <= status < 400:
                     return Outcome("accepted", "confirmation shown", None, status)
+            if (
+                code
+                and self._code_rejected(page)
+                and (
+                    # A message left from an earlier, rejected code counts only once the employer
+                    # has answered this one and shown no confirmation.
+                    not stale or (responses and waited - answered_at >= 1500)
+                )
+            ):
+                return Outcome("wrong_code", "the employer rejected the security code", None,
+                               status)  # fmt: skip
             if responses:
+                status = responses[0].status
                 answered_at = waited if answered_at is None else answered_at
                 if status in (400, 409, 419, 422) and self._errors_listed(page):
                     return Outcome("rejected", "the employer's page listed errors", None, status)
@@ -826,7 +842,6 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         chars = "".join(code.split())
         if len(boxes) != 1 and len(boxes) != len(chars):
             return Outcome("wrong_code", "the code does not fit the employer's code boxes")
-        stale = self._code_rejected(page)  # a message from an earlier, rejected code
         try:
             for b in boxes:
                 b.fill("")
@@ -834,7 +849,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 boxes[0].fill(chars)
             else:
                 boxes[0].click()
-                page.keyboard.type(chars)
+                page.keyboard.type(chars)  # the boxes advance by themselves
                 if "".join(b.input_value() for b in boxes) != chars:
                     for b, ch in zip(boxes, chars, strict=True):
                         b.fill(ch)
@@ -843,13 +858,6 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             return Outcome("unknown", "the security code could not be entered")
         if typed.upper() != chars.upper():
             return Outcome("unknown", "the security code could not be entered")
-        if stale:
-            try:  # the old message goes once the boxes change; wait briefly, then judge
-                page.wait_for_function(
-                    "re => !new RegExp(re, 'i').test(document.body.innerText)",
-                    arg=CODE_REJECTED.pattern, timeout=3000)  # fmt: skip
-            except PWTimeout:
-                pass
         btn = self._submit_button(page)
         if btn is None:
             return Outcome("unknown", "the form's submit button cannot be identified")
@@ -864,11 +872,13 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             page.wait_for_timeout(250)
         if self._confirmed(page):
             return Outcome("unknown", "a confirmation was shown before the code was sent")
-        return self._click_and_watch(page, btn, timeout_ms, False, code=True)
+        stale = self._code_rejected(page)
+        return self._click_and_watch(page, btn, timeout_ms, False, code=True, stale=stale)
 
     def _same_posting(self, final_url: str) -> bool:
         s, f = urlsplit(self.content["destination"]["submit_url"]), urlsplit(final_url)
-        job_path = s.path.rsplit("/", 1)[0]
+        # D116: a form bound to its own job page: that page is the posting itself.
+        job_path = s.path.rstrip("/") if self._bound_to_posting() else s.path.rsplit("/", 1)[0]
         return (f.scheme, f.netloc) == (s.scheme, s.netloc) and (
             f.path == job_path or f.path.startswith(job_path + "/")
         )
