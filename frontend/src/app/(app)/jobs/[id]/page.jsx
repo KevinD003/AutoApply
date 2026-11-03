@@ -2,27 +2,191 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, Credit, ErrorBox, Field, inputCls, Loading } from "@/components/ui";
-import { api, ApiError, Application, FitYours, JobDetail, JobFit, JobSignals } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import { cx } from "@/ui/cx";
+import { Reveal, Stagger } from "@/ui/motion";
 
 const RESULT = {
   met: { tone: "green", label: "met" },
   not_met: { tone: "amber", label: "not met" },
   not_stated: { tone: "slate", label: "not stated" },
   not_set: { tone: "slate", label: "not set" },
-} as const;
+};
 
-function yoursLine(y: FitYours, what: string): string {
+function yoursLine(y, what) {
   return what === "sponsorship"
     ? `${y.country}: you need sponsorship now: ${y.sponsorship_now}; later: ${y.sponsorship_later}`
     : `${y.country}: you are authorized to work: ${y.authorized}`;
 }
 
+// ── D126: the complete, structured, sanitized job detail (content.py → GET /jobs/{id}.content) ──
+// Blocks are rendered as React elements, never as raw HTML, so the sanitizer's guarantee holds
+// all the way to the DOM: no script runs and no embedded asset is ever fetched.
+
+function renderText(text) {
+  // A span's text may carry soft line breaks ("\n", from <br>). Render them, nothing else.
+  return String(text ?? "")
+    .split("\n")
+    .map((part, j) => (
+      <Fragment key={j}>
+        {j > 0 && <br />}
+        {part}
+      </Fragment>
+    ));
+}
+
+function Span({ s }) {
+  const inner = renderText(s.text);
+  if (s.href) {
+    return (
+      <a href={s.href} target="_blank" rel="noopener noreferrer nofollow" className="text-brand underline">
+        {inner}
+      </a>
+    );
+  }
+  if (s.bold) return <strong>{s.italic ? <em>{inner}</em> : inner}</strong>;
+  if (s.italic) return <em>{inner}</em>;
+  return <>{inner}</>;
+}
+
+function Spans({ spans }) {
+  return (spans || []).map((s, i) => <Span key={i} s={s} />);
+}
+
+function Block({ b }) {
+  if (b.type === "heading") {
+    return (
+      <h4 className="mt-4 text-sm font-semibold text-ink first:mt-0">
+        <Spans spans={b.spans} />
+      </h4>
+    );
+  }
+  if (b.type === "list") {
+    const Tag = b.ordered ? "ol" : "ul";
+    return (
+      <Tag className={cx("mt-2 space-y-1 pl-5 text-sm text-ink-muted", b.ordered ? "list-decimal" : "list-disc")}>
+        {(b.items || []).map((item, i) => (
+          <li key={i}>
+            <Spans spans={item} />
+          </li>
+        ))}
+      </Tag>
+    );
+  }
+  return (
+    <p className="mt-2 text-sm leading-relaxed text-ink-muted first:mt-0">
+      <Spans spans={b.spans} />
+    </p>
+  );
+}
+
+function Blocks({ blocks }) {
+  return (blocks || []).map((b, i) => <Block key={i} b={b} />);
+}
+
+const SAL_PROVENANCE = {
+  structured: "From the posting’s structured data",
+  enrichment: "Estimated by the discovery source",
+  extracted: "Found in the description text",
+};
+const SAL_KIND = { base: "base pay", bonus: "bonus", equity: "equity", ote: "on-target earnings", total: "total" };
+
+function salaryDisplay(s) {
+  if (s.text) return s.text; // extracted: the original snippet, exactly as written
+  const sym = s.currency_symbol || "";
+  const code = !s.currency_symbol && s.currency ? ` ${s.currency}` : "";
+  const amount = s.min && s.max ? `${sym}${s.min}–${sym}${s.max}` : `${sym}${s.amount || s.min || s.max || ""}`;
+  const per = s.period ? ` / ${s.period}` : s.period_raw ? ` (${s.period_raw})` : "";
+  return `${amount}${code}${per}`.trim();
+}
+
+function Salary({ salary }) {
+  // The owner sees the original figures as given; nothing here annualizes or converts (D126).
+  if (!salary) return <p className="text-sm text-ink-muted">Salary not provided.</p>;
+  const kind = SAL_KIND[salary.kind];
+  return (
+    <div>
+      <p className="text-lg font-semibold tracking-tight text-ink">
+        {salaryDisplay(salary)}
+        {kind && <span className="ml-1.5 text-sm font-normal text-ink-muted">({kind})</span>}
+      </p>
+      <p className="mt-0.5 text-xs text-ink-faint">
+        {SAL_PROVENANCE[salary.source] || "Stated pay"} · shown as given; not annualized or currency-converted.
+      </p>
+    </div>
+  );
+}
+
+function Facts({ facts }) {
+  const chips = [];
+  if (facts.employment_type) chips.push(["Employment", facts.employment_type]);
+  if (facts.seniority) chips.push(["Seniority", facts.seniority]);
+  if (facts.department) chips.push(["Department", facts.department]);
+  const locations = facts.locations || [];
+  if (!chips.length && !locations.length) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {chips.map(([k, v]) => (
+        <Badge key={k} tone="slate">
+          {k}: {v}
+        </Badge>
+      ))}
+      {locations.map((l) => (
+        <Badge key={l} tone="slate">
+          {l}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+// The body of the posting: salary with provenance, the facts the source gave, the full
+// (sanitized) description and the source's own sections. Rendered only when a source actually
+// gave something — a bare job shows no empty card. Availability-dependent, never invented.
+function JobBody({ content }) {
+  const c = content || {};
+  const desc = c.description || {};
+  const blocks = desc.blocks || [];
+  const sections = desc.sections || [];
+  const facts = c.facts || {};
+  const hasFacts = !!(facts.employment_type || facts.seniority || facts.department || (facts.locations || []).length);
+  if (!blocks.length && !sections.length && !c.salary && !hasFacts) return null;
+  return (
+    <Reveal>
+      <Card title="About this role">
+        <div className="space-y-4">
+          <Salary salary={c.salary ?? null} />
+          {hasFacts && <Facts facts={facts} />}
+          {blocks.length > 0 && (
+            <div data-testid="job-description">
+              <Blocks blocks={blocks} />
+            </div>
+          )}
+          {sections.length > 0 && (
+            <Stagger className="space-y-4">
+              {sections.map((sec, i) => (
+                <section key={i}>
+                  {sec.heading && <h3 className="text-sm font-semibold text-ink">{sec.heading}</h3>}
+                  <Blocks blocks={sec.blocks} />
+                </section>
+              ))}
+            </Stagger>
+          )}
+          {c.origin === "your_entry" && (
+            <p className="text-xs text-ink-faint">From your own saved text for this job.</p>
+          )}
+        </div>
+      </Card>
+    </Reveal>
+  );
+}
+
 // Priority D (D79): three components, never mixed. The only number counts your own preferences
 // that could be checked; eligibility is shown side by side and never decided here.
-function FitCard({ fit }: { fit: JobFit }) {
+function FitCard({ fit }) {
   const [skills, licences] = fit.qualifications;
   return (
     <Card title="Why this job matches (or doesn't)">
@@ -85,18 +249,18 @@ function FitCard({ fit }: { fit: JobFit }) {
 }
 
 export default function JobPage() {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams();
   const router = useRouter();
-  const [job, setJob] = useState<JobDetail | null>(null);
+  const [job, setJob] = useState(null);
   const [notes, setNotes] = useState("");
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
   const [missing, setMissing] = useState(false);
   // The route depends on the captured form: it is read again whenever a form is captured.
-  const [route, setRoute] = useState<Route | null>(null);
+  const [route, setRoute] = useState(null);
   const [formVersion, setFormVersion] = useState(0);
 
   const load = useCallback(() => {
-    api<JobDetail>(`/jobs/${id}`)
+    api(`/jobs/${id}`)
       .then((j) => {
         setJob(j);
         setNotes(j.notes ?? "");
@@ -112,7 +276,7 @@ export default function JobPage() {
     if (loaded && window.location.hash === "#match") document.getElementById("match")?.scrollIntoView();
   }, [loaded]);
 
-  async function patch(body: object) {
+  async function patch(body) {
     setError(null);
     try {
       await api(`/jobs/${id}`, { method: "PATCH", json: body });
@@ -124,7 +288,7 @@ export default function JobPage() {
 
   async function prepare() {
     try {
-      const app = await api<Application>("/applications", { json: { job_id: id } });
+      const app = await api("/applications", { json: { job_id: id } });
       router.push(`/applications/${app.id}`);
     } catch (e) {
       setError(e);
@@ -133,14 +297,24 @@ export default function JobPage() {
 
   async function track() {
     try {
-      const app = await api<Application>("/applications", { json: { job_id: id } });
+      const app = await api("/applications", { json: { job_id: id } });
       router.push(`/tracker?highlight=${app.id}`);
     } catch (e) {
       setError(e);
     }
   }
 
-  if (missing) return <Card><p>This job does not exist or is not yours. <Link className="text-brand underline" href="/jobs">Back to jobs</Link></p></Card>;
+  if (missing)
+    return (
+      <Card>
+        <p>
+          This job does not exist or is not yours.{" "}
+          <Link className="text-brand underline" href="/jobs">
+            Back to jobs
+          </Link>
+        </p>
+      </Card>
+    );
   if (!job) return <><ErrorBox error={error} /><Loading /></>;
 
   return (
@@ -171,7 +345,7 @@ export default function JobPage() {
                   {d.changed_fields.length > 0 && <> · changed at the source: {d.changed_fields.join(", ")} (not applied here)</>}
                   {(d.signal_lines?.length ?? 0) > 0 && (
                     <span className="block text-xs text-ink-muted" data-testid="source-signals">
-                      {d.label} says: {d.signal_lines!.join(" · ")} (display only: not used to match, approve or apply)
+                      {d.label} says: {d.signal_lines.join(" · ")} (display only: not used to match, approve or apply)
                     </span>
                   )}
                 </li>
@@ -196,6 +370,7 @@ export default function JobPage() {
           {job.status !== "new" && <Button variant="secondary" onClick={() => patch({ status: "new" })}>Reset to new</Button>}
         </div>
       </Card>
+      <JobBody content={job.content} />
       <SignalsCard job={job} onChange={load} onError={setError} />
       <RouteCard jobId={id} refresh={formVersion} onRoute={setRoute} />
       <FormCard
@@ -215,42 +390,16 @@ export default function JobPage() {
         <Button className="mt-2" variant="secondary" onClick={() => patch({ notes })}>Save notes</Button>
         <div className="mt-2"><ErrorBox error={error} /></div>
       </Card>
-      {job.description && (
-        <Card title="Description">
-          <p className="whitespace-pre-wrap text-sm text-ink-muted">{job.description}</p>
-        </Card>
-      )}
     </>
   );
 }
 
-// Support wording (labels) comes from the API (backend providers/wording.py), derived from
-// evidence; this page writes none of its own.
-interface FormInfo {
-  version: number;
-  source: string;
-  source_label: string | null; // set for a local test source, which says so
-  source_ref: string | null;
-  schema: { title: string | null; fields: unknown[] };
-}
-
-// GET /api/jobs/{id}/route.
-type Route = {
-  route: string;
-  provider: string;
-  message: string;
-  reason: string;
-  evidence: string; // the evidence level behind an API or browser route ("fixture" today)
-  label: string; // the route and the evidence behind it
-  provider_support: string | null; // the provider's support state, worded
-};
-
-function RouteCard({ jobId, refresh, onRoute }: { jobId: string; refresh: number; onRoute: (r: Route) => void }) {
-  const [route, setRoute] = useState<Route | null>(null);
-  const [error, setError] = useState<unknown>(null);
+function RouteCard({ jobId, refresh, onRoute }) {
+  const [route, setRoute] = useState(null);
+  const [error, setError] = useState(null);
   const load = useCallback(() => {
     setError(null);
-    api<Route>(`/jobs/${jobId}/route`)
+    api(`/jobs/${jobId}/route`)
       .then((r) => {
         setRoute(r);
         onRoute(r);
@@ -288,42 +437,29 @@ function RouteCard({ jobId, refresh, onRoute }: { jobId: string; refresh: number
   );
 }
 
-function FormCard({
-  jobId,
-  onPrepare,
-  onCaptured,
-  realDestination,
-  greenhousePilot,
-}: {
-  jobId: string;
-  onPrepare: () => void;
-  onCaptured: () => void;
-  realDestination: boolean;
-  // D102: a real Greenhouse job post while the Greenhouse pilot is on for this account.
-  greenhousePilot: boolean;
-}) {
-  const [form, setForm] = useState<FormInfo | null | undefined>(undefined);
-  const [fixtures, setFixtures] = useState<Record<string, string>>({});
+function FormCard({ jobId, onPrepare, onCaptured, realDestination, greenhousePilot }) {
+  const [form, setForm] = useState(undefined);
+  const [fixtures, setFixtures] = useState({});
   const [pick, setPick] = useState("basic");
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
 
   const load = useCallback(() => {
-    api<FormInfo>(`/jobs/${jobId}/form`)
+    api(`/jobs/${jobId}/form`)
       .then(setForm)
       .catch((e) => (e instanceof ApiError && e.status === 404 ? setForm(null) : setError(e)));
   }, [jobId]);
 
   useEffect(() => {
     load();
-    api<{ fixtures: Record<string, string> }>("/fixtures/forms")
+    api("/fixtures/forms")
       .then((r) => setFixtures(r.fixtures))
       .catch(() => undefined);
   }, [load]);
 
-  async function read(kind: "greenhouse" | "lever" | "ashby" | "workday") {
+  async function read(kind) {
     setError(null);
     try {
-      setForm(await api<FormInfo>(`/jobs/${jobId}/form/${kind}`, { method: "POST" }));
+      setForm(await api(`/jobs/${jobId}/form/${kind}`, { method: "POST" }));
       onCaptured();
     } catch (e) {
       setError(e);
@@ -333,7 +469,7 @@ function FormCard({
   async function attach() {
     setError(null);
     try {
-      setForm(await api<FormInfo>(`/jobs/${jobId}/form`, { json: { fixture: pick } }));
+      setForm(await api(`/jobs/${jobId}/form`, { json: { fixture: pick } }));
       onCaptured();
     } catch (e) {
       setError(e);
@@ -429,7 +565,7 @@ function FormCard({
   );
 }
 
-function Row({ k, v }: { k: string; v: string | null }) {
+function Row({ k, v }) {
   return (
     <div>
       <dt className="text-ink-faint">{k}</dt>
@@ -440,10 +576,10 @@ function Row({ k, v }: { k: string; v: string | null }) {
 
 // S3: what about this job holds an approval back, with the statements that answer it. All
 // messages come from the API (backend jobs/signals.py).
-function SignalsCard({ job, onChange, onError }: { job: JobDetail; onChange: () => void; onError: (e: unknown) => void }) {
-  const s: JobSignals = job.signals;
+function SignalsCard({ job, onChange, onError }) {
+  const s = job.signals;
   if (!s.approval_blocked && !s.source_closed && s.possible_duplicates.length === 0) return null;
-  async function state(path: string) {
+  async function state(path) {
     try {
       await api(`/jobs/${job.id}/${path}`, { method: "POST" });
       onChange();
