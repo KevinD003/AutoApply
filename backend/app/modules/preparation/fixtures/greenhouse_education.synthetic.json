@@ -1,0 +1,27 @@
+{
+  "_SYNTHETIC": "D120 contract fixture. NOT observed Greenhouse page output. These are the documented Job Board API shapes (education endpoints + submission contract) from grnhse/greenhouse-api-docs, used to exercise the resolution layer only. A real board's option ids differ; matching is by text, never by these ids. The rendered hosted-form DOM is not represented here.",
+  "_source": "https://developers.greenhouse.io/job-board.html (education/degrees|disciplines|schools, submit-an-application)",
+  "degrees": [
+    {"id": "5494452", "text": "High School"},
+    {"id": "5494478", "text": "Associate's Degree"},
+    {"id": "5494516", "text": "Bachelor's Degree"},
+    {"id": "5494551", "text": "Master's Degree"},
+    {"id": "5494580", "text": "Master of Business Administration (M.B.A.)"},
+    {"id": "5494607", "text": "Juris Doctor (J.D.)"},
+    {"id": "5494638", "text": "Doctor of Medicine (M.D.)"},
+    {"id": "5494662", "text": "Doctor of Philosophy (Ph.D.)"},
+    {"id": "5494689", "text": "Engineer's Degree"},
+    {"id": "5494710", "text": "Other"}
+  ],
+  "disciplines": [
+    {"id": "5494865", "text": "Accounting"},
+    {"id": "5495074", "text": "Biology"},
+    {"id": "5495101", "text": "Business"},
+    {"id": "5495033", "text": "Art"}
+  ],
+  "schools": [
+    {"id": "5417077", "text": "Abraham Baldwin Agricultural College"},
+    {"id": "5417217", "text": "Adelphi University"},
+    {"id": "5417384", "text": "Alaska Pacific University"}
+  ]
+}
