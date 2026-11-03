@@ -81,6 +81,7 @@ export default function ProfilePage() {
       </p>
       <ContactCard />
       <WorkAuthCard />
+      <SelfIdentificationCard />
       <EmploymentCard />
       <EducationCard />
       <CredentialsCard />
@@ -476,6 +477,73 @@ function CredentialsCard() {
 // L4 (D74): AI drafting is off until you turn it on here, and only where the server's owner has
 // set it up for your account. The text you agree to is the one shown, word for word; if it
 // changes, you are asked again.
+interface SelfId {
+  enabled: boolean;
+  labels: string[];
+  updated_at: string | null;
+}
+
+function SelfIdentificationCard() {
+  const [enabled, setEnabled] = useState(false);
+  const [text, setText] = useState("");
+  const [error, setError] = useState<unknown>(null);
+  const [notice, setNotice] = useState("");
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    api<SelfId>("/profile/self-identification")
+      .then((s) => {
+        setEnabled(s.enabled);
+        setText(s.labels.join(", "));
+        setLoaded(true);
+      })
+      .catch(setError);
+  }, []);
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setNotice("");
+    const labels = splitList(text);
+    try {
+      const s = await api<SelfId>("/profile/self-identification", { method: "PUT", json: { enabled, labels } });
+      setText(s.labels.join(", "));
+      setNotice("Saved.");
+    } catch (err) {
+      setError(err);
+    }
+  }
+
+  return (
+    <Card title="Self-identification (EEOC / demographic) — optional">
+      <p className="mb-3 text-sm text-slate-600">
+        Voluntary, and off unless you turn it on. When on, an EEOC or demographic question (gender, race, veteran, disability, and your
+        own self-describe) is answered from the exact option labels you list below — your own stated identity, never guessed. A label is
+        used only when it matches an option on the form exactly; anything it doesn’t match stays a question for you, and “Decline to
+        self-identify” is always still available. A question that takes several answers (such as race/ethnicity) is left for you unless
+        you choose to decline, so a partial answer is never sent. A per-application choice you make always overrides this. These answers
+        are never saved for reuse, never used in drafts, and never shared.
+      </p>
+      <ErrorBox error={error} />
+      {!loaded ? (
+        <Loading />
+      ) : (
+        <form onSubmit={save} className="space-y-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            Fill my self-identification on applications automatically
+          </label>
+          <Field label="Your self-identification labels (comma-separated, exactly as forms word them)">
+            <input className={inputCls} value={text} onChange={(e) => setText(e.target.value)} placeholder="Male, Asian, I am not a protected veteran" />
+          </Field>
+          {notice && <Notice>{notice}</Notice>}
+          <Button type="submit">Save self-identification</Button>
+        </form>
+      )}
+    </Card>
+  );
+}
+
 function AiDraftingCard() {
   const [v, setV] = useState<DraftingConsentView | null>(null);
   const [error, setError] = useState<unknown>(null);

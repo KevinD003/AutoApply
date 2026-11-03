@@ -3799,3 +3799,64 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   malformed-entry skip). The end-to-end fill of an EEOC react-select on a real Greenhouse page
   is unobserved, so like the D104 location stand-ins it stays checkpoint-first until the pilot
   sees one.
+
+## D122 — Self-identification: the owner's own EEOC/demographic answers, opt-in auto-fill (2026-11-02)
+
+- **The owner's words (2026-11-02):** gave their own self-identification ("Male", "Asian, South
+  Asian") and, asked, confirmed they want it filled automatically as their previous tool did
+  ("My previous code use to select from the dropdown, type in the information").
+- **Why this is allowed where inference is not.** The non-negotiable rule is that NoEfforts never
+  *infers* demographics. This does not infer anything: it fills only the exact option labels the
+  owner themselves recorded, and only when one matches the form exactly. D121 already surfaces
+  EEOC/demographic questions as the applicant's explicit choice; D122 lets the owner make that
+  choice once, in advance, for their own applications.
+- **How** (`app/modules/profiles/models.py` `SelfIdentification`, `resolver._self_id_match`):
+  a per-account row with `enabled` and `labels` (the option labels the owner identifies with).
+  When enabled, a sensitive choice/multi question resolves from `labels` by exact (normalized)
+  option match — a single-choice question only when exactly one option matches (never one of
+  two), a multi-select fills every matching option. Source `self_identification`.
+- **Safeguards (all kept):**
+  - opt-in; off by default; off for every other account, scoped per user (cross-tenant 404).
+  - the owner's typed values only — never inferred, never fuzzy-matched; anything not matched
+    exactly stays a checkpoint (required) or blank (optional).
+  - never saved to the answer bank, never drafted, never used for a decision or for anyone else.
+  - "Decline to self-identify" is always still selectable, and the owner can record *that* as
+    their value too.
+  - enabling it is the owner's standing choice to include it, so a matched answer resolves
+    directly (no per-application disclosure prompt); the audit event records only whether it is
+    on and how many labels are saved, never the labels (demographic data).
+  - the real values are entered in the app (Profile → Self-identification), never in the repo,
+    tests or fixtures.
+- **API:** `GET`/`PUT /profile/self-identification`. **Export/deletion:** the table is in the
+  account export (`user_id`, `enabled`, `labels`, `updated_at`) and deleted with the account.
+- **Tests:** `tests/test_self_identification.py` (off → left to you; on → exact fill, never
+  saved; decline; no match → checkpoint; ambiguous → never guessed; wrong-question guard;
+  per-account isolation). **UI:** a Self-identification card on the Profile page.
+
+### D122 amendment (2026-11-03) — acceptance-review hardening
+
+A review against explicit acceptance conditions found three gaps in the first cut; all are
+fixed in `resolver._self_id_outcome` / `_resolve_sensitive`:
+
+- **A per-application choice takes precedence over the standing preference.** The self-ID block
+  now runs *after* the per-application consent handling, so an explicit `withhold` (declining
+  this employer's question) is honoured and the standing preference never replaces it. The
+  standing preference applies only where the owner has made no explicit per-application choice.
+- **A multi-answer question is never submitted as a partial set.** A flat label list cannot
+  prove a multi-select set is complete (e.g. the owner is "Asian, South Asian" but the form
+  offers only "Asian"), so a substantive multi-select now becomes a **checkpoint**, not a
+  silently partial answer. A multi-select *decline* is exclusive and complete, so it still
+  auto-fills; a decline mixed with a substantive value is a checkpoint (never both). Single
+  selects are unchanged: exactly one match fills, else a checkpoint.
+- **The dependency is explicit.** A self-ID answer now carries a `self_identification`
+  `fact_ref`, so changing or disabling the labels that produced it invalidates an approval
+  through the established content-hash dependency (over and above the re-resolution that already
+  changes the package when the preference changes).
+
+Confirmed, not changed: self-ID values never enter the answer bank (`bankable = False`), the
+answer-brain training set (`learning.service` vetoes `sensitive`/non-`bankable`), logs or
+notifications; the **audit event** records only `enabled` + label count, while the **owner
+export** includes the full `labels` (it is the owner's own data — "all my data" must be
+complete); the row cascade-deletes with the account. Known limitation: substantive multi-select
+self-ID (e.g. race/ethnicity with several values) is a checkpoint until the self-ID data model
+is structured per category — deferred, not built speculatively.

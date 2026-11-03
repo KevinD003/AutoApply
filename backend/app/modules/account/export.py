@@ -506,6 +506,8 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "salary_period",
         "updated_at",
     ),
+    # D122: the owner's own voluntary self-identification (EEOC/demographic), opt-in.
+    "self_identification": ("user_id", "enabled", "labels", "updated_at"),
     "jobs": (
         "id",
         "user_id",

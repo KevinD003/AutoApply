@@ -39,7 +39,12 @@ from app.modules.preparation.models import (
     PackageApproval,
 )
 from app.modules.preparation.resolver import Context, Resolution, question_key, resolve_field
-from app.modules.profiles.models import CandidateProfile, JobPreferences, WorkAuthorization
+from app.modules.profiles.models import (
+    CandidateProfile,
+    JobPreferences,
+    SelfIdentification,
+    WorkAuthorization,
+)
 
 # Bumped to 2 (Phase C hardening): the manifest now binds owner, destination origin and submit
 # endpoint, explicit document digests, policy versions. Every existing package hash changes,
@@ -192,6 +197,7 @@ def load_context(db: Session, app: Application) -> Context:
         owner=str(uid),
         changed={k for k, _ in changed},
         consent_digests={i.field_key: (i.meta or {}).get("value_digest") for i in consents},
+        self_id=db.get(SelfIdentification, uid),  # D122: opt-in EEOC/demographic self-ID
     )
 
 
