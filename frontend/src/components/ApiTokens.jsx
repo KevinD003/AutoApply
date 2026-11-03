@@ -1,50 +1,38 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, ErrorBox, Field, inputCls, Notice } from "./ui";
 import { api } from "@/lib/api";
 
 // Priority D (D84, docs/api-tokens.md): personal access tokens for your own scripts, the CLI and
 // an MCP client. Shown once, stored as a hash, always expiring, revocable here.
-interface Token {
-  id: string;
-  public_id: string;
-  label: string;
-  scopes: string[];
-  created_at: string;
-  expires_at: string;
-  last_used_at: string | null;
-  revoked_at: string | null;
-  state: "active" | "expired" | "revoked";
-}
-
-const SCOPE_TEXT: Record<string, string> = {
+const SCOPE_TEXT = {
   read: "Read your jobs, applications and notifications",
   "import:jobs": "Add jobs (by link, or a CSV or XLSX file)",
 };
-const STATE_TONE = { active: "green", expired: "slate", revoked: "red" } as const;
+const STATE_TONE = { active: "green", expired: "slate", revoked: "red" };
 
 export default function ApiTokens() {
-  const [tokens, setTokens] = useState<Token[] | null>(null);
+  const [tokens, setTokens] = useState(null);
   const [label, setLabel] = useState("");
-  const [scopes, setScopes] = useState<string[]>(["read"]);
+  const [scopes, setScopes] = useState(["read"]);
   const [days, setDays] = useState(30);
-  const [shown, setShown] = useState<string | null>(null);
-  const [error, setError] = useState<unknown>(null);
+  const [shown, setShown] = useState(null);
+  const [error, setError] = useState(null);
 
   const load = useCallback(() => {
-    api<{ items: Token[] }>("/account/tokens")
+    api("/account/tokens")
       .then((r) => setTokens(r.items))
       .catch(setError);
   }, []);
   useEffect(load, [load]);
 
-  async function create(e: FormEvent) {
+  async function create(e) {
     e.preventDefault();
     setError(null);
     try {
-      const r = await api<{ token: string }>("/account/tokens", { json: { label, scopes, expires_in_days: days } });
+      const r = await api("/account/tokens", { json: { label, scopes, expires_in_days: days } });
       setShown(r.token);
       setLabel("");
       load();
@@ -53,7 +41,7 @@ export default function ApiTokens() {
     }
   }
 
-  async function revoke(t: Token) {
+  async function revoke(t) {
     setError(null);
     try {
       await api(`/account/tokens/${t.id}/revoke`, { method: "POST" });

@@ -8,27 +8,7 @@ import { api } from "@/lib/api";
 // D94: email reminders to you, the account owner, and nobody else. Off until you verify an
 // address with a code you type here and turn them on. One daily digest at most; it names only
 // the category and links to the tracker. The in-app notifications stay the source of truth.
-interface Delivery {
-  kind: "verification" | "digest";
-  status: "pending" | "sending" | "sent" | "uncertain" | "failed" | "cancelled";
-  outcome_code: string | null;
-  item_count: number;
-  created_at: string;
-  sent_at: string | null;
-}
-interface EmailView {
-  configured: boolean;
-  address: string | null;
-  verified: boolean;
-  code_pending: boolean;
-  enabled: boolean;
-  attention: boolean;
-  follow_ups: boolean;
-  digest_hour_utc: number;
-  recent: Delivery[];
-}
-
-const STATUS_TEXT: Record<Delivery["status"], string> = {
+const STATUS_TEXT = {
   pending: "waiting to be sent",
   sending: "being sent",
   sent: "accepted by the mail server",
@@ -38,14 +18,14 @@ const STATUS_TEXT: Record<Delivery["status"], string> = {
 };
 
 export default function EmailReminders() {
-  const [v, setV] = useState<EmailView | null>(null);
+  const [v, setV] = useState(null);
   const [address, setAddress] = useState("");
   const [code, setCode] = useState("");
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
 
   const load = useCallback(() => {
-    api<EmailView>("/account/email")
+    api("/account/email")
       .then((r) => {
         setV(r);
         setAddress((a) => a || r.address || "");
@@ -54,11 +34,11 @@ export default function EmailReminders() {
   }, []);
   useEffect(load, [load]);
 
-  async function call(path: string, method: string, json?: unknown, ok?: string) {
+  async function call(path, method, json, ok) {
     setError(null);
     setNotice("");
     try {
-      setV(await api<EmailView>(path, { method, json }));
+      setV(await api(path, { method, json }));
       if (ok) setNotice(ok);
     } catch (e) {
       setError(e);
