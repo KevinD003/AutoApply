@@ -52,7 +52,7 @@ function Editor({ e, onSaved, onCancel }: { e: BankEntry; onSaved: (r: BankEdit)
   }
 
   return (
-    <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+    <div className="mt-2 space-y-2 rounded-lg border border-hairline bg-surface-2 p-3">
       {e.answer_shape === "choice" ? (
         <select aria-label="New answer" className={inputCls} value={labels[0] ?? ""} onChange={(x) => setLabels([x.target.value])}>
           {e.options_snapshot.map((o) => (
@@ -105,10 +105,10 @@ function History({ id }: { id: string }) {
   if (error) return <ErrorBox error={error} />;
   if (!versions) return <Loading />;
   return (
-    <ol aria-label="Versions" className="mt-2 space-y-1 border-l-2 border-slate-200 pl-3 text-xs text-slate-600">
+    <ol aria-label="Versions" className="mt-2 space-y-1 border-l-2 border-hairline pl-3 text-xs text-ink-muted">
       {versions.map((h) => (
         <li key={h.version}>
-          v{h.version}: <span className="font-medium text-slate-800">{showValue(h.value)}</span> · {h.how} ·{" "}
+          v{h.version}: <span className="font-medium text-ink">{showValue(h.value)}</span> · {h.how} ·{" "}
           {new Date(h.recorded_at).toLocaleString()}
         </li>
       ))}
@@ -153,7 +153,7 @@ export default function AnswersPage() {
   return (
     <>
       <h1 className="text-xl font-semibold">Saved answers</h1>
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-ink-muted">
         Answers you chose to reuse. Each is tied to the exact wording of the question, its help text and, for multiple-choice
         questions, the options the employer offered. If any of these changes, NoEfforts asks you again instead of guessing. Answers
         that depend on the employer, the job or the date are never offered for saving: how you heard about a job, referrals, working
@@ -171,7 +171,7 @@ export default function AnswersPage() {
         ) : items.length === 0 ? (
           <Empty>No saved answers yet. Answers you give on an application are saved for reuse unless you untick “Reuse for this exact question”.</Empty>
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-hairline">
             {items.map((e) => (
               <li key={e.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="text-sm">
@@ -179,23 +179,23 @@ export default function AnswersPage() {
                   <p>
                     Answer: <span className="font-medium">{show(e)}</span>
                   </p>
-                  {e.options_snapshot.length > 0 && <p className="text-xs text-slate-500">Options when saved: {e.options_snapshot.join(" · ")}</p>}
+                  {e.options_snapshot.length > 0 && <p className="text-xs text-ink-faint">Options when saved: {e.options_snapshot.join(" · ")}</p>}
                   {e.help_text ? (
-                    <p className="line-clamp-3 text-xs text-slate-500">Help text when saved: {e.help_text}</p>
+                    <p className="line-clamp-3 text-xs text-ink-faint">Help text when saved: {e.help_text}</p>
                   ) : e.help_text === null && !e.not_reused ? (
-                    <p className="text-xs text-slate-500">Saved before NoEfforts recorded help text: reused only where the question has none.</p>
+                    <p className="text-xs text-ink-faint">Saved before NoEfforts recorded help text: reused only where the question has none.</p>
                   ) : null}
                   {e.approval_status === "proposed" && (
-                    <p className="text-xs text-slate-600">
+                    <p className="text-xs text-ink-muted">
                       <Badge tone="indigo">Imported</Badge> Not used until you approve it. Check the answer is true for you today.
                     </p>
                   )}
                   {e.not_reused && (
-                    <p className="text-xs text-slate-600">
+                    <p className="text-xs text-ink-muted">
                       <Badge tone="amber">Not reused</Badge> {e.not_reused} You can delete it.
                     </p>
                   )}
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-ink-faint">
                     v{e.version} · updated {new Date(e.updated_at).toLocaleString()} {e.sensitive && <Badge tone="amber">Sensitive</Badge>}
                   </p>
                   {editing === e.id && (

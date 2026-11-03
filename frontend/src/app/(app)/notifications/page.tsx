@@ -74,7 +74,7 @@ export default function NotificationsPage() {
           ) : undefined
         }
       >
-        <p className="mb-3 text-xs text-slate-500">
+        <p className="mb-3 text-xs text-ink-faint">
           Shown here only: NoEfforts sends no email, text message or push notification. Each one says what its record says now.
         </p>
         <ErrorBox error={error} />
@@ -83,19 +83,19 @@ export default function NotificationsPage() {
         ) : feed.items.length === 0 ? (
           <Empty>Nothing yet. Verification requests, approvals that stop applying, rehearsals, receipts and stops will show here.</Empty>
         ) : (
-          <ul aria-label="Notifications" className="divide-y divide-slate-100">
+          <ul aria-label="Notifications" className="divide-y divide-hairline">
             {feed.items.map((n) => (
-              <li key={n.key} className={`flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between ${n.read ? "" : "bg-indigo-50/40"}`}>
+              <li key={n.key} className={`flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between ${n.read ? "" : "bg-brand-weak/40"}`}>
                 <div className="min-w-0 sm:px-2">
                   <p className="flex flex-wrap items-center gap-2">
                     <Badge tone={KIND[n.kind].tone}>{KIND[n.kind].label}</Badge>
                     {!n.read && <Badge tone="indigo">Unread</Badge>}
                     {n.needs_action && <Badge tone="amber">Needs you</Badge>}
-                    <span className="font-medium text-slate-900">{n.title}</span>
+                    <span className="font-medium text-ink">{n.title}</span>
                   </p>
-                  <p className="mt-1 text-sm text-slate-700">{n.text}</p>
-                  {n.evidence_label && <p className="mt-1 text-xs text-slate-500">{n.evidence_label}</p>}
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-sm text-ink-muted">{n.text}</p>
+                  {n.evidence_label && <p className="mt-1 text-xs text-ink-faint">{n.evidence_label}</p>}
+                  <p className="mt-1 text-xs text-ink-faint">
                     {n.job} · {new Date(n.at).toLocaleString()}
                   </p>
                 </div>
@@ -106,7 +106,7 @@ export default function NotificationsPage() {
                       e.preventDefault();
                       open(n);
                     }}
-                    className="min-h-10 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                    className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong"
                   >
                     {n.application_id ? "Open application" : "Open Discover"}
                   </Link>

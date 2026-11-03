@@ -33,16 +33,16 @@ export default function AuthForm({ mode }: { mode: "login" | "register" }) {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
-      <h1 className="mb-1 text-2xl font-semibold text-indigo-700">NoEfforts</h1>
-      <p className="mb-6 text-sm text-slate-600">
+      <h1 className="mb-1 text-2xl font-semibold text-brand">NoEfforts</h1>
+      <p className="mb-6 text-sm text-ink-muted">
         {mode === "login" ? "Sign in to your account." : "Create an account. You review everything before it is sent."}
       </p>
       {mode === "login" && params.get("deleted") === "1" && (
-        <p role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+        <p role="status" className="mb-4 rounded-lg border border-positive/30 bg-positive-weak p-3 text-sm text-positive-ink">
           Your account and everything in it were deleted.
         </p>
       )}
-      <form onSubmit={submit} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <form onSubmit={submit} className="space-y-4 rounded-xl border border-hairline bg-surface p-5 shadow-sm">
         <Field label="Email">
           <input className={inputCls} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         </Field>
@@ -62,14 +62,14 @@ export default function AuthForm({ mode }: { mode: "login" | "register" }) {
           {busy ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
         </Button>
       </form>
-      <p className="mt-4 text-center text-sm text-slate-600">
+      <p className="mt-4 text-center text-sm text-ink-muted">
         {mode === "login" ? (
           <>
-            New here? <Link className="text-indigo-700 underline" href="/register">Create an account</Link>
+            New here? <Link className="text-brand underline" href="/register">Create an account</Link>
           </>
         ) : (
           <>
-            Have an account? <Link className="text-indigo-700 underline" href="/login">Sign in</Link>
+            Have an account? <Link className="text-brand underline" href="/login">Sign in</Link>
           </>
         )}
       </p>

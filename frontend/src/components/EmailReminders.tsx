@@ -68,7 +68,7 @@ export default function EmailReminders() {
   if (!v) return <ErrorBox error={error} />;
   return (
     <Card title="Email reminders">
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-ink-muted">
         A daily email to you when applications need your attention or follow-ups are due. It names only the kind of reminder and
         links to your tracker: no job, employer, answer or document, and opening it changes nothing. NoEfforts never emails
         employers or recruiters for you. Off unless you turn it on.
@@ -152,7 +152,7 @@ export default function EmailReminders() {
       {v.recent.length > 0 && (
         <div className="mt-4 text-sm">
           <p className="font-medium">Recent emails</p>
-          <ul className="mt-1 space-y-1 text-slate-600" aria-label="Recent emails">
+          <ul className="mt-1 space-y-1 text-ink-muted" aria-label="Recent emails">
             {v.recent.map((d, i) => (
               <li key={i} data-testid="email-delivery">
                 {d.kind === "digest" ? `Daily digest (${d.item_count} item${d.item_count === 1 ? "" : "s"})` : "Verification code"}:{" "}
@@ -160,7 +160,7 @@ export default function EmailReminders() {
               </li>
             ))}
           </ul>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-ink-faint">
             &ldquo;Accepted&rdquo; means the mail server took it, not that it reached your inbox. Turning reminders off stops what has not started to go out; a message already handed to the mail server cannot be recalled.
           </p>
         </div>

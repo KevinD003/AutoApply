@@ -83,7 +83,7 @@ export default function ExecutionCard({
 
   return (
     <Card title="Submission">
-      <p className="mb-3 text-sm text-slate-600">
+      <p className="mb-3 text-sm text-ink-muted">
         Automatic submission works only for local test forms (fictional employers) in this version. For real employers, apply on their site
         and record it in the tracker.
       </p>
@@ -111,14 +111,14 @@ export default function ExecutionCard({
       </div>
       {openCp && (
         <form
-          className="mb-4 space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm"
+          className="mb-4 space-y-2 rounded-lg border border-caution/30 bg-caution-weak p-3 text-sm"
           onSubmit={(e) => {
             e.preventDefault();
             act(() => api(`/applications/${appId}/checkpoints/${openCp.id}/code`, { json: { round: openCp.round, code } }), "Code sent to the worker.").then(() => setCode(""));
           }}
         >
-          <p className="font-medium text-amber-900">{openCp.message ?? "Enter the verification code the employer sent you."}</p>
-          <p className="text-xs text-amber-900">
+          <p className="font-medium text-caution-ink">{openCp.message ?? "Enter the verification code the employer sent you."}</p>
+          <p className="text-xs text-caution-ink">
             Attempt {openCp.wrong_attempts + 1} of {openCp.max_attempts} · expires {new Date(openCp.expires_at).toLocaleTimeString()}
           </p>
           <label className="block">
@@ -131,7 +131,7 @@ export default function ExecutionCard({
         </form>
       )}
       {attempts.length === 0 ? (
-        <p className="text-sm text-slate-600">No submission attempts yet.</p>
+        <p className="text-sm text-ink-muted">No submission attempts yet.</p>
       ) : (
         <ul className="space-y-3">
           {attempts.map((a) => {
@@ -139,16 +139,16 @@ export default function ExecutionCard({
             const receipt = a.evidence.find((e) => e.kind === "receipt");
             const reason = [...a.events].reverse().find((e) => typeof e.detail?.reason_code === "string")?.detail?.reason_code;
             return (
-              <li key={a.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+              <li key={a.id} className="rounded-lg border border-hairline p-3 text-sm">
                 <p className="flex flex-wrap items-center gap-2">
                   <Badge tone={s.tone}>{s.label}</Badge>
                   {a.approval_scope === "disclose_only" && <Badge tone="slate">Rehearsal: never submits</Badge>}
                   {a.evidence_label && <Badge tone="slate">{a.evidence_label}</Badge>}
-                  <span className="text-xs text-slate-500">{new Date(a.created_at).toLocaleString()}</span>
+                  <span className="text-xs text-ink-faint">{new Date(a.created_at).toLocaleString()}</span>
                 </p>
                 {a.outcome && <p className="mt-1">{a.outcome}</p>}
                 {typeof reason === "string" && (
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-ink-faint">
                     Reason code: <code>{reason}</code>
                   </p>
                 )}
@@ -194,7 +194,7 @@ export default function ExecutionCard({
                     Receipt <code>{String(receipt.data.receipt_id)}</code> from {String(receipt.data.final_origin)}
                   </p>
                 )}
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-ink-faint">
                   {a.disclosure_started_at ? "Data entered on the employer's form. " : "Nothing entered yet. "}
                   {a.send_started_at ? "Submit step started." : ""}
                 </p>

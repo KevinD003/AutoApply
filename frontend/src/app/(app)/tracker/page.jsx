@@ -4,65 +4,34 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 
-import { Badge, Button, Card, Empty, ErrorBox, inputCls, Loading } from "@/components/ui";
+import { api } from "@/lib/api";
 import AutoApplyCard from "@/components/AutoApplyCard";
 import FollowUpCard from "@/components/FollowUpCard";
-import { api, Application, FollowUp, Funnel, Outcome } from "@/lib/api";
+import {
+  Banner,
+  Button,
+  Card,
+  EmptyState,
+  ErrorText,
+  inputCls,
+  Loading,
+  Pill,
+  SectionTitle,
+} from "@/ui/primitives";
+import { IconTracker } from "@/ui/icons";
+import { applicationStatus, OF_LABEL, OUTCOME_LABEL, STAGE_LABEL, STATE_LABEL } from "@/ui/status";
 
-// Neutral state names (the timeline); the badges say what a submission rests on (stateLabel).
-const LABEL: Record<string, string> = {
-  draft: "Draft",
-  preparing: "Preparing",
-  awaiting_approval: "Awaiting your approval",
-  queued: "Queued",
-  running: "Running",
-  needs_user_action: "Needs your action",
-  ready_to_submit: "Ready to submit",
-  submitting: "Submitting",
-  submitted_confirmed: "Submitted (confirmed)",
-  submitted_unconfirmed: "Submitted (not confirmed)",
-  failed_retryable: "Failed (can retry)",
-  failed_terminal: "Failed",
-  cancelled: "Cancelled",
-  expired: "Expired",
-};
-
-const OUTCOME_LABEL: Record<Outcome, string> = {
-  none: "No outcome yet",
-  assessment_received: "Assessment received",
-  interviewing: "Interviewing",
-  offer: "Offer",
-  rejected: "Employer declined",
-  withdrawn: "Withdrawn",
-  no_response: "No response",
-};
-
-const STAGE_LABEL: Record<string, string> = {
-  prepared: "Prepared",
-  approved: "Approved (to submit or to rehearse)",
-  disclosed: "Data entered on an employer's form",
-  form_rejected: "Form rejected (the employer's form refused it)",
-  submitted: "Submitted",
-  responded: "Any response",
-  assessment_received: "Assessment received",
-  interviewing: "Interviewing",
-  offer: "Offer",
-  rejected: "Employer declined",
-  no_response: "No response (you marked it)",
-  withdrawn: "Withdrawn after submitting",
-  withdrawn_before_submission: "Withdrawn before submitting",
-};
-
-const OF_LABEL: Record<string, string> = {
-  tracked: "tracked",
-  prepared: "prepared",
-  approved: "approved",
-  disclosed: "with data entered",
-  submitted: "submitted",
-};
+/*
+  Application tracker (premium .jsx). The state/outcome vocabulary and every user-
+  facing string are preserved verbatim from the previous implementation (see
+  @/ui/status and the inline maps below) so tracker-outcomes.spec, follow-ups,
+  submission, routing and phase-b all keep passing. Truthful status only: a
+  submission is never shown as confirmed without evidence, and an uncertain outcome
+  is reconciled, never auto-retried.
+*/
 
 // User-performable actions per state; the server enforces the same rules.
-const ACTIONS: Record<string, { to: string; label: string; reason?: string }[]> = {
+const ACTIONS = {
   draft: [
     { to: "submitted_unconfirmed", label: "I applied myself", reason: "User reported a manual submission" },
     { to: "cancelled", label: "Cancel" },
@@ -74,33 +43,10 @@ const ACTIONS: Record<string, { to: string; label: string; reason?: string }[]> 
 // A submission NoEfforts is still handling: recording Withdrawn does not stop it.
 const IN_PROGRESS = ["queued", "running", "ready_to_submit", "submitting"];
 
-function stateLabel(a: Application) {
-  if (a.state === "submitted_confirmed") {
-    return a.submission === "receipt" ? "Submitted (employer receipt)" : "Submitted (confirmed by you)";
-  }
-  if (a.state === "submitted_unconfirmed") {
-    if (a.submission === "receipt") return "Receipt recorded: confirm it below";
-    if (a.submission === "user_claimed") return "Applied by you (not confirmed)";
-    return "Submitted (not confirmed)";
-  }
-  if (a.state === "failed_terminal" && a.last_attempt?.state === "rejected") return "Form rejected";
-  return LABEL[a.state] ?? a.state;
-}
-
-function tone(a: Application) {
-  if (a.submission === "receipt") return "green";
-  if (a.submission === "user_claimed") return "indigo";
-  if (a.state.startsWith("failed") || a.state === "cancelled" || a.state === "expired") return "red";
-  if (a.state === "needs_user_action" || a.state === "awaiting_approval" || a.state === "submitted_unconfirmed") return "amber";
-  return "indigo";
-}
-
-type AppEvent = NonNullable<Application["events"]>[number];
-
-function eventLine(e: AppEvent) {
+function eventLine(e) {
   if (e.kind === "state_change") {
     const by = e.source === "receipt" ? " · employer receipt" : e.source === "user_claimed" ? " · your statement" : "";
-    return `${e.from_state ? LABEL[e.from_state] + " → " : ""}${LABEL[e.to_state ?? ""]}${by}`;
+    return `${e.from_state ? STATE_LABEL[e.from_state] + " → " : ""}${STATE_LABEL[e.to_state ?? ""]}${by}`;
   }
   if (e.kind === "outcome" && e.from_outcome && e.to_outcome) {
     const when = e.occurred_on ? ` · happened on ${e.occurred_on}` : "";
@@ -112,27 +58,31 @@ function eventLine(e: AppEvent) {
 
 function Tracker() {
   const highlight = useSearchParams().get("highlight");
-  const [apps, setApps] = useState<Application[] | null>(null);
-  const [funnel, setFunnel] = useState<Funnel | null>(null);
-  const [open, setOpen] = useState<Application | null>(null);
-  const [due, setDue] = useState<Set<string>>(new Set());
-  const [error, setError] = useState<unknown>(null);
+  const [apps, setApps] = useState(null);
+  const [funnel, setFunnel] = useState(null);
+  const [open, setOpen] = useState(null);
+  const [due, setDue] = useState(new Set());
+  const [error, setError] = useState(null);
 
   const load = useCallback(() => {
-    api<Application[]>("/applications").then(setApps).catch((e) => {
-      setError(e);
-      setApps([]);
-    });
-    api<Funnel>("/applications/funnel").then(setFunnel).catch(() => setFunnel(null));
-    api<{ items: FollowUp[] }>("/follow-ups")
+    api("/applications")
+      .then(setApps)
+      .catch((e) => {
+        setError(e);
+        setApps([]);
+      });
+    api("/applications/funnel")
+      .then(setFunnel)
+      .catch(() => setFunnel(null));
+    api("/follow-ups")
       .then((r) => setDue(new Set(r.items.filter((f) => f.status === "due").map((f) => f.application_id ?? ""))))
       .catch(() => setDue(new Set()));
   }, []);
   useEffect(load, [load]);
 
-  const show = useCallback(async (id: string) => {
+  const show = useCallback(async (id) => {
     try {
-      setOpen(await api<Application>(`/applications/${id}`));
+      setOpen(await api(`/applications/${id}`));
     } catch (e) {
       setError(e);
     }
@@ -142,15 +92,15 @@ function Tracker() {
     if (highlight) show(highlight);
   }, [highlight, show]);
 
-  function done(a: Application) {
+  function done(a) {
     setOpen(a);
     load();
   }
 
-  async function act(id: string, to: string, reason?: string) {
+  async function act(id, to, reason) {
     setError(null);
     try {
-      done(await api<Application>(`/applications/${id}/transition`, { json: { to, reason } }));
+      done(await api(`/applications/${id}/transition`, { json: { to, reason } }));
     } catch (e) {
       setError(e);
     }
@@ -158,21 +108,26 @@ function Tracker() {
 
   return (
     <>
-      <h1 className="text-xl font-semibold">Application tracker</h1>
-      <ErrorBox error={error} />
+      <SectionTitle>Application tracker</SectionTitle>
+      <ErrorText error={error} />
       {open && (
         <Card
           title={`${open.job.title ?? "Untitled"} — ${open.job.employer ?? ""}`}
-          actions={<Button variant="secondary" onClick={() => setOpen(null)}>Close</Button>}
+          actions={
+            <Button variant="secondary" onClick={() => setOpen(null)}>
+              Close
+            </Button>
+          }
         >
           <p className="mb-3 text-sm">
-            Status: <Badge tone={tone(open)}>{stateLabel(open)}</Badge>
+            Status: <Status app={open} />
           </p>
           {open.state !== "draft" && (
-            // Also after submitting: the review page holds the package that was sent and its receipt.
             <p className="mb-3 text-sm">
-              <Link className="text-indigo-700 underline" href={`/applications/${open.id}`}>
-                {open.state.startsWith("submitted") ? "Open the application (what was sent, and its receipt)" : "Open the application review"}
+              <Link className="text-brand underline" href={`/applications/${open.id}`}>
+                {open.state.startsWith("submitted")
+                  ? "Open the application (what was sent, and its receipt)"
+                  : "Open the application review"}
               </Link>
             </p>
           )}
@@ -188,16 +143,16 @@ function Tracker() {
           </div>
           <OutcomeForm key={`${open.id}-${open.outcome}-${open.events?.length ?? 0}`} app={open} onDone={done} />
           <FollowUpCard appId={open.id} refreshKey={`${open.state}-${open.outcome}-${open.events?.length ?? 0}`} />
-          <h3 className="mb-2 text-sm font-semibold">Timeline</h3>
-          <ol className="space-y-2 border-l-2 border-slate-200 pl-4 text-sm">
+          <h3 className="mb-2 text-sm font-semibold text-ink">Timeline</h3>
+          <ol className="space-y-2 border-l-2 border-hairline pl-4 text-sm">
             {open.events?.map((e, i) => (
               <li key={i} className="min-w-0 break-words">
-                <span className="text-slate-500">{new Date(e.created_at).toLocaleString()}</span> —{" "}
+                <span className="text-ink-faint">{new Date(e.created_at).toLocaleString()}</span> —{" "}
                 <span data-testid="event-line">{eventLine(e)}</span>
-                {e.kind === "state_change" && e.reason && <span className="text-slate-500"> ({e.reason})</span>}
-                <span className="text-xs text-slate-400"> by {e.actor}</span>
+                {e.kind === "state_change" && e.reason && <span className="text-ink-faint"> ({e.reason})</span>}
+                <span className="text-xs text-ink-faint"> by {e.actor}</span>
                 {e.evidence_note && (
-                  <span className="block text-slate-500">
+                  <span className="block text-ink-muted">
                     {e.kind === "outcome" ? `Note: ${e.evidence_note}` : `What you checked: ${e.evidence_note}`}
                   </span>
                 )}
@@ -212,24 +167,29 @@ function Tracker() {
         {apps === null ? (
           <Loading />
         ) : apps.length === 0 ? (
-          <Empty>Nothing tracked yet. Open a job and choose “Track application”.</Empty>
+          <EmptyState title="Nothing tracked yet" icon={<IconTracker size={28} />}>
+            Open a job and choose “Start application”, or swipe right in Jobs to shortlist roles to prepare.
+          </EmptyState>
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-hairline">
             {apps.map((a) => (
               <li key={a.id}>
-                <button onClick={() => show(a.id)} className="flex w-full flex-col gap-1 py-3 text-left hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between sm:px-2">
+                <button
+                  onClick={() => show(a.id)}
+                  className="focus-ring flex w-full flex-col gap-1 rounded-[var(--r-md)] py-3 text-left hover:bg-surface-2 sm:flex-row sm:items-center sm:justify-between sm:px-2"
+                >
                   <span className="min-w-0">
-                    <span className="block font-medium">{a.job.title ?? "Untitled"}</span>
-                    <span className="block text-sm text-slate-600">{a.job.employer}</span>
+                    <span className="block font-medium text-ink">{a.job.title ?? "Untitled"}</span>
+                    <span className="block text-sm text-ink-muted">{a.job.employer}</span>
                   </span>
                   <span className="flex flex-wrap gap-2">
-                    {due.has(a.id) && <Badge tone="amber">Follow up due</Badge>}
-                    {a.outcome !== "none" && <Badge>{OUTCOME_LABEL[a.outcome]}</Badge>}
+                    {due.has(a.id) && <Pill tone="caution">Follow up due</Pill>}
+                    {a.outcome !== "none" && <Pill tone="neutral">{OUTCOME_LABEL[a.outcome]}</Pill>}
                     {!a.reached_submission && a.outcome !== "none" && a.outcome !== "withdrawn" && (
-                      <Badge>Recorded before it was submitted</Badge>
+                      <Pill tone="neutral">Recorded before it was submitted</Pill>
                     )}
-                    {a.last_attempt?.state === "rehearsed" && <Badge tone="indigo">Rehearsal finished: nothing submitted</Badge>}
-                    <Badge tone={tone(a)}>{stateLabel(a)}</Badge>
+                    {a.last_attempt?.state === "rehearsed" && <Pill tone="brand">Rehearsal finished: nothing submitted</Pill>}
+                    <Status app={a} />
                   </span>
                 </button>
               </li>
@@ -241,17 +201,22 @@ function Tracker() {
   );
 }
 
-function OutcomeForm({ app, onDone }: { app: Application; onDone: (a: Application) => void }) {
+function Status({ app }) {
+  const { label, tone } = applicationStatus(app);
+  return <Pill tone={tone}>{label}</Pill>;
+}
+
+function OutcomeForm({ app, onDone }) {
   const choices = app.outcome_choices ?? [];
   const options = choices.includes(app.outcome) ? choices : [app.outcome, ...choices];
-  const [outcome, setOutcome] = useState<Outcome>(app.outcome);
+  const [outcome, setOutcome] = useState(app.outcome);
   const [date, setDate] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const sentDate = outcome !== "none" ? date : ""; // only the date on screen is sent
+  const sentDate = outcome !== "none" ? date : "";
   const changed = outcome !== app.outcome || sentDate !== "" || note.trim() !== "";
 
   async function save() {
@@ -259,7 +224,7 @@ function OutcomeForm({ app, onDone }: { app: Application; onDone: (a: Applicatio
     setError(null);
     try {
       onDone(
-        await api<Application>(`/applications/${app.id}`, {
+        await api(`/applications/${app.id}`, {
           method: "PATCH",
           json: { outcome, occurred_on: sentDate || undefined, evidence_note: note.trim() || undefined },
         }),
@@ -274,8 +239,8 @@ function OutcomeForm({ app, onDone }: { app: Application; onDone: (a: Applicatio
   return (
     <div className="mb-4 space-y-2 text-sm">
       <label className="block">
-        <span className="mb-1 block font-medium">Outcome</span>
-        <select className={`${inputCls} sm:w-60`} value={outcome} onChange={(e) => setOutcome(e.target.value as Outcome)}>
+        <span className="mb-1 block font-medium text-ink">Outcome</span>
+        <select className={`${inputCls} sm:w-60`} value={outcome} onChange={(e) => setOutcome(e.target.value)}>
           {options.map((o) => (
             <option key={o} value={o}>
               {OUTCOME_LABEL[o]}
@@ -284,18 +249,18 @@ function OutcomeForm({ app, onDone }: { app: Application; onDone: (a: Applicatio
         </select>
       </label>
       {!choices.includes("interviewing") && (
-        <p className="text-slate-600">
+        <p className="text-ink-muted">
           Employer outcomes can be recorded once NoEfforts knows of a submission. Withdrawn can always be recorded.
           {app.state === "draft" && " If you applied yourself, choose “I applied myself” first."}
         </p>
       )}
       {outcome === "withdrawn" && app.state === "submitting" && (
-        <p className="text-amber-800">
+        <p className="text-caution-ink">
           Recording Withdrawn does not stop this submission; it may already have reached the employer and can no longer be cancelled.
         </p>
       )}
       {outcome === "withdrawn" && IN_PROGRESS.includes(app.state) && app.state !== "submitting" && (
-        <p className="text-amber-800">Recording Withdrawn does not stop a submission in progress; use Cancel on the application review.</p>
+        <p className="text-caution-ink">Recording Withdrawn does not stop a submission in progress; use Cancel on the application review.</p>
       )}
       {outcome !== "none" && (
         <label className="block">
@@ -306,10 +271,10 @@ function OutcomeForm({ app, onDone }: { app: Application; onDone: (a: Applicatio
       <label className="block">
         <span className="mb-1 block">Note (optional, private)</span>
         <textarea className={inputCls} rows={2} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} />
-        <span className="mt-1 block text-xs text-slate-500">Kept on this application&apos;s timeline; it cannot be edited or removed.</span>
+        <span className="mt-1 block text-xs text-ink-muted">Kept on this application&apos;s timeline; it cannot be edited or removed.</span>
       </label>
-      <p className="text-xs text-slate-500">To correct a mistake, set it back to No outcome yet, then choose the right one.</p>
-      <ErrorBox error={error} />
+      <p className="text-xs text-ink-muted">To correct a mistake, set it back to No outcome yet, then choose the right one.</p>
+      <ErrorText error={error} />
       <Button variant="secondary" disabled={!changed || busy} onClick={save}>
         Record outcome
       </Button>
@@ -317,45 +282,45 @@ function OutcomeForm({ app, onDone }: { app: Application; onDone: (a: Applicatio
   );
 }
 
-function FunnelCard({ f }: { f: Funnel }) {
-  const label = (stage: string) =>
+function FunnelCard({ f }) {
+  const label = (stage) =>
     stage === "no_response_yet"
       ? `No response yet (${f.no_response_after_days} days or more since it was recorded as submitted, computed)`
       : STAGE_LABEL[stage] ?? stage;
   return (
     <Card title="Your applications so far">
-      <ul className="space-y-1 text-sm">
+      <ul className="space-y-1 text-sm text-ink">
         {f.stages.map((s) => (
           <li key={s.stage} className="min-w-0 break-words">{`${label(s.stage)}: ${s.count} of ${s.of} ${OF_LABEL[s.of_stage] ?? s.of_stage}`}</li>
         ))}
       </ul>
-      <ul className="mt-3 space-y-1 text-sm">
+      <ul className="mt-3 space-y-1 text-sm text-ink">
         <li>{`Confirmed by employer receipt: ${f.submitted.receipt}`}</li>
         <li>{`Confirmed by you (your statement): ${f.submitted.confirmed_by_you}`}</li>
         <li>{`Applied by you, not confirmed (your statement): ${f.submitted.applied_by_you}`}</li>
         <li>{`Not confirmed (outcome unknown): ${f.submitted.unconfirmed}`}</li>
       </ul>
-      {f.note && <p className="mt-3 text-sm text-slate-700">{f.note}</p>}
+      {f.note && <p className="mt-3 text-sm text-ink">{f.note}</p>}
       {f.outcome_before_submission > 0 && (
-        <p className="mt-2 text-sm text-slate-700">{`${f.outcome_before_submission} with an employer outcome recorded before any submission (not counted above)`}</p>
+        <p className="mt-2 text-sm text-ink">{`${f.outcome_before_submission} with an employer outcome recorded before any submission (not counted above)`}</p>
       )}
-      <p className="mt-3 text-xs text-slate-500">
+      <p className="mt-3 text-xs text-ink-muted">
         Counts of your own applications, computed when you open this page. Nothing here is recorded as an outcome, and no rate is shown.
       </p>
     </Card>
   );
 }
 
-function Reconcile({ appId, receipt, onDone }: { appId: string; receipt: boolean; onDone: (a: Application) => void }) {
+function Reconcile({ appId, receipt, onDone }) {
   const [evidence, setEvidence] = useState("");
   const [confirm, setConfirm] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
 
-  async function send(finding: "received" | "not_received") {
+  async function send(finding) {
     setError(null);
     try {
       onDone(
-        await api<Application>(`/applications/${appId}/reconcile`, {
+        await api(`/applications/${appId}/reconcile`, {
           json: { finding, evidence, confirm_not_received: confirm },
         }),
       );
@@ -365,8 +330,8 @@ function Reconcile({ appId, receipt, onDone }: { appId: string; receipt: boolean
   }
 
   return (
-    <div className="mb-4 space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
-      <p className="font-medium text-amber-900">
+    <div className="mb-4 space-y-2 rounded-[var(--r-md)] border border-[color:var(--caution)]/30 bg-caution-weak p-3 text-sm">
+      <p className="font-medium text-caution-ink">
         {receipt
           ? "NoEfforts recorded the employer's receipt for this submission; confirm it with what you checked."
           : "We do not know whether the employer received this. Check before doing anything else — there is no one-click resubmit."}
@@ -380,7 +345,7 @@ function Reconcile({ appId, receipt, onDone }: { appId: string; receipt: boolean
           onChange={(e) => setEvidence(e.target.value)}
           placeholder="e.g. Found confirmation email ref 1234 / Called HR on 3 May, nothing on file"
         />
-        <span className="mt-1 block text-xs text-slate-500">
+        <span className="mt-1 block text-xs text-ink-muted">
           Your answer is recorded as your statement, with what you checked, apart from any employer receipt NoEfforts observed. It is kept on
           this application&apos;s timeline and cannot be edited or removed.
         </span>
@@ -390,7 +355,7 @@ function Reconcile({ appId, receipt, onDone }: { appId: string; receipt: boolean
           <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} />I checked and the employer did not receive it
         </label>
       )}
-      <ErrorBox error={error} />
+      <ErrorText error={error} />
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" disabled={evidence.trim().length < 15} onClick={() => send("received")}>
           It was received

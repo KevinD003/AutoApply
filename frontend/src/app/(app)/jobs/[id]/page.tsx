@@ -26,9 +26,9 @@ function FitCard({ fit }: { fit: JobFit }) {
   const [skills, licences] = fit.qualifications;
   return (
     <Card title="Why this job matches (or doesn't)">
-      <p className="text-sm font-medium text-slate-800">
+      <p className="text-sm font-medium text-ink">
         Your preferences: {fit.preference_fit.label}
-        <span className="block text-xs font-normal text-slate-500">
+        <span className="block text-xs font-normal text-ink-faint">
           A count of your own targets this job could be checked against: not a prediction and not an application-system score.
         </span>
       </p>
@@ -40,8 +40,8 @@ function FitCard({ fit }: { fit: JobFit }) {
           </li>
         ))}
       </ul>
-      <h3 className="mt-4 text-sm font-medium text-slate-800">Eligibility, side by side (advisory)</h3>
-      <p className="text-xs text-slate-500">
+      <h3 className="mt-4 text-sm font-medium text-ink">Eligibility, side by side (advisory)</h3>
+      <p className="text-xs text-ink-faint">
         What a source says next to what you recorded. NoEfforts does not decide eligibility; each question is answered from your facts when you prepare.
       </p>
       <ul aria-label="Eligibility" className="mt-1 space-y-2 text-sm">
@@ -51,7 +51,7 @@ function FitCard({ fit }: { fit: JobFit }) {
             {e.source_says}
             {e.stated_by ? ` (${e.stated_by}${e.basis ? `, ${e.basis}` : ""})` : ""}
             {e.note ? `. ${e.note}` : ""}
-            <ul className="ml-4 list-disc text-xs text-slate-600">
+            <ul className="ml-4 list-disc text-xs text-ink-muted">
               {e.yours.length === 0 ? <li>You have recorded nothing for this.</li> : e.yours.map((y) => <li key={y.country}>{yoursLine(y, e.what)}</li>)}
             </ul>
           </li>
@@ -59,7 +59,7 @@ function FitCard({ fit }: { fit: JobFit }) {
       </ul>
       {skills && (
         <>
-          <h3 className="mt-4 text-sm font-medium text-slate-800">Your approved qualifications the job names</h3>
+          <h3 className="mt-4 text-sm font-medium text-ink">Your approved qualifications the job names</h3>
           <ul aria-label="Qualifications" className="mt-1 space-y-1 text-sm">
             <li>
               Skills: {skills.mentioned.length ? skills.mentioned.join(", ") : "none of yours named"} ({skills.mentioned.length} of {skills.of} you listed)
@@ -72,8 +72,8 @@ function FitCard({ fit }: { fit: JobFit }) {
       )}
       {fit.missing.length > 0 && (
         <>
-          <h3 className="mt-4 text-sm font-medium text-slate-800">Not known, so not checked</h3>
-          <ul aria-label="Missing information" className="mt-1 list-disc space-y-1 pl-5 text-sm text-slate-600">
+          <h3 className="mt-4 text-sm font-medium text-ink">Not known, so not checked</h3>
+          <ul aria-label="Missing information" className="mt-1 list-disc space-y-1 pl-5 text-sm text-ink-muted">
             {fit.missing.map((m) => (
               <li key={m}>{m}</li>
             ))}
@@ -140,12 +140,12 @@ export default function JobPage() {
     }
   }
 
-  if (missing) return <Card><p>This job does not exist or is not yours. <Link className="text-indigo-700 underline" href="/jobs">Back to jobs</Link></p></Card>;
+  if (missing) return <Card><p>This job does not exist or is not yours. <Link className="text-brand underline" href="/jobs">Back to jobs</Link></p></Card>;
   if (!job) return <><ErrorBox error={error} /><Loading /></>;
 
   return (
     <>
-      <Link href="/jobs" className="text-sm text-indigo-700 underline">← All jobs</Link>
+      <Link href="/jobs" className="text-sm text-brand underline">← All jobs</Link>
       <Card
         title={job.title ?? "Untitled role"}
         actions={<Badge tone={job.status === "excluded" ? "red" : "indigo"}>{job.status}</Badge>}
@@ -161,28 +161,28 @@ export default function JobPage() {
           <Row k="Source" v={job.source} />
         </dl>
         {job.discovered_from.length > 0 && (
-          <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+          <div className="mt-3 rounded-lg bg-surface-2 p-3 text-sm text-ink-muted">
             <p className="font-medium">Found through a discovery source</p>
             <ul className="mt-1 space-y-1">
               {job.discovered_from.map((d, i) => (
                 <li key={i}>
                   <Badge>{d.label}</Badge> <Credit a={d.attribution} /> last seen {new Date(d.last_seen_at).toLocaleString()}
-                  {d.stale && <> · <span className="text-amber-800">{d.stale_reason}</span></>}
+                  {d.stale && <> · <span className="text-caution-ink">{d.stale_reason}</span></>}
                   {d.changed_fields.length > 0 && <> · changed at the source: {d.changed_fields.join(", ")} (not applied here)</>}
                   {(d.signal_lines?.length ?? 0) > 0 && (
-                    <span className="block text-xs text-slate-600" data-testid="source-signals">
+                    <span className="block text-xs text-ink-muted" data-testid="source-signals">
                       {d.label} says: {d.signal_lines!.join(" · ")} (display only: not used to match, approve or apply)
                     </span>
                   )}
                 </li>
               ))}
             </ul>
-            <p className="mt-1 text-xs text-slate-500">A source listing is not verified, and says nothing about eligibility or sponsorship.</p>
+            <p className="mt-1 text-xs text-ink-faint">A source listing is not verified, and says nothing about eligibility or sponsorship.</p>
           </div>
         )}
         {job.url && (
           <p className="mt-3 break-all text-sm">
-            <a className="text-indigo-700 underline" href={job.url} target="_blank" rel="noopener noreferrer nofollow">
+            <a className="text-brand underline" href={job.url} target="_blank" rel="noopener noreferrer nofollow">
               Open original posting
             </a>
           </p>
@@ -217,7 +217,7 @@ export default function JobPage() {
       </Card>
       {job.description && (
         <Card title="Description">
-          <p className="whitespace-pre-wrap text-sm text-slate-700">{job.description}</p>
+          <p className="whitespace-pre-wrap text-sm text-ink-muted">{job.description}</p>
         </Card>
       )}
     </>
@@ -275,13 +275,13 @@ function RouteCard({ jobId, refresh, onRoute }: { jobId: string; refresh: number
           <p>
             <Badge tone={route.route === "browser" || route.route === "api" ? "indigo" : "amber"}>{route.label}</Badge>
           </p>
-          {route.message && <p className="text-slate-700">{route.message}</p>}
+          {route.message && <p className="text-ink-muted">{route.message}</p>}
           {(route.route === "api" || route.route === "browser") && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-ink-faint">
               Provider: {route.provider} — {route.provider_support}
             </p>
           )}
-          <p className="text-xs text-slate-500">Reason code: {route.reason}</p>
+          <p className="text-xs text-ink-faint">Reason code: {route.reason}</p>
         </div>
       )}
     </Card>
@@ -432,8 +432,8 @@ function FormCard({
 function Row({ k, v }: { k: string; v: string | null }) {
   return (
     <div>
-      <dt className="text-slate-500">{k}</dt>
-      <dd className="text-slate-900">{v || "—"}</dd>
+      <dt className="text-ink-faint">{k}</dt>
+      <dd className="text-ink">{v || "—"}</dd>
     </div>
   );
 }
@@ -453,7 +453,7 @@ function SignalsCard({ job, onChange, onError }: { job: JobDetail; onChange: () 
   }
   return (
     <Card title="Before you apply">
-      {s.approval_blocked && <p className="text-sm text-amber-800">{s.approval_blocked.message}</p>}
+      {s.approval_blocked && <p className="text-sm text-caution-ink">{s.approval_blocked.message}</p>}
       {s.source_closed && (
         <div className="mt-3 text-sm">
           <p>
@@ -469,7 +469,7 @@ function SignalsCard({ job, onChange, onError }: { job: JobDetail; onChange: () 
           <ul className="mt-1 space-y-1">
             {s.possible_duplicates.map((d) => (
               <li key={d.application_id}>
-                <Link className="text-indigo-700 underline" href={`/jobs/${d.job_id}`}>
+                <Link className="text-brand underline" href={`/jobs/${d.job_id}`}>
                   {d.title ?? "Untitled role"} · {d.employer}
                   {d.location ? ` · ${d.location}` : ""}
                 </Link>{" "}

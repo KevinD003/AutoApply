@@ -54,6 +54,12 @@ const backendEnv = {
   NOEFFORTS_BOARD_SOURCES_ENABLED: "true",
   NOEFFORTS_BOARD_API_OVERRIDES: JSON.stringify({ greenhouse: `${RECEIVER}/gh-board`, lever: `${RECEIVER}/lever-board` }),
   NOEFFORTS_BOARD_MIN_INTERVAL_SECONDS: "0",
+  // D124 Phase F: enable Google Drive import with synthetic PUBLIC browser values so the
+  // status-gated UI renders. The real Picker/OAuth is external and owner-activated; the
+  // e2e only checks that the section appears when enabled+configured, never the Google flow.
+  NOEFFORTS_GOOGLE_DRIVE_ENABLED: "true",
+  NOEFFORTS_GOOGLE_DRIVE_CLIENT_ID: "synthetic-e2e.apps.googleusercontent.com",
+  NOEFFORTS_GOOGLE_DRIVE_API_KEY: "synthetic-e2e-api-key",
 };
 
 // Offline emulation reaches a service worker's own requests only with this switch (Playwright

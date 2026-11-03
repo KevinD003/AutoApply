@@ -3929,3 +3929,30 @@ is structured per category — deferred, not built speculatively.
   and a `gh_js_late_required` fixture mode (a required control injected by JS after load): the
   package captures clean, but the attempt ends `failed_safe` with nothing disclosed. A zero-error
   package never hides a control the live page shows.
+
+## D124 — Premium redesign (Liquid-Glass UI, mobile swipe, editorial type) + Google Drive import
+
+- **Frontend identity (unslop):** new React `.jsx` + Node `.js` (no new TypeScript app code).
+  Self-hosted editorial type via `next/font` (Fraunces display + Hanken Grotesk body); a semantic
+  design-token system (`globals.css`) with the iris brand used as an accent, layered shadows, full
+  light/dark (default light during migration; a pre-paint script honours a stored choice) and a
+  Liquid-Glass navigation with an opaque `@supports` fallback and reduced-motion support. The shared
+  `components/ui.tsx` primitives were restyled onto the tokens, so every page adopts the look at once.
+- **Vertical slice (`src/ui/*`, migrated pages):** Jobs + mobile **swipe discovery** (right = Apply
+  *intent* → the role is shortlisted to prepare, never a disclosure/submission, never an "Applied"
+  state; left = Pass → excluded), both persisted account-scoped (`PATCH /jobs/{id}`), both undoable,
+  passed roles kept in the Excluded collection; a shortlisted job's **Start application** creates the
+  draft (`POST /applications`). Review/approve and Tracker migrated with every e2e contract preserved.
+- **Phase F — Google Drive import (`app/modules/drive/`):** owner-activated, narrowest scope
+  (`drive.file`). The browser Picker hands the server one picked file id + a short-lived token; the
+  server downloads that one file and stores it as a new document **snapshot**, validated by the same
+  type allowlist (PDF/DOCX/TXT; Google Docs exported to PDF). It never lists/scans Drive, never
+  modifies or deletes anything there, never reuses the token, and never sends content to an AI
+  provider. Off by default (`NOEFFORTS_GOOGLE_DRIVE_ENABLED`); needs only the PUBLIC OAuth client id +
+  API key — no secret in the repo or chat. No new DB table: imports are ordinary document versions.
+- **Tests:** `frontend/e2e/jobs-swipe.spec.ts` (swipe → shortlist/exclude, undo, persistence, no
+  "Applied" state), `frontend/e2e/drive.spec.ts` (status-gated UI), `backend/tests/test_drive.py`
+  (off-by-default, versioned-snapshot import, Drive read-only, type/magic-byte rejection, tenancy).
+  Every existing e2e contract preserved; verified on desktop + mobile; `tsc`/eslint/`ruff` clean.
+- **Remaining:** full `.jsx` migration of `applications/[id]` (functional + visually unslopped via the
+  restyled primitives today) and a dark-mode colour pass on the un-migrated page bodies.

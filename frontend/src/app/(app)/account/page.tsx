@@ -64,16 +64,16 @@ export default function AccountPage() {
   const blocked = preview.blocked_by.length > 0;
   return (
     <>
-      <h1 className="text-xl font-semibold text-slate-900">Account</h1>
+      <h1 className="text-xl font-semibold text-ink">Account</h1>
       <Card title="Your data">
-        <p className="mb-3 text-sm text-slate-700">
+        <p className="mb-3 text-sm text-ink-muted">
           One ZIP file with every record NoEfforts holds about your account and every document file. Login and session
           secrets and the server&apos;s internal keys are left out; the file&apos;s README lists what and why.
         </p>
         <a
           href="/api/account/export"
           download
-          className="inline-block min-h-10 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+          className="inline-block min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong"
         >
           Download all my data
         </a>
@@ -83,8 +83,8 @@ export default function AccountPage() {
       <ApiTokens />
       <DraftingSpend />
       <Card title="Delete my account">
-        <p className="text-sm text-slate-700">Deleting takes effect at once and cannot be undone. It deletes:</p>
-        <ul className="my-2 list-disc pl-5 text-sm text-slate-700" aria-label="What will be deleted">
+        <p className="text-sm text-ink-muted">Deleting takes effect at once and cannot be undone. It deletes:</p>
+        <ul className="my-2 list-disc pl-5 text-sm text-ink-muted" aria-label="What will be deleted">
           {Object.entries(preview.counts).map(([k, n]) => (
             <li key={k}>
               {n} {COUNT_LABELS[k] ?? k}
@@ -92,13 +92,13 @@ export default function AccountPage() {
           ))}
           <li>your profile, facts, preferences, packages, approvals, history and sessions</li>
         </ul>
-        <p className="text-sm text-slate-700">
+        <p className="text-sm text-ink-muted">
           {preview.retained_in_database.length === 0
             ? "Nothing about your account is kept in NoEfforts afterwards."
             : `Kept afterwards: ${preview.retained_in_database.join(", ")}.`}
         </p>
-        <p className="mt-3 text-sm font-medium text-slate-800">What deletion cannot reach</p>
-        <ul className="my-2 list-disc pl-5 text-sm text-slate-700" aria-label="What deletion cannot reach">
+        <p className="mt-3 text-sm font-medium text-ink">What deletion cannot reach</p>
+        <ul className="my-2 list-disc pl-5 text-sm text-ink-muted" aria-label="What deletion cannot reach">
           {preview.submitted_applications > 0 && (
             <li>
               {preview.submitted_applications} application(s) were already sent: the employer keeps its copy.
@@ -109,7 +109,7 @@ export default function AccountPage() {
           ))}
         </ul>
         {blocked ? (
-          <div role="alert" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <div role="alert" className="mt-3 rounded-lg border border-caution/30 bg-caution-weak p-3 text-sm text-caution-ink">
             {preview.blocked_reasons.join(" ")}
           </div>
         ) : (

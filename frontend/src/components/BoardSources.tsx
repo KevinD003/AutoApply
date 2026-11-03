@@ -91,13 +91,13 @@ export default function BoardSources() {
   const spec = v.providers.find((p) => p.key === provider);
   return (
     <Card title="Employer job boards">
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-ink-muted">
         Add an employer&rsquo;s public job board and read it when you choose, or once a day if you tick &ldquo;Check daily&rdquo;. NoEfforts asks the provider&rsquo;s public postings
         feed for that one board, sends nothing of yours, and adds a posting to your jobs only when you save it.
       </p>
       {!v.enabled && <Notice>Reading job boards is not switched on for this NoEfforts. You can add boards; nothing is read.</Notice>}
       {Object.entries(v.not_built).map(([k, why]) => (
-        <p key={k} className="mt-1 text-xs text-slate-500">
+        <p key={k} className="mt-1 text-xs text-ink-faint">
           {k[0].toUpperCase() + k.slice(1)}: not available. {why}
         </p>
       ))}
@@ -137,7 +137,7 @@ export default function BoardSources() {
       {v.items.length === 0 ? (
         <Empty>No job boards yet.</Empty>
       ) : (
-        <ul className="mt-4 divide-y divide-slate-100">
+        <ul className="mt-4 divide-y divide-hairline">
           {v.items.map((s) => (
             <li key={s.id} className="space-y-1 py-3 text-sm" data-testid="board-source">
               <div className="flex flex-wrap items-center gap-2">
@@ -147,13 +147,13 @@ export default function BoardSources() {
                 {s.daily_check && !s.paused && <Badge tone="indigo">checked daily</Badge>}
                 {s.last_status === "failed" && <Badge tone="red">last read failed</Badge>}
               </div>
-              <p className="text-slate-600">
+              <p className="text-ink-muted">
                 {s.last_success_at ? `Last read ${new Date(s.last_success_at).toLocaleString()} · ` : "Not read yet · "}
                 {s.listed} listed · {s.no_longer_listed} no longer listed · {s.in_your_jobs} in your jobs
               </p>
-              {s.last_status === "failed" && s.last_error && <p className="text-xs text-red-700">{s.last_error}</p>}
+              {s.last_status === "failed" && s.last_error && <p className="text-xs text-danger-ink">{s.last_error}</p>}
               {s.daily_check && s.next_check_after && v.enabled && (
-                <p className="text-xs text-slate-500">Next daily check after {new Date(s.next_check_after).toLocaleString()}</p>
+                <p className="text-xs text-ink-faint">Next daily check after {new Date(s.next_check_after).toLocaleString()}</p>
               )}
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -170,7 +170,7 @@ export default function BoardSources() {
                 <Button variant="secondary" onClick={() => run(async () => { await api(`/discovery/sources/${s.id}`, { method: "PATCH", json: { paused: !s.paused } }); })}>
                   {s.paused ? "Resume" : "Pause"}
                 </Button>
-                <label className="flex min-h-10 items-center gap-2 text-sm text-slate-700">
+                <label className="flex min-h-10 items-center gap-2 text-sm text-ink-muted">
                   <input
                     type="checkbox"
                     checked={s.daily_check}
@@ -200,31 +200,31 @@ export default function BoardSources() {
                 </Button>
               </div>
               {open === s.id && (
-                <ul className="mt-2 space-y-2 border-l-2 border-slate-200 pl-3" aria-label="Postings">
-                  {posts.length === 0 && <li className="text-slate-500">No postings read yet.</li>}
+                <ul className="mt-2 space-y-2 border-l-2 border-hairline pl-3" aria-label="Postings">
+                  {posts.length === 0 && <li className="text-ink-faint">No postings read yet.</li>}
                   {posts.map((p) => (
                     <li key={p.id} data-testid="board-posting">
                       <span className="font-medium">{p.title ?? "Untitled posting"}</span>{" "}
-                      <span className="text-slate-600">
+                      <span className="text-ink-muted">
                         {[p.location, p.workplace !== "unknown" ? p.workplace : null, p.employment_type].filter(Boolean).join(" · ")}
                       </span>
                       <span className="block text-xs">
                         <Badge tone={p.source_lists_it ? "green" : "slate"}>
                           {p.source_lists_it ? "Source lists it" : `No longer listed by the board since ${new Date(p.no_longer_listed_since!).toLocaleDateString()}`}
                         </Badge>{" "}
-                        <span className="text-slate-500">Match: {p.match.label}</span>
+                        <span className="text-ink-faint">Match: {p.match.label}</span>
                       </span>
                       <span className="mt-1 flex flex-wrap gap-3 text-xs">
                         {p.job_url && (
-                          <a className="text-indigo-700 underline" href={p.job_url} target="_blank" rel="noopener noreferrer nofollow">
+                          <a className="text-brand underline" href={p.job_url} target="_blank" rel="noopener noreferrer nofollow">
                             Posting at the source
                           </a>
                         )}
                         {p.job_id ? (
-                          <Link className="text-indigo-700 underline" href={`/jobs/${p.job_id}`}>In your jobs</Link>
+                          <Link className="text-brand underline" href={`/jobs/${p.job_id}`}>In your jobs</Link>
                         ) : (
                           <button
-                            className="text-indigo-700 underline"
+                            className="text-brand underline"
                             onClick={() => run(async () => {
                               await api(`/discovery/sources/postings/${p.id}/save`, { method: "POST" });
                               await showPostings(s.id);

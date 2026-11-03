@@ -1,10 +1,314 @@
 @import "tailwindcss";
 
+/*
+  NoEfforts premium visual system (D124 — unslop pass).
+
+  A semantic design-token layer. Components use semantic utilities — bg-surface,
+  text-ink, border-hairline, text-brand — which resolve to CSS variables that switch
+  with the theme, so no `dark:` variants are needed. The default Tailwind palette
+  still ships, so existing pages keep working while new .jsx screens adopt this.
+
+  Design intent: crafted, editorial, restrained. An optical serif (Fraunces) for
+  display and a warm grotesk (Hanken Grotesk) for text; the iris brand used as an
+  accent (the mark, key CTAs, active states), never as a wash; layered soft shadows
+  for real depth; a calm near-neutral ground. Theme: :root is light; system dark
+  applies unless the user forced light; data-theme="dark" forces dark.
+*/
+
+:root {
+  color-scheme: light;
+
+  /* Brand — a deep, sophisticated iris. Used sparingly, as an accent. */
+  --brand: #5d4bde;
+  --brand-strong: #4a39cb;
+  --brand-contrast: #ffffff;
+  --brand-weak: #edeafe;
+  --brand-ring: rgba(93, 75, 222, 0.32);
+  --brand-grad: linear-gradient(135deg, #5d4bde 0%, #8b74ff 100%);
+
+  /* Status accents — calm, not alarmist. "Pass" is neutral, never an error. */
+  --positive: #0f9d78;
+  --positive-ink: #09765a;
+  --positive-weak: #e6f6f0;
+  --caution: #bf7d00;
+  --caution-ink: #8a5a00;
+  --caution-weak: #f9f0db;
+  --danger: #d6454f;
+  --danger-ink: #ad2a32;
+  --danger-weak: #fcebec;
+  --info-weak: #ebf0ff;
+  --info-ink: #3a4fc4;
+
+  /* Near-neutral ink + surfaces with a faint violet warmth to tie to the brand. */
+  --app-bg: #f3f3f8;
+  --surface: #ffffff;
+  --surface-2: #f6f6fb;
+  --surface-3: #edecf3;
+  --ink: #161521;
+  --ink-muted: #5a5869;
+  --ink-faint: #8d8b9b;
+  --hairline: rgba(22, 21, 33, 0.08);
+  --hairline-strong: rgba(22, 21, 33, 0.14);
+
+  /* Liquid-glass recipe. */
+  --glass-bg: rgba(255, 255, 255, 0.66);
+  --glass-bg-strong: rgba(255, 255, 255, 0.85);
+  --glass-hairline: rgba(22, 21, 33, 0.07);
+  --glass-blur: 22px;
+  --glass-saturate: 170%;
+  --glass-shadow: 0 8px 30px -10px rgba(22, 21, 33, 0.16);
+  --glass-tint: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
+
+  /* Layered elevation. */
+  --shadow-sm: 0 1px 2px rgba(22, 21, 33, 0.05), 0 1px 3px -1px rgba(22, 21, 33, 0.06);
+  --shadow-md: 0 2px 6px rgba(22, 21, 33, 0.05), 0 12px 26px -8px rgba(22, 21, 33, 0.12);
+  --shadow-lg: 0 6px 14px -4px rgba(22, 21, 33, 0.06), 0 30px 60px -16px rgba(22, 21, 33, 0.2);
+
+  /* Radii. */
+  --r-sm: 0.625rem;
+  --r-md: 0.875rem;
+  --r-lg: 1.25rem;
+  --r-xl: 1.75rem;
+  --r-pill: 999px;
+
+  /* Motion. */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 140ms;
+  --dur: 220ms;
+  --dur-slow: 420ms;
+
+  /* Type (next/font sets --font-display / --font-body; fallbacks below). */
+  --font-display-stack: var(--font-display), "Fraunces", ui-serif, Georgia, serif;
+  --font-body-stack: var(--font-body), "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --brand: #9a86ff;
+    --brand-strong: #b1a1ff;
+    --brand-contrast: #130f22;
+    --brand-weak: rgba(154, 134, 255, 0.16);
+    --brand-ring: rgba(154, 134, 255, 0.42);
+    --brand-grad: linear-gradient(135deg, #7a66f2 0%, #9a86ff 100%);
+    --positive: #2ad0a0;
+    --positive-ink: #74e8c3;
+    --positive-weak: rgba(42, 208, 160, 0.14);
+    --caution: #efb44a;
+    --caution-ink: #f6cd80;
+    --caution-weak: rgba(239, 180, 74, 0.14);
+    --danger: #ff6b73;
+    --danger-ink: #ffa0a4;
+    --danger-weak: rgba(255, 107, 115, 0.14);
+    --info-weak: rgba(120, 140, 255, 0.14);
+    --info-ink: #a6b4ff;
+    --app-bg: #0b0a11;
+    --surface: #16141f;
+    --surface-2: #110f19;
+    --surface-3: #201d2b;
+    --ink: #ecebf3;
+    --ink-muted: #a6a3b7;
+    --ink-faint: #706d82;
+    --hairline: rgba(255, 255, 255, 0.09);
+    --hairline-strong: rgba(255, 255, 255, 0.16);
+    --glass-bg: rgba(22, 20, 31, 0.6);
+    --glass-bg-strong: rgba(18, 16, 26, 0.82);
+    --glass-hairline: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 10px 34px -10px rgba(0, 0, 0, 0.6);
+    --glass-tint: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0));
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.4), 0 14px 30px -10px rgba(0, 0, 0, 0.55);
+    --shadow-lg: 0 8px 18px -6px rgba(0, 0, 0, 0.5), 0 36px 64px -16px rgba(0, 0, 0, 0.7);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --brand: #9a86ff;
+  --brand-strong: #b1a1ff;
+  --brand-contrast: #130f22;
+  --brand-weak: rgba(154, 134, 255, 0.16);
+  --brand-ring: rgba(154, 134, 255, 0.42);
+  --brand-grad: linear-gradient(135deg, #7a66f2 0%, #9a86ff 100%);
+  --positive: #2ad0a0;
+  --positive-ink: #74e8c3;
+  --positive-weak: rgba(42, 208, 160, 0.14);
+  --caution: #efb44a;
+  --caution-ink: #f6cd80;
+  --caution-weak: rgba(239, 180, 74, 0.14);
+  --danger: #ff6b73;
+  --danger-ink: #ffa0a4;
+  --danger-weak: rgba(255, 107, 115, 0.14);
+  --info-weak: rgba(120, 140, 255, 0.14);
+  --info-ink: #a6b4ff;
+  --app-bg: #0b0a11;
+  --surface: #16141f;
+  --surface-2: #110f19;
+  --surface-3: #201d2b;
+  --ink: #ecebf3;
+  --ink-muted: #a6a3b7;
+  --ink-faint: #706d82;
+  --hairline: rgba(255, 255, 255, 0.09);
+  --hairline-strong: rgba(255, 255, 255, 0.16);
+  --glass-bg: rgba(22, 20, 31, 0.6);
+  --glass-bg-strong: rgba(18, 16, 26, 0.82);
+  --glass-hairline: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 10px 34px -10px rgba(0, 0, 0, 0.6);
+  --glass-tint: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0));
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.4), 0 14px 30px -10px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 8px 18px -6px rgba(0, 0, 0, 0.5), 0 36px 64px -16px rgba(0, 0, 0, 0.7);
+}
+
+@theme inline {
+  --color-app: var(--app-bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-hairline: var(--hairline);
+  --color-hairline-strong: var(--hairline-strong);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-contrast: var(--brand-contrast);
+  --color-brand-weak: var(--brand-weak);
+  --color-positive: var(--positive);
+  --color-positive-ink: var(--positive-ink);
+  --color-positive-weak: var(--positive-weak);
+  --color-caution: var(--caution);
+  --color-caution-ink: var(--caution-ink);
+  --color-caution-weak: var(--caution-weak);
+  --color-danger: var(--danger);
+  --color-danger-ink: var(--danger-ink);
+  --color-danger-weak: var(--danger-weak);
+  --color-info-weak: var(--info-weak);
+  --color-info-ink: var(--info-ink);
+  --font-sans: var(--font-body-stack);
+}
+
+/* Radii, shadows and easing stay raw (consumed via arbitrary values) to avoid
+   overriding Tailwind's default rounded-*/shadow-* scales. Colors above are additive. */
+
 html {
   -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--app-bg);
+  color: var(--ink);
+  font-family: var(--font-body-stack);
+  font-feature-settings: "liga" 1, "calt" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Display type: the optical serif, for the wordmark, page titles and hero figures. */
+.font-display {
+  font-family: var(--font-display-stack);
+  font-optical-sizing: auto;
+  letter-spacing: -0.015em;
+}
+
+/* ---- Liquid-glass surfaces ------------------------------------------------ */
+
+.glass,
+.glass-strong,
+.glass-nav {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-hairline);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+.glass,
+.glass-strong {
+  position: relative;
+}
+
+.glass-strong {
+  background: var(--glass-bg-strong);
+}
+
+.glass::before,
+.glass-strong::before,
+.glass-nav::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding-top: 1px;
+  background: var(--glass-tint);
+  -webkit-mask: linear-gradient(#000, transparent 60%);
+  mask: linear-gradient(#000, transparent 60%);
+  pointer-events: none;
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .glass,
+  .glass-strong,
+  .glass-nav {
+    background: var(--surface);
+    border-color: var(--hairline);
+  }
+}
+
+/* ---- Helpers -------------------------------------------------------------- */
+
+.brand-grad {
+  background-image: var(--brand-grad);
+}
+
+.text-grad {
+  background-image: var(--brand-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+.pt-safe {
+  padding-top: max(0.25rem, env(safe-area-inset-top));
+}
+
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+/* A subtle dotted ground for hero/empty areas — texture, not noise. */
+.ground-dots {
+  background-image: radial-gradient(var(--hairline-strong) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+@keyframes ne-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-rise {
+  animation: ne-rise var(--dur) var(--ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

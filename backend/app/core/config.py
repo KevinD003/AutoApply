@@ -202,6 +202,15 @@ class Settings(BaseSettings):
     # is honoured only in the test environment, for a listed fixture origin.
     board_sources_enabled: bool = False
     board_api_overrides: dict[str, str] = Field(default_factory=dict)
+
+    # D124 Phase F: Google Drive import (owner-selected files via the Picker, drive.file
+    # scope only). Off until the owner enables it and provides the PUBLIC browser values
+    # (OAuth client id + API key) — no secret is needed server-side or kept in the repo.
+    # google_drive_api_base is overridable only in the test environment (a local fixture).
+    google_drive_enabled: bool = False
+    google_drive_client_id: str = ""
+    google_drive_api_key: str = ""
+    google_drive_api_base: str = "https://www.googleapis.com"
     board_timeout_seconds: float = Field(default=10, gt=0, le=60)
     board_max_bytes: int = Field(default=10_000_000, ge=1_000, le=50_000_000)
     board_page_size: int = Field(default=100, ge=1, le=100)

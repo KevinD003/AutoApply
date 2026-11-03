@@ -29,7 +29,7 @@ export default function RehearsalHandoff({ appId, refreshKey }: { appId: string;
         ) : (
           <Badge tone="amber">{h.outstanding.length} prerequisite(s) outstanding</Badge>
         )}{" "}
-        <span className="text-slate-600">{h.not_a_permission}</span>
+        <span className="text-ink-muted">{h.not_a_permission}</span>
       </p>
       <details className="mb-3" open={!h.ready}>
         <summary className="cursor-pointer text-sm font-medium">Prerequisites</summary>
@@ -38,13 +38,13 @@ export default function RehearsalHandoff({ appId, refreshKey }: { appId: string;
             <li key={p.code} className="flex flex-wrap items-baseline gap-2">
               <Badge tone={p.met ? "green" : "amber"}>{p.met ? "holds" : "outstanding"}</Badge>
               <span>{p.label}</span>
-              {p.detail && <span className="text-slate-500">({p.detail})</span>}
+              {p.detail && <span className="text-ink-faint">({p.detail})</span>}
             </li>
           ))}
           <li className="flex flex-wrap items-baseline gap-2">
             <Badge tone="slate">separate</Badge>
             <span>{h.submit_permission.label}</span>
-            <span className="text-slate-500">({h.submit_permission.met ? "recorded" : "not recorded"}; {h.submit_permission.detail})</span>
+            <span className="text-ink-faint">({h.submit_permission.met ? "recorded" : "not recorded"}; {h.submit_permission.detail})</span>
           </li>
         </ul>
       </details>
@@ -53,12 +53,12 @@ export default function RehearsalHandoff({ appId, refreshKey }: { appId: string;
         <ul className="mt-2 space-y-1 text-sm">
           {h.will_disclose.map((w) => (
             <li key={w.key}>
-              <span className="font-medium">{w.label}</span>: {w.display ?? "—"} <span className="text-slate-500">({w.how})</span>
+              <span className="font-medium">{w.label}</span>: {w.display ?? "—"} <span className="text-ink-faint">({w.how})</span>
             </li>
           ))}
         </ul>
-        {h.not_disclosed.length > 0 && <p className="mt-2 text-sm text-slate-600">Not entered: {h.not_disclosed.length} question(s), as your package shows.</p>}
-        <ul className="mt-2 list-disc pl-5 text-sm text-slate-600">
+        {h.not_disclosed.length > 0 && <p className="mt-2 text-sm text-ink-muted">Not entered: {h.not_disclosed.length} question(s), as your package shows.</p>}
+        <ul className="mt-2 list-disc pl-5 text-sm text-ink-muted">
           {h.exposure.map((e) => (
             <li key={e}>{e}</li>
           ))}

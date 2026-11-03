@@ -64,7 +64,7 @@ const EMPTY: Profile = {
 function MetaLine({ m }: { m?: Partial<Meta> }) {
   if (!m?.version) return null;
   return (
-    <p className="text-xs text-slate-500">
+    <p className="text-xs text-ink-faint">
       Version {m.version} · {m.provenance?.replace("_", " ")} · updated {new Date(m.updated_at!).toLocaleString()}{" "}
       <Badge tone={m.approval_status === "approved" ? "green" : "amber"}>{m.approval_status}</Badge>
     </p>
@@ -75,7 +75,7 @@ export default function ProfilePage() {
   return (
     <>
       <h1 className="text-xl font-semibold">Your profile</h1>
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-ink-muted">
         These are facts about you. They are used to answer application questions exactly as written here. Anything you leave blank stays
         unanswered — NoEfforts will ask you rather than guess.
       </p>
@@ -169,11 +169,11 @@ function ContactCard() {
 function Proposed({ m, path, onDone, onError }: { m: Meta; path: string; onDone: () => void; onError: (e: unknown) => void }) {
   if (m.approval_status === "approved") return null;
   return (
-    <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-amber-800">
+    <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-caution-ink">
       <Badge tone="amber">{m.provenance === "resume_parse" ? "Proposed from your resume" : m.approval_status}</Badge>
       Not used until you approve it.
       <button
-        className="text-indigo-700 underline"
+        className="text-brand underline"
         onClick={() => api(`${path}/${m.id}/approve`, { method: "POST" }).then(onDone).catch(onError)}
       >
         Approve
@@ -229,7 +229,7 @@ function WorkAuthCard() {
 
   return (
     <Card title="Work authorization and sponsorship">
-      <p className="mb-3 text-sm text-slate-600">
+      <p className="mb-3 text-sm text-ink-muted">
         Answer per country. “Authorized to work” and “needs sponsorship” are separate questions, and sponsorship now and in the future are
         asked separately too.
       </p>
@@ -241,21 +241,21 @@ function WorkAuthCard() {
       ) : (
         <div className="space-y-3">
           {items.map((w) => (
-            <div key={w.id} className="rounded-lg border border-slate-200 p-3">
+            <div key={w.id} className="rounded-lg border border-hairline p-3">
               <p className="mb-2 font-medium">{w.country_code}</p>
               <div className="grid gap-3 sm:grid-cols-3">
                 <Field label="Authorized to work"><TriSelect value={w.authorized} onChange={(v) => update(w, { authorized: v as TriState })} /></Field>
                 <Field label="Needs sponsorship now"><TriSelect value={w.sponsorship_needed_now} onChange={(v) => update(w, { sponsorship_needed_now: v as TriState })} /></Field>
                 <Field label="Will need sponsorship later"><TriSelect value={w.sponsorship_needed_future} onChange={(v) => update(w, { sponsorship_needed_future: v as TriState })} /></Field>
               </div>
-              <p className="mt-2 text-xs text-slate-500">
+              <p className="mt-2 text-xs text-ink-faint">
                 Summary: authorized {label(w.authorized)}, sponsorship now {label(w.sponsorship_needed_now)}, later {label(w.sponsorship_needed_future)} · v{w.version}
               </p>
             </div>
           ))}
         </div>
       )}
-      <form onSubmit={add} className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-4">
+      <form onSubmit={add} className="mt-4 grid gap-3 border-t border-hairline pt-4 sm:grid-cols-4">
         <Field label="Country code"><input className={inputCls} required maxLength={2} value={form.country_code} onChange={(e) => setForm({ ...form, country_code: e.target.value })} placeholder="US" /></Field>
         <Field label="Authorized"><TriSelect value={form.authorized} onChange={(v) => setForm({ ...form, authorized: v })} /></Field>
         <Field label="Sponsorship now"><TriSelect value={form.sponsorship_needed_now} onChange={(v) => setForm({ ...form, sponsorship_needed_now: v })} /></Field>
@@ -302,13 +302,13 @@ function EmploymentCard() {
     <Card title="Work history">
       <ErrorBox error={error} />
       {items === null ? <Loading /> : items.length === 0 ? <Empty>No positions yet.</Empty> : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-hairline">
           {items.map((j) => (
             <li key={j.id} className="flex items-start justify-between gap-3 py-2 text-sm">
               <div>
                 <p className="font-medium">{j.title} — {j.employer}</p>
-                <p className="text-slate-600">{j.start_date ?? "?"} → {j.is_current ? "present" : j.end_date ?? "?"}{j.location ? ` · ${j.location}` : ""}</p>
-                {j.description && <p className="whitespace-pre-wrap text-xs text-slate-600">{j.description}</p>}
+                <p className="text-ink-muted">{j.start_date ?? "?"} → {j.is_current ? "present" : j.end_date ?? "?"}{j.location ? ` · ${j.location}` : ""}</p>
+                {j.description && <p className="whitespace-pre-wrap text-xs text-ink-muted">{j.description}</p>}
                 <Proposed m={j} path="/profile/employment" onDone={load} onError={setError} />
               </div>
               <div className="flex shrink-0 gap-2">
@@ -319,7 +319,7 @@ function EmploymentCard() {
           ))}
         </ul>
       )}
-      <form onSubmit={add} className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
+      <form onSubmit={add} className="mt-4 grid gap-3 border-t border-hairline pt-4 sm:grid-cols-2">
         <Field label="Job title"><input className={inputCls} required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
         <Field label="Employer"><input className={inputCls} required value={form.employer} onChange={(e) => setForm({ ...form, employer: e.target.value })} /></Field>
         <Field label="Start date"><input className={inputCls} type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></Field>
@@ -372,12 +372,12 @@ function EducationCard() {
     <Card title="Education">
       <ErrorBox error={error} />
       {items === null ? <Loading /> : items.length === 0 ? <Empty>No education entries yet.</Empty> : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-hairline">
           {items.map((ed) => (
             <li key={ed.id} className="flex items-start justify-between gap-3 py-2 text-sm">
               <div>
                 <p className="font-medium">{[ed.degree, ed.field_of_study].filter(Boolean).join(", ") || "Studies"} — {ed.institution}</p>
-                <p className="text-slate-600">{ed.start_date ?? "?"} → {ed.end_date ?? "?"}</p>
+                <p className="text-ink-muted">{ed.start_date ?? "?"} → {ed.end_date ?? "?"}</p>
                 <Proposed m={ed} path="/profile/education" onDone={load} onError={setError} />
               </div>
               <div className="flex shrink-0 gap-2">
@@ -388,7 +388,7 @@ function EducationCard() {
           ))}
         </ul>
       )}
-      <form onSubmit={add} className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
+      <form onSubmit={add} className="mt-4 grid gap-3 border-t border-hairline pt-4 sm:grid-cols-2">
         <Field label="Institution"><input className={inputCls} required value={form.institution} onChange={(e) => setForm({ ...form, institution: e.target.value })} /></Field>
         <Field label="Degree / qualification"><input className={inputCls} value={form.degree} onChange={(e) => setForm({ ...form, degree: e.target.value })} /></Field>
         <Field label="Field of study"><input className={inputCls} value={form.field_of_study} onChange={(e) => setForm({ ...form, field_of_study: e.target.value })} /></Field>
@@ -442,12 +442,12 @@ function CredentialsCard() {
     <Card title="Licences and certifications">
       <ErrorBox error={error} />
       {items === null ? <Loading /> : items.length === 0 ? <Empty>No licences or certifications yet.</Empty> : (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-hairline">
           {items.map((c) => (
             <li key={c.id} className="flex items-start justify-between gap-3 py-2 text-sm">
               <div>
                 <p className="font-medium">{c.name}{c.issuer ? ` — ${c.issuer}` : ""}</p>
-                <p className="text-slate-600">
+                <p className="text-ink-muted">
                   {c.expires_on ? (c.expires_on < today ? `Expired ${c.expires_on}: not used` : `Valid until ${c.expires_on}`) : "No expiry date"}
                 </p>
                 <Proposed m={c} path="/profile/credentials" onDone={load} onError={setError} />
@@ -460,7 +460,7 @@ function CredentialsCard() {
           ))}
         </ul>
       )}
-      <form onSubmit={add} className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
+      <form onSubmit={add} className="mt-4 grid gap-3 border-t border-hairline pt-4 sm:grid-cols-2">
         <Field label="Licence or certification"><input className={inputCls} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
         <Field label="Issued by"><input className={inputCls} value={form.issuer} onChange={(e) => setForm({ ...form, issuer: e.target.value })} /></Field>
         <Field label="Issued on"><input className={inputCls} type="date" value={form.issued_on} onChange={(e) => setForm({ ...form, issued_on: e.target.value })} /></Field>
@@ -516,7 +516,7 @@ function SelfIdentificationCard() {
 
   return (
     <Card title="Self-identification (EEOC / demographic) — optional">
-      <p className="mb-3 text-sm text-slate-600">
+      <p className="mb-3 text-sm text-ink-muted">
         Voluntary, and off unless you turn it on. When on, an EEOC or demographic question (gender, race, veteran, disability, and your
         own self-describe) is answered from the exact option labels you list below — your own stated identity, never guessed. A label is
         used only when it matches an option on the form exactly; anything it doesn’t match stays a question for you, and “Decline to
@@ -570,7 +570,7 @@ function AiDraftingCard() {
         {v === null ? (
           <Loading />
         ) : !v.offered ? (
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-ink-muted">
             {v.status === "not_for_this_account" ? "AI drafting is not available for this account." : "AI drafting is not configured on this server."} You
             write long answers, resumes and cover letters yourself.
           </p>
@@ -579,7 +579,7 @@ function AiDraftingCard() {
             <p>
               {v.given_at ? <Badge tone="green">On</Badge> : <Badge tone="amber">Off</Badge>} Drafts are written by {v.provider} ({v.model}).
             </p>
-            {v.earlier_text && <p className="text-amber-800">The wording below has changed since you agreed. AI drafting stays off until you agree again.</p>}
+            {v.earlier_text && <p className="text-caution-ink">The wording below has changed since you agreed. AI drafting stays off until you agree again.</p>}
             <div>
               <p className="font-medium">Each request holds only:</p>
               <ul className="list-disc pl-5">{v.consent.sends.map((x) => <li key={x}>{x}</li>)}</ul>
@@ -588,9 +588,9 @@ function AiDraftingCard() {
               <p className="font-medium">It never holds:</p>
               <ul className="list-disc pl-5">{v.consent.never_sends.map((x) => <li key={x}>{x}</li>)}</ul>
             </div>
-            <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700" aria-label="What you agree to">{v.consent.text}</p>
+            <p className="rounded-lg border border-hairline bg-surface-2 p-3 text-ink-muted" aria-label="What you agree to">{v.consent.text}</p>
             {v.daily_budget_usd !== null && (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-faint">
                 Spent today on this server: ${v.spent_today_usd?.toFixed(2)} of ${v.daily_budget_usd.toFixed(2)}.
               </p>
             )}
