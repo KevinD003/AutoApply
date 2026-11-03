@@ -9,58 +9,20 @@ import { api } from "@/lib/api";
 // enforces it (drafting_usage). Every amount says what it is: NoEfforts' estimate from the tokens
 // the provider reported, a worst case kept because the outcome or cost is unknown, a worst case
 // held while a request runs, or nothing sent. None of it is the provider's invoice.
-type Basis = "reserved" | "estimated" | "unknown" | "not_sent";
-interface Totals {
-  requests: number;
-  input_tokens: number;
-  output_tokens: number;
-  estimated_usd: number;
-  worst_case_usd: number;
-}
-interface Day extends Totals {
-  day: string;
-}
-interface Request {
-  at: string;
-  provider: string;
-  model: string;
-  status: "reserved" | "settled";
-  outcome: string | null;
-  cost_usd: number;
-  cost_basis: Basis;
-  input_tokens: number | null;
-  output_tokens: number | null;
-  price_version: string | null;
-}
-interface View {
-  offered: boolean;
-  provider: string | null;
-  model: string | null;
-  budget_usd: number | null;
-  resets: string;
-  day: string;
-  all_accounts_today_usd: number | null;
-  remaining_usd: number | null;
-  today: Totals;
-  days: Day[];
-  recent: Request[];
-  pricing: { version: string; model: string; input_per_mtok: number; output_per_mtok: number } | null;
-}
-
-const BASIS: Record<Basis, { label: string; tone: "slate" | "amber" | "indigo" }> = {
+const BASIS = {
   estimated: { label: "estimated", tone: "indigo" },
   unknown: { label: "unknown: worst case kept", tone: "amber" },
   reserved: { label: "in progress: worst case held", tone: "amber" },
   not_sent: { label: "nothing sent", tone: "slate" },
 };
 
-const usd = (n: number | null) => (n === null ? "—" : `$${n.toFixed(4)}`);
+const usd = (n) => (n === null ? "—" : `$${n.toFixed(4)}`);
 
 export default function DraftingSpend() {
-  const [v, setV] = useState<View | null>(null);
-  const [error, setError] = useState<unknown>(null);
+  const [v, setV] = useState(null);
+  const [error, setError] = useState(null);
   useEffect(() => {
-    api<View>("/drafting/usage").then(setV).catch(setError);
+    api("/drafting/usage").then(setV).catch(setError);
   }, []);
   if (!v) return <ErrorBox error={error} />;
   return (
