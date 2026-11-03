@@ -10,71 +10,28 @@ import { api } from "@/lib/api";
 // once a day for a board where you tick "Check daily" (D96).
 // What the board says (listed or not), whether it is in your jobs, and how it matches you are
 // shown apart; none of them is a way to apply.
-interface Provider {
-  key: string;
-  label: string;
-  identifier: string;
-  regions: string[];
-}
-interface Source {
-  id: string;
-  provider: string;
-  provider_label: string;
-  region: string;
-  board: string;
-  employer: string;
-  paused: boolean;
-  daily_check: boolean;
-  next_check_after: string | null;
-  last_success_at: string | null;
-  last_status: "ok" | "failed" | null;
-  last_error: string | null;
-  listed: number;
-  no_longer_listed: number;
-  in_your_jobs: number;
-}
-interface Posting {
-  id: string;
-  title: string | null;
-  location: string | null;
-  workplace: string | null;
-  employment_type: string | null;
-  job_url: string | null;
-  source_lists_it: boolean;
-  no_longer_listed_since: string | null;
-  job_id: string | null;
-  match: { label: string };
-}
-interface View {
-  enabled: boolean;
-  providers: Provider[];
-  not_built: Record<string, string>;
-  daily_check_limit: number;
-  items: Source[];
-}
-
 export default function BoardSources() {
-  const [v, setV] = useState<View | null>(null);
+  const [v, setV] = useState(null);
   const [provider, setProvider] = useState("greenhouse");
   const [region, setRegion] = useState("global");
   const [board, setBoard] = useState("");
   const [employer, setEmployer] = useState("");
-  const [open, setOpen] = useState<string | null>(null);
-  const [posts, setPosts] = useState<Posting[]>([]);
+  const [open, setOpen] = useState(null);
+  const [posts, setPosts] = useState([]);
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
 
   const load = useCallback(() => {
-    api<View>("/discovery/sources").then(setV).catch(setError);
+    api("/discovery/sources").then(setV).catch(setError);
   }, []);
   useEffect(load, [load]);
 
-  const showPostings = useCallback(async (id: string) => {
+  const showPostings = useCallback(async (id) => {
     setOpen(id);
-    setPosts((await api<{ items: Posting[] }>(`/discovery/sources/${id}/postings`)).items);
+    setPosts((await api(`/discovery/sources/${id}/postings`)).items);
   }, []);
 
-  async function run(fn: () => Promise<string | void>) {
+  async function run(fn) {
     setError(null);
     setNotice("");
     try {
@@ -159,7 +116,7 @@ export default function BoardSources() {
                 <Button
                   disabled={!v.enabled || s.paused}
                   onClick={() => run(async () => {
-                    const r = await api<{ status: string; listed: number; message?: string }>(`/discovery/sources/${s.id}/sync`, { method: "POST" });
+                    const r = await api(`/discovery/sources/${s.id}/sync`, { method: "POST" });
                     if (open === s.id) await showPostings(s.id);
                     return r.status === "ok" ? `Read: ${r.listed} listed.` : `Not read: ${r.message ?? "the read failed"} Nothing was changed.`;
                   })}
@@ -210,7 +167,7 @@ export default function BoardSources() {
                       </span>
                       <span className="block text-xs">
                         <Badge tone={p.source_lists_it ? "green" : "slate"}>
-                          {p.source_lists_it ? "Source lists it" : `No longer listed by the board since ${new Date(p.no_longer_listed_since!).toLocaleDateString()}`}
+                          {p.source_lists_it ? "Source lists it" : `No longer listed by the board since ${new Date(p.no_longer_listed_since).toLocaleDateString()}`}
                         </Badge>{" "}
                         <span className="text-ink-faint">Match: {p.match.label}</span>
                       </span>

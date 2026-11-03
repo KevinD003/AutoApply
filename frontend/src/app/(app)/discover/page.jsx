@@ -1,21 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import BoardSources from "@/components/BoardSources";
 import { Badge, Button, Card, Credit, Empty, ErrorBox, Field, inputCls, Loading, Notice, splitList } from "@/components/ui";
-import {
-  api,
-  DiscoveredJob,
-  DiscoveryPlatform,
-  DiscoveryDeleteResult,
-  DiscoveryImportResult,
-  DiscoveryProviderInfo,
-  DiscoveryWatch,
-} from "@/lib/api";
+import { api } from "@/lib/api";
 
-const LINK_TEXT: Record<string, string> = {
+const LINK_TEXT = {
   new_job: "added to your jobs",
   application_url: "already in your jobs (same application link)",
   job_url: "already in your jobs (same job link)",
@@ -23,14 +15,14 @@ const LINK_TEXT: Record<string, string> = {
   previous_link: "already in your jobs",
 };
 
-const SPONSORSHIP_TEXT = { yes: "says yes", no: "says no", unknown: "not stated" } as const;
+const SPONSORSHIP_TEXT = { yes: "says yes", no: "says no", unknown: "not stated" };
 
 // While a watched search is active the list reloads on its own (D56): new postings appear
 // without a page reload, within about a minute of reaching Freehire.
 const REFRESH_MS = 20_000;
 
 // D100: the platforms a listing's address can name (jobs/canonical.py), and "unknown".
-const PLATFORM_CHOICES: [string, string][] = [
+const PLATFORM_CHOICES = [
   ["greenhouse", "Greenhouse"],
   ["lever", "Lever"],
   ["ashby", "Ashby"],
@@ -41,22 +33,22 @@ const PLATFORM_CHOICES: [string, string][] = [
 ];
 
 export default function DiscoverPage() {
-  const [providers, setProviders] = useState<DiscoveryProviderInfo[] | null>(null);
-  const [rows, setRows] = useState<DiscoveredJob[] | null>(null);
-  const [watches, setWatches] = useState<DiscoveryWatch[]>([]);
-  const [error, setError] = useState<unknown>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [providers, setProviders] = useState(null);
+  const [rows, setRows] = useState(null);
+  const [watches, setWatches] = useState([]);
+  const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [platform, setPlatform] = useState("");
-  const [platforms, setPlatforms] = useState<DiscoveryPlatform[]>([]);
+  const [platforms, setPlatforms] = useState([]);
 
   const load = useCallback(async () => {
     setError(null);
     try {
       const [p, r, w, pl] = await Promise.all([
-        api<DiscoveryProviderInfo[]>("/discovery/providers"),
-        api<DiscoveredJob[]>(`/discovery/jobs${platform ? `?platform=${encodeURIComponent(platform)}` : ""}`),
-        api<DiscoveryWatch[]>("/discovery/watches"),
-        api<DiscoveryPlatform[]>("/discovery/platforms"),
+        api("/discovery/providers"),
+        api(`/discovery/jobs${platform ? `?platform=${encodeURIComponent(platform)}` : ""}`),
+        api("/discovery/watches"),
+        api("/discovery/platforms"),
       ]);
       setProviders(p);
       setRows(r);
@@ -80,10 +72,10 @@ export default function DiscoverPage() {
     return () => clearInterval(t);
   }, [watching, load]);
 
-  async function remove(r: DiscoveredJob) {
+  async function remove(r) {
     setNotice(null);
     try {
-      const out = await api<DiscoveryDeleteResult>(`/discovery/jobs/${r.id}`, { method: "DELETE" });
+      const out = await api(`/discovery/jobs/${r.id}`, { method: "DELETE" });
       setNotice(
         `Deleted “${r.title ?? "listing"}”; it will not be added again. ` +
           (out.job_deleted ? "Its job was removed too." : `Its job stays: ${out.job_kept_because}.`),
@@ -96,11 +88,11 @@ export default function DiscoverPage() {
 
   // S6 (D67): re-reads this one record at its source. Never a live read; the linked job is not
   // changed, only what the source says about it.
-  async function refresh(r: DiscoveredJob) {
+  async function refresh(r) {
     setNotice(null);
     setError(null);
     try {
-      const out = await api<{ outcome: "updated" | "unchanged" | "gone" }>(`/discovery/jobs/${r.id}/refresh`, {
+      const out = await api(`/discovery/jobs/${r.id}/refresh`, {
         method: "POST",
       });
       const name = `“${r.title ?? "listing"}”`;
@@ -117,7 +109,7 @@ export default function DiscoverPage() {
     }
   }
 
-  async function stop(w: DiscoveryWatch) {
+  async function stop(w) {
     try {
       await api(`/discovery/watches/${w.id}/stop`, { method: "POST" });
       load();
@@ -191,7 +183,7 @@ export default function DiscoverPage() {
   );
 }
 
-function Watches({ watches, onStop }: { watches: DiscoveryWatch[]; onStop: (w: DiscoveryWatch) => void }) {
+function Watches({ watches, onStop }) {
   return (
     <Card title="Watched searches">
       <p className="mb-2 text-xs text-ink-faint">
@@ -223,26 +215,26 @@ function Watches({ watches, onStop }: { watches: DiscoveryWatch[]; onStop: (w: D
   );
 }
 
-function RunDiscovery({ providers, onDone }: { providers: DiscoveryProviderInfo[]; onDone: () => void }) {
+function RunDiscovery({ providers, onDone }) {
   const [provider, setProvider] = useState(providers[0].name);
   const [titles, setTitles] = useState("");
   const [cities, setCities] = useState("");
   const [query, setQuery] = useState("");
   const [sponsorship, setSponsorship] = useState("any");
   const [usePrefs, setUsePrefs] = useState(false);
-  const [only, setOnly] = useState<string[]>([]);
-  const [result, setResult] = useState<DiscoveryImportResult | null>(null);
-  const [error, setError] = useState<unknown>(null);
+  const [only, setOnly] = useState([]);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  async function submit(e: FormEvent) {
+  async function submit(e) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     setResult(null);
     try {
       setResult(
-        await api<DiscoveryImportResult>("/discovery/import", {
+        await api("/discovery/import", {
           json: {
             provider,
             titles: splitList(titles),
@@ -332,7 +324,7 @@ function RunDiscovery({ providers, onDone }: { providers: DiscoveryProviderInfo[
   );
 }
 
-function DiscoveredRow({ r, onDelete, onRefresh }: { r: DiscoveredJob; onDelete: () => void; onRefresh: () => void }) {
+function DiscoveredRow({ r, onDelete, onRefresh }) {
   const sponsorship = r.source_facts.sponsorship_offered;
   return (
     <li className="space-y-1 py-3 text-sm">
@@ -363,7 +355,7 @@ function DiscoveredRow({ r, onDelete, onRefresh }: { r: DiscoveredJob; onDelete:
       {(r.signal_lines?.length ?? 0) > 0 && (
         // D93: in the source's own terms, display-only; never used to match, approve or apply.
         <p className="text-xs text-ink-muted" data-testid="source-signals">
-          {r.provider_label} says: {r.signal_lines!.join(" · ")} <span className="text-ink-faint">(not checked by NoEfforts)</span>
+          {r.provider_label} says: {r.signal_lines.join(" · ")} <span className="text-ink-faint">(not checked by NoEfforts)</span>
         </p>
       )}
       {r.missing.length > 0 && (
