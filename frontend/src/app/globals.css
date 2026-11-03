@@ -1,10 +1,324 @@
 @import "tailwindcss";
 
+/*
+  NoEfforts premium visual system (D124).
+
+  A semantic design-token layer. Components use semantic utilities — `bg-surface`,
+  `text-ink`, `border-hairline`, `text-brand` — which resolve to CSS variables that
+  switch with the theme, so no `dark:` variants are needed anywhere. The default
+  Tailwind palette (slate/indigo/emerald…) still ships, so every existing page keeps
+  working unchanged while new `.jsx` screens adopt this system.
+
+  Theme resolution:
+    - :root is light.
+    - System dark mode applies automatically, unless the user forced light
+      (`<html data-theme="light">`).
+    - `data-theme="dark"` forces dark regardless of the system.
+*/
+
+:root {
+  color-scheme: light;
+
+  /* Brand — an electric iris, distinct from generic indigo; pairs with glass blur. */
+  --brand: #6c5ce7;
+  --brand-strong: #5747d6;
+  --brand-contrast: #ffffff;
+  --brand-weak: #eceafe; /* tint surface behind brand content */
+  --brand-ring: rgba(108, 92, 231, 0.35);
+  --brand-grad: linear-gradient(135deg, #6c5ce7 0%, #8b7bff 55%, #5ba8ff 120%);
+
+  /* Semantic status accents (calm, not alarmist — "pass" is neutral, not an error). */
+  --positive: #0fae7f;
+  --positive-ink: #047a59;
+  --positive-weak: #e6f7f0;
+  --caution: #cf8a05;
+  --caution-ink: #9a6600;
+  --caution-weak: #fbf1dd;
+  --danger: #e5484d;
+  --danger-ink: #b42318;
+  --danger-weak: #fdeceb;
+  --info-weak: #e9f1ff;
+  --info-ink: #1d4ed8;
+
+  /* Neutral ink + surfaces. */
+  --app-bg: #f5f6fb;
+  --surface: #ffffff;
+  --surface-2: #f7f8fc;
+  --surface-3: #eef0f7;
+  --ink: #10131a;
+  --ink-muted: #565d6e;
+  --ink-faint: #868d9e;
+  --hairline: rgba(16, 19, 26, 0.1);
+  --hairline-strong: rgba(16, 19, 26, 0.16);
+
+  /* Liquid-glass recipe. */
+  --glass-bg: rgba(255, 255, 255, 0.62);
+  --glass-bg-strong: rgba(255, 255, 255, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.7);
+  --glass-hairline: rgba(16, 19, 26, 0.08);
+  --glass-blur: 22px;
+  --glass-saturate: 180%;
+  --glass-shadow: 0 10px 34px rgba(16, 19, 26, 0.14);
+  --glass-tint: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0));
+
+  /* Elevation. */
+  --shadow-sm: 0 1px 2px rgba(16, 19, 26, 0.06), 0 1px 3px rgba(16, 19, 26, 0.07);
+  --shadow-md: 0 4px 16px rgba(16, 19, 26, 0.1);
+  --shadow-lg: 0 16px 48px rgba(16, 19, 26, 0.16);
+
+  /* Radii. */
+  --r-sm: 0.625rem;
+  --r-md: 0.875rem;
+  --r-lg: 1.25rem;
+  --r-xl: 1.75rem;
+  --r-pill: 999px;
+
+  /* Motion. */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 140ms;
+  --dur: 220ms;
+  --dur-slow: 420ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --brand: #8b7bff;
+    --brand-strong: #a394ff;
+    --brand-contrast: #0b0d14;
+    --brand-weak: rgba(139, 123, 255, 0.16);
+    --brand-ring: rgba(139, 123, 255, 0.4);
+    --brand-grad: linear-gradient(135deg, #7b6bff 0%, #8b7bff 55%, #5ba8ff 130%);
+
+    --positive: #2bd4a0;
+    --positive-ink: #74e8c3;
+    --positive-weak: rgba(43, 212, 160, 0.14);
+    --caution: #f0b64a;
+    --caution-ink: #f6cd80;
+    --caution-weak: rgba(240, 182, 74, 0.14);
+    --danger: #ff6b6f;
+    --danger-ink: #ff9ea0;
+    --danger-weak: rgba(255, 107, 111, 0.14);
+    --info-weak: rgba(93, 139, 255, 0.14);
+    --info-ink: #9cb8ff;
+
+    --app-bg: #090b12;
+    --surface: #141824;
+    --surface-2: #10131d;
+    --surface-3: #1c2130;
+    --ink: #eceef5;
+    --ink-muted: #a3aabd;
+    --ink-faint: #6f7689;
+    --hairline: rgba(255, 255, 255, 0.1);
+    --hairline-strong: rgba(255, 255, 255, 0.18);
+
+    --glass-bg: rgba(20, 24, 36, 0.55);
+    --glass-bg-strong: rgba(18, 21, 32, 0.8);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --glass-hairline: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
+    --glass-tint: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0));
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.6);
+  }
+}
+
+/* Forced dark (user override), same values as the media block above. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --brand: #8b7bff;
+  --brand-strong: #a394ff;
+  --brand-contrast: #0b0d14;
+  --brand-weak: rgba(139, 123, 255, 0.16);
+  --brand-ring: rgba(139, 123, 255, 0.4);
+  --brand-grad: linear-gradient(135deg, #7b6bff 0%, #8b7bff 55%, #5ba8ff 130%);
+
+  --positive: #2bd4a0;
+  --positive-ink: #74e8c3;
+  --positive-weak: rgba(43, 212, 160, 0.14);
+  --caution: #f0b64a;
+  --caution-ink: #f6cd80;
+  --caution-weak: rgba(240, 182, 74, 0.14);
+  --danger: #ff6b6f;
+  --danger-ink: #ff9ea0;
+  --danger-weak: rgba(255, 107, 111, 0.14);
+  --info-weak: rgba(93, 139, 255, 0.14);
+  --info-ink: #9cb8ff;
+
+  --app-bg: #090b12;
+  --surface: #141824;
+  --surface-2: #10131d;
+  --surface-3: #1c2130;
+  --ink: #eceef5;
+  --ink-muted: #a3aabd;
+  --ink-faint: #6f7689;
+  --hairline: rgba(255, 255, 255, 0.1);
+  --hairline-strong: rgba(255, 255, 255, 0.18);
+
+  --glass-bg: rgba(20, 24, 36, 0.55);
+  --glass-bg-strong: rgba(18, 21, 32, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-hairline: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
+  --glass-tint: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0));
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.6);
+}
+
+/* Map semantic tokens to Tailwind utilities (inline → they follow the live vars). */
+@theme inline {
+  --color-app: var(--app-bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-hairline: var(--hairline);
+  --color-hairline-strong: var(--hairline-strong);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-contrast: var(--brand-contrast);
+  --color-brand-weak: var(--brand-weak);
+  --color-positive: var(--positive);
+  --color-positive-ink: var(--positive-ink);
+  --color-positive-weak: var(--positive-weak);
+  --color-caution: var(--caution);
+  --color-caution-ink: var(--caution-ink);
+  --color-caution-weak: var(--caution-weak);
+  --color-danger: var(--danger);
+  --color-danger-ink: var(--danger-ink);
+  --color-danger-weak: var(--danger-weak);
+  --color-info-weak: var(--info-weak);
+  --color-info-ink: var(--info-ink);
+}
+
+/*
+  Note: radii, shadows and easing stay as raw custom properties (--r-*, --shadow-*,
+  --ease) and are consumed in the kit via arbitrary values (rounded-[var(--r-lg)],
+  shadow-[var(--shadow-md)]). They are deliberately NOT mapped into Tailwind's
+  --radius-*/--shadow-* namespaces, which would override the default rounded-md/
+  shadow-sm scales the existing pages rely on. Colors above are purely additive.
+*/
+
 html {
   -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--app-bg);
+  color: var(--ink);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Liquid-glass surfaces ------------------------------------------------ */
+
+.glass,
+.glass-strong,
+.glass-nav {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-hairline);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+/*
+  Cards establish their own positioning context for the ::before highlight. The nav
+  deliberately does NOT, so the `sticky`/`fixed` utility on the element wins (this
+  rule loads after Tailwind, so forcing position here would override them) — a
+  sticky/fixed nav is itself a positioning context for the highlight.
+*/
+.glass,
+.glass-strong {
+  position: relative;
+}
+
+.glass-strong {
+  background: var(--glass-bg-strong);
+}
+
+/* The thin top highlight that reads as a glass edge catching light. */
+.glass::before,
+.glass-strong::before,
+.glass-nav::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding-top: 1px;
+  background: var(--glass-tint);
+  -webkit-mask: linear-gradient(#000, transparent 60%);
+  mask: linear-gradient(#000, transparent 60%);
+  pointer-events: none;
+}
+
+/* Opaque, legible fallback where backdrop-filter is unsupported. */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .glass,
+  .glass-strong,
+  .glass-nav {
+    background: var(--surface);
+    border-color: var(--hairline);
+  }
+}
+
+/* ---- Helpers -------------------------------------------------------------- */
+
+.brand-grad {
+  background-image: var(--brand-grad);
+}
+
+.text-grad {
+  background-image: var(--brand-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Safe-area padding for fixed chrome (notches, home indicators). */
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+.pt-safe {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+@keyframes ne-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-rise {
+  animation: ne-rise var(--dur) var(--ease) both;
+}
+
+/* Honour reduced-motion everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
