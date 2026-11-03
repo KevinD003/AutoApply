@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { api, ApprovalScope, AttemptView } from "@/lib/api";
+import { api } from "@/lib/api";
 import { Badge, Button, Card, ErrorBox, inputCls, Notice } from "./ui";
 
-const STATE: Record<string, { label: string; tone: "green" | "amber" | "red" | "indigo" | "slate" }> = {
+const STATE = {
   pending: { label: "Waiting for a worker", tone: "indigo" },
   claimed: { label: "Filling the form", tone: "indigo" },
   sending: { label: "Submitting", tone: "amber" },
@@ -19,31 +19,17 @@ const STATE: Record<string, { label: string; tone: "green" | "amber" | "red" | "
   cancelled: { label: "Cancelled", tone: "slate" },
 };
 
-export default function ExecutionCard({
-  appId,
-  appState,
-  approved,
-  scope,
-  prerequisiteUnmet,
-  onChange,
-}: {
-  appId: string;
-  appState: string;
-  approved: boolean;
-  scope: ApprovalScope | null;
-  // The rehearsal prerequisite is not met: submitting would be refused (the reason is shown on
-  // the review page's "Before the first submission" row).
-  prerequisiteUnmet: boolean;
-  onChange: () => void;
-}) {
-  const [attempts, setAttempts] = useState<AttemptView[]>([]);
-  const [error, setError] = useState<unknown>(null);
+// prerequisiteUnmet: the rehearsal prerequisite is not met, so submitting would be refused (the
+// reason is shown on the review page's "Before the first submission" row).
+export default function ExecutionCard({ appId, appState, approved, scope, prerequisiteUnmet, onChange }) {
+  const [attempts, setAttempts] = useState([]);
+  const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
   const [code, setCode] = useState("");
-  const [confirmWithdraw, setConfirmWithdraw] = useState<string | null>(null);
+  const [confirmWithdraw, setConfirmWithdraw] = useState(null);
 
   const load = useCallback(() => {
-    api<AttemptView[]>(`/applications/${appId}/attempts`).then(setAttempts).catch(setError);
+    api(`/applications/${appId}/attempts`).then(setAttempts).catch(setError);
   }, [appId]);
 
   const active = attempts.some((a) => ["pending", "claimed", "sending", "awaiting_code"].includes(a.state));
@@ -66,7 +52,7 @@ export default function ExecutionCard({
     return () => clearInterval(t);
   }, [active, load, onChange]);
 
-  async function act(fn: () => Promise<unknown>, ok: string) {
+  async function act(fn, ok) {
     setError(null);
     setNotice("");
     try {
@@ -135,7 +121,7 @@ export default function ExecutionCard({
       ) : (
         <ul className="space-y-3">
           {attempts.map((a) => {
-            const s = STATE[a.state] ?? { label: a.state, tone: "slate" as const };
+            const s = STATE[a.state] ?? { label: a.state, tone: "slate" };
             const receipt = a.evidence.find((e) => e.kind === "receipt");
             const reason = [...a.events].reverse().find((e) => typeof e.detail?.reason_code === "string")?.detail?.reason_code;
             return (

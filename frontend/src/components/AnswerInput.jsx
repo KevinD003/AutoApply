@@ -2,35 +2,22 @@
 
 import { useState } from "react";
 
-import { PackageAnswer } from "@/lib/api";
 import { Button, inputCls } from "./ui";
 
-/** Builds the canonical answer value for a question from a type-appropriate control. */
-export default function AnswerInput({
-  q,
-  onSave,
-  busy,
-  offerReuse = false,
-}: {
-  q: PackageAnswer;
-  onSave: (value: Record<string, unknown>, saveToBank: boolean) => void;
-  busy?: boolean;
-  /** Show "Reuse for this exact question" (only where the caller sends save_to_bank). */
-  offerReuse?: boolean;
-}) {
+/** Builds the canonical answer value for a question from a type-appropriate control.
+ * offerReuse shows "Reuse for this exact question" (only where the caller sends save_to_bank). */
+export default function AnswerInput({ q, onSave, busy, offerReuse = false }) {
   const current = q.value ?? {};
-  const [text, setText] = useState<string>(
-    (current.text as string) ?? (current.date as string) ?? (current.number !== undefined ? String(current.number) : ""),
+  const [text, setText] = useState(
+    current.text ?? current.date ?? (current.number !== undefined ? String(current.number) : ""),
   );
-  const [choice, setChoice] = useState<string>((current.label as string) ?? "");
-  const [multi, setMulti] = useState<string[]>(
-    ((current.options as { label: string }[]) ?? []).map((o) => o.label),
-  );
+  const [choice, setChoice] = useState(current.label ?? "");
+  const [multi, setMulti] = useState((current.options ?? []).map((o) => o.label));
   // D115: remembered by default where reuse is allowed (untick to keep it to this application).
   const [bank, setBank] = useState(offerReuse && q.bankable);
   const id = `in-${q.key}`;
 
-  function build(): Record<string, unknown> | null {
+  function build() {
     switch (q.type) {
       case "radio":
       case "select":
@@ -47,7 +34,7 @@ export default function AnswerInput({
     }
   }
 
-  let control: React.ReactNode;
+  let control;
   if (q.type === "radio" || q.type === "select") {
     control = (
       <select id={id} aria-label={q.label} className={inputCls} value={choice} onChange={(e) => setChoice(e.target.value)}>

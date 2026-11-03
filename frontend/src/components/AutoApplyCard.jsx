@@ -4,22 +4,22 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Badge, Button, Card, ErrorBox } from "@/components/ui";
-import { api, AutoApplyState } from "@/lib/api";
+import { api } from "@/lib/api";
 
 // D113: your standing rule to apply automatically (backend app/modules/autoapply): whether it
 // acts here, today's count against the cap, what it did for each job, and your pause switch.
 export default function AutoApplyCard() {
-  const [s, setS] = useState<AutoApplyState | null>(null);
-  const [error, setError] = useState<unknown>(null);
+  const [s, setS] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    api<AutoApplyState>("/auto-apply").then(setS).catch(setError);
+    api("/auto-apply").then(setS).catch(setError);
   }, []);
 
-  async function toggle(paused: boolean) {
+  async function toggle(paused) {
     setError(null);
     try {
-      setS(await api<AutoApplyState>("/auto-apply", { method: "PUT", json: { paused } }));
+      setS(await api("/auto-apply", { method: "PUT", json: { paused } }));
     } catch (e) {
       setError(e);
     }

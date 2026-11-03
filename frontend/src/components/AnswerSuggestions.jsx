@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { api, AnswerSuggestion, PackageView, SuggestionsView } from "@/lib/api";
+import { api } from "@/lib/api";
 import { Button, Card, ErrorBox } from "./ui";
 
-const ENGINE: Record<string, string> = {
+const ENGINE = {
   lightgbm: "your own LightGBM model",
   xgboost: "your own XGBoost model",
   rules: "similar wording (your model trains once you have judged enough suggestions)",
@@ -14,36 +14,28 @@ const ENGINE: Record<string, string> = {
 /** D115: saved answers the answer brain proposes for questions worded differently. "Use this"
  * answers the question and remembers it for this exact wording; "Not this" is never proposed
  * again for it. Each choice teaches your own model. */
-export default function AnswerSuggestions({
-  appId,
-  version,
-  onView,
-}: {
-  appId: string;
-  version: number;
-  onView: (v: PackageView) => void;
-}) {
-  const [data, setData] = useState<SuggestionsView | null>(null);
-  const [error, setError] = useState<unknown>(null);
+export default function AnswerSuggestions({ appId, version, onView }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
-    api<SuggestionsView>(`/applications/${appId}/suggestions`).then(setData).catch(setError);
+    api(`/applications/${appId}/suggestions`).then(setData).catch(setError);
   }, [appId]);
 
   useEffect(() => {
     load();
   }, [load, version]);
 
-  async function judge(s: AnswerSuggestion, what: "accept" | "reject") {
+  async function judge(s, what) {
     setBusy(true);
     setError(null);
     try {
       const json = { key: s.key, bank_entry_id: s.bank_entry_id };
       if (what === "accept") {
-        onView(await api<PackageView>(`/applications/${appId}/suggestions/accept`, { method: "POST", json }));
+        onView(await api(`/applications/${appId}/suggestions/accept`, { method: "POST", json }));
       } else {
-        setData(await api<SuggestionsView>(`/applications/${appId}/suggestions/reject`, { method: "POST", json }));
+        setData(await api(`/applications/${appId}/suggestions/reject`, { method: "POST", json }));
       }
     } catch (e) {
       setError(e);
