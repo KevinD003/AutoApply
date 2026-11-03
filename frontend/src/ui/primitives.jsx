@@ -45,7 +45,7 @@ export function Card({ title, subtitle, actions, className, children, ...props }
       {(title || actions) && (
         <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
-            {title && <h2 className="truncate text-base font-semibold text-ink">{title}</h2>}
+            {title && <h2 className="truncate text-base font-semibold tracking-tight text-ink">{title}</h2>}
             {subtitle && <p className="mt-0.5 text-sm text-ink-muted">{subtitle}</p>}
           </div>
           {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
@@ -77,10 +77,10 @@ export function Button({
   ...props
 }) {
   const variants = {
-    primary: "brand-grad text-brand-contrast shadow-[var(--shadow-sm)] hover:brightness-[1.05] active:brightness-95",
-    secondary: "border border-hairline-strong bg-surface text-ink hover:bg-surface-3",
+    primary: "brand-grad text-brand-contrast shadow-[var(--shadow-md)] hover:brightness-[1.06] active:brightness-95",
+    secondary: "border border-hairline-strong bg-surface text-ink shadow-[var(--shadow-sm)] hover:bg-surface-3",
     ghost: "text-ink-muted hover:bg-surface-3 hover:text-ink",
-    positive: "bg-positive text-white shadow-[var(--shadow-sm)] hover:brightness-[1.05] active:brightness-95",
+    positive: "bg-positive text-white shadow-[var(--shadow-md)] hover:brightness-[1.06] active:brightness-95",
     danger: "border border-danger/40 bg-danger-weak text-danger-ink hover:brightness-[1.03]",
   };
   const sizes = {
@@ -165,9 +165,9 @@ export function StatusPill({ tone = "neutral", children }) {
 
 export function SectionTitle({ children, hint }) {
   return (
-    <div className="mb-3 flex items-baseline justify-between gap-2">
-      <h1 className="text-xl font-semibold tracking-tight text-ink">{children}</h1>
-      {hint && <span className="text-sm text-ink-muted">{hint}</span>}
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <h1 className="font-display text-[1.7rem] font-semibold leading-[1.1] text-ink">{children}</h1>
+      {hint && <div className="text-sm text-ink-muted">{hint}</div>}
     </div>
   );
 }

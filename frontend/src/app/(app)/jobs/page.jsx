@@ -333,8 +333,8 @@ function SwipeCard({ job }) {
       </div>
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-5">
         <div>
-          <h3 className="text-xl font-semibold tracking-tight text-ink">{job.title ?? "Untitled role"}</h3>
-          {job.employer && <p className="mt-1 text-sm text-ink-muted">{job.employer}</p>}
+          <h3 className="font-display text-[1.4rem] font-semibold leading-tight text-ink">{job.title ?? "Untitled role"}</h3>
+          {job.employer && <p className="mt-1.5 text-sm font-medium text-ink-muted">{job.employer}</p>}
           {job.location && (
             <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-ink-muted">
               <IconMapPin size={16} /> {job.location}

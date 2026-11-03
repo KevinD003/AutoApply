@@ -44,7 +44,7 @@ export function Wordmark({ size = 28, className, showText = true }) {
     <span className={cx("inline-flex items-center gap-2", className)}>
       <BrandMark size={size} />
       {showText && (
-        <span className="text-[1.05rem] font-semibold tracking-tight text-ink">
+        <span className="font-display text-[1.2rem] font-semibold text-ink">
           No<span className="text-grad">Efforts</span>
         </span>
       )}
