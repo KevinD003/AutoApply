@@ -1,25 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button, Card, ErrorBox, Field, inputCls, Loading, Notice, splitList, TriSelect } from "@/components/ui";
 import { api } from "@/lib/api";
-
-interface Prefs {
-  titles: string[];
-  fields: string[];
-  industries: string[];
-  seniority: string[];
-  employment_types: string[];
-  work_modes: string[];
-  excluded_employers: string[];
-  target_locations: { city: string | null; region: string | null; country: string | null }[];
-  willing_to_relocate: string;
-  salary_min: number | null;
-  salary_max: number | null;
-  salary_currency: string | null;
-  salary_period: string | null;
-}
 
 const LISTS = [
   ["titles", "Job titles", "e.g. Registered Nurse, Sous Chef, Data Analyst"],
@@ -28,26 +12,26 @@ const LISTS = [
   ["seniority", "Seniority", "e.g. entry, mid, senior"],
   ["employment_types", "Employment types", "e.g. full-time, part-time, contract"],
   ["excluded_employers", "Employers to exclude", "Jobs from these employers are marked excluded on import."],
-] as const;
+];
 
 export default function PreferencesPage() {
-  const [p, setP] = useState<Prefs | null>(null);
-  const [text, setText] = useState<Record<string, string>>({});
+  const [p, setP] = useState(null);
+  const [text, setText] = useState({});
   const [locs, setLocs] = useState("");
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    api<Prefs>("/profile/preferences")
+    api("/profile/preferences")
       .then((r) => {
         setP(r);
-        setText(Object.fromEntries(LISTS.map(([k]) => [k, (r[k] as string[]).join(", ")])));
+        setText(Object.fromEntries(LISTS.map(([k]) => [k, r[k].join(", ")])));
         setLocs(r.target_locations.map((l) => [l.city, l.region, l.country].filter(Boolean).join(", ")).join("\n"));
       })
       .catch(setError);
   }, []);
 
-  async function save(e: FormEvent) {
+  async function save(e) {
     e.preventDefault();
     if (!p) return;
     setError(null);
@@ -58,7 +42,7 @@ export default function PreferencesPage() {
       .map((l) => l.split(",").map((x) => x.trim()).filter(Boolean))
       .filter((parts) => parts.length)
       .map((parts) => {
-        const country = parts.length > 1 && /^[A-Za-z]{2}$/.test(parts[parts.length - 1]) ? parts.pop()!.toUpperCase() : null;
+        const country = parts.length > 1 && /^[A-Za-z]{2}$/.test(parts[parts.length - 1]) ? parts.pop().toUpperCase() : null;
         return { city: parts[0] ?? null, region: parts[1] ?? null, country };
       });
     try {
@@ -71,8 +55,8 @@ export default function PreferencesPage() {
         salary_currency: p.salary_currency || null,
         salary_period: p.salary_period || null,
       };
-      delete (body as Record<string, unknown>).updated_at;
-      setP(await api<Prefs>("/profile/preferences", { method: "PUT", json: body }));
+      delete body.updated_at;
+      setP(await api("/profile/preferences", { method: "PUT", json: body }));
       setSaved(true);
     } catch (err) {
       setError(err);
@@ -81,7 +65,7 @@ export default function PreferencesPage() {
 
   if (!p) return <><ErrorBox error={error} /><Loading /></>;
 
-  const toggleMode = (m: string) =>
+  const toggleMode = (m) =>
     setP({ ...p, work_modes: p.work_modes.includes(m) ? p.work_modes.filter((x) => x !== m) : [...p.work_modes, m] });
 
   return (
