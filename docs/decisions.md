@@ -3908,3 +3908,24 @@ is structured per category — deferred, not built speculatively.
 - **Remaining for D120:** one observed Greenhouse education/employment section (a captured page,
   or an approved read-only inspection) to pin the rendered controls and repeating-row indexing;
   then the DOM filler + live package wiring.
+
+## D123 — Rehearsal runbook + the dynamic-control stop, made explicit (2026-11-03)
+
+- **Runbook.** `docs/rehearsal-runbook.md`: the exact disclosure-only Greenhouse rehearsal
+  workflow for the owner's own deployment, verified against the code. It corrects two earlier
+  inaccuracies: real rehearsal evidence lives in `execution_evidence` (kind
+  disclosure/readback/recheck, strength `none`), **not** the synthetic fixture receiver ledger,
+  and an upload acknowledgement is **not** a confirmed submission; and it states the pilot
+  authorization accurately (recorded in `authorizations.py`, valid through the server-local
+  calendar date 2026-11-06 inclusive, 5 shared attempts, no extension).
+- **No circular gate.** The rehearsal prerequisite (E6) is checked only for `submit` approvals,
+  so a `disclose_only` rehearsal does not require the evidence it establishes. A rehearsal is
+  executable only when the route resolves to `greenhouse_live` (pilot on for the account); a
+  `manual_handoff` route names the exact missing prerequisite and nothing is queued.
+- **Dynamic-control stop, now explicit.** Capture uses a no-JavaScript GET; execution reads the
+  fully rendered DOM and `adapter.schema_matches` (before `fill`) flags any unlisted/new or
+  page-required control and stops before disclosure. Added
+  `tests/test_greenhouse_adapter.py::test_a_required_control_added_only_by_javascript_stops_before_disclosure`
+  and a `gh_js_late_required` fixture mode (a required control injected by JS after load): the
+  package captures clean, but the attempt ends `failed_safe` with nothing disclosed. A zero-error
+  package never hides a control the live page shows.

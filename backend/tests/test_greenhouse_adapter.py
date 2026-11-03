@@ -369,6 +369,22 @@ def test_form_changed_after_approval_stops_before_disclosure(api, receiver):
     assert led["disclosures"] == [] and led["accepted"] == 0
 
 
+def test_a_required_control_added_only_by_javascript_stops_before_disclosure(api, receiver):
+    # A no-JavaScript capture GET cannot see a control the page's own script adds after load, so
+    # the package captures clean (zero unresolved fields). Execution reads the fully rendered DOM
+    # (adapter.schema_matches, called before fill in runner.py) and stops before anything is
+    # disclosed: a zero-error package never hides a control the live page shows.
+    app_id = gh_application(api)
+    aid = queue(api, app_id)
+    receiver.config(mode="gh_js_late_required")
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    detail = attempt(aid).outcome_detail
+    assert "changed since you approved" in detail and "new field(s)" in detail
+    assert "question_" not in detail  # counts only, never the posting's field keys
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
 @pytest.mark.parametrize(
     "mode,expected,accepted",
     [
