@@ -1,19 +1,18 @@
 "use client";
 
-import { ChangeEvent, useState } from "react";
+import { useState } from "react";
 
 import { Button, Card, ErrorBox, Notice } from "./ui";
-import { api, BankImportResult } from "@/lib/api";
+import { api } from "@/lib/api";
 
 // D99: saved answers from a file you supply (another tool's question/answer pairs, or a review
 // sheet). The file is read here, in your browser; only its questions and answers go to your own
 // NoEfforts. Each row is judged by the rules for saved answers; the rest become proposals that
 // answer nothing until you approve each one below.
-type Row = { question: string; answer: string };
 
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
   let cell = "";
   let quoted = false;
   for (let i = 0; i < text.length; i++) {
@@ -46,20 +45,20 @@ function parseCsv(text: string): string[][] {
 /** Rows from JSON ([{question, answer}] or {answers: [...]}) or CSV with question and answer
  * columns. A review sheet with an "approve" column keeps only the rows marked yes or edit, and
  * an edit uses "your corrected answer". */
-export function rowsFrom(name: string, text: string): Row[] {
+export function rowsFrom(name, text) {
   if (name.toLowerCase().endsWith(".json")) {
     const data = JSON.parse(text);
     const list = Array.isArray(data) ? data : Array.isArray(data?.answers) ? data.answers : [];
     return list
-      .filter((d: unknown) => d && typeof d === "object")
-      .map((d: Record<string, unknown>) => ({
+      .filter((d) => d && typeof d === "object")
+      .map((d) => ({
         question: String(d.question ?? d.label ?? ""),
         answer: String(d.answer ?? d.value ?? ""),
       }));
   }
   const [head, ...body] = parseCsv(text);
   if (!head) return [];
-  const col = (re: RegExp) => head.findIndex((h) => re.test(h.trim().toLowerCase()));
+  const col = (re) => head.findIndex((h) => re.test(h.trim().toLowerCase()));
   const q = col(/^question$/);
   const a = col(/^answer$/);
   const approve = col(/^approve/);
@@ -73,14 +72,14 @@ export function rowsFrom(name: string, text: string): Row[] {
   });
 }
 
-export default function BankImport({ onDone }: { onDone: () => void }) {
-  const [rows, setRows] = useState<Row[] | null>(null);
-  const [check, setCheck] = useState<BankImportResult | null>(null);
+export default function BankImport({ onDone }) {
+  const [rows, setRows] = useState(null);
+  const [check, setCheck] = useState(null);
   const [done, setDone] = useState("");
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  async function pick(e: ChangeEvent<HTMLInputElement>) {
+  async function pick(e) {
     const file = e.target.files?.[0];
     setRows(null);
     setCheck(null);
@@ -92,7 +91,7 @@ export default function BankImport({ onDone }: { onDone: () => void }) {
       if (parsed.length === 0) throw new Error("No question and answer rows in this file.");
       if (parsed.length > 5000) throw new Error("At most 5,000 rows at a time.");
       setRows(parsed);
-      setCheck(await api<BankImportResult>("/answer-bank/import", { json: { rows: parsed, dry_run: true } }));
+      setCheck(await api("/answer-bank/import", { json: { rows: parsed, dry_run: true } }));
     } catch (err) {
       setError(err);
     }
@@ -103,7 +102,7 @@ export default function BankImport({ onDone }: { onDone: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<BankImportResult>("/answer-bank/import", { json: { rows, dry_run: false } });
+      const r = await api("/answer-bank/import", { json: { rows, dry_run: false } });
       setDone(`${r.added} added as proposals. Approve each one below before it is used.`);
       setRows(null);
       setCheck(null);

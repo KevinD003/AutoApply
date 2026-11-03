@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, ErrorBox, inputCls } from "@/components/ui";
-import { api, FollowUp, NOTIFICATIONS_CHANGED } from "@/lib/api";
+import { api, NOTIFICATIONS_CHANGED } from "@/lib/api";
 
 // D92: when to check on an application you submitted, and a message to copy. Derived from the
 // application's own records (backend followups/service.py); NoEfforts sends nothing itself.
-const STATUS: Record<FollowUp["status"], { label: string; tone: "slate" | "green" | "amber" | "red" | "indigo" }> = {
+const STATUS = {
   not_submitted: { label: "Nothing to follow up yet", tone: "slate" },
   scheduled: { label: "Follow-up scheduled", tone: "indigo" },
   due: { label: "Time to follow up", tone: "amber" },
@@ -15,33 +15,25 @@ const STATUS: Record<FollowUp["status"], { label: string; tone: "slate" | "green
   closed: { label: "Closed by the outcome you recorded", tone: "slate" },
 };
 
-function day(iso: string | null | undefined) {
+function day(iso) {
   return iso ? new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }) : "";
 }
 
-export default function FollowUpCard({
-  appId,
-  refreshKey,
-  hideUntilSubmitted = false,
-}: {
-  appId: string;
-  refreshKey?: string | number;
-  hideUntilSubmitted?: boolean;
-}) {
-  const [f, setF] = useState<FollowUp | null>(null);
+export default function FollowUpCard({ appId, refreshKey, hideUntilSubmitted = false }) {
+  const [f, setF] = useState(null);
   const [remindOn, setRemindOn] = useState("");
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
 
   const load = useCallback(() => {
-    api<FollowUp>(`/applications/${appId}/follow-up`).then(setF).catch(setError);
+    api(`/applications/${appId}/follow-up`).then(setF).catch(setError);
   }, [appId]);
   useEffect(load, [load, refreshKey]);
 
-  async function act(action: "done" | "remind" | "stop" | "resume") {
+  async function act(action) {
     setError(null);
     try {
-      setF(await api<FollowUp>(`/applications/${appId}/follow-up`, { json: { action, ...(action === "remind" ? { remind_on: remindOn } : {}) } }));
+      setF(await api(`/applications/${appId}/follow-up`, { json: { action, ...(action === "remind" ? { remind_on: remindOn } : {}) } }));
       window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED));
     } catch (e) {
       setError(e);

@@ -3,17 +3,17 @@
 import { useEffect, useState } from "react";
 
 import { Badge, Card, ErrorBox } from "@/components/ui";
-import { api, RehearsalHandoff as Handoff } from "@/lib/api";
+import { api } from "@/lib/api";
 
 // D111 §5: what a disclosure-only rehearsal on the employer's real Greenhouse page would
 // disclose, how it stops before submitting, and which prerequisites hold now (backend
 // execution/handoff.py). It reads only and grants nothing; every gate checks again.
-export default function RehearsalHandoff({ appId, refreshKey }: { appId: string; refreshKey?: string | number }) {
-  const [h, setH] = useState<Handoff | null>(null);
-  const [error, setError] = useState<unknown>(null);
+export default function RehearsalHandoff({ appId, refreshKey }) {
+  const [h, setH] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    api<Handoff>(`/applications/${appId}/rehearsal-handoff`).then(setH).catch(setError);
+    api(`/applications/${appId}/rehearsal-handoff`).then(setH).catch(setError);
   }, [appId, refreshKey]);
 
   if (error) return <ErrorBox error={error} />;
