@@ -117,3 +117,32 @@ export const IconMapPin = (p) => (
     <circle cx="12" cy="10" r="2.5" />
   </Svg>
 );
+
+export const IconFileText = (p) => (
+  <Svg {...p}>
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+    <path d="M14 3v5h5M9 13h6M9 17h6" />
+  </Svg>
+);
+
+export const IconBookmark = (p) => (
+  <Svg {...p}>
+    <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z" />
+  </Svg>
+);
+
+export const IconSliders = (p) => (
+  <Svg {...p}>
+    <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M18 18h2" />
+    <circle cx="16" cy="6" r="2" />
+    <circle cx="10" cy="12" r="2" />
+    <circle cx="15" cy="18" r="2" />
+  </Svg>
+);
+
+export const IconGear = (p) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 2.5 13 5l2.5-.8L16 6.8l2.3 1L17.5 10l1.8 1.8-2.2 1.4.2 2.6-2.6.2-1.2 2.3-2.3-1.2-2.3 1.2-1.2-2.3-2.6-.2.2-2.6L2.7 11.8 4.5 10l-.8-2.2 2.3-1L6.8 4.2 9.3 5z" />
+  </Svg>
+);

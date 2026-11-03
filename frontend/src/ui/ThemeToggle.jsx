@@ -12,26 +12,20 @@ import { IconMoon, IconSun } from "./icons";
 */
 const KEY = "ne-theme";
 
-function systemDark() {
-  try {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;
-  } catch {
-    return false;
-  }
-}
-
 export function ThemeToggle() {
   const [mounted, setMounted] = useState(false);
   const [dark, setDark] = useState(false);
 
   useEffect(() => {
-    let stored = null;
+    // Default is light during the migration (so pages not yet themed never render
+    // dark from a system preference). A pre-paint script in the root layout applies
+    // the stored choice; here we read the live attribute so the icon matches.
+    let isDark = false;
     try {
-      stored = localStorage.getItem(KEY);
+      isDark = document.documentElement.getAttribute("data-theme") === "dark";
     } catch {
       /* ignore */
     }
-    const isDark = stored === "dark" || (stored == null && systemDark());
     setDark(isDark);
     setMounted(true);
   }, []);
