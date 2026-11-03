@@ -10,9 +10,9 @@ import ExecutionCard from "@/components/ExecutionCard";
 import FollowUpCard from "@/components/FollowUpCard";
 import RehearsalHandoff from "@/components/RehearsalHandoff";
 import { Badge, Button, Card, ErrorBox, inputCls, Loading, Notice } from "@/components/ui";
-import { api, ApiError, Doc, DraftingStatus, GeneratedDoc, PackageAnswer, PackageDiff, PackageDraft, PackageView, ReviewControls } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 
-const SOURCE: Record<string, { label: string; tone: "green" | "indigo" | "amber" | "slate" | "red" }> = {
+const SOURCE = {
   profile_fact: { label: "Profile fact", tone: "green" },
   deterministic_mapping: { label: "Mapped from profile", tone: "green" },
   answer_bank: { label: "Saved answer", tone: "indigo" },
@@ -23,7 +23,7 @@ const SOURCE: Record<string, { label: string; tone: "green" | "indigo" | "amber"
   unresolved: { label: "Unresolved", tone: "red" },
 };
 
-const PREREQUISITE_TONE: Record<string, "green" | "amber" | "slate"> = {
+const PREREQUISITE_TONE = {
   met: "green",
   established: "green",
   unmet: "amber",
@@ -32,14 +32,14 @@ const PREREQUISITE_TONE: Record<string, "green" | "amber" | "slate"> = {
 };
 
 // C13: what revoking did to a submission in progress (backend execution.service.stop_for_revoke).
-const REVOKE_NOTICE: Record<string, string> = {
+const REVOKE_NOTICE = {
   none: "Approval revoked.",
   cancelled: "Approval revoked. The queued submission was stopped before anything was sent.",
   stopping:
     "Approval revoked. The submission in progress stops before the final click; anything already entered on the employer's form stays entered.",
 };
 
-const STATE_LABEL: Record<string, string> = {
+const STATE_LABEL = {
   needs_user_action: "Needs your input",
   awaiting_approval: "Ready for your approval",
   queued: "Approved and queued",
@@ -50,20 +50,20 @@ const STATE_LABEL: Record<string, string> = {
 };
 
 export default function ReviewPage() {
-  const { id } = useParams<{ id: string }>();
-  const [view, setView] = useState<PackageView | null>(null);
-  const [docs, setDocs] = useState<Doc[]>([]);
-  const [error, setError] = useState<unknown>(null);
+  const { id } = useParams();
+  const [view, setView] = useState(null);
+  const [docs, setDocs] = useState([]);
+  const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [noForm, setNoForm] = useState<string | null>(null);
+  const [noForm, setNoForm] = useState(null);
 
   const load = useCallback(async () => {
     // The documents are read again with the package: a tailored document accepted below must be
     // offered in the resume choice at once.
-    api<Doc[]>("/documents").then(setDocs).catch(() => undefined);
+    api("/documents").then(setDocs).catch(() => undefined);
     try {
-      setView(await api<PackageView>(`/applications/${id}/package`));
+      setView(await api(`/applications/${id}/package`));
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) setNoForm(e.message);
       else setError(e);
@@ -74,12 +74,12 @@ export default function ReviewPage() {
     load();
   }, [load]);
 
-  async function call(path: string, method: string, json: unknown, ok?: string | ((v: PackageView & { revoke_effect?: string }) => string)) {
+  async function call(path, method, json, ok) {
     setBusy(true);
     setError(null);
     setNotice("");
     try {
-      const v = await api<PackageView & { revoke_effect?: string }>(path, { method, json });
+      const v = await api(path, { method, json });
       setView(v);
       if (ok) setNotice(typeof ok === "function" ? ok(v) : ok);
     } catch (e) {
@@ -92,7 +92,7 @@ export default function ReviewPage() {
 
   const groups = useMemo(() => {
     if (!view) return [];
-    const out = new Map<string, PackageAnswer[]>();
+    const out = new Map();
     for (const a of view.package.content.answers) {
       const k = a.step ?? "Questions";
       out.set(k, [...(out.get(k) ?? []), a]);
@@ -123,14 +123,14 @@ export default function ReviewPage() {
   const special = answers.filter((a) => a.sensitive || a.acknowledgment);
   const ready = c.unresolved.length === 0 && c.validation_errors.length === 0;
   // L2/L3: a generated document is offered only once accepted, and only for its own application.
-  const usable = (d: Doc) => d.origin !== "generated" || (!!d.accepted_at && d.made_for_application_id === id);
+  const usable = (d) => d.origin !== "generated" || (!!d.accepted_at && d.made_for_application_id === id);
   const resumes = docs.filter((d) => d.kind === "resume" && usable(d));
   const letters = docs.filter((d) => d.kind === "cover_letter" && usable(d));
-  const rc = (key: string): ReviewControls | undefined => view.review?.[key];
+  const rc = (key) => view.review?.[key];
   const coverQ = answers.find((a) => rc(a.key)?.document_role === "cover_letter");
   const sendsTo = originOf(c.destination.submit_url);
-  const clear = (key: string) => call(`/applications/${id}/answers/clear`, "POST", { key }, "Your answer for this application was cleared.");
-  const save = (key: string) => (value: Record<string, unknown>, save_to_bank = false) =>
+  const clear = (key) => call(`/applications/${id}/answers/clear`, "POST", { key }, "Your answer for this application was cleared.");
+  const save = (key) => (value, save_to_bank = false) =>
     call(`/applications/${id}/answers`, "PUT", { key, value, save_to_bank }, "Answer saved.");
   const drafts = Object.fromEntries(view.drafts.map((d) => [d.field_key, d]));
   const prereq = view.rehearsal_prerequisite;
@@ -402,36 +402,36 @@ export default function ReviewPage() {
               const live = rc(q0.key);
               const q = live?.proposed_value ? { ...q0, value: live.proposed_value, display: live.proposed ?? null } : q0;
               return (
-              <li key={q.key} className="border-b border-hairline pb-4">
-                <QuestionHeader q={q} />
-                {q.acknowledgment ? (
-                  <ChoiceRow
-                    current={c.consents[q.key]}
-                    choices={[
-                      ["agree", "I agree"],
-                      ["decline", "I decline"],
-                    ]}
-                    onPick={(choice) => call(`/applications/${id}/consents`, "PUT", { key: q.key, choice })}
-                  />
-                ) : (
-                  <div className="space-y-2">
-                    <AnswerInput key={`${q.key}-${view.package.version}`} q={q} busy={busy} onSave={(value) => save(q.key)(value)} />
+                <li key={q.key} className="border-b border-hairline pb-4">
+                  <QuestionHeader q={q} />
+                  {q.acknowledgment ? (
                     <ChoiceRow
                       current={c.consents[q.key]}
                       choices={[
-                        ["disclose", "Include this answer"],
-                        ["withhold", "Don't disclose"],
+                        ["agree", "I agree"],
+                        ["decline", "I decline"],
                       ]}
                       onPick={(choice) => call(`/applications/${id}/consents`, "PUT", { key: q.key, choice })}
                     />
-                    {rc(q.key)?.clear && (
-                      <Button variant="secondary" disabled={busy} className="!min-h-9 !py-1.5" onClick={() => clear(q.key)}>
-                        Clear my answer
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </li>
+                  ) : (
+                    <div className="space-y-2">
+                      <AnswerInput key={`${q.key}-${view.package.version}`} q={q} busy={busy} onSave={(value) => save(q.key)(value)} />
+                      <ChoiceRow
+                        current={c.consents[q.key]}
+                        choices={[
+                          ["disclose", "Include this answer"],
+                          ["withhold", "Don't disclose"],
+                        ]}
+                        onPick={(choice) => call(`/applications/${id}/consents`, "PUT", { key: q.key, choice })}
+                      />
+                      {rc(q.key)?.clear && (
+                        <Button variant="secondary" disabled={busy} className="!min-h-9 !py-1.5" onClick={() => clear(q.key)}>
+                          Clear my answer
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </li>
               );
             })}
           </ul>
@@ -464,7 +464,7 @@ export default function ReviewPage() {
                       setError(null);
                       setNotice("");
                       try {
-                        const d = await api<{ status: string }>(`/applications/${id}/drafts`, { method: "POST", json: { key: q.key } });
+                        const d = await api(`/applications/${id}/drafts`, { method: "POST", json: { key: q.key } });
                         // C15: the same facts and question give the same draft; one already used is said so.
                         if (d.status === "accepted") setNotice("You already used this draft for these facts: it is your answer below.");
                         load();
@@ -512,7 +512,7 @@ export default function ReviewPage() {
   );
 }
 
-const CHANGED: Record<string, string> = {
+const CHANGED = {
   value: "answer changed",
   question: "the question changed",
   basis: "the facts behind it changed",
@@ -521,22 +521,21 @@ const CHANGED: Record<string, string> = {
 };
 
 /** C14: a read-only list of what changed between two package versions. */
-function DiffToggle({ appId, from, to, label }: { appId: string; from: number; to: number; label: string }) {
-  const [diff, setDiff] = useState<PackageDiff | null>(null);
+function DiffToggle({ appId, from, to, label }) {
+  const [diff, setDiff] = useState(null);
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
   async function toggle() {
     if (!open && !diff) {
       try {
-        setDiff(await api<PackageDiff>(`/applications/${appId}/package/diff?from_version=${from}&to_version=${to}`));
+        setDiff(await api(`/applications/${appId}/package/diff?from_version=${from}&to_version=${to}`));
       } catch (e) {
         setError(e);
       }
     }
     setOpen(!open);
   }
-  const shown = (x: { display: string | null; status: string } | null) =>
-    x === null ? "—" : (x.display ?? (x.status === "blank_optional" ? "(left blank)" : "(no answer)"));
+  const shown = (x) => (x === null ? "—" : (x.display ?? (x.status === "blank_optional" ? "(left blank)" : "(no answer)")));
   const empty = diff && !diff.answers.length && !diff.documents.length && !diff.consents.length && !diff.destination.length;
   return (
     <div className="mt-1">
@@ -574,7 +573,7 @@ function DiffToggle({ appId, from, to, label }: { appId: string; from: number; t
   );
 }
 
-function originOf(url: string | null): string | null {
+function originOf(url) {
   if (!url) return null;
   try {
     return new URL(url).origin;
@@ -586,19 +585,7 @@ function originOf(url: string | null): string | null {
 /** C12: change a resolved answer, answer an optional question, clear an answer given here, or
  * go to the profile for a fact that belongs there. Questions waiting for an answer, sensitive
  * questions and acknowledgments have their own cards above. */
-function RowActions({
-  q,
-  controls,
-  busy,
-  onSave,
-  onClear,
-}: {
-  q: PackageAnswer;
-  controls: ReviewControls | undefined;
-  busy: boolean;
-  onSave: (value: Record<string, unknown>, saveToBank: boolean) => void;
-  onClear: () => void;
-}) {
+function RowActions({ q, controls, busy, onSave, onClear }) {
   const [open, setOpen] = useState(false);
   if (q.sensitive || q.acknowledgment) return null;
   const editable =
@@ -628,7 +615,7 @@ function RowActions({
   );
 }
 
-function QuestionHeader({ q }: { q: PackageAnswer }) {
+function QuestionHeader({ q }) {
   const s = SOURCE[q.status === "resolved" ? q.source : q.status === "blank_optional" && q.source === "consent" ? "consent" : "unresolved"];
   return (
     <div className="mb-2">
@@ -647,7 +634,7 @@ function QuestionHeader({ q }: { q: PackageAnswer }) {
   );
 }
 
-function ChoiceRow({ current, choices, onPick }: { current?: string; choices: [string, string][]; onPick: (c: string) => void }) {
+function ChoiceRow({ current, choices, onPick }) {
   return (
     <div className="flex flex-wrap gap-2" role="group">
       {choices.map(([value, label]) => (
@@ -659,7 +646,7 @@ function ChoiceRow({ current, choices, onPick }: { current?: string; choices: [s
   );
 }
 
-const FACT_KIND: Record<string, string> = {
+const FACT_KIND = {
   summary: "Profile summary",
   skills: "Skills",
   employment: "Work history",
@@ -668,7 +655,7 @@ const FACT_KIND: Record<string, string> = {
 };
 
 // L4 (D74): why AI drafting is not available here, and what to do instead.
-function DraftingOff({ status, instead, small }: { status: DraftingStatus; instead: string; small?: boolean }) {
+function DraftingOff({ status, instead, small }) {
   const cls = small ? "mt-1 text-xs text-ink-faint" : "text-sm text-ink-muted";
   if (status === "consent_needed")
     return (
@@ -693,19 +680,7 @@ function DraftingOff({ status, instead, small }: { status: DraftingStatus; inste
   );
 }
 
-function DraftControls({
-  status,
-  draft,
-  onRequest,
-  onAccept,
-  onReject,
-}: {
-  status: DraftingStatus;
-  draft?: PackageDraft;
-  onRequest: () => void;
-  onAccept: (id: string) => void;
-  onReject: (id: string) => void;
-}) {
+function DraftControls({ status, draft, onRequest, onAccept, onReject }) {
   if (status !== "available") return <DraftingOff status={status} instead="Write this answer yourself." small />;
   return (
     <div className="mt-2 space-y-2">
@@ -741,19 +716,19 @@ function DraftControls({
 
 // L2/L3 (D73): a resume tailored to this job, or a cover letter, written from your approved facts
 // only. Nothing is used until you accept it, and it stops being usable when a fact it cites changes.
-function Tailored({ appId, status, onChange }: { appId: string; status: DraftingStatus; onChange: () => void }) {
-  const [items, setItems] = useState<GeneratedDoc[] | null>(null);
-  const [error, setError] = useState<unknown>(null);
+function Tailored({ appId, status, onChange }) {
+  const [items, setItems] = useState(null);
+  const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
   const load = useCallback(() => {
-    api<GeneratedDoc[]>(`/applications/${appId}/generated-documents`).then(setItems).catch((e) => {
+    api(`/applications/${appId}/generated-documents`).then(setItems).catch((e) => {
       setError(e);
       setItems([]);
     });
   }, [appId]);
   useEffect(load, [load]);
 
-  async function act(path: string, body: unknown, ok: string) {
+  async function act(path, body, ok) {
     setError(null);
     setNotice("");
     try {
@@ -807,7 +782,7 @@ function Tailored({ appId, status, onChange }: { appId: string; status: Drafting
                   <p className="mb-1 font-sans text-ink-muted">Changes from {g.base_label}:</p>
                   {g.diff.map((d, i) => (
                     <p key={i} className={d.op === "+" ? "text-positive-ink" : d.op === "-" ? "text-danger-ink line-through" : "text-ink-muted"}>
-                      {d.op === " " ? "\u00a0" : d.op} {d.line}
+                      {d.op === " " ? " " : d.op} {d.line}
                     </p>
                   ))}
                 </div>
