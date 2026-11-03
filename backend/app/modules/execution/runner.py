@@ -11,6 +11,7 @@ filling pass, before the send gate: data entered/uploaded, nothing submitted.
 import hashlib
 import logging
 import time
+import traceback
 import uuid
 from urllib.parse import urlsplit
 
@@ -346,7 +347,10 @@ def run_attempt(attempt_id: str, worker: str) -> str:
     except Exception as e:  # noqa: BLE001
         # The exception type only: browser errors can quote URLs, selectors or page text, so
         # neither the message nor the traceback is logged (same as the API route below).
-        log.warning("attempt %s failed in phase %s (%s)", aid, phase, type(e).__name__)
+        log.warning(
+            "attempt %s failed in phase %s (%s) at %s",
+            aid, phase, type(e).__name__, _origin_frames(e),
+        )  # fmt: skip
         reason = f"internal error ({type(e).__name__})"
         if phase == "before_disclosure":
             svc.fail_safe(aid, worker, gen, reason)
@@ -413,6 +417,26 @@ def _origin_of(url: str) -> str:
     return f"{p.scheme}://{p.netloc}" if p.netloc else p.scheme
 
 
+def _origin_frames(e: BaseException, limit: int = 15) -> str:
+    """Where an exception came from, as code locations only: `file:line:function` for the last
+    frames, never `str(e)`. A browser error can quote a URL, selector or page text in its
+    message, so the message and arguments are never logged — but a traceback frame carries only
+    source positions (locals and source lines are not looked up here), which name our own code
+    and leak nothing about the page or the applicant. This turns an opaque "internal error
+    (TypeError)" into the exact line to look at. Diagnostics must never themselves raise."""
+    try:
+        summary = traceback.StackSummary.extract(
+            traceback.walk_tb(e.__traceback__), lookup_lines=False, capture_locals=False
+        )
+        parts = [
+            f"{fr.filename.rsplit('/', 1)[-1]}:{fr.lineno}:{fr.name}"
+            for fr in list(summary)[-limit:]
+        ]
+        return " > ".join(parts) or "-"
+    except Exception:  # noqa: BLE001
+        return "-"
+
+
 def _run_api(aid, worker, gen, adapter) -> str:
     """The API route: the same phases and fencing as the browser route, no browser."""
     s = get_settings()
@@ -475,7 +499,10 @@ def _run_api(aid, worker, gen, adapter) -> str:
         log.warning("attempt %s: lost authority in phase %s; stopped", aid, phase)
         return "lost_authority"
     except Exception as e:  # noqa: BLE001
-        log.warning("attempt %s failed in phase %s (%s)", aid, phase, type(e).__name__)
+        log.warning(
+            "attempt %s failed in phase %s (%s) at %s",
+            aid, phase, type(e).__name__, _origin_frames(e),
+        )  # fmt: skip
         reason = f"internal error ({type(e).__name__})"
         if phase == "before_disclosure":
             svc.fail_safe(aid, worker, gen, reason)
