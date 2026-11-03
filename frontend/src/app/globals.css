@@ -1,68 +1,72 @@
 @import "tailwindcss";
 
 /*
-  NoEfforts premium visual system (D124 — unslop pass).
+  NoEfforts premium visual system — "Petrol & Porcelain" (D125).
 
   A semantic design-token layer. Components use semantic utilities — bg-surface,
   text-ink, border-hairline, text-brand — which resolve to CSS variables that switch
-  with the theme, so no `dark:` variants are needed. The default Tailwind palette
-  still ships, so existing pages keep working while new .jsx screens adopt this.
+  with the theme, so no `dark:` variants are needed, and the palette is changed in one
+  place here rather than per component.
 
-  Design intent: crafted, editorial, restrained. An optical serif (Fraunces) for
-  display and a warm grotesk (Hanken Grotesk) for text; the iris brand used as an
-  accent (the mark, key CTAs, active states), never as a wash; layered soft shadows
-  for real depth; a calm near-neutral ground. Theme: :root is light; system dark
-  applies unless the user forced light; data-theme="dark" forces dark.
+  Direction: warm porcelain and graphite foundations; a deep petrol/teal as the one
+  principal accent (the mark, primary actions, active states, focus) — never a wash;
+  restrained, clearly-distinct colours for real status and data (a true green for
+  positive, amber for caution, a warm red for danger, a calm slate for neutral info),
+  so status never reads as brand; layered soft shadows for real depth. Premium is
+  hierarchy, type, spacing and execution — not blur or gradient for its own sake.
+
+  Theme: :root is light; system dark applies unless the user forced light;
+  data-theme="dark" forces dark. Contrast is AA (text ≥ 4.5:1) in both themes.
 */
 
 :root {
   color-scheme: light;
 
-  /* Brand — a deep, sophisticated iris. Used sparingly, as an accent. */
-  --brand: #5d4bde;
-  --brand-strong: #4a39cb;
+  /* Brand — a deep petrol/teal. Used deliberately, as the one accent. */
+  --brand: #0c6b74;
+  --brand-strong: #09555d;
   --brand-contrast: #ffffff;
-  --brand-weak: #edeafe;
-  --brand-ring: rgba(93, 75, 222, 0.32);
-  --brand-grad: linear-gradient(135deg, #5d4bde 0%, #8b74ff 100%);
+  --brand-weak: #d8ecec;
+  --brand-ring: rgba(12, 107, 116, 0.34);
+  --brand-grad: linear-gradient(135deg, #0a6670 0%, #12938c 100%);
 
-  /* Status accents — calm, not alarmist. "Pass" is neutral, never an error. */
-  --positive: #0f9d78;
-  --positive-ink: #09765a;
-  --positive-weak: #e6f6f0;
-  --caution: #bf7d00;
-  --caution-ink: #8a5a00;
-  --caution-weak: #f9f0db;
-  --danger: #d6454f;
-  --danger-ink: #ad2a32;
-  --danger-weak: #fcebec;
-  --info-weak: #ebf0ff;
-  --info-ink: #3a4fc4;
+  /* Status — restrained, distinct from the teal brand. "Pass" is neutral, not an error. */
+  --positive: #1f9452;
+  --positive-ink: #137038;
+  --positive-weak: #e2f3e8;
+  --caution: #b4730b;
+  --caution-ink: #875400;
+  --caution-weak: #f6edda;
+  --danger: #cf4040;
+  --danger-ink: #a62d2e;
+  --danger-weak: #fae9e8;
+  --info-weak: #e9eef0;
+  --info-ink: #41535a;
 
-  /* Near-neutral ink + surfaces with a faint violet warmth to tie to the brand. */
-  --app-bg: #f3f3f8;
+  /* Warm porcelain surfaces + graphite ink. */
+  --app-bg: #f2efe9;
   --surface: #ffffff;
-  --surface-2: #f6f6fb;
-  --surface-3: #edecf3;
-  --ink: #161521;
-  --ink-muted: #5a5869;
-  --ink-faint: #8d8b9b;
-  --hairline: rgba(22, 21, 33, 0.08);
-  --hairline-strong: rgba(22, 21, 33, 0.14);
+  --surface-2: #f7f4ee;
+  --surface-3: #ece7dd;
+  --ink: #1f2428;
+  --ink-muted: #596268;
+  --ink-faint: #8a9397;
+  --hairline: rgba(31, 36, 40, 0.09);
+  --hairline-strong: rgba(31, 36, 40, 0.15);
 
-  /* Liquid-glass recipe. */
-  --glass-bg: rgba(255, 255, 255, 0.66);
+  /* Liquid-glass recipe (porcelain). */
+  --glass-bg: rgba(255, 255, 255, 0.64);
   --glass-bg-strong: rgba(255, 255, 255, 0.85);
-  --glass-hairline: rgba(22, 21, 33, 0.07);
-  --glass-blur: 22px;
-  --glass-saturate: 170%;
-  --glass-shadow: 0 8px 30px -10px rgba(22, 21, 33, 0.16);
+  --glass-hairline: rgba(31, 36, 40, 0.08);
+  --glass-blur: 20px;
+  --glass-saturate: 165%;
+  --glass-shadow: 0 8px 30px -10px rgba(31, 36, 40, 0.16);
   --glass-tint: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
 
-  /* Layered elevation. */
-  --shadow-sm: 0 1px 2px rgba(22, 21, 33, 0.05), 0 1px 3px -1px rgba(22, 21, 33, 0.06);
-  --shadow-md: 0 2px 6px rgba(22, 21, 33, 0.05), 0 12px 26px -8px rgba(22, 21, 33, 0.12);
-  --shadow-lg: 0 6px 14px -4px rgba(22, 21, 33, 0.06), 0 30px 60px -16px rgba(22, 21, 33, 0.2);
+  /* Layered elevation (warm graphite). */
+  --shadow-sm: 0 1px 2px rgba(31, 36, 40, 0.05), 0 1px 3px -1px rgba(31, 36, 40, 0.06);
+  --shadow-md: 0 2px 6px rgba(31, 36, 40, 0.05), 0 12px 26px -8px rgba(31, 36, 40, 0.12);
+  --shadow-lg: 0 6px 14px -4px rgba(31, 36, 40, 0.06), 0 30px 60px -16px rgba(31, 36, 40, 0.2);
 
   /* Radii. */
   --r-sm: 0.625rem;
@@ -71,51 +75,64 @@
   --r-xl: 1.75rem;
   --r-pill: 999px;
 
-  /* Motion. */
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --dur-fast: 140ms;
-  --dur: 220ms;
-  --dur-slow: 420ms;
+  /* ---- Motion system -----------------------------------------------------
+     One coherent set. Durations climb with the size of the change; easings are
+     named by intent. Transforms/opacity only (cheap, no layout thrash). The
+     reduced-motion block at the foot neutralises all of it. */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* most state changes (decelerate) */
+  --ease-emphasized: cubic-bezier(0.22, 1, 0.36, 1); /* entrances, major moves */
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1); /* leaving the screen (accelerate) */
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1); /* one restrained overshoot; used sparingly */
+  --dur-1: 120ms; /* tap / instant feedback */
+  --dur-2: 200ms; /* standard state + small layout */
+  --dur-3: 320ms; /* panels, sheets, expand/collapse */
+  --dur-4: 460ms; /* deliberate major navigation */
+  /* Back-compat aliases (earlier utilities use these names). */
+  --ease: var(--ease-emphasized);
+  --dur-fast: var(--dur-1);
+  --dur: var(--dur-2);
+  --dur-slow: var(--dur-4);
 
   /* Type (next/font sets --font-display / --font-body; fallbacks below). */
   --font-display-stack: var(--font-display), "Fraunces", ui-serif, Georgia, serif;
   --font-body-stack: var(--font-body), "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Shared dark values (system dark unless the user forced light, and forced dark). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --brand: #9a86ff;
-    --brand-strong: #b1a1ff;
-    --brand-contrast: #130f22;
-    --brand-weak: rgba(154, 134, 255, 0.16);
-    --brand-ring: rgba(154, 134, 255, 0.42);
-    --brand-grad: linear-gradient(135deg, #7a66f2 0%, #9a86ff 100%);
-    --positive: #2ad0a0;
-    --positive-ink: #74e8c3;
-    --positive-weak: rgba(42, 208, 160, 0.14);
-    --caution: #efb44a;
-    --caution-ink: #f6cd80;
-    --caution-weak: rgba(239, 180, 74, 0.14);
-    --danger: #ff6b73;
-    --danger-ink: #ffa0a4;
-    --danger-weak: rgba(255, 107, 115, 0.14);
-    --info-weak: rgba(120, 140, 255, 0.14);
-    --info-ink: #a6b4ff;
-    --app-bg: #0b0a11;
-    --surface: #16141f;
-    --surface-2: #110f19;
-    --surface-3: #201d2b;
-    --ink: #ecebf3;
-    --ink-muted: #a6a3b7;
-    --ink-faint: #706d82;
+    --brand: #2fb6b0;
+    --brand-strong: #54cfc7;
+    --brand-contrast: #042024;
+    --brand-weak: rgba(47, 182, 176, 0.16);
+    --brand-ring: rgba(47, 182, 176, 0.45);
+    --brand-grad: linear-gradient(135deg, #159a94 0%, #2fb6b0 100%);
+    --positive: #33c06e;
+    --positive-ink: #74e39d;
+    --positive-weak: rgba(51, 192, 110, 0.15);
+    --caution: #e6ad48;
+    --caution-ink: #f2c87c;
+    --caution-weak: rgba(230, 173, 72, 0.15);
+    --danger: #f26d6d;
+    --danger-ink: #ff9d9d;
+    --danger-weak: rgba(242, 109, 109, 0.15);
+    --info-weak: rgba(120, 160, 165, 0.14);
+    --info-ink: #a7c2c4;
+    --app-bg: #0e1214;
+    --surface: #171c1f;
+    --surface-2: #121719;
+    --surface-3: #212829;
+    --ink: #eaf0ef;
+    --ink-muted: #a3adad;
+    --ink-faint: #6b7576;
     --hairline: rgba(255, 255, 255, 0.09);
     --hairline-strong: rgba(255, 255, 255, 0.16);
-    --glass-bg: rgba(22, 20, 31, 0.6);
-    --glass-bg-strong: rgba(18, 16, 26, 0.82);
+    --glass-bg: rgba(20, 25, 27, 0.62);
+    --glass-bg-strong: rgba(16, 20, 22, 0.84);
     --glass-hairline: rgba(255, 255, 255, 0.08);
     --glass-shadow: 0 10px 34px -10px rgba(0, 0, 0, 0.6);
-    --glass-tint: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0));
+    --glass-tint: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.4), 0 14px 30px -10px rgba(0, 0, 0, 0.55);
     --shadow-lg: 0 8px 18px -6px rgba(0, 0, 0, 0.5), 0 36px 64px -16px rgba(0, 0, 0, 0.7);
@@ -124,37 +141,37 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --brand: #9a86ff;
-  --brand-strong: #b1a1ff;
-  --brand-contrast: #130f22;
-  --brand-weak: rgba(154, 134, 255, 0.16);
-  --brand-ring: rgba(154, 134, 255, 0.42);
-  --brand-grad: linear-gradient(135deg, #7a66f2 0%, #9a86ff 100%);
-  --positive: #2ad0a0;
-  --positive-ink: #74e8c3;
-  --positive-weak: rgba(42, 208, 160, 0.14);
-  --caution: #efb44a;
-  --caution-ink: #f6cd80;
-  --caution-weak: rgba(239, 180, 74, 0.14);
-  --danger: #ff6b73;
-  --danger-ink: #ffa0a4;
-  --danger-weak: rgba(255, 107, 115, 0.14);
-  --info-weak: rgba(120, 140, 255, 0.14);
-  --info-ink: #a6b4ff;
-  --app-bg: #0b0a11;
-  --surface: #16141f;
-  --surface-2: #110f19;
-  --surface-3: #201d2b;
-  --ink: #ecebf3;
-  --ink-muted: #a6a3b7;
-  --ink-faint: #706d82;
+  --brand: #2fb6b0;
+  --brand-strong: #54cfc7;
+  --brand-contrast: #042024;
+  --brand-weak: rgba(47, 182, 176, 0.16);
+  --brand-ring: rgba(47, 182, 176, 0.45);
+  --brand-grad: linear-gradient(135deg, #159a94 0%, #2fb6b0 100%);
+  --positive: #33c06e;
+  --positive-ink: #74e39d;
+  --positive-weak: rgba(51, 192, 110, 0.15);
+  --caution: #e6ad48;
+  --caution-ink: #f2c87c;
+  --caution-weak: rgba(230, 173, 72, 0.15);
+  --danger: #f26d6d;
+  --danger-ink: #ff9d9d;
+  --danger-weak: rgba(242, 109, 109, 0.15);
+  --info-weak: rgba(120, 160, 165, 0.14);
+  --info-ink: #a7c2c4;
+  --app-bg: #0e1214;
+  --surface: #171c1f;
+  --surface-2: #121719;
+  --surface-3: #212829;
+  --ink: #eaf0ef;
+  --ink-muted: #a3adad;
+  --ink-faint: #6b7576;
   --hairline: rgba(255, 255, 255, 0.09);
   --hairline-strong: rgba(255, 255, 255, 0.16);
-  --glass-bg: rgba(22, 20, 31, 0.6);
-  --glass-bg-strong: rgba(18, 16, 26, 0.82);
+  --glass-bg: rgba(20, 25, 27, 0.62);
+  --glass-bg-strong: rgba(16, 20, 22, 0.84);
   --glass-hairline: rgba(255, 255, 255, 0.08);
   --glass-shadow: 0 10px 34px -10px rgba(0, 0, 0, 0.6);
-  --glass-tint: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0));
+  --glass-tint: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.4), 0 14px 30px -10px rgba(0, 0, 0, 0.55);
   --shadow-lg: 0 8px 18px -6px rgba(0, 0, 0, 0.5), 0 36px 64px -16px rgba(0, 0, 0, 0.7);
@@ -247,6 +264,8 @@ body {
   pointer-events: none;
 }
 
+/* Opaque, readable fallback where backdrop-filter is unsupported (the glass still
+   reads as a solid surface, never a see-through smear). */
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   .glass,
   .glass-strong,
@@ -287,6 +306,10 @@ body {
   background-size: 22px 22px;
 }
 
+/* ---- Motion keyframes + utilities ----------------------------------------
+   Reusable, transform/opacity-only. Consumed directly (class) or by the motion
+   components in src/ui/motion.jsx. All are neutralised by the reduced-motion block. */
+
 @keyframes ne-rise {
   from {
     opacity: 0;
@@ -297,9 +320,100 @@ body {
     transform: translateY(0);
   }
 }
+@keyframes ne-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ne-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes ne-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes ne-pop {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes ne-shimmer {
+  from {
+    background-position: -150% 0;
+  }
+  to {
+    background-position: 150% 0;
+  }
+}
 
 .animate-rise {
-  animation: ne-rise var(--dur) var(--ease) both;
+  animation: ne-rise var(--dur-2) var(--ease-emphasized) both;
+}
+.animate-fade {
+  animation: ne-fade var(--dur-2) var(--ease-standard) both;
+}
+.animate-scale-in {
+  animation: ne-scale-in var(--dur-2) var(--ease-emphasized) both;
+}
+.animate-sheet-up {
+  animation: ne-sheet-up var(--dur-3) var(--ease-emphasized) both;
+}
+.animate-pop {
+  animation: ne-pop var(--dur-3) var(--ease-spring) both;
+}
+
+/* Skeleton shimmer: a loading surface that reads as "content is coming", not a spinner. */
+.ne-skeleton {
+  background: linear-gradient(
+    100deg,
+    var(--surface-3) 30%,
+    color-mix(in oklab, var(--surface-3), var(--surface) 60%) 50%,
+    var(--surface-3) 70%
+  );
+  background-size: 200% 100%;
+  animation: ne-shimmer 1.4s linear infinite;
+}
+
+/* Children rise in sequence; set --i per item for a short, bounded stagger. */
+.ne-stagger > * {
+  animation: ne-rise var(--dur-2) var(--ease-emphasized) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+/* A quiet transition for interactive surfaces (hover/press/active). Transform and
+   colour only; never triggered on text the user is reading. */
+.ne-interactive {
+  transition:
+    transform var(--dur-1) var(--ease-standard),
+    box-shadow var(--dur-2) var(--ease-standard),
+    background-color var(--dur-2) var(--ease-standard),
+    border-color var(--dur-2) var(--ease-standard),
+    color var(--dur-1) var(--ease-standard);
+}
+.ne-press:active {
+  transform: scale(0.97);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -310,5 +424,8 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+  .ne-skeleton {
+    animation: none !important;
   }
 }
