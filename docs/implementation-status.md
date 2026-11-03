@@ -68,6 +68,14 @@ lands after the motion/palette PR.
   → **35 passed**; the wider regression `-k "discovery or board or jobs or audit_inventory or
   deployment or freehire or watch"` → **312 passed**, exit 0. No new audit event and no new
   `NOEFFORTS_` setting, so the audit-inventory and deployment-config guards are unaffected.
+- **Frontend detail view (follow-up, on `main` after D125/D126 landed):** `jobs/[id]` migrated
+  `.tsx`→`.jsx` on the premium primitives, rendering the consolidated `content` in an "About this
+  role" card — salary with its provenance line (or "Salary not provided."), the availability
+  facts as chips, and the full description + the source's own sections as React elements (never
+  `dangerouslySetInnerHTML`), with `Reveal`/`Stagger` entrance. Validated: `tsc`/eslint/`next
+  build` clean; `frontend/e2e/job-detail-content.spec.ts` (sanitized structure renders, salary
+  provenance shows, an injected `<script>`/`<img>` neither runs nor reaches the DOM, salary-absent
+  case) on desktop + mobile.
 
 ## Answer brain (D115), Greenhouse real-page mechanics (D116), codes from the owner's mailbox (D117), 2026-11-02; local only, nothing real run
 

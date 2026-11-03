@@ -352,12 +352,17 @@ def salary_from_text(text) -> dict | None:
     code, symbol = _currency_of(m.group("cur"))
     a1, a2 = m.group("a1"), m.group("a2")
     snippet = text[m.start() : m.end()].strip()
-    # Pull a trailing period phrase into the shown snippet when it sits right after the figure.
-    tail = text[m.end() : m.end() + 24]
-    tail_m = re.match(r"\s*(?:/|per\b|a\b|an\b)?[^.,;\n]{0,20}", tail)
+    # Append exactly the period phrase the source used (e.g. "per year", "/hr"), so the shown
+    # figure keeps its period without the amount regex's lost space or trailing words.
     period = _period_near(text, m.end())
-    if period and tail_m and tail_m.group().strip():
-        snippet = (snippet + tail_m.group()).strip()
+    if period:
+        window = text[m.end() : m.end() + 40]
+        for pat, p in _PERIOD_PATTERNS:
+            mm = pat.search(window)
+            if p == period and mm:
+                phrase = mm.group().strip()
+                snippet = f"{snippet}{'' if phrase.startswith('/') else ' '}{phrase}"
+                break
     return {
         "source": "extracted",
         "basis": "found in the description text",

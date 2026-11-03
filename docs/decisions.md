@@ -4006,3 +4006,14 @@ renders it is a separate frontend change.
   summary, the source's sections, structured salary, and says "Salary not provided." when none is
   known). No new audit event and no new `NOEFFORTS_` setting, so the inventory and deployment-config
   guards are unaffected.
+- **Frontend (the premium detail view):** `jobs/[id]` migrated from `.tsx` to `.jsx` on the D125
+  premium primitives, and now renders the consolidated `content` in an "About this role" card:
+  salary with a plain-language provenance line (from the posting / estimated by the source / found
+  in the description) shown exactly as given — never annualized or converted — or "Salary not
+  provided."; the availability-dependent facts as chips; the full description and the source's own
+  sections as **React elements, never `dangerouslySetInnerHTML`**, so the sanitizer's guarantee
+  reaches the DOM (no script runs, no embedded asset is fetched). A safe link keeps `target=_blank
+  rel="noopener noreferrer nofollow"`. Entrance uses the D125 motion (`Reveal`/`Stagger`),
+  reduced-motion-aware; correct in light and dark. `frontend/e2e/job-detail-content.spec.ts`
+  asserts the structure renders, the salary provenance shows, an injected `<script>`/`<img>` neither
+  runs nor reaches the DOM, and the salary-absent case says so.

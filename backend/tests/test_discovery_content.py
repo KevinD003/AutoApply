@@ -175,7 +175,7 @@ def test_extracted_range_preserves_original_and_does_not_annualize():
     assert s["min"] == "120,000" and s["max"] == "150,000"  # kept exactly, not reformatted
     assert s["currency_symbol"] == "$" and s["currency"] is None  # '$' alone stays ambiguous
     assert s["period"] == "year"
-    assert "120,000" in s["text"]
+    assert s["text"] == "$120,000 - $150,000 per year"  # the original figures + period, cleanly
 
 
 def test_extracted_various_currencies_and_periods():
