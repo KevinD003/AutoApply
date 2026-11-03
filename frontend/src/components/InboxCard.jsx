@@ -9,39 +9,7 @@ import { api } from "@/lib/api";
 // D101: your own Gmail, read-only, when the server's owner connected it. Verification codes are
 // entered for you only while an application waits for one and exactly one code arrives from its
 // application system; application emails are proposed as outcomes you confirm or dismiss.
-interface InboxEvent {
-  id: string;
-  received_at: string;
-  sender_domain: string;
-  kind:
-    | "code"
-    | "rejected"
-    | "interview"
-    | "assessment"
-    | "received"
-    | "unclear"
-    | "other";
-  state:
-    | "proposed"
-    | "accepted"
-    | "dismissed"
-    | "unlinked"
-    | "code_used"
-    | "code_unclear"
-    | "noted";
-  application_id: string | null;
-}
-interface InboxView {
-  available: boolean;
-  why_not: string | null;
-  codes_enabled: boolean;
-  tracking_enabled: boolean;
-  last_checked_at: string | null;
-  last_error: string | null;
-  events: InboxEvent[];
-}
-
-const KIND: Record<InboxEvent["kind"], string> = {
+const KIND = {
   code: "verification code",
   rejected: "reads as a rejection",
   interview: "reads as an interview invitation",
@@ -50,7 +18,7 @@ const KIND: Record<InboxEvent["kind"], string> = {
   unclear: "unclear: it reads as more than one thing",
   other: "other",
 };
-const STATE: Record<InboxEvent["state"], string> = {
+const STATE = {
   proposed: "waiting for you",
   accepted: "recorded by you",
   dismissed: "dismissed",
@@ -61,16 +29,16 @@ const STATE: Record<InboxEvent["state"], string> = {
 };
 
 export default function InboxCard() {
-  const [v, setV] = useState<InboxView | null>(null);
-  const [error, setError] = useState<unknown>(null);
+  const [v, setV] = useState(null);
+  const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => {
-    api<InboxView>("/inbox").then(setV).catch(setError);
+    api("/inbox").then(setV).catch(setError);
   }, []);
   useEffect(load, [load]);
 
-  async function run(p: Promise<InboxView>, done?: string) {
+  async function run(p, done) {
     setBusy(true);
     setError(null);
     try {
@@ -83,9 +51,9 @@ export default function InboxCard() {
     }
   }
   if (!v) return <ErrorBox error={error} />;
-  const set = (codes: boolean, tracking: boolean) =>
+  const set = (codes, tracking) =>
     run(
-      api<InboxView>("/inbox", {
+      api("/inbox", {
         method: "PUT",
         json: { codes_enabled: codes, tracking_enabled: tracking },
       }),
@@ -148,7 +116,7 @@ export default function InboxCard() {
             variant="secondary"
             disabled={busy || !v.tracking_enabled}
             onClick={() =>
-              run(api<InboxView>("/inbox/check", { method: "POST" }), "Read.")
+              run(api("/inbox/check", { method: "POST" }), "Read.")
             }
           >
             Read now
@@ -191,7 +159,7 @@ export default function InboxCard() {
                       disabled={busy}
                       onClick={() =>
                         run(
-                          api<InboxView>(`/inbox/events/${e.id}/accept`, {
+                          api(`/inbox/events/${e.id}/accept`, {
                             method: "POST",
                           }),
                           "Recorded on the application.",
@@ -207,7 +175,7 @@ export default function InboxCard() {
                     disabled={busy}
                     onClick={() =>
                       run(
-                        api<InboxView>(`/inbox/events/${e.id}/dismiss`, {
+                        api(`/inbox/events/${e.id}/dismiss`, {
                           method: "POST",
                         }),
                       )

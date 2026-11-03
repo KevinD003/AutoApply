@@ -1,71 +1,20 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, Empty, ErrorBox, Field, inputCls, Loading, Notice, splitList, TriSelect } from "@/components/ui";
-import { api, DraftingConsentView, TriState } from "@/lib/api";
+import { api } from "@/lib/api";
 
-interface Meta {
-  id: string;
-  version: number;
-  approval_status: string;
-  provenance: string;
-  updated_at: string;
-}
-interface Profile extends Partial<Meta> {
-  full_name: string | null;
-  given_name: string | null;
-  family_name: string | null;
-  preferred_name: string | null;
-  contact_email: string | null;
-  phone: string | null;
-  residence_country: string | null;
-  residence_region: string | null;
-  residence_city: string | null;
-  links: string[];
-  skills: string[];
-  summary: string | null;
-}
-interface WorkAuth extends Meta {
-  country_code: string;
-  authorized: TriState;
-  sponsorship_needed_now: TriState;
-  sponsorship_needed_future: TriState;
-}
-interface Employment extends Meta {
-  employer: string;
-  title: string;
-  location: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  is_current: boolean;
-  description: string | null;
-}
-interface Education extends Meta {
-  institution: string;
-  degree: string | null;
-  field_of_study: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  completed: TriState;
-}
-interface Credential extends Meta {
-  name: string;
-  issuer: string | null;
-  issued_on: string | null;
-  expires_on: string | null;
-}
-
-const EMPTY: Profile = {
+const EMPTY = {
   full_name: "", given_name: "", family_name: "", preferred_name: "", contact_email: "", phone: "", residence_country: "", residence_region: "", residence_city: "",
   links: [], skills: [], summary: "",
 };
 
-function MetaLine({ m }: { m?: Partial<Meta> }) {
+function MetaLine({ m }) {
   if (!m?.version) return null;
   return (
     <p className="text-xs text-ink-faint">
-      Version {m.version} · {m.provenance?.replace("_", " ")} · updated {new Date(m.updated_at!).toLocaleString()}{" "}
+      Version {m.version} · {m.provenance?.replace("_", " ")} · updated {new Date(m.updated_at).toLocaleString()}{" "}
       <Badge tone={m.approval_status === "approved" ? "green" : "amber"}>{m.approval_status}</Badge>
     </p>
   );
@@ -91,14 +40,14 @@ export default function ProfilePage() {
 }
 
 function ContactCard() {
-  const [p, setP] = useState<Profile | null>(null);
+  const [p, setP] = useState(null);
   const [skills, setSkills] = useState("");
   const [links, setLinks] = useState("");
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    api<Profile | null>("/profile")
+    api("/profile")
       .then((r) => {
         const v = r ?? EMPTY;
         setP(v);
@@ -108,14 +57,14 @@ function ContactCard() {
       .catch(setError);
   }, []);
 
-  async function save(e: FormEvent) {
+  async function save(e) {
     e.preventDefault();
     if (!p) return;
     setError(null);
     setSaved(false);
-    const nullify = (v: string | null) => (v && v.trim() ? v.trim() : null);
+    const nullify = (v) => (v && v.trim() ? v.trim() : null);
     try {
-      const r = await api<Profile>("/profile", {
+      const r = await api("/profile", {
         method: "PUT",
         json: {
           full_name: nullify(p.full_name), given_name: nullify(p.given_name),
@@ -134,7 +83,7 @@ function ContactCard() {
   }
 
   if (!p) return <Card title="Contact and residence"><ErrorBox error={error} /><Loading /></Card>;
-  const set = (k: keyof Profile) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setP({ ...p, [k]: e.target.value });
+  const set = (k) => (e) => setP({ ...p, [k]: e.target.value });
   return (
     <Card title="Contact and residence">
       <MetaLine m={p} />
@@ -166,7 +115,7 @@ function ContactCard() {
 }
 
 // L1 (D72): a fact proposed from your resume is used by nothing until you approve it here.
-function Proposed({ m, path, onDone, onError }: { m: Meta; path: string; onDone: () => void; onError: (e: unknown) => void }) {
+function Proposed({ m, path, onDone, onError }) {
   if (m.approval_status === "approved") return null;
   return (
     <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-caution-ink">
@@ -182,11 +131,11 @@ function Proposed({ m, path, onDone, onError }: { m: Meta; path: string; onDone:
   );
 }
 
-function useList<T>(path: string) {
-  const [items, setItems] = useState<T[] | null>(null);
-  const [error, setError] = useState<unknown>(null);
+function useList(path) {
+  const [items, setItems] = useState(null);
+  const [error, setError] = useState(null);
   const load = useCallback(() => {
-    api<T[]>(path).then(setItems).catch((e) => {
+    api(path).then(setItems).catch((e) => {
       setError(e);
       setItems([]);
     });
@@ -196,10 +145,10 @@ function useList<T>(path: string) {
 }
 
 function WorkAuthCard() {
-  const { items, error, setError, load } = useList<WorkAuth>("/profile/work-authorizations");
+  const { items, error, setError, load } = useList("/profile/work-authorizations");
   const [form, setForm] = useState({ country_code: "", authorized: "unknown", sponsorship_needed_now: "unknown", sponsorship_needed_future: "unknown" });
 
-  async function add(e: FormEvent) {
+  async function add(e) {
     e.preventDefault();
     setError(null);
     try {
@@ -211,7 +160,7 @@ function WorkAuthCard() {
     }
   }
 
-  async function update(w: WorkAuth, patch: Partial<WorkAuth>) {
+  async function update(w, patch) {
     setError(null);
     try {
       const { country_code, authorized, sponsorship_needed_now, sponsorship_needed_future } = { ...w, ...patch };
@@ -225,7 +174,7 @@ function WorkAuthCard() {
     }
   }
 
-  const label = (t: string) => ({ yes: "Yes", no: "No", unknown: "Not answered", not_applicable: "N/A" })[t] ?? t;
+  const label = (t) => ({ yes: "Yes", no: "No", unknown: "Not answered", not_applicable: "N/A" })[t] ?? t;
 
   return (
     <Card title="Work authorization and sponsorship">
@@ -244,9 +193,9 @@ function WorkAuthCard() {
             <div key={w.id} className="rounded-lg border border-hairline p-3">
               <p className="mb-2 font-medium">{w.country_code}</p>
               <div className="grid gap-3 sm:grid-cols-3">
-                <Field label="Authorized to work"><TriSelect value={w.authorized} onChange={(v) => update(w, { authorized: v as TriState })} /></Field>
-                <Field label="Needs sponsorship now"><TriSelect value={w.sponsorship_needed_now} onChange={(v) => update(w, { sponsorship_needed_now: v as TriState })} /></Field>
-                <Field label="Will need sponsorship later"><TriSelect value={w.sponsorship_needed_future} onChange={(v) => update(w, { sponsorship_needed_future: v as TriState })} /></Field>
+                <Field label="Authorized to work"><TriSelect value={w.authorized} onChange={(v) => update(w, { authorized: v })} /></Field>
+                <Field label="Needs sponsorship now"><TriSelect value={w.sponsorship_needed_now} onChange={(v) => update(w, { sponsorship_needed_now: v })} /></Field>
+                <Field label="Will need sponsorship later"><TriSelect value={w.sponsorship_needed_future} onChange={(v) => update(w, { sponsorship_needed_future: v })} /></Field>
               </div>
               <p className="mt-2 text-xs text-ink-faint">
                 Summary: authorized {label(w.authorized)}, sponsorship now {label(w.sponsorship_needed_now)}, later {label(w.sponsorship_needed_future)} · v{w.version}
@@ -267,17 +216,17 @@ function WorkAuthCard() {
 }
 
 function EmploymentCard() {
-  const { items, error, setError, load } = useList<Employment>("/profile/employment");
+  const { items, error, setError, load } = useList("/profile/employment");
   const blank = { employer: "", title: "", location: "", start_date: "", end_date: "", is_current: false, description: "" };
   const [form, setForm] = useState(blank);
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing, setEditing] = useState(null);
 
-  function edit(j: Employment) {
+  function edit(j) {
     setEditing(j.id);
     setForm({ employer: j.employer, title: j.title, location: j.location ?? "", start_date: j.start_date ?? "", end_date: j.end_date ?? "", is_current: j.is_current, description: j.description ?? "" });
   }
 
-  async function add(e: FormEvent) {
+  async function add(e) {
     e.preventDefault();
     setError(null);
     try {
@@ -293,7 +242,7 @@ function EmploymentCard() {
     }
   }
 
-  async function remove(id: string) {
+  async function remove(id) {
     await api(`/profile/employment/${id}`, { method: "DELETE" }).catch(setError);
     load();
   }
@@ -337,17 +286,17 @@ function EmploymentCard() {
 }
 
 function EducationCard() {
-  const { items, error, setError, load } = useList<Education>("/profile/education");
+  const { items, error, setError, load } = useList("/profile/education");
   const blank = { institution: "", degree: "", field_of_study: "", start_date: "", end_date: "", completed: "unknown" };
   const [form, setForm] = useState(blank);
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing, setEditing] = useState(null);
 
-  function edit(ed: Education) {
+  function edit(ed) {
     setEditing(ed.id);
     setForm({ institution: ed.institution, degree: ed.degree ?? "", field_of_study: ed.field_of_study ?? "", start_date: ed.start_date ?? "", end_date: ed.end_date ?? "", completed: ed.completed });
   }
 
-  async function add(e: FormEvent) {
+  async function add(e) {
     e.preventDefault();
     setError(null);
     try {
@@ -363,7 +312,7 @@ function EducationCard() {
     }
   }
 
-  async function remove(id: string) {
+  async function remove(id) {
     await api(`/profile/education/${id}`, { method: "DELETE" }).catch(setError);
     load();
   }
@@ -406,17 +355,17 @@ function EducationCard() {
 
 // C16 (D69): credentials ground a draft only when approved and not expired.
 function CredentialsCard() {
-  const { items, error, setError, load } = useList<Credential>("/profile/credentials");
+  const { items, error, setError, load } = useList("/profile/credentials");
   const blank = { name: "", issuer: "", issued_on: "", expires_on: "" };
   const [form, setForm] = useState(blank);
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing, setEditing] = useState(null);
 
-  function edit(c: Credential) {
+  function edit(c) {
     setEditing(c.id);
     setForm({ name: c.name, issuer: c.issuer ?? "", issued_on: c.issued_on ?? "", expires_on: c.expires_on ?? "" });
   }
 
-  async function add(e: FormEvent) {
+  async function add(e) {
     e.preventDefault();
     setError(null);
     try {
@@ -432,7 +381,7 @@ function CredentialsCard() {
     }
   }
 
-  async function remove(id: string) {
+  async function remove(id) {
     await api(`/profile/credentials/${id}`, { method: "DELETE" }).catch(setError);
     load();
   }
@@ -474,24 +423,15 @@ function CredentialsCard() {
   );
 }
 
-// L4 (D74): AI drafting is off until you turn it on here, and only where the server's owner has
-// set it up for your account. The text you agree to is the one shown, word for word; if it
-// changes, you are asked again.
-interface SelfId {
-  enabled: boolean;
-  labels: string[];
-  updated_at: string | null;
-}
-
 function SelfIdentificationCard() {
   const [enabled, setEnabled] = useState(false);
   const [text, setText] = useState("");
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    api<SelfId>("/profile/self-identification")
+    api("/profile/self-identification")
       .then((s) => {
         setEnabled(s.enabled);
         setText(s.labels.join(", "));
@@ -500,13 +440,13 @@ function SelfIdentificationCard() {
       .catch(setError);
   }, []);
 
-  async function save(e: FormEvent) {
+  async function save(e) {
     e.preventDefault();
     setError(null);
     setNotice("");
     const labels = splitList(text);
     try {
-      const s = await api<SelfId>("/profile/self-identification", { method: "PUT", json: { enabled, labels } });
+      const s = await api("/profile/self-identification", { method: "PUT", json: { enabled, labels } });
       setText(s.labels.join(", "));
       setNotice("Saved.");
     } catch (err) {
@@ -545,18 +485,18 @@ function SelfIdentificationCard() {
 }
 
 function AiDraftingCard() {
-  const [v, setV] = useState<DraftingConsentView | null>(null);
-  const [error, setError] = useState<unknown>(null);
+  const [v, setV] = useState(null);
+  const [error, setError] = useState(null);
   const load = useCallback(() => {
-    api<DraftingConsentView>("/drafting/consent").then(setV).catch(setError);
+    api("/drafting/consent").then(setV).catch(setError);
   }, []);
   useEffect(load, [load]);
 
-  async function change(on: boolean) {
+  async function change(on) {
     setError(null);
     try {
       setV(
-        await api<DraftingConsentView>("/drafting/consent", on ? { method: "PUT", json: { version: v!.consent.version } } : { method: "DELETE" }),
+        await api("/drafting/consent", on ? { method: "PUT", json: { version: v.consent.version } } : { method: "DELETE" }),
       );
     } catch (err) {
       setError(err);
