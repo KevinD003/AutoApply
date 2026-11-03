@@ -1312,20 +1312,44 @@ def _resolve_fact_statement(f, r, ctx, intent: Intent) -> Resolution:
     return r
 
 
-def _self_id_match(f, self_id) -> dict | None:
-    """D122: the value a sensitive choice/multi question takes from the owner's saved
-    self-identification, by exact (normalized) option label only, or None. A single-choice
-    question fills only when exactly one option matches (never a guess between two); a
-    multi-select fills every matching option. No fuzzy matching, no inference."""
+def _self_id_outcome(f, self_id) -> tuple[str, dict | None, str | None, list]:
+    """D122: how the owner's saved self-identification resolves one sensitive choice/multi
+    question, by exact (normalized) option-label match only. Never inferred, never fuzzy.
+
+    Returns (kind, value, display, matched_labels):
+      * "fill"          -> resolve this value now: one single-select option, or the one
+                           decline option on a multi-select (an exclusive, complete answer).
+      * "partial_multi" -> one or more of the owner's values match a question that takes
+                           several answers; a flat label list cannot prove the set is
+                           complete, so a partial self-identification is never submitted and
+                           the owner answers it (a checkpoint).
+      * "none"          -> nothing matched unambiguously; the normal sensitive path decides
+                           (0 or >1 single-select matches, a decline mixed with substantive
+                           choices, or no match at all).
+    """
     if f.type not in CHOICE_TYPES | MULTI_TYPES:
-        return None
+        return ("none", None, None, [])
     wanted = {normalize(x) for x in (getattr(self_id, "labels", None) or []) if x}
     if not wanted:
-        return None
+        return ("none", None, None, [])
     hits = [o for o in f.options if normalize(o.label) in wanted]
     if f.type in CHOICE_TYPES:
-        return _choice(hits[0]) if len(hits) == 1 else None
-    return {"options": [_choice(o) for o in hits]} if hits else None
+        # Single-select holds one value: fill only on exactly one match, never one of two.
+        if len(hits) == 1:
+            return ("fill", _choice(hits[0]), hits[0].label, [hits[0].label])
+        return ("none", None, None, [])
+    # Multi-select. A decline option is exclusive; a substantive set is never sent partially.
+    decline = map_decline(f)
+    decline_wanted = decline is not None and normalize(decline.label) in wanted
+    substantive = [o for o in hits if decline is None or o.value != decline.value]
+    if decline_wanted and not substantive:
+        return ("fill", {"options": [_choice(decline)]}, decline.label, [decline.label])
+    if decline_wanted and substantive:
+        # Declining and naming a substantive choice contradict: never send both.
+        return ("none", None, None, [])
+    if substantive:
+        return ("partial_multi", None, None, [o.label for o in substantive])
+    return ("none", None, None, [])
 
 
 def _resolve_sensitive(f, r, ctx) -> Resolution:
@@ -1338,20 +1362,6 @@ def _resolve_sensitive(f, r, ctx) -> Resolution:
         hit = _from_bank(f, Resolution(key=f.key, status="", source="", sensitive=True), ctx)
         if hit is not None and hit.status == "resolved":
             proposed, source, r.fact_refs = hit.value, "answer_bank", hit.fact_refs
-    # D122: your own saved self-identification, opt-in. Enabling it is your standing choice to
-    # include it, so a matched answer resolves directly (no per-application confirmation). It is
-    # never saved to the bank, never inferred, and only an exact option match is taken.
-    if proposed is None and ctx.self_id is not None and getattr(ctx.self_id, "enabled", False):
-        match = _self_id_match(f, ctx.self_id)
-        if match is not None:
-            r.status, r.source, r.value = "resolved", "self_identification", match
-            r.display = display_value(f, match)
-            r.explanation = (
-                "From your saved self-identification, which you chose to include on your "
-                "applications. Change it in your profile, or answer this one yourself."
-            )
-            r.bankable = False
-            return r
     if choice == "disclose" and not _disclose_covers(ctx, f.key, proposed):
         # C7 (D60): a "disclose" covers the exact answer it was given for, and no other.
         choice = None
@@ -1387,6 +1397,45 @@ def _resolve_sensitive(f, r, ctx) -> Resolution:
             "Sensitive: you chose not to disclose. Left blank.",
         )
         return r
+    # D122: your own saved self-identification, opt-in. Enabling it is your standing choice to
+    # include your stated self-identification, so a match resolves without a per-application
+    # confirmation. It runs only after an explicit per-application choice above (a "withhold", or
+    # an answer you entered), which takes precedence; it never replaces that consent. It is never
+    # inferred, never saved to the answer bank, and only an exact option match is taken.
+    if proposed is None and ctx.self_id is not None and getattr(ctx.self_id, "enabled", False):
+        kind, value, display, matched = _self_id_outcome(f, ctx.self_id)
+        if kind == "fill":
+            r.status, r.source, r.value, r.display = (
+                "resolved",
+                "self_identification",
+                value,
+                display,
+            )
+            r.bankable = False
+            r.explanation = (
+                "From your saved self-identification, which you chose to include on your "
+                "applications. Change it in your profile, or answer this one yourself."
+            )
+            # The established dependency: changing or disabling the labels that produced this
+            # answer invalidates an approval of it (package.content_material covers fact_refs).
+            r.fact_refs = [
+                {
+                    "type": "self_identification",
+                    "id": str(getattr(ctx.self_id, "user_id", "")),
+                    "field": "labels",
+                    "value": sorted(matched),
+                }
+            ]
+            return r
+        if kind == "partial_multi":
+            r.bankable = False
+            return _unresolved(
+                r,
+                f,
+                "Your self-identification matches one or more options here, but this question "
+                "takes several answers and NoEfforts never submits a partial self-identification. "
+                + ("Choose your answer for this application." if f.required else "Left blank."),
+            )
     if proposed is None:
         return _unresolved(
             r,

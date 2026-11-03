@@ -520,7 +520,9 @@ function SelfIdentificationCard() {
         Voluntary, and off unless you turn it on. When on, an EEOC or demographic question (gender, race, veteran, disability, and your
         own self-describe) is answered from the exact option labels you list below — your own stated identity, never guessed. A label is
         used only when it matches an option on the form exactly; anything it doesn’t match stays a question for you, and “Decline to
-        self-identify” is always still available. These answers are never saved for reuse, never used in drafts, and never shared.
+        self-identify” is always still available. A question that takes several answers (such as race/ethnicity) is left for you unless
+        you choose to decline, so a partial answer is never sent. A per-application choice you make always overrides this. These answers
+        are never saved for reuse, never used in drafts, and never shared.
       </p>
       <ErrorBox error={error} />
       {!loaded ? (
