@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 
 import { api, ApiError, NOTIFICATIONS_CHANGED, setCsrf } from "@/lib/api";
 import { GlassNav } from "@/ui/GlassNav";
+import { BottomNav } from "@/ui/BottomNav";
+import { RouteTransition } from "@/ui/motion";
 import { ThemeToggle } from "@/ui/ThemeToggle";
 import { Loading, ErrorText } from "@/ui/primitives";
 import {
@@ -27,17 +29,23 @@ import {
 */
 
 // label text is the link's accessible name — must match the existing e2e contract exactly.
-const NAV = [
+// Primary = the core discovery→application workflow (the mobile bottom-nav tabs); secondary =
+// documents, answers and settings (the mobile "More" sheet). Desktop shows all of them in the
+// top nav, in this order, so its navigation is unchanged.
+const PRIMARY = [
   { href: "/jobs", label: "Jobs", icon: IconBriefcase },
   { href: "/discover", label: "Discover", icon: IconCompass },
   { href: "/review", label: "Review", icon: IconReview },
   { href: "/tracker", label: "Tracker", icon: IconTracker },
+];
+const SECONDARY = [
   { href: "/documents", label: "Documents", icon: IconFileText },
   { href: "/answers", label: "Saved answers", icon: IconBookmark },
   { href: "/profile", label: "Profile", icon: IconUser },
   { href: "/preferences", label: "Preferences", icon: IconSliders },
   { href: "/account", label: "Account", icon: IconGear },
 ];
+const NAV = [...PRIMARY, ...SECONDARY];
 
 export default function AppShell({ children }) {
   const router = useRouter();
@@ -94,7 +102,10 @@ export default function AppShell({ children }) {
         onSignOut={logout}
         themeToggle={<ThemeToggle />}
       />
-      <main className="mx-auto max-w-6xl space-y-5 px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-6xl px-4 py-6 pb-28 sm:pb-6">
+        <RouteTransition className="space-y-5">{children}</RouteTransition>
+      </main>
+      <BottomNav pathname={path} primary={PRIMARY} secondary={SECONDARY} />
     </div>
   );
 }

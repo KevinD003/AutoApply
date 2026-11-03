@@ -7,14 +7,15 @@ import { Wordmark } from "./BrandMark";
 import { IconBell } from "./icons";
 
 /*
-  Liquid-glass navigation. Pure/presentational: the caller passes `pathname` (from
-  usePathname) plus the nav items (each with an icon component), so it is SSR-safe
-  and testable. Structure mirrors the previous shell deliberately — a <header>
-  (banner) with a brand row and a horizontally scrollable nav row carrying EVERY
-  destination on every viewport — so all existing navigation and the notifications
-  bell contract keep working, now with the frosted glass treatment and an opaque
-  fallback (see globals.css .glass-nav). A dedicated mobile bottom tab bar is a
-  deliberate later step (it needs the broad journey specs updated in lockstep).
+  Liquid-glass top navigation. Pure/presentational: the caller passes `pathname`
+  (from usePathname) plus the nav items (each with an icon component), so it is
+  SSR-safe and testable. A <header> (banner) with a brand row (brand, theme toggle,
+  notifications bell, account) and a destination row. On desktop the destination row
+  carries every destination; below `sm` it is hidden (display:none, so it leaves the
+  accessibility tree and never double-matches) and the floating BottomNav takes over
+  with the same destinations — the primary ones as tabs, the rest in a More sheet.
+  Frosted glass with an opaque fallback (see globals.css .glass-nav). The brand row,
+  including the notifications bell, stays on every viewport.
 */
 
 function isActive(pathname, href) {
@@ -60,7 +61,7 @@ export function GlassNav({ pathname = "/", items = [], unread = 0, email, onSign
         </div>
       </div>
 
-      <nav aria-label="Main" className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <nav aria-label="Main" className="mx-auto hidden max-w-6xl gap-1 overflow-x-auto px-3 pb-2 sm:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {items.map((item) => {
           const active = isActive(pathname, item.href);
           const Icon = item.icon;
