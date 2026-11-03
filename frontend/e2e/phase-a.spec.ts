@@ -40,8 +40,9 @@ test("phase A slice", async ({ page }, info) => {
   await page.getByRole("button", { name: "Save preferences" }).click();
   await expect(page.getByText("Preferences saved.")).toBeVisible();
 
-  // Jobs: manual + duplicate
+  // Jobs: manual + duplicate (the Add-job form is now in a sheet opened by "Add a job")
   await page.getByRole("link", { name: "Jobs" }).click();
+  await page.getByRole("button", { name: "Add a job" }).click();
   await page.getByLabel("Job link").fill("https://boards.greenhouse.io/synthetic/jobs/4242?utm_source=e2e");
   await page.getByLabel("Title").fill("Journeyman Electrician");
   await page.getByLabel("Employer").fill("Synthetic Power");
@@ -50,12 +51,15 @@ test("phase A slice", async ({ page }, info) => {
   await page.getByLabel("Job link").fill("https://boards.greenhouse.io/synthetic/jobs/4242");
   await page.getByRole("button", { name: "Add job" }).click();
   await expect(page.getByText(/already have this job/)).toBeVisible();
+  await page.keyboard.press("Escape"); // close the Add-job sheet
 
-  // Import
+  // Import (the import form is now in a sheet opened by "Import jobs"; its submit is "Import")
   const csv = "title,employer,location\nApprentice Electrician,Blocked Corp,Remote\nSite Lead,Grid Co,Springfield\n,,\nNo Employer,,\n";
+  await page.getByRole("button", { name: "Import jobs" }).click();
   await page.getByLabel("Spreadsheet file").setInputFiles({ name: "jobs.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
-  await page.getByRole("button", { name: "Import" }).click();
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await expect(page.getByText(/2 added, 0 already known, 1 with problems/)).toBeVisible();
+  await page.keyboard.press("Escape"); // close the Import sheet to see the list
   await expect(page.getByText("Your jobs (3)")).toBeVisible();
   await expect(page.getByText(/Blocked Corp' is on your excluded list/)).toBeVisible();
 

@@ -72,6 +72,7 @@ test("discover jobs: source, import result, duplicates, incomplete fields, outag
   await expect(page.getByText("Discovered (4)")).toBeVisible();
   await fhMode(page.request, "normal");
   await page.goto("/jobs");
+  await page.getByRole("button", { name: "Add a job" }).click();
   await page.getByLabel("Title").fill("Hand-entered role");
   await page.getByLabel("Employer").fill("Example Co (fictional)");
   await page.getByRole("button", { name: "Add job" }).click();

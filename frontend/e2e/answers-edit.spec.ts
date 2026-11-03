@@ -12,9 +12,12 @@ test("a saved answer is edited as a new version, with its history", async ({ pag
   expect(reg.status()).toBe(201);
 
   await page.goto("/jobs");
+  await page.getByRole("button", { name: "Add a job" }).click();
   await page.getByLabel("Title").fill("Front Desk Associate");
   await page.getByLabel("Employer").fill("Example Logistics (fictional)");
   await page.getByRole("button", { name: "Add job" }).click();
+  await expect(page.getByText("Job added.")).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.getByText("Front Desk Associate").click();
   await page.getByLabel("Test form").selectOption("tricky");
   await page.getByRole("button", { name: "Attach test form" }).click();

@@ -645,3 +645,31 @@ def consolidate_detail(*, own_description, own: dict, discovered: list[dict]) ->
         "origin": origin,
     }
     return out
+
+
+# ── A compact summary of one job's detail, for the jobs-list cards ────────────────────────────
+
+CARD_PREVIEW_CHARS = 220
+
+
+def card_summary(detail: dict) -> dict | None:
+    """A compact, availability-dependent summary of one job's consolidated detail, for the jobs
+    list cards. Built from the SAME consolidate_detail() the job page uses, so the list and the
+    detail can never disagree. Only keys a source actually gave are present — salary keeps its
+    provenance, a plain-text description preview is cut at a word boundary, and nothing is
+    invented. Returns None when a source gave nothing beyond the fields the list already has."""
+    facts = detail.get("facts") or {}
+    blocks = (detail.get("description") or {}).get("blocks") or []
+    preview = re.sub(r"\s+", " ", blocks_text(blocks)).strip()
+    if len(preview) > CARD_PREVIEW_CHARS:
+        cut = preview[:CARD_PREVIEW_CHARS].rsplit(" ", 1)[0].rstrip()
+        preview = f"{cut or preview[:CARD_PREVIEW_CHARS]}…"
+    out = {
+        "salary": detail.get("salary"),
+        "workplace": facts.get("workplace"),
+        "employment_type": facts.get("employment_type"),
+        "seniority": facts.get("seniority"),
+        "locations": facts.get("locations"),
+        "description_preview": preview or None,
+    }
+    return {k: v for k, v in out.items() if v} or None

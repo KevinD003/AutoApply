@@ -70,6 +70,10 @@ class JobOut(BaseModel):
     seen_count: int
     # B (D82): the job page's match explanation, summarised (jobs/fit.py summary); the list only.
     match: dict | None = None
+    # Slice B: a compact, availability-dependent card summary (salary with provenance, work
+    # arrangement, a description preview, locations) from the SAME consolidation the job page
+    # uses, so the list and the detail never disagree. None when no source gave anything extra.
+    card: dict | None = None
 
 
 class JobDetail(JobOut):
@@ -287,7 +291,13 @@ def _sources(db: Session, user: User, job_ids: list) -> dict:
         )
     ):
         out.setdefault(d.job_id, []).append(
-            {"normalized": d.normalized or {}, "source_facts": d.source_facts or {}}
+            {
+                "normalized": d.normalized or {},
+                "source_facts": d.source_facts or {},
+                # Used by content.consolidate_detail to rank sources for the card summary.
+                "stale": d.stale,
+                "last_seen_at": d.last_seen_at.isoformat() if d.last_seen_at else None,
+            }
         )
     return out
 
@@ -313,24 +323,39 @@ def _for_token(assessment: dict) -> dict:
 
 
 def _with_match(db: Session, user: User, jobs) -> list[JobOut]:
-    """B (D82): each listed job with the summary of its match explanation, from the same
-    assessment as the job page, so the two can never disagree."""
+    """B (D82): each listed job with the summary of its match explanation, and Slice B's compact
+    card summary (salary, work arrangement, description preview, locations). Both come from the
+    SAME assessment and consolidation the job page uses, so the list and the detail never
+    disagree. Availability-dependent: a field no source gave is simply absent."""
+    from app.modules.discovery import content as content_mod
     from app.modules.jobs import fit
 
     if not jobs:
         return []
     prefs, profile, auths, creds = _fit_inputs(db, user)
     sources = _sources(db, user, [j.id for j in jobs])
-    return [
-        JobOut.model_validate(j).model_copy(
-            update={
-                "match": fit.summary(
-                    fit.assess(j, prefs, profile, auths, creds, sources.get(j.id, []))
-                )
-            }
+    out: list[JobOut] = []
+    for j in jobs:
+        rows = sources.get(j.id, [])
+        detail = content_mod.consolidate_detail(
+            own_description=j.description,
+            own={
+                "employer": j.employer,
+                "location": j.location,
+                "posted_on": j.posted_on.isoformat() if j.posted_on else None,
+                "url": j.url,
+            },
+            discovered=rows,
         )
-        for j in jobs
-    ]
+        out.append(
+            JobOut.model_validate(j).model_copy(
+                update={
+                    "match": fit.summary(fit.assess(j, prefs, profile, auths, creds, rows)),
+                    "card": content_mod.card_summary(detail),
+                }
+            )
+        )
+    return out
 
 
 @router.get("/{job_id}", response_model=JobDetail)

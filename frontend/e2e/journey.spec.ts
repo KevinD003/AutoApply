@@ -250,11 +250,13 @@ test("one synthetic journey: discovery to receipt, tracker and outcome", async (
 
   await test.step("fixture evidence never makes a real destination ready", async () => {
     await page.goto("/jobs");
+    await page.getByRole("button", { name: "Add a job" }).click();
     await page.getByLabel("Job link").fill("https://job-boards.greenhouse.io/northwind/jobs/5020001");
     await page.getByLabel("Title").fill("Support Specialist (real host, never contacted)");
     await page.getByLabel("Employer").fill("Northwind Example (fictional)");
     await page.getByRole("button", { name: "Add job" }).click();
     await expect(page.getByText("Job added.")).toBeVisible();
+    await page.keyboard.press("Escape");
     await page.getByRole("link", { name: "Support Specialist (real host, never contacted)" }).click();
     const route = card(page, "How NoEfforts could apply");
     await expect(route.getByText(/Reason code: real_destination_disabled/)).toBeVisible();

@@ -412,3 +412,45 @@ def test_consolidate_salary_from_sibling_when_best_description_has_none():
     )
     assert c.blocks_text(out["description"]["blocks"]) == "Role."
     assert out["salary"]["source"] == "enrichment"  # picked up from the sibling record
+
+
+# ── Slice B: the compact card summary for the jobs list ───────────────────────────────────────
+
+
+def test_card_summary_extracts_salary_and_a_trimmed_preview_from_own_text():
+    out = c.consolidate_detail(
+        own_description="We offer $55,000 per year. " + "Great team and real benefits. " * 20,
+        own={"employer": "Acme", "location": "Remote"},
+        discovered=[],
+    )
+    card = c.card_summary(out)
+    assert card is not None
+    assert card["salary"]["source"] == "extracted" and card["salary"]["period"] == "year"
+    # The preview is one line, trimmed at a word boundary, and bounded by CARD_PREVIEW_CHARS.
+    assert card["description_preview"].endswith("…")
+    assert "\n" not in card["description_preview"]
+    assert len(card["description_preview"]) <= c.CARD_PREVIEW_CHARS + 1
+
+
+def test_card_summary_surfaces_workplace_locations_and_seniority_from_discovery():
+    normalized = {
+        "workplace": "remote",
+        "content": {
+            "description_blocks": [{"type": "paragraph", "spans": [{"text": "Short role."}]}],
+            "locations": ["Austin, TX", "Remote (US)"],
+            "seniority": "Senior",
+        },
+    }
+    out = c.consolidate_detail(
+        own_description=None, own={"url": None}, discovered=[_disc(normalized)]
+    )
+    card = c.card_summary(out)
+    assert card["workplace"] == "remote"
+    assert card["locations"] == ["Austin, TX", "Remote (US)"]
+    assert card["seniority"] == "Senior"
+    assert card["description_preview"] == "Short role."  # short text is not truncated
+
+
+def test_card_summary_is_none_when_no_source_gave_anything_extra():
+    out = c.consolidate_detail(own_description=None, own={}, discovered=[])
+    assert c.card_summary(out) is None  # a bare job carries no card; nothing invented
