@@ -78,6 +78,7 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `{entity}.approve` | `{entity}` | `version` | record version number |
 | `{entity}.delete` | `{entity}` | - | |
 | `document.upload` | `document` | `version` | document version number |
+| `document.drive_import` | `document` | `version` | a document imported from Google Drive as a new snapshot version (D124, Phase F); never the Drive file id, name or content |
 | `document.facts_proposed` | `document` | `credential`, `education`, `employment` | how many records were proposed from this resume (L1, D72); never their content |
 | `document.generated` | `document` | `cost_usd`, `kind`, `provider` | a tailored resume or cover letter written by the drafting provider (L2/L3, D73); never its text |
 | `document.generated_accepted` | `document` | `kind` | you accepted it for its application |
