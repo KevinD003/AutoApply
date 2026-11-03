@@ -146,3 +146,17 @@ export const IconGear = (p) => (
     <path d="M12 2.5 13 5l2.5-.8L16 6.8l2.3 1L17.5 10l1.8 1.8-2.2 1.4.2 2.6-2.6.2-1.2 2.3-2.3-1.2-2.3 1.2-1.2-2.3-2.6-.2.2-2.6L2.7 11.8 4.5 10l-.8-2.2 2.3-1L6.8 4.2 9.3 5z" />
   </Svg>
 );
+
+export const IconMore = (p) => (
+  <Svg {...p}>
+    <circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none" />
+  </Svg>
+);
+
+export const IconArrowLeft = (p) => (
+  <Svg {...p}>
+    <path d="M19 12H5m0 0 6-6m-6 6 6 6" />
+  </Svg>
+);

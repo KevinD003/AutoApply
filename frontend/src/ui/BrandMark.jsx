@@ -21,9 +21,9 @@ export function BrandMark({ size = 28, className }) {
     >
       <defs>
         <linearGradient id={gid} x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#6c5ce7" />
-          <stop offset="0.55" stopColor="#8b7bff" />
-          <stop offset="1" stopColor="#5ba8ff" />
+          <stop stopColor="#0b6e74" />
+          <stop offset="0.55" stopColor="#119a92" />
+          <stop offset="1" stopColor="#19b7a8" />
         </linearGradient>
       </defs>
       <rect x="1" y="1" width="38" height="38" rx="11" fill={`url(#${gid})`} />

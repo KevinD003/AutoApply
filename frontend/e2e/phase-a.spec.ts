@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { openMoreIfMobile } from "./nav-helpers";
+
 // One persistent end-to-end slice: register, profile facts, preferences, add + import jobs,
 // upload a document, track an application and record its outcome. Synthetic data only.
 test("phase A slice", async ({ page }, info) => {
@@ -31,6 +33,7 @@ test("phase A slice", async ({ page }, info) => {
   await expect(page.getByText(/authorized Yes, sponsorship now No, later Not answered/)).toBeVisible();
 
   // Preferences
+  await openMoreIfMobile(page);
   await page.getByRole("link", { name: "Preferences" }).click();
   await page.getByLabel("Job titles").fill("Electrician");
   await page.getByLabel("Employers to exclude").fill("Blocked Corp");
@@ -83,6 +86,7 @@ test("phase A slice", async ({ page }, info) => {
   await expect(page.getByText("1 submission is too few to compare rates; 1 response so far.", { exact: true })).toBeVisible();
 
   // Documents
+  await openMoreIfMobile(page);
   await page.getByRole("link", { name: "Documents" }).click();
   await page.getByLabel("File").setInputFiles({ name: "resume.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n% synthetic\n") });
   await page.getByRole("button", { name: "Upload", exact: true }).click();

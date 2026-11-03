@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { openMoreIfMobile } from "./nav-helpers";
+
 // Priority C (D78): a saved answer is edited as a new version with its history kept, and a
 // document's text is previewed as plain text only. Synthetic account and local test form only.
 
@@ -24,6 +26,7 @@ test("a saved answer is edited as a new version, with its history", async ({ pag
   await edu.getByRole("button", { name: "Save answer" }).click();
   await expect(page.getByText("Answer saved.")).toBeVisible();
 
+  await openMoreIfMobile(page);
   await page.getByRole("link", { name: "Saved answers" }).click();
   const item = page.getByRole("listitem").filter({ hasText: "Highest level of education completed" });
   await expect(item.getByText("Bachelor's degree", { exact: true })).toBeVisible();

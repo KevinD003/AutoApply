@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { openMoreIfMobile } from "./nav-helpers";
+
 // Phase B: profile → questions → deterministic resolution → missing-answer checkpoint →
 // user correction → package review → approval → invalidation after a fact change.
 // Uses the local "basic" fixture form (fictional employer) and synthetic data only.
@@ -28,6 +30,7 @@ test("phase B preparation and approval", async ({ page }, info) => {
   await page.getByRole("button", { name: "Add country" }).click();
   await expect(page.getByText(/authorized Yes, sponsorship now No, later No/)).toBeVisible();
 
+  await openMoreIfMobile(page);
   await page.getByRole("link", { name: "Documents" }).click();
   await page.getByLabel("File").setInputFiles({ name: "resume.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n% synthetic\n") });
   await page.getByRole("button", { name: "Upload", exact: true }).click();
@@ -72,6 +75,7 @@ test("phase B preparation and approval", async ({ page }, info) => {
   await page.screenshot({ path: `test-results/phase-b-review-${info.project.name}.png`, fullPage: true });
 
   // Change a protected fact: approval must be invalidated.
+  await openMoreIfMobile(page);
   await page.getByRole("link", { name: "Profile", exact: true }).click();
   await page.getByLabel("Will need sponsorship later").selectOption("yes");
   await expect(page.getByText(/later Yes · v2/)).toBeVisible();
@@ -99,6 +103,7 @@ test("phase B preparation and approval", async ({ page }, info) => {
   await expect(page.getByText("Answer saved.")).toBeVisible();
 
   // The saved answer is listed, bound to its wording and help text; nothing about this job is.
+  await openMoreIfMobile(page);
   await page.getByRole("link", { name: "Saved answers" }).click();
   await expect(page.getByText("Highest level of education completed")).toBeVisible();
   await expect(page.getByText("Bachelor's degree", { exact: true })).toBeVisible();

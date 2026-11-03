@@ -140,7 +140,7 @@ export function SwipeDeck({
               aria-hidden={isTop ? undefined : true}
               className={cx(
                 "absolute inset-0 overflow-hidden rounded-[var(--r-xl)] border border-hairline bg-surface shadow-[var(--shadow-lg)]",
-                isTop ? "cursor-grab touch-none active:cursor-grabbing" : "pointer-events-none",
+                isTop ? "cursor-grab touch-pan-y active:cursor-grabbing" : "pointer-events-none",
                 isLeaving && "opacity-0",
               )}
               style={{ transform, transition, zIndex: cards.length - i }}
@@ -150,15 +150,15 @@ export function SwipeDeck({
                 <>
                   <span
                     aria-hidden="true"
-                    style={{ opacity: applyOpacity }}
-                    className="absolute left-5 top-5 z-10 rotate-[-10deg] rounded-[var(--r-md)] border-2 border-positive px-3 py-1 text-lg font-extrabold uppercase tracking-wider text-positive-ink"
+                    style={{ opacity: applyOpacity, transform: `rotate(-10deg) scale(${0.82 + 0.18 * applyOpacity})` }}
+                    className="absolute left-5 top-5 z-10 rounded-[var(--r-md)] border-2 border-positive bg-positive-weak px-3 py-1 text-lg font-extrabold uppercase tracking-wider text-positive-ink"
                   >
                     {applyLabel}
                   </span>
                   <span
                     aria-hidden="true"
-                    style={{ opacity: passOpacity }}
-                    className="absolute right-5 top-5 z-10 rotate-[10deg] rounded-[var(--r-md)] border-2 border-ink-faint px-3 py-1 text-lg font-extrabold uppercase tracking-wider text-ink-muted"
+                    style={{ opacity: passOpacity, transform: `rotate(10deg) scale(${0.82 + 0.18 * passOpacity})` }}
+                    className="absolute right-5 top-5 z-10 rounded-[var(--r-md)] border-2 border-ink-faint bg-surface-3 px-3 py-1 text-lg font-extrabold uppercase tracking-wider text-ink-muted"
                   >
                     {passLabel}
                   </span>
