@@ -3860,3 +3860,51 @@ export** includes the full `labels` (it is the owner's own data — "all my data
 complete); the row cascade-deletes with the account. Known limitation: substantive multi-select
 self-ID (e.g. race/ethnicity with several values) is a checkpoint until the self-ID data model
 is structured per category — deferred, not built speculatively.
+
+## D120 — Education and employment structured sections: resolution layer (2026-11-03)
+
+- **Context.** Education and employment are the last common "fill every field" gap on
+  Greenhouse. They are **not** in the Job Board API `questions` array: they are a separate,
+  documented submission contract. Verified 2026-11-03 against the official Greenhouse Job Board
+  API docs (`grnhse/greenhouse-api-docs`, `source/includes/job-board/_educations.md` and
+  `_applications.md`) — this corrected two errors in the earlier field note (the degree option
+  texts are the full strings such as "Bachelor's Degree" / "Master of Business Administration
+  (M.B.A.)", not abbreviations; the option `id`s are per-organization, so matching must be by
+  text, never by id).
+- **Contract (authoritative).**
+  - `educations[]`: `school_name_id`, `degree_id`, `discipline_id`, `start_date{month,year}`,
+    `end_date{month,year}`. The `*_id`s come from `GET /v1/boards/{token}/education/{schools|
+    degrees|disciplines}` (`{items:[{id,text}], meta:{per_page:100}}`, `?term=` search).
+  - `employments[]`: `company_name`, `title`, `start_date{month,year}`, `current` ("true"/
+    "false"); `end_date{month,year}` required only when `current` is false; start before end.
+- **What was built (the independently-implementable layers): `structured_sections.py`.** A
+  deterministic resolution layer that maps the owner's **approved** education/employment records
+  onto a section's own option lists:
+  - degree matched by exact text or a defensible variant grounded in the option's own text (a
+    trailing "Degree"; a parenthetical abbreviation, so "MBA"/"M.B.A." ↔ "Master of Business
+    Administration (M.B.A.)"); discipline and school matched by **exact** text only (large
+    per-organization lists; two hits or none → checkpoint).
+  - explicit handling of current employment (`current=true`, `end_date` omitted — never
+    invented) and missing/incomplete dates and reversed start/end (→ checkpoint).
+  - stable row identity (the record id) and field-level provenance (a `fact_ref` per field to
+    the exact record field used), the same shape the package uses for its approval dependency.
+  - section reconciliation: an unsupported section kind, or an education section whose option
+    lists were not captured, is an explicit checkpoint (`supported=False`), never guessed.
+- **Deliberately out of scope (the isolated remaining gaps).**
+  - The **rendered hosted-form DOM** — the real control selectors and the repeating-row indexing
+    of a Greenhouse education/employment section are **unobserved** and are not invented. The
+    option lists are supplied by the caller (at capture, from the education endpoints) or, in
+    tests, by a clearly-labelled **synthetic** contract fixture
+    (`fixtures/greenhouse_education.synthetic.json`), which is documented-contract data, not
+    observed page output.
+  - **Live package wiring.** No real captured form carries these sections (capture still fails
+    closed), so this is not wired into `package.build_content`; `SCHEMA_VERSION` is unchanged
+    (no existing package content changes, so no re-approval is forced). Each field result
+    already carries package-shaped `fact_refs`, so wiring is a thin, reviewable step once a real
+    section is observed.
+- **Tests:** `tests/test_structured_sections.py` (degree/discipline/school matching, full and
+  partial education rows, current vs past employment, reversed dates, approved-only, unsupported
+  and un-captured sections → checkpoints, provenance).
+- **Remaining for D120:** one observed Greenhouse education/employment section (a captured page,
+  or an approved read-only inspection) to pin the rendered controls and repeating-row indexing;
+  then the DOM filler + live package wiring.

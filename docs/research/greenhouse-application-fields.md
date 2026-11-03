@@ -41,7 +41,7 @@ A job post's fields are read live from `GET /boards/{token}/jobs/{id}?questions=
 | Field | POST shape | Populated from |
 |---|---|---|
 | School | `educations[][school_name_id]` | `GET /boards/{token}/education/schools` (id + text) |
-| Degree | `educations[][degree_id]` | `GET .../education/degrees` (High School, Associate's, Bachelor's, Master's, M.B.A., J.D., M.D., Ph.D., Engineer's, Other) |
+| Degree | `educations[][degree_id]` | `GET .../education/degrees` — exact texts (verified 2026-11-03): "High School", "Associate's Degree", "Bachelor's Degree", "Master's Degree", "Master of Business Administration (M.B.A.)", "Juris Doctor (J.D.)", "Doctor of Medicine (M.D.)", "Doctor of Philosophy (Ph.D.)", "Engineer's Degree", "Other". Ids are per-organization — match by text, never by id. |
 | Discipline | `educations[][discipline_id]` | `GET .../education/disciplines` |
 | Start / End | `educations[][start_date][month|year]`, `[end_date][...]` | month + year |
 
@@ -131,9 +131,15 @@ enforcement is load-bearing, not belt-and-braces.
   us; a range or currency question arrives as text/select and is handled or becomes a checkpoint.
 - **Education** (`job-board/_educations.md`, `_degrees.md`): `/education/degrees`,
   `/education/disciplines`, `/education/schools`, each `{id, text}`, `?term=` search, 100/page.
-  Degrees: High School, Associate's, Bachelor's, Master's, M.B.A., J.D., M.D., Ph.D., Engineer's,
-  Other. **Dates are month+year integers** (`educations[][start_date][month|year]`), start before
-  end. Employment: `company_name`, `title`, month+year dates, `current` bool. → D120.
+  Degrees (exact texts, verified 2026-11-03): "High School", "Associate's Degree", "Bachelor's
+  Degree", "Master's Degree", "Master of Business Administration (M.B.A.)", "Juris Doctor (J.D.)",
+  "Doctor of Medicine (M.D.)", "Doctor of Philosophy (Ph.D.)", "Engineer's Degree", "Other"; ids
+  are per-organization, so match by text. **Dates are month+year integers**
+  (`educations[][start_date][month|year]`), start before end. Employment (`employments[]`):
+  `company_name`, `title`, `start_date` {month,year}, `current` ("true"/"false"), and `end_date`
+  {month,year} only when `current` is false. → D120 resolution layer built
+  (`app/modules/preparation/structured_sections.py`); the rendered hosted-form DOM and live
+  package wiring remain the isolated gaps.
 - **Location**: free-text `location` + hidden `latitude`/`longitude` + `country_short_name`
   (ISO-2); `location` is ignored unless lat+long are also sent (a Google Places flow). Matches
   our D104 design (search picker; coordinates set by the page; country from the approved
