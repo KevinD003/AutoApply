@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, Empty, ErrorBox, Loading } from "@/components/ui";
-import { api, AppNotification, NOTIFICATIONS_CHANGED } from "@/lib/api";
+import { api, NOTIFICATIONS_CHANGED } from "@/lib/api";
+import { Stagger } from "@/ui/motion";
 
 // Priority C (D83): what happened to your applications, derived from the records themselves
 // (backend notifications/service.py). Shown here only: nothing is emailed, texted or pushed.
@@ -18,21 +19,15 @@ const KIND = {
   follow_up: { label: "Follow-up", tone: "amber" },
   board_postings: { label: "Job board", tone: "slate" },
   auto_apply_questions: { label: "Your answers needed", tone: "amber" },
-} as const;
-
-interface Feed {
-  items: AppNotification[];
-  total: number;
-  unread: number;
-}
+};
 
 export default function NotificationsPage() {
   const router = useRouter();
-  const [feed, setFeed] = useState<Feed | null>(null);
-  const [error, setError] = useState<unknown>(null);
+  const [feed, setFeed] = useState(null);
+  const [error, setError] = useState(null);
 
   const load = useCallback(() => {
-    api<Feed>("/notifications?limit=200")
+    api("/notifications?limit=200")
       .then(setFeed)
       .catch((e) => {
         setError(e);
@@ -42,7 +37,7 @@ export default function NotificationsPage() {
 
   useEffect(load, [load]);
 
-  async function mark(path: string, keys?: string[]) {
+  async function mark(path, keys) {
     setError(null);
     try {
       await api(`/notifications/${path}`, keys ? { json: { keys } } : { method: "POST" });
@@ -53,7 +48,7 @@ export default function NotificationsPage() {
     }
   }
 
-  async function open(n: AppNotification) {
+  async function open(n) {
     if (!n.read) {
       await api("/notifications/read", { json: { keys: [n.key] } }).catch(() => undefined);
       window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED));
@@ -83,40 +78,44 @@ export default function NotificationsPage() {
         ) : feed.items.length === 0 ? (
           <Empty>Nothing yet. Verification requests, approvals that stop applying, rehearsals, receipts and stops will show here.</Empty>
         ) : (
-          <ul aria-label="Notifications" className="divide-y divide-hairline">
-            {feed.items.map((n) => (
-              <li key={n.key} className={`flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between ${n.read ? "" : "bg-brand-weak/40"}`}>
-                <div className="min-w-0 sm:px-2">
-                  <p className="flex flex-wrap items-center gap-2">
-                    <Badge tone={KIND[n.kind].tone}>{KIND[n.kind].label}</Badge>
-                    {!n.read && <Badge tone="indigo">Unread</Badge>}
-                    {n.needs_action && <Badge tone="amber">Needs you</Badge>}
-                    <span className="font-medium text-ink">{n.title}</span>
-                  </p>
-                  <p className="mt-1 text-sm text-ink-muted">{n.text}</p>
-                  {n.evidence_label && <p className="mt-1 text-xs text-ink-faint">{n.evidence_label}</p>}
-                  <p className="mt-1 text-xs text-ink-faint">
-                    {n.job} · {new Date(n.at).toLocaleString()}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-2 sm:px-2">
-                  <Link
-                    href={n.link}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      open(n);
-                    }}
-                    className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong"
-                  >
-                    {n.application_id ? "Open application" : "Open Discover"}
-                  </Link>
-                  <Button variant="secondary" onClick={() => mark(n.read ? "unread" : "read", [n.key])}>
-                    {n.read ? "Mark as unread" : "Mark as read"}
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <Stagger as="ul" aria-label="Notifications" className="divide-y divide-hairline">
+            {feed.items.map((n) => {
+              // Defensive: an unrecognised kind still renders rather than crashing the feed.
+              const k = KIND[n.kind] ?? { label: n.kind, tone: "slate" };
+              return (
+                <li key={n.key} className={`flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between ${n.read ? "" : "bg-brand-weak/40"}`}>
+                  <div className="min-w-0 sm:px-2">
+                    <p className="flex flex-wrap items-center gap-2">
+                      <Badge tone={k.tone}>{k.label}</Badge>
+                      {!n.read && <Badge tone="indigo">Unread</Badge>}
+                      {n.needs_action && <Badge tone="amber">Needs you</Badge>}
+                      <span className="font-medium text-ink">{n.title}</span>
+                    </p>
+                    <p className="mt-1 text-sm text-ink-muted">{n.text}</p>
+                    {n.evidence_label && <p className="mt-1 text-xs text-ink-faint">{n.evidence_label}</p>}
+                    <p className="mt-1 text-xs text-ink-faint">
+                      {n.job} · {new Date(n.at).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2 sm:px-2">
+                    <Link
+                      href={n.link}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        open(n);
+                      }}
+                      className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong"
+                    >
+                      {n.application_id ? "Open application" : "Open Discover"}
+                    </Link>
+                    <Button variant="secondary" onClick={() => mark(n.read ? "unread" : "read", [n.key])}>
+                      {n.read ? "Mark as unread" : "Mark as read"}
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
+          </Stagger>
         )}
       </Card>
     </>

@@ -1,30 +1,30 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, Empty, ErrorBox, Field, inputCls, Loading, Notice } from "@/components/ui";
 import { DriveImport } from "@/components/DriveImport";
-import { api, Doc } from "@/lib/api";
+import { api } from "@/lib/api";
 
 export default function DocumentsPage() {
-  const [docs, setDocs] = useState<Doc[] | null>(null);
-  const [versions, setVersions] = useState<Record<string, Doc[]>>({});
-  const [error, setError] = useState<unknown>(null);
+  const [docs, setDocs] = useState(null);
+  const [versions, setVersions] = useState({});
+  const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
-  const [confirming, setConfirming] = useState<string | null>(null);
-  const [preview, setPreview] = useState<Record<string, { text: string; truncated: boolean } | { error: unknown }>>({});
+  const [confirming, setConfirming] = useState(null);
+  const [preview, setPreview] = useState({});
 
   const load = useCallback(() => {
-    api<Doc[]>("/documents").then(setDocs).catch((e) => {
+    api("/documents").then(setDocs).catch((e) => {
       setError(e);
       setDocs([]);
     });
   }, []);
   useEffect(load, [load]);
 
-  async function showVersions(d: Doc) {
+  async function showVersions(d) {
     try {
-      const v = await api<Doc[]>(`/documents/${d.id}/versions`);
+      const v = await api(`/documents/${d.id}/versions`);
       setVersions((cur) => ({ ...cur, [d.lineage_id]: v }));
     } catch (e) {
       setError(e);
@@ -33,7 +33,7 @@ export default function DocumentsPage() {
 
   // Priority C (D78): the text NoEfforts reads from the file, shown as plain text only. The file
   // itself is never rendered here (no PDF viewer, no HTML), and nothing is fetched from elsewhere.
-  async function togglePreview(d: Doc) {
+  async function togglePreview(d) {
     if (preview[d.id]) {
       setPreview((cur) => {
         const next = { ...cur };
@@ -43,7 +43,7 @@ export default function DocumentsPage() {
       return;
     }
     try {
-      const p = await api<{ text: string; truncated: boolean }>(`/documents/${d.id}/preview`);
+      const p = await api(`/documents/${d.id}/preview`);
       setPreview((cur) => ({ ...cur, [d.id]: p }));
     } catch (e) {
       setPreview((cur) => ({ ...cur, [d.id]: { error: e } }));
@@ -52,7 +52,7 @@ export default function DocumentsPage() {
 
   // C17 (D70): a version, or every version, is deleted with its file; refused while an approved
   // package or a submission in progress needs it.
-  async function remove(d: Doc, scope: "version" | "lineage") {
+  async function remove(d, scope) {
     setError(null);
     setNotice("");
     setConfirming(null);
@@ -71,14 +71,11 @@ export default function DocumentsPage() {
   }
 
   // L1 (D72): what this resume states becomes proposed profile facts, used only once approved.
-  async function propose(d: Doc) {
+  async function propose(d) {
     setError(null);
     setNotice("");
     try {
-      const r = await api<{ proposed: Record<string, number>; skipped: { existing: number; sensitive: number } }>(
-        `/documents/${d.id}/propose-facts`,
-        { method: "POST" },
-      );
+      const r = await api(`/documents/${d.id}/propose-facts`, { method: "POST" });
       const p = r.proposed;
       setNotice(
         `Proposed from “${d.label}”: ${p.employment} work ${p.employment === 1 ? "entry" : "entries"}, ${p.education} education ` +
@@ -150,7 +147,7 @@ export default function DocumentsPage() {
                 {preview[d.id] &&
                   ("error" in preview[d.id] ? (
                     <div className="mt-2">
-                      <ErrorBox error={(preview[d.id] as { error: unknown }).error} />
+                      <ErrorBox error={preview[d.id].error} />
                     </div>
                   ) : (
                     <figure className="mt-2">
@@ -158,11 +155,11 @@ export default function DocumentsPage() {
                         aria-label={`Text of ${d.label}`}
                         className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-hairline bg-surface-2 p-3 text-xs text-ink"
                       >
-                        {(preview[d.id] as { text: string }).text}
+                        {preview[d.id].text}
                       </pre>
                       <figcaption className="mt-1 text-xs text-ink-faint">
                         The text NoEfforts reads from this file, as plain text; layout and images are not shown.
-                        {(preview[d.id] as { truncated: boolean }).truncated && " Only the beginning is shown."}
+                        {preview[d.id].truncated && " Only the beginning is shown."}
                       </figcaption>
                     </figure>
                   ))}
@@ -189,15 +186,15 @@ export default function DocumentsPage() {
   );
 }
 
-function Upload({ onDone, lineage, compact }: { onDone: () => void; lineage?: Doc; compact?: boolean }) {
-  const [file, setFile] = useState<File | null>(null);
+function Upload({ onDone, lineage, compact }) {
+  const [file, setFile] = useState(null);
   const [kind, setKind] = useState("resume");
   const [label, setLabel] = useState("");
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  async function submit(e: FormEvent) {
+  async function submit(e) {
     e.preventDefault();
     if (!file) return;
     setBusy(true);
@@ -229,7 +226,7 @@ function Upload({ onDone, lineage, compact }: { onDone: () => void; lineage?: Do
           <input type="file" accept=".pdf,.docx,.txt" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         </label>
         {file && <Button type="submit" disabled={busy} className="!min-h-8 !px-2 !py-1">Upload {file.name}</Button>}
-        {error ? <span className="text-xs text-danger-ink">{(error as Error).message}</span> : null}
+        {error ? <span className="text-xs text-danger-ink">{error.message}</span> : null}
       </form>
     );
 
