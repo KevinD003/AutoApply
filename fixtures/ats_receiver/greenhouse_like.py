@@ -274,6 +274,15 @@ if (next) next.addEventListener('click', () => {{ location.href = next.dataset.n
     if cfg["mode"] == "gh_post_on_load":  # a page that sends data on its own as soon as it loads
         body += (f"<script>fetch('{base}/telemetry', {{method: 'POST', body: 'loaded'}})"
                  ".catch(() => {});</script>")
+    if mode == "gh_js_late_required":  # a required control the page adds only when its script runs
+        # A well-formed required question, added after load. Absent from a no-JavaScript capture
+        # GET (it is not in the served HTML); present in the rendered DOM the worker reads, where
+        # it is a control no approved field names -> schema_matches flags it before disclosure.
+        body += ("<script>const d = document.createElement('div'); d.className = 'field';"
+                 " d.setAttribute('data-question', 'extra_js_q');"
+                 " d.innerHTML = '<label for=\"extra_js_q\">Extra question added by script *</label>"
+                 "<input type=\"text\" id=\"extra_js_q\" name=\"extra_js_q\" required>';"
+                 " document.querySelector('form').appendChild(d);</script>")
     return _page(f"Job Application for {j['title']} at {j['company_name']}", body, "form")
 
 
