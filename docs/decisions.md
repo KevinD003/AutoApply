@@ -3956,3 +3956,53 @@ is structured per category — deferred, not built speculatively.
   Every existing e2e contract preserved; verified on desktop + mobile; `tsc`/eslint/`ruff` clean.
 - **Remaining:** full `.jsx` migration of `applications/[id]` (functional + visually unslopped via the
   restyled primitives today) and a dark-mode colour pass on the un-migrated page bodies.
+
+## D126 — Complete job information: structured, sanitized ingestion with salary provenance (2026-11-03)
+
+The premium pass (D125) asked that a job's full detail be preserved and presented, not reduced to
+a 500-character plain-text teaser. This is the backend slice; the premium job-detail view that
+renders it is a separate frontend change.
+
+- **One place, no migration (`app/modules/discovery/content.py`):** a discovery record already
+  carries a schemaless `DiscoveredJob.normalized` JSON column, so the full detail is stored there
+  under a new `content` key. Nothing in the schema changes. `NormalizedJob.content` holds only the
+  keys a source actually gave — `description_blocks`, `sections`, `salary`, `seniority`,
+  `department`, `locations` — so a field a source omits is simply absent, never guessed.
+- **HTML → safe structured blocks (untrusted-in, data-out):** a posting's description, links and
+  application content are untrusted. The sanitizer (stdlib `html.parser`, no network, no new
+  dependency) turns HTML into a list of plain blocks — headings, paragraphs and lists with inline
+  text, emphasis and safe links only. Everything that could run, fetch or submit is dropped whole:
+  scripts, styles, `img`/media, `iframe`/frames, `svg`, forms and controls, and every attribute but
+  a link's `href`. A link survives only when its scheme is http(s) or mailto (`javascript:`,
+  `data:`, `vbscript:`, `file:` and relative/anchor links lose the link, keep the text). The blocks
+  are rendered later as elements — never as raw HTML — so no embedded asset is ever fetched and
+  nothing executes. Output is bounded (blocks, list items, total characters). This replaces the
+  "reduce to plain text" rule from D95; the 500-char `description_summary` stays for the list, dedupe
+  and export.
+- **Salary with its provenance, never invented:** structured source fields are read when present
+  (Lever `salaryRange`/`salaryDescription` — the pay fields D95 deliberately left out "until there
+  is a design for it"; this is that design) and tagged `structured`; Freehire enrichment pay is
+  tagged `enrichment` and attributed to the provider as possibly model-produced, never the
+  employer's words; otherwise one figure is `extracted` from the description text and marked as such.
+  The original currency, pay period and figures are preserved exactly — an hourly figure is never
+  annualized and currencies are never converted. Base is distinguished from bonus/equity/OTE when
+  the text separates them. When no salary is known the value is null and the page shows
+  "Salary not provided."
+- **The sources' own structure, not invented sections:** Greenhouse (`content`, entity-decoded) and
+  Freehire (`description`) keep their own headings inside the description blocks; Lever's documented
+  `lists` become labelled `sections` (Responsibilities, Requirements, …) exactly as the posting
+  labelled them. NoEfforts never fabricates a responsibilities/qualifications split.
+- **Exposed through the job page (`GET /jobs/{id}` → `content`):** the detail endpoint consolidates
+  the richest discovery record that lists the job (freshest, with a real description; stale records
+  rank below fresh), falling back to the job's own saved text and fields, into one `content` object:
+  `{description: {blocks, sections}, salary, facts: {employment_type, seniority, department,
+  locations, posted_on, source_url}, origin}`. `facts` carries only what a source gave; `origin` is
+  `discovery` / `your_entry` / `none`. Model-written enrichment prose (Freehire `summary`,
+  `requirements`) is **not** used — only the posting's own content or clearly attributed estimates.
+- **Tests:** `backend/tests/test_discovery_content.py` (sanitizer drops scripts/media/forms, keeps
+  safe links, decodes entity-encoded HTML, caps output; salary structured/enrichment/extracted with
+  currency/period/kind preserved and nothing annualized; missing fields stay absent) and
+  `backend/tests/test_jobs_content_detail.py` (the job page surfaces the full description not the
+  summary, the source's sections, structured salary, and says "Salary not provided." when none is
+  known). No new audit event and no new `NOEFFORTS_` setting, so the inventory and deployment-config
+  guards are unaffected.

@@ -34,6 +34,7 @@ from app.core.urlsafety import (
     is_fixture_origin,
     resolve_public_destination,
 )
+from app.modules.discovery import content as content_mod
 from app.modules.jobs.canonical import canonicalize_url, detect_ats
 
 WORKPLACE = ("remote", "hybrid", "onsite", "unknown")
@@ -71,6 +72,10 @@ class NormalizedJob:
     # D93: what the source itself says about the posting (Freehire's documented `reality`),
     # display-only: never a fact, never read by matching, approval, routing or execution.
     source_signals: dict = field(default_factory=dict)
+    # D125 (Slice D): the posting's full, structured, sanitized detail (content.py). Only the
+    # keys the source actually gave: description_blocks, sections, salary, seniority, department,
+    # locations. Stored verbatim in DiscoveredJob.normalized; nothing here is ever guessed.
+    content: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         d = asdict(self)
@@ -333,6 +338,9 @@ class FreehireMockProvider(DiscoveryProvider):
             closed_at_source=bool(raw.get("closed")),
             missing=_missing(job_url, apply_url, title, employer),
             attribution={"text": "local mock data (not from freehire.me)", "url": None},
+            content=content_mod.pack_content(
+                description_blocks=content_mod.to_blocks(raw.get("summary"))
+            ),
         )
 
 
@@ -591,6 +599,7 @@ class FreehireApiProvider(DiscoveryProvider):
             missing=_missing(url, None, title, employer),
             attribution=dict(self.ATTRIBUTION),
             source_signals=freehire_signals(raw),  # D93: display-only
+            content=content_mod.freehire_content(raw, enr),  # D125 (Slice D)
         )
 
 
