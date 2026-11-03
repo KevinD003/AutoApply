@@ -68,6 +68,10 @@ def enabled(monkeypatch, drive_server):
     monkeypatch.setattr(s, "google_drive_client_id", "synthetic.apps.googleusercontent.com")
     monkeypatch.setattr(s, "google_drive_api_key", "synthetic-api-key")
     monkeypatch.setattr(s, "google_drive_api_base", base)
+    # The download uses the audited fixture opener (stdlib urllib, no httpx): it reaches a
+    # loopback stand-in only when that exact origin is a listed fixture origin, in the test
+    # environment. Register this server's dynamic origin, as conftest does for the receiver.
+    monkeypatch.setattr(s, "fixture_origins", [base])
     return drive_server
 
 

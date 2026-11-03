@@ -70,5 +70,6 @@ def drive_import(
             raise not_found("Google Drive import") from None
         if e.code in _BAD_REQUEST:
             raise bad_request(e.message) from None
-        # drive_unreachable / drive_fetch_failed / drive_misconfigured
+        # Reachability/configuration class: drive_unreachable, drive_fetch_failed,
+        # drive_misconfigured, drive_redirect, drive_destination_refused.
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=e.message) from None

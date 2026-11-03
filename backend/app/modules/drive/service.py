@@ -16,12 +16,20 @@ from __future__ import annotations
 
 import hashlib
 import re
+import urllib.error
+import urllib.request
 import uuid
+from urllib.parse import quote, urlencode, urlsplit
 
-import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.urlsafety import (
+    UnsafeURL,
+    fixture_opener,
+    is_fixture_origin,
+    public_https_opener,
+)
 from app.modules.audit.service import record
 from app.modules.documents.models import Document, DocumentKind
 from app.modules.documents.router import ALLOWED
@@ -64,32 +72,72 @@ def status() -> dict:
     }
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise DriveError(
+            "drive_redirect",
+            f"Google Drive answered with a redirect (HTTP {code}); it is not followed.",
+        )
+
+
+def _opener(base: str) -> urllib.request.OpenerDirector:
+    """The opener that reads the one file: HTTPS to the fixed Google API host, public
+    addresses only (checked when connecting), no redirects, no file/data handlers — the same
+    audited opener the public job-board connectors use. In the test environment only, a
+    listed loopback stand-in is reached through the fixture opener instead; googleapis is
+    never contacted. Uses stdlib urllib, so no runtime HTTP dependency (httpx is test-only)."""
+    s = get_settings()
+    if s.env == "test" and is_fixture_origin(base):
+        return fixture_opener(_NoRedirect)
+    if base != GOOGLE_API:
+        raise DriveError("drive_misconfigured", "Drive import must use the Google API.")
+    return public_https_opener(urlsplit(base).hostname or "", _NoRedirect)
+
+
 def _download(file_id: str, access_token: str, mime_type: str) -> tuple[bytes, str, str]:
-    """Download exactly one picked file from the Drive API. Returns (bytes,
-    content_type, extension). Never follows redirects; only talks to the configured
-    Google base (a local fixture base is allowed only in the test environment)."""
+    """Download exactly one picked file from the Drive API with a single GET. Returns
+    (bytes, content_type, extension). Only ever reads — never lists, writes or deletes —
+    talks only to the configured Google base (a loopback fixture base in tests), over HTTPS
+    to a public address in production, and never follows a redirect. The access token is sent
+    once, as a bearer header, and never stored."""
     s = get_settings()
     base = s.google_drive_api_base.rstrip("/")
-    if s.env != "test" and base != GOOGLE_API:
-        raise DriveError("drive_misconfigured", "Drive import must use the Google API.")
 
     export = EXPORTS.get(mime_type)
     if mime_type.startswith("application/vnd.google-apps") and not export:
         raise DriveError("unsupported_google_type", "This Google file type cannot be imported.")
+    fid = quote(file_id, safe="")
     if export:
-        url, params = f"{base}/drive/v3/files/{file_id}/export", {"mimeType": export[0]}
+        url = f"{base}/drive/v3/files/{fid}/export?{urlencode({'mimeType': export[0]})}"
     else:
-        url, params = f"{base}/drive/v3/files/{file_id}", {"alt": "media"}
+        url = f"{base}/drive/v3/files/{fid}?{urlencode({'alt': 'media'})}"
 
+    opener = _opener(base)
+    cap = s.max_upload_bytes
+    req = urllib.request.Request(
+        url,
+        method="GET",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "*/*",
+            "User-Agent": "NoEfforts-drive-import/1",
+        },
+    )
     try:
-        with httpx.Client(timeout=30, follow_redirects=False) as c:
-            r = c.get(url, params=params, headers={"Authorization": f"Bearer {access_token}"})
-    except httpx.HTTPError:
+        with opener.open(req, timeout=30) as r:
+            data = r.read(cap + 1)  # one past the cap: an oversize file is caught, not truncated
+    except DriveError:
+        raise
+    except urllib.error.HTTPError:
+        raise DriveError("drive_fetch_failed", "Google Drive did not return the file.") from None
+    except UnsafeURL:
+        raise DriveError(
+            "drive_destination_refused",
+            "Google Drive's address was refused before any request was made.",
+        ) from None
+    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
         raise DriveError("drive_unreachable", "Google Drive could not be reached.") from None
-    if r.status_code != 200:
-        raise DriveError("drive_fetch_failed", "Google Drive did not return the file.")
-    data = r.content
-    if len(data) > s.max_upload_bytes:
+    if len(data) > cap:
         raise DriveError("too_large", "The file is too large.")
     if not data:
         raise DriveError("empty", "The file is empty.")
