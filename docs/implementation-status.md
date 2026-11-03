@@ -37,6 +37,38 @@ Last updated: 2026-11-02 (D115: the answer brain suggests your own saved answers
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## Complete job information: structured, sanitized ingestion with salary provenance (D126, 2026-11-03; local only)
+
+The D125 premium pass asked that a job's full detail be preserved and presented, not reduced to a
+500-character teaser. This is the backend slice (branch `feature/complete-job-information`, off
+`main`/`cb4dc5e`); the premium job-detail view that renders it is a separate frontend change that
+lands after the motion/palette PR.
+
+- **New `app/modules/discovery/content.py`:** an HTML→safe-blocks sanitizer (stdlib `html.parser`,
+  no new dependency, no network) and a salary reader. HTML becomes a list of plain blocks (heading /
+  paragraph / list) with inline text, emphasis and safe links only; scripts, styles, images and
+  other media, frames, `svg`, forms and controls, and every attribute but a link's `href` are
+  dropped; a link survives only for http(s)/mailto. Blocks render later as elements, never as raw
+  HTML, so no embedded asset is fetched and nothing executes. Output is bounded.
+- **Salary with provenance, never invented:** Lever `salaryRange`/`salaryDescription` →
+  `structured` (the pay fields D95 left "until there is a design for it" — this is that design);
+  Freehire enrichment pay → `enrichment`, attributed to the provider as possibly model-produced;
+  otherwise one figure is `extracted` from text. Currency, pay period and figures are kept exactly;
+  nothing is annualized or currency-converted; base is distinguished from bonus/equity/OTE when the
+  text separates them; when none is known the value is null and the page shows "Salary not provided."
+- **Wiring:** `NormalizedJob.content` (new field, stored in the schemaless `DiscoveredJob.normalized`
+  JSON — **no migration**) populated by the Freehire and Greenhouse/Lever normalizers. `GET /jobs/{id}`
+  gains a `content` object consolidated from the richest discovery record that lists the job (freshest
+  with a real description; stale ranked below), falling back to the job's own saved text; it carries
+  the full description, the source's own sections, salary, and availability-dependent facts
+  (employment type, seniority, department, locations, dates, source link). Model-written enrichment
+  prose (Freehire `summary`, `requirements`) is not used.
+- **Tests (commands actually run):** `cd backend && eval "$(uv run python -m tests.isolation create
+  --export)"` then `uv run pytest tests/test_discovery_content.py tests/test_jobs_content_detail.py`
+  → **35 passed**; the wider regression `-k "discovery or board or jobs or audit_inventory or
+  deployment or freehire or watch"` → **312 passed**, exit 0. No new audit event and no new
+  `NOEFFORTS_` setting, so the audit-inventory and deployment-config guards are unaffected.
+
 ## Answer brain (D115), Greenhouse real-page mechanics (D116), codes from the owner's mailbox (D117), 2026-11-02; local only, nothing real run
 
 - **D115, the answer brain** (`app/modules/learning`, migration `6c2e9a4f1d38`): suggestions of

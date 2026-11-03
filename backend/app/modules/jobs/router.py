@@ -81,6 +81,10 @@ class JobDetail(JobOut):
     discovered_from: list[dict] = []
     # S3 (D59): source says closed, possible duplicates, and what holds an approval back.
     signals: dict = {}
+    # D125 (Slice D): the full, structured, sanitized detail — description blocks + the source's
+    # own sections, salary with its provenance (null → "Salary not provided."), and the facts
+    # the source gave (employment type, seniority, department, locations, dates, source link).
+    content: dict = {}
 
 
 class JobCreated(BaseModel):
@@ -343,20 +347,44 @@ def _job_detail(db: Session, user: User, job: Job, for_token: bool = False) -> J
     """A job as its page shows it; to an API token, without the eligibility side by side."""
     prefs = db.scalar(select(JobPreferences).where(JobPreferences.user_id == user.id))
     from app.modules.discovery import boards
+    from app.modules.discovery import content as content_mod
     from app.modules.discovery.models import DiscoveredJob
     from app.modules.discovery.provider import PROVIDERS, describe_signals
 
-    sources = db.scalars(
-        select(DiscoveredJob).where(
-            DiscoveredJob.user_id == user.id, DiscoveredJob.job_id == job.id
+    source_rows = list(
+        db.scalars(
+            select(DiscoveredJob).where(
+                DiscoveredJob.user_id == user.id, DiscoveredJob.job_id == job.id
+            )
         )
     )
     assessment = _fit(db, user, job, prefs)
+    # D125 (Slice D): consolidate the full, structured detail from the discovery records that
+    # list this job (preferring the freshest with a real description), falling back to the job's
+    # own saved text and fields. Stale sources still contribute, ranked below fresh ones.
+    content = content_mod.consolidate_detail(
+        own_description=job.description,
+        own={
+            "employer": job.employer,
+            "location": job.location,
+            "posted_on": job.posted_on.isoformat() if job.posted_on else None,
+            "url": job.url,
+        },
+        discovered=[
+            {
+                "normalized": d.normalized or {},
+                "stale": d.stale,
+                "last_seen_at": d.last_seen_at.isoformat() if d.last_seen_at else None,
+            }
+            for d in source_rows
+        ],
+    )
     return JobDetail(
         **JobOut.model_validate(job).model_dump(),
         description=job.description,
         explanations=explain(job, prefs),
         fit=_for_token(assessment) if for_token else assessment,
+        content=content,
         discovered_from=[
             {
                 "provider": d.provider,
@@ -376,7 +404,7 @@ def _job_detail(db: Session, user: User, job: Job, for_token: bool = False) -> J
                 # D93: display-only, attributed to the source above.
                 "signal_lines": describe_signals((d.normalized or {}).get("source_signals")),
             }
-            for d in sources
+            for d in source_rows
         ],
         signals=signals.view(db, job),
     )

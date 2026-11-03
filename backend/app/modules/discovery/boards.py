@@ -38,6 +38,7 @@ from app.core.urlsafety import (
     is_fixture_origin,
     public_https_opener,
 )
+from app.modules.discovery import content as content_mod
 from app.modules.discovery.provider import (
     MalformedRecord,
     NormalizedJob,
@@ -207,6 +208,7 @@ def normalize(provider: str, source_id, employer: str, raw) -> NormalizedJob:
         summary = plain_summary(html.unescape(content)) if isinstance(content, str) else None
         workplace, employment_type = "unknown", None  # not documented by the Job Board API
         updated = _text(raw.get("updated_at"), 40)
+        content = content_mod.greenhouse_content(raw)
         read = {k: raw.get(k) for k in ("id", "title", "location", "absolute_url", "updated_at",
                                          "content")}  # fmt: skip
     else:
@@ -224,6 +226,7 @@ def normalize(provider: str, source_id, employer: str, raw) -> NormalizedJob:
             raw.get("workplaceType"), "unknown")  # fmt: skip
         employment_type = _text(cats.get("commitment"), 50)
         updated = None  # Lever documents no timestamp: none is read
+        content = content_mod.lever_content(raw)
         read = {k: raw.get(k) for k in ("id", "text", "categories", "hostedUrl", "applyUrl",
                                          "descriptionPlain", "workplaceType")}  # fmt: skip
     return NormalizedJob(
@@ -246,6 +249,7 @@ def normalize(provider: str, source_id, employer: str, raw) -> NormalizedJob:
         raw_keys=sorted(str(k) for k in raw)[:60],
         missing=_missing(job_url, apply_url, title, employer),
         attribution={"text": f"from {PROVIDERS[provider].label}", "url": None},
+        content=content,  # D125 (Slice D)
     )
 
 
