@@ -35,6 +35,7 @@ from app.modules.profiles.models import (  # noqa: F401
     EmploymentRecord,
     FactVersion,
     JobPreferences,
+    SelfIdentification,
     WorkAuthorization,
 )
 from app.modules.providers.models import ApiAuthorization  # noqa: F401

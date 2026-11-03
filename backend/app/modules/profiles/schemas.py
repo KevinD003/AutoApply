@@ -167,3 +167,29 @@ class PreferencesIn(BaseModel):
 class PreferencesOut(PreferencesIn):
     model_config = ConfigDict(from_attributes=True)
     updated_at: datetime | None = None
+
+
+class SelfIdentificationIn(BaseModel):
+    """D122: the owner's own voluntary self-identification (EEOC/demographic), opt-in."""
+
+    enabled: bool = False
+    # The option labels you identify with, e.g. ["Male", "Asian"]. Each is matched to a
+    # question's options by exact label; nothing is inferred. "Decline to self-identify" is
+    # always still available on the form itself.
+    labels: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("labels")
+    @classmethod
+    def _clean(cls, v: list[str]) -> list[str]:
+        out, seen = [], set()
+        for x in v:
+            s = (x or "").strip()[:200]
+            if s and s.lower() not in seen:
+                seen.add(s.lower())
+                out.append(s)
+        return out
+
+
+class SelfIdentificationOut(SelfIdentificationIn):
+    model_config = ConfigDict(from_attributes=True)
+    updated_at: datetime | None = None
