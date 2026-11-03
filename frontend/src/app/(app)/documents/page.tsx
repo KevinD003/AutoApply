@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { Badge, Button, Card, Empty, ErrorBox, Field, inputCls, Loading, Notice } from "@/components/ui";
+import { DriveImport } from "@/components/DriveImport";
 import { api, Doc } from "@/lib/api";
 
 export default function DocumentsPage() {
@@ -95,6 +96,7 @@ export default function DocumentsPage() {
     <>
       <h1 className="text-xl font-semibold">Documents</h1>
       <Upload onDone={load} />
+      <DriveImport onImported={load} />
       <Card title="Your documents">
         <ErrorBox error={error} />
         {notice && <Notice>{notice}</Notice>}

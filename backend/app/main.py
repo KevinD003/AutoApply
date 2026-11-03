@@ -15,6 +15,7 @@ from app.modules.autoapply.router import router as auto_apply_router
 from app.modules.discovery.router import router as discovery_router
 from app.modules.discovery.sources_router import router as board_sources_router
 from app.modules.documents.router import router as documents_router
+from app.modules.drive.router import router as drive_router
 from app.modules.execution.router import router as execution_router
 from app.modules.followups.router import router as followups_router
 from app.modules.identity.router import router as auth_router
@@ -69,6 +70,7 @@ def create_app() -> FastAPI:
         profile_router,
         jobs_router,
         documents_router,
+        drive_router,
         applications_router,
         preparation_router,
         review_router,
