@@ -4,29 +4,29 @@ import { useCallback, useEffect, useState } from "react";
 
 import BankImport from "@/components/BankImport";
 import { Badge, Button, Card, Empty, ErrorBox, inputCls, Loading, Notice } from "@/components/ui";
-import { api, BankEdit, BankEntry, BankVersion } from "@/lib/api";
+import { api } from "@/lib/api";
 
-function show(e: BankEntry): string {
-  const v = e.value as Record<string, unknown>;
-  if (Array.isArray(v.labels)) return (v.labels as string[]).join(", ");
+function show(e) {
+  const v = e.value;
+  if (Array.isArray(v.labels)) return v.labels.join(", ");
   for (const k of ["text", "number", "date"]) if (v[k] !== undefined) return String(v[k]);
   if (typeof v.checked === "boolean") return v.checked ? "Checked" : "Unchecked";
   return JSON.stringify(v);
 }
 
-function showValue(v: Record<string, unknown>): string {
-  return show({ value: v } as BankEntry);
+function showValue(v) {
+  return show({ value: v });
 }
 
 // Priority C (D78): an edit keeps the question it answers, writes a new version (the earlier
 // ones stay in the history), and every application that used the earlier version asks for
 // approval again.
-function Editor({ e, onSaved, onCancel }: { e: BankEntry; onSaved: (r: BankEdit) => void; onCancel: () => void }) {
-  const v = e.value as Record<string, unknown>;
-  const [labels, setLabels] = useState<string[]>(Array.isArray(v.labels) ? (v.labels as string[]).map((l) => l.toLowerCase()) : []);
+function Editor({ e, onSaved, onCancel }) {
+  const v = e.value;
+  const [labels, setLabels] = useState(Array.isArray(v.labels) ? v.labels.map((l) => l.toLowerCase()) : []);
   const [text, setText] = useState(String(v.text ?? v.number ?? v.date ?? ""));
   const [checked, setChecked] = useState(v.checked === true);
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
   async function save() {
@@ -43,7 +43,7 @@ function Editor({ e, onSaved, onCancel }: { e: BankEntry; onSaved: (r: BankEdit)
               ? { date: text }
               : { text };
     try {
-      onSaved(await api<BankEdit>(`/answer-bank/${e.id}`, { method: "PUT", json: { value } }));
+      onSaved(await api(`/answer-bank/${e.id}`, { method: "PUT", json: { value } }));
     } catch (err) {
       setError(err);
     } finally {
@@ -96,11 +96,11 @@ function Editor({ e, onSaved, onCancel }: { e: BankEntry; onSaved: (r: BankEdit)
   );
 }
 
-function History({ id }: { id: string }) {
-  const [versions, setVersions] = useState<BankVersion[] | null>(null);
-  const [error, setError] = useState<unknown>(null);
+function History({ id }) {
+  const [versions, setVersions] = useState(null);
+  const [error, setError] = useState(null);
   useEffect(() => {
-    api<BankVersion[]>(`/answer-bank/${id}/history`).then(setVersions).catch(setError);
+    api(`/answer-bank/${id}/history`).then(setVersions).catch(setError);
   }, [id]);
   if (error) return <ErrorBox error={error} />;
   if (!versions) return <Loading />;
@@ -117,21 +117,21 @@ function History({ id }: { id: string }) {
 }
 
 export default function AnswersPage() {
-  const [items, setItems] = useState<BankEntry[] | null>(null);
-  const [error, setError] = useState<unknown>(null);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [history, setHistory] = useState<string | null>(null);
+  const [items, setItems] = useState(null);
+  const [error, setError] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [history, setHistory] = useState(null);
   const [notice, setNotice] = useState("");
 
   const load = useCallback(() => {
-    api<BankEntry[]>("/answer-bank").then(setItems).catch((e) => {
+    api("/answer-bank").then(setItems).catch((e) => {
       setError(e);
       setItems([]);
     });
   }, []);
   useEffect(load, [load]);
 
-  async function approve(id: string) {
+  async function approve(id) {
     try {
       await api(`/answer-bank/${id}/approve`, { method: "POST" });
       setNotice("Approved: it now answers this exact question.");
@@ -141,7 +141,7 @@ export default function AnswersPage() {
     }
   }
 
-  async function remove(id: string) {
+  async function remove(id) {
     try {
       await api(`/answer-bank/${id}`, { method: "DELETE" });
       load();

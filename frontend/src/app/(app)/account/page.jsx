@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import ApiTokens from "@/components/ApiTokens";
 import DraftingSpend from "@/components/DraftingSpend";
@@ -10,18 +10,7 @@ import InboxCard from "@/components/InboxCard";
 import { Button, Card, ErrorBox, Field, inputCls, Loading } from "@/components/ui";
 import { api, setCsrf } from "@/lib/api";
 
-interface DeletionPreview {
-  counts: Record<string, number>;
-  submitted_applications: number;
-  blocked_by: string[];
-  blocked_reasons: string[];
-  retained_in_database: string[];
-  grace_period_days: number;
-  outside_noefforts: { what: string; note: string }[];
-  confirmation: string;
-}
-
-const COUNT_LABELS: Record<string, string> = {
+const COUNT_LABELS = {
   jobs: "jobs",
   applications: "applications",
   documents: "documents (and their files)",
@@ -33,18 +22,18 @@ const COUNT_LABELS: Record<string, string> = {
 // once, refused while a submission may be in flight.
 export default function AccountPage() {
   const router = useRouter();
-  const [preview, setPreview] = useState<DeletionPreview | null>(null);
-  const [error, setError] = useState<unknown>(null);
+  const [preview, setPreview] = useState(null);
+  const [error, setError] = useState(null);
   const [password, setPassword] = useState("");
   const [phrase, setPhrase] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
-    api<DeletionPreview>("/account/deletion").then(setPreview).catch(setError);
+    api("/account/deletion").then(setPreview).catch(setError);
   }, []);
   useEffect(load, [load]);
 
-  async function remove(e: FormEvent) {
+  async function remove(e) {
     e.preventDefault();
     setBusy(true);
     setError(null);
