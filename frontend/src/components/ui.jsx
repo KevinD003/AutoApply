@@ -1,6 +1,6 @@
 "use client";
 
-import { cloneElement, isValidElement, ReactElement, ReactNode, useId } from "react";
+import { cloneElement, isValidElement, useId } from "react";
 
 /*
   Shared primitives for the pages not yet migrated to the premium src/ui kit.
@@ -9,7 +9,7 @@ import { cloneElement, isValidElement, ReactElement, ReactNode, useId } from "re
   adopts the crafted look and dark mode at once, with no behavioural change.
 */
 
-export function Card({ title, children, actions }: { title?: string; children: ReactNode; actions?: ReactNode }) {
+export function Card({ title, children, actions }) {
   return (
     <section className="rounded-[var(--r-lg)] border border-hairline bg-surface p-4 shadow-[var(--shadow-sm)] sm:p-5">
       {(title || actions) && (
@@ -23,7 +23,7 @@ export function Card({ title, children, actions }: { title?: string; children: R
   );
 }
 
-export function Loading({ label = "Loading…" }: { label?: string }) {
+export function Loading({ label = "Loading…" }) {
   return (
     <p role="status" className="py-6 text-center text-sm text-ink-muted">
       {label}
@@ -31,13 +31,13 @@ export function Loading({ label = "Loading…" }: { label?: string }) {
   );
 }
 
-export function Empty({ children }: { children: ReactNode }) {
+export function Empty({ children }) {
   return (
     <p className="rounded-[var(--r-lg)] border border-dashed border-hairline-strong p-6 text-center text-sm text-ink-muted">{children}</p>
   );
 }
 
-export function ErrorBox({ error }: { error: unknown }) {
+export function ErrorBox({ error }) {
   if (!error) return null;
   const msg = error instanceof Error ? error.message : String(error);
   return (
@@ -47,7 +47,7 @@ export function ErrorBox({ error }: { error: unknown }) {
   );
 }
 
-export function Notice({ children }: { children: ReactNode }) {
+export function Notice({ children }) {
   return (
     <p role="status" className="rounded-[var(--r-md)] border border-[color:var(--positive)]/25 bg-positive-weak p-3 text-sm text-positive-ink">
       {children}
@@ -55,12 +55,12 @@ export function Notice({ children }: { children: ReactNode }) {
   );
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+export function Field({ label, hint, children }) {
   // Associate the label with its control by id so its accessible name is exactly `label`.
   const id = useId();
   const hintId = `${id}-hint`;
   const control = isValidElement(children)
-    ? cloneElement(children as ReactElement<{ id?: string; "aria-describedby"?: string }>, {
+    ? cloneElement(children, {
         id,
         "aria-describedby": hint ? hintId : undefined,
       })
@@ -83,11 +83,7 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 export const inputCls =
   "w-full rounded-[var(--r-md)] border border-hairline-strong bg-surface px-3 py-2 text-base text-ink placeholder:text-ink-faint focus-ring focus:border-brand sm:text-sm";
 
-export function Button({
-  children,
-  variant = "primary",
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" }) {
+export function Button({ children, variant = "primary", ...props }) {
   const styles = {
     primary: "brand-grad text-brand-contrast shadow-[var(--shadow-sm)] hover:brightness-[1.06] disabled:opacity-50",
     secondary: "border border-hairline-strong bg-surface text-ink hover:bg-surface-3 disabled:opacity-50",
@@ -103,7 +99,7 @@ export function Button({
   );
 }
 
-export function Badge({ children, tone = "slate" }: { children: ReactNode; tone?: "slate" | "green" | "amber" | "red" | "indigo" }) {
+export function Badge({ children, tone = "slate" }) {
   const t = {
     slate: "bg-surface-3 text-ink-muted",
     green: "bg-positive-weak text-positive-ink",
@@ -114,7 +110,7 @@ export function Badge({ children, tone = "slate" }: { children: ReactNode; tone?
   return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${t}`}>{children}</span>;
 }
 
-export function TriSelect({ value, onChange, id }: { value: string; onChange: (v: string) => void; id?: string }) {
+export function TriSelect({ value, onChange, id }) {
   return (
     <select id={id} className={inputCls} value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="unknown">Not answered yet</option>
@@ -125,7 +121,7 @@ export function TriSelect({ value, onChange, id }: { value: string; onChange: (v
   );
 }
 
-export function splitList(s: string): string[] {
+export function splitList(s) {
   return s
     .split(/[\n,]/)
     .map((x) => x.trim())
@@ -133,7 +129,7 @@ export function splitList(s: string): string[] {
 }
 
 /** A source's credit: a link to its own page for the listing when there is one, else the text. */
-export function Credit({ a }: { a: { text: string; url: string | null } }) {
+export function Credit({ a }) {
   return a.url ? (
     <a className="text-xs text-ink-muted underline" href={a.url} target="_blank" rel="noopener noreferrer nofollow">
       {a.text}
