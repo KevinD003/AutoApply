@@ -785,15 +785,19 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         """A confirmation is on the page: the fixture's status element, the posting's own
         confirmation page (legacy notes: …/confirmation), or a confirmation text in a page that
         no longer shows the form."""
-        if page.locator(_CONFIRMATION).count():
-            return True
-        if urlsplit(page.url).path.rstrip("/").endswith(_CONFIRM_PATH):
-            return True
+        # A confirmation read fails closed: any read failure — a Playwright error or, defensively,
+        # any other (a page read that returns something unexpected after the click) — means "no
+        # confirmation seen", never a false acceptance. The whole read is guarded so a stray
+        # non-Playwright error after sending cannot crash the attempt into an opaque internal error.
         try:
+            if page.locator(_CONFIRMATION).count():
+                return True
+            if urlsplit(page.url).path.rstrip("/").endswith(_CONFIRM_PATH):
+                return True
             if page.locator("form").count():
                 return False
             text = " ".join(page.locator("body").inner_text().lower().split())
-        except PWError:
+        except Exception:  # noqa: BLE001 — fail closed: an unreadable page is not a confirmation
             return False
         return any(x in text for x in CONFIRM_PHRASES)
 
@@ -825,11 +829,12 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             return False
 
     def _code_rejected(self, page: Page) -> bool:
+        # Fail closed: an unreadable page (a Playwright error or any other) is not a rejection.
         try:
             text = page.locator("body").inner_text()
-        except PWError:
+            return bool(CODE_REJECTED.search(text))
+        except Exception:  # noqa: BLE001
             return False
-        return bool(CODE_REJECTED.search(text))
 
     def enter_code(self, page: Page, code: str, timeout_ms: int) -> Outcome:
         """D116: only the code you typed at the checkpoint (never read from a mailbox). Typed
