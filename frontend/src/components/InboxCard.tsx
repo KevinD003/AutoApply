@@ -92,7 +92,7 @@ export default function InboxCard() {
     );
   return (
     <Card title="Email (your Gmail, read-only)">
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-ink-muted">
         NoEfforts can read your own Gmail, read-only: it never sends, deletes,
         labels or marks anything. It keeps only what each email said (its kind,
         the sender&rsquo;s domain, the day), never the text. Turn on each use
@@ -102,7 +102,7 @@ export default function InboxCard() {
       {notice && <Notice>{notice}</Notice>}
       {!v.available ? (
         <p
-          className="mt-2 text-sm text-slate-600"
+          className="mt-2 text-sm text-ink-muted"
           data-testid="inbox-unavailable"
         >
           {v.why_not} Connecting it is a step on the server owner&rsquo;s
@@ -135,13 +135,13 @@ export default function InboxCard() {
               (rejected, interview, assessment) for me to confirm.
             </span>
           </label>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-faint">
             Last read:{" "}
             {v.last_checked_at
               ? new Date(v.last_checked_at).toLocaleString()
               : "never"}
             {v.last_error && (
-              <span className="text-red-700"> · {v.last_error}</span>
+              <span className="text-danger-ink"> · {v.last_error}</span>
             )}
           </p>
           <Button
@@ -160,7 +160,7 @@ export default function InboxCard() {
         <Empty>None read yet.</Empty>
       ) : (
         <ul
-          className="mt-1 divide-y divide-slate-100 text-sm"
+          className="mt-1 divide-y divide-hairline text-sm"
           data-testid="inbox-events"
         >
           {v.events.map((e) => (
@@ -176,7 +176,7 @@ export default function InboxCard() {
                 </Badge>{" "}
                 {e.application_id && (
                   <Link
-                    className="text-indigo-700 underline"
+                    className="text-brand underline"
                     href={`/applications/${e.application_id}`}
                   >
                     application

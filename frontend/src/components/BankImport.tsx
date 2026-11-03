@@ -117,7 +117,7 @@ export default function BankImport({ onDone }: { onDone: () => void }) {
 
   return (
     <Card title="Import saved answers">
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-ink-muted">
         A JSON or CSV file of questions and answers, for example from another tool. It is read in your browser and only its questions
         and answers are sent to your own NoEfforts. Each one is checked by the rules above; what passes is added as a proposal that
         answers nothing until you approve it. Work authorization, sponsorship, residence, sensitive topics, answers about one
@@ -139,7 +139,7 @@ export default function BankImport({ onDone }: { onDone: () => void }) {
             not imported.
           </p>
           {Object.keys(check.refused).length > 0 && (
-            <ul className="list-disc pl-5 text-slate-600">
+            <ul className="list-disc pl-5 text-ink-muted">
               {Object.entries(check.refused)
                 .sort((x, y) => y[1] - x[1])
                 .map(([k, n]) => (

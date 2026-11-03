@@ -48,10 +48,10 @@ export default function AutoApplyCard() {
         ) : (
           <Badge tone="slate">Not acting here</Badge>
         )}{" "}
-        {s.unavailable && !s.paused && <span className="text-slate-600">{s.unavailable.message}</span>}
+        {s.unavailable && !s.paused && <span className="text-ink-muted">{s.unavailable.message}</span>}
       </p>
       {s.paused && !s.chosen && <p className="mb-2 text-sm">{s.consent}</p>}
-      <p className="mb-2 text-sm text-slate-600">
+      <p className="mb-2 text-sm text-ink-muted">
         Fully answered Greenhouse applications only; the first one to each employer is a rehearsal that never submits. Today:{" "}
         {s.approved_today} of {s.daily_cap}.
         {s.permission_attempts && (
@@ -62,16 +62,16 @@ export default function AutoApplyCard() {
         )}
       </p>
       {s.events.length > 0 && (
-        <ul className="divide-y divide-slate-100 text-sm" aria-label="What automatic applying did">
+        <ul className="divide-y divide-hairline text-sm" aria-label="What automatic applying did">
           {s.events.map((e, i) => (
             <li key={i} className="py-2">
-              <span className="text-slate-500">{new Date(e.at).toLocaleString()}</span> —{" "}
+              <span className="text-ink-faint">{new Date(e.at).toLocaleString()}</span> —{" "}
               {e.application_id ? (
-                <Link className="text-indigo-700 underline" href={`/applications/${e.application_id}`}>
+                <Link className="text-brand underline" href={`/applications/${e.application_id}`}>
                   {e.job}
                 </Link>
               ) : (
-                <Link className="text-indigo-700 underline" href={`/jobs/${e.job_id}`}>
+                <Link className="text-brand underline" href={`/jobs/${e.job_id}`}>
                   {e.job}
                 </Link>
               )}

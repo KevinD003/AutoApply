@@ -130,7 +130,7 @@ export default function DiscoverPage() {
   return (
     <>
       <h1 className="text-xl font-semibold">Discover jobs</h1>
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-ink-muted">
         Listings come from third-party sources. They are not verified, and nothing here means you are eligible, that an
         employer sponsors visas, or that NoEfforts can apply for you. Adding a job by link and spreadsheet import keep
         working whether or not a source is available.
@@ -146,7 +146,7 @@ export default function DiscoverPage() {
                 <span className="font-medium">{p.label}</span>
                 <Badge tone={p.enabled ? "green" : "slate"}>{p.enabled ? "enabled" : "disabled"}</Badge>
                 <Badge tone="amber">{p.support_label}</Badge>
-                <span className="text-slate-500">{p.status.note}</span>
+                <span className="text-ink-faint">{p.status.note}</span>
               </li>
             ))}
           </ul>
@@ -159,7 +159,7 @@ export default function DiscoverPage() {
       <Card title={`Discovered (${rows?.length ?? 0})`}>
         {platforms.length > 0 && (
           <label className="mb-2 flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-slate-600">Application platform</span>
+            <span className="text-ink-muted">Application platform</span>
             <select
               aria-label="Application platform"
               className={`${inputCls} !w-auto`}
@@ -180,7 +180,7 @@ export default function DiscoverPage() {
         ) : rows.length === 0 ? (
           <Empty>Nothing discovered yet.</Empty>
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-hairline">
             {rows.map((r) => (
               <DiscoveredRow key={r.id} r={r} onDelete={() => remove(r)} onRefresh={() => refresh(r)} />
             ))}
@@ -194,7 +194,7 @@ export default function DiscoverPage() {
 function Watches({ watches, onStop }: { watches: DiscoveryWatch[]; onStop: (w: DiscoveryWatch) => void }) {
   return (
     <Card title="Watched searches">
-      <p className="mb-2 text-xs text-slate-500">
+      <p className="mb-2 text-xs text-ink-faint">
         Checked automatically, newest postings first; new ones are added to your jobs. Recorded with{" "}
         <code>python -m app.modules.discovery.watch</code>.
       </p>
@@ -205,7 +205,7 @@ function Watches({ watches, onStop }: { watches: DiscoveryWatch[]; onStop: (w: D
             <li key={w.id} className="flex flex-wrap items-center gap-2">
               <span className="font-medium">“{w.query}”</span>
               <Badge tone={state === "active" ? "green" : state === "stopped" ? "slate" : "amber"}>{state}</Badge>
-              <span className="text-slate-600">
+              <span className="text-ink-muted">
                 every {w.interval_seconds < 120 ? `${w.interval_seconds} s` : `${Math.round(w.interval_seconds / 60)} min`} until{" "}
                 {new Date(w.not_after).toLocaleDateString()} · found {w.found_total}
                 {w.last_checked_at ? ` · last check ${new Date(w.last_checked_at).toLocaleTimeString()} (${w.last_outcome})` : ""}
@@ -295,7 +295,7 @@ function RunDiscovery({ providers, onDone }: { providers: DiscoveryProviderInfo[
         </Field>
         <fieldset className="space-y-1">
           <legend className="text-sm font-medium">Application platform</legend>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-faint">
             Read from each listing&rsquo;s address. Tick one or more to keep only those listings; every one kept is added
             to your jobs. None ticked: every platform. A platform says nothing about whether NoEfforts can apply there.
           </p>
@@ -337,7 +337,7 @@ function DiscoveredRow({ r, onDelete, onRefresh }: { r: DiscoveredJob; onDelete:
   return (
     <li className="space-y-1 py-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium text-slate-900">{r.title ?? "Untitled listing"}</span>
+        <span className="font-medium text-ink">{r.title ?? "Untitled listing"}</span>
         <Badge>Source: {r.provider_label}</Badge>
         <Badge tone="indigo">Platform: {r.platform_label}</Badge>
         <Credit a={r.attribution} />
@@ -351,47 +351,47 @@ function DiscoveredRow({ r, onDelete, onRefresh }: { r: DiscoveredJob; onDelete:
         )}
         {(r.job_signals?.possible_duplicates ?? 0) > 0 && <Badge tone="amber">Possible duplicate of a role you applied to</Badge>}
       </div>
-      <p className="text-slate-600">
+      <p className="text-ink-muted">
         {[r.employer, r.location, r.workplace !== "unknown" ? r.workplace : null, r.employment_type].filter(Boolean).join(" · ") ||
           "Details not provided"}
       </p>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ink-faint">
         Last seen {new Date(r.last_seen_at).toLocaleString()}
         {r.published_on ? ` · posted ${r.published_on}` : ""}
         {sponsorship ? ` · sponsorship: source ${SPONSORSHIP_TEXT[sponsorship.value]}${sponsorship.value !== "unknown" ? ` (${sponsorship.basis})` : ""}` : ""}
       </p>
       {(r.signal_lines?.length ?? 0) > 0 && (
         // D93: in the source's own terms, display-only; never used to match, approve or apply.
-        <p className="text-xs text-slate-600" data-testid="source-signals">
-          {r.provider_label} says: {r.signal_lines!.join(" · ")} <span className="text-slate-400">(not checked by NoEfforts)</span>
+        <p className="text-xs text-ink-muted" data-testid="source-signals">
+          {r.provider_label} says: {r.signal_lines!.join(" · ")} <span className="text-ink-faint">(not checked by NoEfforts)</span>
         </p>
       )}
       {r.missing.length > 0 && (
-        <p className="text-xs text-red-700">
+        <p className="text-xs text-danger-ink">
           Missing: {r.missing.join(", ")}. <Link className="underline" href="/jobs">Add it manually</Link>.
         </p>
       )}
       {r.filter?.result === "insufficient" && (
-        <p className="text-xs text-amber-800">Not enough data to check: {r.filter.fields.join(", ")}.</p>
+        <p className="text-xs text-caution-ink">Not enough data to check: {r.filter.fields.join(", ")}.</p>
       )}
       {r.changed_fields.length > 0 && (
-        <p className="text-xs text-slate-600">Changed at the source: {r.changed_fields.join(", ")}. Your job was not changed.</p>
+        <p className="text-xs text-ink-muted">Changed at the source: {r.changed_fields.join(", ")}. Your job was not changed.</p>
       )}
       <div className="flex flex-wrap gap-3 text-xs">
         {r.job_id && (
-          <Link className="text-indigo-700 underline" href={`/jobs/${r.job_id}`}>
+          <Link className="text-brand underline" href={`/jobs/${r.job_id}`}>
             {LINK_TEXT[r.link_basis ?? "previous_link"] ?? "in your jobs"}
           </Link>
         )}
         {r.job_url && (
-          <a className="break-all text-indigo-700 underline" href={r.job_url} target="_blank" rel="noopener noreferrer nofollow">
+          <a className="break-all text-brand underline" href={r.job_url} target="_blank" rel="noopener noreferrer nofollow">
             Original listing
           </a>
         )}
-        <button type="button" className="text-indigo-700 underline" onClick={onRefresh}>
+        <button type="button" className="text-brand underline" onClick={onRefresh}>
           Refresh from source
         </button>
-        <button type="button" className="text-red-700 underline" onClick={onDelete}>
+        <button type="button" className="text-danger-ink underline" onClick={onDelete}>
           Delete
         </button>
       </div>

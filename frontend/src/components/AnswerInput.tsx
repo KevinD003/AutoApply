@@ -79,7 +79,7 @@ export default function AnswerInput({
       <div>
         <textarea id={id} aria-label={q.label} className={inputCls} rows={4} value={text} maxLength={q.max_length ?? undefined} onChange={(e) => setText(e.target.value)} />
         {q.max_length && (
-          <p className="text-right text-xs text-slate-500">
+          <p className="text-right text-xs text-ink-faint">
             {text.length}/{q.max_length}
           </p>
         )}
@@ -99,7 +99,7 @@ export default function AnswerInput({
           Save answer
         </Button>
         {offerReuse && q.bankable && (
-          <label className="flex items-center gap-2 text-sm text-slate-600">
+          <label className="flex items-center gap-2 text-sm text-ink-muted">
             <input type="checkbox" checked={bank} onChange={(e) => setBank(e.target.checked)} />
             Reuse for this exact question in future applications
           </label>

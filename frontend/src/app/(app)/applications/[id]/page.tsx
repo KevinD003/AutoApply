@@ -138,13 +138,13 @@ export default function ReviewPage() {
 
   return (
     <>
-      <Link href="/tracker" className="text-sm text-indigo-700 underline">
+      <Link href="/tracker" className="text-sm text-brand underline">
         ← Tracker
       </Link>
       <Card title="Destination">
         <p className="text-lg font-semibold">{c.destination.title ?? "Untitled role"}</p>
-        <p className="text-slate-700">{c.destination.employer}</p>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="text-ink-muted">{c.destination.employer}</p>
+        <p className="mt-1 text-sm text-ink-muted">
           Form v{c.destination.form_version} ({c.destination.form_source}
           {c.destination.form_title ? ` — ${c.destination.form_title}` : ""})
         </p>
@@ -153,7 +153,7 @@ export default function ReviewPage() {
             <Badge tone="amber">{view.labels.form_source}</Badge>
           </p>
         )}
-        <div className="mt-2 text-sm text-slate-700" role="group" aria-label="Where this goes">
+        <div className="mt-2 text-sm text-ink-muted" role="group" aria-label="Where this goes">
           {sendsTo ? (
             <p>
               Sends to <code>{sendsTo}</code>
@@ -194,12 +194,12 @@ export default function ReviewPage() {
           )}
         </div>
         {view.approval.status === "used_by_rehearsal" && (
-          <p className="mt-2 rounded-lg bg-indigo-50 p-2 text-sm text-indigo-900">
+          <p className="mt-2 rounded-lg bg-brand-weak p-2 text-sm text-brand">
             The rehearsal used its approval up. Approve again to submit, or to rehearse again.
           </p>
         )}
         {view.approval.status === "invalidated" && (
-          <div className="mt-2 rounded-lg bg-red-50 p-2 text-sm text-red-800">
+          <div className="mt-2 rounded-lg bg-danger-weak p-2 text-sm text-danger-ink">
             <p>{view.approval.reason}</p>
             {approvedBefore && approvedBefore < view.package.version && (
               <DiffToggle appId={id} from={approvedBefore} to={view.package.version} label={`What changed since you approved v${approvedBefore}`} />
@@ -207,32 +207,32 @@ export default function ReviewPage() {
           </div>
         )}
         {view.job_signals.approval_blocked && (
-          <div className="mt-3 rounded-lg bg-amber-50 p-2 text-sm text-amber-900" role="group" aria-label="About this job">
+          <div className="mt-3 rounded-lg bg-caution-weak p-2 text-sm text-caution-ink" role="group" aria-label="About this job">
             <p>{view.job_signals.approval_blocked.message}</p>
             <p className="mt-1">
-              <Link className="text-indigo-700 underline" href={`/jobs/${c.destination.job_id}`}>
+              <Link className="text-brand underline" href={`/jobs/${c.destination.job_id}`}>
                 Open the job page
               </Link>{" "}
-              <span className="text-xs text-slate-500">
+              <span className="text-xs text-ink-faint">
                 Reason code: <code>{view.job_signals.approval_blocked.code}</code>
               </span>
             </p>
           </div>
         )}
-        <div className="mt-3 rounded-lg border border-slate-200 p-2 text-sm" role="group" aria-label="Before the first submission">
+        <div className="mt-3 rounded-lg border border-hairline p-2 text-sm" role="group" aria-label="Before the first submission">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-medium">Before the first submission</span>
             <Badge tone={PREREQUISITE_TONE[prereq.status] ?? "slate"}>{prereq.label}</Badge>
           </p>
           <p className="mt-1">{prereq.message}</p>
           {prereq.reason_code && (
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-ink-faint">
               Reason code: <code>{prereq.reason_code}</code>
             </p>
           )}
         </div>
         {c.validation_errors.length > 0 && (
-          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-red-800" aria-label="Validation errors">
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-danger-ink" aria-label="Validation errors">
             {c.validation_errors.map((e) => (
               <li key={e.key}>{e.message}</li>
             ))}
@@ -282,7 +282,7 @@ export default function ReviewPage() {
             </Button>
           )}
         </div>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-ink-faint">
           Approval is tied to this exact content. Changing a fact, document, answer, consent or the job itself creates a new version
           that needs approval again. Approvals also expire after a few days. A rehearsal fills the form and uploads your documents
           exactly as a submission would, checks them, then stops: nothing is submitted, and the approval is used up. Revoking stops
@@ -306,7 +306,7 @@ export default function ReviewPage() {
       <Card title="Documents">
         {resumes.length === 0 ? (
           <p className="text-sm">
-            No resume uploaded. <Link className="text-indigo-700 underline" href="/documents">Upload one</Link>.
+            No resume uploaded. <Link className="text-brand underline" href="/documents">Upload one</Link>.
           </p>
         ) : (
           <label className="block text-sm">
@@ -329,7 +329,7 @@ export default function ReviewPage() {
           (letters.length === 0 ? (
             <p className="mt-3 text-sm">
               This form asks for a cover letter{coverQ.required ? "" : " (optional)"}. None uploaded:{" "}
-              <Link className="text-indigo-700 underline" href="/documents">upload one</Link>.
+              <Link className="text-brand underline" href="/documents">upload one</Link>.
             </p>
           ) : (
             <label className="mt-3 block text-sm">
@@ -353,7 +353,7 @@ export default function ReviewPage() {
             </label>
           ))}
         {c.documents.map((d) => (
-          <p key={d.field} className="mt-2 text-sm text-slate-600">
+          <p key={d.field} className="mt-2 text-sm text-ink-muted">
             {d.field}: {d.display}
           </p>
         ))}
@@ -365,11 +365,11 @@ export default function ReviewPage() {
 
       <Card title={`Needs your answer (${pending.length})`}>
         {pending.length === 0 ? (
-          <p className="text-sm text-slate-600">Nothing left to answer here.</p>
+          <p className="text-sm text-ink-muted">Nothing left to answer here.</p>
         ) : (
           <ul className="space-y-5">
             {pending.map((q) => (
-              <li key={q.key} className="border-b border-slate-100 pb-4">
+              <li key={q.key} className="border-b border-hairline pb-4">
                 <QuestionHeader q={q} />
                 {q.user_input_allowed ? (
                   <>
@@ -382,7 +382,7 @@ export default function ReviewPage() {
                   </>
                 ) : (
                   <p className="text-sm">
-                    Fix this in your <Link className="text-indigo-700 underline" href="/profile">profile</Link> so every application stays
+                    Fix this in your <Link className="text-brand underline" href="/profile">profile</Link> so every application stays
                     consistent.
                   </p>
                 )}
@@ -394,7 +394,7 @@ export default function ReviewPage() {
 
       <Card title="Sensitive disclosures and acknowledgments">
         {special.length === 0 ? (
-          <p className="text-sm text-slate-600">None on this form.</p>
+          <p className="text-sm text-ink-muted">None on this form.</p>
         ) : (
           <ul className="space-y-5">
             {special.map((q0) => {
@@ -402,7 +402,7 @@ export default function ReviewPage() {
               const live = rc(q0.key);
               const q = live?.proposed_value ? { ...q0, value: live.proposed_value, display: live.proposed ?? null } : q0;
               return (
-              <li key={q.key} className="border-b border-slate-100 pb-4">
+              <li key={q.key} className="border-b border-hairline pb-4">
                 <QuestionHeader q={q} />
                 {q.acknowledgment ? (
                   <ChoiceRow
@@ -440,7 +440,7 @@ export default function ReviewPage() {
 
       {groups.map(([step, qs]) => (
         <Card key={step} title={step}>
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-hairline">
             {qs.map((q) => (
               <li key={q.key} className="py-3">
                 <QuestionHeader q={q} />
@@ -502,7 +502,7 @@ export default function ReviewPage() {
           {view.history.map((h) => (
             <li key={h.version}>
               v{h.version} — {new Date(h.created_at).toLocaleString()} — {h.change_summary.join("; ")}
-              {h.was_approved && <span className="text-emerald-700"> (was approved)</span>}
+              {h.was_approved && <span className="text-positive-ink"> (was approved)</span>}
               {h.version > 1 && <DiffToggle appId={id} from={h.version - 1} to={h.version} label={`What changed in v${h.version}`} />}
             </li>
           ))}
@@ -540,17 +540,17 @@ function DiffToggle({ appId, from, to, label }: { appId: string; from: number; t
   const empty = diff && !diff.answers.length && !diff.documents.length && !diff.consents.length && !diff.destination.length;
   return (
     <div className="mt-1">
-      <button type="button" className="text-xs text-indigo-700 underline" aria-expanded={open} onClick={toggle}>
+      <button type="button" className="text-xs text-brand underline" aria-expanded={open} onClick={toggle}>
         {open ? "Hide changes" : label}
       </button>
       <ErrorBox error={error} />
       {open && diff && (
-        <ul className="mt-1 space-y-1 rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700" aria-label={`Changes from v${diff.from.version} to v${diff.to.version}`}>
+        <ul className="mt-1 space-y-1 rounded-lg border border-hairline bg-surface p-2 text-xs text-ink-muted" aria-label={`Changes from v${diff.from.version} to v${diff.to.version}`}>
           {empty && <li>Nothing you would see changed (only record versions).</li>}
           {diff.answers.map((a) => (
             <li key={a.key}>
               <span className="font-medium">{a.label}</span>: {shown(a.before)} → {shown(a.after)}{" "}
-              <span className="text-slate-500">({a.changed.map((c) => CHANGED[c] ?? c).join(", ")})</span>
+              <span className="text-ink-faint">({a.changed.map((c) => CHANGED[c] ?? c).join(", ")})</span>
             </li>
           ))}
           {diff.documents.map((d) => (
@@ -618,7 +618,7 @@ function RowActions({
           </Button>
         )}
         {q.protected && !q.user_input_allowed && q.status === "resolved" && (
-          <Link className="self-center text-sm text-indigo-700 underline" href="/profile">
+          <Link className="self-center text-sm text-brand underline" href="/profile">
             Change it in your profile
           </Link>
         )}
@@ -632,11 +632,11 @@ function QuestionHeader({ q }: { q: PackageAnswer }) {
   const s = SOURCE[q.status === "resolved" ? q.source : q.status === "blank_optional" && q.source === "consent" ? "consent" : "unresolved"];
   return (
     <div className="mb-2">
-      <p className="text-sm font-medium text-slate-900">
-        {q.label} {q.required ? <span className="text-red-700">*</span> : <span className="text-xs text-slate-500">(optional)</span>}
+      <p className="text-sm font-medium text-ink">
+        {q.label} {q.required ? <span className="text-danger-ink">*</span> : <span className="text-xs text-ink-faint">(optional)</span>}
       </p>
-      {q.help_text && <p className="text-xs text-slate-500">{q.help_text}</p>}
-      <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+      {q.help_text && <p className="text-xs text-ink-faint">{q.help_text}</p>}
+      <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
         {q.status === "blank_optional" && q.source !== "consent" ? <Badge>Blank (optional)</Badge> : <Badge tone={s.tone}>{s.label}</Badge>}
         {q.sensitive && <Badge tone="amber">Sensitive</Badge>}
         {q.acknowledgment && <Badge tone="amber">Legal / consent</Badge>}
@@ -669,7 +669,7 @@ const FACT_KIND: Record<string, string> = {
 
 // L4 (D74): why AI drafting is not available here, and what to do instead.
 function DraftingOff({ status, instead, small }: { status: DraftingStatus; instead: string; small?: boolean }) {
-  const cls = small ? "mt-1 text-xs text-slate-500" : "text-sm text-slate-600";
+  const cls = small ? "mt-1 text-xs text-ink-faint" : "text-sm text-ink-muted";
   if (status === "consent_needed")
     return (
       <p className={cls}>
@@ -710,10 +710,10 @@ function DraftControls({
   return (
     <div className="mt-2 space-y-2">
       {draft ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
-          <p className="mb-1 text-xs font-medium text-amber-900">Draft from {draft.provider} — check every claim before using it</p>
+        <div className="rounded-lg border border-caution/30 bg-caution-weak p-3 text-sm">
+          <p className="mb-1 text-xs font-medium text-caution-ink">Draft from {draft.provider} — check every claim before using it</p>
           <p className="whitespace-pre-wrap">{draft.text}</p>
-          <div className="mt-2 text-xs text-slate-700">
+          <div className="mt-2 text-xs text-ink-muted">
             <p className="font-medium">Based only on these facts from your profile:</p>
             <ul className="list-disc pl-5">
               {draft.cited.map((c, i) => (
@@ -785,7 +785,7 @@ function Tailored({ appId, status, onChange }: { appId: string; status: Drafting
       {items && items.length > 0 && (
         <ul className="mt-3 space-y-4">
           {items.map((g) => (
-            <li key={g.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+            <li key={g.id} className="rounded-lg border border-hairline p-3 text-sm">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{g.label}</span>
                 {g.stale ? (
@@ -796,23 +796,23 @@ function Tailored({ appId, status, onChange }: { appId: string; status: Drafting
                   <Badge tone="amber">Waiting for you to read it</Badge>
                 )}
               </div>
-              <p className="mt-1 text-xs text-slate-600">Check every claim. It uses only these facts from your profile:</p>
-              <ul className="list-disc pl-5 text-xs text-slate-700">
+              <p className="mt-1 text-xs text-ink-muted">Check every claim. It uses only these facts from your profile:</p>
+              <ul className="list-disc pl-5 text-xs text-ink-muted">
                 {g.cited.map((c, i) => (
                   <li key={i}>{c.text === null ? "A fact that has changed since" : c.text}</li>
                 ))}
               </ul>
               {g.diff ? (
-                <div className="mt-2 rounded bg-slate-50 p-2 font-mono text-xs" aria-label={`Changes from ${g.base_label}`}>
-                  <p className="mb-1 font-sans text-slate-600">Changes from {g.base_label}:</p>
+                <div className="mt-2 rounded bg-surface-2 p-2 font-mono text-xs" aria-label={`Changes from ${g.base_label}`}>
+                  <p className="mb-1 font-sans text-ink-muted">Changes from {g.base_label}:</p>
                   {g.diff.map((d, i) => (
-                    <p key={i} className={d.op === "+" ? "text-emerald-800" : d.op === "-" ? "text-red-700 line-through" : "text-slate-600"}>
+                    <p key={i} className={d.op === "+" ? "text-positive-ink" : d.op === "-" ? "text-danger-ink line-through" : "text-ink-muted"}>
                       {d.op === " " ? "\u00a0" : d.op} {d.line}
                     </p>
                   ))}
                 </div>
               ) : (
-                <p className="mt-2 whitespace-pre-wrap rounded bg-slate-50 p-2">{g.text}</p>
+                <p className="mt-2 whitespace-pre-wrap rounded bg-surface-2 p-2">{g.text}</p>
               )}
               {!g.accepted && (
                 <div className="mt-2 flex flex-wrap gap-2">

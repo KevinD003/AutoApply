@@ -105,43 +105,43 @@ export default function DocumentsPage() {
         ) : docs.length === 0 ? (
           <Empty>Upload your resume to get started. Originals are kept unchanged; new uploads become new versions.</Empty>
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-hairline">
             {docs.map((d) => (
               <li key={d.id} className="py-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="font-medium">{d.label}</p>
-                    <p className="text-sm text-slate-600">
+                    <p className="text-sm text-ink-muted">
                       {d.original_filename} · {(d.size_bytes / 1024).toFixed(0)} KB · v{d.version}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge>{d.kind.replace("_", " ")}</Badge>
-                    <a className="text-sm text-indigo-700 underline" href={`/api/documents/${d.id}/download`}>Download</a>
-                    <button className="text-sm text-indigo-700 underline" aria-expanded={!!preview[d.id]} onClick={() => togglePreview(d)}>
+                    <a className="text-sm text-brand underline" href={`/api/documents/${d.id}/download`}>Download</a>
+                    <button className="text-sm text-brand underline" aria-expanded={!!preview[d.id]} onClick={() => togglePreview(d)}>
                       {preview[d.id] ? "Hide text" : "Preview text"}
                     </button>
                     {d.version > 1 && (
-                      <button className="text-sm text-indigo-700 underline" onClick={() => showVersions(d)}>History</button>
+                      <button className="text-sm text-brand underline" onClick={() => showVersions(d)}>History</button>
                     )}
                     <Upload compact lineage={d} onDone={load} />
                     {d.kind === "resume" && (
-                      <button className="text-sm text-indigo-700 underline" onClick={() => propose(d)}>
+                      <button className="text-sm text-brand underline" onClick={() => propose(d)}>
                         Propose profile facts
                       </button>
                     )}
                     {confirming === d.lineage_id ? (
                       <span className="flex items-center gap-2 text-sm">
                         Delete this document, every version and its files?
-                        <button className="text-red-700 underline" onClick={() => remove(d, "lineage")}>
+                        <button className="text-danger-ink underline" onClick={() => remove(d, "lineage")}>
                           Yes, delete
                         </button>
-                        <button className="text-slate-600 underline" onClick={() => setConfirming(null)}>
+                        <button className="text-ink-muted underline" onClick={() => setConfirming(null)}>
                           Keep it
                         </button>
                       </span>
                     ) : (
-                      <button className="text-sm text-red-700 underline" onClick={() => setConfirming(d.lineage_id)}>
+                      <button className="text-sm text-danger-ink underline" onClick={() => setConfirming(d.lineage_id)}>
                         Delete
                       </button>
                     )}
@@ -156,24 +156,24 @@ export default function DocumentsPage() {
                     <figure className="mt-2">
                       <pre
                         aria-label={`Text of ${d.label}`}
-                        className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800"
+                        className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-hairline bg-surface-2 p-3 text-xs text-ink"
                       >
                         {(preview[d.id] as { text: string }).text}
                       </pre>
-                      <figcaption className="mt-1 text-xs text-slate-500">
+                      <figcaption className="mt-1 text-xs text-ink-faint">
                         The text NoEfforts reads from this file, as plain text; layout and images are not shown.
                         {(preview[d.id] as { truncated: boolean }).truncated && " Only the beginning is shown."}
                       </figcaption>
                     </figure>
                   ))}
                 {versions[d.lineage_id] && (
-                  <ul className="mt-2 space-y-1 rounded-lg bg-slate-50 p-2 text-sm">
+                  <ul className="mt-2 space-y-1 rounded-lg bg-surface-2 p-2 text-sm">
                     {versions[d.lineage_id].map((v) => (
                       <li key={v.id}>
                         v{v.version} — {new Date(v.created_at).toLocaleString()} —{" "}
-                        <a className="text-indigo-700 underline" href={`/api/documents/${v.id}/download`}>download</a>
+                        <a className="text-brand underline" href={`/api/documents/${v.id}/download`}>download</a>
                         {" — "}
-                        <button className="text-red-700 underline" onClick={() => remove(v, "version")}>
+                        <button className="text-danger-ink underline" onClick={() => remove(v, "version")}>
                           delete this version
                         </button>
                       </li>
@@ -224,12 +224,12 @@ function Upload({ onDone, lineage, compact }: { onDone: () => void; lineage?: Do
   if (compact)
     return (
       <form onSubmit={submit} className="flex items-center gap-2">
-        <label className="cursor-pointer text-sm text-indigo-700 underline">
+        <label className="cursor-pointer text-sm text-brand underline">
           New version
           <input type="file" accept=".pdf,.docx,.txt" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         </label>
         {file && <Button type="submit" disabled={busy} className="!min-h-8 !px-2 !py-1">Upload {file.name}</Button>}
-        {error ? <span className="text-xs text-red-700">{(error as Error).message}</span> : null}
+        {error ? <span className="text-xs text-danger-ink">{(error as Error).message}</span> : null}
       </form>
     );
 

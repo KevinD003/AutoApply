@@ -87,7 +87,7 @@ export default function PreferencesPage() {
   return (
     <>
       <h1 className="text-xl font-semibold">Job preferences</h1>
-      <p className="text-sm text-slate-600">What you are looking for. These guide matching only — they never change the factual answers in your profile.</p>
+      <p className="text-sm text-ink-muted">What you are looking for. These guide matching only — they never change the factual answers in your profile.</p>
       <form onSubmit={save} className="space-y-4">
         <Card title="Roles">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -100,7 +100,7 @@ export default function PreferencesPage() {
         </Card>
         <Card title="Where and how">
           <fieldset className="mb-3">
-            <legend className="mb-1 text-sm font-medium text-slate-700">Work modes you accept</legend>
+            <legend className="mb-1 text-sm font-medium text-ink-muted">Work modes you accept</legend>
             <div className="flex flex-wrap gap-4 text-sm">
               {["remote", "hybrid", "onsite"].map((m) => (
                 <label key={m} className="flex items-center gap-2">

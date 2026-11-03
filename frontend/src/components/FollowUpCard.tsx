@@ -62,7 +62,7 @@ export default function FollowUpCard({
   if (hideUntilSubmitted && f.status === "not_submitted") return null;
   const s = STATUS[f.status];
   return (
-    <section aria-label="Follow-up" className="mb-3 rounded-lg border border-slate-200 p-3 text-sm">
+    <section aria-label="Follow-up" className="mb-3 rounded-lg border border-hairline p-3 text-sm">
       <h3 className="mb-2 font-semibold">Follow-up</h3>
       <ErrorBox error={error} />
       <p className="flex flex-wrap items-center gap-2">
@@ -70,10 +70,10 @@ export default function FollowUpCard({
         {(f.status === "scheduled" || f.status === "due") && <span data-testid="follow-up-due">{f.status === "due" ? "Due" : "On"} {day(f.due_on)}</span>}
       </p>
       {f.status === "not_submitted" && (
-        <p className="mt-2 text-slate-600">Once this application is submitted (or you record that you applied yourself), NoEfforts reminds you to check on it.</p>
+        <p className="mt-2 text-ink-muted">Once this application is submitted (or you record that you applied yourself), NoEfforts reminds you to check on it.</p>
       )}
       {f.status !== "not_submitted" && (
-        <p className="mt-2 text-slate-600">
+        <p className="mt-2 text-ink-muted">
           Submitted {day(f.submitted_on)}
           {f.followed_up_on && <> · you followed up {day(f.followed_up_on)}</>}. Reminders come {f.days} days after you applied, after you
           last followed up, or after an interview or assessment you recorded, and stop once an outcome closes the application.
@@ -97,13 +97,13 @@ export default function FollowUpCard({
       )}
       {f.draft && f.status !== "closed" && (
         <details className="mt-3">
-          <summary className="cursor-pointer text-indigo-700 underline">A message you can copy</summary>
-          <p className="mt-2 text-xs text-slate-500">
+          <summary className="cursor-pointer text-brand underline">A message you can copy</summary>
+          <p className="mt-2 text-xs text-ink-faint">
             NoEfforts never sends it. It uses the job, the day you applied{f.draft.name_missing ? "" : " and your name from your profile"}, nothing else.
             {f.draft.name_missing && " Add your name in your profile, or replace “[Your name]”."}
           </p>
           <p className="mt-2 font-medium" data-testid="follow-up-subject">Subject: {f.draft.subject}</p>
-          <pre className="mt-1 whitespace-pre-wrap break-words rounded bg-slate-50 p-2 font-sans" data-testid="follow-up-body">{f.draft.body}</pre>
+          <pre className="mt-1 whitespace-pre-wrap break-words rounded bg-surface-2 p-2 font-sans" data-testid="follow-up-body">{f.draft.body}</pre>
           <Button variant="secondary" onClick={copy}>{copied ? "Copied" : "Copy message"}</Button>
         </details>
       )}
