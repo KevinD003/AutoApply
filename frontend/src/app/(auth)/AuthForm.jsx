@@ -2,25 +2,25 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 
 import { Button, ErrorBox, Field, inputCls } from "@/components/ui";
-import { api, Me, setCsrf } from "@/lib/api";
+import { api, setCsrf } from "@/lib/api";
 
-export default function AuthForm({ mode }: { mode: "login" | "register" }) {
+export default function AuthForm({ mode }) {
   const router = useRouter();
   const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  async function submit(e: FormEvent) {
+  async function submit(e) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const me = await api<Me>(`/auth/${mode}`, { json: { email, password } });
+      const me = await api(`/auth/${mode}`, { json: { email, password } });
       setCsrf(me.csrf_token);
       const next = params.get("next");
       router.replace(mode === "register" ? "/profile" : next?.startsWith("/") ? next : "/jobs");
