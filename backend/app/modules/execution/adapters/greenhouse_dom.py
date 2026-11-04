@@ -745,8 +745,12 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 and self._code_rejected(page)
                 and (
                     # A message left from an earlier, rejected code counts only once the employer
-                    # has answered this one and shown no confirmation.
-                    not stale or (responses and waited - answered_at >= 1500)
+                    # has answered this one and shown no confirmation. The response listener runs
+                    # during the page reads above, so `responses` can turn non-empty within this
+                    # step — after answered_at was taken at the top — and timing from it would be
+                    # `int - None`. Require a recorded arrival time; the next step records it.
+                    not stale
+                    or (responses and answered_at is not None and waited - answered_at >= 1500)
                 )
             ):
                 return Outcome("wrong_code", "the employer rejected the security code", None,
