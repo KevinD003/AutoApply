@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 import { salaryDisplay } from "@/lib/salary";
+import { workplaceLabel } from "@/lib/workplace";
 import {
   Banner,
   Button,
@@ -57,8 +58,6 @@ import { IconBriefcase, IconChevronRight, IconCompass, IconMapPin, IconUpload, I
 
 const STATUS_TONE = { new: "brand", shortlisted: "positive", excluded: "neutral", closed: "neutral" };
 const PASS_REASON = "Passed in discovery";
-const WORKPLACE = { remote: "Remote", hybrid: "Hybrid", onsite: "On-site", on_site: "On-site", "on-site": "On-site" };
-const workplaceLabel = (w) => (w ? (WORKPLACE[w] ?? w.charAt(0).toUpperCase() + w.slice(1)) : null);
 
 function named(what, items) {
   const shown = items.slice(0, 3).join(", ");

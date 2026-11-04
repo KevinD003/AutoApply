@@ -7,6 +7,7 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { Badge, Button, Card, Credit, ErrorBox, Field, inputCls, Loading } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { SAL_KIND, SAL_PROVENANCE, salaryDisplay } from "@/lib/salary";
+import { workplaceLabel } from "@/lib/workplace";
 import { cx } from "@/ui/cx";
 import { Reveal, Stagger } from "@/ui/motion";
 
@@ -108,6 +109,7 @@ function Salary({ salary }) {
 function Facts({ facts }) {
   const chips = [];
   if (facts.employment_type) chips.push(["Employment", facts.employment_type]);
+  if (facts.workplace) chips.push(["Work arrangement", workplaceLabel(facts.workplace)]);
   if (facts.seniority) chips.push(["Seniority", facts.seniority]);
   if (facts.department) chips.push(["Department", facts.department]);
   const locations = facts.locations || [];
@@ -137,7 +139,7 @@ function JobBody({ content }) {
   const blocks = desc.blocks || [];
   const sections = desc.sections || [];
   const facts = c.facts || {};
-  const hasFacts = !!(facts.employment_type || facts.seniority || facts.department || (facts.locations || []).length);
+  const hasFacts = !!(facts.employment_type || facts.workplace || facts.seniority || facts.department || (facts.locations || []).length);
   if (!blocks.length && !sections.length && !c.salary && !hasFacts) return null;
   return (
     <Reveal>
