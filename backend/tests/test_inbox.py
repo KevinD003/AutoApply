@@ -1126,6 +1126,9 @@ def test_in_app_consent_authorizes_tracking_without_a_code_change_and_revoke_re_
     assert r.status_code == 200
     v = r.json()
     assert v["tracking_authorized"] is True and v["authorization"]["source"] == "in_app"
+    # The consent record references the disclosure version it was granted against (scope, grant
+    # time and revocation state are the row's other recorded facts).
+    assert v["authorization"]["disclosure_version"] == "appmail-consent/v1"
     # Now tracking turns on and a real recruitment email is read and proposed (the consent path
     # actually enables reading, end to end).
     r = api.put("/inbox", json={"codes_enabled": False, "tracking_enabled": True})

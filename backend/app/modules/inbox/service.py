@@ -100,6 +100,10 @@ def _note(
 
 
 APPLICATION_EMAIL = "read_application_email"
+# The version of the in-app consent disclosure (the scope note + the authorize control's copy) in
+# force. Recorded on each consent so a later wording change never rewrites a past consent; bump it
+# whenever that disclosure materially changes.
+CONSENT_DISCLOSURE_VERSION = "appmail-consent/v1"
 
 
 def may(action: str) -> bool:
@@ -181,7 +185,11 @@ def grant_application_consent(
         raise ValueError("no_attestation")
     _revoke_active(db, user.id, APPLICATION_EMAIL)
     c = InboxConsent(
-        user_id=user.id, action=APPLICATION_EMAIL, attestation=text[:500], ends_on=ends_on
+        user_id=user.id,
+        action=APPLICATION_EMAIL,
+        attestation=text[:500],
+        disclosure_version=CONSENT_DISCLOSURE_VERSION,
+        ends_on=ends_on,
     )
     db.add(c)
     db.flush()

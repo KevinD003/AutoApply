@@ -92,8 +92,14 @@ class InboxConsent(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
-    action: Mapped[str] = mapped_column(String(32))  # only "read_application_email" today
+    action: Mapped[str] = mapped_column(
+        String(32)
+    )  # the scope; only "read_application_email" today
     attestation: Mapped[str] = mapped_column(String(500))  # the owner's own words, verbatim
+    # The version of the in-app consent disclosure (the scope note and the authorize control's copy)
+    # in force when this consent was given, so a later change to that wording never rewrites what a
+    # past consent was granted against.
+    disclosure_version: Mapped[str] = mapped_column(String(32))
     granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     ends_on: Mapped[date | None] = mapped_column(Date)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

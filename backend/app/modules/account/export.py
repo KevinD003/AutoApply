@@ -356,6 +356,7 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "user_id",
         "action",
         "attestation",
+        "disclosure_version",
         "granted_at",
         "ends_on",
         "revoked_at",

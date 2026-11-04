@@ -13,12 +13,15 @@ from app.core.db import get_db
 from app.core.errors import conflict, not_found
 from app.modules.applications.states import Refused
 from app.modules.audit.service import record
-from app.modules.identity.deps import current_user
+from app.modules.identity.deps import current_user, session_only
 from app.modules.identity.models import User
 from app.modules.inbox import service
 from app.modules.inbox.models import InboxEvent
 
-router = APIRouter(prefix="/inbox", tags=["inbox"])
+# The whole inbox feature reads the owner's own private mailbox: it is app-only, never reachable
+# by an API token (no token scope includes any inbox route, and recording consent, like account
+# export/deletion and token management, stays behind a signed-in session and its CSRF token).
+router = APIRouter(prefix="/inbox", tags=["inbox"], dependencies=[Depends(session_only)])
 
 WHY = {
     "not_enabled": "Reading your email is switched off on this server.",
@@ -112,6 +115,7 @@ def _view(db: Session, user: User) -> dict:
             "granted_at": c.granted_at,
             "ends_on": c.ends_on,
             "attestation": c.attestation,
+            "disclosure_version": c.disclosure_version,
         }
     return {
         "available": why is None,

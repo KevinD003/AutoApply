@@ -30,6 +30,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column("action", sa.String(length=32), nullable=False),
         sa.Column("attestation", sa.String(length=500), nullable=False),
+        sa.Column("disclosure_version", sa.String(length=32), nullable=False),
         sa.Column("granted_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("ends_on", sa.Date(), nullable=True),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),

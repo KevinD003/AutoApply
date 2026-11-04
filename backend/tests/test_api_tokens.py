@@ -210,7 +210,11 @@ def test_session_only_routes_refuse_a_token_even_next_to_a_valid_session(api):
     token = make(api, ["read", "import:jobs"])
     for method, url in (("GET", "/account/tokens"), ("POST", "/account/tokens"),
                         ("GET", "/account/export"), ("GET", "/account/deletion"),
-                        ("POST", "/account/delete")):  # fmt: skip
+                        ("POST", "/account/delete"),
+                        # The inbox reads the owner's own mailbox: app-only, like the above.
+                        # Recording recruitment-email consent (a standing authorization) included.
+                        ("GET", "/inbox"), ("POST", "/inbox/authorize"),
+                        ("POST", "/inbox/authorize/revoke")):  # fmt: skip
         # api.client still carries a valid session cookie and CSRF token.
         r = api.client.request(method, url, headers=bearer(token) | {"X-CSRF-Token": api.csrf},
                                json={})  # fmt: skip
