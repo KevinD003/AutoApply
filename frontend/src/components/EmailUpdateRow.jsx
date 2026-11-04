@@ -34,7 +34,7 @@ export const KIND = {
 export const STATE = {
   proposed: { label: "waiting for you", tone: "amber" },
   review: { label: "needs your review", tone: "amber" },
-  auto_applied: { label: "applied automatically", tone: "indigo" },
+  auto_applied: { label: "status recorded automatically", tone: "indigo" },
   accepted: { label: "recorded by you", tone: "green" },
   noted: { label: "noted", tone: "slate" },
   unlinked: { label: "names none of your applications (or several)", tone: "slate" },

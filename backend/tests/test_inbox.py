@@ -982,3 +982,89 @@ def test_auto_apply_needs_its_own_setting_and_disabling_tracking_stops_reads(
     deliver(receiver, EMPLOYER, ROLE, "We are pleased to offer you the position.")
     assert api.post("/inbox/check").json()["result"] == {"skipped": "tracking_off"}
     assert _outcome(api, app_id) == "none"
+
+
+# -- consent, revocation and the read-only boundary, precisely (spec §4/§7/§8) -------------------
+
+
+def test_revocation_during_sync_is_reported_and_retracts_nothing_already_recorded(
+    api, receiver, connected
+):
+    """Revoking the mail connection stops future reads only. A read in flight that the revocation
+    interrupts is reported by its fixed code (never a crash), the read cursor is not advanced (so no
+    mail is silently skipped), and a response already recorded is never retracted by the revocation
+    — a revoked token cannot take back a status already received."""
+    app_id = submitted(api, receiver)
+    _track(api)  # tracking on, auto-apply off
+    deliver(receiver, EMPLOYER, ROLE, "We would like to schedule an interview with you.")
+    (e,) = api.post("/inbox/check").json()["events"]
+    api.post(f"/inbox/events/{e['id']}/accept").raise_for_status()
+    assert _outcome(api, app_id) == "interviewing"  # a response received and recorded
+    cursor = api.get("/inbox").json()["last_checked_at"]
+
+    # The connection is revoked while a new email waits to be read.
+    receiver.config(inbox_mode="revoked")
+    deliver(receiver, EMPLOYER, ROLE, "We are pleased to offer you the position.")
+    assert api.post("/inbox/check").json()["result"] == {"error": "revoked"}  # reported, no crash
+
+    v = api.get("/inbox").json()
+    assert v["last_checked_at"] == cursor  # cursor not advanced: the offer is not silently skipped
+    assert all(x["kind"] != "offer" for x in v["events"])  # the new email was not processed
+    assert _outcome(api, app_id) == "interviewing"  # the recorded interview is NOT retracted
+
+
+def test_disabling_tracking_leaves_a_queued_proposal_but_stops_further_reads(
+    api, receiver, connected
+):
+    """Turning tracking off while an update is already queued: the queued proposal stays (the owner
+    can still confirm or dismiss what was already surfaced), but no further mail is read and nothing
+    is applied automatically once the stop is recognised."""
+    app_id = submitted(api, receiver)
+    _track(api)  # tracking on, auto-apply off
+    deliver(receiver, EMPLOYER, ROLE, "We would like to schedule an interview with you.")
+    (e,) = api.post("/inbox/check").json()["events"]
+    assert e["state"] == "proposed"
+
+    api.put("/inbox", json={"codes_enabled": False, "tracking_enabled": False})  # stop processing
+    assert [x["id"] for x in api.get("/inbox").json()["events"]] == [e["id"]]  # queued item stays
+    deliver(receiver, EMPLOYER, ROLE, "We are pleased to offer you the position.")
+    assert api.post("/inbox/check").json()["result"] == {"skipped": "tracking_off"}  # no new read
+    assert _outcome(api, app_id) == "none"  # nothing applied once the stop is recognised
+
+    # The already-queued proposal is still the owner's to act on (acting on what they already saw,
+    # not a new read), so turning processing off never orphans what was already surfaced.
+    api.post(f"/inbox/events/{e['id']}/accept").raise_for_status()
+    assert _outcome(api, app_id) == "interviewing"
+
+
+def test_the_feature_exposes_no_gmail_send_or_modify_capability():
+    """Read-only end to end: the OAuth scope is read-only, the reader has no method that could
+    send, reply, delete, label or otherwise modify mail, and the inbox authorization vocabulary
+    grants only reading — there is no send/modify capability to record or expose."""
+    from app.modules.inbox import provider
+
+    assert SCOPE == "https://www.googleapis.com/auth/gmail.readonly"
+    public = {m for m in dir(provider.GmailReader) if not m.startswith("_")}
+    assert public == {"received_after", "read"}  # reads only
+    for forbidden in ("send", "reply", "forward", "modify", "trash", "delete", "insert", "label"):
+        assert not hasattr(provider.GmailReader, forbidden)
+    # The inbox can only ever be authorized to read; there is no send/modify action to grant.
+    assert authorizations.ACTIONS[authorizations.INBOX] == {
+        "read_codes", "enter_codes", "read_application_email"}  # fmt: skip
+
+
+def test_an_email_status_update_never_queues_execution_or_submission(api, receiver, connected):
+    """An email-derived status update records a status only: it never grants approval, queues an
+    execution attempt, or triggers a submission — even when applied automatically."""
+    app_id = submitted(api, receiver)
+    with SessionLocal() as db:
+        before = db.query(ExecutionAttempt).count()
+    _track(api, auto=True)
+    deliver(receiver, EMPLOYER, ROLE, "We regret to inform you that you were not selected.")
+    (e,) = api.post("/inbox/check").json()["events"]
+    assert e["state"] == "auto_applied" and _outcome(api, app_id) == "rejected"
+    with SessionLocal() as db:
+        assert db.query(ExecutionAttempt).count() == before  # a status update queues no execution
+    app = api.get(f"/applications/{app_id}").json()
+    assert app["submission"] == "receipt" and app["state"] == "submitted_confirmed"  # unchanged
+    assert receiver.ledger()["accepted"] == 1  # the one real submission only; nothing new sent

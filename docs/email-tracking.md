@@ -102,7 +102,13 @@ unchanged — only the default toggle moved.
   updates" card on the tracker** (`components/EmailUpdates.jsx`), where proposals, auto-applied
   updates and review/unlinked items are confirmed, corrected, undone or re-linked; and the
   **Account → Email card** (`components/InboxCard.jsx`), which also carries the §7 settings (codes,
-  tracking, the opt-in `auto_apply` toggle) and the honest read-only scope copy. The notifications
+  tracking, the opt-in `auto_apply` toggle) and the honest read-only scope copy. The `auto_apply`
+  toggle is worded as **"Automatically update an application's status from email"** — it records a
+  status only and is deliberately distinct from the unrelated execution feature **"Automatically
+  submit applications"** (D113, `components/AutoApplyCard.jsx`); the stored field keeps the name
+  `auto_apply` for compatibility, but the two are never both labelled "auto-apply" in the UI. An
+  email-derived status update never grants approval, queues execution or triggers a submission
+  (proven in `tests/test_inbox.py`). The notifications
   feed renders the `email_update` kind (`app/(app)/notifications/page.jsx`), linking to the
   tracker. All of it reads nothing but the API fields above — no message content exists client-side.
   The tracker leads with what needs attention (email updates to confirm/correct, follow-ups due),
@@ -119,6 +125,12 @@ unchanged — only the default toggle moved.
   application row and the notification all agree and that undo restores every surface; further cases
   cover undo after a newer event, an ambiguous match that updates no application at an employer,
   assessment, interview-invitation-vs-scheduled, inactivity-vs-rejection, and consent independence.
+  Consent/revocation is proven precisely: revocation during a sync is reported by its code, does not
+  advance the read cursor (no mail silently skipped) and never retracts a status already recorded;
+  disabling tracking while a proposal is already queued keeps that proposal actionable but stops all
+  further reads; and the feature exposes no Gmail send/modify capability (read-only scope, no
+  mutating reader method, no send/modify action in the inbox authorization vocabulary). A separate
+  case proves an email-derived status update queues no execution and triggers no submission.
   The UI's own coherence across a reload is in `e2e/email-updates.spec.ts`.
 
 ## Residual / real-device limitations

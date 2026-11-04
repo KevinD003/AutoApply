@@ -47,7 +47,8 @@ export default function InboxCard() {
           <label className="flex items-start gap-2">
             <input type="checkbox" checked={Boolean(v.auto_apply)} disabled={busy || !v.tracking_enabled} onChange={(e) => set(v.codes_enabled, v.tracking_enabled, e.target.checked)} />
             <span>
-              When an update is clear and clearly about one application, record it automatically. You can still review or undo it on the tracker;
+              Automatically update an application&rsquo;s status from email (this records a status only &mdash; it never submits an application):
+              when an update is clear and clearly about one application, record it for me. You can still review or undo it on the tracker;
               anything less clear I confirm myself.
             </span>
           </label>
