@@ -32,12 +32,54 @@ ERRORS = {
     "unreachable": "Gmail could not be reached. NoEfforts tries again later.",
     "refused_host": "The configured Gmail address is not allowed.",
     "bad_reply": "Gmail answered in an unexpected way. NoEfforts tries again later.",
+    "too_many": "There was a lot of mail to read at once; NoEfforts read the newest and will "
+    "continue. Lower the first-read window if this persists.",
+}
+
+# The honest OAuth scope (spec §7): the owner's token was granted Gmail's read-only scope, which
+# can read message bodies — broader than the metadata NoEfforts actually uses. App-side filters do
+# not narrow the provider-issued scope; narrowing it, or revoking, is done in the Google account.
+SCOPE_NOTE = (
+    "NoEfforts uses read-only Gmail access. That read-only access can read message "
+    "bodies — broader than what NoEfforts reads, which is only enough to recognise recruitment "
+    "emails. It never sends, replies, deletes, marks read or changes labels, and stores no "
+    "message content (only a keyed reference, the sender's domain, the recognised event and the "
+    "application). This filter is in NoEfforts, not in the Google permission; manage or revoke "
+    "access in your Google account's Security settings."
+)
+# Plain-language reasons a message was matched to an application (spec §9). Codes only; no content.
+BASIS_LABEL = {
+    "requisition_id": "the requisition ID in the message",
+    "email_thread": "an earlier message in the same email thread",
+    "employer": "the employer's name",
+    "employer_domain": "the sender's own company domain",
+    "job_title": "the job title",
+    "ats_sender": "a known application-system sender",
 }
 
 
 class InboxSettingsIn(BaseModel):
     codes_enabled: bool
     tracking_enabled: bool
+    # Suggest updates only (default), or automatically apply clear, well-matched updates (spec §4).
+    auto_apply: bool = False
+
+
+class AcceptIn(BaseModel):
+    # An optional corrected outcome (e.g. the message read as an interview but you mark it
+    # rejected). Omitted: the recognised event's outcome is used.
+    outcome: str | None = None
+
+
+class RelinkIn(BaseModel):
+    # The application this message is really about ("wrong application"), or null to clear it.
+    application_id: uuid.UUID | None = None
+
+
+def _why_matched(basis: str | None) -> str | None:
+    if not basis:
+        return None
+    return ", ".join(BASIS_LABEL.get(b, b) for b in basis.split(","))
 
 
 def _view(db: Session, user: User) -> dict:
@@ -54,6 +96,8 @@ def _view(db: Session, user: User) -> dict:
         "why_not": WHY.get(why) if why else None,
         "codes_enabled": st.codes_enabled,
         "tracking_enabled": st.tracking_enabled,
+        "auto_apply": st.auto_apply,
+        "scope_note": SCOPE_NOTE,
         "last_checked_at": st.last_checked_at,
         "last_error": ERRORS.get(st.last_error) if st.last_error else None,
         "events": [
@@ -64,6 +108,15 @@ def _view(db: Session, user: User) -> dict:
                 "kind": e.kind,
                 "state": e.state,
                 "application_id": str(e.application_id) if e.application_id else None,
+                # The recognised event and its two confidences kept apart (spec); the proposed and
+                # previous application outcome; a plain-language reason it matched. No content.
+                "match_band": e.match_band,
+                "class_band": e.class_band,
+                "proposed_outcome": e.proposed_outcome,
+                "prev_outcome": e.prev_outcome,
+                "why_matched": _why_matched(e.match_basis),
+                "automatic": e.state == "auto_applied",
+                "needs_review": e.state in ("proposed", "review"),
             }
             for e in events
         ],  # fmt: skip
@@ -91,8 +144,9 @@ def put_inbox(
         raise conflict(WHY["not_authorized"])
     st = service.settings_of(db, user.id)
     st.codes_enabled, st.tracking_enabled = body.codes_enabled, body.tracking_enabled
+    st.auto_apply = body.auto_apply  # inert unless tracking is on and authorized
     record(db, user.id, "inbox.settings", "inbox", None, codes=body.codes_enabled,
-           tracking=body.tracking_enabled)  # fmt: skip
+           tracking=body.tracking_enabled, auto_apply=body.auto_apply)  # fmt: skip
     db.commit()
     return _view(db, user)
 
@@ -109,10 +163,13 @@ def check_now(user: User = Depends(current_user), db: Session = Depends(get_db))
 
 @router.post("/events/{event_id}/accept")
 def accept_event(
-    event_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+    event_id: uuid.UUID,
+    body: AcceptIn | None = None,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
 ) -> dict:
     try:
-        e = service.accept(db, user, event_id)
+        e = service.accept(db, user, event_id, outcome=body.outcome if body else None)
     except service.Settled:
         db.rollback()
         raise conflict("This application's submission is already settled.") from None
@@ -121,7 +178,7 @@ def accept_event(
         raise conflict(str(r)) from None
     except ValueError:
         db.rollback()
-        raise conflict("This email is not waiting for your answer.") from None
+        raise conflict("This email is not waiting for your answer, or names no outcome.") from None
     if e is None:
         raise not_found("Email")
     db.commit()
@@ -137,6 +194,46 @@ def dismiss_event(
     except ValueError:
         db.rollback()
         raise conflict("This email is not waiting for your answer.") from None
+    if e is None:
+        raise not_found("Email")
+    db.commit()
+    return _view(db, user)
+
+
+@router.post("/events/{event_id}/undo")
+def undo_event(
+    event_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    try:
+        e = service.undo(db, user, event_id)
+    except ValueError as v:
+        db.rollback()
+        msg = {
+            "terminal": "A confirmed receipt can't be undone.",
+            "not_undoable": "This email hasn't been applied, so there's nothing to undo.",
+        }.get(str(v), "This email can't be undone.")
+        raise conflict(msg) from None
+    if e is None:
+        raise not_found("Email")
+    db.commit()
+    return _view(db, user)
+
+
+@router.post("/events/{event_id}/relink")
+def relink_event(
+    event_id: uuid.UUID,
+    body: RelinkIn,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        e = service.relink(db, user, event_id, body.application_id)
+    except LookupError:
+        db.rollback()
+        raise not_found("Application") from None
+    except ValueError:
+        db.rollback()
+        raise conflict("Undo this email before linking it to a different application.") from None
     if e is None:
         raise not_found("Email")
     db.commit()

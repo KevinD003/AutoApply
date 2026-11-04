@@ -49,6 +49,7 @@ class Message:
     sender_domain: str
     subject: str
     text: str
+    thread_id: str = ""  # Gmail's thread id: later messages in a reply thread share it
 
 
 def _origin(url: str) -> str:
@@ -202,6 +203,7 @@ class GmailReader:
             at = datetime.fromtimestamp(int(body.get("internalDate", "0")) / 1000, UTC)
         except (TypeError, ValueError):
             at = datetime.now(UTC)
+        tid = body.get("threadId")
         return Message(
             id=message_id,
             received_at=at,
@@ -209,4 +211,7 @@ class GmailReader:
             sender_domain=addr.rsplit("@", 1)[-1].lower()[:200] if "@" in addr else "",
             subject=(headers.get("subject") or "")[:500],
             text=_text_of(payload),
+            thread_id=tid
+            if isinstance(tid, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", tid)
+            else "",  # noqa: E501
         )

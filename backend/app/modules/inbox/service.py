@@ -49,16 +49,30 @@ from app.modules.audit.service import record, ref
 from app.modules.execution import service as execution
 from app.modules.execution.models import Checkpoint, ExecutionAttempt
 from app.modules.identity.models import User
-from app.modules.inbox import rules
+from app.modules.inbox import parsing, rules
 from app.modules.inbox.models import InboxEvent, InboxSettings
 from app.modules.inbox.provider import GmailReader, InboxUnavailable, Message
 from app.modules.jobs.models import Job
 
+# The recognised event → the reportable application Outcome it proposes (spec §2/§3). Events not
+# here (received, under_review, info_requested, interview_cancelled, position_closed, talent_pool,
+# recommendation, other) are recognised and surfaced but change no status on their own.
 OUTCOME_OF = {
     "rejected": Outcome.rejected,
+    "offer": Outcome.offer,
+    "withdrawn": Outcome.withdrawn,
     "interview": Outcome.interviewing,
+    "interview_scheduled": Outcome.interviewing,
+    "interview_rescheduled": Outcome.interviewing,
+    "next_round": Outcome.interviewing,
     "assessment": Outcome.assessment_received,
+    "assessment_reminder": Outcome.assessment_received,
 }
+# An outcome event's note distinguishes an email-derived change from a manual one (for the
+# manual-lock guard and for undo). Kept deliberately content-free (domain + date only).
+_EMAIL_NOTE = "From an email from"
+_AUTO_NOTE = "Automatically from an email from"
+_MAX_READ = 1500  # messages read in one pass; a fuller backfill is surfaced, never skipped (§8)
 
 
 def may(action: str) -> bool:
@@ -112,10 +126,24 @@ def _known(db: Session, user_id, mref: str) -> bool:
     )
 
 
-def _event(db, user_id, m: Message, mref: str, kind: str, state: str, app_id=None) -> InboxEvent:
-    e = InboxEvent(user_id=user_id, message_ref=mref, received_at=m.received_at,
-                   sender_domain=m.sender_domain or "unknown", kind=kind, state=state,
-                   application_id=app_id)  # fmt: skip
+def _event(db, user_id, m: Message, mref: str, kind: str, state: str, app_id=None, *,
+           thread_ref=None, match_band=None, class_band=None, match_basis=None,
+           proposed_outcome=None, prev_outcome=None) -> InboxEvent:  # fmt: skip
+    e = InboxEvent(
+        user_id=user_id,
+        message_ref=mref,
+        thread_ref=thread_ref,
+        received_at=m.received_at,
+        sender_domain=m.sender_domain or "unknown",
+        kind=kind,
+        state=state,
+        match_band=match_band,
+        class_band=class_band,
+        match_basis=match_basis,
+        proposed_outcome=proposed_outcome,
+        prev_outcome=prev_outcome,
+        application_id=app_id,
+    )
     db.add(e)
     db.flush()
     return e
@@ -189,15 +217,6 @@ def fill_codes(db: Session, user: User, gmail: GmailReader | None = None) -> int
     return entered
 
 
-def _submitted_apps(db: Session, user_id) -> list[tuple[Application, str, str]]:
-    rows = db.execute(
-        select(Application, Job.employer, Job.title)
-        .join(Job, Job.id == Application.job_id)
-        .where(Application.user_id == user_id)
-    ).all()
-    return [(a, emp, title or "") for a, emp, title in rows if emp and ever_submitted(db, a)]
-
-
 def _settles(db: Session, user_id, app: Application, title: str, m: Message) -> bool:
     """D103: whether a "received" email may be proposed as the reconciliation of `app`'s
     submission of unknown outcome. All of: the application is in submitted_unconfirmed; the email
@@ -227,9 +246,176 @@ def _settles(db: Session, user_id, app: Application, title: str, m: Message) -> 
     return db.scalar(open_one.limit(1)) is None
 
 
+def _candidates(db: Session, user_id) -> list[rules.Candidate]:
+    """The user's submitted applications, as the matcher sees them (employer, title, requisition
+    id and posting URL). Only a submitted application can receive an employer email (D103)."""
+    rows = db.execute(
+        select(Application, Job.employer, Job.title, Job.requisition_id, Job.url)
+        .join(Job, Job.id == Application.job_id)
+        .where(Application.user_id == user_id)
+    ).all()
+    return [
+        rules.Candidate(str(a.id), emp, title or "", req, url)
+        for a, emp, title, req, url in rows
+        if emp and ever_submitted(db, a)
+    ]
+
+
+def _thread_app(db: Session, user_id, thread_ref: str | None) -> str | None:
+    """The application a prior message in this mail thread was linked to (spec §1: previously
+    linked email thread), if it is still one of the user's applications."""
+    if not thread_ref:
+        return None
+    e = db.scalar(
+        select(InboxEvent)
+        .where(
+            InboxEvent.user_id == user_id,
+            InboxEvent.thread_ref == thread_ref,
+            InboxEvent.application_id.is_not(None),
+        )  # fmt: skip
+        .order_by(InboxEvent.received_at.desc())
+        .limit(1)
+    )
+    if e is None:
+        return None
+    app = db.get(Application, e.application_id)
+    return str(e.application_id) if app and app.user_id == user_id else None
+
+
+def _latest_outcome_event(db: Session, app_id) -> tuple[Outcome, date | None, bool] | None:
+    """(to_outcome, occurred_on, email_derived) of the application's most recent outcome event, or
+    None. `email_derived` tells a manual correction apart from an email-recorded one."""
+    from app.modules.applications.models import ApplicationEvent
+
+    e = db.scalar(
+        select(ApplicationEvent)
+        .where(ApplicationEvent.application_id == app_id, ApplicationEvent.kind == "outcome")
+        .order_by(ApplicationEvent.created_at.desc())
+        .limit(1)
+    )
+    if e is None:
+        return None
+    note = e.evidence_note or ""
+    return e.to_outcome, e.occurred_on, note.startswith((_EMAIL_NOTE, _AUTO_NOTE))
+
+
+def _guard(db: Session, app: Application, proposed: Outcome, m: Message) -> str:
+    """Temporal and conflict consistency (spec §3), by explicit rules — never a numeric stage
+    ranking. Returns 'apply_ok' (consistent), 'noted' (redundant or a stale earlier signal that
+    must not pull a later stage back), or 'review' (a conflict for you to resolve)."""
+    cur = app.outcome
+    if cur == proposed:
+        return "noted"  # already recorded; a repeat changes nothing
+    latest = _latest_outcome_event(db, app.id)
+    day = m.received_at.date()
+    # Older than the recorded activity: an old message must not override newer activity.
+    if latest and latest[1] is not None and day < latest[1]:
+        return "review"
+    # A manual correction must not be silently overridden by a later, differing email.
+    if latest and not latest[2] and latest[0] != Outcome.none and latest[0] != proposed:
+        return "review"
+    # An earlier-stage signal must not pull a later stage back (a reminder after an interview).
+    if proposed == Outcome.assessment_received and cur in (Outcome.interviewing, Outcome.offer):
+        return "noted"
+    if proposed == Outcome.interviewing and cur == Outcome.offer:
+        return "noted"
+    # Opposite decisions, or a reactivation after a decision, are genuine conflicts.
+    if cur == Outcome.rejected and proposed in (
+        Outcome.interviewing,
+        Outcome.assessment_received,
+        Outcome.offer,
+    ):
+        return "review"
+    if {cur, proposed} == {Outcome.offer, Outcome.rejected}:
+        return "review"
+    return "apply_ok"
+
+
+def _auto_apply(db: Session, user_id, app: Application, outcome: Outcome, m: Message) -> bool:
+    """Apply a clear, well-matched, consistent outcome automatically (spec §4). Still recorded,
+    audited and undoable; records nothing it is refused (e.g. an employer outcome before
+    submission)."""
+    from app.modules.applications.states import Refused
+    from app.modules.preparation.package import lock_application
+
+    lock_application(db, app.id)
+    db.refresh(app)
+    day = m.received_at.date()
+    auto_note = f"{_AUTO_NOTE} {m.sender_domain or 'unknown'} on {day.isoformat()}."
+    try:
+        record_outcome(db, app, outcome, occurred_on=day, note=auto_note)
+    except Refused:
+        return False
+    record(db, user_id, "inbox.auto_applied", "application", app.id, to=outcome.value)
+    return True
+
+
+def _ingest(db: Session, user_id, m: Message, mref: str, cands: list[rules.Candidate],
+            st: InboxSettings) -> str | None:  # fmt: skip
+    """Recognise one message, match it to an application and keep it as one InboxEvent. Returns
+    the event's state, or None when nothing is kept (a code, or mail about no application)."""
+    current = parsing.current_text(m.subject, m.text)
+    event, cband = rules.classify_detail(m.subject, current)
+    if event == "code":
+        return None  # codes are fill_codes' alone, and only while a step waits
+    thread_ref = ref(m.thread_id, user_id) if m.thread_id else None
+    thread_app = _thread_app(db, user_id, thread_ref)
+    mr = rules.match(cands, m.sender_name, m.sender_domain, m.subject, current, thread_app)
+    app = db.get(Application, uuid.UUID(mr.application_id)) if mr.application_id else None
+    proposed = OUTCOME_OF.get(event)
+    common = {
+        "thread_ref": thread_ref, "match_band": mr.band, "class_band": cband,
+        "match_basis": ",".join(mr.basis) or None,
+        "proposed_outcome": proposed.value if proposed else None,
+        "prev_outcome": app.outcome.value if app else None,
+    }  # fmt: skip
+
+    def keep(state: str) -> str:
+        _event(db, user_id, m, mref, event, state, app.id if app else None, **common)
+        return state
+
+    # "received" acknowledgement: the D103 reconciliation of a submission of unknown outcome.
+    if event == "received":
+        if app and app.outcome in (
+            Outcome.interviewing,
+            Outcome.offer,
+            Outcome.rejected,
+            Outcome.assessment_received,
+        ):
+            return keep("noted")  # a late acknowledgement must not undo a later stage (§3)
+        title = next((c.title for c in cands if c.application_id == mr.application_id), "")
+        if app and _settles(db, user_id, app, title, m):
+            return keep("proposed")
+        if app:
+            return keep("noted")
+        return keep("review" if mr.band in ("weak", "ambiguous") else "unlinked")
+
+    # Outcome-bearing events.
+    if proposed is not None:
+        if app is None:
+            return keep("review" if mr.band in ("weak", "ambiguous") else "unlinked")
+        decision = _guard(db, app, proposed, m)
+        if decision == "review":
+            return keep("review")
+        if decision == "noted":
+            return keep("noted")
+        if st.auto_apply and cband == "explicit" and mr.band in ("strong", "good") \
+                and _auto_apply(db, user_id, app, proposed, m):  # fmt: skip
+            return keep("auto_applied")
+        return keep("proposed")
+
+    # Informational events (under_review, info_requested, interview_cancelled, position_closed,
+    # talent_pool, recommendation, other): recognised and surfaced, never an automatic outcome.
+    if event == "recommendation" or (event == "other" and app is None):
+        return None  # a job suggestion, or mail about no application: nothing kept
+    if app is None:
+        return keep("review" if mr.band in ("weak", "ambiguous") else "unlinked")
+    return keep("noted")
+
+
 def check(db: Session, user: User, gmail: GmailReader | None = None, now=None) -> dict:
-    """Read the messages received since the last read and keep what they say. The caller
-    commits. Returns counts by state."""
+    """Read the messages received since the last read, in the order they arrived, and keep what
+    each says (spec §3/§6/§8). The caller commits. Returns counts by state."""
     st = settings_of(db, user.id)
     why = available_for(user) or (None if may("read_application_email") else "not_authorized")
     if why or not st.tracking_enabled:
@@ -237,38 +423,34 @@ def check(db: Session, user: User, gmail: GmailReader | None = None, now=None) -
     now = now or utcnow()
     since = st.last_checked_at or now - timedelta(days=get_settings().inbox_first_read_days)
     gmail = gmail or reader()
-    apps = _submitted_apps(db, user.id)
+    cands = _candidates(db, user.id)
     counts: dict[str, int] = {}
     try:
-        for mid in gmail.received_after(since, limit=500):
+        ids = gmail.received_after(since, limit=_MAX_READ)
+        msgs: list[Message] = []
+        for mid in ids:
             mref = ref(mid, user.id)
-            if _known(db, user.id, mref):
-                continue
-            m = gmail.read(mid)
-            kind = rules.classify(m.subject, m.text)
-            if kind == "code":
-                continue  # codes are fill_codes' alone, and only while a step waits
-            named = [(a, title) for a, emp, title in apps
-                     if rules.mentions(emp, m.sender_name, m.subject, m.text)]  # fmt: skip
-            app, title = named[0] if len(named) == 1 else (None, "")
-            app_id = app.id if app else None
-            if kind == "other" and app_id is None:
-                continue  # not about your applications: nothing kept
-            if kind in OUTCOME_OF:
-                state = "proposed" if app_id else "unlinked"
-            elif kind == "received" and app and _settles(db, user.id, app, title, m):
-                state = "proposed"  # it may settle a submission whose outcome is unknown
-            else:
-                state = "noted" if app_id else "unlinked"
-            _event(db, user.id, m, mref, kind, state, app_id)
-            counts[state] = counts.get(state, 0) + 1
+            if not _known(db, user.id, mref):
+                msgs.append((mref, gmail.read(mid)))
     except InboxUnavailable as e:
         st.last_error = e.code
         record(db, user.id, "inbox.read_failed", "inbox", None, reason_code=e.code)
         return {"error": e.code}
+    # Process oldest first, so each message's consistency guard sees the ones before it (§3).
+    for mref, m in sorted(msgs, key=lambda x: x[1].received_at):
+        state = _ingest(db, user.id, m, mref, cands, st)
+        if state:
+            counts[state] = counts.get(state, 0) + 1
+    # Sync safety: the id list is newest-first, so a full batch may hide older messages we did not
+    # read. Rather than advance the cursor past them (and silently skip intermediate mail, §8), we
+    # surface it and leave the cursor; a smaller `inbox_first_read_days` resolves a huge backfill.
+    if len(ids) >= _MAX_READ:
+        st.last_error = "too_many"
+        record(db, user.id, "inbox.read_capped", "inbox", None)
+        return {"capped": True, **counts}
     st.last_checked_at, st.last_error = now, None
-    record(db, user.id, "inbox.read", "inbox", None, proposed=counts.get("proposed", 0),
-           unlinked=counts.get("unlinked", 0), noted=counts.get("noted", 0))  # fmt: skip
+    kinds = ("proposed", "auto_applied", "review", "noted", "unlinked")
+    record(db, user.id, "inbox.read", "inbox", None, **{k: counts.get(k, 0) for k in kinds})
     return counts
 
 
@@ -284,25 +466,34 @@ class Settled(ValueError):
     """The application's submission is no longer of unknown outcome: nothing to reconcile."""
 
 
-def accept(db: Session, user: User, event_id: uuid.UUID) -> InboxEvent | None:
-    """You confirm what a proposed email says, as your statement (D53): its outcome is recorded
-    on its application, dated the day the email arrived; a "received" email reconciles a
-    submission of unknown outcome as received, with the email as what you checked (the same
-    transition as reconciling it yourself). None: not yours (404)."""
+def _chosen_outcome(value: str | None) -> Outcome | None:
+    if not value:
+        return None
+    try:
+        return Outcome(value)
+    except ValueError:
+        return None
+
+
+def accept(
+    db: Session, user: User, event_id: uuid.UUID, outcome: str | None = None
+) -> InboxEvent | None:
+    """You confirm, or correct, what an email says, as your statement (D53): its outcome is
+    recorded on its application, dated the day the email arrived; a "received" email reconciles a
+    submission of unknown outcome. `outcome` overrides the recognised event when you correct it.
+    Works on a proposed event, or a review event you have linked to the right application. None:
+    not yours (404)."""
     from app.modules.preparation.package import lock_application
 
     e = _owned_event(db, user.id, event_id)
     if e is None:
         return None
-    if (
-        e.state != "proposed"
-        or e.application_id is None
-        or (e.kind not in OUTCOME_OF and e.kind != "received")
-    ):
+    if e.state not in ("proposed", "review") or e.application_id is None:
         raise ValueError("not_proposed")
     app = db.get(Application, e.application_id)
     day: date = e.received_at.date()
-    if e.kind == "received":
+    chosen = _chosen_outcome(outcome)
+    if e.kind == "received" and chosen is None:
         lock_submission(db, app)  # D46: its attempts, then the application, as reconcile does
         if app.state != AppState.submitted_unconfirmed:
             raise Settled("settled")
@@ -310,12 +501,19 @@ def accept(db: Session, user: User, event_id: uuid.UUID) -> InboxEvent | None:
                    evidence_note=f"An email from {e.sender_domain} on {day.isoformat()} says "
                    "the application was received.")  # fmt: skip
     else:
+        chosen = chosen or OUTCOME_OF.get(e.kind)
+        if chosen is None:
+            raise ValueError("no_outcome")  # this event names no outcome; pick one to record
         lock_application(db, e.application_id)
         db.refresh(app)
-        note = f"From an email from {e.sender_domain} on {day.isoformat()}."
-        record_outcome(db, app, OUTCOME_OF[e.kind], occurred_on=day, note=note)
+        corrected = outcome is not None and chosen != OUTCOME_OF.get(e.kind)
+        note = f"{_EMAIL_NOTE} {e.sender_domain} on {day.isoformat()}." + (
+            " (your correction)" if corrected else ""
+        )
+        record_outcome(db, app, chosen, occurred_on=day, note=note)
     e.state = "accepted"
-    record(db, user.id, "inbox.accepted", "application", app.id, kind=e.kind)
+    record(db, user.id, "inbox.accepted", "application", app.id, kind=e.kind,
+           corrected=bool(outcome))  # fmt: skip
     return e
 
 
@@ -323,10 +521,64 @@ def dismiss(db: Session, user: User, event_id: uuid.UUID) -> InboxEvent | None:
     e = _owned_event(db, user.id, event_id)
     if e is None:
         return None
-    if e.state not in ("proposed", "unlinked", "noted"):
+    if e.state not in ("proposed", "review", "unlinked", "noted"):
         raise ValueError("not_open")
     e.state = "dismissed"
     record(db, user.id, "inbox.dismissed", "inbox_event", e.id, kind=e.kind)
+    return e
+
+
+def undo(db: Session, user: User, event_id: uuid.UUID) -> InboxEvent | None:
+    """Undo an accepted or automatically applied email outcome by recording a compensating
+    outcome back to the value before it (application_events are insert-only, so this is a new
+    event, not an edit). A "received" reconciliation to submitted_confirmed is terminal and
+    cannot be undone. None: not yours (404)."""
+    from app.modules.preparation.package import lock_application
+
+    e = _owned_event(db, user.id, event_id)
+    if e is None:
+        return None
+    if e.state not in ("accepted", "auto_applied"):
+        raise ValueError("not_undoable")
+    if e.kind == "received":
+        raise ValueError("terminal")  # submitted_confirmed is terminal (states.py)
+    app = db.get(Application, e.application_id) if e.application_id else None
+    if app is not None:
+        lock_application(db, app.id)
+        db.refresh(app)
+        prev = _chosen_outcome(e.prev_outcome) or Outcome.none
+        undo_note = f"Undo of the outcome from an email from {e.sender_domain}."
+        record_outcome(db, app, prev, occurred_on=utcnow().date(), note=undo_note)
+        record(db, user.id, "inbox.undone", "application", app.id, kind=e.kind)
+    e.state = "undone"
+    return e
+
+
+def relink(
+    db: Session, user: User, event_id: uuid.UUID, application_id: uuid.UUID | None
+) -> InboxEvent | None:
+    """Attach a review/unlinked email to the right application ("wrong application" correction), or
+    clear the link (application_id=None). The target must be one of your applications (LookupError
+    → 404). Not after the email has been acted on — undo first. None: not yours (404)."""
+    e = _owned_event(db, user.id, event_id)
+    if e is None:
+        return None
+    if e.state in ("accepted", "auto_applied"):
+        raise ValueError("already_acted")
+    if application_id is None:
+        e.application_id, e.state, e.prev_outcome = None, "unlinked", None
+    else:
+        app = db.scalar(
+            select(Application).where(
+                Application.id == application_id, Application.user_id == user.id
+            )
+        )
+        if app is None:
+            raise LookupError("application")
+        e.application_id = app.id
+        e.prev_outcome = app.outcome.value
+        e.state = "proposed" if (e.kind in OUTCOME_OF or e.kind == "received") else "noted"
+    record(db, user.id, "inbox.relinked", "inbox_event", e.id, kind=e.kind)
     return e
 
 
