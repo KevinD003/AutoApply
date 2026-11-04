@@ -251,6 +251,42 @@ def _auto_apply(db: Session, user_id) -> list[dict]:
     return out
 
 
+def _inbox(db: Session, user_id) -> list[dict]:
+    """Email status tracking (spec §9): a restrained notification when a recruitment email is
+    proposed, needs review, or was applied automatically. Deliberately generic — no sender,
+    subject or content in the preview (NoEfforts stores none); the details are on the tracker."""
+    from app.modules.inbox.models import InboxEvent
+
+    rows = db.scalars(
+        select(InboxEvent)
+        .where(
+            InboxEvent.user_id == user_id,
+            InboxEvent.state.in_(("proposed", "review", "auto_applied")),
+        )
+        .order_by(InboxEvent.received_at.desc())
+        .limit(50)
+    ).all()
+    text = {
+        "auto_applied": ("An application status was updated.",
+                         "NoEfforts recognised a clear update from a recruitment email and applied "
+                         "it. You can review or undo it on the tracker."),
+        "proposed": ("An email may update an application",
+                     "A recruitment email looks like an update to one of your applications. "
+                     "Confirm or dismiss it on the tracker."),
+        "review": ("An email update needs your review",
+                   "A recruitment email may be about one of your applications. Review and link it "
+                   "on the tracker."),
+    }  # fmt: skip
+    out = []
+    for e in rows:
+        title, body = text[e.state]
+        out.append(_item(
+            f"inbox:{e.id}:{e.state}", "email_update", e.received_at, e.application_id, title,
+            body, needs_action=e.state != "auto_applied", link="/tracker",
+        ))  # fmt: skip
+    return out
+
+
 def feed(db: Session, user_id, now: datetime | None = None) -> list[dict]:
     """Every notification of the account, newest first, each with its read mark and the job
     it concerns. Scoped to the account in every query."""
@@ -263,6 +299,7 @@ def feed(db: Session, user_id, now: datetime | None = None) -> list[dict]:
         + _follow_ups(db, user_id)
         + _boards(db, user_id, now)
         + _auto_apply(db, user_id)
+        + _inbox(db, user_id)
     )
     read = set(
         db.scalars(select(NotificationRead.item_key).where(NotificationRead.user_id == user_id))

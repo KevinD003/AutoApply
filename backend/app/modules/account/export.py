@@ -38,7 +38,10 @@ EXCLUDED_TABLES = {
 # Columns left out of exported tables, with why.
 EXCLUDED_COLUMNS = {
     "users": {"password_hash": "your password's hash: a login secret"},
-    "inbox_events": {"message_ref": "a keyed reference to the email, meaningless elsewhere"},
+    "inbox_events": {
+        "message_ref": "a keyed reference to the email, meaningless elsewhere",
+        "thread_ref": "a keyed reference to the email thread, meaningless elsewhere",
+    },
     "applications": {"lock_version": "an internal concurrency counter"},
     "documents": {"storage_key": "where the server keeps the file; the file is in documents/"},
     "execution_attempts": {
@@ -327,6 +330,7 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "user_id",
         "codes_enabled",
         "tracking_enabled",
+        "auto_apply",
         "last_checked_at",
         "last_error",
         "updated_at",
@@ -338,6 +342,11 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "sender_domain",
         "kind",
         "state",
+        "match_band",
+        "class_band",
+        "match_basis",
+        "proposed_outcome",
+        "prev_outcome",
         "application_id",
         "created_at",
     ),
