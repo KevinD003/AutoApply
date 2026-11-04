@@ -444,6 +444,9 @@ def test_card_summary_surfaces_workplace_locations_and_seniority_from_discovery(
     out = c.consolidate_detail(
         own_description=None, own={"url": None}, discovered=[_disc(normalized)]
     )
+    # The detail page renders work arrangement from the SAME consolidation (facts.workplace), so
+    # the list card and the detail can never disagree (Slice D: work arrangement shown on both).
+    assert out["facts"]["workplace"] == "remote"
     card = c.card_summary(out)
     assert card["workplace"] == "remote"
     assert card["locations"] == ["Austin, TX", "Remote (US)"]
