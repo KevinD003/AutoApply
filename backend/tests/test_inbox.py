@@ -755,9 +755,11 @@ def test_an_older_rejection_discovered_later_does_not_override_newer_activity(
 def test_a_quoted_old_rejection_in_a_reply_is_not_recorded(api, receiver, connected):
     app_id = submitted(api, receiver)
     _track(api)
-    deliver(receiver, EMPLOYER, "Re: Clinic Assistant",
-            "Thanks, I look forward to the interview! On Mon, Example Health Clinic "
-            "<talent@examplehealth.test> wrote: We regret to inform you that you were not selected.")  # fmt: skip
+    quoted = (
+        "Thanks, I look forward to the interview! On Mon, Example Health Clinic "
+        "<talent@examplehealth.test> wrote: We regret to inform you that you were not selected."
+    )
+    deliver(receiver, EMPLOYER, "Re: Clinic Assistant", quoted)
     v = api.post("/inbox/check").json()
     assert "rejected" not in _by_kind(v)  # the current message is not a rejection
     assert _outcome(api, app_id) == "none"
