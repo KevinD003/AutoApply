@@ -130,12 +130,16 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `answer_bank.edit` | `answer_bank` | `version` | the saved answer's new version number (D78); never the answer |
 | `answer_bank.import` | `answer_bank` | `rows`, `added`, `refused` | counts of an import from a file (D99); never a question or an answer |
 | `answer_bank.approve` | `answer_bank` | - | an imported proposal approved (D99) |
-| `inbox.settings` | `inbox` | `codes`, `tracking` | your choices for reading your Gmail (D101): true or false each |
-| `inbox.read` | `inbox` | `proposed`, `unlinked`, `noted` | how many emails a read kept, by what happened (D101); never a sender, subject or text |
+| `inbox.settings` | `inbox` | `codes`, `tracking`, `auto_apply` | your choices for reading your Gmail (D101): true or false each |
+| `inbox.read` | `inbox` | `proposed`, `auto_applied`, `review`, `noted`, `unlinked` | how many emails a read kept, by what happened (D101); never a sender, subject or text |
 | `inbox.read_failed` | `inbox` | `reason_code` | a fixed code (`not_configured`, `token_unreadable`, `revoked`, `unreachable`, `refused_host`, `bad_reply`); never the provider's message |
 | `inbox.code_entered` | `checkpoint` | `round` | a verification code was entered for you from your mail (D101); never the code |
-| `inbox.accepted` | `application` | `kind` | you confirmed what an email said (`rejected`, `interview`, `assessment`; `received`: a submission of unknown outcome reconciled as received) |
+| `inbox.accepted` | `application` | `kind`, `corrected` | you confirmed, or corrected, what an email said (`rejected`, `interview`, `assessment`, `offer`; `received`: a submission of unknown outcome reconciled as received); `corrected` is true when you chose a different outcome |
+| `inbox.auto_applied` | `application` | `to` | a clear, well-matched, consistent email update applied automatically (spec §4); the new outcome only, never content; audited and undoable |
+| `inbox.read_capped` | `inbox` | (none) | a read reached its message cap and stopped without advancing the cursor, so no intermediate mail is skipped (spec §8) |
 | `inbox.dismissed` | `inbox_event` | `kind` | you dismissed an email's proposal |
+| `inbox.undone` | `application` | `kind` | you undid an email-derived outcome (a compensating record, never an edit) |
+| `inbox.relinked` | `inbox_event` | `kind` | you pointed an email at the right application, or cleared the link ("wrong application") |
 | `package.approve` | `application` | `adapter`, `adapter_version`, `content_hash`, `rehearsal_prerequisite`, `scope`, `version` | the adapter and version bound to the approval (`manual_handoff` and no version when the route was a manual handoff); the package's one-way hash; how the rehearsal prerequisite stood for an approval to submit (`met`, `established`, `not_required`; none for a rehearsal or a manual handoff); `submit` or `disclose_only` (a rehearsal); package version |
 | `package.approve_reviewed` | `application` | `batch`, `scope`, `version` | written beside `package.approve` when the approval was given on the review page (D105): a random identifier shared by the approvals of one review, never anything about the user; `submit` or `disclose_only`; package version |
 | `package.approval_invalidated` | `application` | `version` | the package version that invalidated it |

@@ -449,8 +449,9 @@ def check(db: Session, user: User, gmail: GmailReader | None = None, now=None) -
         record(db, user.id, "inbox.read_capped", "inbox", None)
         return {"capped": True, **counts}
     st.last_checked_at, st.last_error = now, None
-    kinds = ("proposed", "auto_applied", "review", "noted", "unlinked")
-    record(db, user.id, "inbox.read", "inbox", None, **{k: counts.get(k, 0) for k in kinds})
+    record(db, user.id, "inbox.read", "inbox", None, proposed=counts.get("proposed", 0),
+           auto_applied=counts.get("auto_applied", 0), review=counts.get("review", 0),
+           noted=counts.get("noted", 0), unlinked=counts.get("unlinked", 0))  # fmt: skip
     return counts
 
 
