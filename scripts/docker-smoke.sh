@@ -41,9 +41,10 @@ expect_contains "API through the web app" "$email" -b /tmp/smoke-cookies \
   http://127.0.0.1:3000/api/auth/me
 echo "Web app serves pages and proxies the API"
 
-# Capture first: `| grep -q` would close the pipe early and fail the step under pipefail.
-ping=$(docker compose exec -T worker celery -A app.worker inspect ping --timeout 10 2>&1) || true
-grep -q pong <<<"$ping" || { echo "worker ping failed: $ping"; exit 1; }
+# The worker's control-plane (pidbox) consumer binds a moment after startup, so a single ping can
+# be published before the bind and be lost; wait for the worker the same bounded way we wait for the
+# HTTP services (never unbounded, and still fails if the worker is truly unreachable).
+ping=$(wait_worker_ping 20) || { echo "worker ping failed after waiting: $ping"; exit 1; }
 echo "Worker registered with the broker"
 
 docker compose restart backend

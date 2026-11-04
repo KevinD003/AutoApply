@@ -86,7 +86,10 @@ unchanged — only the default toggle moved.
   and deletion via account deletion (all `inbox_*` tables cascade on user delete). No message
   text, subject, sender name or code is stored, logged, or put in fixtures/CI/notification
   previews — only a keyed message reference, the sender's domain, the recognised event and the
-  application. No mark-read, label, send or delete capability.
+  application. No mark-read, label, send or delete capability. The connect flow (`connect.exchange`)
+  stores a token only when Google grants **exactly** the one read-only scope: a grant that adds a
+  send or modify scope (even alongside read-only), or a different scope, is refused — so no write
+  capability can enter the stored connection unnoticed.
 - **§8 Synchronisation** — bounded, restart-safe, incremental polling by timestamp cursor
   (`last_checked_at`), advanced only on a complete read. Duplicate delivery and reconnect are
   idempotent (`message_ref` uniqueness). A pass reads at most `_MAX_READ` messages; if that is hit

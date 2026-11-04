@@ -114,8 +114,11 @@ def exchange(client: dict, code: str, redirect_uri: str, verifier: str, post=_po
     body = r.json() if r.status_code == 200 else {}
     if not isinstance(body.get("refresh_token"), str):
         raise ConnectError("Google did not return a refresh token. Run this again and approve.")
-    if SCOPE not in str(body.get("scope", SCOPE)).split():
-        raise ConnectError("Google granted a different scope than read-only mail.")
+    # Exactly the read-only scope must be granted — no more. A grant that ADDS a send or modify
+    # scope (even alongside read-only) is refused here, so no write capability can enter the stored
+    # connection unnoticed; we fail closed on anything but exactly {SCOPE}.
+    if set(str(body.get("scope", SCOPE)).split()) != {SCOPE}:
+        raise ConnectError("Google granted a scope other than exactly read-only mail.")
     return {"client_id": client["client_id"], "client_secret": client["client_secret"],
             "refresh_token": body["refresh_token"]}  # fmt: skip
 

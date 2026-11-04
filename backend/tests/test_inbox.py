@@ -530,6 +530,27 @@ def test_connecting_asks_for_read_only_mail_and_keeps_the_token_private(tmp_path
             {"refresh_token": "x", "scope": SCOPE.replace("readonly", "modify")}))  # fmt: skip
 
 
+def test_connecting_refuses_any_scope_beyond_read_only_so_no_write_scope_enters_unnoticed():
+    """A token is stored only when Google grants *exactly* the read-only scope. A grant that ADDS a
+    send or modify scope (even alongside read-only), or a different scope entirely, is refused — so
+    no write capability can enter the stored connection unnoticed (the §7 read-only guarantee)."""
+    client = connect.client_of(CREDS)
+    verifier, _ = connect.pkce()
+
+    def granting(scope):  # a token response reporting `scope` as what Google granted
+        return lambda *a, **k: _Reply({"refresh_token": "test-only-refresh", "scope": scope})
+
+    # Exactly the read-only scope is accepted.
+    assert connect.exchange(client, "c", "r", verifier, post=granting(SCOPE))["refresh_token"]
+    # Read-only PLUS a send scope, read-only PLUS a modify scope, or a send/modify scope alone:
+    # each is refused. (Bad scopes are derived from SCOPE at runtime, never written as mail-endpoint
+    # URL literals — R7.5.)
+    send, modify = SCOPE.replace("readonly", "send"), SCOPE.replace("readonly", "modify")
+    for bad in (f"{SCOPE} {send}", f"{SCOPE} {modify}", send, modify):
+        with pytest.raises(connect.ConnectError):
+            connect.exchange(client, "c", "r", verifier, post=granting(bad))
+
+
 def test_an_unknown_id_is_never_requested(connected):
     with pytest.raises(InboxUnavailable):
         service.reader().read("../../other")
@@ -1041,16 +1062,21 @@ def test_the_feature_exposes_no_gmail_send_or_modify_capability():
     """Read-only end to end: the OAuth scope is read-only, the reader has no method that could
     send, reply, delete, label or otherwise modify mail, and the inbox authorization vocabulary
     grants only reading — there is no send/modify capability to record or expose."""
-    from app.modules.inbox import provider
+    from app.modules.inbox import connect, provider
 
-    # Read-only Gmail scope: the most restrictive read scope, never a send/modify/full-mail one.
-    # (Asserted via the imported constant's suffix, not a mail-endpoint URL literal — R7.5.)
-    assert SCOPE.endswith("gmail.readonly")
+    # The connection can only ever use one scope — the read-only one — the single source of truth
+    # that both the reader and the connect flow import. It is exactly one scope (no space-separated
+    # extras) and carries no write capability. (Asserted via the imported constant, never a
+    # mail-endpoint URL literal — R7.5.)
+    assert provider.SCOPE is connect.SCOPE  # one constant referenced everywhere, not two
+    assert SCOPE.split() == [SCOPE] and SCOPE.endswith("gmail.readonly")  # exactly one read scope
+    assert not any(w in SCOPE for w in ("send", "modify", "compose", "insert", "settings"))
+    # The reader exposes only read methods...
     public = {m for m in dir(provider.GmailReader) if not m.startswith("_")}
     assert public == {"received_after", "read"}  # reads only
     for forbidden in ("send", "reply", "forward", "modify", "trash", "delete", "insert", "label"):
         assert not hasattr(provider.GmailReader, forbidden)
-    # The inbox can only ever be authorized to read; there is no send/modify action to grant.
+    # ...and the inbox can only ever be authorized to read; there is no send/modify action to grant.
     assert authorizations.ACTIONS[authorizations.INBOX] == {
         "read_codes", "enter_codes", "read_application_email"}  # fmt: skip
 

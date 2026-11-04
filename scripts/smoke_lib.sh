@@ -11,6 +11,23 @@ wait_http() {
   return 0
 }
 
+# wait_worker_ping TRIES: poll the Celery worker's control-plane ping until it answers "pong", or
+# fail after TRIES. The control ping travels over a broadcast (pidbox) queue that the worker binds
+# a moment after it starts consuming; a single ping published before that bind is lost (fanout, not
+# queued), so — like wait_http for the HTTP services — we send a fresh ping on a bounded number of
+# tries rather than pinging once. Bounded, never unlimited; still fails if the worker is truly
+# unreachable. Prints the last reply. The ping command is overridable (WORKER_PING) for testing.
+wait_worker_ping() {
+  local tries=$1 i out
+  for ((i = 0; i < tries; i++)); do
+    out=$(${WORKER_PING:-docker compose exec -T worker celery -A app.worker inspect ping --timeout 3} 2>&1) || true
+    if grep -q pong <<<"$out"; then echo "$out"; return 0; fi
+    sleep "${WORKER_PING_SLEEP:-2}"
+  done
+  echo "$out"
+  return 1
+}
+
 # expect_contains DESCRIPTION PATTERN CURL_ARGS...: request must succeed (HTTP 2xx) and the
 # body must contain PATTERN.
 expect_contains() {
