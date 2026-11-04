@@ -81,34 +81,10 @@ export const ANSWER_STATUS_TONE = {
   blank_optional: "neutral",
 };
 
-// Route-card label/tone (providers/routing.py RouteDecision.route).
-export const ROUTE_LABEL = {
-  api: "Authorized API",
-  browser: "Browser adapter",
-  checkpoint: "Needs you: a step NoEfforts cannot do",
-  manual_handoff: "Manual: apply on the employer's site",
-};
-
-export function routeTone(route) {
-  if (route === "api" || route === "browser") return "brand";
-  if (route === "checkpoint") return "caution";
-  return "neutral"; // manual_handoff — neutral, not an error
-}
-
-// execution/rehearsal.py status → label/tone (also surfaced in the package view).
-export const REHEARSAL_LABEL = {
-  met: "Rehearsal passed",
-  established: "Submitted here before, after a rehearsal",
-  unmet: "Rehearsal needed before the first submission",
-  not_required: "No rehearsal needed (local test form)",
-  not_applicable: "Not applicable: you apply on the employer's site",
-};
-
-export function rehearsalTone(status) {
-  if (status === "met" || status === "established" || status === "not_required") return "positive";
-  if (status === "unmet") return "caution";
-  return "neutral";
-}
+// Route-card and rehearsal-prerequisite wording is NOT defined here: it has one source
+// (backend providers/wording.py) and reaches the pages through the API (GET /jobs/{id}/route,
+// the package view). tests/test_support_wording.py enforces that the frontend writes none of
+// its own; a local copy here would silently drift from the contract.
 
 /*
   The display status + tone for one application row (AppOut), computed exactly as

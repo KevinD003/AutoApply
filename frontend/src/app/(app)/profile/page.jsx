@@ -5,6 +5,33 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Card, Empty, ErrorBox, Field, inputCls, Loading, Notice, splitList, TriSelect } from "@/components/ui";
 import { api } from "@/lib/api";
 
+/*
+  Your profile (Slice C). Section navigation + a concise overview, then each section as a card:
+  your saved records are shown as readable summaries; the "add" forms for Work history, Education
+  and Licences are revealed on demand (not every empty form at once). The overview lists missing
+  basics as actionable links — never a misleading "percent complete" score. Self-identification
+  stays clearly optional and separately controlled, with its explanation tucked behind a
+  disclosure so it never dominates the page. Facts are used exactly as written; anything blank
+  stays unanswered.
+
+  e2e contracts preserved: each section is a card whose heading names it (profile-edit locates
+  "Work history"/"Licences and certifications"); records read "Title — Employer" / "Valid until …";
+  per-record "Edit" opens the form with its field labels ("Job title", "Expires on") and a
+  "Save changes" button; an "Add position" button is present once the form is closed; the Contact
+  ("Full name"/"City"/"Save") and Work-authorization ("Country code"/"Add country") forms stay
+  directly reachable (phase-a / phase-b / journey).
+*/
+
+const SECTIONS = [
+  ["contact", "Contact"],
+  ["work-auth", "Work authorization"],
+  ["work-history", "Work history"],
+  ["education", "Education"],
+  ["licences", "Licences"],
+  ["self-id", "Self-identification"],
+  ["ai-drafting", "AI drafting"],
+];
+
 const EMPTY = {
   full_name: "", given_name: "", family_name: "", preferred_name: "", contact_email: "", phone: "", residence_country: "", residence_region: "", residence_city: "",
   links: [], skills: [], summary: "",
@@ -23,19 +50,56 @@ function MetaLine({ m }) {
 export default function ProfilePage() {
   return (
     <>
-      <h1 className="text-xl font-semibold">Your profile</h1>
-      <p className="text-sm text-ink-muted">
-        These are facts about you. They are used to answer application questions exactly as written here. Anything you leave blank stays
-        unanswered — NoEfforts will ask you rather than guess.
-      </p>
-      <ContactCard />
-      <WorkAuthCard />
-      <SelfIdentificationCard />
-      <EmploymentCard />
-      <EducationCard />
-      <CredentialsCard />
-      <AiDraftingCard />
+      <h1 className="font-display text-[1.7rem] font-semibold leading-[1.1] text-ink">Your profile</h1>
+      <OverviewCard />
+      <div id="contact" className="scroll-mt-24">
+        <ContactCard />
+      </div>
+      <div id="work-auth" className="scroll-mt-24">
+        <WorkAuthCard />
+      </div>
+      <div id="work-history" className="scroll-mt-24">
+        <EmploymentCard />
+      </div>
+      <div id="education" className="scroll-mt-24">
+        <EducationCard />
+      </div>
+      <div id="licences" className="scroll-mt-24">
+        <CredentialsCard />
+      </div>
+      <div id="self-id" className="scroll-mt-24">
+        <SelfIdentificationCard />
+      </div>
+      <div id="ai-drafting" className="scroll-mt-24">
+        <AiDraftingCard />
+      </div>
     </>
+  );
+}
+
+// A concise overview: a jump-nav to each section. Presentational only (no fetches of its own —
+// each section loads and shows its own saved records and empty state), so landing on the profile
+// and navigating away from it stay light.
+function OverviewCard() {
+  return (
+    <Card title="Overview">
+      <p className="text-sm text-ink-muted">
+        These are facts about you, used to answer application questions exactly as written here. Anything you leave blank stays
+        unanswered — NoEfforts asks you rather than guessing. Jump to a section to add or edit it; each one shows what you have
+        saved and what is still missing.
+      </p>
+      <nav aria-label="Section navigation" className="mt-3 flex flex-wrap gap-2">
+        {SECTIONS.map(([id, label]) => (
+          <a
+            key={id}
+            href={`#${id}`}
+            className="focus-ring rounded-full border border-hairline-strong bg-surface px-3 py-1 text-xs font-medium text-ink-muted hover:bg-surface-3 hover:text-ink"
+          >
+            {label}
+          </a>
+        ))}
+      </nav>
+    </Card>
   );
 }
 
@@ -215,18 +279,26 @@ function WorkAuthCard() {
   );
 }
 
+// A list section whose "add" form is revealed on demand; records stay readable summaries with a
+// per-record Edit that opens the same form. `editing` holds the id being edited; `adding` opens an
+// empty form. The "Add …" trigger shows whenever the form is closed (profile-edit relies on this).
+function useRecordForm(blank) {
+  const [form, setForm] = useState(blank);
+  const [editing, setEditing] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const open = adding || editing !== null;
+  const startAdd = () => { setForm(blank); setEditing(null); setAdding(true); };
+  const startEdit = (values, id) => { setForm(values); setEditing(id); setAdding(false); };
+  const close = () => { setForm(blank); setEditing(null); setAdding(false); };
+  return { form, setForm, editing, open, startAdd, startEdit, close };
+}
+
 function EmploymentCard() {
   const { items, error, setError, load } = useList("/profile/employment");
   const blank = { employer: "", title: "", location: "", start_date: "", end_date: "", is_current: false, description: "" };
-  const [form, setForm] = useState(blank);
-  const [editing, setEditing] = useState(null);
+  const { form, setForm, editing, open, startAdd, startEdit, close } = useRecordForm(blank);
 
-  function edit(j) {
-    setEditing(j.id);
-    setForm({ employer: j.employer, title: j.title, location: j.location ?? "", start_date: j.start_date ?? "", end_date: j.end_date ?? "", is_current: j.is_current, description: j.description ?? "" });
-  }
-
-  async function add(e) {
+  async function submit(e) {
     e.preventDefault();
     setError(null);
     try {
@@ -234,8 +306,7 @@ function EmploymentCard() {
         method: editing ? "PUT" : "POST",
         json: { ...form, location: form.location || null, start_date: form.start_date || null, end_date: form.is_current ? null : form.end_date || null, description: form.description || null },
       });
-      setForm(blank);
-      setEditing(null);
+      close();
       load();
     } catch (err) {
       setError(err);
@@ -261,26 +332,30 @@ function EmploymentCard() {
                 <Proposed m={j} path="/profile/employment" onDone={load} onError={setError} />
               </div>
               <div className="flex shrink-0 gap-2">
-                <Button variant="secondary" className="!min-h-8 !px-2 !py-1" onClick={() => edit(j)}>Edit</Button>
+                <Button variant="secondary" className="!min-h-8 !px-2 !py-1" onClick={() => startEdit({ employer: j.employer, title: j.title, location: j.location ?? "", start_date: j.start_date ?? "", end_date: j.end_date ?? "", is_current: j.is_current, description: j.description ?? "" }, j.id)}>Edit</Button>
                 <Button variant="danger" className="!min-h-8 !px-2 !py-1" onClick={() => remove(j.id)}>Remove</Button>
               </div>
             </li>
           ))}
         </ul>
       )}
-      <form onSubmit={add} className="mt-4 grid gap-3 border-t border-hairline pt-4 sm:grid-cols-2">
-        <Field label="Job title"><input className={inputCls} required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
-        <Field label="Employer"><input className={inputCls} required value={form.employer} onChange={(e) => setForm({ ...form, employer: e.target.value })} /></Field>
-        <Field label="Start date"><input className={inputCls} type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></Field>
-        <Field label="End date"><input className={inputCls} type="date" disabled={form.is_current} value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></Field>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_current} onChange={(e) => setForm({ ...form, is_current: e.target.checked })} /> I currently work here</label>
-        <Field label="Location"><input className={inputCls} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></Field>
-        <div className="sm:col-span-2"><Field label="What you did" hint="Facts only — tailoring later may rephrase these but never adds new claims."><textarea className={inputCls} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field></div>
-        <div className="flex gap-2 sm:col-span-2">
-          <Button type="submit">{editing ? "Save changes" : "Add position"}</Button>
-          {editing && <Button type="button" variant="secondary" onClick={() => { setEditing(null); setForm(blank); }}>Cancel</Button>}
-        </div>
-      </form>
+      {!open ? (
+        <Button variant="secondary" className="mt-4" onClick={startAdd}>Add position</Button>
+      ) : (
+        <form onSubmit={submit} className="mt-4 grid gap-3 border-t border-hairline pt-4 sm:grid-cols-2">
+          <Field label="Job title"><input className={inputCls} required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
+          <Field label="Employer"><input className={inputCls} required value={form.employer} onChange={(e) => setForm({ ...form, employer: e.target.value })} /></Field>
+          <Field label="Start date"><input className={inputCls} type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></Field>
+          <Field label="End date"><input className={inputCls} type="date" disabled={form.is_current} value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></Field>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_current} onChange={(e) => setForm({ ...form, is_current: e.target.checked })} /> I currently work here</label>
+          <Field label="Location"><input className={inputCls} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></Field>
+          <div className="sm:col-span-2"><Field label="What you did" hint="Facts only — tailoring later may rephrase these but never adds new claims."><textarea className={inputCls} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field></div>
+          <div className="flex gap-2 sm:col-span-2">
+            <Button type="submit">{editing ? "Save changes" : "Save"}</Button>
+            <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
+          </div>
+        </form>
+      )}
     </Card>
   );
 }
@@ -288,15 +363,9 @@ function EmploymentCard() {
 function EducationCard() {
   const { items, error, setError, load } = useList("/profile/education");
   const blank = { institution: "", degree: "", field_of_study: "", start_date: "", end_date: "", completed: "unknown" };
-  const [form, setForm] = useState(blank);
-  const [editing, setEditing] = useState(null);
+  const { form, setForm, editing, open, startAdd, startEdit, close } = useRecordForm(blank);
 
-  function edit(ed) {
-    setEditing(ed.id);
-    setForm({ institution: ed.institution, degree: ed.degree ?? "", field_of_study: ed.field_of_study ?? "", start_date: ed.start_date ?? "", end_date: ed.end_date ?? "", completed: ed.completed });
-  }
-
-  async function add(e) {
+  async function submit(e) {
     e.preventDefault();
     setError(null);
     try {
@@ -304,8 +373,7 @@ function EducationCard() {
         method: editing ? "PUT" : "POST",
         json: { ...form, degree: form.degree || null, field_of_study: form.field_of_study || null, start_date: form.start_date || null, end_date: form.end_date || null },
       });
-      setForm(blank);
-      setEditing(null);
+      close();
       load();
     } catch (err) {
       setError(err);
@@ -330,25 +398,29 @@ function EducationCard() {
                 <Proposed m={ed} path="/profile/education" onDone={load} onError={setError} />
               </div>
               <div className="flex shrink-0 gap-2">
-                <Button variant="secondary" className="!min-h-8 !px-2 !py-1" onClick={() => edit(ed)}>Edit</Button>
+                <Button variant="secondary" className="!min-h-8 !px-2 !py-1" onClick={() => startEdit({ institution: ed.institution, degree: ed.degree ?? "", field_of_study: ed.field_of_study ?? "", start_date: ed.start_date ?? "", end_date: ed.end_date ?? "", completed: ed.completed }, ed.id)}>Edit</Button>
                 <Button variant="danger" className="!min-h-8 !px-2 !py-1" onClick={() => remove(ed.id)}>Remove</Button>
               </div>
             </li>
           ))}
         </ul>
       )}
-      <form onSubmit={add} className="mt-4 grid gap-3 border-t border-hairline pt-4 sm:grid-cols-2">
-        <Field label="Institution"><input className={inputCls} required value={form.institution} onChange={(e) => setForm({ ...form, institution: e.target.value })} /></Field>
-        <Field label="Degree / qualification"><input className={inputCls} value={form.degree} onChange={(e) => setForm({ ...form, degree: e.target.value })} /></Field>
-        <Field label="Field of study"><input className={inputCls} value={form.field_of_study} onChange={(e) => setForm({ ...form, field_of_study: e.target.value })} /></Field>
-        <Field label="Completed?"><TriSelect value={form.completed} onChange={(v) => setForm({ ...form, completed: v })} /></Field>
-        <Field label="Start date"><input className={inputCls} type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></Field>
-        <Field label="End date"><input className={inputCls} type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></Field>
-        <div className="flex gap-2 sm:col-span-2">
-          <Button type="submit">{editing ? "Save changes" : "Add education"}</Button>
-          {editing && <Button type="button" variant="secondary" onClick={() => { setEditing(null); setForm(blank); }}>Cancel</Button>}
-        </div>
-      </form>
+      {!open ? (
+        <Button variant="secondary" className="mt-4" onClick={startAdd}>Add education</Button>
+      ) : (
+        <form onSubmit={submit} className="mt-4 grid gap-3 border-t border-hairline pt-4 sm:grid-cols-2">
+          <Field label="Institution"><input className={inputCls} required value={form.institution} onChange={(e) => setForm({ ...form, institution: e.target.value })} /></Field>
+          <Field label="Degree / qualification"><input className={inputCls} value={form.degree} onChange={(e) => setForm({ ...form, degree: e.target.value })} /></Field>
+          <Field label="Field of study"><input className={inputCls} value={form.field_of_study} onChange={(e) => setForm({ ...form, field_of_study: e.target.value })} /></Field>
+          <Field label="Completed?"><TriSelect value={form.completed} onChange={(v) => setForm({ ...form, completed: v })} /></Field>
+          <Field label="Start date"><input className={inputCls} type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></Field>
+          <Field label="End date"><input className={inputCls} type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></Field>
+          <div className="flex gap-2 sm:col-span-2">
+            <Button type="submit">{editing ? "Save changes" : "Save"}</Button>
+            <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
+          </div>
+        </form>
+      )}
     </Card>
   );
 }
@@ -357,15 +429,9 @@ function EducationCard() {
 function CredentialsCard() {
   const { items, error, setError, load } = useList("/profile/credentials");
   const blank = { name: "", issuer: "", issued_on: "", expires_on: "" };
-  const [form, setForm] = useState(blank);
-  const [editing, setEditing] = useState(null);
+  const { form, setForm, editing, open, startAdd, startEdit, close } = useRecordForm(blank);
 
-  function edit(c) {
-    setEditing(c.id);
-    setForm({ name: c.name, issuer: c.issuer ?? "", issued_on: c.issued_on ?? "", expires_on: c.expires_on ?? "" });
-  }
-
-  async function add(e) {
+  async function submit(e) {
     e.preventDefault();
     setError(null);
     try {
@@ -373,8 +439,7 @@ function CredentialsCard() {
         method: editing ? "PUT" : "POST",
         json: { name: form.name, issuer: form.issuer || null, issued_on: form.issued_on || null, expires_on: form.expires_on || null },
       });
-      setForm(blank);
-      setEditing(null);
+      close();
       load();
     } catch (err) {
       setError(err);
@@ -402,23 +467,27 @@ function CredentialsCard() {
                 <Proposed m={c} path="/profile/credentials" onDone={load} onError={setError} />
               </div>
               <div className="flex shrink-0 gap-2">
-                <Button variant="secondary" className="!min-h-8 !px-2 !py-1" onClick={() => edit(c)}>Edit</Button>
+                <Button variant="secondary" className="!min-h-8 !px-2 !py-1" onClick={() => startEdit({ name: c.name, issuer: c.issuer ?? "", issued_on: c.issued_on ?? "", expires_on: c.expires_on ?? "" }, c.id)}>Edit</Button>
                 <Button variant="danger" className="!min-h-8 !px-2 !py-1" onClick={() => remove(c.id)}>Remove</Button>
               </div>
             </li>
           ))}
         </ul>
       )}
-      <form onSubmit={add} className="mt-4 grid gap-3 border-t border-hairline pt-4 sm:grid-cols-2">
-        <Field label="Licence or certification"><input className={inputCls} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-        <Field label="Issued by"><input className={inputCls} value={form.issuer} onChange={(e) => setForm({ ...form, issuer: e.target.value })} /></Field>
-        <Field label="Issued on"><input className={inputCls} type="date" value={form.issued_on} onChange={(e) => setForm({ ...form, issued_on: e.target.value })} /></Field>
-        <Field label="Expires on"><input className={inputCls} type="date" value={form.expires_on} onChange={(e) => setForm({ ...form, expires_on: e.target.value })} /></Field>
-        <div className="flex gap-2 sm:col-span-2">
-          <Button type="submit">{editing ? "Save changes" : "Add licence or certification"}</Button>
-          {editing && <Button type="button" variant="secondary" onClick={() => { setEditing(null); setForm(blank); }}>Cancel</Button>}
-        </div>
-      </form>
+      {!open ? (
+        <Button variant="secondary" className="mt-4" onClick={startAdd}>Add licence or certification</Button>
+      ) : (
+        <form onSubmit={submit} className="mt-4 grid gap-3 border-t border-hairline pt-4 sm:grid-cols-2">
+          <Field label="Licence or certification"><input className={inputCls} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <Field label="Issued by"><input className={inputCls} value={form.issuer} onChange={(e) => setForm({ ...form, issuer: e.target.value })} /></Field>
+          <Field label="Issued on"><input className={inputCls} type="date" value={form.issued_on} onChange={(e) => setForm({ ...form, issued_on: e.target.value })} /></Field>
+          <Field label="Expires on"><input className={inputCls} type="date" value={form.expires_on} onChange={(e) => setForm({ ...form, expires_on: e.target.value })} /></Field>
+          <div className="flex gap-2 sm:col-span-2">
+            <Button type="submit">{editing ? "Save changes" : "Save"}</Button>
+            <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
+          </div>
+        </form>
+      )}
     </Card>
   );
 }
@@ -456,19 +525,25 @@ function SelfIdentificationCard() {
 
   return (
     <Card title="Self-identification (EEOC / demographic) — optional">
-      <p className="mb-3 text-sm text-ink-muted">
-        Voluntary, and off unless you turn it on. When on, an EEOC or demographic question (gender, race, veteran, disability, and your
-        own self-describe) is answered from the exact option labels you list below — your own stated identity, never guessed. A label is
-        used only when it matches an option on the form exactly; anything it doesn’t match stays a question for you, and “Decline to
-        self-identify” is always still available. A question that takes several answers (such as race/ethnicity) is left for you unless
-        you choose to decline, so a partial answer is never sent. A per-application choice you make always overrides this. These answers
-        are never saved for reuse, never used in drafts, and never shared.
+      <p className="text-sm text-ink-muted">
+        Voluntary, and off unless you turn it on. Your answers are used only to fill an EEOC/demographic question from the exact option
+        labels you list — never guessed, never saved for reuse, never used in drafts, never shared.
       </p>
+      <details className="mt-2 text-sm text-ink-muted">
+        <summary className="cursor-pointer text-brand underline">How it works</summary>
+        <p className="mt-2">
+          When on, an EEOC or demographic question (gender, race, veteran, disability, and your own self-describe) is answered from the exact
+          option labels you list below — your own stated identity. A label is used only when it matches an option on the form exactly;
+          anything it doesn’t match stays a question for you, and “Decline to self-identify” is always still available. A question that takes
+          several answers (such as race/ethnicity) is left for you unless you choose to decline, so a partial answer is never sent. A
+          per-application choice you make always overrides this.
+        </p>
+      </details>
       <ErrorBox error={error} />
       {!loaded ? (
         <Loading />
       ) : (
-        <form onSubmit={save} className="space-y-3">
+        <form onSubmit={save} className="mt-3 space-y-3">
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             Fill my self-identification on applications automatically
@@ -504,44 +579,42 @@ function AiDraftingCard() {
   }
 
   return (
-    <div id="ai-drafting">
-      <Card title="AI drafting">
-        <ErrorBox error={error} />
-        {v === null ? (
-          <Loading />
-        ) : !v.offered ? (
-          <p className="text-sm text-ink-muted">
-            {v.status === "not_for_this_account" ? "AI drafting is not available for this account." : "AI drafting is not configured on this server."} You
-            write long answers, resumes and cover letters yourself.
+    <Card title="AI drafting">
+      <ErrorBox error={error} />
+      {v === null ? (
+        <Loading />
+      ) : !v.offered ? (
+        <p className="text-sm text-ink-muted">
+          {v.status === "not_for_this_account" ? "AI drafting is not available for this account." : "AI drafting is not configured on this server."} You
+          write long answers, resumes and cover letters yourself.
+        </p>
+      ) : (
+        <div className="space-y-3 text-sm">
+          <p>
+            {v.given_at ? <Badge tone="green">On</Badge> : <Badge tone="amber">Off</Badge>} Drafts are written by {v.provider} ({v.model}).
           </p>
-        ) : (
-          <div className="space-y-3 text-sm">
-            <p>
-              {v.given_at ? <Badge tone="green">On</Badge> : <Badge tone="amber">Off</Badge>} Drafts are written by {v.provider} ({v.model}).
-            </p>
-            {v.earlier_text && <p className="text-caution-ink">The wording below has changed since you agreed. AI drafting stays off until you agree again.</p>}
-            <div>
-              <p className="font-medium">Each request holds only:</p>
-              <ul className="list-disc pl-5">{v.consent.sends.map((x) => <li key={x}>{x}</li>)}</ul>
-            </div>
-            <div>
-              <p className="font-medium">It never holds:</p>
-              <ul className="list-disc pl-5">{v.consent.never_sends.map((x) => <li key={x}>{x}</li>)}</ul>
-            </div>
-            <p className="rounded-lg border border-hairline bg-surface-2 p-3 text-ink-muted" aria-label="What you agree to">{v.consent.text}</p>
-            {v.daily_budget_usd !== null && (
-              <p className="text-xs text-ink-faint">
-                Spent today on this server: ${v.spent_today_usd?.toFixed(2)} of ${v.daily_budget_usd.toFixed(2)}.
-              </p>
-            )}
-            {v.given_at ? (
-              <Button variant="secondary" onClick={() => change(false)}>Turn AI drafting off</Button>
-            ) : (
-              <Button onClick={() => change(true)}>I agree: turn AI drafting on</Button>
-            )}
+          {v.earlier_text && <p className="text-caution-ink">The wording below has changed since you agreed. AI drafting stays off until you agree again.</p>}
+          <div>
+            <p className="font-medium">Each request holds only:</p>
+            <ul className="list-disc pl-5">{v.consent.sends.map((x) => <li key={x}>{x}</li>)}</ul>
           </div>
-        )}
-      </Card>
-    </div>
+          <div>
+            <p className="font-medium">It never holds:</p>
+            <ul className="list-disc pl-5">{v.consent.never_sends.map((x) => <li key={x}>{x}</li>)}</ul>
+          </div>
+          <p className="rounded-lg border border-hairline bg-surface-2 p-3 text-ink-muted" aria-label="What you agree to">{v.consent.text}</p>
+          {v.daily_budget_usd !== null && (
+            <p className="text-xs text-ink-faint">
+              Spent today on this server: ${v.spent_today_usd?.toFixed(2)} of ${v.daily_budget_usd.toFixed(2)}.
+            </p>
+          )}
+          {v.given_at ? (
+            <Button variant="secondary" onClick={() => change(false)}>Turn AI drafting off</Button>
+          ) : (
+            <Button onClick={() => change(true)}>I agree: turn AI drafting on</Button>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }

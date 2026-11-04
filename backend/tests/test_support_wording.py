@@ -124,7 +124,7 @@ def test_every_form_source_the_capture_code_stores_is_worded():
 def test_the_frontend_writes_no_support_wording_of_its_own():
     """The pages show the labels the API serves. A page that hard-codes one, or the wording
     they used to write themselves, fails here."""
-    sources = [p for p in FRONTEND.rglob("*") if p.suffix in (".ts", ".tsx")]
+    sources = [p for p in FRONTEND.rglob("*") if p.suffix in (".ts", ".tsx", ".js", ".jsx")]
     assert len(sources) > 10  # the scan read the frontend at all
     for path in sources:
         text = path.read_text().lower()
