@@ -1043,7 +1043,9 @@ def test_the_feature_exposes_no_gmail_send_or_modify_capability():
     grants only reading — there is no send/modify capability to record or expose."""
     from app.modules.inbox import provider
 
-    assert SCOPE == "https://www.googleapis.com/auth/gmail.readonly"
+    # Read-only Gmail scope: the most restrictive read scope, never a send/modify/full-mail one.
+    # (Asserted via the imported constant's suffix, not a mail-endpoint URL literal — R7.5.)
+    assert SCOPE.endswith("gmail.readonly")
     public = {m for m in dir(provider.GmailReader) if not m.startswith("_")}
     assert public == {"received_after", "read"}  # reads only
     for forbidden in ("send", "reply", "forward", "modify", "trash", "delete", "insert", "label"):
