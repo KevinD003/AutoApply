@@ -67,6 +67,33 @@ def test_manual_job_and_duplicate(api):
     assert api.get("/jobs").json()["total"] == 1
 
 
+def test_jobs_list_carries_a_card_summary_from_the_description(api):
+    # Slice B: a job whose description carries a pay figure surfaces salary + a preview on the
+    # list card, built from the same consolidation the detail uses. A bare job carries no card.
+    r = api.post(
+        "/jobs",
+        json={
+            "title": "Senior Platform Engineer",
+            "employer": "Northwind",
+            "location": "Remote (US)",
+            "description": "About the role. We offer $150,000 - $190,000 per year. "
+            + "You will build and run resilient systems. " * 10,
+        },
+    )
+    assert r.status_code == 201
+    r = api.post("/jobs", json={"title": "Bare Role", "employer": "Acme"})
+    assert r.status_code == 201
+
+    items = {i["title"]: i for i in api.get("/jobs").json()["items"]}
+    card = items["Senior Platform Engineer"]["card"]
+    assert card is not None
+    assert card["salary"]["source"] == "extracted"
+    assert card["salary"]["min"] == "150,000" and card["salary"]["max"] == "190,000"
+    assert card["description_preview"] and "build" in card["description_preview"].lower()
+    # Nothing is invented: a job with no description or discovery source has no card.
+    assert items["Bare Role"]["card"] is None
+
+
 def test_job_requires_url_or_title_and_employer(api):
     assert api.post("/jobs", json={"title": "Nurse"}).status_code == 422
     assert api.post("/jobs", json={"title": "Nurse", "employer": "Clinic"}).status_code == 201

@@ -37,9 +37,12 @@ test("phase B preparation and approval", async ({ page }, info) => {
   await expect(page.getByText("resume.pdf · 0 KB · v1")).toBeVisible();
 
   await page.getByRole("link", { name: "Jobs" }).click();
+  await page.getByRole("button", { name: "Add a job" }).click();
   await page.getByLabel("Title").fill("Clinic Assistant");
   await page.getByLabel("Employer").fill("Example Health Clinic");
   await page.getByRole("button", { name: "Add job" }).click();
+  await expect(page.getByText("Job added.")).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.getByText("Clinic Assistant").click();
   await page.getByLabel("Test form").selectOption("basic");
   await page.getByRole("button", { name: "Attach test form" }).click();
@@ -87,9 +90,12 @@ test("phase B preparation and approval", async ({ page }, info) => {
 
   // A stable question is saved for reuse, on a second job with the tricky test form.
   await page.getByRole("link", { name: "Jobs" }).click();
+  await page.getByRole("button", { name: "Add a job" }).click();
   await page.getByLabel("Title").fill("Front Desk Associate");
   await page.getByLabel("Employer").fill("Example Logistics (fictional)");
   await page.getByRole("button", { name: "Add job" }).click();
+  await expect(page.getByText("Job added.")).toBeVisible();
+  await page.keyboard.press("Escape");
   await page.getByText("Front Desk Associate").click();
   await page.getByLabel("Test form").selectOption("tricky");
   await page.getByRole("button", { name: "Attach test form" }).click();
