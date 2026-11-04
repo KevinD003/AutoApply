@@ -81,8 +81,15 @@ Auto-apply additionally requires `InboxSettings.auto_apply = true` (off by defau
   previous → proposed/current outcome, a plain-language "why it matched", an automatic/review
   label, the timestamp, and Confirm / Correct / Undo / "wrong application" (relink) actions. A
   restrained notification (`email_update` kind) says only that an application status was updated,
-  with no content in the preview. (The tracker card and mobile UI are delivered in the follow-up
-  frontend change.)
+  with no content in the preview. The frontend surfaces these in two places that share one row
+  component (`components/EmailUpdateRow.jsx`) and one data hook (`lib/useInbox.js`): an **"Email
+  updates" card on the tracker** (`components/EmailUpdates.jsx`), where proposals, auto-applied
+  updates and review/unlinked items are confirmed, corrected, undone or re-linked; and the
+  **Account → Email card** (`components/InboxCard.jsx`), which also carries the §7 settings (codes,
+  tracking, the opt-in `auto_apply` toggle) and the honest read-only scope copy. The notifications
+  feed renders the `email_update` kind (`app/(app)/notifications/page.jsx`), linking to the
+  tracker. All of it reads nothing but the API fields above — no message content exists client-side.
+  The layout holds at phone width (verified in `e2e/email-updates.spec.ts` on the mobile project).
 - **§10 Tests** — `tests/test_inbox_tracking.py` (pure classification/matching/parsing/injection)
   and the stateful flow tests in `tests/test_inbox.py`, on synthetic fixtures only. They prove,
   among others, that unrelated mail never updates an application, that injected "instructions" are

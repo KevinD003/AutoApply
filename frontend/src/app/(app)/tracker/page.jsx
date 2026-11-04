@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
 import AutoApplyCard from "@/components/AutoApplyCard";
+import EmailUpdates from "@/components/EmailUpdates";
 import FollowUpCard from "@/components/FollowUpCard";
 import {
   Banner,
@@ -163,6 +164,7 @@ function Tracker() {
       )}
       {funnel && <FunnelCard f={funnel} />}
       <AutoApplyCard />
+      <EmailUpdates onApplied={load} />
       <Card title="All applications">
         {apps === null ? (
           <Loading />
