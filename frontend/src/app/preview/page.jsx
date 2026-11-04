@@ -25,12 +25,14 @@ const NAV = [
   { href: "/profile", label: "Profile", icon: IconUser, tab: true },
 ];
 
-// Synthetic placeholder postings (layout only).
+// Synthetic placeholder postings (layout only). Route labels here are generic placeholders:
+// the real route wording has one source (backend providers/wording.py) served through the API,
+// and tests/test_support_wording.py forbids the frontend from writing any of its own.
 const SAMPLE = [
-  { id: "a", title: "Product Designer", employer: "Northwind Studio", location: "Remote · UK", tags: ["Figma", "Design systems", "Prototyping"], route: { label: "Authorized API", tone: "brand" } },
-  { id: "b", title: "Frontend Engineer", employer: "Harbour Labs", location: "Hybrid · Berlin", tags: ["React", "TypeScript", "Accessibility"], route: { label: "Browser adapter", tone: "brand" } },
+  { id: "a", title: "Product Designer", employer: "Northwind Studio", location: "Remote · UK", tags: ["Figma", "Design systems", "Prototyping"], route: { label: "Direct apply", tone: "brand" } },
+  { id: "b", title: "Frontend Engineer", employer: "Harbour Labs", location: "Hybrid · Berlin", tags: ["React", "TypeScript", "Accessibility"], route: { label: "Assisted apply", tone: "brand" } },
   { id: "c", title: "UX Researcher", employer: "Meadow Health", location: "On-site · Boston", tags: ["Interviews", "Synthesis"], route: { label: "Apply on employer site", tone: "neutral" } },
-  { id: "d", title: "Design Engineer", employer: "Atlas Maps", location: "Remote · EU", tags: ["Motion", "CSS", "Design tokens"], route: { label: "Authorized API", tone: "brand" } },
+  { id: "d", title: "Design Engineer", employer: "Atlas Maps", location: "Remote · EU", tags: ["Motion", "CSS", "Design tokens"], route: { label: "Direct apply", tone: "brand" } },
 ];
 
 const JOURNEY = [

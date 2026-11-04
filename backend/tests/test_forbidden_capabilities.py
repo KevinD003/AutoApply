@@ -551,7 +551,7 @@ def test_the_scanned_tree_is_the_repository():
     js = {str(p.relative_to(REPO)) for p in js_files()}
     assert {"browser/launcher.js", "compose_tests/browser_probe.js"} <= js
     front = {str(p.relative_to(REPO)) for p in frontend_sources()}
-    assert "frontend/src/lib/api.ts" in front and not any("/e2e/" in f for f in front)
+    assert "frontend/src/lib/api.js" in front and not any("/e2e/" in f for f in front)
     infra = {str(p.relative_to(REPO)) for p in infra_files()}
     for f in ("docker-compose.yml", "docker-compose.execution-test.yml", "browser/Dockerfile",
               "backend/Dockerfile", "frontend/Dockerfile", ".github/workflows/ci.yml",
