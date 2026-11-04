@@ -602,7 +602,7 @@ def test_the_owners_settings_start_all_off_and_another_account_never_reads(
         st = service.settings_of(db, user().id)
         assert (st.codes_enabled, st.tracking_enabled, st.auto_apply) == (False, False, False)
         other = db.scalar(select(User).where(User.email == "another.synthetic@example.com"))
-        assert service.available_for(other) == "not_for_this_account"
+        assert service.available_for(db, other) == "not_for_this_account"
         db.rollback()
 
 
@@ -1096,3 +1096,107 @@ def test_an_email_status_update_never_queues_execution_or_submission(api, receiv
     app = api.get(f"/applications/{app_id}").json()
     assert app["submission"] == "receipt" and app["state"] == "submitted_confirmed"  # unchanged
     assert receiver.ledger()["accepted"] == 1  # the one real submission only; nothing new sent
+
+
+# -- in-app authenticated consent: activate application-email tracking without a code change -------
+
+
+def test_in_app_consent_authorizes_tracking_without_a_code_change_and_revoke_re_gates_it(
+    api, receiver, connected, monkeypatch
+):
+    """With no reviewed-source authorization for application emails (only codes), the owner's own
+    in-app consent is what authorises reading them — no code edit — and it reads end to end.
+    Revoking it gates reading again at once."""
+    unauthorize(monkeypatch)
+    # Source authorises codes only; application email is left to the in-app consent below.
+    authorize(monkeypatch, authorizations.INBOX, "read_codes", "enter_codes")
+    # Not authorised yet: turning tracking on and reading are both refused.
+    r = api.put("/inbox", json={"codes_enabled": False, "tracking_enabled": True})
+    assert r.status_code == 409
+    assert api.post("/inbox/check").status_code == 409
+    v = api.get("/inbox").json()
+    assert v["is_inbox_owner"] is True
+    assert v["tracking_authorized"] is False and v["authorization"] is None
+    # The owner records their own consent in the app (their own words), no source edit.
+    att = (
+        "I authorise NoEfforts to read my own recruitment emails, read-only, to update my "
+        "application statuses."
+    )
+    r = api.post("/inbox/authorize", json={"attestation": att})
+    assert r.status_code == 200
+    v = r.json()
+    assert v["tracking_authorized"] is True and v["authorization"]["source"] == "in_app"
+    # Now tracking turns on and a real recruitment email is read and proposed (the consent path
+    # actually enables reading, end to end).
+    r = api.put("/inbox", json={"codes_enabled": False, "tracking_enabled": True})
+    assert r.status_code == 200
+    submitted(api, receiver)
+    deliver(receiver, EMPLOYER, ROLE, "We regret to inform you that you were not selected.")
+    (e,) = api.post("/inbox/check").json()["events"]
+    assert (e["kind"], e["state"]) == ("rejected", "proposed")
+    # Revoke: reading is gated again at once; a later check is refused and nothing more is read.
+    assert api.post("/inbox/authorize/revoke").status_code == 200
+    assert api.get("/inbox").json()["tracking_authorized"] is False
+    assert api.post("/inbox/check").status_code == 409
+
+
+def test_an_expired_in_app_consent_no_longer_authorizes_reading(
+    api, receiver, connected, monkeypatch
+):
+    """A consent past its end day no longer authorises; tracking is gated again without a revoke."""
+    unauthorize(monkeypatch)
+    authorize(monkeypatch, authorizations.INBOX, "read_codes", "enter_codes")
+    yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+    api.post("/inbox/authorize", json={"attestation": "read my mail", "ends_on": yesterday}) \
+        .raise_for_status()  # fmt: skip
+    v = api.get("/inbox").json()
+    assert v["tracking_authorized"] is False and v["authorization"] is None  # past its end
+
+
+def test_only_the_inbox_owner_can_grant_or_use_application_email_consent(
+    other_api, connected, monkeypatch
+):
+    """Another account can neither grant the consent nor read the owner's mail: the consent is
+    owner-scoped (only `inbox_owner_emails`), like every inbox use."""
+    unauthorize(monkeypatch)
+    authorize(monkeypatch, authorizations.INBOX, "read_codes", "enter_codes")
+    r = other_api.post("/inbox/authorize", json={"attestation": "read my mail"})
+    assert r.status_code == 409  # not the inbox owner
+    v = other_api.get("/inbox").json()
+    assert v["is_inbox_owner"] is False and v["tracking_authorized"] is False
+
+
+def test_application_email_consent_never_authorizes_codes_sending_or_submission(
+    api, receiver, connected, monkeypatch
+):
+    """The in-app consent covers read_application_email alone. With nothing in the source register,
+    granting it authorises tracking but NOT verification codes (their own D117 authorization is
+    unchanged), and the inbox vocabulary still has no send or submit action to grant."""
+    unauthorize(monkeypatch)  # nothing recorded in source: not even codes
+    api.post("/inbox/authorize", json={"attestation": "read my recruitment emails"}) \
+        .raise_for_status()  # fmt: skip
+    assert api.get("/inbox").json()["tracking_authorized"] is True
+    # Codes are still refused — the consent did not authorise them.
+    r = api.put("/inbox", json={"codes_enabled": True, "tracking_enabled": True})
+    assert r.status_code == 409
+    # And the inbox can only ever be authorized to read; there is no send/modify/submit action.
+    assert authorizations.ACTIONS[authorizations.INBOX] == {
+        "read_codes",
+        "enter_codes",
+        "read_application_email",
+    }
+
+
+def test_granting_and_revoking_in_app_consent_is_audited(api, connected, monkeypatch):
+    """Both the grant and the revoke leave an audit record (the consent itself keeps the owner's
+    words; the audit meta carries only the action and the end day)."""
+    unauthorize(monkeypatch)
+    authorize(monkeypatch, authorizations.INBOX, "read_codes", "enter_codes")
+    api.post("/inbox/authorize", json={"attestation": "read my recruitment emails"}) \
+        .raise_for_status()  # fmt: skip
+    api.post("/inbox/authorize/revoke").raise_for_status()
+    with SessionLocal() as db:
+        actions = {
+            a.action for a in db.scalars(select(AuditEvent).where(AuditEvent.user_id == user().id))
+        }
+    assert {"inbox.authorization_granted", "inbox.authorization_revoked"} <= actions

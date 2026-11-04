@@ -18,6 +18,10 @@ test("the email card proposes what an email said and you confirm it", async ({ p
     why_not: null,
     codes_enabled: true,
     tracking_enabled: true,
+    tracking_authorized: true,
+    is_inbox_owner: true,
+    authorization: { source: "in_app", granted_at: "2026-10-28T09:00:00Z", ends_on: null, attestation: "I consent." },
+    first_read_days: 30,
     last_checked_at: "2026-10-31T10:00:00Z",
     last_error: null,
     events: [
@@ -43,6 +47,9 @@ test("the email card proposes what an email said and you confirm it", async ({ p
   await expect(events).toContainText("recorded by you");
   expect(calls).toContain("POST /api/inbox/events/e1/accept");
   await expect(page.getByLabel(/Enter verification codes for me/)).toBeChecked();
+  // The owner's own in-app authorization is shown, and tracking is enabled because it is authorized.
+  await expect(page.getByTestId("tracking-authorized")).toContainText("You authorized reading your application emails");
+  await expect(page.getByLabel(/Read emails about my applications/)).toBeEnabled();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });

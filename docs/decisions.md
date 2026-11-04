@@ -4041,3 +4041,64 @@ renders it is a separate frontend change.
   reduced-motion-aware; correct in light and dark. `frontend/e2e/job-detail-content.spec.ts`
   asserts the structure renders, the salary provenance shows, an injected `<script>`/`<img>` neither
   runs nor reaches the DOM, and the salary-absent case says so.
+
+## D127 — Email-tracking activation: the owner's own in-app authenticated consent (2026-11-04)
+
+**Context.** Reading application emails (`read_application_email`) is gated by D103: it needs the
+owner's *recorded* authorization, which by design lives only in reviewed source
+(`app/core/authorizations.py`), never in a config switch or a toggle. D117 recorded
+`read_codes`/`enter_codes`, but not `read_application_email`. So — as the email-tracking build
+itself documented — the *only* way to activate tracking was to edit source code and ship it. That
+is a poor activation story for the owner of a running instance: it asks them to change code (or ask
+an engineer to) to use a feature that only ever reads their *own* mailbox. It is also the one real
+remaining dependency for the finished email-tracking work (PR #27).
+
+**Decision.** Add a second, equally-gated authorization path: the inbox owner's **own
+authenticated, auditable, revocable in-app consent**, recorded while signed in as the owner. It
+needs no code change and is the ordinary activation path. The reviewed-source register
+(`RECORDED`) stays exactly as it was — unchanged, still the only server-wide grant, still never
+written from config or a request — and is **not** widened by this decision.
+
+**What it is, and is not.**
+- **Owner-scoped.** Only an account whose email is in `inbox_owner_emails` (`is_inbox_owner`) can
+  grant or hold it; any other account is refused (`not_for_this_account`). It authorizes reading
+  that owner's **own** mailbox and nothing else.
+- **Capability-scoped.** It covers `read_application_email` **only**. It never authorizes reading
+  verification codes (`read_codes`/`enter_codes` keep their own separate gate and their own
+  recorded authorization), and it has no bearing whatever on email **sending** or application
+  **submission**, which are different subsystems with their own gates. The inbox authorization
+  vocabulary still contains no send/modify action (R7.5 static guard unchanged).
+- **Authenticated and auditable.** The owner types their consent in their own words; the verbatim
+  text is stored on an `inbox_consents` row (`attestation`), with `granted_at`. Granting and
+  revoking each write an audit event (`inbox.authorization_granted` / `inbox.authorization_revoked`,
+  metadata `capability` [+ `ends_on` on grant]; the attestation text is **not** copied into the
+  audit metadata). The append-only consent table is a history.
+- **Time-boundable and revocable.** An optional `ends_on` expires the consent automatically
+  (an expired row no longer authorizes); the owner can revoke at once in Account → Email
+  (`POST /inbox/authorize/revoke`), which re-gates reading immediately. This is independent of, and
+  weaker than, disconnecting the Gmail token or removing NoEfforts in the Google account — the
+  scope note still points to those stronger steps.
+
+**Mechanism.**
+- Model: `InboxConsent` (`inbox_consents`), migration `e5b9c1f3a2d8`. Columns: `user_id`
+  (cascade), `action`, `attestation` (≤500 chars), `granted_at`, `ends_on` (date, nullable),
+  `revoked_at` (nullable). Exported by `account/export.py` and deleted with the account.
+- Gate: `service.may_read_applications(db, user)` returns true when **either** the recorded
+  register covers `read_application_email` (D103) **or** an active (granted, not revoked, not past
+  `ends_on`) in-app consent exists. Every reader entry point (`available_for`, `put_inbox`,
+  `check_now`, the due-scan) uses it; `may()` (recorded-only) still gates codes, unchanged.
+- API: `POST /inbox/authorize` (owner records consent, optional `ends_on`), `POST
+  /inbox/authorize/revoke`. `GET /inbox` now reports `tracking_authorized`, `is_inbox_owner`,
+  `first_read_days`, and an `authorization` block that distinguishes `recorded` (server-wide, not
+  revocable in-app) from `in_app` (the owner's own, revocable).
+- UI: Account → Email shows an owner-only "Authorize reading my application emails" control
+  (attestation + optional end date), the active authorization with a Revoke button when it is
+  in-app, and gates the tracking toggle on `tracking_authorized`.
+
+**Tests.** `backend/tests/test_inbox.py` adds: in-app consent authorizes tracking with no code
+change and revoke re-gates it; an expired consent no longer authorizes; only the owner can grant or
+use it; the consent never authorizes codes, sending or submission; grant and revoke are audited.
+The audit-inventory and sanitizer guards cover the two new events; `frontend/e2e/inbox.spec.ts`
+exercises the authorized view. The static capability guard (R7.5) and the recorded-register test
+(`test_authorizations.py`, which asserts the shipped register's exact contents) are unchanged and
+still pass — confirming the source register was not widened.

@@ -50,7 +50,7 @@ from app.modules.execution import service as execution
 from app.modules.execution.models import Checkpoint, ExecutionAttempt
 from app.modules.identity.models import User
 from app.modules.inbox import parsing, rules
-from app.modules.inbox.models import InboxEvent, InboxSettings
+from app.modules.inbox.models import InboxConsent, InboxEvent, InboxSettings
 from app.modules.inbox.provider import GmailReader, InboxUnavailable, Message
 from app.modules.jobs.models import Job
 
@@ -99,8 +99,12 @@ def _note(
     return f"{prefix} {domain or 'unknown'} on {day.isoformat()}.{tail}"
 
 
+APPLICATION_EMAIL = "read_application_email"
+
+
 def may(action: str) -> bool:
-    """Whether the owner's recorded authorization covers this action (D103)."""
+    """Whether the owner's recorded authorization covers this action (D103, the reviewed-source
+    register). Verification codes (read_codes/enter_codes) are authorized only this way."""
     return authorizations.covers(authorizations.INBOX, action)
 
 
@@ -109,14 +113,105 @@ def codes_authorized() -> bool:
     return may("read_codes") and may("enter_codes")
 
 
-def available_for(user: User) -> str | None:
+def is_inbox_owner(user: User) -> bool:
+    """This account is the server's inbox owner — the only account whose own mail is ever read."""
+    s = get_settings()
+    return user.email.strip().lower() in {e.strip().lower() for e in s.inbox_owner_emails}
+
+
+def _active_consent(
+    db: Session, user_id, action: str, today: date | None = None
+) -> InboxConsent | None:
+    """The owner's active (granted, not revoked, not past its end) in-app consent for `action`, or
+    None. Newest matching row wins; the table is an append-only consent history."""
+    today = today or utcnow().date()
+    for c in db.scalars(
+        select(InboxConsent)
+        .where(
+            InboxConsent.user_id == user_id,
+            InboxConsent.action == action,
+            InboxConsent.revoked_at.is_(None),
+        )
+        .order_by(InboxConsent.granted_at.desc())
+    ):
+        if c.ends_on is None or today <= c.ends_on:
+            return c
+    return None
+
+
+def may_read_applications(db: Session, user: User) -> bool:
+    """The owner may read application emails when either path authorizes it: a recorded
+    authorization in reviewed source (D103) OR the owner's own active in-app consent (an
+    authenticated, auditable, revocable record). Both are owner-scoped; neither covers verification
+    codes, sending or submission — those keep their own separate gates."""
+    return may(APPLICATION_EMAIL) or _active_consent(db, user.id, APPLICATION_EMAIL) is not None
+
+
+def active_application_consent(db: Session, user: User) -> InboxConsent | None:
+    """The owner's active in-app consent to read application emails, or None (for display)."""
+    return _active_consent(db, user.id, APPLICATION_EMAIL)
+
+
+def _revoke_active(db: Session, user_id, action: str) -> int:
+    now = utcnow()
+    rows = db.scalars(
+        select(InboxConsent).where(
+            InboxConsent.user_id == user_id,
+            InboxConsent.action == action,
+            InboxConsent.revoked_at.is_(None),
+        )
+    ).all()
+    for c in rows:
+        c.revoked_at = now
+    return len(rows)
+
+
+def grant_application_consent(
+    db: Session, user: User, attestation: str, ends_on: date | None
+) -> InboxConsent:
+    """Record the owner's own authenticated consent to read application emails in their own mailbox.
+    Only the inbox owner may do this; it covers read_application_email alone (never codes, sending
+    or submission) and is scoped to the owner's own account. Supersedes any earlier active consent
+    (revoked here), and is audited. The owner's words are kept verbatim as the consent attestation;
+    no code change is needed to activate."""
+    if not is_inbox_owner(user):
+        raise PermissionError("not_owner")
+    text = (attestation or "").strip()
+    if not text:
+        raise ValueError("no_attestation")
+    _revoke_active(db, user.id, APPLICATION_EMAIL)
+    c = InboxConsent(
+        user_id=user.id, action=APPLICATION_EMAIL, attestation=text[:500], ends_on=ends_on
+    )
+    db.add(c)
+    db.flush()
+    ends = ends_on.isoformat() if ends_on else None
+    record(db, user.id, "inbox.authorization_granted", "inbox", None,
+           capability=APPLICATION_EMAIL, ends_on=ends)  # fmt: skip
+    return c
+
+
+def revoke_application_consent(db: Session, user: User) -> int:
+    """Withdraw the owner's in-app consent to read application emails. Returns how many active
+    consents were revoked; reading is gated again at once. Audited. (Disconnecting the Gmail token
+    and revoking in the Google account are separate, stronger steps — see the API scope note.)"""
+    if not is_inbox_owner(user):
+        raise PermissionError("not_owner")
+    n = _revoke_active(db, user.id, APPLICATION_EMAIL)
+    if n:
+        record(db, user.id, "inbox.authorization_revoked", "inbox", None,
+               capability=APPLICATION_EMAIL)  # fmt: skip
+    return n
+
+
+def available_for(db: Session, user: User) -> str | None:
     """Why reading this user's mail is not available, or None."""
     s = get_settings()
     if not s.inbox_enabled:
         return "not_enabled"
-    if user.email.strip().lower() not in {e.strip().lower() for e in s.inbox_owner_emails}:
+    if not is_inbox_owner(user):
         return "not_for_this_account"
-    if not (codes_authorized() or may("read_application_email")):
+    if not (codes_authorized() or may_read_applications(db, user)):
         return "not_authorized"  # switched on is not authorized (D103)
     if not s.inbox_token_file:
         return "not_connected"
@@ -186,7 +281,7 @@ def fill_codes(db: Session, user: User, gmail: GmailReader | None = None) -> int
     """Enter a code from your mail for each code step of yours that is waiting. Returns how many
     codes were entered. The caller commits."""
     st = settings_of(db, user.id)
-    if not st.codes_enabled or available_for(user) or not codes_authorized():
+    if not st.codes_enabled or available_for(db, user) or not codes_authorized():
         return 0
     waiting = db.scalars(
         select(Checkpoint).where(
@@ -447,7 +542,7 @@ def check(db: Session, user: User, gmail: GmailReader | None = None, now=None) -
     """Read the messages received since the last read, in the order they arrived, and keep what
     each says (spec §3/§6/§8). The caller commits. Returns counts by state."""
     st = settings_of(db, user.id)
-    why = available_for(user) or (None if may("read_application_email") else "not_authorized")
+    why = available_for(db, user) or (None if may_read_applications(db, user) else "not_authorized")
     if why or not st.tracking_enabled:
         return {"skipped": why or "tracking_off"}
     now = now or utcnow()
@@ -626,11 +721,11 @@ def due(db: Session, now: datetime | None = None) -> list[tuple[User, InboxSetti
     for u, st in db.execute(
         select(User, InboxSettings).join(InboxSettings, InboxSettings.user_id == User.id)
     ).all():
-        if available_for(u):
+        if available_for(db, u):
             continue
         stale = st.last_checked_at is None or st.last_checked_at <= now - every
         codes = st.codes_enabled and codes_authorized()
-        if codes or (st.tracking_enabled and stale and may("read_application_email")):
+        if codes or (st.tracking_enabled and stale and may_read_applications(db, u)):
             out.append((u, st))
     return out
 

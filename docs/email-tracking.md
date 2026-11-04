@@ -13,11 +13,20 @@ remain the single source of truth, and every status change still goes through
 
 The feature is **built but gated off**. To process a real mailbox, all of:
 
-1. **A recorded authorization for `read_application_email`** in `app/core/authorizations.py`
-   (the `RECORDED` register). Today only `read_codes`/`enter_codes` are recorded (D117);
-   application-email reading is **not**. The register, by its own rule, is never added from a
-   feature request, a config switch or a deployment file — only from the owner's explicit words,
-   quoted in `docs/decisions.md`. Until that entry exists, every read is refused (`not_authorized`).
+1. **An authorization for `read_application_email`**, by **either** path (D127):
+   - **The owner's own in-app authenticated consent** — the owner, signed in as the inbox owner,
+     records their consent in Account → Email (`POST /inbox/authorize`, their words kept verbatim
+     on an `inbox_consents` row, audited, optionally time-bounded, revocable there). This needs
+     **no code change** and is the ordinary activation path. It covers `read_application_email`
+     only — never codes, sending or submission.
+   - **A recorded authorization for `read_application_email`** in `app/core/authorizations.py`
+     (the `RECORDED` register), for a server-wide grant in reviewed source. Today only
+     `read_codes`/`enter_codes` are recorded (D117). The register, by its own rule, is never added
+     from a feature request, a config switch or a deployment file — only from the owner's explicit
+     words, quoted in `docs/decisions.md`.
+
+   With neither, every read is refused (`not_authorized`). The in-app consent and the recorded
+   register are both owner-scoped; the toggle (below) turning on is **not** itself an authorization.
 2. **`InboxSettings.tracking_enabled = true`** (per-account opt-in; off by default).
 3. **A connected read-only Gmail token** (`python -m app.modules.inbox.connect`, token stored on
    the owner's machine, never in the repo, DB or image).
