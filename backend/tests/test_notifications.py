@@ -251,5 +251,6 @@ def test_every_query_of_the_feed_is_scoped_to_the_account():
     the account."""
     src = (ROOT / "backend/app/modules/notifications/service.py").read_text()
     # D96: the job-board query joins two tables and filters both by the account; so does the
-    # D115 automatic-applying query.
-    assert src.count("select(") == 8 and src.count("user_id == user_id") == 10
+    # D115 automatic-applying query. Email status tracking adds the _inbox producer's own
+    # account-scoped query (InboxEvent.user_id == user_id).
+    assert src.count("select(") == 9 and src.count("user_id == user_id") == 11
