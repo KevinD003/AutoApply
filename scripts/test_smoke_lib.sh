@@ -34,4 +34,10 @@ printf '#!/bin/sh\nexit 0\n' >"$tmp/bin/docker"
 expect pass "all containers running" env PATH="$tmp/bin:$PATH" bash -c "source '$here/smoke_lib.sh'; expect_running_services"
 printf '#!/bin/sh\nexit 1\n' >"$tmp/bin/docker"
 expect fail "docker itself failing" env PATH="$tmp/bin:$PATH" bash -c "source '$here/smoke_lib.sh'; expect_running_services"
+
+# wait_worker_ping: succeeds as soon as the worker answers "pong"; when it never does it fails
+# after a bounded number of tries (not unlimited, not masked). The ping command is stubbed so no
+# Docker or broker is needed.
+expect pass "worker answers pong" bash -c "source '$here/smoke_lib.sh'; WORKER_PING='echo pong'; WORKER_PING_SLEEP=0; wait_worker_ping 3 >/dev/null"
+expect fail "worker never answers, bounded" bash -c "source '$here/smoke_lib.sh'; WORKER_PING='echo Error: No nodes replied'; WORKER_PING_SLEEP=0; wait_worker_ping 2 >/dev/null"
 exit $fails

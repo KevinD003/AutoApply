@@ -3723,11 +3723,35 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   subject is used ("Security code for your application to <employer>", legacy notes).
   Greenhouse's letters-only, mixed-case codes are read exactly as written. A message is used
   once; a rejected code is never entered again; Resend is never clicked.
-- **Defaults:** outside tests the inbox is on (`inbox_enabled`) for the owner
-  (`inbox_owner_emails` defaults to `live_owner_emails`), with codes on. It still needs the
-  owner's Gmail token, made once with `python -m app.modules.inbox.connect` on the owner's
-  machine. Other accounts type their own codes: the server's mailbox is the owner's (D114).
+- **Defaults:** outside tests the inbox *server* is on (`inbox_enabled`) for the owner
+  (`inbox_owner_emails` defaults to `live_owner_emails`), but every per-account mailbox-processing
+  option is opt-in — off by default, including codes (see the 2026-11-04 amendment below; this
+  supersedes the original "codes on" default). It still needs the owner's Gmail token, made once
+  with `python -m app.modules.inbox.connect` on the owner's machine. Other accounts type their own
+  codes: the server's mailbox is the owner's (D114).
 - **Not kept:** a code is never stored, logged, put in audit or evidence, or shown.
+- **Amendment (2026-11-04) — the code toggle is now opt-in (default off).** Every
+  mailbox-processing option starts **off** for a new account: verification codes
+  (`codes_enabled`), application-email tracking (`tracking_enabled`) and automatic status
+  updates (`auto_apply`). Only the *toggle default* moved from on to off; the D117
+  *authorization* above (what the owner's recorded words permit) is unchanged, so this needs no
+  new recorded authorization. The owner turns each option on separately; connecting Gmail, or
+  turning one on, never turns on another.
+  - **New-account defaults:** all three off. `inbox/service.settings_of` creates
+    `InboxSettings(user_id=...)` with no explicit values, so each falls to the model column
+    `default=False` (`inbox/models.py`).
+  - **Existing accounts: unaffected, never reset.** `settings_of` creates a row only when none
+    exists (`if st is None`); an existing owner's stored choices are read back as-is. An owner who
+    had codes on keeps codes on.
+  - **DB default / service fallback / UI initialization agree on off.** The model columns are
+    `default=False` (ORM-level); `auto_apply` additionally carries a DB `server_default=false`
+    (migration `c3f1a7e5b921`); `codes_enabled`/`tracking_enabled` are `NOT NULL` with no
+    `server_default` and no raw-insert path, so the ORM default is the only creation path. The UI
+    (`InboxCard.jsx`) renders each checkbox from the server value, with the `auto_apply` box
+    disabled until tracking is on. All three surfaces initialize off.
+  - **Data migration: none.** No migration changes a default or rewrites a row. The only
+    migration in this change (`d4e8f1a2b3c7`) adds the additive `inbox_events.applied_outcome`
+    column; it does not touch `inbox_settings`.
 
 ## D118 — The generic extractor reads only the application form and its aria-labelledby labels (2026-11-02)
 

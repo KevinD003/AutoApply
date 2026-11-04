@@ -29,7 +29,7 @@ export default function AutoApplyCard() {
   if (!s) return null;
   return (
     <Card
-      title="Automatic applying"
+      title="Automatically submit applications"
       actions={
         s.paused ? (
           <Button onClick={() => toggle(false)}>{s.chosen ? "Resume" : "Turn on"}</Button>

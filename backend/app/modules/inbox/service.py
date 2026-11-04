@@ -73,6 +73,30 @@ OUTCOME_OF = {
 _EMAIL_NOTE = "From an email from"
 _AUTO_NOTE = "Automatically from an email from"
 _MAX_READ = 1500  # messages read in one pass; a fuller backfill is surfaced, never skipped (§8)
+# The recognised event, in words, for the application's timeline — so an interview invitation and
+# a scheduled interview stay distinct there even though both derive the "interviewing" outcome.
+_KIND_PHRASE = {
+    "interview": "interview invitation",
+    "interview_scheduled": "scheduled interview",
+    "interview_rescheduled": "rescheduled interview",
+    "next_round": "invitation to the next round",
+    "assessment": "assessment invitation",
+    "assessment_reminder": "assessment reminder",
+    "rejected": "rejection",
+    "offer": "offer",
+    "withdrawn": "withdrawal",
+}
+
+
+def _note(
+    kind: str, domain: str | None, day: date, prefix: str, *, correction: bool = False
+) -> str:
+    """One timeline note for an email-derived outcome: who it came from and the day, plus the
+    recognised event in words (invitation vs scheduled, etc.). Starts with `prefix` so the manual-
+    vs-email check in `_latest_outcome_event` still recognises it."""
+    phrase = _KIND_PHRASE.get(kind)
+    tail = (f" ({phrase})" if phrase else "") + (" (your correction)" if correction else "")
+    return f"{prefix} {domain or 'unknown'} on {day.isoformat()}.{tail}"
 
 
 def may(action: str) -> bool:
@@ -107,9 +131,11 @@ def reader() -> GmailReader:
 def settings_of(db: Session, user_id) -> InboxSettings:
     st = db.get(InboxSettings, user_id)
     if st is None:
-        # D117: codes on by default (the owner asked for them; only the owner's account can use
-        # the mailbox, `available_for`); application emails stay off (not authorized).
-        st = InboxSettings(user_id=user_id, codes_enabled=True, tracking_enabled=False)
+        # Every mailbox-processing option is opt-in: a new account starts with all of them off
+        # (codes, application-email tracking, auto-apply), so nothing is read until the owner
+        # turns each on. The D117 code-reading authorization is unchanged; only this toggle
+        # default moved from on to off, so the owner opts in rather than opting out.
+        st = InboxSettings(user_id=user_id)
         db.add(st)
         db.flush()
     return st
@@ -128,7 +154,8 @@ def _known(db: Session, user_id, mref: str) -> bool:
 
 def _event(db, user_id, m: Message, mref: str, kind: str, state: str, app_id=None, *,
            thread_ref=None, match_band=None, class_band=None, match_basis=None,
-           proposed_outcome=None, prev_outcome=None) -> InboxEvent:  # fmt: skip
+           proposed_outcome=None, prev_outcome=None,
+           applied_outcome=None) -> InboxEvent:  # fmt: skip
     e = InboxEvent(
         user_id=user_id,
         message_ref=mref,
@@ -142,6 +169,7 @@ def _event(db, user_id, m: Message, mref: str, kind: str, state: str, app_id=Non
         match_basis=match_basis,
         proposed_outcome=proposed_outcome,
         prev_outcome=prev_outcome,
+        applied_outcome=applied_outcome,
         application_id=app_id,
     )
     db.add(e)
@@ -331,7 +359,8 @@ def _guard(db: Session, app: Application, proposed: Outcome, m: Message) -> str:
     return "apply_ok"
 
 
-def _auto_apply(db: Session, user_id, app: Application, outcome: Outcome, m: Message) -> bool:
+def _auto_apply(db: Session, user_id, app: Application, outcome: Outcome, m: Message,
+                kind: str) -> bool:  # fmt: skip
     """Apply a clear, well-matched, consistent outcome automatically (spec §4). Still recorded,
     audited and undoable; records nothing it is refused (e.g. an employer outcome before
     submission)."""
@@ -341,7 +370,7 @@ def _auto_apply(db: Session, user_id, app: Application, outcome: Outcome, m: Mes
     lock_application(db, app.id)
     db.refresh(app)
     day = m.received_at.date()
-    auto_note = f"{_AUTO_NOTE} {m.sender_domain or 'unknown'} on {day.isoformat()}."
+    auto_note = _note(kind, m.sender_domain, day, _AUTO_NOTE)
     try:
         record_outcome(db, app, outcome, occurred_on=day, note=auto_note)
     except Refused:
@@ -400,7 +429,8 @@ def _ingest(db: Session, user_id, m: Message, mref: str, cands: list[rules.Candi
         if decision == "noted":
             return keep("noted")
         if st.auto_apply and cband == "explicit" and mr.band in ("strong", "good") \
-                and _auto_apply(db, user_id, app, proposed, m):  # fmt: skip
+                and _auto_apply(db, user_id, app, proposed, m, event):  # fmt: skip
+            common["applied_outcome"] = proposed.value
             return keep("auto_applied")
         return keep("proposed")
 
@@ -508,10 +538,9 @@ def accept(
         lock_application(db, e.application_id)
         db.refresh(app)
         corrected = outcome is not None and chosen != OUTCOME_OF.get(e.kind)
-        note = f"{_EMAIL_NOTE} {e.sender_domain} on {day.isoformat()}." + (
-            " (your correction)" if corrected else ""
-        )
+        note = _note(e.kind, e.sender_domain, day, _EMAIL_NOTE, correction=corrected)
         record_outcome(db, app, chosen, occurred_on=day, note=note)
+        e.applied_outcome = chosen.value
     e.state = "accepted"
     record(db, user.id, "inbox.accepted", "application", app.id, kind=e.kind,
            corrected=bool(outcome))  # fmt: skip
@@ -547,6 +576,11 @@ def undo(db: Session, user: User, event_id: uuid.UUID) -> InboxEvent | None:
     if app is not None:
         lock_application(db, app.id)
         db.refresh(app)
+        applied = _chosen_outcome(e.applied_outcome)
+        # A newer update has since changed this application: undoing this one would clobber it.
+        # Undo the newer one first, so the application's history stays coherent.
+        if applied is not None and app.outcome != applied:
+            raise ValueError("superseded")
         prev = _chosen_outcome(e.prev_outcome) or Outcome.none
         undo_note = f"Undo of the outcome from an email from {e.sender_domain}."
         record_outcome(db, app, prev, occurred_on=utcnow().date(), note=undo_note)

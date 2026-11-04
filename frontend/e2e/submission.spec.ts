@@ -98,6 +98,7 @@ test("approve, double-click submit, see receipt; exactly one acceptance", async 
   expect(polls).toBe(0);
   await page.goto("/tracker");
   await expect(page.getByText("Submitted (employer receipt)", { exact: true }).first()).toBeVisible();
+  await page.getByText("Full breakdown").click(); // the denominators now live in an expandable section
   await expect(page.getByText("Confirmed by employer receipt: 1", { exact: true })).toBeVisible();
   expect((await ledger(request, slug)).accepted).toBe(1);
 });
@@ -286,6 +287,7 @@ test("unknown outcome is reconciled in the tracker, never resubmitted", async ({
   await expect(page.getByRole("button", { name: "Cancel" })).toHaveCount(0, { timeout: 10_000 });
   expect((await ledger(request, slug)).accepted).toBe(1);
   await page.goto("/tracker");
+  await page.getByText("Full breakdown").click(); // the denominators now live in an expandable section
   await expect(page.getByText("Not confirmed (outcome unknown): 1", { exact: true })).toBeVisible();
   await page.getByText("Clinic Assistant").first().click();
   await page.getByLabel("What did you check?").fill("Receiver ledger shows one receipt for this job");

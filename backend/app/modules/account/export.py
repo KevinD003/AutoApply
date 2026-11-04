@@ -347,6 +347,7 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "match_basis",
         "proposed_outcome",
         "prev_outcome",
+        "applied_outcome",
         "application_id",
         "created_at",
     ),

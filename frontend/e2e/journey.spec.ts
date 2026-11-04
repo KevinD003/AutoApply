@@ -245,6 +245,7 @@ test("one synthetic journey: discovery to receipt, tracker and outcome", async (
     const lines = open.getByTestId("event-line");
     await expect(lines.filter({ hasText: "Outcome: No outcome yet → Interviewing" })).toHaveCount(1);
     await expect(lines.filter({ hasText: "employer receipt" })).toHaveCount(1);
+    await page.getByText("Full breakdown").click(); // the denominators now live in an expandable section
     await expect(page.getByText("Confirmed by employer receipt: 1", { exact: true })).toBeVisible();
   });
 

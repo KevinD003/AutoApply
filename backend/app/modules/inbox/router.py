@@ -211,6 +211,7 @@ def undo_event(
         msg = {
             "terminal": "A confirmed receipt can't be undone.",
             "not_undoable": "This email hasn't been applied, so there's nothing to undo.",
+            "superseded": "A newer update has changed this application since; undo that one first.",
         }.get(str(v), "This email can't be undone.")
         raise conflict(msg) from None
     if e is None:

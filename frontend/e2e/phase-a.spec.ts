@@ -84,6 +84,7 @@ test("phase A slice", async ({ page }, info) => {
   await expect(
     page.getByText(`Outcome: No outcome yet → Interviewing · happened on ${yesterday} · you reported`, { exact: true }),
   ).toBeVisible();
+  await page.getByText("Full breakdown").click(); // the denominators now live in an expandable section
   await expect(page.getByText("Submitted: 1 of 1 tracked", { exact: true })).toBeVisible();
   await expect(page.getByText("Confirmed by employer receipt: 0", { exact: true })).toBeVisible();
   await expect(page.getByText("Confirmed by you (your statement): 1", { exact: true })).toBeVisible();
