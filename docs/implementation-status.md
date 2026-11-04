@@ -4,6 +4,23 @@ Last updated: 2026-11-02 (D115: the answer brain suggests your own saved answers
 `docs/evidence-matrix.md`. Labels: **complete**, **partial**, **blocked**, **not started**,
 **untested**.
 
+## Premium UX pass (Slices A–D)
+
+A focused product-layout and interaction pass over the JavaScript frontend (not a rewrite).
+The JS/JSX migration is complete; this pass makes the experience jobs-first and mobile-first.
+
+| Slice | Scope | Status |
+|---|---|---|
+| A | Navigation/layout defect investigation (real browser defect vs full-page screenshot artifact), with a maintained layout regression guard | in progress — the two reported nav defects (bottom nav over the import card; header mid-Profile) are **full-page screenshot artifacts**, verified with ordinary viewport captures at top/middle/bottom on both viewports; no production layout change (`docs/ux-layout-investigation.md`, `frontend/e2e/layout-regression.spec.ts`) |
+| B | Jobs-first list/swipe/detail: heading → search/filters + prominent List/Swipe → jobs/swipe → secondary Add/Import in sheets; premium cards with available salary/work-arrangement/description from the backend; representative synthetic fixtures | not started |
+| C | Profile & Account restructuring (section nav, summaries, expand-to-edit; grouped settings) | not started |
+| D | Maintained theme (real toggle)/motion/layout coverage + swipe/motion polish | not started |
+
+Verified facts, not invented: the list API (`JobOut`) carries title/employer/location/status/
+match; the detail API (`JobDetail.content`) carries salary-with-provenance, the source facts
+and the sanitized description. Slice B surfaces the available detail fields on cards through a
+compact summary built from the same consolidation, so list and detail never disagree.
+
 ## Commits
 
 | Commit | Content |
