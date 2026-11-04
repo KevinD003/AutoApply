@@ -18,8 +18,14 @@ const COUNT_LABELS = {
   watches: "watched searches",
 };
 
+function GroupHeading({ children }) {
+  return <h2 className="mt-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">{children}</h2>;
+}
+
 // Priority B (D77, docs/account-deletion.md): a full export, and deletion that takes effect at
-// once, refused while a submission may be in flight.
+// once, refused while a submission may be in flight. Slice C: the settings are grouped
+// (connections, notifications, privacy & data, developer tools in a disclosure), and deletion is
+// a clearly separate, danger-styled section — distinct from setup.
 export default function AccountPage() {
   const router = useRouter();
   const [preview, setPreview] = useState(null);
@@ -53,7 +59,15 @@ export default function AccountPage() {
   const blocked = preview.blocked_by.length > 0;
   return (
     <>
-      <h1 className="text-xl font-semibold text-ink">Account</h1>
+      <h1 className="font-display text-[1.7rem] font-semibold leading-[1.1] text-ink">Account</h1>
+
+      <GroupHeading>Connections</GroupHeading>
+      <InboxCard />
+
+      <GroupHeading>Notifications</GroupHeading>
+      <EmailReminders />
+
+      <GroupHeading>Privacy &amp; data</GroupHeading>
       <Card title="Your data">
         <p className="mb-3 text-sm text-ink-muted">
           One ZIP file with every record NoEfforts holds about your account and every document file. Login and session
@@ -67,12 +81,24 @@ export default function AccountPage() {
           Download all my data
         </a>
       </Card>
-      <EmailReminders />
-      <InboxCard />
-      <ApiTokens />
-      <DraftingSpend />
-      <Card title="Delete my account">
-        <p className="text-sm text-ink-muted">Deleting takes effect at once and cannot be undone. It deletes:</p>
+
+      <details open className="group rounded-[var(--r-lg)] border border-hairline bg-surface p-4 shadow-[var(--shadow-sm)] sm:p-5">
+        <summary className="focus-ring flex cursor-pointer list-none items-center justify-between gap-2 text-base font-semibold text-ink [&::-webkit-details-marker]:hidden">
+          Developer tools
+          <span className="text-xs font-normal text-ink-faint group-open:hidden">Show</span>
+          <span className="hidden text-xs font-normal text-ink-faint group-open:inline">Hide</span>
+        </summary>
+        <p className="mt-1 text-sm text-ink-muted">Personal access tokens for the API, CLI and MCP, and this server&apos;s AI drafting spend.</p>
+        <div className="mt-4 space-y-5">
+          <ApiTokens />
+          <DraftingSpend />
+        </div>
+      </details>
+
+      <GroupHeading>Delete account</GroupHeading>
+      <section className="rounded-[var(--r-lg)] border border-[color:var(--danger)]/30 bg-surface p-4 shadow-[var(--shadow-sm)] sm:p-5">
+        <h2 className="text-base font-semibold text-danger-ink">Delete my account</h2>
+        <p className="mt-1 text-sm text-ink-muted">Deleting takes effect at once and cannot be undone. It deletes:</p>
         <ul className="my-2 list-disc pl-5 text-sm text-ink-muted" aria-label="What will be deleted">
           {Object.entries(preview.counts).map(([k, n]) => (
             <li key={k}>
@@ -122,7 +148,7 @@ export default function AccountPage() {
             </Button>
           </form>
         )}
-      </Card>
+      </section>
     </>
   );
 }
