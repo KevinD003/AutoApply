@@ -351,6 +351,16 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "application_id",
         "created_at",
     ),
+    "inbox_consents": (
+        "id",
+        "user_id",
+        "action",
+        "attestation",
+        "disclosure_version",
+        "granted_at",
+        "ends_on",
+        "revoked_at",
+    ),
     "drafting_usage": (
         "id",
         "user_id",

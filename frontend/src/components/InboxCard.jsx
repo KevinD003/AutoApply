@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
+
 import EmailUpdateRow from "@/components/EmailUpdateRow";
-import { Button, Card, Empty, ErrorBox, Notice } from "@/components/ui";
+import { Button, Card, Empty, ErrorBox, Notice, inputCls } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useInbox } from "@/lib/useInbox";
 
@@ -14,6 +16,114 @@ const SCOPE_FALLBACK =
   "NoEfforts can read your own Gmail, read-only: it never sends, replies, deletes, marks read or " +
   "changes labels, and stores no message text — only a keyed reference, the sender's domain, the " +
   "recognised event and the application.";
+
+// D103: reading application emails needs the owner's own recorded authorization — turning the
+// toggle on is not one. The owner grants that here (their own authenticated, auditable consent),
+// which covers reading application emails only — never verification codes, sending or submission —
+// and can be withdrawn here at any time. A server-wide authorization recorded in reviewed source
+// also satisfies it (shown, but not revocable here). This is separate from connecting Gmail and
+// from the Google permission itself; revoking in your Google account is the stronger step.
+function AuthorizeTracking({ v, busy, act }) {
+  const [text, setText] = useState("");
+  const [endsOn, setEndsOn] = useState("");
+  const authz = v.authorization;
+
+  if (v.tracking_authorized) {
+    if (authz?.source === "in_app") {
+      const granted = authz.granted_at ? new Date(authz.granted_at).toLocaleDateString() : null;
+      return (
+        <div className="rounded-[var(--r-md)] border border-hairline bg-surface-2 p-2 text-xs" data-testid="tracking-authorized">
+          <p className="text-ink-muted">
+            You authorized reading your application emails{granted ? ` on ${granted}` : ""}
+            {authz.ends_on ? `, until ${new Date(authz.ends_on).toLocaleDateString()}` : ""}. This
+            covers reading application emails only — never verification codes, sending or submitting.
+          </p>
+          {v.is_inbox_owner && (
+            <Button
+              variant="danger"
+              className="mt-2"
+              disabled={busy}
+              onClick={() =>
+                act(api("/inbox/authorize/revoke", { method: "POST" }), {
+                  notice: "Authorization withdrawn; reading application emails is gated again.",
+                })
+              }
+            >
+              Revoke authorization
+            </Button>
+          )}
+        </div>
+      );
+    }
+    // Authorized server-wide in reviewed source code (D103) — not revocable from the app.
+    return (
+      <p className="text-xs text-ink-muted" data-testid="tracking-authorized">
+        Reading application emails is authorized in this server&rsquo;s reviewed source
+        configuration. Managing that is a change to the server, not a setting here.
+      </p>
+    );
+  }
+
+  if (!v.is_inbox_owner)
+    return (
+      <p className="text-xs text-ink-muted" data-testid="tracking-needs-auth">
+        Reading application emails needs the server owner&rsquo;s own recorded authorization.
+      </p>
+    );
+
+  // Owner, not yet authorized: record their own authenticated, auditable consent (no code change).
+  return (
+    <details className="rounded-[var(--r-md)] border border-hairline bg-surface-2 p-2" data-testid="authorize-tracking">
+      <summary className="cursor-pointer text-xs font-medium text-ink">
+        Authorize reading my application emails
+      </summary>
+      <div className="mt-2 space-y-2 text-xs text-ink-muted">
+        <p>
+          This records your own consent to read your application emails. It covers reading those
+          emails only — never verification codes, sending, replying, or submitting applications —
+          is scoped to your own mailbox, and you can withdraw it here at any time.
+        </p>
+        <label className="block">
+          <span className="mb-1 block font-medium text-ink">Your consent, in your own words</span>
+          <textarea
+            className={inputCls}
+            rows={2}
+            value={text}
+            disabled={busy}
+            placeholder="e.g. I authorize NoEfforts to read my own application emails to track my applications."
+            onChange={(e) => setText(e.target.value)}
+            data-testid="attestation"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block font-medium text-ink">Ends on (optional)</span>
+          <input
+            type="date"
+            className={inputCls}
+            value={endsOn}
+            disabled={busy}
+            onChange={(e) => setEndsOn(e.target.value)}
+            data-testid="ends-on"
+          />
+        </label>
+        <Button
+          disabled={busy || !text.trim()}
+          onClick={() =>
+            act(
+              api("/inbox/authorize", {
+                method: "POST",
+                json: { attestation: text, ends_on: endsOn || null },
+              }),
+              { notice: "Authorization recorded. You can now turn on application-email tracking." },
+            ).then((ok) => ok && (setText(""), setEndsOn("")))
+          }
+        >
+          Authorize tracking
+        </Button>
+      </div>
+    </details>
+  );
+}
 
 export default function InboxCard() {
   const { v, error, notice, busy, apps, loadApps, act } = useInbox();
@@ -40,9 +150,23 @@ export default function InboxCard() {
               application system. Otherwise I type it.
             </span>
           </label>
+          <AuthorizeTracking v={v} busy={busy} act={act} />
           <label className="flex items-start gap-2">
-            <input type="checkbox" checked={v.tracking_enabled} disabled={busy} onChange={(e) => set(v.codes_enabled, e.target.checked, v.auto_apply)} />
-            <span>Read emails about my applications and propose what they say (rejected, interview, assessment, offer) for me to confirm.</span>
+            <input
+              type="checkbox"
+              checked={v.tracking_enabled}
+              disabled={busy || !v.tracking_authorized}
+              onChange={(e) => set(v.codes_enabled, e.target.checked, v.auto_apply)}
+            />
+            <span>
+              Read emails about my applications and propose what they say (rejected, interview, assessment, offer) for me to confirm.
+              {v.first_read_days != null && (
+                <span className="text-ink-faint">
+                  {" "}
+                  The first read reaches back {v.first_read_days} days and no further; after that only new mail is read.
+                </span>
+              )}
+            </span>
           </label>
           <label className="flex items-start gap-2">
             <input type="checkbox" checked={Boolean(v.auto_apply)} disabled={busy || !v.tracking_enabled} onChange={(e) => set(v.codes_enabled, v.tracking_enabled, e.target.checked)} />

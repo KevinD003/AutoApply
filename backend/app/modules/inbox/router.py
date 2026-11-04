@@ -1,22 +1,27 @@
 """D101: your Gmail, read-only, for verification codes and application emails (service.py)."""
 
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.errors import conflict, not_found
 from app.modules.applications.states import Refused
 from app.modules.audit.service import record
-from app.modules.identity.deps import current_user
+from app.modules.identity.deps import current_user, session_only
 from app.modules.identity.models import User
 from app.modules.inbox import service
 from app.modules.inbox.models import InboxEvent
 
-router = APIRouter(prefix="/inbox", tags=["inbox"])
+# The whole inbox feature reads the owner's own private mailbox: it is app-only, never reachable
+# by an API token (no token scope includes any inbox route, and recording consent, like account
+# export/deletion and token management, stays behind a signed-in session and its CSRF token).
+router = APIRouter(prefix="/inbox", tags=["inbox"], dependencies=[Depends(session_only)])
 
 WHY = {
     "not_enabled": "Reading your email is switched off on this server.",
@@ -76,6 +81,13 @@ class RelinkIn(BaseModel):
     application_id: uuid.UUID | None = None
 
 
+class AuthorizeIn(BaseModel):
+    # Your own words authorizing NoEfforts to read your recruitment emails; kept verbatim as the
+    # consent record. An optional last day the consent holds (null: no end date).
+    attestation: str
+    ends_on: date | None = None
+
+
 def _why_matched(basis: str | None) -> str | None:
     if not basis:
         return None
@@ -84,20 +96,40 @@ def _why_matched(basis: str | None) -> str | None:
 
 def _view(db: Session, user: User) -> dict:
     st = service.settings_of(db, user.id)
-    why = service.available_for(user)
+    why = service.available_for(db, user)
     events = db.scalars(
         select(InboxEvent)
         .where(InboxEvent.user_id == user.id)
         .order_by(InboxEvent.received_at.desc())
         .limit(50)
     ).all()
+    # How application-email tracking is authorized, if it is: "recorded" (the reviewed-source
+    # register, server-wide, not revocable here) or "in_app" (the owner's own authenticated,
+    # revocable consent). None means it is not authorized, so the tracking toggle stays disabled.
+    authz = None
+    if service.may(service.APPLICATION_EMAIL):
+        authz = {"source": "recorded"}
+    elif (c := service.active_application_consent(db, user)) is not None:
+        authz = {
+            "source": "in_app",
+            "granted_at": c.granted_at,
+            "ends_on": c.ends_on,
+            "attestation": c.attestation,
+            "disclosure_version": c.disclosure_version,
+        }
     return {
         "available": why is None,
         "why_not": WHY.get(why) if why else None,
         "codes_enabled": st.codes_enabled,
         "tracking_enabled": st.tracking_enabled,
         "auto_apply": st.auto_apply,
+        "tracking_authorized": service.may_read_applications(db, user),
+        "is_inbox_owner": service.is_inbox_owner(user),
+        "authorization": authz,
         "scope_note": SCOPE_NOTE,
+        # The bounded start of reading: the first read reaches back this many days and no further;
+        # after that only newly arrived mail is read (spec §8). Set server-side at deploy.
+        "first_read_days": get_settings().inbox_first_read_days,
         "last_checked_at": st.last_checked_at,
         "last_error": ERRORS.get(st.last_error) if st.last_error else None,
         "events": [
@@ -134,12 +166,12 @@ def get_inbox(user: User = Depends(current_user), db: Session = Depends(get_db))
 def put_inbox(
     body: InboxSettingsIn, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> dict:
-    why = service.available_for(user)
+    why = service.available_for(db, user)
     if why and (body.codes_enabled or body.tracking_enabled):
         raise conflict(WHY[why])
     # D103: each use needs its own recorded authorization; one never stands in for the other.
     if (body.codes_enabled and not service.codes_authorized()) or (
-        body.tracking_enabled and not service.may("read_application_email")
+        body.tracking_enabled and not service.may_read_applications(db, user)
     ):
         raise conflict(WHY["not_authorized"])
     st = service.settings_of(db, user.id)
@@ -151,10 +183,43 @@ def put_inbox(
     return _view(db, user)
 
 
+@router.post("/authorize")
+def authorize_tracking(
+    body: AuthorizeIn, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    """Record your own authenticated consent to read your recruitment emails — no code change, and
+    only the inbox owner may. It covers reading application emails alone (never verification codes,
+    sending or submission), is scoped to your own mailbox, and you can revoke it here any time."""
+    try:
+        service.grant_application_consent(db, user, body.attestation, body.ends_on)
+    except PermissionError:
+        db.rollback()
+        raise conflict(WHY["not_for_this_account"]) from None
+    except ValueError:
+        db.rollback()
+        raise conflict("Type your consent, in your own words, to authorize this.") from None
+    db.commit()
+    return _view(db, user)
+
+
+@router.post("/authorize/revoke")
+def revoke_tracking(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Withdraw your in-app consent to read application emails; reading is gated again at once.
+    (Disconnecting the Gmail token and removing NoEfforts in your Google account are separate,
+    stronger steps — see the scope note.)"""
+    try:
+        service.revoke_application_consent(db, user)
+    except PermissionError:
+        db.rollback()
+        raise conflict(WHY["not_for_this_account"]) from None
+    db.commit()
+    return _view(db, user)
+
+
 @router.post("/check")
 def check_now(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
-    why = service.available_for(user)
-    if why or not service.may("read_application_email"):
+    why = service.available_for(db, user)
+    if why or not service.may_read_applications(db, user):
         raise conflict(WHY[why or "not_authorized"])
     result = service.check(db, user)
     db.commit()

@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, new_id, utcnow
@@ -74,3 +74,32 @@ class InboxEvent(Base):
         ForeignKey("applications.id", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class InboxConsent(Base):
+    """The owner's own authenticated consent to read application emails in their mailbox, recorded
+    in the app (not in reviewed source) so activation needs no code change. It satisfies the inbox's
+    application-email authorization gate for THIS user only; it never widens the server-wide
+    `authorizations.RECORDED` register, and it covers only `read_application_email` — never codes,
+    sending or submission. Auditable (who, when, the owner's attestation in their own words),
+    time-bounded (`ends_on`, the last day it holds) and revocable (`revoked_at`). A grant inserts a
+    new row; revoke stamps `revoked_at` on the active one, so the table is an append-only consent
+    history. Cascades on user delete. Never holds message content or a token."""
+
+    __tablename__ = "inbox_consents"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    action: Mapped[str] = mapped_column(
+        String(32)
+    )  # the scope; only "read_application_email" today
+    attestation: Mapped[str] = mapped_column(String(500))  # the owner's own words, verbatim
+    # The version of the in-app consent disclosure (the scope note and the authorize control's copy)
+    # in force when this consent was given, so a later change to that wording never rewrites what a
+    # past consent was granted against.
+    disclosure_version: Mapped[str] = mapped_column(String(32))
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ends_on: Mapped[date | None] = mapped_column(Date)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
