@@ -67,6 +67,9 @@ class InboxEvent(Base):
     match_basis: Mapped[str | None] = mapped_column(String(120))
     proposed_outcome: Mapped[str | None] = mapped_column(String(24))
     prev_outcome: Mapped[str | None] = mapped_column(String(24))
+    # The outcome an accept/auto-apply actually recorded, so undo can tell whether a newer update
+    # has since superseded this event (then undo must refuse rather than clobber the newer state).
+    applied_outcome: Mapped[str | None] = mapped_column(String(24))
     application_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("applications.id", ondelete="SET NULL")
     )

@@ -20,6 +20,7 @@ test("outcomes: refused before a submission, dated after one, counted per user",
   const outcome = page.getByLabel("Outcome");
   await expect(outcome.locator("option")).toHaveText(["No outcome yet", "Withdrawn"]);
   await expect(page.getByText(/Employer outcomes can be recorded once NoEfforts knows of a submission/)).toBeVisible();
+  await page.getByText("Full breakdown").click(); // the denominators now live in an expandable section
   await expect(page.getByText("Submitted: 0 of 1 tracked", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "I applied myself" }).click();
@@ -37,7 +38,7 @@ test("outcomes: refused before a submission, dated after one, counted per user",
   await expect(page.getByText("Assessment received: 1 of 1 submitted", { exact: true })).toBeVisible();
   await expect(page.getByText("Any response: 1 of 1 submitted", { exact: true })).toBeVisible();
   await expect(page.getByText("1 submission is too few to compare rates; 1 response so far.", { exact: true })).toBeVisible();
-  expect(await page.locator("section", { hasText: "Your applications so far" }).innerText()).not.toContain("%");
+  expect(await page.locator("section", { hasText: "Overview" }).innerText()).not.toContain("%");
 
   const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
   expect(fits).toBe(true);

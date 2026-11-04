@@ -159,3 +159,89 @@ test("an email-update notification is restrained and points to the tracker", asy
   await expect(item).toContainText("Confirm or dismiss it on the tracker.");
   await expect(item.getByRole("link", { name: "Open application" })).toHaveAttribute("href", "/tracker");
 });
+
+test("the tracker surfaces stay coherent after an update: overview, row and email update agree", async ({ page }, info) => {
+  // One coherent backend state (what the real pipeline produces, proven in backend test_inbox.py):
+  // an auto-applied interview on a receipt-confirmed application. Every surface must agree — this is
+  // the opposite of the screenshot artifact where a real (empty) funnel sat beside mocked rows.
+  await register(page, info.project.name);
+  const inbox = {
+    available: true,
+    why_not: null,
+    codes_enabled: false,
+    tracking_enabled: true,
+    auto_apply: true,
+    scope_note: "NoEfforts uses read-only Gmail access; it stores no message text and sends nothing.",
+    last_checked_at: "2026-11-04T10:00:00Z",
+    last_error: null,
+    events: [
+      {
+        id: "a1",
+        received_at: "2026-11-03T09:00:00Z",
+        sender_domain: "contoso.example",
+        kind: "interview_scheduled",
+        state: "auto_applied",
+        application_id: APP2,
+        match_band: "strong",
+        class_band: "explicit",
+        proposed_outcome: "interviewing",
+        prev_outcome: "none",
+        why_matched: "an earlier message in the same email thread",
+        automatic: true,
+        needs_review: false,
+      },
+    ],
+  };
+  const apps = [
+    { id: APP1, job: { title: "Support Specialist", employer: "Northwind Example" }, state: "submitted_unconfirmed", submission: "unconfirmed", outcome: "none", reached_submission: true },
+    { id: APP2, job: { title: "Data Analyst", employer: "Contoso Example" }, state: "submitted_confirmed", submission: "receipt", outcome: "interviewing", reached_submission: true },
+  ];
+  const stage = (s: string, count: number, of: number, of_stage: string) => ({ stage: s, count, of, of_stage });
+  const funnel = {
+    tracked: 2,
+    stages: [
+      stage("prepared", 2, 2, "tracked"),
+      stage("submitted", 2, 2, "tracked"),
+      stage("responded", 1, 2, "submitted"),
+      stage("assessment_received", 0, 2, "submitted"),
+      stage("interviewing", 1, 2, "submitted"),
+      stage("offer", 0, 2, "submitted"),
+      stage("rejected", 0, 2, "submitted"),
+      stage("no_response", 0, 2, "submitted"),
+      stage("no_response_yet", 0, 2, "submitted"),
+      stage("withdrawn", 0, 2, "submitted"),
+      stage("withdrawn_before_submission", 0, 2, "tracked"),
+    ],
+    submitted: { total: 2, receipt: 1, user_claimed: 1, unconfirmed: 1, confirmed_by_you: 0, applied_by_you: 1 },
+    no_response_after_days: 21,
+    min_submissions_to_compare: 20,
+    too_few_to_compare: true,
+    note: "2 submissions is too few to compare rates; 1 response so far.",
+    outcome_before_submission: 0,
+  };
+  await page.route("**/api/inbox**", (route: Route) => route.fulfill({ json: inbox }));
+  await page.route("**/api/applications", (route: Route) => route.fulfill({ json: apps }));
+  await page.route("**/api/applications/funnel", (route: Route) => route.fulfill({ json: funnel }));
+
+  const coherent = async () => {
+    // The email update shows the auto-applied interview...
+    const updates = page.getByTestId("email-updates");
+    await expect(updates).toContainText("reads as a scheduled interview");
+    await expect(updates).toContainText("Recorded automatically: Interviewing");
+    // ...the overview counts one interviewing (never "0 tracked" beside listed applications)...
+    await expect(page.getByText("Tracked: 2", { exact: true })).toBeVisible();
+    await expect(page.getByText("Interviewing: 1", { exact: true })).toBeVisible();
+    // ...and the Data Analyst row shows BOTH its submission evidence and its recruitment stage.
+    const row = page.locator("li", { hasText: "Data Analyst" });
+    await expect(row.getByText("Interviewing", { exact: true })).toBeVisible();
+    await expect(row.getByText("Submitted (employer receipt)", { exact: true })).toBeVisible();
+  };
+
+  await page.goto("/tracker");
+  await coherent(); // immediately after the update
+  await page.reload();
+  await coherent(); // and again after a full reload — the surfaces read the same state
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+});

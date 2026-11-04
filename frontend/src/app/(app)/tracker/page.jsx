@@ -120,9 +120,15 @@ function Tracker() {
             </Button>
           }
         >
-          <p className="mb-3 text-sm">
-            Status: <Status app={open} />
-          </p>
+          <div className="mb-3 space-y-1 text-sm">
+            <p>
+              Submission: <Status app={open} />
+            </p>
+            <p>
+              Recruitment stage:{" "}
+              <Pill tone={open.outcome === "none" ? "neutral" : "brand"}>{OUTCOME_LABEL[open.outcome]}</Pill>
+            </p>
+          </div>
           {open.state !== "draft" && (
             <p className="mb-3 text-sm">
               <Link className="text-brand underline" href={`/applications/${open.id}`}>
@@ -162,9 +168,8 @@ function Tracker() {
           </ol>
         </Card>
       )}
-      {funnel && <FunnelCard f={funnel} />}
-      <AutoApplyCard />
       <EmailUpdates onApplied={load} />
+      {funnel && <FunnelCard f={funnel} />}
       <Card title="All applications">
         {apps === null ? (
           <Loading />
@@ -199,6 +204,7 @@ function Tracker() {
           </ul>
         )}
       </Card>
+      <AutoApplyCard />
     </>
   );
 }
@@ -289,26 +295,48 @@ function FunnelCard({ f }) {
     stage === "no_response_yet"
       ? `No response yet (${f.no_response_after_days} days or more since it was recorded as submitted, computed)`
       : STAGE_LABEL[stage] ?? stage;
+  const count = (stage) => f.stages.find((s) => s.stage === stage)?.count ?? 0;
+  // A compact, meaningful overview: tracked and submitted always, plus any recruitment stage or
+  // "no response yet" that is actually non-zero — never a wall of zero-count rows. The full
+  // breakdown, with denominators and the submission-evidence split, is one tap away.
+  const chips = [
+    ["Tracked", f.tracked, "neutral"],
+    ["Submitted", count("submitted"), "brand"],
+    ...["assessment_received", "interviewing", "offer", "rejected"]
+      .map((o) => [OUTCOME_LABEL[o], count(o), "neutral"])
+      .filter(([, n]) => n > 0),
+    ...(count("no_response_yet") > 0 ? [["No response yet", count("no_response_yet"), "caution"]] : []),
+  ];
   return (
-    <Card title="Your applications so far">
-      <ul className="space-y-1 text-sm text-ink">
-        {f.stages.map((s) => (
-          <li key={s.stage} className="min-w-0 break-words">{`${label(s.stage)}: ${s.count} of ${s.of} ${OF_LABEL[s.of_stage] ?? s.of_stage}`}</li>
+    <Card title="Overview">
+      <div className="flex flex-wrap gap-2" aria-label="Application overview">
+        {chips.map(([lbl, n, tone]) => (
+          <Pill key={lbl} tone={tone}>
+            {lbl}: {n}
+          </Pill>
         ))}
-      </ul>
-      <ul className="mt-3 space-y-1 text-sm text-ink">
-        <li>{`Confirmed by employer receipt: ${f.submitted.receipt}`}</li>
-        <li>{`Confirmed by you (your statement): ${f.submitted.confirmed_by_you}`}</li>
-        <li>{`Applied by you, not confirmed (your statement): ${f.submitted.applied_by_you}`}</li>
-        <li>{`Not confirmed (outcome unknown): ${f.submitted.unconfirmed}`}</li>
-      </ul>
-      {f.note && <p className="mt-3 text-sm text-ink">{f.note}</p>}
-      {f.outcome_before_submission > 0 && (
-        <p className="mt-2 text-sm text-ink">{`${f.outcome_before_submission} with an employer outcome recorded before any submission (not counted above)`}</p>
-      )}
-      <p className="mt-3 text-xs text-ink-muted">
-        Counts of your own applications, computed when you open this page. Nothing here is recorded as an outcome, and no rate is shown.
-      </p>
+      </div>
+      <details className="mt-3">
+        <summary className="focus-ring cursor-pointer text-sm font-medium text-brand">Full breakdown</summary>
+        <ul className="mt-2 space-y-1 text-sm text-ink">
+          {f.stages.map((s) => (
+            <li key={s.stage} className="min-w-0 break-words">{`${label(s.stage)}: ${s.count} of ${s.of} ${OF_LABEL[s.of_stage] ?? s.of_stage}`}</li>
+          ))}
+        </ul>
+        <ul className="mt-3 space-y-1 text-sm text-ink">
+          <li>{`Confirmed by employer receipt: ${f.submitted.receipt}`}</li>
+          <li>{`Confirmed by you (your statement): ${f.submitted.confirmed_by_you}`}</li>
+          <li>{`Applied by you, not confirmed (your statement): ${f.submitted.applied_by_you}`}</li>
+          <li>{`Not confirmed (outcome unknown): ${f.submitted.unconfirmed}`}</li>
+        </ul>
+        {f.note && <p className="mt-3 text-sm text-ink">{f.note}</p>}
+        {f.outcome_before_submission > 0 && (
+          <p className="mt-2 text-sm text-ink">{`${f.outcome_before_submission} with an employer outcome recorded before any submission (not counted above)`}</p>
+        )}
+        <p className="mt-3 text-xs text-ink-muted">
+          Counts of your own applications, computed when you open this page. Nothing here is recorded as an outcome, and no rate is shown.
+        </p>
+      </details>
     </Card>
   );
 }

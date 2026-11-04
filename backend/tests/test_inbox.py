@@ -2,8 +2,10 @@
 (fixtures/ats_receiver/inbox_fixture.py): verification codes for a waiting step, and application
 emails proposed as outcomes you confirm. Synthetic messages only; nothing contacts Google."""
 
+import datetime
 import json
 import os
+import uuid
 
 import pytest
 from sqlalchemy import select
@@ -11,6 +13,7 @@ from sqlalchemy import select
 from app.core import authorizations
 from app.core.config import get_settings
 from app.core.db import SessionLocal
+from app.modules.applications.funnel import NO_RESPONSE_AFTER_DAYS
 from app.modules.applications.models import ApplicationEvent
 from app.modules.audit.models import AuditEvent
 from app.modules.execution import runner
@@ -275,7 +278,7 @@ def test_each_use_needs_its_own_authorization(api, receiver, connected, monkeypa
 
 def test_codes_are_never_read_while_turned_off(api, receiver, connected):
     app_id = prepared_application(api, receiver)
-    # D117: on by default for the owner; turned off, nothing is read.
+    # Every option starts off (opt-in); explicitly off here too — nothing is read.
     assert api.put("/inbox", json={"codes_enabled": False, "tracking_enabled": False}) \
         .status_code == 200  # fmt: skip
     aid = queue(api, app_id)
@@ -553,7 +556,7 @@ def test_greenhouse_codes_are_read_exactly_as_written(subject, text, code):
     assert rules.extract_code(subject, text) == code
 
 
-def test_codes_are_on_by_default_for_the_owner_only_and_application_emails_stay_unread():
+def test_codes_are_authorized_for_the_owner_only_and_application_emails_stay_unread():
     from app.core.config import Settings
 
     s = Settings(_env_file=None, env="production", live_owner_emails=[OWNER])
@@ -568,12 +571,15 @@ def test_codes_are_on_by_default_for_the_owner_only_and_application_emails_stay_
     assert codes.actions == {"read_codes", "enter_codes"}  # never application emails
 
 
-def test_the_owners_settings_start_with_codes_on_and_another_account_never_reads(
+def test_the_owners_settings_start_all_off_and_another_account_never_reads(
     api, other_api, connected
 ):
+    """Every mailbox-processing option is opt-in: a new account starts with codes, tracking and
+    auto-apply all off (only the toggle default moved; D117's code-reading authorization is
+    unchanged). Another account can never read the owner's mailbox at all."""
     with SessionLocal() as db:
         st = service.settings_of(db, user().id)
-        assert (st.codes_enabled, st.tracking_enabled) == (True, False)
+        assert (st.codes_enabled, st.tracking_enabled, st.auto_apply) == (False, False, False)
         other = db.scalar(select(User).where(User.email == "another.synthetic@example.com"))
         assert service.available_for(other) == "not_for_this_account"
         db.rollback()
@@ -583,6 +589,7 @@ def test_of_two_code_emails_the_one_naming_this_employer_is_used(api, receiver, 
     """Legacy notes: applications that overlap each get "Security code for your application to
     <employer>"; the one naming another employer is never entered here."""
     app_id = prepared_application(api, receiver)
+    api.put("/inbox", json={"codes_enabled": True, "tracking_enabled": False})
     aid = queue(api, app_id)
     receiver.config(mode="otp")
     w = start_worker(aid)
@@ -605,6 +612,7 @@ def test_a_code_mailed_while_the_form_was_being_filled_counts(api, receiver, con
     from datetime import timedelta
 
     app_id = prepared_application(api, receiver)
+    api.put("/inbox", json={"codes_enabled": True, "tracking_enabled": False})
     aid = queue(api, app_id)
     receiver.config(mode="otp")
     w = start_worker(aid)
@@ -801,3 +809,176 @@ OUTCOME_OF_KINDS = {
     "assessment",
     "assessment_reminder",
 }
+
+
+# -- one coherent scenario across every surface, and the harder correction/undo cases -------------
+
+
+def test_a_clear_update_is_coherent_across_every_surface_and_undo_restores_it(
+    api, receiver, connected
+):
+    """One synthetic scenario end to end: a clear, auto-applied recruitment email is coherent
+    across EVERY surface — the recognised event, the application's recruitment stage, the funnel
+    summary, the application row and a notification — and undo restores all of it. Each surface is
+    checked right after the action and again on a fresh read (a reload reads the same state)."""
+    app_id = submitted(api, receiver)
+    _track(api, auto=True)
+    deliver(receiver, EMPLOYER, ROLE, "We regret to inform you that you were not selected.")
+    (e,) = api.post("/inbox/check").json()["events"]
+    # Event persisted and matched to this application; applied automatically.
+    assert (e["kind"], e["state"], e["application_id"]) == ("rejected", "auto_applied", app_id)
+
+    def surfaces():
+        app = api.get(f"/applications/{app_id}").json()
+        stages = {s["stage"]: s["count"] for s in api.get("/applications/funnel").json()["stages"]}
+        notes = [
+            n for n in api.get("/notifications").json()["items"] if n["kind"] == "email_update"
+        ]
+        return app, stages, notes
+
+    for _ in range(2):  # immediately, then again on a fresh read (== a full reload)
+        app, stages, notes = surfaces()
+        assert app["outcome"] == "rejected"  # recruitment stage updated
+        assert app["submission"] == "receipt"  # submission evidence NOT replaced by the email
+        assert app["state"] == "submitted_confirmed"
+        assert stages["rejected"] == 1 and stages["submitted"] == 1  # funnel summary agrees
+        assert [n["application_id"] for n in notes] == [app_id]  # one email-update notification
+        assert notes[0]["link"] == "/tracker" and notes[0]["needs_action"] is False
+
+    api.post(f"/inbox/events/{e['id']}/undo").raise_for_status()
+    for _ in range(2):
+        app, stages, notes = surfaces()
+        assert app["outcome"] == "none"  # recruitment stage restored
+        assert app["submission"] == "receipt"  # the submission itself is untouched by undo
+        assert stages["rejected"] == 0
+        assert notes == []  # the notification is gone
+
+
+def test_undo_of_a_superseded_update_is_refused_so_it_cannot_clobber_a_newer_one(
+    api, receiver, connected
+):
+    """Undo after a newer event: once an offer has superseded an interview, undoing the interview
+    is refused (it would clobber the offer); undo the newer one first, then the older, and the
+    stage walks back coherently."""
+    app_id = submitted(api, receiver)
+    _track(api)
+    deliver(receiver, EMPLOYER, ROLE, "We would like to schedule an interview with you.")
+    (e1,) = api.post("/inbox/check").json()["events"]
+    api.post(f"/inbox/events/{e1['id']}/accept").raise_for_status()
+    assert _outcome(api, app_id) == "interviewing"
+    deliver(receiver, EMPLOYER, ROLE, "We are pleased to offer you the position.")
+    e2 = _by_kind(api.post("/inbox/check").json())["offer"]
+    api.post(f"/inbox/events/{e2['id']}/accept").raise_for_status()
+    assert _outcome(api, app_id) == "offer"
+    # The older interview can no longer be undone on its own: the offer superseded it.
+    r = api.post(f"/inbox/events/{e1['id']}/undo")
+    assert r.status_code == 409 and "newer update" in r.text
+    assert _outcome(api, app_id) == "offer"
+    # Undo the newer one first, then the older: each step is coherent, never clobbered.
+    api.post(f"/inbox/events/{e2['id']}/undo").raise_for_status()
+    assert _outcome(api, app_id) == "interviewing"
+    api.post(f"/inbox/events/{e1['id']}/undo").raise_for_status()
+    assert _outcome(api, app_id) == "none"
+
+
+def test_an_assessment_invitation_is_proposed_and_recorded(api, receiver, connected):
+    """An assessment invitation is proposed as 'assessment received' (an invitation to complete
+    it, not proof of completion) and recorded on confirm."""
+    app_id = submitted(api, receiver)
+    _track(api)
+    deliver(receiver, EMPLOYER, ROLE, "Please complete the online assessment on HackerRank.")
+    (e,) = api.post("/inbox/check").json()["events"]
+    assert (e["kind"], e["state"], e["proposed_outcome"]) == (
+        "assessment", "proposed", "assessment_received")  # fmt: skip
+    api.post(f"/inbox/events/{e['id']}/accept").raise_for_status()
+    assert _outcome(api, app_id) == "assessment_received"
+
+
+def test_interview_invitation_and_a_scheduled_interview_stay_distinct_in_the_timeline(
+    api, receiver, connected
+):
+    """Both derive the 'interviewing' stage, but the recognised events stay distinct: different
+    kinds in the email timeline, and the application timeline names which one drove the stage."""
+    app_id = submitted(api, receiver)
+    _track(api)
+    deliver(receiver, EMPLOYER, ROLE, "We would like to invite you to an interview.")
+    (inv,) = api.post("/inbox/check").json()["events"]
+    assert inv["kind"] == "interview"
+    api.post(f"/inbox/events/{inv['id']}/accept").raise_for_status()
+    deliver(receiver, EMPLOYER, ROLE, "Your interview is scheduled for Tuesday at 10am.")
+    sch = _by_kind(api.post("/inbox/check").json())["interview_scheduled"]
+    # Distinct recognised events; the scheduled one is the same stage, so only noted.
+    assert sch["kind"] == "interview_scheduled" and inv["kind"] == "interview"
+    assert sch["state"] == "noted"
+    assert _outcome(api, app_id) == "interviewing"
+    # The application timeline names the recognised event (invitation vs scheduled).
+    with SessionLocal() as db:
+        notes = [
+            e.evidence_note
+            for e in db.scalars(
+                select(ApplicationEvent).where(
+                    ApplicationEvent.application_id == uuid.UUID(app_id),
+                    ApplicationEvent.kind == "outcome",
+                )
+            )
+        ]
+    assert any("interview invitation" in (n or "") for n in notes)
+
+
+def test_an_ambiguous_match_updates_no_application_at_the_employer(api, receiver, connected):
+    """Two submitted applications at one employer; an email that names only the employer is
+    ambiguous — a review item linked to neither, and NEITHER application's stage changes. Ambiguity
+    never fans out to every application at an employer."""
+    app1 = submitted(api, receiver)
+    app2 = prepared_application(api, receiver, url_suffix="?posting=2")
+    assert runner.run_attempt(queue(api, app2), "w1") == "confirmed"
+    _track(api, auto=True)  # even with auto-apply on, an ambiguous match applies to nothing
+    deliver(
+        receiver,
+        EMPLOYER,
+        "Example Health Clinic",
+        "We regret to inform you that you were not selected.",
+    )  # employer only, no role
+    (e,) = api.post("/inbox/check").json()["events"]
+    assert (e["kind"], e["state"], e["application_id"]) == ("rejected", "review", None)
+    assert (_outcome(api, app1), _outcome(api, app2)) == ("none", "none")
+
+
+def test_inactivity_is_shown_as_no_response_not_as_a_rejection(api, receiver, connected):
+    """A submitted application that no email answers is inferred inactivity — the funnel's 'no
+    response yet' stage, distinct from 'rejected' — never an automatic rejection. Silence changes
+    no outcome."""
+    from app.core.db import utcnow
+    from app.modules.applications import funnel as fn
+
+    app_id = submitted(api, receiver)
+    _track(api, auto=True)
+    deliver(receiver, "Shop <news@shop.example>", "Weekend sale", "Ten tips for the weekend.")
+    api.post("/inbox/check")
+    assert _outcome(api, app_id) == "none"  # silence is never read as a rejection
+    # Seen past the inactivity window (computed with a future `now`, so no insert-only row is
+    # altered), it is "no response yet" — counted apart from "rejected", which stays empty.
+    later = utcnow() + datetime.timedelta(days=NO_RESPONSE_AFTER_DAYS + 9)
+    with SessionLocal() as db:
+        f = fn.for_user(db, user().id, later)
+    stages = {s["stage"]: s["count"] for s in f["stages"]}
+    assert (stages["no_response_yet"], stages["rejected"]) == (1, 0)
+    assert _outcome(api, app_id) == "none"
+
+
+def test_auto_apply_needs_its_own_setting_and_disabling_tracking_stops_reads(
+    api, receiver, connected
+):
+    """Automatic status updates need their own setting (tracking on alone only proposes), and
+    turning tracking off stops any further read (consent is independent, spec §4/§7)."""
+    app_id = submitted(api, receiver)
+    _track(api, auto=False)  # tracking on, auto-apply OFF
+    deliver(receiver, EMPLOYER, ROLE, "We regret to inform you that you were not selected.")
+    (e,) = api.post("/inbox/check").json()["events"]
+    assert e["state"] == "proposed"  # a clear update is only proposed, never applied for you
+    assert _outcome(api, app_id) == "none"
+    # Turn tracking off: a later email is not read at all.
+    api.put("/inbox", json={"codes_enabled": False, "tracking_enabled": False})
+    deliver(receiver, EMPLOYER, ROLE, "We are pleased to offer you the position.")
+    assert api.post("/inbox/check").json()["result"] == {"skipped": "tracking_off"}
+    assert _outcome(api, app_id) == "none"
