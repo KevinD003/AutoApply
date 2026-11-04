@@ -168,6 +168,10 @@ export default function InboxCard() {
               )}
             </span>
           </label>
+          <p className="text-xs text-ink-faint">
+            Turning this off stops reading application emails. Verification-code reading is a
+            separate setting above and is not affected by it.
+          </p>
           <label className="flex items-start gap-2">
             <input type="checkbox" checked={Boolean(v.auto_apply)} disabled={busy || !v.tracking_enabled} onChange={(e) => set(v.codes_enabled, v.tracking_enabled, e.target.checked)} />
             <span>

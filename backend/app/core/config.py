@@ -139,6 +139,19 @@ class Settings(BaseSettings):
     )
     inbox_check_interval_seconds: int = Field(default=900, ge=60, le=86400)
     inbox_first_read_days: int = Field(default=30, ge=1, le=365)
+    # D128: the owner connects Gmail from the app with a browser OAuth authorization-code flow
+    # (app/modules/connections), instead of the connect.py CLI (kept as an operator fallback). Off
+    # unless `inbox_oauth_enabled` with a web OAuth client configured (`inbox_oauth_client_id` and
+    # `inbox_oauth_client_secret`, from the owner's Google Cloud project — a "Web application"
+    # client, not the desktop one the CLI uses). The callback is a single fixed, allowlisted URI
+    # under `public_base_url`; the authorize host is Google's unless a test points it at a fixture.
+    # The refresh token the flow obtains is written, like the CLI's, to a 0600 file per account
+    # under `inbox_connections_dir` (never the database, an image, logs, the frontend or chat).
+    inbox_oauth_enabled: bool = False
+    inbox_oauth_client_id: str = ""
+    inbox_oauth_client_secret: SecretStr = SecretStr("")
+    inbox_oauth_auth_base: str = ""  # Google's authorize endpoint unless a test overrides it
+    inbox_connections_dir: str = ""  # directory for per-account token files the web flow writes
     # D102: the Greenhouse pilot (app/modules/execution/live.py). Off unless
     # `live_greenhouse_enabled`, the account is named in `live_owner_emails`, `env` is
     # "production" and the browser runs in the `container` isolation mode (Chromium's own sandbox

@@ -55,6 +55,11 @@ never the text, the subject, the sender's name or a code. Your Gmail token stays
 
 ## Connect it (once, on your own machine)
 
+> Since D128 the normal way to connect is in the app — Account → Connections → **Connect Gmail** —
+> which runs the same read-only OAuth flow in your browser and stores the token on the server,
+> with nothing to run by hand (it needs the server's `inbox_oauth_enabled` and a **Web
+> application** OAuth client). The CLI below stays as an operator fallback and still works.
+
 1. In [Google Cloud Console](https://console.cloud.google.com/), create a project (or use one),
    enable the **Gmail API**, and configure the **OAuth consent screen** (user type "External",
    your own address as a test user).

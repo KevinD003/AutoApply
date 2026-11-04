@@ -1071,9 +1071,10 @@ def test_the_feature_exposes_no_gmail_send_or_modify_capability():
     assert provider.SCOPE is connect.SCOPE  # one constant referenced everywhere, not two
     assert SCOPE.split() == [SCOPE] and SCOPE.endswith("gmail.readonly")  # exactly one read scope
     assert not any(w in SCOPE for w in ("send", "modify", "compose", "insert", "settings"))
-    # The reader exposes only read methods...
+    # The reader exposes only read methods (D128 adds profile = users.getProfile, the mailbox's own
+    # address, read-only; the forbidden-name check below still holds for it)...
     public = {m for m in dir(provider.GmailReader) if not m.startswith("_")}
-    assert public == {"received_after", "read"}  # reads only
+    assert public == {"received_after", "read", "profile"}  # reads only
     for forbidden in ("send", "reply", "forward", "modify", "trash", "delete", "insert", "label"):
         assert not hasattr(provider.GmailReader, forbidden)
     # ...and the inbox can only ever be authorized to read; there is no send/modify action to grant.

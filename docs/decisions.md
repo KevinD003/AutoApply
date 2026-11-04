@@ -4102,3 +4102,67 @@ The audit-inventory and sanitizer guards cover the two new events; `frontend/e2e
 exercises the authorized view. The static capability guard (R7.5) and the recorded-register test
 (`test_authorizations.py`, which asserts the shipped register's exact contents) are unchanged and
 still pass — confirming the source register was not widened.
+
+## D128 — Connect Gmail from the app with a browser OAuth flow (2026-11-04)
+
+**Context.** D101's `connect.py` is a CLI the owner runs on the server machine: it does a desktop
+(installed-app) OAuth loopback flow and writes a 0600 token file, after which env vars point the
+inbox reader at it. That remained the only way to connect, which is a poor activation story — it
+asks the owner to run a command to use a feature that only reads their own mailbox — and the
+"server-side secret ⇒ must be a CLI" framing in the earlier handoff was wrong: a backend can run a
+standard web authorization-code flow and keep the tokens server-side without any CLI.
+
+**Decision.** Add a supported **browser OAuth authorization-code flow** (`app/modules/connections`)
+as the normal path: Account → Connections → Connect Gmail. The CLI stays as an operator fallback.
+Off by default (`inbox_oauth_enabled` + a configured **web** OAuth client). The flow:
+
+- **Start** (`GET /connections/gmail/start`, a top-level navigation): records a single-use,
+  account-bound, expiring `OAuthFlow` state with a PKCE (S256) verifier and 302-redirects the
+  owner's browser to Google's consent page (the system browser, never an embedded view). Only the
+  read-only scope is requested; the redirect URI is one fixed, allowlisted value under
+  `public_base_url`.
+- **Callback** (`GET /connections/gmail/callback`): validates the state — it must exist, belong to
+  the account whose session presents it (so another account's callback cannot complete it), be
+  unused (consumed on first use) and unexpired (≤10 min) — then exchanges the code (a confidential
+  web client whose secret stays server-side), **verifies exactly the read-only scope was granted**
+  (any added send/modify scope is refused and nothing is stored), learns which mailbox was
+  connected via `users.getProfile`, writes the refresh token to a **0600 file per account**
+  (`inbox_connections_dir/<user_id>.json`, never the database, an image, logs, the frontend or
+  chat), records the connection (mailbox address, scope, status) and redirects back to a fixed
+  in-app page with a result code. No open redirect: both the Google redirect target and the return
+  URL are built from settings, never from the request.
+- **Status / disconnect** (`GET /connections`, `POST /connections/gmail/disconnect`): the UI shows
+  not-connected / connected / reconnect-required, the connected mailbox identity, the access scope
+  in plain words, last error; disconnect deletes the token file and marks the connection revoked
+  (revoking at Google is the separate, stronger step the UI points to). A stored token that stops
+  working (revoked at Google) moves the connection to "reconnect required".
+
+**Storage & security.** The refresh token lives only in the 0600 file, exactly as the CLI's does;
+the DB holds non-secret binding/status facts (`gmail_connections`) and the transient flow state
+(`oauth_flows`, excluded from the export as a short-lived nonce). The inbox reader
+(`inbox.service.reader`) prefers the web connection's token file, falling back to the CLI's
+configured file. `users.getProfile` is added to the one allowlisted reader file (`provider.py`)
+and permitted in the forbidden-capabilities guard's allowlist for that file and the fixture only —
+transparently, not by evading the scanner; all Google URLs come from `provider.py`/settings, never
+new literals, and the `gmail.readonly` scope is never written outside `provider.py`.
+
+**Independence.** Connecting enables nothing. Reading application emails still needs the owner's own
+D127/D103 authorization and the per-use D101 toggles; verification-code reading keeps its own
+separate gate; and no API-token scope reaches any inbox or connection route (the routers are
+`session_only`). An email status update still queues no execution and sends nothing.
+
+**Deployment.** Real activation needs the owner to create a Web-application OAuth client in their
+Google Cloud project and register the one callback URI, set `inbox_oauth_enabled`,
+`inbox_oauth_client_id/secret` and `inbox_connections_dir`, and deploy at a URL Google can redirect
+back to (a phone's localhost is not the server's localhost; cross-device use needs a reachable
+`public_base_url`). Google's own verification requirements for a read-only Gmail scope still apply.
+Implemented and tested entirely against a local Google-OAuth stand-in
+(`fixtures/ats_receiver/inbox_fixture.py`); no real mailbox or Google client is contacted.
+
+**Tests.** `backend/tests/test_connections.py` drives the flow end to end: successful connect binds
+the mailbox and writes a 0600 token; connecting enables no processing; denied consent, unknown,
+expired and replayed state, another account's state, a scope beyond read-only, and a reply without
+a refresh token are each refused with nothing stored; non-owner and flow-off are refused; disconnect
+then reconnect; a revoked token → reconnect-required; and the web token is what the reader reads.
+`frontend/e2e/connections.spec.ts` covers the card's states. The forbidden-capabilities,
+audit-inventory and export-completeness guards are updated and pass.

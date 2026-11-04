@@ -580,13 +580,16 @@ OUTBOUND_MAIL = {
 # only for these names: the API's message path, its host and the read-only scope. No mail
 # library, IMAP, POP or another provider, there or anywhere.
 INBOX_READING = {
+    # D128 adds users.getProfile (the mailbox's own address only), read at connect time to show and
+    # bind the connected mailbox; it stays in this one reader file, within the read-only scope.
     "backend/app/modules/inbox/provider.py": re.compile(
-        r"mail endpoint '(/gmail/v1/users/me/messages|https://gmail\.googleapis\.com|"
+        r"mail endpoint '(/gmail/v1/users/me/(messages|profile)|https://gmail\.googleapis\.com|"
         r"https://www\.googleapis\.com/auth/gmail\.r)"
     ),
-    # The stand-in's route: its prefix is a name the scan cannot resolve ("X").
+    # The stand-in's routes (messages, one message, and the D128 profile): its prefix is a name the
+    # scan cannot resolve ("X").
     "fixtures/ats_receiver/inbox_fixture.py": re.compile(
-        r"mail endpoint '(X)?/gmail/v1/users/me/messages'"
+        r"mail endpoint '(X)?/gmail/v1/users/me/(messages|profile)'"
     ),
 }
 

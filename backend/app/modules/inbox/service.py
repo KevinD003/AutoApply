@@ -221,14 +221,23 @@ def available_for(db: Session, user: User) -> str | None:
         return "not_for_this_account"
     if not (codes_authorized() or may_read_applications(db, user)):
         return "not_authorized"  # switched on is not authorized (D103)
-    if not s.inbox_token_file:
+    if not owner_token_file(db, user):
         return "not_connected"
     return None
 
 
-def reader() -> GmailReader:
+def owner_token_file(db: Session, user: User) -> str:
+    """The token file this owner's mail is read from: the app's browser-connected Gmail (D128) when
+    present, else the connect.py CLI's configured file (`inbox_token_file`). Either is a 0600 file
+    on the server; the connection is the same read-only Gmail either way."""
+    from app.modules.connections import service as connections  # lazy: avoid an import cycle
+
+    return connections.connected_token_file(db, user) or get_settings().inbox_token_file
+
+
+def reader(token_file: str = "") -> GmailReader:
     s = get_settings()
-    return GmailReader(s.inbox_token_file, s.inbox_api_base, s.inbox_token_url)
+    return GmailReader(token_file or s.inbox_token_file, s.inbox_api_base, s.inbox_token_url)
 
 
 def settings_of(db: Session, user_id) -> InboxSettings:
@@ -300,7 +309,7 @@ def fill_codes(db: Session, user: User, gmail: GmailReader | None = None) -> int
     ).all()
     if not waiting:
         return 0
-    gmail = gmail or reader()
+    gmail = gmail or reader(owner_token_file(db, user))
     entered = 0
     for cp in waiting:
         # D117 (legacy notes): the code can be emailed once the address is typed, before the
@@ -555,7 +564,7 @@ def check(db: Session, user: User, gmail: GmailReader | None = None, now=None) -
         return {"skipped": why or "tracking_off"}
     now = now or utcnow()
     since = st.last_checked_at or now - timedelta(days=get_settings().inbox_first_read_days)
-    gmail = gmail or reader()
+    gmail = gmail or reader(owner_token_file(db, user))
     cands = _candidates(db, user.id)
     counts: dict[str, int] = {}
     try:
@@ -567,6 +576,12 @@ def check(db: Session, user: User, gmail: GmailReader | None = None, now=None) -
                 msgs.append((mref, gmail.read(mid)))
     except InboxUnavailable as e:
         st.last_error = e.code
+        if e.code in ("revoked", "token_unreadable"):
+            # D128: a web-connected token that stopped working puts the connection into
+            # "reconnect required" so Account -> Connections says so (a CLI token file is not).
+            from app.modules.connections import service as connections
+
+            connections.mark_reconnect_required(db, user.id)
         record(db, user.id, "inbox.read_failed", "inbox", None, reason_code=e.code)
         return {"error": e.code}
     # Process oldest first, so each message's consistency guard sees the ones before it (§3).
@@ -760,7 +775,7 @@ def inbox_tick() -> dict:
             with SessionLocal() as db:
                 user = db.get(User, user_id)
                 st = settings_of(db, user_id)
-                gmail = reader()
+                gmail = reader(owner_token_file(db, user))
                 if codes:
                     out["codes"] += fill_codes(db, user, gmail)
                 if tracking and (st.last_checked_at is None
