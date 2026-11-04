@@ -58,3 +58,49 @@ def test_confirmed_fails_closed_on_an_unexpected_read_error():
 
 def test_code_rejected_fails_closed_on_an_unexpected_read_error():
     assert _adapter()._code_rejected(_UnreadablePage()) is False
+
+
+class _StubResponse:
+    def __init__(self, status: int):
+        self.status = status
+
+
+class _WatchPage:
+    url = "https://boards.greenhouse.io/acme/jobs/5020001"
+
+    def wait_for_timeout(self, _ms):  # reached only without the fix (the step would loop)
+        pass
+
+
+def test_watch_does_not_crash_when_the_answer_arrives_within_a_step():
+    """Regression for the intermittent after-send TypeError in `_watch`. The `on_response`
+    listener appends to `responses` during the page reads inside a poll step, so the list can
+    turn non-empty *after* answered_at was taken at the top of that step. The stale wrong-code
+    guard then timed from answered_at while it was still None -> `int - None` TypeError, which the
+    runner quarantines as an opaque internal error. `_watch` must instead classify the now-answered
+    step normally. Deterministic: the stubbed `_code_rejected` delivers the response mid-read."""
+    a = GreenhouseDomAdapter.__new__(GreenhouseDomAdapter)
+    a._stand_in = True  # no REAL_WAIT_MS inflation; keep the step budget small
+    responses: list = []
+    seen = {"rejected": 0}
+
+    def code_rejected(_page):
+        # The employer's answer is delivered by the response listener *during* this read — after
+        # the top-of-step answered_at check and before the stale guard would time from it.
+        seen["rejected"] += 1
+        if seen["rejected"] == 1:
+            responses.append(_StubResponse(422))
+        return True
+
+    a._code_rejected = code_rejected
+    a._confirmed = lambda _p: False
+    a._errors_listed = lambda _p: True
+    a._challenge_now = lambda _p: False
+    a._code_boxes = lambda _p: None
+
+    out = a._watch(_WatchPage(), 5000, before=False, code=True, responses=responses,
+                   sent=["POST"], raised=False, stale=True)  # fmt: skip
+
+    # With the fix the step falls through the stale guard (no recorded arrival time yet) and the
+    # 422 with listed errors is classified in the same step. Without it: TypeError, no Outcome.
+    assert out.kind == "rejected" and out.http_status == 422
