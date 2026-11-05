@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import ApiTokens from "@/components/ApiTokens";
 import DraftingSpend from "@/components/DraftingSpend";
 import EmailReminders from "@/components/EmailReminders";
+import GmailConnection from "@/components/GmailConnection";
 import InboxCard from "@/components/InboxCard";
 import { Button, Card, ErrorBox, Field, inputCls, Loading } from "@/components/ui";
 import { api, setCsrf } from "@/lib/api";
@@ -62,7 +63,10 @@ export default function AccountPage() {
       <h1 className="font-display text-[1.7rem] font-semibold leading-[1.1] text-ink">Account</h1>
 
       <GroupHeading>Connections</GroupHeading>
-      <InboxCard />
+      <div className="space-y-4">
+        <GmailConnection />
+        <InboxCard />
+      </div>
 
       <GroupHeading>Notifications</GroupHeading>
       <EmailReminders />

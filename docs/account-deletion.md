@@ -29,6 +29,7 @@ at once and later (priority B, D77). Code: `backend/app/modules/account/` (`expo
 | table `user_sessions` | session secrets (token digests and CSRF tokens) |
 | table `outbox_messages` | an internal delivery queue (attempt ids and dispatch counters only) |
 | table `discovery_backoffs` | a timer that spaces out requests to a source; nothing about you |
+| table `oauth_flows` | short-lived, single-use OAuth state for an in-progress Gmail connect (D128); a transient nonce and PKCE verifier, consumed or expired within minutes, not account data |
 | `users.password_hash` | your password's hash: a login secret |
 | `applications.lock_version` | an internal concurrency counter |
 | `documents.storage_key` | where the server keeps the file; the file is in `documents/` |

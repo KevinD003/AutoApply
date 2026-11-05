@@ -28,8 +28,11 @@ The feature is **built but gated off**. To process a real mailbox, all of:
    With neither, every read is refused (`not_authorized`). The in-app consent and the recorded
    register are both owner-scoped; the toggle (below) turning on is **not** itself an authorization.
 2. **`InboxSettings.tracking_enabled = true`** (per-account opt-in; off by default).
-3. **A connected read-only Gmail token** (`python -m app.modules.inbox.connect`, token stored on
-   the owner's machine, never in the repo, DB or image).
+3. **A connected read-only Gmail token.** Normally the owner connects it in the app — Account →
+   Connections → Connect Gmail — with the browser OAuth flow (D128, `app/modules/connections`;
+   needs `inbox_oauth_enabled` and a web OAuth client). The `python -m app.modules.inbox.connect`
+   CLI remains an operator fallback. Either way the refresh token is a 0600 file on the server,
+   never in the repo, DB, image, frontend, logs or chat; the reader prefers the app connection.
 4. The owner's account (`inbox_owner_emails`) and `NOEFFORTS_INBOX_ENABLED` for the server.
 
 Auto-apply additionally requires `InboxSettings.auto_apply = true` (off by default).

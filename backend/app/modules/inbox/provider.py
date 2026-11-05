@@ -29,6 +29,7 @@ API_BASE = "https://gmail.googleapis.com"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 MESSAGES = "/gmail/v1/users/me/messages"
+PROFILE = "/gmail/v1/users/me/profile"  # users.getProfile: the mailbox's own address only
 MAX_TEXT = 20_000  # what is read of one message's text; the rest is ignored
 MAX_REPLY = 5_000_000  # the largest answer read from the API
 
@@ -175,6 +176,14 @@ class GmailReader:
         if not isinstance(body, dict):
             raise InboxUnavailable("bad_reply")
         return body
+
+    def profile(self) -> str:
+        """The connected mailbox's own address (users.getProfile), within the read-only scope. Used
+        once at connect time (D128) to show which mailbox was connected and to bind it to this
+        account; no message is read. "" if the reply names no address."""
+        body = self._get(PROFILE)
+        addr = body.get("emailAddress")
+        return addr.strip().lower() if isinstance(addr, str) and "@" in addr else ""
 
     def received_after(self, after: datetime, limit: int = 200) -> list[str]:
         """Ids of messages received after `after` (newest first), at most `limit`."""

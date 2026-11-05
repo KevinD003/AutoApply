@@ -33,6 +33,8 @@ EXCLUDED_TABLES = {
     "user_sessions": "session secrets (token digests and CSRF tokens)",
     "outbox_messages": "an internal delivery queue (attempt ids and dispatch counters only)",
     "discovery_backoffs": "a timer that spaces out requests to a source; nothing about you",
+    "oauth_flows": "short-lived, single-use OAuth state for an in-progress Gmail connect (D128); "
+    "a transient nonce and PKCE verifier, not account data, and consumed or expired within minutes",
 }
 
 # Columns left out of exported tables, with why.
@@ -360,6 +362,19 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "granted_at",
         "ends_on",
         "revoked_at",
+    ),
+    # D128: the browser Gmail connection (binding/status facts only; the refresh token lives in a
+    # 0600 file, never the database, so there is nothing secret to export). The transient
+    # oauth_flows rows are not exported: they are short-lived, single-use flow state, not user data.
+    "gmail_connections": (
+        "user_id",
+        "email",
+        "scope",
+        "status",
+        "connected_at",
+        "updated_at",
+        "revoked_at",
+        "last_error",
     ),
     "drafting_usage": (
         "id",
