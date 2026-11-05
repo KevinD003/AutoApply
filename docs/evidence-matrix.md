@@ -9,6 +9,24 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Optional phone left blank beside a control NoEfforts cannot set (D130, 2026-11-05; local only)
+
+Nothing here ran against a real page. The fixture (`gh2_phone_companion`) follows the structure of
+one owner-supplied markup fragment and read-only run #11; everything else in it is a FIXTURE
+ASSUMPTION. Branch `greenhouse-phone-companion` (on top of D129), not on `main`.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| An optional phone whose named group holds exactly one other, unrequired control: the phone is left blank and the control is not a question (real page and stand-in) | `test_phone_companion.py::test_the_optional_phone_is_left_blank_and_its_second_control_is_not_a_question` | captured schema |
+| A required control (attribute, ARIA, its own or the group's marker), a required phone (page or job data), two controls, one outside the group, or any other visible control in the group stays a blocking checkpoint; nothing can be approved (a hidden input in the group is ignored, as everywhere in E3) | `::test_anything_else_stays_a_blocking_unlisted_control_and_the_phone_is_asked`, `::test_when_the_structure_does_not_hold_nothing_can_be_approved`, `::test_every_property_of_the_structure_is_needed` | captured schema; unresolved; approval refused; no disclosure |
+| Opacity never makes a control hidden | `::test_opacity_never_makes_a_control_hidden` | snapshot |
+| The phone is never taken from the profile and nothing can be typed in its place; package shape unchanged | `::test_the_phone_is_left_blank_whatever_the_profile_holds`, `::test_the_package_leaves_the_phone_blank_and_needs_nothing_more` | resolution; 400 on input; SHAPES[3] |
+| Confirmed with no phone sent, the page's default unchanged and the control never touched (by id, pilot, real-board adapter, a different library id) | `::test_the_application_goes_through_with_the_phone_empty_and_the_control_untouched`, `::test_a_library_id_that_differs_from_the_captured_one_is_the_same_structure`, `::test_on_a_real_board_the_rule_applies` | receiver ledger: no `phone`; default value; the page's own `fx_companion_touched` = 0 |
+| Required or holding a number on the live page → stopped before any disclosure; filled after the upload → stopped before the send; changed after approval → stopped before any disclosure; a rehearsal stops before sending | `::test_required_or_holding_a_number_on_the_live_page_it_stops_before_anything_is_entered`, `::test_a_number_the_page_puts_in_after_the_upload_stops_it_before_submitting`, `::test_a_page_that_changed_after_approval_stops_before_anything_is_entered`, `::test_a_rehearsal_stops_before_submitting` | receiver ledger: no disclosure / upload only / no acceptance; sabotage (live state ignored) turns the prefilled case into a stop after disclosure |
+| An approval recorded before the extraction bump (v3) is retired and must be given again | `::test_an_approval_from_before_the_extraction_bump_is_retired_never_renewed` | approval rows; no disclosure |
+| The review shows "Phone omitted: this optional phone/country control is not supported for automatic filling.", never as the owner's choice; the profile is unchanged | `::test_the_phone_is_left_blank_whatever_the_profile_holds`, `::test_the_package_leaves_the_phone_blank_and_needs_nothing_more`, `test_section_free_route.py` | package rows; profile |
+| The section-free route with D129 (pilot path): capture, locked identity, phone omitted, approved answers and résumé, readback, rehearsal stop, separately approved single submission; a late control and a cancellation on the same form | `test_section_free_route.py` | receiver ledger: no disclosure at capture; upload of the approved bytes only in the rehearsal, no acceptance; one acceptance (locked email, no phone, picker default, touch counter 0); none after a late control or a cancellation |
+
 ## Locale exception, the non-GET stop, hidden search inputs, the handoff (D111, 2026-11-01; local only)
 
 Nothing here ran against a real page. Fixtures are built from run #11's single observation or are
