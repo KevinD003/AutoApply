@@ -24,7 +24,7 @@ enters what resolution already established, and reads it back.
 import re
 from dataclasses import dataclass
 
-from app.modules.preparation.structured_sections import SectionResult
+from app.modules.preparation.structured_sections import FieldResult, RowResult, SectionResult
 
 
 class Refused(Exception):
@@ -154,6 +154,62 @@ def plan_section(section: SectionResult) -> SectionPlan:
             )
         )
     return SectionPlan(kind=section.kind, rows=tuple(rows))
+
+
+# -- package <-> plan bridge -----------------------------------------------------------------
+#
+# A resolved section is frozen into the package content (what the owner approves and the hash
+# covers), then rebuilt at execution time and turned into a plan. Only the resolved values, the
+# record order and the section's own DOM root travel in the package -- never the owner's source
+# records. build_content emits `section_to_content`; the adapter fills from `plan_content_section`.
+
+
+def section_to_content(section: SectionResult, *, root: str) -> dict:
+    """Freeze a *ready* section into the package shape. An unready or unsupported section is a
+    checkpoint and is never written into a package version (raise ``Refused``), so approval can
+    never bind to a section with an unresolved field."""
+    if not section.supported:
+        raise Refused(section.reason or f"{section.kind} section is not supported")
+    if not section.ready():
+        raise Refused(f"{section.kind} section has unresolved fields; it stays a checkpoint")
+    return {
+        "kind": section.kind,
+        "root": root,
+        "rows": [
+            {
+                "record_id": row.record_id,
+                "fields": {
+                    name: {"status": fr.status, "value": fr.value, "display": fr.display}
+                    for name, fr in row.fields.items()
+                },
+            }
+            for row in section.rows
+        ],
+    }
+
+
+def section_from_content(data: dict) -> SectionResult:
+    """Rebuild a ``SectionResult`` from the frozen package shape (the inverse of
+    ``section_to_content``). Only status/value/display are carried; nothing is re-resolved, so the
+    plan reflects exactly what was approved, not current data."""
+    kind = data["kind"]
+    rows = [
+        RowResult(
+            r["record_id"],
+            kind,
+            {
+                name: FieldResult(name, f["status"], value=f.get("value"), display=f.get("display"))
+                for name, f in r["fields"].items()
+            },
+        )
+        for r in data.get("rows", [])
+    ]
+    return SectionResult(kind, rows)
+
+
+def plan_content_section(data: dict) -> SectionPlan:
+    """Plan directly from a package content section (rebuild then plan)."""
+    return plan_section(section_from_content(data))
 
 
 # -- browser executor ------------------------------------------------------------------------

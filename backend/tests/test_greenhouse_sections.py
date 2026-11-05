@@ -10,7 +10,12 @@ from datetime import date
 
 import pytest
 
-from app.modules.execution.adapters.greenhouse_sections import Refused, plan_section
+from app.modules.execution.adapters.greenhouse_sections import (
+    Refused,
+    plan_content_section,
+    plan_section,
+    section_to_content,
+)
 from app.modules.preparation.structured_sections import (
     FieldResult,
     RowResult,
@@ -148,3 +153,20 @@ def test_resolution_to_plan_bridge_for_employment():
     assert ops["#title-0"].value == "Software Engineer"
     assert ops["#start-date-month-0"].readback == "January"
     assert ops["#end-date-year-0"].value == "2023"
+
+
+def test_section_round_trips_through_package_content():
+    """to_content -> from_content preserves the plan exactly: what is approved is what is filled."""
+    section = SectionResult("education", [_edu_row("r1"), _edu_row("r2")])
+    data = section_to_content(section, root="#education-section")
+    assert data["kind"] == "education" and data["root"] == "#education-section"
+    assert [r["record_id"] for r in data["rows"]] == ["r1", "r2"]
+    # The plan rebuilt from the frozen package content equals planning the original section.
+    assert plan_content_section(data) == plan_section(section)
+
+
+def test_an_unready_section_is_never_frozen_into_a_package():
+    row = _edu_row("r1")
+    row.fields["discipline_id"] = FieldResult("discipline_id", "needs_user", explanation="choose")
+    with pytest.raises(Refused):
+        section_to_content(SectionResult("education", [row]), root="#education-section")
