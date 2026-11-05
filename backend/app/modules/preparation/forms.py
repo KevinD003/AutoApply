@@ -118,18 +118,46 @@ class FormField(BaseModel):
         return out
 
 
+class SectionOptionSpec(BaseModel):
+    """One ``{id, text}`` option a captured structured section offers (from the Greenhouse
+    education endpoints, or -- on a local stand-in -- read from the rendered option list)."""
+
+    id: str = Field(min_length=1, max_length=200)
+    text: str = Field(min_length=1, max_length=500)
+
+
+class SectionSpec(BaseModel):
+    """D120: a captured structured education/employment section -- its kind, the DOM container the
+    executor scopes 'Add another' to, and (for education) the option lists its comboboxes offer.
+
+    Carried only for a form that actually has such a section, which today is a local stand-in only
+    (the hosted DOM is legacy-evidence-only, unobserved). A form without one has no ``sections``,
+    so no ordinary form's schema, fingerprint or package hash changes.
+    """
+
+    kind: str = Field(pattern="^(education|employment)$")
+    root: str = Field(min_length=1, max_length=200)  # CSS selector of the section container
+    schools: list[SectionOptionSpec] = Field(default_factory=list, max_length=5000)
+    degrees: list[SectionOptionSpec] = Field(default_factory=list, max_length=500)
+    disciplines: list[SectionOptionSpec] = Field(default_factory=list, max_length=5000)
+
+
 class FormSchema(BaseModel):
     title: str | None = Field(default=None, max_length=300)
     # The form's own submission target as written in the page (may be relative).
     action: str | None = Field(default=None, max_length=2048)
     method: str | None = Field(default=None, max_length=10)
     fields: list[FormField] = Field(min_length=1, max_length=300)
+    # D120: stand-in-only structured sections; empty for every ordinary/real form.
+    sections: list[SectionSpec] = Field(default_factory=list, max_length=4)
 
     @model_validator(mode="after")
     def _unique(self):
         keys = [f.key for f in self.fields]
         if len(keys) != len(set(keys)):
             raise ValueError("field keys must be unique")
+        if len({s.kind for s in self.sections}) != len(self.sections):
+            raise ValueError("a section kind may appear at most once")
         return self
 
 
@@ -162,6 +190,13 @@ def field_fingerprint(f: FormField) -> str:
 def form_fingerprint(schema: FormSchema) -> str:
     parts = [f"action={schema.action or ''}", f"method={(schema.method or '').lower()}"]
     parts += [field_fingerprint(f) for f in schema.fields]
+    for s in schema.sections:  # D120: added only when present, so forms without one are unchanged
+        opts = [
+            f"{o.id}={normalize(o.text)}"
+            for group in (s.schools, s.degrees, s.disciplines)
+            for o in group
+        ]
+        parts.append("|".join(["section", s.kind, s.root, *opts]))
     return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
 
