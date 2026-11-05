@@ -314,14 +314,20 @@ def apply_section_plan(
     log. Raises ``SectionFillError`` (a ``Refused``) on any readback mismatch or a planned row that
     will not appear, so nothing is forced onto a form that no longer matches the approval."""
     entered: list[dict] = []
-    for row in plan.rows:
-        if row.add_another_first and not _present(page, row.anchor):
-            _click_add_another(page, section_root, timeout_ms)
-            if not _present(page, row.anchor, wait_ms=timeout_ms):
-                raise SectionFillError(
-                    f"{plan.kind} row {row.row}: {row.anchor} did not appear after Add another"
-                )
-        for op in row.ops:
-            _apply_op(page, op, timeout_ms)
-            entered.append({"row": row.row, "field": op.field})
+    try:
+        for row in plan.rows:
+            if row.add_another_first and not _present(page, row.anchor):
+                _click_add_another(page, section_root, timeout_ms)
+                if not _present(page, row.anchor, wait_ms=timeout_ms):
+                    raise SectionFillError(
+                        f"{plan.kind} row {row.row}: {row.anchor} did not appear after Add another"
+                    )
+            for op in row.ops:
+                _apply_op(page, op, timeout_ms)
+                entered.append({"row": row.row, "field": op.field})
+    except SectionFillError as e:
+        # Preserve what was already entered (disclosed on the form) so a mid-fill stop is never
+        # reported as "nothing disclosed": the caller records these and abandons the attempt.
+        e.entered = entered
+        raise
     return entered

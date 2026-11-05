@@ -29,6 +29,7 @@ from playwright.sync_api import TimeoutError as PWTimeout
 
 from app.core.urlsafety import is_fixture_origin
 from app.modules.execution.adapters import dropdowns
+from app.modules.execution.adapters import greenhouse_sections as gsections
 from app.modules.execution.adapters.fixture_ats import (
     ACK_ERROR,
     ACK_NONE,
@@ -262,6 +263,11 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         answered = {a["key"] for a in self.content["answers"] if a["value"] is not None}
         if any(f.widget in STAND_IN_WIDGETS for f in fields) and not self._stand_in:
             return STAND_IN_ONLY  # D104: before anything is entered
+        if self.content.get("sections") and not self._stand_in:
+            return STAND_IN_ONLY  # D120: the hosted section DOM is unobserved; real pages refuse
+        sections_changed = self._sections_match(page)
+        if sections_changed:
+            return sections_changed
         structured = [f.key for f in fields if f.widget == "location_structured"]
         by_id = {c.id: c for c in controls}
         for f, m in zip(fields, dom.map_fields(fields, controls), strict=True):
@@ -489,7 +495,49 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 raise
             except PWError:
                 continue  # readback reports it
+        self._fill_sections(page, disclosures)
         return disclosures
+
+    def _fill_sections(self, page: Page, disclosures: list) -> None:
+        """D120: fill each frozen structured section (education/employment). Every filled control is
+        a disclosure; a mid-fill stop keeps the disclosures already made and abandons the attempt,
+        so nothing is reported as "nothing disclosed" once data has reached the form."""
+        for sec in self.content.get("sections") or []:
+            try:
+                plan = gsections.plan_content_section(sec)
+                entered = gsections.apply_section_plan(page, plan, sec["root"])
+            except gsections.Refused as e:
+                made = list(disclosures) + [
+                    self._section_disclosure(sec, en) for en in getattr(e, "entered", []) or []
+                ]
+                raise StoppedAfterDisclosure(str(e), made) from e
+            disclosures.extend(self._section_disclosure(sec, en) for en in entered)
+
+    @staticmethod
+    def _section_disclosure(sec: dict, entered: dict) -> dict:
+        # A disclosed section control: its kind, row and field only -- never the applicant's value.
+        return {
+            "kind": "section_field",
+            "section": sec["kind"],
+            "row": entered["row"],
+            "field": entered["field"],
+        }
+
+    def _sections_match(self, page: Page) -> str | None:
+        """D120: before disclosure, re-prove each frozen section is still present: its root and
+        first row's anchor exist (the readback during fill catches any option drift)."""
+        changed = "the form has changed since you approved it (structured section missing)"
+        for sec in self.content.get("sections") or []:
+            try:
+                plan = gsections.plan_content_section(sec)
+            except gsections.Refused:
+                return changed
+            root = sec.get("root") or ""
+            if not root or page.locator(root).count() == 0:
+                return changed
+            if plan.rows and page.locator(plan.rows[0].anchor).count() == 0:
+                return changed
+        return None
 
     def _choose(self, page: Page, a: dict) -> None:
         if a["key"] in self._dd:
