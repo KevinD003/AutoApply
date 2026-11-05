@@ -86,6 +86,22 @@ LOCATION_LABEL = "after the suggestion was chosen, the location shown is not the
 LOCATION_FAILED = "the location search could not be completed"
 LOCATION_MS = 5000  # how long the page's suggestions, or its hidden values, may take
 
+# D129 (owner's real section-free form): a real Greenhouse page pre-fills the applicant's email
+# into a disabled field. NoEfforts never trusts a locked (disabled or read-only) identity field it
+# did not set: before anything is disclosed it reads the live value and refuses unless it is exactly
+# the approved one, and never tries to overwrite a field it cannot edit (that would only time out
+# after disclosure). A matched locked field is trusted and skipped at fill time.
+IDENTITY_FACTS = frozenset(
+    {"contact_email", "full_name", "given_name", "family_name", "preferred_name"}
+)
+IDENTITY_MISMATCH = (
+    "the form is pre-filled with different applicant details than the ones you approved; NoEfforts "
+    "does not submit an application under a different account"
+)
+IDENTITY_UNREADABLE = (
+    "the form locks a required identity field whose value could not be read to confirm it is yours"
+)
+
 # D116: real-page mechanics rebuilt from the legacy bot's notes (legacy apply.py, ~700 real
 # applications by its author; never observed by NoEfforts itself, so each is a fail-closed
 # recognition, never a guess). The emailed security code: one box per character (or a single
@@ -234,6 +250,9 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         self._stand_in = stand_ins(self.content)
         self._loc: dict[str, dict] = {}
         self._filled = False
+        # D129: keys of locked identity fields the page pre-filled with the approved value, verified
+        # before disclosure and therefore never overwritten at fill time.
+        self._trusted_prefill: set[str] = set()
 
     # -- inspect ----------------------------------------------------------------------------
     def extract(self, page: Page):
@@ -373,12 +392,52 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                     page, f.key, structured
                 ):
                     return LOCATION_PREFILLED
+            # D129: a locked identity field the page pre-filled must be exactly the approved one.
+            identity = self._identity_prefill_refusal(page, fields, controls)
+            if identity:
+                return identity
         if page.locator("form").count() != 1:
             return "the form now submits to a different address"  # one application form only
         if self._declared_target(page, html) != self.content["destination"]["submit_url"]:
             return "the form now submits to a different address"
         if self._submit_button(page) is None:
             return "the form's submit button cannot be identified"
+        return None
+
+    def _identity_prefill_refusal(self, page: Page, fields, controls) -> str | None:
+        """D129: before disclosure, a locked (disabled or read-only) identity field the page
+        pre-filled must hold exactly the approved value. A match is trusted and skipped at fill
+        time (never overwritten); a mismatch, or a required identity whose value cannot be read,
+        refuses the attempt -- NoEfforts never applies under a different account. Editable identity
+        fields are left to the ordinary fill + readback path."""
+        by_key = {a["key"]: a for a in self.content["answers"]}
+        for f, m in zip(fields, dom.map_fields(fields, controls), strict=True):
+            if m.status != "mapped":
+                continue
+            a = by_key.get(f.key)
+            if a is None or a["value"] is None or a["type"] not in ("text", "email"):
+                continue
+            if not any(
+                r.get("type") == "profile" and r.get("field") in IDENTITY_FACTS
+                for r in (a.get("fact_refs") or [])
+            ):
+                continue
+            loc = page.locator(f'[id="{m.control.id}"]').first
+            try:
+                if loc.is_editable():
+                    continue  # ordinary editable field; fill + readback handle it
+                shown = (loc.input_value() or "").strip()
+            except PWError:
+                if f.required:
+                    return IDENTITY_UNREADABLE
+                continue
+            if not shown:
+                if f.required:
+                    return IDENTITY_UNREADABLE
+                continue
+            if shown.casefold() != _text(a["value"]).strip().casefold():
+                return IDENTITY_MISMATCH
+            self._trusted_prefill.add(f.key)
         return None
 
     # -- D116: where the form sends, and its button --------------------------------------------
@@ -491,8 +550,10 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             try:
                 if a["type"] == "select":
                     self._choose(page, a)
-                else:
+                elif a["key"] not in self._trusted_prefill:
                     _by_id(page, a["key"]).fill(_text(a["value"]))
+                # else D129: a locked field, pre-filled with the approved identity and verified
+                # before disclosure -- the page will not let it be edited; never overwritten.
             except PWTimeout:
                 raise
             except PWError:
