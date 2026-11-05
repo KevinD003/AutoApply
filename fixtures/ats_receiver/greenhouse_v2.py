@@ -209,6 +209,16 @@ def _hidden_search(phone_html, cfg) -> str:
     return f"{group}{phone_html}{search}</div>{style}"
 
 
+# D129: a real Greenhouse account pre-fills the applicant's email into a DISABLED field. The
+# synthetic candidate's own email is sam.synthetic@example.com (tests); these modes vary the locked
+# prefill so the adapter's identity check can be exercised (match / mismatch / unreadable).
+_EMAIL_LOCKED = {
+    "gh2_email_locked_match": "sam.synthetic@example.com",
+    "gh2_email_locked_mismatch": "someone.else@example.com",
+    "gh2_email_locked_empty": "",
+}
+
+
 def _render(q, mode, cfg=None) -> str:
     f = q["fields"][0]
     qid, t, req = f["name"], f["type"], q["required"]
@@ -307,7 +317,12 @@ def _render(q, mode, cfg=None) -> str:
                 f'aria-expanded="false" aria-controls="{qid}-listbox"{areq}>'
                 f'<ul id="{qid}-listbox" role="listbox" hidden></ul></div>')
     itype = {"email": "email", "phone": "tel"}.get(qid, "text")
-    body = f'{_label(qid, label_text, star)}<input type="{itype}" id="{qid}"{areq}>'
+    if qid == "email" and mode in _EMAIL_LOCKED:  # D129: disabled, pre-filled by the account
+        val = _EMAIL_LOCKED[mode]
+        attr = (f' value="{html.escape(val)}"' if val else "") + " disabled"
+        body = f'{_label(qid, label_text, star)}<input type="email" id="email"{attr}{areq}>'
+    else:
+        body = f'{_label(qid, label_text, star)}<input type="{itype}" id="{qid}"{areq}>'
     if qid == "phone" and mode == "gh2_phone_country":
         if (cfg or {}).get("pc") == "outside":  # beside the group, not in it: not recognised
             return (f'<div class="field" role="group" aria-labelledby="{qid}-label">{body}</div>'

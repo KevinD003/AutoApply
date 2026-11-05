@@ -4166,3 +4166,46 @@ a refresh token are each refused with nothing stored; non-owner and flow-off are
 then reconnect; a revoked token → reconnect-required; and the web token is what the reader reads.
 `frontend/e2e/connections.spec.ts` covers the card's states. The forbidden-capabilities,
 audit-inventory and export-completeness guards are updated and pass.
+
+## D129 — Section-free Greenhouse path: prefilled-identity verification; phone-country + upload + answers reuse (2026-11-05)
+
+- **Context.** The owner shared one real Greenhouse apply form (section-free: no Education/Employment
+  section). Priority shifted to making that common path operational, reusing existing machinery, not
+  rebuilding. An audit mapped what already exists against the path's needs.
+- **Already built (verified, reused unchanged).**
+  - **Document upload (D116).** `_attach` binds the sha256-verified approved bytes; the independent
+    receiver records the content digest (byte-identity assertable); the ack is checked; no retry
+    after disclosure + generation fencing prevent a duplicate upload. No new code.
+  - **Answers + profile links.** A link question (LinkedIn `question_<digits>`) resolves from the
+    profile's host-matched link (`_link_kind`: linkedin.com `/in|/pub` → "linkedin"), exactly one or
+    a checkpoint — from the profile, not restricted to the answer bank.
+  - **Self-identification (D122).** Standing consent fills only an exact option match of the owner's
+    own stated labels; it never overrides a per-application choice and never replaces a
+    per-application disclosure consent for other sensitive questions.
+  - **Phone-country (D104).** Exact calling-code match → fill + readback; a shared `+1` → checkpoint;
+    no code → checkpoint, never from residence; stand-in only.
+- **New: prefilled-identity verification.** A real Greenhouse page pre-fills the applicant's email
+  into a **disabled** field. Before D129 the adapter neither read nor compared it, and `fill()` would
+  time out on it (an abandoned attempt after disclosure). Now, mirroring the location-prefill guard,
+  `GreenhouseDomAdapter._identity_prefill_refusal` runs **before disclosure**: for a mapped identity
+  answer (fact_ref `contact_email`/names) whose live control is locked (disabled or read-only), it
+  reads the live value and (a) trusts + skips it when it equals the approved value (never overwritten),
+  (b) refuses (`IDENTITY_MISMATCH`) when it differs — NoEfforts never applies under a different
+  account, (c) refuses (`IDENTITY_UNREADABLE`) when a required locked identity is empty/unreadable.
+  `fill()` skips a trusted locked field. The only new DOM read is of a locked field's own value at
+  execution time; nothing prefilled is written into package content or git. Tests (receiver oracle):
+  `test_greenhouse_controls.py::test_a_locked_prefilled_email_that_matches_is_trusted_and_submits`
+  (match → confirmed, résumé byte-identical in the ledger, readback clean, email never disclosed),
+  `..._that_differs_refuses_before_disclosure`, `..._locked_required_identity_that_cannot_be_read`.
+  Fixture: `gh2_email_locked_{match,mismatch,empty}` (synthetic email only).
+- **D129 alone does not make that posting applicable (assessed 2026-11-05).** The fragment's
+  phone-country picker is a react-select whose input id is library-generated (`react-select-N-input`;
+  whether it is stable across loads is unobserved) and whose options render only when opened. On a
+  real page the D104 phone-country rule does not apply, and capture's `hidden` (type=hidden, the
+  `hidden` attribute, aria-hidden) does not cover its inline `opacity:0`, so if captured it is a
+  visible control no job-data field names: E3 records it as a required unsupported field and the
+  package cannot be approved (if it appears only on the live page, the pre-disclosure check stops
+  the attempt). Consent does not change that. Unanswered optional job-data dropdowns (e.g.
+  self-identification when it is off) are still mapped and opened for verification before
+  disclosure. The blocker table, and the read-only mapping observation that is the next justified
+  step (no rehearsal, no renewal requested), are in `docs/greenhouse-section-free-handoff.md`.
