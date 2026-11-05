@@ -42,8 +42,8 @@ from app.modules.preparation.forms import (
 # fills them. This version rides in `policy.ADAPTER_VERSIONS` for greenhouse_dom and greenhouse_live
 # (the adapter_version `check_binding` enforces), but is NOT part of the hashed package content, so
 # no content hash changes -- only existing greenhouse_dom/greenhouse_live approvals must be approved
-# again. Bumping it makes adapter_version distinguish a section-aware build from a section-blind one,
-# so a section-bearing approval can never be claimed by an old worker that would silently skip the
+# again. Bumping it makes adapter_version tell a section-aware build from a section-blind one, so a
+# section-bearing approval can never be claimed by an old worker that would silently skip the
 # section: `check_binding` raises BindingChanged on the version mismatch.
 EXTRACTION_VERSION = "greenhouse-dom-v4"
 UNKNOWN_TRIGGER = "unknown-trigger"  # Condition.key for "shown by page logic we cannot see"

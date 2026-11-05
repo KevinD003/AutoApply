@@ -118,10 +118,10 @@ def test_submission_sends_once(api, receiver):
 def test_a_section_package_cannot_reach_a_section_blind_worker(api, receiver, monkeypatch):
     # D120 compatibility: a section-bearing package is approved at the current, section-aware
     # adapter version (greenhouse-dom-v4). An OLD worker whose greenhouse_dom predates D120 computes
-    # the pre-section version (greenhouse-dom-v3); the binding fence (check_binding) then refuses the
-    # attempt before anything is entered -- so a section package can never be claimed by a worker
-    # that would fill the ordinary fields and silently skip the section. This is why SCHEMA_VERSION
-    # can stay 3: worker compatibility is carried by adapter_version, not the content hash.
+    # the pre-section version (greenhouse-dom-v3); the binding fence (check_binding) then refuses
+    # the attempt before anything is entered -- so a section package can never be claimed by a
+    # worker that would fill the ordinary fields and silently skip the section. This is why
+    # SCHEMA_VERSION can stay 3: worker compatibility is carried by adapter_version, not the hash.
     app_id = sections_application(api)
     aid = queue(api, app_id)  # queued fine at the matching (current) version
     monkeypatch.setitem(
