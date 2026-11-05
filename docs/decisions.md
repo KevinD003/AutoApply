@@ -4258,8 +4258,9 @@ audit-inventory and export-completeness guards are updated and pass.
   - **Rule (capture, `greenhouse_dom.phone_companion`):** the job data asks exactly one phone, as
     **optional**; its control is unique, visible, unrequired (no attribute, no "*" on its own label
     or the group's name, no `aria-required` on the group), in a group the page names exactly as the
-    question; apart from the phone and any D111 hidden search box, that group holds exactly one
-    control: a unique combobox input in the form, not hidden, unrequired, with no "*" on its label.
+    question; apart from the phone, hidden controls (never questions, as everywhere in E3) and any
+    D111 hidden search box, that group holds exactly one control: a unique combobox input in the
+    form, not hidden, unrequired, with no "*" on its label.
     What it asks is never read for meaning. Then the phone becomes `phone_left_blank` and that
     control `phone_companion` (unsupported, not required).
   - **Resolution:** the phone is `blank_optional` whatever the profile holds; nothing can be typed

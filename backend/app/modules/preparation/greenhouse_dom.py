@@ -544,9 +544,10 @@ def phone_companion(fields: list[FormField], controls: list[Control]) -> Control
     - its control is the only one with that id, not hidden, with no required attribute and no
       "*" on its own label or its group's name, in a group the page names exactly as the
       question and does not mark required;
-    - apart from the phone, that group holds exactly one control without the D111 hidden-search
-      shape: an input with the combobox role, in the form, not hidden, the only control with its
-      id, with no required attribute and no "*" on its label.
+    - apart from the phone, that group holds exactly one control that is neither hidden (hidden
+      controls are never questions, as in `unlisted_controls`) nor of the D111 hidden-search
+      shape: an input with the combobox role, in the form, the only control with its id, with no
+      required attribute and no "*" on its label.
     What that control asks is never inferred (its label is not read for meaning): it belongs to
     the phone question by the page's own grouping, and only a number in the phone would make it
     matter -- which NoEfforts then never enters."""
@@ -567,7 +568,7 @@ def phone_companion(fields: list[FormField], controls: list[Control]) -> Control
         or _norm(p.group_name) != _norm(tel[0].label)
     ):
         return None
-    others = [c for c in controls if c.group_key == p.group_key and c is not p
+    others = [c for c in controls if c.group_key == p.group_key and c is not p and not c.hidden
               and not hidden_search_shape(fields, controls, c)]  # fmt: skip
     if len(others) != 1:
         return None

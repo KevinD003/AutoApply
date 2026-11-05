@@ -137,6 +137,10 @@ COMBO = '<span id="l">Country</span><input id="c" role="combobox" aria-labelledb
         ("Phone", COMBO.replace('role="combobox"', 'role="combobox" hidden'), TEL, False),
         ("Phone", COMBO + COMBO, TEL, False),  # two of them (and the same id twice)
         ("Phone", "", TEL, False),  # nothing beside the phone
+        # A hidden input (a page-managed value) is never a question, as everywhere in E3 ...
+        ("Phone", COMBO + '<input type="hidden" id="h">', TEL, True),
+        # ... but any other visible control in the group is, so nothing is recognised.
+        ("Phone", COMBO + '<input type="text" id="t">', TEL, False),
     ],
 )  # fmt: skip
 def test_every_property_of_the_structure_is_needed(group, other, field, found):
