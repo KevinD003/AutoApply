@@ -365,3 +365,15 @@ def test_an_approval_from_before_the_extraction_bump_is_retired_never_renewed(
     assert reapprove(api, app_id).status_code == 200
     assert approval_of(app_id).adapter_version == policy.ADAPTER_VERSIONS[adapter_name]
     assert receiver.ledger()["disclosures"] == []
+
+
+def test_one_extraction_version_never_names_two_behaviours():
+    """Tripwire for integration. v4 is D130 (the phone's second control) WITHOUT D120's sections;
+    the unmerged D120 branch also moved v3 to v4. Both edit the same line identically, so git
+    merges them silently and every pinned "-v4" test still passes -- while a v4 worker without
+    sections could then claim a section-bearing package. On any revision that has both, the
+    version must be one neither branch used (v5)."""
+    if hasattr(dom, "detect_sections"):  # D120's capture is present
+        assert dom.EXTRACTION_VERSION not in ("greenhouse-dom-v3", "greenhouse-dom-v4")
+    else:
+        assert dom.EXTRACTION_VERSION == "greenhouse-dom-v4"

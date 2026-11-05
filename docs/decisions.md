@@ -4292,7 +4292,10 @@ audit-inventory and export-completeness guards are updated and pass.
   (test included), and a worker built before D130 can never claim such a package. `SCHEMA_VERSION`
   stays 3: only a form with these controls carries `.answers[].widget`, as for D104/D111. D120
   (unmerged) also moves v3 to v4: whichever reaches `main` second takes a version `main` never
-  carried (v5) and updates its pinned tests.
+  carried (v5) and updates its pinned tests. A trial merge (discarded) showed git merges the two
+  identical v4 lines silently and every pinned "-v4" test still passes, so
+  `test_one_extraction_version_never_names_two_behaviours` fails on any revision that has D120's
+  section capture and still says v3 or v4.
 - **Not changed:** D104's stand-in picker (a recognised stand-in still takes precedence); no new
   host, request or interaction; nothing is selected on any real page.
 - **Residual, stated:** whether the real page submits the untouched picker's default with an empty
