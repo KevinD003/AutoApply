@@ -4209,3 +4209,101 @@ audit-inventory and export-completeness guards are updated and pass.
   self-identification when it is off) are still mapped and opened for verification before
   disclosure. The blocker table, and the read-only mapping observation that is the next justified
   step (no rehearsal, no renewal requested), are in `docs/greenhouse-section-free-handoff.md`.
+
+## D130 — Phone picker: what is known and unknown; an optional phone is left blank beside a control NoEfforts cannot set (2026-11-05)
+
+- **Why:** the owner, on 2026-11-05: focus on phone-country capture and execution; identify exactly
+  what is unknown; prepare the smallest evidence collection that can answer it (the existing local
+  inspection if it can, otherwise the minimal markup, privately); resolve the optional phone
+  deliberately, with tests, without hiding required controls. No rehearsal, no submission, no
+  renewal request.
+- **Established from the owner-supplied fragment (one real form; structure only, no values kept):**
+  - the picker is a react-select control; at load it already shows a value (the page's default):
+    an intl-tel-input flag whose accessible text names a country, and the calling code in a
+    **separate** element;
+  - its focusable element is `input.select__input`, `role=combobox`, id `react-select-<N>-input`
+    (library-generated), named through `aria-labelledby` to a React `useId` label, `aria-expanded`
+    false, `aria-haspopup`, **no `aria-controls`** (no option list in the page at load), **no
+    `aria-required`**, inline `opacity: 0` behind the visible control; a "Toggle flyout" button;
+  - the phone is `input#phone`, `type=tel`, `aria-required="false"`, with intl-tel-input's class
+    and data attribute (added by the page's script).
+- **Established elsewhere (read-only run #11, another posting):** such a combobox (`u1`) sat inside
+  the group the page names as the phone question; it carried `aria-required` and a label marker
+  there; once opened it listed 244 options. Nothing recorded its label or option wording.
+- **The legacy bot:** it typed the profile's phone into `#phone` and never chose a country; its only
+  "country" handling answers any label containing "country" from one profile value. That would set
+  the phone's country from residence, which NoEfforts never infers: not ported.
+- **Unknown, precisely:**
+  1. the visible label (the `aria-labelledby` target is not in the fragment);
+  2. the association on this posting (the fragment does not include the picker's and the phone's
+     common ancestor or its name);
+  3. the options: count, and whether each states a country and its code (the shown value splits
+     them across two elements; D104's stand-in rule expects "Name (+code)" in one text);
+  4. stable identification: whether the library id and the label's `useId` are the same on every
+     load;
+  5. selection and readback: what a choice changes (the shown value, any hidden input, the phone's
+     own formatting) and how to read it back. No tool has ever selected on a real page.
+- **The existing inspection, stated narrowly.** `scripts/greenhouse-readonly-check.sh` passes its
+  arguments to the CLI, so `--inspect-widgets`, `--inspect-widgets-locales` and `--inspect-dropdowns`
+  run on the owner's machine without GitHub Actions (the workflow only supplies the posting secret
+  and calls the same script). By design it prints only the privacy-guarded summary and destroys raw
+  data with the stack. For the picker it can report structure (in a group with a job-data control
+  or not, labelled or not, id shape, required signals) and, when opened, whether a list appeared and
+  how many options. It cannot report the label, the option texts or their format, and it never
+  selects. So it cannot answer 1, 3 or 5; a private-output mode would be a new inspection system
+  and is not built. `--observe --mapping` makes one page load and reads the DOM: it may identify
+  controls and mapping gaps; it opens nothing, so it neither shows options nor proves dropdown
+  interaction or upload acknowledgement.
+- **Decided: an optional phone is left blank beside a second control NoEfforts cannot set.**
+  - **Rule (capture, `greenhouse_dom.phone_companion`):** the job data asks exactly one phone, as
+    **optional**; its control is unique, visible, unrequired (no attribute, no "*" on its own label
+    or the group's name, no `aria-required` on the group), in a group the page names exactly as the
+    question; apart from the phone and any D111 hidden search box, that group holds exactly one
+    control: a unique combobox input in the form, not hidden, unrequired, with no "*" on its label.
+    What it asks is never read for meaning. Then the phone becomes `phone_left_blank` and that
+    control `phone_companion` (unsupported, not required).
+  - **Resolution:** the phone is `blank_optional` whatever the profile holds; nothing can be typed
+    in its place; the review explains why and that including the phone means applying on the
+    employer's site. Neither is bankable or draftable.
+  - **Execution:** before anything is entered and again before submitting, the live page must show
+    the same structure (re-proven by structure; the library id may differ between loads), require
+    neither control by any signal, and hold no number in the phone; otherwise the attempt stops
+    (`PHONE_COMPANION_CHANGED`). Neither is ever touched. A number the page puts in after the résumé
+    upload fails the readback before the send gate.
+  - **The four cases kept apart:** a visually hidden input backing a visible widget is a control
+    (opacity never makes anything hidden; `snapshot` is unchanged); a truly inactive control is
+    D111's hidden search box (hidden, unrequired, empty, re-proven live); a required control —
+    by attribute, ARIA, its own or its group's marker — stays a blocking checkpoint; only the
+    optional, intentionally unanswered phone question is omitted, with its second control.
+  - **Still blocking:** a required phone (job data or page), a second control the page requires, two
+    such controls, one outside the phone's group, or a page that differs on the live check.
+- **Tests:** `tests/test_phone_companion.py` — capture per fixture variant (real page and stand-in),
+  each structural property, the live-state predicate, resolver and route (no input accepted,
+  package shape unchanged), and receiver-ledger runs by id and through the pilot: confirmed with
+  no phone sent, the page's default unchanged and the page's own touch counter at 0; a rehearsal
+  stops before sending; live-required or page-prefilled → stopped before any disclosure; filled
+  after the upload → stopped before sending; changed after approval → stopped before any
+  disclosure; a different library id → same structure; real-board adapter. Fixture:
+  `gh2_phone_companion` (cfg `pcm`), labelled FIXTURE ASSUMPTIONS. A mutation check (live state
+  ignored) turns the page-prefilled case into a stop *after* disclosure, so the live read is what
+  stops it before.
+- **Compatibility:** `EXTRACTION_VERSION` becomes `greenhouse-dom-v4`, carried by `adapter_version`
+  (`check_binding`), so an approval recorded at v3 is retired and re-approved explicitly
+  (test included), and a worker built before D130 can never claim such a package. `SCHEMA_VERSION`
+  stays 3: only a form with these controls carries `.answers[].widget`, as for D104/D111. D120
+  (unmerged) also moves v3 to v4: whichever reaches `main` second takes a version `main` never
+  carried (v5) and updates its pinned tests.
+- **Not changed:** D104's stand-in picker (a recognised stand-in still takes precedence); no new
+  host, request or interaction; nothing is selected on any real page.
+- **Residual, stated:** whether the real page submits the untouched picker's default with an empty
+  phone is unobserved (it is the page's default, not an answer NoEfforts gives); whether the
+  owner's posting meets the structure is decided by its capture, fail-closed.
+- **Including a phone later** needs unknowns 1–4 from the owner's own browser (the markup read in
+  `docs/greenhouse-section-free-handoff.md`, tested on the synthetic fixtures only; not requested
+  now) and then 5, which only a disclosure-only rehearsal's readback can show once a reviewed rule
+  exists.
+- **D129's "next step" corrected:** D129 named a read-only `--observe --mapping` run. It cannot
+  show the picker's label or options and would mostly rediscover a known blocker. The next step is
+  integration (D129, then D130); then this posting's capture on the owner's machine settles, with
+  the actual rules, whether it meets the structure and maps. No owner action is needed now, and no
+  renewal is requested.

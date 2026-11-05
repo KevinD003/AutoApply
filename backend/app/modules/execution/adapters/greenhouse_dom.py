@@ -283,7 +283,22 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             return STAND_IN_ONLY  # D104: before anything is entered
         structured = [f.key for f in fields if f.widget == "location_structured"]
         by_id = {c.id: c for c in controls}
+        # D130: the optional phone's second control, re-proven on the live page by structure
+        # (its id is the page library's own and may differ from the captured one; what it is
+        # for never matters, because the phone stays empty and it is never touched).
+        companion = (
+            self._phone_companion_live(page, fields, controls)
+            if any(f.widget == "phone_companion" for f in fields)
+            else None
+        )
         for f, m in zip(fields, dom.map_fields(fields, controls), strict=True):
+            if f.widget == "phone_companion":
+                if companion is None:
+                    changed.append(dom.PHONE_COMPANION_CHANGED)
+                continue
+            if f.widget == "phone_left_blank" and f.key in answered:
+                changed.append(dom.PHONE_COMPANION_CHANGED)  # never approved with a number
+                continue
             if f.widget == "hidden_search":
                 # D111: re-proven on the live page, before anything is entered and again
                 # after filling (the runner's recheck): still that shape, hidden, unrequired
@@ -340,7 +355,9 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         new = sorted(
             c.id
             for c in dom.unlisted_controls(fields, controls)
-            if c.id not in codes and not self._hidden_search_ok(page, fields, controls, c)
+            if c.id not in codes
+            and not self._hidden_search_ok(page, fields, controls, c)
+            and not (companion is not None and c.id == companion.id)  # D130, re-proven above
         )
         if not (changed or new) and not self._dd_checked:
             # Only once, before the disclosure gate: open, read, close; nothing is selected.
@@ -510,6 +527,27 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         except PWError:
             return False
         return dom.hidden_search_ok(state)
+
+    @staticmethod
+    def _phone_companion_live(page: Page, fields, controls):
+        """D130: the live page's control for the approved `phone_companion`, or None. The same
+        markup rule as at capture (`dom.phone_companion`), and the live page requires neither it
+        nor the phone and holds no number in the phone. The approved phone must still be the
+        one left blank."""
+        if not any(f.widget == "phone_left_blank" for f in fields):
+            return None
+        c = dom.phone_companion(fields, controls)
+        if c is None or not _SAFE_ID.match(c.id):
+            return None
+        tel = next(f for f in fields if f.type == FieldType.tel)
+        phone = tel.key.removesuffix("[]")
+        if not _SAFE_ID.match(phone):
+            return None
+        try:
+            state = page.evaluate(dom.PHONE_COMPANION_STATE_JS, [c.id, phone])
+        except PWError:
+            return None
+        return c if dom.phone_companion_ok(state) else None
 
     # -- fill -------------------------------------------------------------------------------
     def fill(self, page: Page) -> list[dict]:
