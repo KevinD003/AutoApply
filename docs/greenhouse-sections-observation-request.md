@@ -37,6 +37,29 @@ applicant data, employer identity, or posting URL in git:
    documented Job Board education endpoints (`{id,text}`) or are rendered inline, and the exact
    option **text** for a couple of known degrees (to confirm the exact-match resolver will match).
 
+## Refinement from a real (section-free) Greenhouse form (owner-provided, 2026-11-05)
+
+The owner shared the rendered DOM of one real Greenhouse hosted apply form. It carried the ordinary
+controls — name, a disabled pre-filled email, a phone-country picker, phone, résumé/cover-letter
+attach (Attach / Google Drive / Enter manually), one custom `question_<digits>` free-text field, a
+block of EEO/demographic selects, and "Submit application" — but **no** Education or Employment
+structured section. So it does **not** lift this gate; it does, however, sharpen the request:
+
+- The modern form renders its comboboxes (phone country, the EEO selects) as **react-select**
+  widgets: a `div.select__control` container, a type-ahead `input` whose id is an unstable
+  mount-order id (`react-select-N-input`) with its label via `aria-labelledby` (a React `useId`),
+  and the chosen value shown in a `div.select__single-value` sibling — **not** a native `<select>`
+  and **not** a stable, content-derived id.
+- Therefore the single most decisive thing the Education observation must settle is **which markup
+  the school/degree/discipline controls use**: the legacy plain `<input id="school--0">` that the
+  bot recorded, or a react-select widget like the rest of the modern form. That choice decides the
+  executor path — the existing `_select_combobox` already drives a react-select by its
+  `aria-controls` listbox (and `execution.adapters.dropdowns` already reads `select__single-value`),
+  whereas a plain input uses the text path. Record the container/widget type for one such control
+  alongside the row-0 ids above.
+
+This refinement changes no code and lifts no gate; it only makes the read-only request more precise.
+
 ## Scope and constraints (what to authorize)
 
 - **Read-only.** Open the posting and inspect the DOM. **No** field is filled, **no** document is

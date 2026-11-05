@@ -167,6 +167,36 @@ def test_a_value_with_no_matching_option_refuses_rather_than_near_matches(sectio
         apply_section_plan(section_page, plan_section(section), "#education-section")
 
 
+def test_a_mid_fill_failure_preserves_what_was_already_disclosed(section_page):
+    # Row 0 is valid; row 1's school has no matching option. Row 0 fills (is disclosed on the form),
+    # then row 1 stops -- the error must carry what was already entered, so the attempt is never
+    # logged as "nothing disclosed" once applicant data has reached the page.
+    section_page.set_content(_html())
+    section = SectionResult(
+        "education",
+        [
+            _edu_row(
+                "r1",
+                "State University",
+                "Bachelor's Degree",
+                "Computer Science",
+                (5, 2018),
+                (5, 2022),
+            ),
+            _edu_row(
+                "r2", "Nonexistent College", "Master's Degree", "Mathematics", (9, 2022), (6, 2024)
+            ),
+        ],
+    )
+    with pytest.raises(Refused) as ei:
+        apply_section_plan(section_page, plan_section(section), "#education-section")
+    entered = getattr(ei.value, "entered", None)
+    assert entered, "a mid-fill stop must preserve the disclosures already made"
+    # Row 1 failed at its first control (school), so only row 0's controls were disclosed.
+    assert {e["row"] for e in entered} == {0}
+    assert section_page.locator("#school--0").input_value() == "State University"
+
+
 def test_a_planned_row_that_never_appears_refuses(section_page):
     section_page.set_content(_html(broken_add=True))  # "Add another" does nothing
     section = SectionResult(

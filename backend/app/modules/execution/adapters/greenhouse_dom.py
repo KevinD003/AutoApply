@@ -507,7 +507,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         for sec in self.content.get("sections") or []:
             try:
                 plan = gsections.plan_content_section(sec)
-                entered = gsections.apply_section_plan(page, plan, sec["root"])
+                entered = gsections.apply_section_plan(page, plan, gsections.section_root(sec))
             except gsections.Refused as e:
                 made = list(disclosures) + [
                     self._section_disclosure(sec, en) for en in getattr(e, "entered", []) or []
@@ -543,10 +543,10 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         for sec in self.content.get("sections") or []:
             try:
                 plan = gsections.plan_content_section(sec)
+                root = gsections.section_root(sec)
             except gsections.Refused:
                 return changed
-            root = sec.get("root") or ""
-            if not root or page.locator(root).count() == 0:
+            if page.locator(root).count() == 0:
                 return changed
             if plan.rows and page.locator(plan.rows[0].anchor).count() == 0:
                 return changed

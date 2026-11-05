@@ -66,6 +66,21 @@ _EMPLOYMENT_FIELDS = (
 _ANCHOR = {"education": "school--{i}", "employment": "company-name-{i}"}
 _SPEC = {"education": _EDUCATION_FIELDS, "employment": _EMPLOYMENT_FIELDS}
 
+# The only field names each section kind may carry. Anything else in frozen content is unknown and
+# is refused rather than silently dropped -- we never trust a field we did not freeze.
+_FIELD_NAMES = {kind: frozenset(f[0] for f in spec) for kind, spec in _SPEC.items()}
+
+# A frozen section's DOM root is used live as a Playwright locator (the "Add another" click is
+# scoped to it), so it must be the plain "#id" selector capture emits (#education-section /
+# #employment-section) -- never an arbitrary CSS or XPath carried through package content.
+_ROOT_RE = re.compile(r"^#[A-Za-z][\w-]*$")
+
+
+def _valid_root(root: object) -> str:
+    if not (isinstance(root, str) and _ROOT_RE.match(root)):
+        raise Refused(f"unsafe or missing section root {root!r}")
+    return root
+
 
 @dataclass(frozen=True)
 class FillOp:
@@ -105,12 +120,21 @@ def _sel(template: str, i: int) -> str:
 
 def _ops_for_field(kind: str, template, field: str, fr, row: int) -> list[FillOp]:
     if kind in ("text", "combobox"):
+        if not isinstance(fr.display, str) or not fr.display.strip():
+            raise Refused(f"{field}: resolved value carries no display text")
         return [FillOp(row, field, kind, _sel(template, row), fr.display, fr.display)]
+    val = fr.value if isinstance(fr.value, dict) else None
     if kind == "checkbox":
-        return [FillOp(row, field, "checkbox", _sel(template, row), bool(fr.value["bool"]), None)]
+        if val is None or not isinstance(val.get("bool"), bool):
+            raise Refused(f"{field}: checkbox value is malformed")
+        return [FillOp(row, field, "checkbox", _sel(template, row), val["bool"], None)]
     if kind == "date":
+        if val is None:
+            raise Refused(f"{field}: date value is malformed")
+        month, year = val.get("month"), val.get("year")  # _month_name validates the month
+        if not isinstance(year, int) or isinstance(year, bool):
+            raise Refused(f"{field}: unusable year value {year!r}")
         month_tpl, year_tpl = template
-        month, year = fr.value["month"], fr.value["year"]
         return [
             FillOp(row, field, "month", _sel(month_tpl, row), month, _month_name(month)),
             FillOp(row, field, "year", _sel(year_tpl, row), str(year), str(year)),
@@ -170,11 +194,13 @@ def section_to_content(section: SectionResult, *, root: str) -> dict:
     never bind to a section with an unresolved field."""
     if not section.supported:
         raise Refused(section.reason or f"{section.kind} section is not supported")
+    if section.kind not in _SPEC:
+        raise Refused(f"unsupported section kind {section.kind!r}")
     if not section.ready():
         raise Refused(f"{section.kind} section has unresolved fields; it stays a checkpoint")
     return {
         "kind": section.kind,
-        "root": root,
+        "root": _valid_root(root),
         "rows": [
             {
                 "record_id": row.record_id,
@@ -188,10 +214,56 @@ def section_to_content(section: SectionResult, *, root: str) -> dict:
     }
 
 
+def section_root(data: object) -> str:
+    """The validated container selector of a frozen section. The executor uses it live (Add-another
+    scoping), so an arbitrary selector carried through package content is refused, never trusted."""
+    if not isinstance(data, dict):
+        raise Refused("section content is not an object")
+    return _valid_root(data.get("root"))
+
+
+def validate_content_section(data: object) -> None:
+    """Reject a frozen section dict that could not have come from our own freeze, before it is
+    rebuilt or planned. Guards the execution path against malformed package content: a non-object,
+    an unknown section kind or field name (we never drive a control we did not freeze), a bad or
+    missing ``#id`` root, a malformed row, or two rows sharing a record identity. Runs on every
+    rebuild, so neither the fill nor the pre-disclosure re-check trusts section content blindly."""
+    if not isinstance(data, dict):
+        raise Refused("section content is not an object")
+    kind = data.get("kind")
+    if kind not in _SPEC:
+        raise Refused(f"unsupported section kind {kind!r}")
+    section_root(data)  # a frozen section always carries its validated #id root
+    rows = data.get("rows", [])
+    if not isinstance(rows, list):
+        raise Refused("section rows are not a list")
+    allowed = _FIELD_NAMES[kind]
+    seen: set[str] = set()
+    for idx, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise Refused(f"section row {idx} is not an object")
+        rid = row.get("record_id")
+        if not (isinstance(rid, str) and rid):
+            raise Refused(f"section row {idx} has no record identity")
+        if rid in seen:
+            raise Refused(f"duplicate section row identity {rid!r}")
+        seen.add(rid)
+        fields = row.get("fields")
+        if not isinstance(fields, dict):
+            raise Refused(f"section row {idx} fields are not an object")
+        for name, f in fields.items():
+            if name not in allowed:
+                raise Refused(f"unsupported {kind} field {name!r}")
+            if not (isinstance(f, dict) and isinstance(f.get("status"), str)):
+                raise Refused(f"malformed section field {name!r}")
+
+
 def section_from_content(data: dict) -> SectionResult:
     """Rebuild a ``SectionResult`` from the frozen package shape (the inverse of
-    ``section_to_content``). Only status/value/display are carried; nothing is re-resolved, so the
-    plan reflects exactly what was approved, not current data."""
+    ``section_to_content``). The content is validated first (``validate_content_section``) so a
+    malformed or tampered section is refused, not driven. Only status/value/display are carried;
+    nothing is re-resolved, so the plan reflects exactly what was approved, not current data."""
+    validate_content_section(data)
     kind = data["kind"]
     rows = [
         RowResult(
