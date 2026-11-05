@@ -13,6 +13,7 @@ is refused; nothing is guessed. Hidden-at-load questions are flagged; this struc
 no trigger, so their condition is recorded as unknown (never filled; a checkpoint if
 required)."""
 
+import html
 import re
 from dataclasses import asdict, dataclass, field
 
@@ -25,6 +26,8 @@ from app.modules.preparation.forms import (
     FormField,
     FormSchema,
     Option,
+    SectionOptionSpec,
+    SectionSpec,
     _Node,
     _TreeBuilder,
 )
@@ -507,6 +510,62 @@ def required_evidence(api_required: bool, signals: dict | None) -> str:
     return "api_required_page_unmarked" if api_required else "page_required_api_optional"
 
 
+_SECTION_OPTION_RE = re.compile(
+    r'<li[^>]*role="option"[^>]*data-value="([^"]+)"[^>]*>(.*?)</li>', re.S
+)
+
+
+def _section_options(page_html: str, control_id: str) -> list[SectionOptionSpec]:
+    m = re.search(rf'<ul id="{re.escape(control_id)}-listbox"[^>]*>(.*?)</ul>', page_html, re.S)
+    if not m:
+        return []
+    out = []
+    for value, text in _SECTION_OPTION_RE.findall(m.group(1)):
+        label = html.unescape(re.sub(r"<[^>]+>", "", text)).strip()
+        if label:
+            out.append(SectionOptionSpec(id=value, text=label))
+    return out
+
+
+def detect_sections(page_html: str) -> list[SectionSpec]:
+    """D120 (stand-ins only): recognise a structured education/employment section rendered in the
+    legacy-evidence shape -- per-row ids ``school--0`` / ``company-name-0`` and option lists as
+    ``<li role=option data-value=ID>``. The real hosted structure is unobserved; this reads the
+    synthetic stand-in's own structure (container ids education-section / employment-section)."""
+    sections: list[SectionSpec] = []
+    if 'id="school--0"' in page_html:
+        sections.append(
+            SectionSpec(
+                kind="education",
+                root="#education-section",
+                schools=_section_options(page_html, "school--0"),
+                degrees=_section_options(page_html, "degree--0"),
+                disciplines=_section_options(page_html, "discipline--0"),
+            )
+        )
+    if 'id="company-name-0"' in page_html:
+        sections.append(SectionSpec(kind="employment", root="#employment-section"))
+    return sections
+
+
+_EDU_CTL_RE = re.compile(
+    r"^(school|degree|discipline|start-month|start-year|end-month|end-year)--\d+$"
+)
+_EMP_CTL_RE = re.compile(
+    r"^(company-name|title|start-date-month|start-date-year|current-role|"
+    r"end-date-month|end-date-year)-\d+$"
+)
+
+
+def _section_control_id(cid: str, kinds: set) -> bool:
+    """True when cid is a per-row control of a detected section, so capture represents it inside the
+    section rather than as an unlisted unsupported question."""
+    return bool(
+        ("education" in kinds and _EDU_CTL_RE.match(cid))
+        or ("employment" in kinds and _EMP_CTL_RE.match(cid))
+    )
+
+
 def build_schema(api: dict, page_html: str, *, stand_ins: bool = False
                  ) -> tuple[FormSchema, list[FieldMapping]]:  # fmt: skip
     """Job-post fields, verified against the page's controls. Raises gh.SchemaMismatch unless
@@ -563,8 +622,13 @@ def build_schema(api: dict, page_html: str, *, stand_ins: bool = False
         at = next(i for i, f in enumerate(fields) if f.type == FieldType.tel)
         fields.insert(at + 1, phone)
         taken.add(phone.key)
-    unlisted = [c for c in unlisted_controls(from_api.fields, controls)
-                if phone is None or c.id != phone.key]  # fmt: skip
+    sections = detect_sections(page_html) if stand_ins else []
+    section_kinds = {s.kind for s in sections}
+    unlisted = [
+        c
+        for c in unlisted_controls(from_api.fields, controls)
+        if (phone is None or c.id != phone.key) and not _section_control_id(c.id, section_kinds)
+    ]
     hidden_search = {c.id for c in hidden_search_candidates(from_api.fields, controls)}
     for n, c in enumerate(unlisted, 1):
         valid = bool(c.id) and re.fullmatch(KEY_PATTERN, c.id) and c.id not in taken
@@ -599,6 +663,7 @@ def build_schema(api: dict, page_html: str, *, stand_ins: bool = False
             action=form.get("data-submit-path") or form.get("action"),
             method="post" if (form.get("data-submit-path") or form.get("action")) else None,
             fields=fields,
+            sections=sections,
         ),
         mappings,
     )

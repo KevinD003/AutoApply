@@ -327,7 +327,9 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         new = sorted(
             c.id
             for c in dom.unlisted_controls(fields, controls)
-            if c.id not in codes and not self._hidden_search_ok(page, fields, controls, c)
+            if c.id not in codes
+            and not self._is_section_control(c.id)  # D120: a frozen section's own row controls
+            and not self._hidden_search_ok(page, fields, controls, c)
         )
         if not (changed or new) and not self._dd_checked:
             # Only once, before the disclosure gate: open, read, close; nothing is selected.
@@ -522,6 +524,17 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             "row": entered["row"],
             "field": entered["field"],
         }
+
+    def _is_section_control(self, cid: str) -> bool:
+        """A control id that belongs to a frozen structured section (so it is not an unlisted new
+        question): the legacy per-row ids, for the kinds this package actually carries."""
+        kinds = {s.get("kind") for s in self.content.get("sections") or []}
+        edu = r"^(school|degree|discipline|start-month|start-year|end-month|end-year)--\d+$"
+        emp = (r"^(company-name|title|start-date-month|start-date-year|current-role|"
+               r"end-date-month|end-date-year)-\d+$")  # fmt: skip
+        if "education" in kinds and re.match(edu, cid):
+            return True
+        return bool("employment" in kinds and re.match(emp, cid))
 
     def _sections_match(self, page: Page) -> str | None:
         """D120: before disclosure, re-prove each frozen section is still present: its root and
