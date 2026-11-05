@@ -66,6 +66,27 @@ and how to read it back.
   requested now) and then 5, which markup cannot show: only a disclosure-only rehearsal's readback
   can, once a reviewed real-page rule exists.
 
+### The existing inspection, run locally (prepared for reference; not proposed)
+
+```
+NOEFFORTS_READONLY_GREENHOUSE_APPROVED="<board>/<job_id>" ./scripts/greenhouse-readonly-check.sh --inspect-dropdowns
+```
+
+- **Runs** on the owner's machine with Docker; the script passes the flag to the CLI, so GitHub
+  Actions is not needed. The posting stays in the owner's shell; the tool refuses any other.
+- **Does** (path C, D109): three GETs to the public Job Board API; one page load in the sandboxed
+  browser; locale files only under its exact rule; for each combobox present at load, within its
+  action limit, one click to open (one container click if that showed no opening) and Escape;
+  nothing typed, selected, uploaded or submitted; it stops at any non-GET request, value change,
+  navigation or challenge.
+- **Would answer for the picker:** whether it sits in a group with a job-data control, its
+  required signals, whether a list opens and how many options it has.
+- **Would not answer:** its label, its options' wording or format, or what a choice changes. Its
+  summary never prints wording, and raw data is destroyed with the stack.
+- **Its own preconditions** (as for runs #10 and #11): the owner's explicit single-use approval for
+  that posting, and a pinned revision on which CI has passed — which cannot exist while Actions
+  does not run. A shell flag is not that approval.
+
 ### The owner-side markup read (prepared; not requested; only if a phone is to be included)
 
 Scope: the owner's own browser, on a posting the owner already has open; **one click to open the
