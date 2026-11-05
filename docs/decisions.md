@@ -4198,10 +4198,14 @@ audit-inventory and export-completeness guards are updated and pass.
   (match → confirmed, résumé byte-identical in the ledger, readback clean, email never disclosed),
   `..._that_differs_refuses_before_disclosure`, `..._locked_required_identity_that_cannot_be_read`.
   Fixture: `gh2_email_locked_{match,mismatch,empty}` (synthetic email only).
-- **Remaining real-page gap (unobserved, not invented).** The real phone-country and EEO controls are
-  react-select with unstable `react-select-N-input` ids and a listbox that renders only on open; the
-  closed-state snapshot does not show their options. Current behaviour fails closed (checkpoint),
-  never a wrong fill. Real enablement stays behind the pilot/admission process and the first
-  rehearsal/submission evidence (`providers/readiness.py`: 1 of 7). The prepared, not executed,
-  handoff is `docs/greenhouse-section-free-handoff.md`; the operational permission (D112) lapses
-  2026-11-06 and is never silently renewed.
+- **D129 alone does not make that posting applicable (assessed 2026-11-05).** The fragment's
+  phone-country picker is a react-select whose input id is library-generated (`react-select-N-input`;
+  whether it is stable across loads is unobserved) and whose options render only when opened. On a
+  real page the D104 phone-country rule does not apply, and capture's `hidden` (type=hidden, the
+  `hidden` attribute, aria-hidden) does not cover its inline `opacity:0`, so if captured it is a
+  visible control no job-data field names: E3 records it as a required unsupported field and the
+  package cannot be approved (if it appears only on the live page, the pre-disclosure check stops
+  the attempt). Consent does not change that. Unanswered optional job-data dropdowns (e.g.
+  self-identification when it is off) are still mapped and opened for verification before
+  disclosure. The blocker table, and the read-only mapping observation that is the next justified
+  step (no rehearsal, no renewal requested), are in `docs/greenhouse-section-free-handoff.md`.
