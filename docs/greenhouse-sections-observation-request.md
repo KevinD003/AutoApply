@@ -39,17 +39,19 @@ applicant data, employer identity, or posting URL in git:
 
 ## Refinement from a real (section-free) Greenhouse form (owner-provided, 2026-11-05)
 
-The owner shared the rendered DOM of one real Greenhouse hosted apply form. It carried the ordinary
-controls — name, a disabled pre-filled email, a phone-country picker, phone, résumé/cover-letter
-attach (Attach / Google Drive / Enter manually), one custom `question_<digits>` free-text field, a
-block of EEO/demographic selects, and "Submit application" — but **no** Education or Employment
-structured section. So it does **not** lift this gate; it does, however, sharpen the request:
+The owner shared a closed-state DOM fragment of one real Greenhouse hosted apply form. It carried
+name inputs, a disabled pre-filled email, a phone-country picker, phone, résumé/cover-letter attach
+(Attach / Google Drive / Enter manually), one custom `question_<digits>` free-text field, five
+other select controls showing a chosen value (what they ask is not in the fragment and is not
+inferred), and "Submit application" — but **no** Education or Employment structured section. So it
+does **not** lift this gate; it does, however, sharpen the request:
 
-- The modern form renders its comboboxes (phone country, the EEO selects) as **react-select**
-  widgets: a `div.select__control` container, a type-ahead `input` whose id is an unstable
-  mount-order id (`react-select-N-input`) with its label via `aria-labelledby` (a React `useId`),
-  and the chosen value shown in a `div.select__single-value` sibling — **not** a native `<select>`
-  and **not** a stable, content-derived id.
+- This form renders its selects as **react-select** widgets: a `div.select__control` container,
+  a type-ahead `input`, and the chosen value shown in a `div.select__single-value` sibling — **not**
+  a native `<select>`. The phone-country picker's input id is library-generated
+  (`react-select-N-input`, labelled through a React `useId`), not derived from a question; whether
+  such ids stay the same across page loads is unobserved, and the other selects' input ids are not
+  in the fragment. One fragment of one form is not evidence about Greenhouse forms in general.
 - Therefore the single most decisive thing the Education observation must settle is **which markup
   the school/degree/discipline controls use**: the legacy plain `<input id="school--0">` that the
   bot recorded, or a react-select widget like the rest of the modern form. That choice decides the
