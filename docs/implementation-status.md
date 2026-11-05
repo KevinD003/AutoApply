@@ -67,7 +67,7 @@ operational permission was used or requested.
 | `test-ports-configured` (from `main`) | `0049b05` | the container-runner tests use the run's configured receiver and canary ports (test-only) | Before (`9a7f390`, ports 8891–8893): the proxy test fails (502); with 8798 occupied the two canary tests fail. After: default ports 18/18; ports 8891–8893 with 8798 and 8799 occupied by idle listeners 18/18 (JUnit). Repo-wide `ruff check .` / `ruff format --check .` clean |
 | `greenhouse-phone-companion` (D130, on D129) | `df752d6` | an optional phone is left blank beside a second control NoEfforts cannot set; extraction v4; version tripwire | `scripts/validate.sh lint format backend` (default test ports, clean tree): lint 0, format 0, backend 0, validator 0 ("validation passed") — JUnit 4671 tests, 4671 passed, 0 failures, 0 errors, 0 skipped, 4127.2 s (D129's 4603 plus D130's 68). E2E: exit 0 — JUnit 165 tests, 162 passed, 0 failures, 0 errors, 3 skipped by design — each a project-conditional skip: the bottom-nav check runs on the mobile project only, the two log-privacy configuration checks on desktop only; 704.6 s (`50f25e0`, code identical to `df752d6`) |
 
-`greenhouse-structured-sections` (D120) stays at `c9e7b8e` as reported (4675/4675). E2E: running at the time of this commit (same command); its result is recorded in the next commit.
+`greenhouse-structured-sections` (D120) stays at `c9e7b8e` as reported (4675/4675). E2E (same command): exit 0 — JUnit 165 tests, 162 passed, 0 failures, 0 errors, 3 skipped (the same three by-design skips); 699.1 s.
 
 **Integration order** (only through the repository's checks, once Actions runs; nothing merged on
 a red or missing CI): D129 → `test-ports-configured` (independent) → D130 (merge `main` first,
