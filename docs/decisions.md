@@ -4306,6 +4306,18 @@ audit-inventory and export-completeness guards are updated and pass.
   `docs/greenhouse-section-free-handoff.md`, tested on the synthetic fixtures only; not requested
   now) and then 5, which only a disclosure-only rehearsal's readback can show once a reviewed rule
   exists.
+- **Review wording and limits (owner, 2026-11-05):** the phone row reads "Phone omitted: this
+  optional phone/country control is not supported for automatic filling." It is never presented
+  as the owner's choice and never stored as a profile preference (it holds for that form only;
+  the profile's phone is unchanged). The exception is not broadened to any other unknown optional
+  control: everything else stays a blocking checkpoint.
+- **The section-free route, end to end on synthetic data** (`tests/test_section_free_route.py`,
+  D129 and D130 together, through the pilot's path): capture → locked-identity verification →
+  phone omitted → approved answers and résumé (the receiver stores the approved bytes) → readback
+  clean → a rehearsal that stops before the send gate → a separately approved submission accepted
+  exactly once, never re-sent. On the same form: a control appearing after approval stops the
+  attempt before anything is entered, and a cancellation before the send gate still wins. It
+  proves the combined code paths on a fixture, not support for any real posting.
 - **D129's "next step" corrected:** D129 named a read-only `--observe --mapping` run. It cannot
   show the picker's label or options and would mostly rediscover a known blocker. The next step is
   integration (D129, then D130); then this posting's capture on the owner's machine settles, with

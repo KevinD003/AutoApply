@@ -24,7 +24,7 @@ from app.modules.execution.adapters import greenhouse_dom as adapter
 from app.modules.preparation import greenhouse_dom as dom
 from app.modules.preparation import package as pk
 from app.modules.preparation.forms import FieldType, FormField
-from app.modules.preparation.resolver import Context, resolve_field
+from app.modules.preparation.resolver import PHONE_OMITTED, Context, resolve_field
 from app.modules.providers.routing import form_checkpoint
 from tests.execution_harness import BASE, ROOT, Receiver, attempt, pilot_on, queue
 from tests.test_approval_binding import approval_of, reapprove, set_approval, try_queue
@@ -175,7 +175,9 @@ def test_the_phone_is_left_blank_whatever_the_profile_holds():
     assert (r.status, r.value, r.source) == ("blank_optional", None, "unresolved")
     assert (r.user_input_allowed, r.bankable, r.draftable) == (False, False, False)
     assert r.fact_refs == [] and "+44" not in r.explanation
+    assert r.explanation.startswith(PHONE_OMITTED)  # the review's exact wording
     assert "apply on the employer's site" in r.explanation
+    assert "you chose" not in r.explanation.lower()  # never presented as the owner's choice
     c = FormField(
         key=KEY,
         label=dom.PHONE_COMPANION_LABEL,
@@ -205,6 +207,7 @@ def test_the_package_leaves_the_phone_blank_and_needs_nothing_more(api, receiver
     rows = {a["key"]: a for a in c["answers"]}
     assert (rows["phone"]["status"], rows["phone"]["value"], rows["phone"]["widget"]) == (
         "blank_optional", None, "phone_left_blank")  # fmt: skip
+    assert rows["phone"]["explanation"].startswith(PHONE_OMITTED)  # what the review shows
     assert (rows[KEY]["status"], rows[KEY]["value"], rows[KEY]["widget"]) == (
         "blank_optional", None, "phone_companion")  # fmt: skip
     assert pk.SCHEMA_VERSION == 3 and paths(c) - SHAPES[3] == {".answers[].widget"}

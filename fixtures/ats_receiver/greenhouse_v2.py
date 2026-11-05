@@ -248,7 +248,8 @@ def _phone_companion(phone_html, cfg) -> str:
     box in the group as well), relabel (another label: what it asks never matters), late_required
     (the page's script requires the combobox after load), prefill (the page's script puts a
     number in the phone at load), autofill (the page puts one in after the resume upload),
-    renumber (the library id differs from the one served at capture: `phone-cc7-input`)."""
+    renumber (the library id differs from the one served at capture: `phone-cc7-input`). cfg
+    email_locked: D129's disabled email, pre-filled with the synthetic candidate's address."""
     pcm = (cfg or {}).get("pcm") or ""
     label = "Phone type" if pcm == "relabel" else "Country"
 
@@ -395,8 +396,11 @@ def _render(q, mode, cfg=None) -> str:
                 f'aria-expanded="false" aria-controls="{qid}-listbox"{areq}>'
                 f'<ul id="{qid}-listbox" role="listbox" hidden></ul></div>')
     itype = {"email": "email", "phone": "tel"}.get(qid, "text")
-    if qid == "email" and mode in _EMAIL_LOCKED:  # D129: disabled, pre-filled by the account
-        val = _EMAIL_LOCKED[mode]
+    locked = _EMAIL_LOCKED.get(mode)
+    if locked is None and mode == "gh2_phone_companion" and (cfg or {}).get("email_locked"):
+        locked = _EMAIL_LOCKED["gh2_email_locked_match"]  # the section-free route test (D129+D130)
+    if qid == "email" and locked is not None:  # D129: disabled, pre-filled by the account
+        val = locked
         attr = (f' value="{html.escape(val)}"' if val else "") + " disabled"
         body = f'{_label(qid, label_text, star)}<input type="email" id="email"{attr}{areq}>'
     else:
