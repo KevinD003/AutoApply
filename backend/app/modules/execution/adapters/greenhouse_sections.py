@@ -21,6 +21,7 @@ and disciplines by exact text only. This module never maps, guesses or infers a 
 enters what resolution already established, and reads it back.
 """
 
+import re
 from dataclasses import dataclass
 
 from app.modules.preparation.structured_sections import SectionResult
@@ -153,3 +154,118 @@ def plan_section(section: SectionResult) -> SectionPlan:
             )
         )
     return SectionPlan(kind=section.kind, rows=tuple(rows))
+
+
+# -- browser executor ------------------------------------------------------------------------
+#
+# Applies a plan to a live page, reading back every control. The repeating-row and "Add another"
+# mechanics mirror the legacy bot (module docstring); here each value is read back after entry, so
+# a selector that has drifted since the legacy evidence fails loudly rather than silently entering
+# the wrong thing. "Add another" is scoped to the section's own container, so a page carrying both
+# an education and an employment section never clicks the other section's button. The executor
+# only enters what the plan carries; detecting an *unexpected* required control is the adapter's
+# job (it already compares the live page against the captured field set before disclosure).
+
+
+class SectionFillError(Refused):
+    """A control did not read back as planned, or a planned row would not appear: stop, never
+    force a value onto a form that no longer matches what was approved."""
+
+
+def _present(page, selector: str, wait_ms: int = 0) -> bool:
+    loc = page.locator(selector)
+    if wait_ms:
+        try:
+            loc.first.wait_for(state="attached", timeout=wait_ms)
+        except Exception:  # noqa: BLE001
+            return False
+    return loc.count() > 0
+
+
+def _click_add_another(page, section_root: str, timeout_ms: int) -> None:
+    btn = page.locator(section_root).get_by_role("button", name=re.compile("add another", re.I))
+    btn.first.click(timeout=timeout_ms)
+
+
+def _fill_text(page, selector: str, value, readback, timeout_ms: int) -> None:
+    loc = page.locator(selector).first
+    loc.fill(str(value), timeout=timeout_ms)
+    got = (loc.input_value() or "").strip()
+    if got != (readback or ""):
+        raise SectionFillError(f"{selector}: reads back {got!r}, expected {readback!r}")
+
+
+def _set_checkbox(page, selector: str, want: bool, timeout_ms: int) -> None:
+    loc = page.locator(selector).first
+    loc.set_checked(bool(want), timeout=timeout_ms)
+    if loc.is_checked() != bool(want):
+        raise SectionFillError(f"{selector}: checkbox did not take state {want}")
+
+
+def _select_combobox(page, selector: str, want_text: str, timeout_ms: int) -> None:
+    """Open a type-ahead combobox, choose the option whose text is exactly ``want_text`` (scoped to
+    this input's own listbox via aria-controls, so another open menu is never read), and confirm
+    the choice stuck. No near match is ever accepted."""
+    loc = page.locator(selector).first
+    loc.scroll_into_view_if_needed(timeout=timeout_ms)
+    loc.click(timeout=timeout_ms)
+    try:
+        loc.fill("")
+    except Exception:  # noqa: BLE001
+        pass
+    loc.type(want_text, delay=10)
+    page.wait_for_timeout(150)
+    ac = loc.get_attribute("aria-controls") or loc.get_attribute("aria-owns") or ""
+    opts = page.locator(f"#{ac} [role=option]") if ac else page.locator("[role=option]")
+    for k in range(opts.count()):
+        option = opts.nth(k)
+        try:
+            text = (option.inner_text() or "").strip()
+        except Exception:  # noqa: BLE001
+            text = ""
+        if text == want_text:
+            option.click(timeout=timeout_ms)
+            page.wait_for_timeout(50)
+            got = (loc.input_value() or "").strip()
+            if got != want_text:
+                raise SectionFillError(
+                    f"{selector}: shows {got!r} after choosing, want {want_text!r}"
+                )
+            return
+    try:
+        loc.press("Escape")
+    except Exception:  # noqa: BLE001
+        pass
+    raise SectionFillError(f"{selector}: no option exactly {want_text!r} to choose")
+
+
+def _apply_op(page, op: FillOp, timeout_ms: int) -> None:
+    if op.kind in ("text", "year"):
+        _fill_text(page, op.selector, op.value, op.readback, timeout_ms)
+    elif op.kind in ("combobox", "month"):
+        _select_combobox(page, op.selector, op.readback, timeout_ms)
+    elif op.kind == "checkbox":
+        _set_checkbox(page, op.selector, bool(op.value), timeout_ms)
+    else:
+        raise SectionFillError(f"unknown op kind {op.kind!r}")
+
+
+def apply_section_plan(
+    page, plan: SectionPlan, section_root: str, *, timeout_ms: int = 3000
+) -> list[dict]:
+    """Fill a planned section on ``page``, reading back every control, and return a per-row/field
+    record of what was entered (field names only -- never the applicant's values) for the attempt
+    log. Raises ``SectionFillError`` (a ``Refused``) on any readback mismatch or a planned row that
+    will not appear, so nothing is forced onto a form that no longer matches the approval."""
+    entered: list[dict] = []
+    for row in plan.rows:
+        if row.add_another_first and not _present(page, row.anchor):
+            _click_add_another(page, section_root, timeout_ms)
+            if not _present(page, row.anchor, wait_ms=timeout_ms):
+                raise SectionFillError(
+                    f"{plan.kind} row {row.row}: {row.anchor} did not appear after Add another"
+                )
+        for op in row.ops:
+            _apply_op(page, op, timeout_ms)
+            entered.append({"row": row.row, "field": op.field})
+    return entered
