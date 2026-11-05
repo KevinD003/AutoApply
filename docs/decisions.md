@@ -3983,6 +3983,14 @@ is structured per category — deferred, not built speculatively.
   pre-D120 string), alongside the generic
   `test_execution_routing::test_an_adapter_version_mismatch_blocks_queueing_and_execution` and the
   unchanged `test_package_contract` hash corpus.
+- **Approval impact of the version change, pinned:**
+  `test_approval_binding::test_an_approval_from_before_the_extraction_bump_is_retired_never_renewed`
+  (for `greenhouse_dom` and the pilot's `greenhouse_live`): an approval recorded at the pre-D120
+  version is refused at the queue gate and retired (nothing disclosed); the stored package keeps the
+  same version and content hash; a second queue attempt is still refused and no new approval appears
+  on its own; only the owner's explicit re-approval of the identical content restores it, recorded
+  at the new version. So the change is invisible in the package (no hash churn) but visible to every
+  existing `greenhouse_dom`/`greenhouse_live` approval, which must be given again once.
 
 ## D123 — Rehearsal runbook + the dynamic-control stop, made explicit (2026-11-03)
 

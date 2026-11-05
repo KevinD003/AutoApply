@@ -188,3 +188,49 @@ def test_an_approval_given_for_a_manual_handoff_never_runs_through_an_adapter(
     assert approval_of(app_id).invalidated_at is not None
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+# -- D120: the deliberate extraction-version bump (greenhouse-dom-v3 -> v4) -----------------------
+# Not a SCHEMA_VERSION change: a package's content, hash and version are untouched. What changes is
+# the adapter version an approval is bound to (D28): greenhouse_dom and greenhouse_live both embed
+# gdom.EXTRACTION_VERSION. So an approval recorded before the bump is retired at the next gate, and
+# only an explicit re-approval of the same content restores it, recorded at the new version.
+# (Queued work bound to an older version is refused before any page action: the version-mismatch
+# test in test_execution_routing, test_semantics_change_after_queueing_stops_before_disclosure and
+# test_change_between_loading_and_the_disclosure_gate_is_refused here, and the section-bearing
+# case in test_greenhouse_sections_e2e.)
+PRE_D120 = {
+    "greenhouse_dom": "greenhouse-dom-4+greenhouse-dom-v3",
+    "greenhouse_live": "greenhouse-live-2+greenhouse-dom-v3",
+}
+
+
+@pytest.mark.parametrize("adapter", sorted(PRE_D120))
+def test_an_approval_from_before_the_extraction_bump_is_retired_never_renewed(
+    api, receiver, adapter
+):
+    from tests.test_greenhouse_controls import d104_application, d104_live_application
+
+    make = d104_live_application if adapter == "greenhouse_live" else d104_application
+    app_id = make(api)
+    assert approval_of(app_id).adapter == adapter
+    assert policy.ADAPTER_VERSIONS[adapter].endswith("+greenhouse-dom-v4")
+    before = api.get(f"/applications/{app_id}/package").json()["package"]
+    set_approval(app_id, adapter_version=PRE_D120[adapter])  # as recorded before D120
+
+    r = try_queue(api, app_id)
+    assert r.status_code == 409 and "changed after you approved" in r.text
+    retired = approval_of(app_id)
+    assert retired.invalidated_at is not None  # retired, never re-bound in place
+    assert receiver.ledger()["disclosures"] == []
+    # The stored package is untouched: same version and content hash (EXTRACTION_VERSION is not
+    # hashed content), so the owner re-approves identical content -- explicitly.
+    after = api.get(f"/applications/{app_id}/package").json()["package"]
+    assert (after["version"], after["content_hash"]) == (before["version"], before["content_hash"])
+    assert try_queue(api, app_id).status_code != 200  # nothing renews it on its own
+    assert approval_of(app_id).id == retired.id  # no new approval was created behind the owner
+
+    assert reapprove(api, app_id).status_code == 200
+    renewed = approval_of(app_id)
+    assert renewed.id != retired.id and renewed.adapter_version == policy.ADAPTER_VERSIONS[adapter]
+    queue(api, app_id)  # only now can it be queued
