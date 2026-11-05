@@ -3933,6 +3933,57 @@ is structured per category — deferred, not built speculatively.
   or an approved read-only inspection) to pin the rendered controls and repeating-row indexing;
   then the DOM filler + live package wiring.
 
+## D120 (cont.) — Structured sections: execution integration + package-contract verification (2026-11-05)
+
+- **What was built (feature branch `greenhouse-structured-sections`, unmerged while required CI is
+  unavailable).** The execution half of D120, all proven locally through the real runner and the
+  independent receiver ledger against a clearly-labelled synthetic stand-in:
+  - `execution/adapters/greenhouse_sections.py`: a read-back-checked fill **planner** + Playwright
+    **executor** (row-by-row, "Add another" scoped to the section container, exact combobox option
+    match or stop), and a package↔plan **bridge** that reuses only the legacy id/row mechanics
+    (`autojob-greenhouse/src/apply.py`), never its unsafe inference (`_degree_label`, fuzzy school
+    match).
+  - `preparation/package.py`: resolved sections are frozen into package content under an **optional
+    `sections` key** (present only on a form that has a section); `preparation/greenhouse_dom.py`
+    `detect_sections()` recognises a stand-in's section and excludes its own row controls from the
+    unlisted-control check.
+  - On a real (non-stand-in) destination the adapter returns `STAND_IN_ONLY` before anything is
+    entered: the hosted section DOM is still unobserved (see the resolution-layer entry above and
+    `docs/greenhouse-sections-observation-request.md`).
+  - Bridge hardening: malformed section content, an unknown kind/field, an unsafe non-`#id` root, a
+    duplicate row identity and a bad value shape are each **refused** (never `KeyError`, never
+    silently driven); a mid-fill failure preserves the disclosures already made.
+- **Package-contract verification (the SCHEMA_VERSION question, answered against the real gates).**
+  Retaining `SCHEMA_VERSION = 3` was re-checked against four criteria, not only hash stability:
+  - *Optional extension keys permitted?* Yes — `build_content` already adds per-form keys only when
+    present (the D104 `widget` precedent); `sections` follows it, so a form without a section emits
+    no key and its content hash is unchanged (pinned by `tests/test_package_contract.py` and
+    `tests/test_greenhouse_sections_package.py::test_a_form_without_a_section_carries_no_sections_key`).
+  - *Do old and new readers handle their presence safely?* A new reader fills; an **old** reader
+    would not know the key and would silently skip the section. That is the real risk, and hash
+    stability does **not** address it.
+  - *Approval/execution gates?* The content hash binds the frozen section values (changing an
+    education/employment fact re-hashes and the stale approval is refused); `schema_matches`
+    re-proves each section is present before disclosure; a real destination is refused `STAND_IN_ONLY`.
+  - *Can a section-bearing package reach an incompatible worker?* It could have: a section-aware and
+    a section-blind build both computed the same `adapter_version`, so the D28 binding fence
+    (`check_binding`) could not tell them apart. **Fix:** `gdom.EXTRACTION_VERSION` bumped
+    `greenhouse-dom-v3 → v4` (it rides in `ADAPTER_VERSIONS` for `greenhouse_dom` and
+    `greenhouse_live`, but is **not** part of the hashed content). Now an old worker computes the
+    old `adapter_version`, mismatches the section-bearing approval, and `check_binding` raises
+    `BindingChanged` before anything is entered. This keeps every content hash stable **and** closes
+    the compatibility hole; the only cost is that existing `greenhouse_dom`/`greenhouse_live`
+    approvals must be approved again (correct when an adapter's capability changes; D28).
+- **Conclusion.** `SCHEMA_VERSION = 3` is valid for the content-hash dimension; worker compatibility
+  is carried deliberately by `adapter_version` (the D28 layer), not by the schema number. No broad
+  refactor; a one-line version bump plus contract tests.
+- **Tests (executed):** the five section suites (`tests/test_greenhouse_sections*.py`) plus the
+  compatibility proof `test_a_section_package_cannot_reach_a_section_blind_worker` (a section package
+  is refused `failed_safe`, nothing disclosed or accepted, when the adapter version reverts to the
+  pre-D120 string), alongside the generic
+  `test_execution_routing::test_an_adapter_version_mismatch_blocks_queueing_and_execution` and the
+  unchanged `test_package_contract` hash corpus.
+
 ## D123 — Rehearsal runbook + the dynamic-control stop, made explicit (2026-11-03)
 
 - **Runbook.** `docs/rehearsal-runbook.md`: the exact disclosure-only Greenhouse rehearsal
