@@ -16,7 +16,18 @@ from app.modules.followups.models import FollowUp
 from tests.conftest import Api
 from tests.test_account import unzip
 
-TODAY = service.today()
+TODAY = service.today()  # set again for each test by _one_day_per_test
+
+
+@pytest.fixture(autouse=True)
+def _one_day_per_test(monkeypatch):
+    """Each test runs on one day. `today` is read when the test starts and pinned for the service,
+    and `_applied` moves it to the submission day the timeline recorded (from the event's own
+    timestamp). Reading it once at import let a run that crossed midnight UTC split a test across
+    two days (main CI #235)."""
+    global TODAY
+    TODAY = service.today()
+    monkeypatch.setattr(service, "today", lambda: TODAY)
 
 
 def _on(monkeypatch, day: date) -> None:
@@ -32,9 +43,11 @@ def _application(
 
 
 def _applied(api: Api, app_id: str) -> None:
+    global TODAY
     applied = {"to": "submitted_unconfirmed", "reason": "I applied on the website"}
     r = api.post(f"/applications/{app_id}/transition", json=applied)
     assert r.status_code == 200, r.text
+    TODAY = date.fromisoformat(_follow_up(api, app_id)["submitted_on"])
 
 
 def _follow_up(api: Api, app_id: str) -> dict:
