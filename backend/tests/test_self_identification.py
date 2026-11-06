@@ -96,6 +96,34 @@ def test_decline_on_a_multi_select_fills_only_the_decline_option(api):
     assert [o["label"] for o in rc["value"]["options"]] == ["Decline To Self Identify"]
 
 
+def _choice(key, label, options, required=True, typ="select"):
+    opts = [{"value": str(i), "label": o} for i, o in enumerate(options, 1)]
+    return {"key": key, "label": label, "type": typ, "required": required, "options": opts}
+
+
+def test_i_dont_wish_to_self_identify_declines_only_where_the_options_name_a_category(api):
+    """D133: "I don't wish to self-identify" is a decline option. It answers an EEO question
+    whose other options name a category, never a Yes/No question and never a question that is
+    not self-identification (a felony question offering it stays yours)."""
+    setup_candidate(api)
+    wish = "I don't wish to self-identify"
+    set_self_id(api, True, [wish])
+    g, _ = row(api, [_choice("gender", "Gender", ["Male", "Female", wish], required=False)],
+               "gender")  # fmt: skip
+    assert (g["status"], g["source"], g["display"]) == ("resolved", "self_identification", wish)
+    h, _ = row(api, [_choice("hisp", "Are you Hispanic or Latino?", ["Yes", "No", wish])],
+               "hisp")  # fmt: skip
+    assert h["status"] == "needs_user" and h["value"] is None
+    fel, _ = row(api, [_choice("felony", "Have you ever been convicted of a felony?",
+                               ["Yes", "No", wish])], "felony")  # fmt: skip
+    assert fel["status"] == "needs_user" and fel["source"] != "self_identification"
+    race = _choice("race", "Race / Ethnicity", ["Asian", "White", "Black or African American",
+                   wish], required=False, typ="multiselect")  # fmt: skip
+    rc, _ = row(api, [race], "race")
+    assert rc["status"] == "resolved" and rc["source"] == "self_identification"
+    assert [o["label"] for o in rc["value"]["options"]] == [wish]
+
+
 def test_decline_mixed_with_a_substantive_choice_is_a_checkpoint(api):
     # Declining and naming a race contradict; never send both.
     setup_candidate(api)

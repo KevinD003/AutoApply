@@ -388,6 +388,11 @@ DECLINE_WORDS = frozenset(
         "i choose not to disclose",
         "i don't want to answer",
         "i do not want to answer",
+        # D133: the wording classify._SENSITIVE_OPTION_STRONG already reads as a
+        # self-identification option; an unambiguous refusal. No provider source is recorded for
+        # it (the Workday sources record "I do not want to answer", above).
+        "i don't wish to self-identify",
+        "i do not wish to self-identify",
     }
 )
 
