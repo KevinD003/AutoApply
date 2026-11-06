@@ -1,4 +1,4 @@
-"""application_pauses: an application stopped because the employer's form changed (D132)
+"""application_pauses: an application stopped because its form changed (D132)
 
 Revision ID: bd671d7d0e10
 Revises: f2c7a9e4b1d6
