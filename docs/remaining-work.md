@@ -107,8 +107,8 @@ Ranked slices. Each is shippable through its own PR, with the receiver ledger as
 
 | Rank | Slice | Acceptance items | Status |
 |---|---|---|---|
-| — | D131 answer safety: self-identification scope, follow-up keys, job requirements, review-page crash | 4, 10, 3 | PR #36 (CI) |
-| 1 | D132: a form change becomes a durable pause; "Questions needing your answer"; read the form again; answer; approve; one new attempt (gh2 and Workday-style stand-ins) | loop, tab, 2, 6, 14 | Design under review |
+| — | D131 answer safety: self-identification scope, follow-up keys, job requirements, review-page crash | 4, 10, 3 | Merged (#36); the review's remaining findings in PR #39 |
+| 1 | D132: a form change becomes a durable pause; "Questions needing your answer"; read the form again; answer; approve; one new attempt (gh2 and Workday-style stand-ins) | loop, tab, 2, 6, 14 | Built on branch `form-change-pause`; validation in progress, then its PR |
 | 2 | Finish the reuse and suggestion guards: D115 veto, "use here only", Workday decline wordings, an error boundary | 4, 10, 3 | Unfinished |
 | 3 | Standing rule: notify and continue after the owner answers; respect revocation and pause; approval provenance | loop, 13, 2, 14 | Unfinished; continuing after a form change needs the owner's decision |
 | 4 | Conditional and page-required questions on Greenhouse's id-only structure become answerable pauses; a click the page blocks is not terminal | 5, 2, 6 | Unfinished |
