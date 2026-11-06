@@ -179,3 +179,22 @@ def test_enough_verdicts_train_the_accounts_own_model_which_then_ranks(api):
     assert api.delete("/answer-brain").json()["engine"] == "rules"
     with SessionLocal() as db:
         assert db.get(LearningModel, me) is None
+
+
+def test_a_follow_up_gets_no_suggestion(api):
+    # D131: "Which one?" saved after a language question is not suggested for "Which one?" after
+    # an instrument question; the features compare its words, not the question it follows.
+    setup_candidate(api)
+    langs = radio("lang_q", "Do you speak a language other than English?", required=True)
+    music = radio("music_q", "Do you play a musical instrument?", required=True)
+    which = {"key": "which", "label": "Which one?", "type": "text", "required": True}
+    first = application(api, [langs, which | {"condition": {"key": "lang_q", "any_of": ["1"]}}])
+    for key, value in (("lang_q", {"label": "Yes"}), ("which", {"text": "Spanish"})):
+        body = {"key": key, "value": value, "save_to_bank": key == "which"}
+        r = api.put(f"/applications/{first}/answers", json=body)
+        assert r.status_code == 200, r.text
+    other = application(api, [music, which | {"condition": {"key": "music_q", "any_of": ["1"]}}])
+    body = {"key": "music_q", "value": {"label": "Yes"}}
+    assert api.put(f"/applications/{other}/answers", json=body).status_code == 200
+    assert rows(package(api, other))["which"]["value"] is None
+    assert [s for s in suggest(api, other) if s["key"] == "which"] == []

@@ -393,3 +393,30 @@ def test_a_saved_follow_up_answer_is_reused_only_after_the_question_it_follows(a
     assert row["bankable"] is True  # its own question is reusable: just not this answer
     assert (row["status"], row["value"]) == ("needs_user", None)
     assert row["source"] != "answer_bank"
+
+
+def test_a_second_level_follow_up_is_saved_and_reused_under_the_same_chain_only(api):
+    # D131: "Which ones?" after "Do you speak more than one?" after a language question saves
+    # (it was refused once its question was itself a follow-up) and answers the same chain only.
+    setup_candidate(api)
+    more = radio("more", "Do you speak more than one?", required=True) | {
+        "condition": {"key": "first", "any_of": ["1"]}
+    }
+    which = text("which", "Which ones?") | {"condition": {"key": "more", "any_of": ["1"]}}
+
+    def form(first_label, title):
+        app_id = application(api, [radio("first", first_label, required=True), more, which],
+                             title=title)  # fmt: skip
+        for key in ("first", "more"):
+            assert _put(api, app_id, key, {"label": "Yes"}, False).status_code == 200
+        return app_id
+
+    a = form("Do you speak a language other than English?", "Clinic Assistant IV")
+    r = _put(api, a, "which", {"text": "Spanish, French"}, True)
+    assert r.status_code == 200, r.text
+    b = form("Do you speak a language other than English?", "Clinic Assistant V")
+    row = rows(package(api, b))["which"]
+    assert (row["source"], row["value"]) == ("answer_bank", {"text": "Spanish, French"})
+    c = form("Do you play a musical instrument?", "Clinic Assistant VI")
+    row = rows(package(api, c))["which"]
+    assert row["source"] != "answer_bank" and row["value"] is None

@@ -4420,20 +4420,30 @@ audit-inventory and export-completeness guards are updated and pass.
     self-identification section (`resolver._self_id_applies`, matched whole against the question's
     topic). Never criminal history, health, accommodation, age, family or marital status, religion,
     national origin, military service, political or union membership, salary history, government
-    ids or a follow-up; never a question that also asks a fact (an ambiguity) or a protected one.
+    ids or a follow-up; never a question that also asks a fact (an ambiguity) or a protected one;
+    never one whose wording also names another sensitive topic ("Are you required to register as
+    a sex offender?", "a disability that requires a reasonable accommodation", outside
+    equal-opportunity boilerplate in its help text); and options alone never bring a question in
+    (a uniform colour with Black and White options is not race): a question known as
+    self-identification only from its options needs a self-identification section too.
   - **Only options that name their category.** Your labels answer a question only when every option
     they match names its own category ("Male", "Asian", "I am not a protected veteran", "No, I do not
     have a disability …") or is the form's one decline option (`resolver._self_describing`). A bare
     "Yes", "No" or "Other" names none: a flat list cannot say which question it answered, so it
-    answers none, and the row says so. Consequence, stated: a Yes/No "Are you Hispanic or Latino?"
-    is now yours to answer each time. Answering it from your self-identification would need answers
-    stored by category; not built.
-  - **A follow-up is saved and reused with the question it follows.** Its key also carries a
-    trigger: that question's wording, help text and shape, and the answers to it that show the
-    follow-up, as option labels (page keys do not count). A follow-up whose question is not on the
-    form is never saved or reused. Keys of questions that are not follow-ups are unchanged. An answer
-    saved for a follow-up before D131 (keyed by its own wording) no longer answers it: that question
-    asks again, once.
+    answers none, and the row says so. A decline is taken only where the question's other options
+    name a category (Gender: Male, Female, decline), never on Yes / No / decline. Consequence,
+    stated: a Yes/No "Are you Hispanic or Latino?" is now yours to answer each time. Answering it
+    from your self-identification would need answers stored by category; not built.
+  - **A follow-up is saved and reused with the questions it follows** (`resolver.reuse_key`).
+    Its key also carries the chain above it, nearest first: each question's wording, help text,
+    shape and full option list, and the answers that show the next one, as option labels (page
+    keys do not count). "Other" after [English, Spanish, Other] is not "Other" after [English,
+    French, Other]. A follow-up whose chain cannot be read (a question missing from the form,
+    circular, deeper than eight) is never saved or reused. A second-level follow-up can be saved
+    (its save was refused as soon as its own question was a follow-up). Keys of questions that
+    are not follow-ups are unchanged. An answer saved for a follow-up before D131 (keyed by its own
+    wording) no longer answers it: that question asks again, once. The answer brain (D115)
+    suggests nothing for a follow-up: its features compare the words, not the questions above.
   - **Job requirements without "the":** "meet / satisfy / fulfil (all) (minimum …) requirements,
     qualifications or criteria" and "have / possess (all) required, minimum … certifications,
     skills, licences …" are about the job, so never saved or reused (`bankscope.E_FIT`). "Do you have
@@ -4444,9 +4454,16 @@ audit-inventory and export-completeness guards are updated and pass.
   answer you enter, or "Don't disclose", still wins); the package shape and `SCHEMA_VERSION` (3). A
   package whose answers change under these rules rebuilds with a new content hash, so its approval
   is asked again; nothing is approved for you. Nothing real was run.
+- **Reviewed adversarially before merging** (four review lenses on the first commit): the scope
+  above, the decline rule, the parent's option list and chain in the key, second-level saves and
+  the suggestion rule came from that review; each was reproduced by a probe before fixing and has
+  a test.
 - **Tests:** `test_self_identification.py` (questions outside the categories, a bare label, a bare
-  label never turned into a decline, labels that name their category still answer),
-  `test_bank_scope.py` (a follow-up reused only after its question; never without it; keys),
+  label never turned into a decline, labels that name their category still answer, another
+  sensitive topic in the wording, options alone, the decline rule, a follow-up),
+  `test_bank_scope.py` (a follow-up reused only after its question and option list; the chain;
+  never without it; keys), `test_answer_brain.py` (no suggestion for a follow-up),
   `bank_scope_wordings.json` (five requirement wordings), `test_bank_scope_api.py` (save and reuse
-  through the route, and no reuse after another question), `frontend/e2e/self-identification.spec.ts`
+  through the route, no reuse after another question, a second-level chain),
+  `frontend/e2e/self-identification.spec.ts`
   (desktop and mobile: the source label, and the felony question left to you).
