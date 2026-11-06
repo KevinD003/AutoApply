@@ -4467,3 +4467,36 @@ audit-inventory and export-completeness guards are updated and pass.
   through the route, no reuse after another question, a second-level chain),
   `frontend/e2e/self-identification.spec.ts`
   (desktop and mobile: the source label, and the felony question left to you).
+- **Follow-up: the review's remaining findings** (its verifiers stopped at a usage limit, so each
+  finding was reproduced by a probe on the D131 branch before fixing):
+  - **Job requirements in more wordings.** "Do you meet all of the minimum qualifications?", "Have
+    you met …", "every", "both of the following", a requirement named by its subject ("the education
+    requirements", "the minimum education and experience requirements", "the selection criteria",
+    "the required degree") and "hold" were still saved and reused. `bankscope.E_FIT` now reads
+    meet / satisfy / fulfil in any tense, an optional quantifier, an optional determiner and up to
+    four words before "requirements", "qualifications", "criteria" or "prerequisites" (never a
+    preposition or a question word in between).
+  - **Your own skills stay yours.** D131 had refused "Do you have basic skills in Microsoft Excel?",
+    "key skills" and "experience meeting requirements for SOX compliance" as about the job. "Basic",
+    "essential" and "key" now mark a job's requirement only before requirements, qualifications or
+    criteria, and meeting requirements after "experience", "experience in / with", "record of" or
+    "history of" is something you have done.
+  - **Work authorization in other words.** "Do you have the necessary documents to work in
+    Canada?" (documents, documentation, paperwork, papers or permits that let you work) was an
+    ordinary reusable question, so a saved "Yes" could be sent whatever your profile said. It is now
+    legal-status wording (`classify._AUTH_LIKE`): you answer it for each application, never saved.
+  - **Vaccinations in any wording.** Only "Are you (fully) vaccinated" and "vaccination status /
+    record / card" were health. "Do you have required vaccinations?", "Have you received the
+    COVID-19 vaccine?", "Do you have proof of vaccination?" and "Are your immunizations up to date?"
+    now are; giving them stays a skill ("administering vaccines", "giving vaccinations").
+  - **One self-identification label per line.** The profile page split labels on commas, so the
+    standard "No, I do not have a disability and have not had one in the past" was saved as a bare
+    "No" (which D131 makes answer nothing) plus a fragment. The field now takes one label per line
+    and says why a bare "Yes" or "No" answers nothing. Labels already saved stay as saved: you see
+    them one per line and can join a split label back.
+  - **Tests:** `bank_scope_wordings.json` (ten requirement wordings refused, four skill wordings
+    reusable, two work-document wordings as facts), `test_question_safety.py` (four work-document
+    wordings as legal status, five vaccination wordings as health, each with a saved answer that is
+    not used), `test_classify_vocabulary.py` (vaccination wordings in, giving vaccines out),
+    `frontend/e2e/self-identification.spec.ts` (a label with commas saved and shown whole, desktop
+    and mobile).
