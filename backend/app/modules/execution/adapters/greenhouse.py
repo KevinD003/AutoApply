@@ -18,7 +18,9 @@ from app.modules.execution.adapters.fixture_ats import (
     ACK_ERROR,
     ACK_NONE,
     ACK_SHOWN,
+    FORM_CHANGED,
     FixtureAtsAdapter,
+    FormChanged,
     Outcome,
     UploadFailed,
     upload_evidence,
@@ -107,7 +109,9 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
                 )
                 if part
             )
-            return f"the form has changed since you approved it ({detail})"
+            return FormChanged(
+                f"{FORM_CHANGED} ({detail})", new=len(new), changed=len(changed), missing=len(gone)
+            )
         dest = self.content["destination"]
         if not live.action or urljoin(page.url, live.action) != dest["submit_url"]:
             return "the form now submits to a different address"

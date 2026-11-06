@@ -25,6 +25,7 @@ from app.modules.jobs.router import router as jobs_router
 from app.modules.learning.router import router as learning_router
 from app.modules.mail.router import router as mail_router
 from app.modules.notifications.router import router as notifications_router
+from app.modules.preparation.questions import router as questions_router
 from app.modules.preparation.review import router as review_router
 from app.modules.preparation.router import router as preparation_router
 from app.modules.profiles.router import router as profile_router
@@ -75,6 +76,7 @@ def create_app() -> FastAPI:
         applications_router,
         preparation_router,
         review_router,
+        questions_router,
         execution_router,
         providers_router,
         board_sources_router,

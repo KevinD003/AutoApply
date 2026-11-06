@@ -34,7 +34,9 @@ from app.modules.execution.adapters.fixture_ats import (
     ACK_ERROR,
     ACK_NONE,
     ACK_SHOWN,
+    FORM_CHANGED,
     FixtureAtsAdapter,
+    FormChanged,
     Outcome,
     StoppedAfterDisclosure,
     UploadFailed,
@@ -389,7 +391,14 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 )
                 if p
             )
-            return f"the form has changed since you approved it ({detail})"
+            text = f"{FORM_CHANGED} ({detail})"
+            if not new:
+                # D132: a control gone, doubled, renamed or retyped on the page, a dropdown, a
+                # control a script shows or hides, a requirement only the page marks: the job
+                # data a re-read compares with does not show these, so it stays a plain stop.
+                return text
+            # A control the approved form did not have: reading the form again can show it.
+            return FormChanged(text, new=len(new), changed=len(changed))
         for a in self.content["answers"]:
             cond = a.get("condition") or {}
             if cond.get("key") == dom.UNKNOWN_TRIGGER and a["value"] is not None:

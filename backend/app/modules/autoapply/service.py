@@ -67,6 +67,9 @@ REASONS = {
     "permission_limit": "Your recorded permission's attempts are used up; renew it to continue.",
     "attempt_stopped": "The last attempt stopped or its outcome is unknown; it is never retried "
     "automatically.",
+    # D132: continuing after a form change is the owner's decision, not the rule's.
+    "form_changed": "The employer's form changed during an attempt; automatic applying leaves "
+    "this application to you.",
     "approval_refused": "NoEfforts could not approve this package automatically.",
     "queue_refused": "The approved package could not be queued.",
 }
@@ -222,6 +225,24 @@ def _capture(db: Session, user: User, job: Job) -> bool:
     return True
 
 
+def _ever_paused(db: Session, app) -> bool:
+    """D132: an application that ever stopped on a changed form is the owner's from then on,
+    even after they answered and approved again (a pause resolved or not)."""
+    from app.modules.execution.models import ApplicationPause
+
+    return (
+        db.scalar(
+            select(ApplicationPause.id)
+            .where(
+                ApplicationPause.application_id == app.id,
+                ApplicationPause.user_id == app.user_id,
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
 def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
     """One step for one job. Returns "approved" when it queued something, else None."""
     from app.modules.execution.rehearsal import RehearsalRequired
@@ -234,6 +255,9 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
     app = _application(db, user, job)
     if app is not None:
         if app.state in FINAL_STATES:
+            return None
+        if _ever_paused(db, app):
+            _note(db, user.id, job, app, "skipped", "form_changed")
             return None
         att = _latest_attempt(db, app)
         if att is not None and att.state in HELD:

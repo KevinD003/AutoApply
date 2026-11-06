@@ -162,6 +162,60 @@ class Checkpoint(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+PAUSE_UNRESOLVED = ("open", "unexplained")
+
+
+class ApplicationPause(Base):
+    """D132: an application stopped because the employer's form no longer matched the approved
+    one. It outlives its attempt by design, which is never resumed or retried: the owner reads
+    the form again, answers what is new and approves a package again. Bound to the package the
+    attempt ran (its hash), so that package can never be approved or sent again; a new form
+    version or a different package ends it. Counts only, never a question's key or label.
+
+    status: open (read the form again), unexplained (read again, no difference NoEfforts can
+    see), resolved (a new form version, or a different package approved), closed (the
+    application left review: cancelled, applied by hand, expired)."""
+
+    __tablename__ = "application_pauses"
+    __table_args__ = (
+        Index(
+            "uq_one_unresolved_pause",
+            "application_id",
+            unique=True,
+            postgresql_where=text("status IN ('open','unexplained')"),
+        ),
+        Index("ix_application_pauses_user_status", "user_id", "status"),
+        CheckConstraint("kind IN ('form_changed')", name="ck_pause_kind"),
+        CheckConstraint("phase IN ('before_disclosure','after_disclosure')", name="ck_pause_phase"),
+        CheckConstraint(
+            "status IN ('open','unexplained','resolved','closed')", name="ck_pause_status"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True
+    )
+    attempt_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("execution_attempts.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(30), default="form_changed")
+    phase: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    # The package the attempt ran: this exact content is never approved or sent again.
+    package_version: Mapped[int] = mapped_column(Integer)
+    package_hash: Mapped[str] = mapped_column(String(64))
+    # The form version the attempt ran against (a read must find a different one).
+    form_version: Mapped[int | None] = mapped_column(Integer)
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)  # counts only
+    recaptured_version: Mapped[int | None] = mapped_column(Integer)
+    # How it ended: new_form, new_package, cancelled, left_review.
+    resolution: Mapped[str | None] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Evidence(Base):
     """Minimal outcome evidence. No answer values, cookies, codes, screenshots or traces."""
 

@@ -148,9 +148,13 @@ def attach_form(
 
 
 def _store_form(db, user, job, schema: FormSchema, source, ref, extraction) -> dict:
+    """Store a new version when the form differs from the latest one, and commit. D132: a
+    version that differs from the form an application paused on ends that pause in the same
+    transaction. The job row is locked first, so two captures never compute the same version."""
+    db.scalar(select(Job.id).where(Job.id == job.id).with_for_update())
     latest = pk.latest_form(db, job.id)
     fp = form_fingerprint(schema)
-    if latest is not None and latest.fingerprint == fp:
+    if latest is not None and latest.fingerprint == fp and _same_values(latest.schema, schema):
         return _form_out(latest)
     form = JobForm(
         user_id=user.id,
@@ -165,8 +169,57 @@ def _store_form(db, user, job, schema: FormSchema, source, ref, extraction) -> d
     db.add(form)
     db.flush()
     record(db, user.id, "job.form_captured", "job", job.id, version=form.version, source=source)
+    _resolve_pauses(db, user, job, form)
     db.commit()
     return _form_out(form)
+
+
+def _option_values(fields) -> list:
+    """Each question's option values, in order (labels are in the fingerprint already)."""
+    return [
+        [f["key"], [o["value"] for o in f.get("options") or []]]
+        if isinstance(f, dict)
+        else [f.key, [o.value for o in f.options]]
+        for f in fields
+    ]
+
+
+def _same_values(stored: dict, schema: FormSchema) -> bool:
+    """D132: an employer can change an option's value and keep its label; the adapter compares
+    values, the fingerprint only labels. Such a form is a new version, so a pause it caused can
+    end (its answers carry the values)."""
+    return _option_values((stored or {}).get("fields") or []) == _option_values(schema.fields)
+
+
+def _resolve_pauses(db, user, job, form: JobForm) -> None:
+    """D132: a form version that differs from the one an application paused on (by fingerprint or
+    option values) ends that pause; the package is rebuilt from it next. A version equal to the
+    paused one (the employer changed the form back) ends nothing."""
+    from app.modules.execution.models import PAUSE_UNRESOLVED, ApplicationPause
+
+    pauses = db.scalars(
+        select(ApplicationPause)
+        .join(Application, Application.id == ApplicationPause.application_id)
+        .where(
+            Application.job_id == job.id,
+            Application.user_id == user.id,
+            ApplicationPause.status.in_(PAUSE_UNRESOLVED),
+        )
+        .with_for_update(of=ApplicationPause)
+    ).all()
+    for pause in pauses:
+        paused = db.scalar(
+            select(JobForm).where(JobForm.job_id == job.id, JobForm.version == pause.form_version)
+        )
+        if (
+            paused is not None
+            and paused.fingerprint == form.fingerprint
+            and _option_values(paused.schema.get("fields") or [])
+            == _option_values(form.schema.get("fields") or [])
+        ):
+            continue
+        pause.status, pause.resolution = "resolved", "new_form"
+        pause.recaptured_version, pause.resolved_at = form.version, utcnow()
 
 
 def _fetch_fixture(url: str) -> bytes:
@@ -399,6 +452,160 @@ def capture_workday_form(
     return _store_form(db, user, job, schema, source, ref, EXTRACTION_VERSION)
 
 
+# D132: which capture route reads a form again, by the source its latest version came from. A
+# form you attached yourself (fixture, pasted HTML, manual) has nothing to read: attach it again.
+_RECAPTURE = {
+    "greenhouse_api": "greenhouse",
+    "greenhouse_api_dom": "greenhouse",
+    "greenhouse_live": "greenhouse",
+    "fixture_lever": "lever",
+    "fixture_ashby": "ashby",
+    "fixture_workday": "workday",
+}
+
+
+@router.post("/applications/{app_id}/form/recapture")
+def recapture_form(
+    app_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    """D132: read the employer's form again for an application, through the same capture route
+    that read it first (every check of that route applies: the recorded permission to read a real
+    post, the cross-check of its job data and page, the fixture-only providers). A new version
+    ends the application's form-change pause; finding none marks it unexplained (a change only
+    the page's own scripts make). Never approves, queues or sends anything."""
+    app = _owned_app(db, user, app_id)
+    if app.state not in pk.REBUILDABLE or _attempt_active(db, app.id):
+        raise conflict(
+            "The form can be read again only while the application waits for you, with no "
+            "attempt running. (reason: recapture_not_available)"
+        )
+    latest = pk.latest_form(db, app.job_id)
+    provider = _RECAPTURE.get(latest.source) if latest is not None else None
+    if provider is None:
+        raise conflict(
+            "This form was attached by you, so NoEfforts cannot read it again: attach the "
+            "changed form on the job's page. (reason: recapture_not_available)"
+        )
+    capture = {
+        "greenhouse": capture_greenhouse_form,
+        "lever": capture_lever_form,
+        "ashby": capture_ashby_form,
+        "workday": capture_workday_form,
+    }[provider]
+    before = latest.version
+    out = capture(app.job_id, user=user, db=db)  # commits a new version, ending a pause with it
+    pk.lock_application(db, app.id)
+    db.refresh(app)
+    if _attempt_active(db, app.id):
+        db.commit()
+        raise conflict(
+            "An attempt started while the form was being read; nothing was changed for it. "
+            "(reason: recapture_not_available)"
+        )
+    pause = pk.unresolved_pause(db, app.id)
+    if pause is not None and pause.status == "open":
+        # No version differing from the one it paused on: the change is not in what NoEfforts
+        # reads (the page's own scripts add it). Never guessed; this package stays refused.
+        pause.status, pause.recaptured_version = "unexplained", out["version"]
+    pkg = pk.ensure_current(db, app)
+    last = _last_pause(db, app.id)
+    record(db, user.id, "application.form_recaptured", "application", app.id,
+           form_version=out["version"], new_version=out["version"] != before,
+           pause=last.status if last else None)  # fmt: skip
+    db.commit()
+    return {
+        "form": {"version": out["version"], "changed": out["version"] != before},
+        "pause": _pause_out(last),
+        "package": {"version": pkg.version, "content_hash": pkg.content_hash},
+        "state": app.state,
+    }
+
+
+@router.post("/applications/{app_id}/pause/dismiss")
+def dismiss_pause(
+    app_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> dict:
+    """D132: "Try this version again". Ends a form-change pause found before anything was
+    entered, so the package that stopped may be approved again: the live page is checked again
+    before anything is entered, and a change still there stops it again with nothing sent.
+    Never approves, queues or sends anything. Never for a pause after data was entered, where
+    approving again would enter it on the employer's page again."""
+    app = _owned_app(db, user, app_id)
+    pk.lock_application(db, app.id)
+    db.refresh(app)
+    pause = pk.unresolved_pause(db, app.id)
+    if pause is None:
+        raise conflict("Nothing is paused for this application. (reason: no_pause)")
+    if pause.phase != "before_disclosure":
+        raise conflict(
+            "Information was already entered on the employer's page for this version, so it is "
+            "not tried again: read the form again, or apply on the employer's site. "
+            "(reason: pause_after_disclosure)"
+        )
+    pause.status, pause.resolution, pause.resolved_at = "closed", "dismissed", utcnow()
+    db.flush()
+    pkg = pk.ensure_current(db, app)  # settles the state now that nothing holds it
+    record(db, user.id, "application.pause_dismissed", "application", app.id)
+    db.commit()
+    return {
+        "pause": _pause_out(pause),
+        "package": {"version": pkg.version, "content_hash": pkg.content_hash},
+        "state": app.state,
+    }
+
+
+def _paused_package(db: Session, app: Application, pkg) -> bool:
+    pause = pk.unresolved_pause(db, app.id)
+    return pause is not None and pause.package_hash == pkg.content_hash
+
+
+def _recapture_available(db: Session, app: Application) -> bool:
+    form = pk.latest_form(db, app.job_id)
+    return form is not None and form.source in _RECAPTURE
+
+
+def _attempt_active(db: Session, app_id: uuid.UUID) -> bool:
+    from app.modules.execution.models import ACTIVE
+
+    return (
+        db.scalar(
+            select(ExecutionAttempt.id).where(
+                ExecutionAttempt.application_id == app_id, ExecutionAttempt.state.in_(ACTIVE)
+            )
+        )
+        is not None
+    )
+
+
+def _last_pause(db: Session, app_id: uuid.UUID):
+    from app.modules.execution.models import ApplicationPause
+
+    return db.scalar(
+        select(ApplicationPause)
+        .where(ApplicationPause.application_id == app_id)
+        .order_by(ApplicationPause.created_at.desc())
+        .limit(1)
+    )
+
+
+def _pause_out(pause) -> dict | None:
+    """What the owner sees of a pause: never a question's key or label."""
+    if pause is None:
+        return None
+    return {
+        "id": str(pause.id),
+        "status": pause.status,
+        "phase": pause.phase,
+        "resolution": pause.resolution,
+        "counts": {k: int((pause.detail or {}).get(k) or 0) for k in ("new", "changed", "missing")},
+        "package_version": pause.package_version,
+        "form_version": pause.form_version,
+        "recaptured_version": pause.recaptured_version,
+        "created_at": pause.created_at,
+        "resolved_at": pause.resolved_at,
+    }
+
+
 def _form_out(form) -> dict:
     return {
         "id": str(form.id),
@@ -511,6 +718,11 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
         "rehearsal_prerequisite": rehearsal.view(db, app, pkg, appr),
         # S3 (D59): what about the job itself holds an approval back (outside the content).
         "job_signals": signals.view(db, db.get(Job, app.job_id)),
+        # D132: the employer's form no longer matched under an attempt, while it waits for you;
+        # `paused_package`: this exact version stopped there and is not approved again.
+        "pause": _pause_out(pk.unresolved_pause(db, app.id)),
+        "paused_package": _paused_package(db, app, pkg),
+        "recapture_available": _recapture_available(db, app),
         "history": [
             {
                 "version": h.version,

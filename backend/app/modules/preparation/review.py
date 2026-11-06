@@ -86,6 +86,10 @@ def _summary(db: Session, app: Application, job: Job, pkg) -> dict:
     code = signals.approval_refusal(db, job)
     if code is not None:
         blocked.append(signals.refusal(code))
+    pause = pk.unresolved_pause(db, app.id)
+    if pause is not None and pause.package_hash == pkg.content_hash:
+        # D132: this exact package stopped on a changed form; never approved again.
+        blocked.append("The employer's form changed: read it again under Questions")
     return {
         "application_id": str(app.id),
         "state": app.state.value,

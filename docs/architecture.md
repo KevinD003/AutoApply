@@ -218,6 +218,11 @@ Every transaction that locks more than one of these rows takes them in this orde
 6. a saved answer (`answer_bank` row): after the application and its input when an answer is
    saved for reuse (one upsert), or alone when it is deleted (one DELETE). Package rebuilds and
    the gates read the bank without locking it (D51).
+7. a form-change pause (`application_pauses`, D132): after the approvals when the worker records
+   one (the attempt, the application, every live approval, then the pause, in one transaction);
+   after the application when approving, cancelling or reading the form again ends one. Storing a
+   new form version locks the job row first (two captures never number the same version), then
+   the pauses of that job's applications.
 
 Outcomes and confirmations (D53): an outcome or notes (`PATCH /applications/{id}`) locks only the
 application and re-reads it before deciding; a user's confirmation (`/transition` to

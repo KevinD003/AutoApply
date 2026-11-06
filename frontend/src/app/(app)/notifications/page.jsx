@@ -19,6 +19,7 @@ const KIND = {
   follow_up: { label: "Follow-up", tone: "amber" },
   board_postings: { label: "Job board", tone: "slate" },
   auto_apply_questions: { label: "Your answers needed", tone: "amber" },
+  form_changed: { label: "Form changed", tone: "amber" },
   email_update: { label: "Email update", tone: "amber" },
 };
 

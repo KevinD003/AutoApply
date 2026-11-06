@@ -19,7 +19,9 @@ prerequisite relies on (a rehearsal record or a receipt, FOR SHARE). Inserting a
 references an application (evidence, events) key-share locks the application too, after the
 attempt: the same order. Paths that never lock an attempt (approve, revoke, answers, withdraw,
 evidence deletion) start at the application. A checkpoint row is locked only alone (the user
-entering a code) or while holding its attempt (the worker).
+entering a code) or while holding its attempt (the worker). A form-change pause (D132) is written
+after the approvals, under the attempt and application locks (the worker), or under the
+application lock alone (reading the form again, approving, cancelling).
 """
 
 import logging
@@ -42,6 +44,8 @@ from app.modules.audit.service import record
 from app.modules.execution import live, rehearsal
 from app.modules.execution.models import (
     ACTIVE,
+    PAUSE_UNRESOLVED,
+    ApplicationPause,
     AttemptEvent,
     AttemptState,
     Checkpoint,
@@ -641,6 +645,85 @@ def abandon(attempt_id, worker, gen, reason: str, code: str | None = None) -> bo
     )
 
 
+def pause_for_form_change(attempt_id, worker, gen, reason: str, counts: dict) -> bool:
+    """D132: the employer's form no longer matches the approved one (the adapter's
+    `FormChanged`). One generation-fenced finish from `claimed`, in one transaction: the attempt
+    ends failed_safe, or abandoned when data was already entered (read from the row's
+    `disclosure_started_at`, never the caller's belief); the application waits for the user;
+    every live approval of the application is retired, so no approval can send the stale
+    package again; and a pause bound to the package the attempt ran is recorded. The attempt is
+    never resumed or retried, and nothing waits on a worker, a lease or a browser.
+
+    Lock order: the attempt, then its application, then its approvals (as `_apply_outcome`);
+    the pause row is written last, under them. An earlier unresolved pause of the application
+    (there should be none: approving another package ends it) is resolved first, so the partial
+    unique index can never turn this stop into an internal error."""
+    with SessionLocal() as db:
+        att = db.scalar(
+            select(ExecutionAttempt).where(ExecutionAttempt.id == attempt_id).with_for_update()
+        )
+        if att is None or att.generation != gen or att.state != S.claimed:
+            return False
+        app = pk.lock_application(db, att.application_id)
+        disclosed = att.disclosure_started_at is not None
+        if disclosed:
+            to, detail = S.abandoned, f"Stopped after entering data but before submitting: {reason}"
+        else:
+            to, detail = S.failed_safe, f"Stopped before sending anything: {reason}"
+        _apply_outcome(db, att, app, to, AppState.needs_user_action, detail,
+                       reason_code="form_changed")  # fmt: skip
+        retired = retire_live_approvals(db, app.id, RETIRED["form_changed"])
+        if retired:
+            record(db, att.user_id, "package.approval_retired", "application", app.id,
+                   reason_code="form_changed")  # fmt: skip
+        now = utcnow()
+        db.execute(
+            update(ApplicationPause)
+            .where(
+                ApplicationPause.application_id == app.id,
+                ApplicationPause.status.in_(PAUSE_UNRESOLVED),
+            )
+            .values(status="resolved", resolution="superseded", resolved_at=now)
+        )
+        package = db.get(ApplicationPackage, att.package_id)
+        dest = (package.content or {}).get("destination", {}) if package else {}
+        safe = {k: int(counts.get(k) or 0) for k in ("new", "changed", "missing")}
+        db.add(
+            ApplicationPause(
+                user_id=att.user_id,
+                application_id=app.id,
+                attempt_id=att.id,
+                kind="form_changed",
+                phase="after_disclosure" if disclosed else "before_disclosure",
+                status="open",
+                package_version=package.version if package else 0,
+                package_hash=att.package_hash,
+                form_version=dest.get("form_version"),
+                detail=safe,
+                created_at=now,
+            )
+        )
+        event(db, att, "paused", reason_code="form_changed", disclosed=disclosed, **safe)
+        db.commit()
+        return True
+
+
+def retire_live_approvals(db: Session, application_id, reason: str) -> int:
+    """Invalidate every approval of the application that is still live; how many were."""
+    rows = db.scalars(
+        select(PackageApproval)
+        .where(
+            PackageApproval.application_id == application_id,
+            PackageApproval.invalidated_at.is_(None),
+        )
+        .with_for_update()
+    ).all()
+    now = utcnow()
+    for appr in rows:
+        appr.invalidated_at, appr.invalidation_reason = now, reason
+    return len(rows)
+
+
 REHEARSAL_DONE = "Rehearsal finished: the form was filled and checked, and nothing was submitted."
 # Why an outcome retired its approval (`_finish(retire=...)`), shown on the review page.
 RETIRED = {
@@ -652,6 +735,9 @@ RETIRED = {
     "received. Approve again to send it again.",
     "verification_not_completed": "Used by a submission the employer asked to verify with a "
     "code that was not completed. Approve again to send it again.",
+    # D132: the employer's form no longer matched this package when it ran.
+    "form_changed": "The employer's form no longer matched this package when it ran. Read the "
+    "form again under Questions, answer what is new, then approve again.",
 }
 
 

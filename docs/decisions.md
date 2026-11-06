@@ -4467,3 +4467,103 @@ audit-inventory and export-completeness guards are updated and pass.
   through the route, no reuse after another question, a second-level chain),
   `frontend/e2e/self-identification.spec.ts`
   (desktop and mobile: the source label, and the felony question left to you).
+
+## D132 — A form that no longer matches pauses the application; "Questions needing your answer"; read the form again (2026-11-06)
+
+- **Why:** the first inventory of the Greenhouse + Workday automation loop found that its missing
+  piece was the loop itself. A question the employer added after approval ended the attempt with
+  counts only. The stop before disclosure left the approval live, the application settled back to
+  "awaiting approval", and "Submit approved package" queued the same package into the same stop.
+  Nothing recorded the change, nothing could read the form again (capture was offered only while a
+  job had no form), and no page listed what the applications were waiting for.
+- **Decided:**
+  - **A pause, never a dead end, never a resumption.** Before anything is entered, an adapter that
+    finds a change a fresh read of the form can show has the worker call
+    `svc.pause_for_form_change`. Such a change is `FormChanged`: same text as before, counts only.
+    - On the Greenhouse-style pages it is a control the approved form did not have.
+    - On the generic, Lever-, Ashby- and Workday-style pages it is a different form that is not a
+      bot check.
+
+    The call is one generation-fenced finish from `claimed`, in one transaction:
+    - the attempt ends `failed_safe` (`abandoned` if the row shows data was entered);
+    - the application waits for you;
+    - every live approval of the application is retired (`RETIRED["form_changed"]`);
+    - an `application_pauses` row is recorded. It holds the attempt, the package that ran (its
+      hash), the form version and counts, never a question's key or label.
+
+    The attempt is never resumed or retried, and nothing waits on a worker, a lease or a browser.
+    The runner's results and the outcome texts are unchanged.
+  - **What stays a plain stop**, as today:
+    - on the Greenhouse-style pages, a control gone, doubled, renamed or retyped, or options that
+      differ on the page only: the job data a re-read compares with does not show them;
+    - checks only the live page shows: a dropdown that would not open, a control a script shows or
+      hides, a requirement only the page marks, a widget, a structured section, the phone's
+      companion control, the hidden search box;
+    - a bot check and the API route;
+    - any change found after filling. The same page matched before filling, so the change is the
+      page's own reaction to your answers, which no re-read can show.
+  - **The paused package is not approved again** until you decide. `package.approve` refuses that
+    exact content hash with `form_recapture_needed`, or `form_change_unexplained` after a read
+    found no difference, and the application stays in "needs your action". The approve buttons are
+    disabled while it is paused. Three ways out, each your decision:
+    - approve a different package: from a new form version, or a changed answer;
+    - **"Try this version again"**: before anything was entered only. It ends the pause, so the
+      same package can be approved again; the live page is checked again before anything is
+      entered, and a change still there stops it again with nothing sent;
+    - apply on the employer's site and record it.
+  - **Read the form again:** `POST /applications/{id}/form/recapture`. It goes through the same
+    capture route that read the form first, so every check of that route applies: the recorded
+    permission to read a real post, the job data and page cross-check, fixture-only providers.
+    - A form you attached yourself cannot be read again; attach the changed one.
+    - Storing a version that differs from the one the application paused on (by fingerprint, or by
+      option values the fingerprint leaves out) ends the pause in the same transaction. Any
+      capture route does this.
+    - A read that finds no difference marks the pause "unexplained". The change is in the page's
+      own scripts and is never guessed.
+    - A refused read leaves the pause as it was.
+    - The job row is locked first, so two reads never number the same version.
+    - The read is refused while an attempt holds the application.
+  - **"Questions needing your answer"** (`/questions`, under the secondary navigation):
+    - Every application that waits for you, with its open questions. Each question carries what
+      you can do: answer it here (with the saved-answer choice where reuse is allowed), decide on
+      the application's page, answer it in your profile, or apply on the employer's site.
+    - The pause, with "Read the form again" and "Try this version again".
+    - Read only otherwise. Nothing is approved, queued or sent from it.
+    - `GET /questions/count` reads stored packages and never rebuilds one.
+  - **Notifications:** one "The employer's form no longer matches" item per waiting pause, in place
+    of the attempt's stop item. D115's item no longer says "it continues by itself" for an
+    application automation already tried.
+  - **D113 never continues an application that paused**, even after you answered and approved
+    again. Continuing automatically after a form change is a decision for you; it is not taken
+    here.
+  - **A pause ends** when the application leaves review: cancelled, expired, failed for good, or
+    submitted (by hand too).
+- **Not changed:**
+  - the package's content shape and `SCHEMA_VERSION` (3);
+  - no retry after disclosure;
+  - real destinations need the recorded permission exactly as before (it ends 2026-11-06).
+
+  Nothing real was run. A paused rehearsal counts as a failed rehearsal for the employer's path
+  (E6), as any rehearsal stopped before disclosure always has.
+- **Open for the owner:** whether automation may continue after a form change.
+- **Tests:** `test_form_change_loop.py`, with the receiver's ledger as the oracle, by id and through
+  the pilot:
+  - no disclosure, every approval retired, the paused package refused, queueing refused;
+  - the list and the notification;
+  - reading again brings the new question and keeps earlier answers, and exactly one acceptance
+    follows with the new answer;
+  - "unexplained" refuses the same package and a changed answer ends the pause;
+  - "Try this version again" runs the same package again, which stops again with nothing sent
+    while the change is there;
+  - a page-only change stays a plain stop;
+  - a refused read leaves the pause open;
+  - no read while an attempt holds the application;
+  - a stale worker writes nothing;
+  - a pause recorded after filling is abandoned and never tried again;
+  - cancel closes the pause;
+  - another account gets 404 and sees nothing;
+  - the count writes nothing;
+  - no key or label in the pause, its events or the audit.
+
+  Also `frontend/e2e/questions.spec.ts`, desktop and mobile: a Workday-style form no longer
+  matched during a rehearsal, was read again and answered, and one new run filled it.
