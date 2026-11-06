@@ -478,8 +478,10 @@ def recapture_form(
     it unexplained (a change only the page's own scripts make). Never approves, queues or sends
     anything."""
     app = _owned_app(db, user, app_id)
-    if pk.unresolved_pause(db, app.id) is None:
+    paused = pk.unresolved_pause(db, app.id)
+    if paused is None:
         raise conflict("Nothing is paused for this application. (reason: no_pause)")
+    paused_id = paused.id
     if app.state not in pk.REBUILDABLE or _attempt_active(db, app.id):
         raise conflict(
             "The form can be read again only while the application waits for you, with no "
@@ -508,10 +510,12 @@ def recapture_form(
             "An attempt started while the form was being read; nothing was changed for it. "
             "(reason: recapture_not_available)"
         )
-    pause = pk.unresolved_pause(db, app.id)
-    if pause is not None and pause.status == "open":
+    pause = pk.unresolved_pause(db, app.id, lock=True)
+    if pause is not None and pause.id == paused_id and pause.status == "open":
         # No form differing from the one it paused on: the change is not in what NoEfforts
         # reads (the page's own scripts add it). Never guessed; nothing can be approved yet.
+        # Only the pause this read was for, as it is now (a concurrent read may have ended it,
+        # and a newer pause was never read for).
         pause.status, pause.recaptured_version = "unexplained", out["version"]
     pkg = pk.ensure_current(db, app)
     last = _last_pause(db, app.id)
@@ -539,7 +543,7 @@ def dismiss_pause(
     app = _owned_app(db, user, app_id)
     pk.lock_application(db, app.id)
     db.refresh(app)
-    pause = pk.unresolved_pause(db, app.id)
+    pause = pk.unresolved_pause(db, app.id, lock=True)  # as it is now: a read may have ended it
     if pause is None:
         raise conflict("Nothing is paused for this application. (reason: no_pause)")
     pause.status, pause.resolution, pause.resolved_at = "closed", "dismissed", utcnow()

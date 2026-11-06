@@ -613,17 +613,21 @@ def execution_owns_state(db: Session, app: Application) -> bool:
     )
 
 
-def unresolved_pause(db: Session, app_id: uuid.UUID):
+def unresolved_pause(db: Session, app_id: uuid.UUID, *, lock: bool = False):
     """D132: the application's form-change pause that still waits for you (open or
-    unexplained), or None. At most one, by a partial unique index."""
+    unexplained), or None. At most one, by a partial unique index. `lock`: for a caller about to
+    change it, which holds the application lock: the row is locked and read as it is now (not as
+    the session last saw it), so a form read that resolved it meanwhile is seen, never
+    overwritten; a read that resolves it later waits for this transaction."""
     from app.modules.execution.models import PAUSE_UNRESOLVED, ApplicationPause
 
-    return db.scalar(
-        select(ApplicationPause).where(
-            ApplicationPause.application_id == app_id,
-            ApplicationPause.status.in_(PAUSE_UNRESOLVED),
-        )
+    q = select(ApplicationPause).where(
+        ApplicationPause.application_id == app_id,
+        ApplicationPause.status.in_(PAUSE_UNRESOLVED),
     )
+    if lock:
+        q = q.with_for_update().execution_options(populate_existing=True)
+    return db.scalar(q)
 
 
 def ensure_current(db: Session, app: Application) -> ApplicationPackage:
@@ -677,7 +681,8 @@ def _settle_state(
 ) -> None:
     """Move the application to the state the package implies, via legal system transitions."""
     ready = not pkg.content["unresolved"] and not pkg.content["validation_errors"]
-    if unresolved_pause(db, app.id) is not None:
+    paused = unresolved_pause(db, app.id) is not None
+    if paused:
         ready = False  # D132: stopped on a changed form; it waits for you whatever it holds
     target = AppState.awaiting_approval if ready else AppState.needs_user_action
     s = app.state
@@ -708,11 +713,16 @@ def _settle_state(
             app,
             target,
             Actor.system,
-            "Ready for your approval"
+            PAUSED_REASON
+            if paused
+            else "Ready for your approval"
             if ready
             else f"{len(pkg.content['unresolved'])} question(s) need your input",
         )
 
+
+# D132: why an application waits while its form-change pause is unresolved (its timeline).
+PAUSED_REASON = "The employer's form changed: read it again under Questions"
 
 SCOPE_WORDS = {
     ApprovalScope.submit: "to fill and submit",

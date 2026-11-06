@@ -119,8 +119,10 @@ export default function QuestionsPage() {
   const recapture = (appId) =>
     run(
       () => api(`/applications/${appId}/form/recapture`, { method: "POST" }),
+      // What happened to the pause decides the notice, not whether a new version was stored:
+      // a newer form may already have been stored, and a reverted one is a new version too.
       (out) =>
-        out.form.changed
+        out.pause?.status === "resolved"
           ? "The form was read again: answer what is new below, then approve on the application's page."
           : out.pause?.status === "unexplained"
             ? "The form was read again and showed no difference NoEfforts can see."

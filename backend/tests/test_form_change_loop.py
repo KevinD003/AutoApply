@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app.core.db import SessionLocal
+from app.modules.applications.models import Application, ApplicationEvent
 from app.modules.audit.models import AuditEvent
 from app.modules.execution import runner
 from app.modules.execution import service as svc
@@ -463,3 +464,102 @@ def test_no_question_key_or_label_in_the_pause_its_events_or_the_audit(api, rece
     blob = repr(events) + repr(audits) + repr(p.detail) + attempt(aid).outcome_detail
     assert "question_" not in blob and "weekends" not in blob.lower()
     assert audits and set(audits[-1]) == {"form_version", "new_version", "pause"}
+
+
+# ------------------------------------------------------------------ races (two real transactions)
+
+
+def _sides(app_id):
+    """The application's owner and job, and the two request bodies the races run, each in its
+    own session (its own connection), as tests/test_bank_races.py does."""
+    from app.modules.identity.models import User
+    from app.modules.preparation import router as prep
+
+    with SessionLocal() as db:
+        app = db.get(Application, uuid.UUID(app_id))
+        user_id, job_id = app.user_id, app.job_id
+
+    def call(fn, *args, **kw):
+        with SessionLocal() as db:
+            return fn(*args, user=db.get(User, user_id), db=db, **kw)
+
+    return {
+        "dismiss": lambda: call(prep.dismiss_pause, uuid.UUID(app_id)),
+        "recapture": lambda: call(prep.recapture_form, uuid.UUID(app_id)),
+        "read": lambda: call(prep.capture_greenhouse_form, job_id),
+    }
+
+
+def _race(hold, first_name, first, start_second):
+    """`first` runs in thread `first_name` and is held by `hold`; then `start_second()` starts
+    the other side, which must wait on a row lock; then `first` is released. Both finish."""
+    from tests.test_lock_order import TIMEOUT, Side, lock_waiters, no_errors, wait_until
+
+    try:
+        a = Side(first_name, first)
+        assert hold.reached.wait(TIMEOUT), f"{first_name} never reached its hold"
+        before = lock_waiters()
+        b = start_second()
+        wait_until(lambda: lock_waiters() > before or not b.thread.is_alive(), "the read waits")
+        assert b.thread.is_alive(), (b.error, "the read did not wait for the pause's lock")
+    finally:
+        hold.go.set()
+    a.join(), b.join()
+    no_errors(a, b)
+
+
+def test_a_form_read_during_try_again_waits_and_never_overwrites_it(api, receiver, monkeypatch):
+    """"Try this version again" reads the pause under its row lock, as it is now. A form read
+    that would resolve it meanwhile waits, then finds it closed: one outcome, never a lost
+    resolution (before, the read's "new_form" was overwritten with "dismissed")."""
+    from app.modules.preparation import package as pk
+    from tests.test_lock_order import Hold, Side
+
+    app_id, _ = paused_application(api, receiver)  # the page still has the added question
+    sides = _sides(app_id)
+    hold = Hold("dismiss")  # held once it has read the pause (and, now, locked it)
+    monkeypatch.setattr(pk, "unresolved_pause", hold.wrap(pk.unresolved_pause, after=True))
+    _race(hold, "dismiss", sides["dismiss"], lambda: Side("read", sides["read"]))
+    (p,) = pauses(app_id)
+    assert (p.status, p.resolution, p.recaptured_version) == ("closed", "dismissed", None)
+    assert receiver.ledger()["disclosures"] == []
+
+
+def test_a_form_read_during_another_read_is_never_marked_unexplained(api, receiver, monkeypatch):
+    """Reading the form again marks the pause it read for unexplained only as the pause is now,
+    under its row lock. A second read that finds a new form waits, then resolves it (before, the
+    first read's "unexplained" overwrote that resolution)."""
+    from app.modules.preparation import package as pk
+    from tests.test_lock_order import Hold, Side
+
+    app_id, _ = paused_application(api, receiver)
+    receiver.config(mode="normal")  # the first read finds the form as approved: no difference
+    sides = _sides(app_id)
+    hold = Hold("recapture")  # held after marking the pause, before its rebuild and commit
+    monkeypatch.setattr(pk, "ensure_current", hold.wrap(pk.ensure_current))
+
+    def second():
+        receiver.config(mode="gh2_question_added")  # the second read finds the added question
+        return Side("read", sides["read"])
+
+    _race(hold, "recapture", sides["recapture"], second)
+    (p,) = pauses(app_id)
+    assert (p.status, p.resolution, p.recaptured_version) == ("resolved", "new_form", 2)
+
+
+def test_a_paused_application_says_why_it_waits(api, receiver):
+    # Fully answered and paused: its timeline says the form changed, never "0 question(s)".
+    from app.modules.preparation import package as pk
+
+    app_id, _ = paused_application(api, receiver)
+    r = api.put(f"/applications/{app_id}/answers",
+                json={"key": "preferred_name", "value": {"text": "Sam"}})  # fmt: skip
+    assert r.status_code == 200, r.text
+    with SessionLocal() as db:
+        reasons = db.scalars(
+            select(ApplicationEvent.reason)
+            .where(ApplicationEvent.application_id == uuid.UUID(app_id))
+            .order_by(ApplicationEvent.created_at.desc())
+        ).all()
+    assert reasons[0] == pk.PAUSED_REASON
+    assert not any("0 question(s)" in (x or "") for x in reasons)

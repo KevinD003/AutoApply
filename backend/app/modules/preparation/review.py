@@ -88,7 +88,7 @@ def _summary(db: Session, app: Application, job: Job, pkg) -> dict:
         blocked.append(signals.refusal(code))
     if pk.unresolved_pause(db, app.id) is not None:
         # D132: stopped on a changed form; nothing is approved until that is resolved.
-        blocked.append("The employer's form changed: read it again under Questions")
+        blocked.append(pk.PAUSED_REASON)
     return {
         "application_id": str(app.id),
         "state": app.state.value,
