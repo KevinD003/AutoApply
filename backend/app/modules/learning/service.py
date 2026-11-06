@@ -1,8 +1,9 @@
 """D115: the answer brain. For a question the package still leaves to you, it looks through your
 own saved answers (the answer bank, D51) for one given to a question worded differently but
-meaning the same, and suggests it. You decide: "Use this" saves it as your answer here and for
-this exact wording from then on (the resolver reuses it deterministically, `_from_bank`); "Not
-this" is remembered so the same pair is never suggested again. Every verdict is a training label
+meaning the same, and suggests it. You decide: "Use and save" makes it your answer here and for
+this exact wording from then on (the resolver reuses it deterministically, `_from_bank`); "Use
+here only" (D133) answers this application alone; "Not this" is remembered so the same pair is
+never suggested again. Every verdict is a training label
 for your own model (LightGBM, else XGBoost; engine.py), retrained after each one; until there
 are enough verdicts the fixed rule score ranks the candidates. D133: the rule score is also a
 floor a model cannot lower; a model only ranks and narrows what the rules let through.
@@ -260,14 +261,22 @@ def _label(db: Session, user: User, s: dict, accepted: bool) -> None:
     retrain(db, user.id)
 
 
-def accept(db: Session, user: User, app: Application, key: str, entry_id: uuid.UUID) -> dict:
-    """Use the suggested saved answer: your answer here, saved for this exact wording too."""
+def accept(
+    db: Session,
+    user: User,
+    app: Application,
+    key: str,
+    entry_id: uuid.UUID,
+    save_to_bank: bool = True,
+) -> dict:
+    """Use the suggested saved answer: your answer here, saved for this exact wording too, or
+    (D133, "Use here only") for this application alone. Either way your verdict is a yes."""
     from app.modules.preparation.router import AnswerIn, put_answer
 
     s = _find(db, user, app, key, entry_id)
     s["question_key"] = question_key(_fields(db, app)[key])
     view = put_answer(
-        app.id, AnswerIn(key=key, value=s["value"], save_to_bank=True), user=user, db=db
+        app.id, AnswerIn(key=key, value=s["value"], save_to_bank=save_to_bank), user=user, db=db
     )
     _label(db, user, s, True)
     db.commit()

@@ -83,6 +83,45 @@ def test_a_reworded_question_gets_your_saved_answer_as_a_suggestion_and_acceptin
     assert (row["status"], row["source"]) == ("resolved", "answer_bank")
 
 
+def test_use_here_only_answers_this_application_and_saves_nothing(api):
+    """D133: "Use here only": the saved answer becomes your answer for this application alone.
+    Nothing is saved for this wording, so the next application asking it is offered the same
+    suggestion again; the verdict still counts as a yes for your model."""
+    setup_candidate(api)
+    saved(api, lang(), {"label": "Python"})
+    reworded = lang(label="Which programming language do you use the most?")
+    app2 = application(api, [reworded])
+    (s,) = suggest(api, app2)
+    body = {"key": s["key"], "bank_entry_id": s["bank_entry_id"], "save_to_bank": False}
+    r = api.post(f"/applications/{app2}/suggestions/accept", json=body)
+    assert r.status_code == 200, r.text
+    row = rows(r.json())["lang"]
+    assert (row["status"], row["source"], row["display"]) == ("resolved", "user_entered", "Python")
+    assert suggest(api, app2) == []
+    with SessionLocal() as db:
+        assert len(db.scalars(select(AnswerBankEntry)).all()) == 1  # still only the first
+        (lab,) = db.scalars(select(LearningLabel)).all()
+        assert lab.accepted is True
+    app3 = application(api, [reworded])
+    assert [x["bank_entry_id"] for x in suggest(api, app3)] == [s["bank_entry_id"]]
+
+
+def test_a_verdict_with_a_field_the_api_does_not_take_is_refused(api):
+    """D133: an unknown field is refused (422), never ignored: before, accept saved anyway."""
+    setup_candidate(api)
+    saved(api, lang(), {"label": "Python"})
+    app2 = application(api, [lang(label="Which programming language do you use the most?")])
+    (s,) = suggest(api, app2)
+    base = {"key": s["key"], "bank_entry_id": s["bank_entry_id"]}
+    url = f"/applications/{app2}/suggestions"
+    assert api.post(f"{url}/accept", json=base | {"save": False}).status_code == 422
+    assert api.post(f"{url}/reject", json=base | {"save_to_bank": False}).status_code == 422
+    with SessionLocal() as db:
+        assert db.scalars(select(LearningLabel)).all() == []
+        assert len(db.scalars(select(AnswerBankEntry)).all()) == 1
+    assert rows(package(api, app2))["lang"]["status"] == "needs_user"
+
+
 def test_rejecting_is_remembered_and_never_suggested_again(api):
     setup_candidate(api)
     saved(api, lang(), {"label": "Go"})
