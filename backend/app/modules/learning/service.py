@@ -142,6 +142,11 @@ def _best(db: Session, user: User, f: FormField, model: LearningModel | None) ->
     shape = answer_shape(f)
     if shape not in SHAPES:
         return None
+    if f.condition is not None:
+        # D131: a follow-up means what the question before it asked, which these features do
+        # not compare ("Which one?" after a language or an instrument question); a saved answer
+        # after the same questions is already reused exactly by the resolver.
+        return None
     new, qkey = _new(f), question_key(f)
     rejected = _rejected(db, user.id, qkey)
     pairs = []

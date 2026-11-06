@@ -23,6 +23,7 @@ from app.modules.preparation.resolver import (
     option_labels,
     question_key,
     resolve_field,
+    reuse_key,
     saved_answer_scope,
 )
 from app.modules.profiles.models import Approval, SalaryPeriod, TriState
@@ -340,7 +341,7 @@ def test_a_follow_up_of_a_question_that_is_not_reused_is_not_reused():
         ("Do you speak Spanish?", True),
     ):
         parent = field(parent_label, "radio", ["Yes", "No"], key="p")
-        bank = entry(child)
+        bank = entry(child, key=reuse_key(child, {"p": parent}))  # D131: after its question
         rows = _form(parent, child, inputs={"p": {"option": "0", "label": "Yes"}}, bank=bank)
         assert rows["p"].status == "resolved"  # the follow-up is asked
         r = rows["lvl"]
@@ -349,6 +350,87 @@ def test_a_follow_up_of_a_question_that_is_not_reused_is_not_reused():
         else:
             assert not r.bankable and (r.status, r.source) == ("needs_user", "unresolved")
             assert r.explanation == SCOPE_EXPLANATION["followup"]
+
+
+def test_a_follow_up_is_reused_only_after_the_question_it_follows():
+    # D131: "Which one?" means what the question before it asked. Saved after "Do you speak a
+    # language other than English?" (shown for Yes), it is reused there only: never after another
+    # question, nor after the same question shown for another answer.
+    langs = field("Do you speak a language other than English?", "radio", ["Yes", "No"], key="p")
+    certs = field("Do you hold a professional certification?", "radio", ["Yes", "No"], key="p")
+    child = field("Which one?", "text", key="c", condition=Condition(key="p", any_of=["0"]))
+    saved = entry(child, key=reuse_key(child, {"p": langs}), value={"text": "Spanish"})
+    yes, no = {"p": {"option": "0", "label": "Yes"}}, {"p": {"option": "1", "label": "No"}}
+    same = _form(langs, child, inputs=yes, bank=saved)["c"]
+    assert (same.status, same.source, same.value) == (
+        "resolved",
+        "answer_bank",
+        {"text": "Spanish"},
+    )
+    other = _form(certs, child, inputs=yes, bank=saved)["c"]
+    assert (other.status, other.source, other.value) == ("needs_user", "unresolved", None)
+    for_no = field("Which one?", "text", key="c", condition=Condition(key="p", any_of=["1"]))
+    flipped = _form(langs, for_no, inputs=no, bank=saved)["c"]
+    assert (flipped.source, flipped.value) == ("unresolved", None)
+    # A follow-up's own wording alone (a key from before D131) never answers it.
+    plain = _form(langs, child, inputs=yes, bank=entry(child, value={"text": "Spanish"}))["c"]
+    assert (plain.source, plain.value) == ("unresolved", None)
+
+
+def test_a_follow_up_is_not_reused_after_the_same_question_with_other_options():
+    # D131: "Other" after [English, Spanish, Other] is not "Other" after [English, French, Other].
+    a = field("Which languages do you speak?", "checkbox_group", ["English", "Spanish", "Other"],
+              key="p")  # fmt: skip
+    b = field("Which languages do you speak?", "checkbox_group", ["English", "French", "Other"],
+              key="p")  # fmt: skip
+    child = field("Other languages", "text", key="c", condition=Condition(key="p", any_of=["2"]))
+    saved = entry(child, key=reuse_key(child, {"p": a}), value={"text": "French"})
+    picked = {"p": {"options": [{"option": "0", "label": "English"},
+                                {"option": "2", "label": "Other"}]}}  # fmt: skip
+    assert _form(a, child, inputs=picked, bank=saved)["c"].source == "answer_bank"
+    r = _form(b, child, inputs=picked, bank=saved)["c"]
+    assert (r.source, r.value) == ("unresolved", None)
+
+
+def test_a_second_level_follow_up_carries_the_whole_chain():
+    # D131: "Which ones?" after "Do you speak more than one?" after a language question is keyed
+    # with both; the same two questions under another first question are another chain.
+    lang = field("Do you speak a language other than English?", "radio", ["Yes", "No"], key="l")
+    music = field("Do you play a musical instrument?", "radio", ["Yes", "No"], key="l")
+    more = field("Do you speak more than one?", "radio", ["Yes", "No"], key="m",
+                 condition=Condition(key="l", any_of=["0"]))  # fmt: skip
+    which = field("Which ones?", "text", key="w", condition=Condition(key="m", any_of=["0"]))
+    k_lang = reuse_key(which, {"l": lang, "m": more})
+    assert k_lang is not None and k_lang != reuse_key(which, {"l": music, "m": more})
+    assert reuse_key(which, {"m": more}) is None  # its first question is not on the form
+    loop = field("Do you speak more than one?", "radio", ["Yes", "No"], key="m",
+                 condition=Condition(key="w", any_of=["0"]))  # fmt: skip
+    assert reuse_key(which, {"m": loop, "w": which}) is None  # circular
+
+
+def test_a_follow_up_whose_question_is_not_on_the_form_is_never_saved_or_reused():
+    # D131: without the question it follows, a follow-up has no meaning to key or match.
+    child = field("Which one?", "text", key="c", condition=Condition(key="gone", any_of=["0"]))
+    r = _form(child, bank=entry(child, value={"text": "Spanish"}))["c"]
+    assert not r.bankable and (r.source, r.value) == ("unresolved", None)
+    assert bankscope.reason(child, classify(child), parent=None) == "followup"
+    assert reuse_key(child, {}) is None and reuse_key(child, None) is None
+
+
+def test_a_follow_up_key_never_equals_a_key_without_its_trigger():
+    langs = field("Do you speak a language other than English?", "radio", ["Yes", "No"], key="p")
+    child = field("Which one?", "text", key="c", condition=Condition(key="p", any_of=["0"]))
+    top = field("Which one?", "text", key="c")
+    assert reuse_key(child, {"p": langs}) != reuse_key(top, {})
+    assert question_key(child) == question_key(top)  # only to count repeated wordings
+    assert reuse_key(top, None) == question_key(top)  # a question that follows none: D51's key
+    # The trigger is the question's meaning (wording, help, shape, options) and the answers that
+    # show the follow-up; page keys do not count.
+    reworded = field("Do you speak another language?", "radio", ["Yes", "No"], key="p")
+    assert reuse_key(child, {"p": reworded}) != reuse_key(child, {"p": langs})
+    renamed = field("Do you speak a language other than English?", "radio", ["Yes", "No"], key="x")
+    moved = field("Which one?", "text", key="c2", condition=Condition(key="x", any_of=["0"]))
+    assert reuse_key(moved, {"x": renamed}) == reuse_key(child, {"p": langs})
 
 
 def test_the_same_wording_twice_on_one_form_is_never_answered_from_the_bank():
