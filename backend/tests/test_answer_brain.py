@@ -106,6 +106,12 @@ def test_rejecting_is_remembered_and_never_suggested_again(api):
         ("Can you lift 25 pounds?", "Can you lift 50 pounds?"),  # numbers
         ("Do you have a portfolio website?", "Do you not have a portfolio website?"),  # negation
         ("Have you lived in Canada?", "Have you lived in Mexico?"),  # countries
+        # D133: a word on one side only
+        ("Are you comfortable with animals?", "Are you uncomfortable with animals?"),  # negation
+        ("Can you lift 50 lbs?", "Can you lift 50 kg?"),  # unit
+        ("Do you speak Spanish?", "Do you speak French?"),  # language
+        ("Have you used Salesforce?", "Have you used HubSpot?"),  # proper_noun
+        ("have you used salesforce?", "have you used hubspot?"),  # product
     ],
 )
 def test_similar_wording_that_differs_on_what_matters_is_never_suggested(api, saved_label,
@@ -113,6 +119,7 @@ def test_similar_wording_that_differs_on_what_matters_is_never_suggested(api, sa
     setup_candidate(api)
     saved(api, radio("q", saved_label), {"label": "Yes"})
     app2 = application(api, [radio("q", new_label)])
+    assert rows(package(api, app2))["q"]["bankable"]  # nothing else refuses it
     assert suggest(api, app2) == []
 
 

@@ -1,12 +1,13 @@
 """D133: which of your saved answers the answer brain may suggest for another wording at all
 (learning.service._suggestible), judged once from the question each one was given to, rebuilt
-from what was stored. No database, no server; synthetic wordings."""
+from what was stored; and which rewordings are vetoed outright (learning.features.veto), label
+and help text together. No database, no server; synthetic wordings."""
 
 from types import SimpleNamespace as NS
 
 import pytest
 
-from app.modules.learning import service
+from app.modules.learning import features, service
 from app.modules.preparation.forms import Condition, FieldType, FormField, Option
 from app.modules.preparation.resolver import answer_shape, option_labels, question_key, reuse_key
 
@@ -100,3 +101,137 @@ def test_a_follow_up_saved_under_the_question_it_follows_is_never_suggested():
     assert key is not None and key != question_key(child)
     assert service._suggestible(stored(child, key=key)) is False
     assert service._suggestible(stored(child)) is True
+
+
+# ------------------------------------------------------------------ the vetoes (features.veto)
+
+
+def side(label, help_="", shape="choice"):
+    """One side of a pair, as the answer brain compares it (service._new and _saved)."""
+    return {"shape": shape, "label": label, "help": help_, "options": ["yes", "no"]}
+
+
+def veto(saved_label, new_label, saved_help="", new_help="", shape="choice"):
+    saved = side(saved_label, saved_help, shape) | {"labels": ["Yes"]}
+    return features.veto(side(new_label, new_help, shape) | {"labels": []}, saved)
+
+
+CURLY = "’"  # a typographic apostrophe
+VETOED = [
+    ("proper_noun", "Have you used Salesforce?", "Have you used HubSpot?"),
+    ("proper_noun", "Do you have experience with AWS?", "Do you have experience with Azure?"),
+    ("proper_noun", "Are you a member of IEEE?", "Are you a member of ACM?"),
+    ("proper_noun", "Have you lived in California?", "Have you lived in Texas?"),
+    ("proper_noun", "Have you used Epic EHR?", "Have you used Cerner EHR?"),
+    (
+        "proper_noun",
+        "Are you proficient in Microsoft Excel?",
+        "Are you proficient in Google Sheets?",
+    ),
+    ("language", "Do you speak Spanish?", "Do you speak French?"),
+    ("language", "Are you fluent in Mandarin?", "Are you fluent in Cantonese?"),
+    ("language", "Do you speak Hindi?", "Do you speak Urdu?"),
+    ("language", "Do you have experience with Python?", "Do you have experience with Java?"),
+    ("language", "Do you know C++?", "Do you know C#?"),
+    ("product", "have you used salesforce?", "have you used hubspot?"),
+    ("proper_noun", "Epic Analyst Certification", "Cerner Analyst Certification"),  # a heading
+    ("unit", "Can you lift 50 lbs?", "Can you lift 50 kg?"),
+    ("unit", "Can you lift 50 pounds?", "Can you lift 50 kilograms?"),
+    ("unit", "Can you stand for 8 hours?", "Can you stand for 8 minutes?"),
+    ("unit", "Can you type 60 words per minute?", "Can you type 60 characters per minute?"),
+    ("numbers", "Can you lift twenty pounds?", "Can you lift fifty pounds?"),
+    ("negation", "Do you have experience with Python?", "Do you lack experience with Python?"),
+    ("negation", "Are you able to lift 50 pounds?", "Are you unable to lift 50 pounds?"),
+    ("negation", "Are you comfortable with animals?", "Are you uncomfortable with animals?"),
+    ("negation", "Have you managed a team?", "Haven't you managed a team?"),
+    ("negation", "Does the role involve travel?", "Doesn't the role involve travel?"),
+    ("negation", "Can you lift 50 pounds?", f"Can{CURLY}t you lift 50 pounds?"),
+    ("negation", "Do you drive?", f"Don{CURLY}t you drive?"),
+    ("negation", "Did you pass the bar exam?", "Did you fail the bar exam?"),
+    ("negation", "Do you speak English?", "Do you speak a language other than English?"),
+    (
+        "negation",
+        "Are you eligible for the bonus scheme?",
+        "Are you ineligible for the bonus scheme?",
+    ),
+]
+
+
+@pytest.mark.parametrize(("code", "saved_label", "new_label"), VETOED, ids=[v[2] for v in VETOED])
+def test_wording_that_differs_on_what_matters_is_vetoed(code, saved_label, new_label):
+    assert veto(saved_label, new_label) == code
+    assert veto(new_label, saved_label) == code  # either way round
+
+
+HELP_ONLY = [
+    ("unit", "In pounds", "In kilograms"),
+    ("language", "For example Python", "For example Java"),
+    ("numbers", "Up to 25 lbs", "Up to 75 lbs"),
+    ("countries", "For work in Canada", "For work in Mexico"),
+]
+
+
+@pytest.mark.parametrize(
+    ("code", "saved_help", "new_help"), HELP_ONLY, ids=[h[0] for h in HELP_ONLY]
+)
+def test_help_text_that_differs_on_what_matters_vetoes_identical_labels(code, saved_help, new_help):
+    label = "What is the heaviest load you can carry?"
+    assert veto(label, label, saved_help, new_help, shape="text") == code
+
+
+def test_a_product_named_only_in_the_help_text_vetoes():
+    label = "Which customer relationship tool have you used?"
+    got = veto(label, label, "For example Salesforce", "For example HubSpot", shape="text")
+    assert got in ("proper_noun", "product")
+    got = veto(label, label, "for example salesforce", "for example zendesk", shape="text")
+    assert got == "product"
+
+
+CONTROLS = [
+    (
+        "Which programming language do you use most?",
+        "Which programming language do you use the most?",
+    ),
+    ("Do you have experience with Python?", "Do you have Python experience?"),
+    ("Have you used Salesforce?", "Have you ever used Salesforce?"),
+    ("Do you speak Spanish?", "Can you speak Spanish?"),
+    ("Do you own a car?", "Do you have your own car?"),
+    ("Can you lift 50 pounds?", "Are you able to lift 50 pounds?"),
+    ("Do you have a portfolio?", "Do you have a portfolio website?"),
+    ("What is your GitHub username?", "GitHub username"),
+    ("Do you have a bachelor's degree?", "Do you hold a bachelor's degree?"),
+    ("Do you speak Spanish?", "Do you speak Spanish? (Yes/No)"),
+    ("Portfolio website", "Portfolio URL"),
+    ("Experience with Salesforce?", "Have you used Salesforce?"),
+    ("Are you proficient in Microsoft Excel?", "How proficient are you in Microsoft Excel?"),
+    ("Have you lived in the United States?", "Have you lived in the US?"),
+    (
+        "Which software tools are you familiar with?",
+        "Which software tools are you most familiar with?",
+    ),
+]
+
+
+@pytest.mark.parametrize(("saved_label", "new_label"), CONTROLS, ids=[c[1] for c in CONTROLS])
+def test_a_rewording_that_changes_nothing_that_matters_is_not_vetoed(saved_label, new_label):
+    assert veto(saved_label, new_label) is None
+    assert veto(new_label, saved_label) is None
+
+
+# One witness each that only that family vetoes: neutralised, the pair is no longer vetoed.
+WITNESS = {
+    "negation": ("Are you comfortable with animals?", "Are you uncomfortable with animals?"),
+    "unit": ("Can you lift 50 lbs?", "Can you lift 50 kg?"),
+    "language": ("do you speak spanish?", "do you speak french?"),
+    "proper_noun": ("Do you have experience with AWS?", "Do you have experience with Azure?"),
+    "product": ("have you used salesforce?", "have you used hubspot?"),
+}
+
+
+@pytest.mark.parametrize("code", sorted(WITNESS))
+def test_every_word_family_is_load_bearing(code, monkeypatch):
+    assert [c for c, _ in features.FAMILIES] == list(WITNESS)  # every family has a witness
+    assert veto(*WITNESS[code]) == code
+    families = [(c, (lambda *a: False) if c == code else f) for c, f in features.FAMILIES]
+    monkeypatch.setattr(features, "FAMILIES", families)
+    assert veto(*WITNESS[code]) is None
