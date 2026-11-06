@@ -38,7 +38,9 @@ def category(a: dict, control: dict) -> str:
     a document to choose (a resume, a cover letter) on the application's page; `profile`: a fact
     that belongs in your profile, answered there; `technical`: a control NoEfforts cannot fill
     or a question that depends on page logic: apply on the employer's site."""
-    if a["status"] == "needs_consent" or a.get("acknowledgment"):
+    if a["status"] == "needs_consent" or a.get("acknowledgment") or a.get("sensitive"):
+        # A sensitive question is answered on the application's page, next to the choice to
+        # include it or not; never here, where an answer would be saved for reuse by default.
         return "consent"
     if control.get("answer_here"):
         return "answer"

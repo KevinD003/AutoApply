@@ -13,7 +13,7 @@ from app.modules.autoapply import service
 from app.modules.autoapply.models import AutoApplyEvent
 from app.modules.execution import runner
 from app.modules.execution.models import ExecutionAttempt
-from tests.execution_harness import Receiver, pilot_on, synthetic_candidate
+from tests.execution_harness import Receiver, pilot_on, queue, synthetic_candidate
 from tests.test_greenhouse_dom import v2_job
 
 ANSWERS = {
@@ -163,6 +163,16 @@ def test_a_form_change_leaves_the_application_to_the_owner(api, receiver):
     receiver.config(mode="normal")
     assert tick() == 0 and events(job)[-1] == ("skipped", "form_changed")
     assert tick() == 0 and receiver.ledger()["disclosures"] == []
+    # Not even once the pause is over and the owner ran a rehearsal themselves: continuing an
+    # application that stopped on a changed form stays the owner's own decision.
+    app_id = app_of(api, job)
+    assert api.post(f"/applications/{app_id}/pause/dismiss").status_code == 200
+    p = api.get(f"/applications/{app_id}/package").json()["package"]
+    body = {"version": p["version"], "content_hash": p["content_hash"], "scope": "disclose_only"}
+    assert api.post(f"/applications/{app_id}/package/approve", json=body).status_code == 200
+    assert runner.run_attempt(queue(api, app_id), "w1") == "rehearsed"
+    assert tick() == 0 and events(job)[-1] == ("skipped", "form_changed")
+    assert receiver.ledger()["accepted"] == 0
 
 
 def test_another_account_never_sees_or_triggers_the_owners_rule(api, other_api, receiver):

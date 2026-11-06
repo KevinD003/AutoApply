@@ -4529,10 +4529,13 @@ audit-inventory and export-completeness guards are updated and pass.
 
     The attempt is never resumed or retried, and nothing waits on a worker, a lease or a browser.
     The runner's results and the outcome texts are unchanged.
-  - **What stays a plain stop**, as today: what only the running page shows, because a read never
-    runs the page's scripts. That covers a dropdown that would not open, a control a script shows,
-    hides or requires, a stand-in widget's shape, the phone's companion control and the hidden
-    search box. A bot check and the API route stay plain stops too.
+  - **What stays a plain stop**, as today: what only the running page shows about the questions
+    the form lists, because a read never runs the page's scripts. That covers a dropdown that
+    would not open, a listed control a script shows, hides or requires, a stand-in widget's shape,
+    the phone's companion control and the hidden search box. A bot check and the API route stay
+    plain stops too. A control the form does not list pauses however it appeared; one added only by
+    the page's own script cannot be seen by a read, so the read ends "unexplained" and trying the
+    same version again stops again (found by the review; `test_greenhouse_adapter.py`).
   - **After filling, never a pause.** The same page matched before filling, so a change found by
     the check after filling is the page's own reaction to your answers, which no read can show. The
     attempt is abandoned as before, and every live approval of the application is now retired with
@@ -4569,7 +4572,10 @@ audit-inventory and export-completeness guards are updated and pass.
   - **"Questions needing your answer"** (`/questions`, under the secondary navigation):
     - Every application that waits for you, with its open questions. Each question carries what
       you can do: answer it here (with the saved-answer choice where reuse is allowed), decide on
-      the application's page, answer it in your profile, or apply on the employer's site.
+      the application's page, answer it in your profile, or apply on the employer's site. A
+      sensitive question is decided on the application's page, next to the choice to include it
+      or not; it is never answered here, where an answer would be saved for reuse by default
+      (found by the review).
     - The pause, with "Read the form again" and "Try this version again".
     - Read only otherwise. Nothing is approved, queued or sent from it.
     - `GET /questions/count` reads stored packages and never rebuilds one.
@@ -4580,7 +4586,9 @@ audit-inventory and export-completeness guards are updated and pass.
     again (`form_changed`). Continuing automatically after a form change is a decision for you; it
     is not taken here.
   - **A pause ends** when the application leaves review: cancelled, expired, failed for good, or
-    submitted (by hand too).
+    submitted (by hand too). The tracker offers "I applied myself" and "Cancel" for an application
+    that waits for you, but not while an attempt still holds it (a verification code awaited),
+    when the server refuses both (found by the review).
 - **Not changed:**
   - the package's content shape and `SCHEMA_VERSION` (3);
   - no retry after disclosure;
@@ -4615,7 +4623,8 @@ audit-inventory and export-completeness guards are updated and pass.
   - "Try this version again" runs the same package again, which stops again with nothing sent
     while the change is there;
   - options only the page changed pause, and the read ends "unexplained";
-  - what only the running page shows stays a plain stop;
+  - what only the running page shows about a listed question stays a plain stop; a control the
+    page's script adds pauses, and a read cannot show it (`test_greenhouse_adapter.py`);
   - an approval given while the attempt ran is retired by the pause;
   - a change after filling is abandoned with every approval retired and no pause;
   - no pause is written once data was entered;

@@ -24,6 +24,7 @@ from app.modules.execution.models import (
     AttemptState,
     ExecutionAttempt,
 )
+from app.modules.preparation import package as pk
 from app.modules.preparation.models import PackageApproval
 from tests.execution_harness import (
     BASE,
@@ -218,6 +219,11 @@ def test_a_recapture_that_finds_no_difference_refuses_any_approval_until_you_try
     assert r.status_code == 200, r.text
     r = approve_current(api, app_id)
     assert r.status_code == 409 and "form_change_unexplained" in r.text
+    # The application says it waits, and the batch review shows why, never as approvable.
+    assert api.get(f"/applications/{app_id}").json()["state"] == "needs_user_action"
+    items = api.get("/review/packages").json()["items"]
+    (item,) = [i for i in items if i["application_id"] == app_id]
+    assert pk.PAUSED_REASON in item["blocked"]
     assert api.post(f"/applications/{app_id}/pause/dismiss").status_code == 200
     assert approve_current(api, app_id).status_code == 200
     (p,) = pauses(app_id)
@@ -243,6 +249,15 @@ def test_a_form_read_on_the_jobs_page_ends_the_pause_and_so_does_an_older_one_re
     out = api.post(f"/applications/{app_id}/form/recapture").json()
     assert out["form"] == {"version": 2, "changed": False}
     assert (out["pause"]["status"], out["pause"]["resolution"]) == ("resolved", "new_form")
+    # The same through the job page's own capture route, which stores nothing new: the
+    # resolution is kept (committed), not lost with the request.
+    with SessionLocal() as db:
+        row = db.get(ApplicationPause, p.id)
+        row.status, row.resolution, row.resolved_at, row.recaptured_version = "open", *[None] * 3
+        db.commit()
+    assert api.post(f"/jobs/{job_id}/form/greenhouse").status_code in (200, 201)
+    (p,) = pauses(app_id)
+    assert (p.status, p.resolution, p.recaptured_version) == ("resolved", "new_form", 2)
 
 
 def test_a_recapture_refused_by_the_capture_route_leaves_the_pause_open(api, receiver):
@@ -269,6 +284,65 @@ def test_reading_again_needs_a_pause_and_no_attempt_holding_the_application(api,
     r = api.post(f"/applications/{app_id}/form/recapture")
     assert r.status_code == 409 and "recapture_not_available" in r.text
     assert receiver.ledger()["disclosures"] == []
+    # Refused before the page is read: the pause is as it was (the page still has the added
+    # question, so a read would have stored it and ended the pause).
+    (p,) = pauses(app_id)
+    assert (p.status, p.recaptured_version) == ("open", None)
+
+
+@pytest.mark.parametrize(
+    ("mode", "detail"),
+    [
+        ("gh2_missing_control", {"new": 0, "changed": 0, "missing": 1}),
+        ("gh2_label_mismatch", {"new": 0, "changed": 1, "missing": 0}),
+        ("gh2_duplicate_id", {"new": 0, "changed": 1, "missing": 0}),
+    ],
+)
+def test_a_control_gone_relabelled_or_doubled_after_approval_pauses(api, receiver, mode, detail):
+    app_id = v2_application(api)
+    aid = queue(api, app_id)
+    receiver.config(mode=mode)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert receiver.ledger()["disclosures"] == []
+    (p,) = pauses(app_id)
+    assert (p.status, p.detail) == ("open", detail)
+    assert live_approvals(app_id) == []
+    r = approve_current(api, app_id)
+    assert r.status_code == 409 and "form_recapture_needed" in r.text
+
+
+def test_a_section_gone_after_approval_pauses_and_reading_again_ends_it(api, receiver):
+    from tests.test_greenhouse_sections_e2e import sections_application
+
+    receiver.config(mode="gh2_sections")  # captured and approved with its education section
+    app_id = sections_application(api)
+    aid = queue(api, app_id)
+    receiver.config(mode="normal")  # the page no longer has the section
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert receiver.ledger()["disclosures"] == []
+    (p,) = pauses(app_id)
+    assert (p.status, p.detail) == ("open", {"new": 0, "changed": 0, "missing": 1})
+    out = api.post(f"/applications/{app_id}/form/recapture").json()
+    assert out["form"]["changed"] is True and out["pause"]["status"] == "resolved"
+
+
+def test_a_sensitive_question_is_decided_on_the_applications_page(api):
+    """A sensitive question is never answered under Questions, where an answer would be saved
+    for reuse by default: it is decided on the application's page, next to the choice to include
+    it or not."""
+    synthetic_candidate(api)
+    job_id = api.post(
+        "/jobs", json={"title": "Synthetic Clerk", "employer": "Example Health (fictional)"}
+    ).json()["job"]["id"]
+    options = [{"value": "w", "label": "Woman"}, {"value": "m", "label": "Man"}]
+    field = {"key": "gender", "label": "Gender", "type": "select", "required": True}
+    form = {"title": "Synthetic form", "fields": [field | {"options": options}]}
+    assert api.post(f"/jobs/{job_id}/form", json={"form": form}).status_code == 201
+    app_id = api.post("/applications", json={"job_id": job_id}).json()["id"]
+    items = api.get("/questions").json()["items"]
+    (item,) = [i for i in items if i["application_id"] == app_id]
+    rows = {q["key"]: q for q in item["questions"]}
+    assert (rows["gender"]["sensitive"], rows["gender"]["category"]) == (True, "consent")
 
 
 # ------------------------------------------------------------------ boundaries

@@ -69,7 +69,9 @@ What it does:
   question through the same capture route (and its permission checks). Once you answer and
   approve, exactly one new run fills it.
 - "Try this version again" ends the pause; the page is checked again before anything is entered.
-- What only the running page shows stays a plain stop, as before. A change found after filling is
+- What only the running page shows about the questions the form lists stays a plain stop, as
+  before. A control the form does not list pauses however it appeared; one added only by the page's
+  script cannot be seen by a read, so the read ends "unexplained". A change found after filling is
   abandoned as before, now with every approval retired, so entering the data again is a new
   approval.
 
@@ -81,6 +83,8 @@ What it does:
 | Full e2e on the merged tree (f7a54e4) | `npx playwright test` (desktop and mobile, disposable database) | exit 0; JUnit 173 tests, 170 passed, 0 failures, 3 skipped by design (the bottom-nav check runs on mobile only, the two log-privacy configuration checks on desktop only); 777.9 s |
 | Race fixes (fb00d8c): the two two-connection race tests, then the same with the pause's row lock removed | `pytest tests/test_form_change_loop.py -k during` | exit 0 with the lock; without it both fail ("the read did not wait for the pause's lock") |
 | Head (76588f8) | `pytest tests/test_form_change_loop.py tests/test_auto_apply.py tests/test_notifications.py tests/test_lock_order.py`; `npx playwright test e2e/questions.spec.ts e2e/layout-regression.spec.ts e2e/notifications.spec.ts e2e/tracker-outcomes.spec.ts` | exit 0, 74 passed; exit 0, 15 passed, 1 skipped by design |
+| PR #40 CI on d2851c6 | the backend job | 2 failed, 4828 passed: `test_audit_repair` (the migration's message named "the employer's form", a word that test keeps out of migration output) and `test_phase_a_verification::test_concurrent_writers_conflict_instead_of_overwriting` (the conflict now surfaces at `transition()`'s flush); both reproduced locally on d2851c6, both pass after 6b01b2e |
+| The rework review's open findings (sensitive rows decided on the application's page; the tracker's refused actions hidden while an attempt holds the application; tests for structural drift, a missing section, the pre-read refusal, the job page's dedupe commit, the ever-paused guard after a rehearsal, the waiting state and batch review, a script-added control) | `pytest tests/test_form_change_loop.py tests/test_auto_apply.py tests/test_greenhouse_adapter.py tests/test_phase_a_verification.py tests/test_audit_repair.py tests/test_notifications.py tests/test_migrations.py tests/test_greenhouse_dom.py tests/test_greenhouse_sections_e2e.py` (disposable database); each new test run once with its mutation (sensitive rows answerable, no pre-read attempt check, no dedupe commit, guard only while unresolved); `npx playwright test e2e/questions.spec.ts e2e/submission.spec.ts e2e/follow-ups.spec.ts e2e/tracker-outcomes.spec.ts` | exit 0; JUnit 181 passed; each mutation fails its test; e2e JUnit 34 passed, 0 failures |
 | Lint and format | `uv run ruff check .`, `uv run ruff format --check .` | exit 0 ("All checks passed!"), exit 0 (362 files already formatted) |
 | Frontend | `npx tsc --noEmit`, `npm run lint` | exit 0, exit 0 |
 

@@ -71,7 +71,13 @@ function QuestionRow({ item, q, busy, onSave }) {
       {q.help_text && <p className="text-xs text-ink-muted">{q.help_text}</p>}
       {q.explanation && <p className="text-sm text-ink-muted">{q.explanation}</p>}
       {q.category === "answer" ? (
-        <AnswerInput key={`${item.application_id}-${q.key}-${item.package.version}`} q={q} busy={busy} offerReuse onSave={onSave} />
+        <AnswerInput
+          key={`${item.application_id}-${q.key}-${item.package.version}`}
+          q={q}
+          busy={busy}
+          offerReuse={!q.sensitive}
+          onSave={onSave}
+        />
       ) : (
         <p className="text-sm">
           <Link className="text-brand underline" href={`/applications/${item.application_id}`}>

@@ -46,6 +46,14 @@ const ACTIONS = {
   ],
 };
 
+// An attempt that still holds the application (a verification code awaited, a send under way):
+// the server refuses a manual record or a cancellation here until it ends, so neither is offered.
+const HELD = ["claimed", "sending", "awaiting_code"];
+
+function actionsFor(app) {
+  return HELD.includes(app.last_attempt?.state) ? [] : (ACTIONS[app.state] ?? []);
+}
+
 // A submission NoEfforts is still handling: recording Withdrawn does not stop it.
 const IN_PROGRESS = ["queued", "running", "ready_to_submit", "submitting"];
 
@@ -147,7 +155,7 @@ function Tracker() {
             <Reconcile key={open.id} appId={open.id} receipt={open.submission === "receipt"} onDone={done} />
           )}
           <div className="mb-3 flex flex-wrap gap-2">
-            {(ACTIONS[open.state] ?? []).map((a) => (
+            {actionsFor(open).map((a) => (
               <Button key={a.to} variant={a.to === "cancelled" ? "danger" : "secondary"} onClick={() => act(open.id, a.to, a.reason)}>
                 {a.label}
               </Button>
