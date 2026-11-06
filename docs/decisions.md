@@ -4537,7 +4537,11 @@ audit-inventory and export-completeness guards are updated and pass.
     the check after filling is the page's own reaction to your answers, which no read can show. The
     attempt is abandoned as before, and every live approval of the application is now retired with
     it (`RETIRED["stopped_after_entry"]`): entering the same data on the employer's page again is a
-    new approval, never one click on "Submit approved package".
+    new approval, never one click on "Submit approved package". This covers that check only. The
+    other stops after filling (a field that did not keep its value, an upload or a location search
+    that failed, a refusal at the send gate, an internal error after disclosure, the sweeper) keep
+    their approval as before; whether every stop after filling should use the approval up is open
+    (below).
   - **Nothing is approved while a pause is unresolved**, whatever the package holds.
     `package.approve` refuses with `form_recapture_needed`, or `form_change_unexplained` after a
     read found no difference. The application stays in "needs your action", the approve buttons
@@ -4595,7 +4599,9 @@ audit-inventory and export-completeness guards are updated and pass.
     read is your click, and the recorded permission gates it.
 - **Open for the owner:**
   - whether automation may continue after a form change;
-  - whether a form change on an employer's path should require a new rehearsal.
+  - whether a form change on an employer's path should require a new rehearsal;
+  - whether every stop after data was entered (not only the check after filling) should use the
+    approval up, so that entering the data again always needs a new approval.
 - **Tests:** `test_form_change_loop.py`, with the receiver's ledger as the oracle, by id and through
   the pilot:
   - no disclosure, every approval retired, any approval refused, queueing and "running" refused;
@@ -4616,9 +4622,14 @@ audit-inventory and export-completeness guards are updated and pass.
   - a refused read leaves the pause open;
   - reading again needs a pause and no attempt holding the application;
   - a stale worker writes nothing;
+  - a form read racing "Try this version again", or another read, waits on the pause's row lock
+    and never overwrites the other's outcome (two real transactions, the
+    `tests/test_lock_order.py` pattern; both tests fail without the lock);
+  - a paused application's timeline says the form changed;
+  - a document to choose is listed as one, never "apply on the employer's site";
   - cancel closes the pause;
   - another account gets 404 and sees nothing;
-  - the count writes nothing;
+  - the count never rebuilds or writes a package;
   - no key or label in the pause, its events, the audit or the outcome.
 
   Also `test_auto_apply.py`: a plain stop is skipped as `attempt_stopped`, a pause as
