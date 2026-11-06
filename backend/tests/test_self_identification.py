@@ -157,3 +157,91 @@ def test_each_account_has_its_own_and_another_sees_nothing(api, other_api):
     assert other_api.get("/profile/self-identification").json()["enabled"] is False
     g, _ = row(other_api, [GENDER_REQ], "g2")
     assert g["status"] == "needs_user"  # the other account's self-ID never applies here
+
+
+# D131: what your self-identification may answer, and with which options. Fictional questions;
+# the option labels are the standard public EEOC wordings.
+def _select(key, label, *labels, required=True):
+    options = [{"value": str(i), "label": x} for i, x in enumerate(labels)]
+    return {"key": key, "label": label, "type": "select", "required": required, "options": options}
+
+
+FELONY = _select("felony", "Have you ever been convicted of a felony?", "Yes", "No")
+ACCOMMODATION = _select(
+    "accommodation", "Will you require a reasonable accommodation for the interview?", "Yes", "No"
+)
+MARRIED = _select("married", "Are you married?", "Yes", "No")
+MILITARY = _select("military", "Have you served in the military?", "Yes", "No")
+AGE = _select("age", "How old are you?", "18-24", "25-34")
+HISPANIC = _select("hispanic", "Are you Hispanic/Latino?", "Yes", "No", "Decline To Self Identify")
+DISABILITY = _select(
+    "disability",
+    "Disability status",
+    "Yes, I have a disability, or have had one in the past",
+    "No, I do not have a disability and have not had one in the past",
+    "I do not want to answer",
+)
+VETERAN = _select(
+    "veteran",
+    "Veteran status",
+    "I identify as one or more of the classifications of protected veteran",
+    "I am not a protected veteran",
+    "I don't wish to answer",
+)
+
+
+def test_self_identification_never_answers_a_question_outside_its_categories(api):
+    # The defect D131 fixes: with "No" among your labels, a criminal-history or accommodation
+    # question was answered "No" from your self-identification. Only the EEO self-identification
+    # categories are answered from it; every other sensitive question is yours, whatever matches.
+    setup_candidate(api)
+    set_self_id(api, True, ["Male", "No", "25-34"])
+    got = rows(package(api, application(api, [FELONY, ACCOMMODATION, MARRIED, MILITARY, AGE])))
+    for key in ("felony", "accommodation", "married", "military", "age"):
+        r = got[key]
+        assert r["sensitive"] is True, key
+        assert (r["status"], r["value"]) == ("needs_user", None), (key, r)
+        assert r["source"] != "self_identification" and r["fact_refs"] == [], key
+
+
+def test_a_bare_yes_or_no_label_answers_no_question(api):
+    # A flat list of labels cannot say which question a bare "No" answered, so even an EEO
+    # question whose options are only Yes, No and a decline (Hispanic or Latino) is yours.
+    setup_candidate(api)
+    set_self_id(api, True, ["No"])
+    req, _ = row(api, [HISPANIC], "hispanic")
+    assert (req["status"], req["value"], req["source"]) == ("needs_user", None, "unresolved")
+    assert "names no category" in req["explanation"]
+    opt, _ = row(api, [HISPANIC | {"required": False}], "hispanic")
+    assert (opt["status"], opt["value"]) == ("blank_optional", None)
+    assert "names no category" in opt["explanation"]
+
+
+def test_a_bare_label_never_turns_into_a_decline(api):
+    # "No" and the decline both match: that is not a decline you chose for this question.
+    setup_candidate(api)
+    set_self_id(api, True, ["No", "Decline To Self Identify"])
+    r, _ = row(api, [HISPANIC], "hispanic")
+    assert (r["status"], r["value"]) == ("needs_user", None)
+
+
+def test_labels_that_name_their_category_still_answer_their_own_questions(api):
+    setup_candidate(api)
+    set_self_id(
+        api,
+        True,
+        [
+            "No, I do not have a disability and have not had one in the past",
+            "I am not a protected veteran",
+            "Male",
+        ],
+    )
+    got = rows(package(api, application(api, [DISABILITY, VETERAN, GENDER, FELONY])))
+    for key, shown in (
+        ("disability", "No, I do not have a disability and have not had one in the past"),
+        ("veteran", "I am not a protected veteran"),
+        ("gender", "Male"),
+    ):
+        assert (got[key]["status"], got[key]["source"]) == ("resolved", "self_identification"), key
+        assert got[key]["display"] == shown, key
+    assert got["felony"]["source"] != "self_identification"

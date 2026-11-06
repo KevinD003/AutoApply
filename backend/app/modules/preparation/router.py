@@ -685,8 +685,8 @@ REUSE_REFUSED = {
     "reuse.",
     "repeated": "The same question appears more than once on this form, so its answer is never "
     "saved for reuse.",
-    "followup": "This follow-up depends on a question whose answer is never saved, so it is not "
-    "saved either.",
+    "followup": "This follow-up depends on a question whose answer is never saved, or that is not "
+    "on this form, so it is not saved either.",
 }
 NOT_SAVED = (
     " Nothing was saved: save your answer again without \u201cReuse for this exact question\u201d."
@@ -752,11 +752,20 @@ def _save_to_bank(db, user, app, f, value, sensitive: bool) -> None:
         if shape == "multi"
         else value
     )
+    parent = None
+    if f.condition is not None:
+        # D131: a follow-up is saved under the question it follows (question_key's trigger).
+        # _reuse_refusal has refused a follow-up whose question is not on this form.
+        fields = pk.latest_form(db, app.job_id).schema["fields"]
+        raw = next((x for x in fields if x["key"] == f.condition.key), None)
+        if raw is None:
+            raise bad_request(REUSE_REFUSED["followup"] + NOT_SAVED)
+        parent = FormField.model_validate(raw)
     t = AnswerBankEntry.__table__
     ins = pg_insert(AnswerBankEntry).values(
         id=new_id(),
         user_id=user.id,
-        question_key=question_key(f),
+        question_key=question_key(f, parent),
         # PostgreSQL text cannot hold NUL; page text can (the key keeps it, so nothing re-keys).
         question_text=f.label.replace("\x00", ""),
         help_text=(f.help_text or "").replace("\x00", "").strip(),  # "": none; NULL: before C6

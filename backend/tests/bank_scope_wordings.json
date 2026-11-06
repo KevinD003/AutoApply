@@ -11646,5 +11646,65 @@
   "You will need it for the daily commute.",
   null,
   "place"
+ ],
+ [
+  "employer.do_you_meet_all_minimum_qualif",
+  "Do you meet all minimum qualifications?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_satisfy_all_requirements",
+  "Do you satisfy all requirements?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_meet_minimum_requirements",
+  "Do you meet minimum requirements?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_have_all_required_certif",
+  "Do you have all required certifications?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_possess_required_skills",
+  "Do you possess required skills?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
  ]
 ]

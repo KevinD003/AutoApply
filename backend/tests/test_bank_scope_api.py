@@ -363,3 +363,33 @@ def test_saved_answers_stay_per_user(api, other_api):
     assert api.delete(f"/answer-bank/{m['id']}").status_code == 204
     assert api.delete(f"/answer-bank/{m['id']}").status_code == 404
     assert other_api.get("/answer-bank").json() == [t]
+
+
+def test_a_saved_follow_up_answer_is_reused_only_after_the_question_it_follows(api):
+    # D131 end to end through the save route: "Which one?" saved after "Do you speak a language
+    # other than English?" answers it there on another application, and never after another
+    # question with the same follow-up wording (before D131 it answered "Spanish" there too).
+    setup_candidate(api)
+    langs = radio("lang", "Do you speak a language other than English?", required=True)
+    music = radio("music", "Do you play a musical instrument?", required=True)
+    which_lang = text("which", "Which one?") | {"condition": {"key": "lang", "any_of": ["1"]}}
+    which_music = text("which", "Which one?") | {"condition": {"key": "music", "any_of": ["1"]}}
+    first = application(api, [langs, which_lang])
+    assert _put(api, first, "lang", {"label": "Yes"}, False).status_code == 200
+    r = _put(api, first, "which", {"text": "Spanish"}, True)
+    assert r.status_code == 200, r.text
+    assert bank_count(_me(api)) == 1
+    again = application(api, [langs, which_lang], title="Clinic Assistant II")
+    assert _put(api, again, "lang", {"label": "Yes"}, False).status_code == 200
+    row = rows(package(api, again))["which"]
+    assert (row["status"], row["source"], row["value"]) == (
+        "resolved",
+        "answer_bank",
+        {"text": "Spanish"},
+    )
+    other = application(api, [music, which_music], title="Clinic Assistant III")
+    assert _put(api, other, "music", {"label": "Yes"}, False).status_code == 200
+    row = rows(package(api, other))["which"]
+    assert row["bankable"] is True  # its own question is reusable: just not this answer
+    assert (row["status"], row["value"]) == ("needs_user", None)
+    assert row["source"] != "answer_bank"

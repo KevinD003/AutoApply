@@ -153,6 +153,14 @@ E_FIT = re.compile(
     r"(the |these |those |its |all the )((minimum|basic|essential|preferred|listed|stated|above|"
     r"following|required|necessary|mandatory|key) )*(requirements?|qualifications?|criteria|"
     r"skills|experience|certifications?|credentials|licen[cs]es?)\b|"
+    # D131: without "the": a requirement is the job's own ("Do you meet all minimum
+    # qualifications?", "Do you satisfy all requirements?", "Do you have all required licenses?").
+    r"\b(meet|meets|meeting|satisfy|satisfies|fulfil+s?) (all |each of |any of )?((minimum|basic|"
+    r"essential|preferred|listed|stated|above|following|required|necessary|mandatory|key) )*"
+    r"(requirements?|qualifications?|criteria)\b|"
+    r"\b(possess|have) (all |each of |any of )?((minimum|basic|essential|preferred|listed|stated|"
+    r"above|following|required|necessary|mandatory|key) )+(requirements?|qualifications?|criteria|"
+    r"skills|experience|certifications?|credentials|licen[cs]es?)\b|"
     r"\b(above|listed|stated|aforementioned|mentioned|described|outlined) (requirements?|"
     r"qualifications?|criteria|skills|experience|duties|responsibilities)\b|"
     r"\b(requirements?|qualifications?|criteria|duties|responsibilities) (listed|stated|above|"
@@ -475,7 +483,9 @@ def reason(f: FormField, intent, *, parent=None, repeated: bool = False) -> str 
     """Why an answer to `f` is never saved to or reused from the bank (C6), or None."""
     if repeated:
         return "repeated"
-    if f.condition is not None and parent is not None and not parent.bankable:
+    # D131: a follow-up whose question cannot be found is never saved or reused either: its
+    # answer is keyed with that question (question_key's trigger).
+    if f.condition is not None and (parent is None or not parent.bankable):
         return "followup"
     if intent.sensitive and not intent.no_bank:
         return None  # the legacy EEO topics keep their bank policy until C8 (D49)
@@ -490,11 +500,21 @@ def refusal_code(f: FormField, intent, *, parent=None, repeated: bool = False) -
 # ---------------------------------------------------------------- the key (D51)
 
 
-def question_key(f: FormField, shape: str) -> str:
+def question_key(f: FormField, shape: str, trigger: list | None = None) -> str:
     """HEAD's formula, unchanged, for a field without help text, so no stored row is re-keyed;
     with help text, a separate encoding that can never equal a HEAD key (a JSON list ends in
-    ']', a HEAD key's input ends in '|<shape>')."""
+    ']', a HEAD key's input ends in '|<shape>').
+
+    D131: a follow-up (a question shown only for some answers to another) is keyed with its
+    `trigger` as well: the other question's wording, help text and shape, and the answers that
+    show it (resolver.follow_up_trigger). "Which one?" after "Do you speak another language?" and
+    "Which one?" after "Do you hold a certification?" are different questions; a separate
+    encoding ("d131" first) that can never equal a key above."""
     label, help_ = normalize(f.label), normalize(f.help_text)
+    if trigger is not None:
+        return hashlib.sha256(
+            json.dumps(["d131", label, shape, help_, trigger]).encode()
+        ).hexdigest()
     if not help_:
         return hashlib.sha256(f"{label}|{shape}".encode()).hexdigest()
     return hashlib.sha256(json.dumps(["c6", label, shape, help_]).encode()).hexdigest()

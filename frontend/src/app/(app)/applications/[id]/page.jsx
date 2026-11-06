@@ -20,8 +20,11 @@ const SOURCE = {
   draft: { label: "Accepted draft", tone: "amber" },
   document: { label: "Document", tone: "green" },
   consent: { label: "Your consent choice", tone: "indigo" },
+  self_identification: { label: "Your self-identification", tone: "indigo" },
   unresolved: { label: "Unresolved", tone: "red" },
 };
+// D131: a source this page does not know yet is shown plainly, never a crash.
+const OTHER_SOURCE = { label: "Answered", tone: "slate" };
 
 const PREREQUISITE_TONE = {
   met: "green",
@@ -616,7 +619,7 @@ function RowActions({ q, controls, busy, onSave, onClear }) {
 }
 
 function QuestionHeader({ q }) {
-  const s = SOURCE[q.status === "resolved" ? q.source : q.status === "blank_optional" && q.source === "consent" ? "consent" : "unresolved"];
+  const s = SOURCE[q.status === "resolved" ? q.source : q.status === "blank_optional" && q.source === "consent" ? "consent" : "unresolved"] ?? OTHER_SOURCE;
   return (
     <div className="mb-2">
       <p className="text-sm font-medium text-ink">
