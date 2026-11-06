@@ -19,8 +19,8 @@ prerequisite has its codes in `docs/rehearsal-prerequisite.md`.
 | `attempt_running` | An earlier attempt for this application is still running. Wait for it to finish, then queue again. |
 | `attempt_being_claimed` | An earlier attempt for this application is being picked up by a worker; it will stop, because the package changed. Try again in a moment. |
 | `revoke_in_flight` | The submission may already be in flight, so revoking cannot stop it. Wait for the outcome, or reconcile it. |
-| `form_recapture_needed` | The employer's form no longer matched this package when it ran. Read the form again under Questions and approve the new version, or choose "Try this version again" there. |
-| `form_change_unexplained` | Reading the employer's form again showed no difference NoEfforts can see (the page's own scripts may add it). Choose "Try this version again" under Questions, approve a changed version, or apply on the employer's site. |
+| `form_recapture_needed` | The employer's form no longer matched the approved one when it ran. Read the form again under Questions, or choose "Try this version again" there; nothing can be approved until then. |
+| `form_change_unexplained` | Reading the employer's form again showed no difference NoEfforts can see (the page's own scripts may add it). Choose "Try this version again" under Questions, or apply on the employer's site. |
 
 ## Revoking while an attempt is in progress
 

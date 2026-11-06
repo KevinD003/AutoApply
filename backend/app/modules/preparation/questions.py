@@ -112,9 +112,8 @@ def questions(user: User = Depends(current_user), db: Session = Depends(get_db))
                 "state": app.state.value,
                 "form_source": wording.form_source_label(pkg.content["destination"]["form_source"]),
                 "package": {"version": pkg.version, "content_hash": pkg.content_hash},
+                # D132: while it is unresolved nothing is approved for this application.
                 "pause": _pause_out(pause),
-                # Paused on this exact package: approving it again is refused (D132).
-                "paused_package": pause is not None and pause.package_hash == pkg.content_hash,
                 "recapture_available": form is not None and form.source in _RECAPTURE,
                 "questions": open_rows,
             }

@@ -108,7 +108,7 @@ export default function NotificationsPage() {
                       }}
                       className="min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong"
                     >
-                      {n.application_id ? "Open application" : "Open Discover"}
+                      {n.link === "/questions" ? "Open Questions" : n.application_id ? "Open application" : "Open Discover"}
                     </Link>
                     <Button variant="secondary" onClick={() => mark(n.read ? "unread" : "read", [n.key])}>
                       {n.read ? "Mark as unread" : "Mark as read"}

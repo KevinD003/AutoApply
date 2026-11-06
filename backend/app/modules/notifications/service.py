@@ -179,19 +179,16 @@ def _attempts(db: Session, user_id) -> list[dict]:
     return out
 
 
-# D132: what a form-change pause asks of you, by whether data was entered on the page.
-_PAUSE_TEXT = {
-    "before_disclosure": "The employer's form no longer matched what you approved, so NoEfforts "
-    "stopped before sending anything. Read the form again under Questions, answer what is new "
-    "and approve again; nothing is sent until you do.",
-    "after_disclosure": "The employer's form no longer matched what you approved, so NoEfforts "
-    "stopped after entering your information (and any documents) on the page, before "
-    "submitting. Read the form again under Questions; nothing is sent until you approve again.",
-}
+# D132: what a form-change pause asks of you (it always stopped before anything was entered).
+_PAUSE_TEXT = (
+    "The employer's form no longer matched what you approved, so NoEfforts stopped before "
+    "sending anything. Read the form again under Questions, answer what is new and approve "
+    "again; nothing is sent until you do."
+)
 _UNEXPLAINED = (
     "Reading the employer's form again showed no difference NoEfforts can see (the page's own "
-    "scripts may add it). Try this version again under Questions, approve a changed version, or "
-    "apply on the employer's site."
+    "scripts may add it). Try this version again under Questions, or apply on the employer's "
+    "site."
 )
 
 
@@ -202,7 +199,7 @@ def _pauses(db: Session, user_id) -> list[dict]:
             ApplicationPause.user_id == user_id, ApplicationPause.status.in_(PAUSE_UNRESOLVED)
         )
     ):
-        text = _UNEXPLAINED if p.status == "unexplained" else _PAUSE_TEXT[p.phase]
+        text = _UNEXPLAINED if p.status == "unexplained" else _PAUSE_TEXT
         out.append(_item(f"pause:{p.id}:{p.status}", "form_changed", p.created_at,
                          p.application_id, "The employer's form no longer matches", text,
                          needs_action=True, link="/questions"))  # fmt: skip

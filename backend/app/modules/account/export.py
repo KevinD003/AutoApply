@@ -221,7 +221,6 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "application_id",
         "attempt_id",
         "kind",
-        "phase",
         "status",
         "package_version",
         "package_hash",

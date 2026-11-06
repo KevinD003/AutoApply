@@ -57,6 +57,9 @@ def transition(
     if target in LEAVES_REVIEW:
         # D132: a form-change pause waits only while the application can still be approved;
         # cancelled, expired, failed for good or submitted (by hand too), nothing is asked.
+        # The application's own (versioned) UPDATE is written first, so its row is locked
+        # before any pause row, as everywhere else, also on a path that did not lock it.
+        db.flush()
         db.execute(
             update(ApplicationPause)
             .where(

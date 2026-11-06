@@ -38,7 +38,12 @@ const ACTIONS = {
     { to: "cancelled", label: "Cancel" },
   ],
   awaiting_approval: [{ to: "cancelled", label: "Cancel" }],
-  needs_user_action: [{ to: "cancelled", label: "Cancel" }],
+  // D132: an application waiting for you (a question, or a form that changed) can also be
+  // applied to on the employer's site and recorded here.
+  needs_user_action: [
+    { to: "submitted_unconfirmed", label: "I applied myself", reason: "User reported a manual submission" },
+    { to: "cancelled", label: "Cancel" },
+  ],
 };
 
 // A submission NoEfforts is still handling: recording Withdrawn does not stop it.
@@ -259,7 +264,7 @@ function OutcomeForm({ app, onDone }) {
       {!choices.includes("interviewing") && (
         <p className="text-ink-muted">
           Employer outcomes can be recorded once NoEfforts knows of a submission. Withdrawn can always be recorded.
-          {app.state === "draft" && " If you applied yourself, choose “I applied myself” first."}
+          {(app.state === "draft" || app.state === "needs_user_action") && " If you applied yourself, choose “I applied myself” first."}
         </p>
       )}
       {outcome === "withdrawn" && app.state === "submitting" && (

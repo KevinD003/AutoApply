@@ -304,10 +304,11 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                 return "abandoned"
             # Conditional fields appear after filling; D111: a followed redirect stops it too.
             # D132: never a pause here. Before filling the same page matched, so what changed is
-            # the page's own reaction to the answers, which no re-read can show.
+            # the page's own reaction to the answers, which no re-read can show. Every live
+            # approval is retired with the stop: entering the same data again is a new approval.
             reason = (LOCALE_REDIRECTED if eg.redirected else None) or adapter.schema_matches(page)
             if reason:
-                svc.abandon(aid, worker, gen, str(reason))
+                svc.abandon(aid, worker, gen, str(reason), retire_every="stopped_after_entry")
                 return "abandoned"
             svc.record_evidence(aid, worker, gen, "recheck", rehearsal.RECHECK_MATCHED)
             denied = eg.proxy_denied()
@@ -379,9 +380,9 @@ def _stop_rehearsal(aid, worker, gen) -> str:
 
 def _stop(aid, worker, gen, reason: str, plain) -> None:
     """End the attempt, before anything is entered, for a live page that is not the approved
-    one. D132: a change a fresh read can show (`FormChanged`) pauses the application, bound to
-    this package, with every live approval retired; any other reason is the plain stop it
-    always was (`plain`). Either way the runner returns the same result."""
+    one. D132: a change a fresh read can show (`FormChanged`) pauses the application, with
+    every live approval retired; any other reason, or a pause the fence refused, is the plain
+    stop it always was (`plain`). Either way the runner returns the same result."""
     if isinstance(reason, FormChanged):
         if svc.pause_for_form_change(aid, worker, gen, str(reason), reason.counts):
             return

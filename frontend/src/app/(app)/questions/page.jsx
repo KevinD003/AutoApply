@@ -17,11 +17,6 @@ const CATEGORY = {
   technical: { label: "Apply on the employer's site", tone: "red" },
 };
 
-const PHASE = {
-  before_disclosure: "NoEfforts stopped before sending anything.",
-  after_disclosure: "NoEfforts stopped after entering your information on the page and before submitting.",
-};
-
 function PauseCard({ item, busy, onRecapture, onDismiss }) {
   const p = item.pause;
   const counts = [
@@ -33,12 +28,13 @@ function PauseCard({ item, busy, onRecapture, onDismiss }) {
     <div role="status" className="rounded-[var(--r-md)] border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
       <p className="font-medium">The employer&apos;s form no longer matches what you approved.</p>
       <p className="mt-1">
-        {PHASE[p.phase]} {counts.length > 0 && `(${counts.join(", ")} question(s).)`} Nothing is sent until you approve again.
+        NoEfforts stopped before sending anything. {counts.length > 0 && `(${counts.join(", ")} question(s).)`} Nothing can be approved or sent
+        until you read the form again or try this version again.
       </p>
       {p.status === "unexplained" ? (
         <p className="mt-2">
           Reading the form again showed no difference NoEfforts can see (the page&apos;s own scripts may add it). Try this version again
-          (the page is checked again before anything is entered), approve a changed version, or apply on the employer&apos;s site.
+          (the page is checked again before anything is entered), or apply on the employer&apos;s site.
         </p>
       ) : item.recapture_available ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -49,21 +45,15 @@ function PauseCard({ item, busy, onRecapture, onDismiss }) {
         </div>
       ) : (
         <p className="mt-2">
-          You attached this form yourself, so NoEfforts cannot read it again: attach the changed form on the{" "}
-          <Link className="text-brand underline" href={`/applications/${item.application_id}`}>
-            application&apos;s page
-          </Link>
-          .
+          This form was attached by you, so NoEfforts cannot read it again. Try this version again, or apply on the employer&apos;s site.
         </p>
       )}
-      {p.phase === "before_disclosure" && (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Button variant="secondary" disabled={busy} onClick={onDismiss}>
-            Try this version again
-          </Button>
-          <span className="text-xs">Lets you approve it again; the page is checked again before anything is entered.</span>
-        </div>
-      )}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button variant="secondary" disabled={busy} onClick={onDismiss}>
+          Try this version again
+        </Button>
+        <span className="text-xs">Lets you approve it again; the page is checked again before anything is entered.</span>
+      </div>
     </div>
   );
 }

@@ -94,13 +94,13 @@ APPROVAL_REASONS = {
     "worker; it will stop, because the package changed. Try again in a moment.",
     "revoke_in_flight": "The submission may already be in flight, so revoking cannot stop it. "
     "Wait for the outcome, or reconcile it.",
-    # D132: the package an attempt ran when the employer's form changed is never approved again.
-    "form_recapture_needed": "The employer's form no longer matched this package when it ran. "
-    'Read the form again under Questions and approve the new version, or choose "Try this '
-    'version again" there.',
+    # D132: while an application's form-change pause is unresolved, nothing is approved for it.
+    "form_recapture_needed": "The employer's form no longer matched the approved one when it "
+    'ran. Read the form again under Questions, or choose "Try this version again" there; '
+    "nothing can be approved until then.",
     "form_change_unexplained": "Reading the employer's form again showed no difference NoEfforts "
     'can see (the page\'s own scripts may add it). Choose "Try this version again" under '
-    "Questions, approve a changed version, or apply on the employer's site.",
+    "Questions, or apply on the employer's site.",
 }
 
 
@@ -677,9 +677,8 @@ def _settle_state(
 ) -> None:
     """Move the application to the state the package implies, via legal system transitions."""
     ready = not pkg.content["unresolved"] and not pkg.content["validation_errors"]
-    pause = unresolved_pause(db, app.id)
-    if pause is not None and pause.package_hash == pkg.content_hash:
-        ready = False  # D132: this exact package stopped on a changed form; it waits for you
+    if unresolved_pause(db, app.id) is not None:
+        ready = False  # D132: stopped on a changed form; it waits for you whatever it holds
     target = AppState.awaiting_approval if ready else AppState.needs_user_action
     s = app.state
     if s == AppState.failed_retryable:
@@ -734,9 +733,9 @@ def approve(
     if pkg.content["unresolved"] or pkg.content["validation_errors"]:
         raise refused("package_unresolved")
     pause = unresolved_pause(db, app.id)
-    if pause is not None and pause.package_hash == pkg.content_hash:
-        # D132: this exact content stopped on a changed form; sending it again would stop there
-        # again (and, after filling, enter your data a second time).
+    if pause is not None:
+        # D132: the application stopped on a changed form. Whatever this package holds, it is
+        # not approved until the form is read again or you choose to try this version again.
         raise refused(
             "form_change_unexplained" if pause.status == "unexplained" else "form_recapture_needed"
         )
@@ -789,9 +788,6 @@ def approve(
         prerequisite_attempt_id=verdict.basis if verdict else None,
     )
     db.add(appr)
-    if pause is not None:
-        # D132: you approved a different package; the pause ends with your decision.
-        pause.status, pause.resolution, pause.resolved_at = "resolved", "new_package", now
     record(
         db,
         app.user_id,

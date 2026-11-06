@@ -61,14 +61,17 @@ and through the pilot path, the Workday-style approximation in the e2e). No real
 opened, filled or submitted. Decision: D132.
 
 What it does:
-- A question added after approval now pauses the application. The run stops before anything is
-  sent and every live approval is retired, and the pause is recorded, bound to the package that
-  ran. That package is not approved again until you decide.
+- A change a fresh read of the form can show (a question added, gone, reworded or retyped, other
+  options, a section gone) now pauses the application. The run stops before anything is sent,
+  every live approval is retired, and the pause is recorded. Nothing is approved for the
+  application until it is resolved.
 - "Questions needing your answer" (`/questions`) lists it. "Read the form again" brings the new
   question through the same capture route (and its permission checks). Once you answer and
   approve, exactly one new run fills it.
-- "Try this version again" ends a pause found before anything was entered.
-- Changes only the live page shows stay plain stops, as before.
+- "Try this version again" ends the pause; the page is checked again before anything is entered.
+- What only the running page shows stays a plain stop, as before. A change found after filling is
+  abandoned as before, now with every approval retired, so entering the data again is a new
+  approval.
 
 | Check (branch `form-change-pause`) | Command | Result |
 |---|---|---|
