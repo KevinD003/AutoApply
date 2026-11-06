@@ -202,6 +202,20 @@ def _standard():
     ]
 
 
+# D133 (FIXTURE ASSUMPTION, never seen on a real page): a screening job that asks about criminal
+# history, sponsorship without naming a country, and gender among its own questions. A real
+# Greenhouse board sends its equal-opportunity questions in `compliance[]` instead.
+SCREENING = [
+    _q("Have you ever been convicted of a felony?", "question_8111", "multi_value_single_select",
+       True, YES_NO),
+    _q("Will you now or in the future require visa sponsorship?", "question_8112",
+       "multi_value_single_select", True, YES_NO),
+    _q("Gender", "question_8113", "multi_value_single_select", False,
+       [{"value": 1, "label": "Male"}, {"value": 2, "label": "Female"},
+        {"value": 3, "label": "Decline To Self Identify"}]),
+]
+
+
 def _jobs():
     gdpr = [{"type": "gdpr", "requires_consent": False, "requires_processing_consent": False,
              "requires_retention_consent": False, "retention_period": None}]
@@ -215,6 +229,9 @@ def _jobs():
                                        _q("Location (City)", "location", "input_text", True),
                                        _q("Latitude", "latitude", "input_hidden", True),
                                        _q("Longitude", "longitude", "input_hidden", True)]},
+        ("northwind", "5020003"): {**base, "title": "Clinic Coordinator",
+                                   "questions": _standard() + SCREENING,
+                                   "location_questions": []},
     }
 
 
