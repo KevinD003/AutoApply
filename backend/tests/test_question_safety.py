@@ -883,6 +883,11 @@ for rid, lbl in [
     ("located_us", "Are you currently located in the US?"),
     ("within50", "Do you live within 50 miles of our Austin office?"),
     ("nationality", "Nationality"),
+    # D131 follow-up: the documents that let you work are work authorization in other words.
+    ("documents", "Do you have the necessary documents to work in Canada?"),
+    ("documents_all", "Do you have all the necessary documents to work in Canada?"),
+    ("paperwork", "Do you have the required paperwork to work in Germany?"),
+    ("documents_allowing", "Do you have documents allowing you to work in the UK?"),
 ]:
     row(
         f"c4.legal.{rid}",
@@ -1093,6 +1098,12 @@ c5 = [
     ("pregnant", "Are you pregnant?", R, "sensitive_topic"),
     ("pregnant2", "Are you pregnant or planning to become pregnant?", R, "sensitive_topic"),
     ("vaccinated", "Are you fully vaccinated against COVID-19?", R, "sensitive_topic"),
+    # D131 follow-up: your vaccinations in any wording.
+    ("vacc_required", "Do you have required vaccinations?", R, "sensitive_topic"),
+    ("vacc_received", "Have you received the COVID-19 vaccine?", R, "sensitive_topic"),
+    ("vacc_proof", "Do you have proof of vaccination?", R, "sensitive_topic"),
+    ("immunizations", "Are your immunizations up to date?", R, "sensitive_topic"),
+    ("immunizations_all", "Do you have all required immunizations?", R, "sensitive_topic"),
     ("workers_comp", "Have you ever filed a workers' compensation claim?", R, "sensitive_topic"),
     ("rx", "Do you take any prescription medication?", R, "sensitive_topic"),
     ("physical", "Do you have any physical limitations?", R, "sensitive_topic"),

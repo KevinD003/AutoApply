@@ -54,3 +54,26 @@ test("a self-identified answer shows its source; a criminal-history question sta
   await expect(felony.getByText("Your self-identification", { exact: true })).toHaveCount(0);
   await expect(felony.getByText(/NoEfforts never infers this/)).toBeVisible();
 });
+
+// D131 follow-up: a standard label that contains commas is one label, kept whole. Split on commas,
+// "No, I do not have a disability and have not had one in the past" became a bare "No".
+test("a self-identification label with commas is saved and shown as one label", async ({ page }, info) => {
+  const email = `d131b.${info.project.name}.${Date.now()}@example.com`;
+  const reg = await page.request.post("/api/auth/register", { data: { email, password: "synthetic-password-1" } });
+  expect(reg.status()).toBe(201);
+  const disability = "No, I do not have a disability and have not had one in the past";
+
+  await page.goto("/profile");
+  const card = page.locator("section", { has: page.getByRole("heading", { name: /^Self-identification \(EEOC/ }) });
+  const box = card.getByLabel("Your self-identification labels (one per line, exactly as forms word them)");
+  await box.fill(`Male\n${disability}\n`);
+  await card.getByRole("button", { name: "Save self-identification" }).click();
+  await expect(card.getByText("Saved.", { exact: true })).toBeVisible();
+
+  const saved = await (await page.request.get("/api/profile/self-identification")).json();
+  expect(saved.labels).toEqual(["Male", disability]);
+  await page.reload();
+  await expect(card.getByLabel("Your self-identification labels (one per line, exactly as forms word them)")).toHaveValue(
+    `Male\n${disability}`,
+  );
+});

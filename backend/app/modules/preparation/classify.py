@@ -144,9 +144,12 @@ _SENSITIVE_MORE = [
             r"\b((health|medical|mental( health)?|physical|psychiatric|psychological) (conditions?|"
             r"issues?|history|problems?|information|status|records?|limitations?|restrictions?|"
             r"illness(es)?|treatment|impairments?)|(take|taking|on) (any )?(prescription )?"
-            r"medications?|prescription medications?|pregnan\w*|maternity|(are you|have you been) "
-            r"(fully )?(vaccinated|immuni[sz]ed)|(vaccination|immuni[sz]ation) (status|records?|"
-            r"card)|workers'? comp(ensation)?|genetic (information|testing|tests?)|hiv|"
+            r"medications?|prescription medications?|pregnan\w*|maternity|"
+            # Your vaccinations in any wording ("Do you have required vaccinations?", "Are your
+            # immunizations up to date?"); giving them is a skill ("administering vaccines").
+            r"(?<!administer )(?<!administering )(?<!administered )(?<!give )(?<!giving )"
+            r"(vaccin\w*|immuni[sz](ations?|ed))|"
+            r"workers'? comp(ensation)?|genetic (information|testing|tests?)|hiv|"
             r"neurodiver\w*|neurotypical|mental (defective|institutions?)|addicted to|"
             r"unlawful user of)\b",
         ),
@@ -358,7 +361,10 @@ _SPONSOR_CONTEXT = re.compile(
 _AUTH_LIKE = re.compile(
     r"\bineligible to work\b|\bunauthori[sz]ed to work\b|\b(authori[sz]ation|eligibility|"
     r"permission) to work\b|\blegally (work|employed|employable)\b|\b(cannot|can not) legally "
-    r"work\b|\bright to live and work\b"
+    r"work\b|\bright to live and work\b|"
+    # The documents that let you work ("Do you have the necessary documents to work in Canada?")
+    r"\b(documents?|documentation|paperwork|papers|permits?)( [a-z'-]+){0,3}? (to|that (allows?|"
+    r"permits?|lets?) you to|allowing you to|permitting you to) (legally |lawfully )?work\b"
 )
 _AUTH_LIKE_PLACE = re.compile(
     r"\b((can|could) you|(are|is) you able to|(are|is) you (entitled|allowed)|(cannot|can not))"
