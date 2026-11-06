@@ -23,6 +23,7 @@ from app.modules.preparation.resolver import (
     validate_value,
 )
 from app.modules.profiles.models import Approval, SalaryPeriod, TriState
+from tests.test_question_safety import SELF_ID_TRAP, self_identification
 
 YES_NO = [Option(value="1", label="Yes"), Option(value="0", label="No")]
 
@@ -433,9 +434,10 @@ def corpus_field(d, key="q"):
     )
 
 
-def corpus_ctx(row, f):
+def corpus_ctx(row, f, self_id=None):
     """The row's saved answers are stored as the app stores them: under the question key of
-    the field they answered, with its option labels and help text."""
+    the field they answered, with its option labels and help text. `self_id`: the labels of your
+    saved self-identification, switched on (D122); None, none saved."""
     bank = {}
     for i, b in enumerate(row.get("bank", [])):
         bf = corpus_field(b, key=f"bank{i}")
@@ -451,8 +453,9 @@ def corpus_ctx(row, f):
             help_text=(b.get("help_text") or "").strip(),
         )
     consents = {f.key: row["consent"]} if row.get("consent") else {}
+    self_id = self_identification(self_id)
     if row["facts"] == "none":
-        return Context(bank=bank, consents=consents)
+        return Context(bank=bank, consents=consents, self_id=self_id)
     facts = dict(
         id="p-rich",
         given_name="Sentinelle",
@@ -472,7 +475,12 @@ def corpus_ctx(row, f):
     )
     rich = profile(**(facts | row.get("profile_extra", {})))  # C11: a row may move the residence
     return Context(
-        profile=rich, work_auth=RICH_WORK_AUTH, prefs=RICH_PREFS, bank=bank, consents=consents
+        profile=rich,
+        work_auth=RICH_WORK_AUTH,
+        prefs=RICH_PREFS,
+        bank=bank,
+        consents=consents,
+        self_id=self_id,
     )
 
 
@@ -536,8 +544,9 @@ def test_the_sentinel_check_sees_a_leak():
     assert leaked(r, ["email"]) == []  # the address holds both name tokens: no false leak
 
 
+@pytest.mark.parametrize("self_id", [None, "each_option"])
 @pytest.mark.parametrize("row", CORPUS, ids=[r["id"] for r in CORPUS])
-def test_a_legacy_collision_gets_only_its_safe_outcome(row, monkeypatch):
+def test_a_legacy_collision_gets_only_its_safe_outcome(row, self_id, monkeypatch):
     def refuse(*a, **k):
         raise AssertionError("the resolver opened a network connection")
 
@@ -545,6 +554,13 @@ def test_a_legacy_collision_gets_only_its_safe_outcome(row, monkeypatch):
         monkeypatch.setattr(socket.socket, name, refuse)
     f = corpus_field(row)
     [(_, r)] = pk.resolve_answers([f], corpus_ctx(row, f))
+    if self_id == "each_option":
+        # D133: no legacy collision is an equal-opportunity question in a self-identification
+        # section, so your saved self-identification (D122), whatever it holds, changes nothing.
+        for labels in [[o.label] for o in f.options] + [SELF_ID_TRAP]:
+            [(_, s)] = pk.resolve_answers([f], corpus_ctx(row, f, self_id=labels))
+            got = (labels, s.status, s.source, s.value)
+            assert (s.status, s.source, s.value) == (r.status, r.source, r.value), got
     exp = row["expect"]
     got = (r.status, r.source, r.intent, r.value)
     assert r.status in exp["status"], got

@@ -6,7 +6,9 @@ loop that builds packages (package.resolve_answers), with the attributes it must
 id contains ".ctrl" are positive controls: they behave exactly as before C3-C5 (pinned in
 question_safety_controls.json). Every other row may only be a checkpoint, a consent the user
 gives, or a statement checked because an approved fact makes it true; never an answer from the
-profile or the answer bank. docs/answer-policy.md describes the rules."""
+profile or the answer bank. With your saved self-identification switched on (D122), only an
+equal-opportunity question in a self-identification section is answered from it (D131, D133).
+docs/answer-policy.md describes the rules."""
 
 import dataclasses
 import json
@@ -1322,6 +1324,51 @@ row(
     "needs_user val=None sens=1 bank=0",
     bank_value=True,
 )
+# D133: the self-identification dimension (D122, D131). A bare "No" in your self-identification
+# never answers a felony, accommodation, marital-status or Hispanic-origin question; only an
+# equal-opportunity question in a self-identification section takes it, by an option that names
+# its own category, or by the form's one decline option.
+for rid, lbl in [
+    ("felony", "Have you ever been convicted of a felony?"),
+    ("accommodation", "Do you require any accommodations?"),
+    ("married", "Are you married?"),
+]:
+    row(
+        f"c5.selfid.{rid}",
+        fld(lbl, R, O("Yes", "No", "Decline to self-identify")),
+        "needs_user val=None sens=1 bank=0",
+        bank_value=True,
+        self_id=["No"],
+    )
+# A named equal-opportunity question: a saved answer is proposed and sent only after "Include"
+# (D61), so it stays reusable (bank=1) and is left out of the never-reused check below. Your
+# self-identification never answers it from a bare "Yes" or "No": nothing says which question
+# that label was for (test_self_identification_answers_only_the_eeo_rows tries each option).
+row(
+    "c5.selfid.hispanic",
+    fld("Are you Hispanic or Latino?", R, O("Yes", "No", "Decline to self-identify")),
+    "needs_user val=None sens=1 bank=1",
+)
+SELF_ID_FILLED = "src=self_identification sens=1 bank=0 refs=labels"
+row(
+    "c5.selfid.generic_male",
+    fld("Please select one", S, EEO_G, step="Voluntary Self-Identification"),
+    f"resolved val={{'option': '0', 'label': 'Male'}} {SELF_ID_FILLED}",
+    bank_value=True,
+    self_id=["Male"],
+)
+row(
+    "c5.selfid.generic_wish",
+    fld(
+        "Please select one",
+        S,
+        O("Male", "Female", "Non-binary", "I don't wish to self-identify"),
+        step="Voluntary Self-Identification",
+    ),
+    f"resolved val={{'option': '3', 'label': \"I don't wish to self-identify\"}} {SELF_ID_FILLED}",
+    bank_value=True,
+    self_id=["I don't wish to self-identify"],
+)
 row(
     "c5.help.disability",
     fld("Additional information", TX, help_text="Including any disability we should know about"),
@@ -1742,7 +1789,15 @@ def make_ctx(f, kw, parent_spec):
         consents=cons,
         inputs=inputs,
         bank=bank,
+        self_id=self_identification(kw.get("self_id")),
     )
+
+
+def self_identification(labels):
+    """D122: your saved self-identification, switched on, with these labels (None: none saved)."""
+    if not labels:
+        return None
+    return NS(enabled=True, labels=list(labels), user_id="u-self")
 
 
 def resolve(f, kw, parent_spec):
@@ -1858,7 +1913,7 @@ def test_each_c6_delta_only_narrows():
 
 
 CONSENTS = (None, "agree", "decline", "disclose", "withhold")
-CONTEXT_KEYS = ("profile", "consent", "bank_value", "bank_sensitive")
+CONTEXT_KEYS = ("profile", "consent", "bank_value", "bank_sensitive", "self_id")
 
 
 @pytest.mark.parametrize("profile", sorted(PROFILES))
@@ -1890,6 +1945,61 @@ def test_no_c3_c5_row_is_ever_answered_from_the_profile_or_the_bank(profile):
                     assert r.source == "consent", where
                     if r.intent == "fact_statement" and r.value not in ({"checked": False}, None):
                         assert r.fact_refs, where  # checked only on the facts it records
+
+
+# D133: the rows your saved self-identification may answer (D122): an equal-opportunity question
+# in a self-identification section (D131). Every other row resolves as it does without it.
+SELF_ID_ROWS = {
+    "c5.eeo.gender_generic",
+    "c5.eeo.vet_generic",
+    "c5.selfid.generic_male",
+    "c5.selfid.generic_wish",
+}
+SELF_ID_TRAP = [
+    "Yes",
+    "No",
+    "Male",
+    "Decline to self-identify",
+    "I don't wish to answer",
+    "I don't wish to self-identify",
+]
+
+
+def self_id_label_sets(f, parent):
+    """Each option of the question, and of its parent, saved alone; then the trap set."""
+    labels = [o.label for o in f.options] + ([o.label for o in parent[0].options] if parent else [])
+    return [[x] for x in dict.fromkeys(labels)] + [SELF_ID_TRAP]
+
+
+def test_self_identification_answers_only_the_eeo_rows():
+    """D122, D131, D133: with your saved self-identification switched on, whatever labels it
+    holds, every row of the table (the controls too) resolves exactly as without it, except an
+    equal-opportunity question in a self-identification section. That one is answered from it:
+    resolved, sensitive, never saved for reuse, and recorded against your self-identification.
+    With "Don't disclose" nothing is answered from it."""
+    seen = set()
+    for rid, f, kw, _exp, parent in ROWS:
+        plain = {x: v for x, v in kw.items() if x != "self_id"}
+        base = resolve(f, plain, parent)
+        for labels in self_id_label_sets(f, parent):
+            r = resolve(f, plain | {"self_id": labels}, parent)
+            where = (rid, labels, r.status, r.source)
+            if r.source == "self_identification":
+                seen.add(rid)
+                assert rid in SELF_ID_ROWS, where
+                assert (r.status, r.intent, r.sensitive, r.bankable) == (
+                    "resolved",
+                    "demographic",
+                    True,
+                    False,
+                ), where
+                assert [x["type"] for x in r.fact_refs] == ["self_identification"], where
+            else:
+                same = (r.status, r.source, r.value) == (base.status, base.source, base.value)
+                assert same, where
+            w = resolve(f, plain | {"self_id": labels, "consent": "withhold"}, parent)
+            assert w.source != "self_identification", where
+    assert seen == SELF_ID_ROWS
 
 
 @pytest.mark.parametrize(
