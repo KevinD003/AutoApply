@@ -11706,5 +11706,197 @@
   null,
   null,
   "employer"
+ ],
+ [
+  "employer.do_you_meet_all_of_the_minimum_qua",
+  "Do you meet all of the minimum qualifications?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_met_all_the_minimum_quali",
+  "Have you met all the minimum qualifications?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_meet_every_requirement",
+  "Do you meet every requirement?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_meet_both_of_the_following_",
+  "Do you meet both of the following requirements?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.have_you_satisfied_all_of_the_prer",
+  "Have you satisfied all of the prerequisites?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_meet_the_education_requirem_2",
+  "Do you meet the education requirements?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_meet_the_minimum_education_",
+  "Do you meet the minimum education and experience requirements?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_satisfy_the_selection_crite",
+  "Do you satisfy the selection criteria?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_have_the_required_degree",
+  "Do you have the required degree?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "employer.do_you_hold_all_the_required_certi",
+  "Do you hold all the required certifications?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "employer"
+ ],
+ [
+  "ok.do_you_have_basic_skills_in_micros",
+  "Do you have basic skills in Microsoft Excel?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_key_skills_in_data_ana",
+  "Do you have key skills in data analysis?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_meeting_req",
+  "Do you have experience meeting requirements for SOX compliance?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "ok.do_you_have_experience_meeting_reg",
+  "Do you have experience meeting regulatory requirements?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  null
+ ],
+ [
+  "fact.do_you_have_the_necessary_document",
+  "Do you have the necessary documents to work in Canada?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "fact"
+ ],
+ [
+  "fact.do_you_have_the_required_paperwork",
+  "Do you have the required paperwork to work in Germany?",
+  "radio",
+  [
+   "Yes",
+   "No"
+  ],
+  null,
+  null,
+  "fact"
  ]
 ]

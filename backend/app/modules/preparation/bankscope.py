@@ -145,22 +145,54 @@ E_PEOPLE = re.compile(
     r"\b(relatives?|family members?|friends?|acquaintances?) (who |that )?(currently )?(works?|"
     r"working|is employed|are employed|employed)\b"
 )
+# Requirements are the job's own (D51; D131 and its follow-up). "All of the", "every", "both",
+# "met", "hold" and a requirement's own subject ("the education requirements", "the selection
+# criteria", "the required degree") are all wordings of one question about this job.
+_QUANT = r"((all|each|every|both|any|either)( of)? )?"
+_DET = r"(the|these|those|its|this|that) "
+_QUAL_ANY = (
+    r"(minimum|basic|essential|preferred|listed|stated|above|following|required|requisite|"
+    r"necessary|mandatory|key)"
+)
+# A skill or credential is the job's own only with a word that points at the job: "basic skills
+# in Excel" and "key skills in data analysis" are yours.
+_QUAL_JOB = (
+    r"(minimum|preferred|listed|stated|above|following|required|requisite|necessary|mandatory)"
+)
+_REQ = r"(requirements?|qualifications?|criteria|prerequisites?)"
+_OWN = (
+    r"(skills|experience|certifications?|credentials|licen[cs]es?|degrees?|diplomas?|training|"
+    r"clearances?)"
+)
+# Up to four words between the verb's object and the requirement ("the minimum education and
+# experience requirements"); never a preposition or a question word, so "meet with clients to
+# discuss requirements" is not one.
+_GAP = (
+    r"((?!(with|to|for|of|in|on|at|by|from|about|into|than|that|which|who|what|when|where|how|"
+    r"why|if|whether)\b)[a-z0-9'/&-]+,? ){0,4}?"
+)
+# Meeting requirements as something you have done is about you: "experience meeting regulatory
+# requirements", "a record of meeting compliance criteria".
+_DONE = r"(?<!experience )(?<!experience in )(?<!experience with )(?<!record of )(?<!history of )"
+_MEET = (
+    r"(meet|meets|meeting|met|satisfy|satisfies|satisfying|satisfied|fulfil|fulfils|fulfill|"
+    r"fulfills|fulfilling|fulfilled)"
+)
+_HAVE = r"(possess|possesses|have|has|hold|holds)"
 E_FIT = re.compile(
     r"\brelevant\b|"
     r"(?<![-\w])(related|similar|comparable|equivalent|applicable|transferable) (experience|"
     r"roles?|positions?|jobs?|field|work|background|skills?)\b|"
-    r"\b(meet|meets|meeting|satisfy|satisfies|fulfil+s?|possess|have) (all |each of |any of )?"
-    r"(the |these |those |its |all the )((minimum|basic|essential|preferred|listed|stated|above|"
-    r"following|required|necessary|mandatory|key) )*(requirements?|qualifications?|criteria|"
-    r"skills|experience|certifications?|credentials|licen[cs]es?)\b|"
-    # D131: without "the": a requirement is the job's own ("Do you meet all minimum
-    # qualifications?", "Do you satisfy all requirements?", "Do you have all required licenses?").
-    r"\b(meet|meets|meeting|satisfy|satisfies|fulfil+s?) (all |each of |any of )?((minimum|basic|"
-    r"essential|preferred|listed|stated|above|following|required|necessary|mandatory|key) )*"
-    r"(requirements?|qualifications?|criteria)\b|"
-    r"\b(possess|have) (all |each of |any of )?((minimum|basic|essential|preferred|listed|stated|"
-    r"above|following|required|necessary|mandatory|key) )+(requirements?|qualifications?|criteria|"
-    r"skills|experience|certifications?|credentials|licen[cs]es?)\b|"
+    # Meeting requirements: "Do you meet all of the minimum qualifications?", "Have you met the
+    # education requirements?", "Do you satisfy the selection criteria?".
+    rf"{_DONE}\b{_MEET} {_QUANT}({_DET})?{_GAP}{_REQ}\b|"
+    rf"{_DONE}\b{_MEET} {_QUANT}{_DET}({_QUAL_ANY} )*{_OWN}\b|"
+    # Having them: "Do you have the required degree?", "Do you hold all the required
+    # certifications?", "Do you possess the minimum education requirements?".
+    rf"\b{_HAVE} {_QUANT}{_DET}({_QUAL_ANY} )*({_REQ}|{_OWN})\b|"
+    rf"\b{_HAVE} {_QUANT}{_DET}{_GAP}{_REQ}\b|"
+    rf"\b{_HAVE} {_QUANT}({_QUAL_ANY} )+{_REQ}\b|"
+    rf"\b{_HAVE} {_QUANT}({_QUAL_JOB} )+{_OWN}\b|"
     r"\b(above|listed|stated|aforementioned|mentioned|described|outlined) (requirements?|"
     r"qualifications?|criteria|skills|experience|duties|responsibilities)\b|"
     r"\b(requirements?|qualifications?|criteria|duties|responsibilities) (listed|stated|above|"

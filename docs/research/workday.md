@@ -9,6 +9,35 @@ reachable but has no recruiting material. Everything below is therefore **search
 search summary of a doc.workday.com, community.workday.com or workday.com page I could not open),
 **inferred** or **unknown**. None of it is enough to record `public_doc_reviewed` for Workday.
 
+## Update, 2026-11-06: official pages read, and one correction
+
+Read on 2026-11-06 through a server-side page fetcher (this session's own fetch of `doc.workday.com`
+still fails DNS). Each line is **documented** (quoted from the page named), with what it changes.
+
+- **The End User Agreement does not cover employer career sites (correction).**
+  https://www.workday.com/en-us/legal/end-user-agreement.html: "'Website' means the website located at
+  scoutrfp.com (including any sub-domains such as go.scoutrfp.com)"; "'Services' means Workday's
+  e-sourcing software product". Clause 4.3(b), "use automated software, scripts, or other methods of
+  accessing or using the Website without Workday's consent", applies to that website. Section 5 and
+  checkpoint 14 below read it as a risk for career sites; it does not govern them. What applies to a
+  career site is the employer's own terms and consent check boxes, and Workday's own signals (below).
+  This permits nothing: real Workday stays a manual handoff (D91) until the owner decides.
+- **Every Next saves a draft at the employer.** https://doc.workday.com/workday-education/en-us/course-manuals/recruiting-for-administrators/career-sites.html
+  (last updated 2026-07-10): "Workday saves: Applications when the candidate selects the Next
+  button. Candidate draft applications that are abandoned after they reach the My Information page.
+  Draft applications for up to two years. Up to 200 draft applications per candidate". Drafts are
+  shown only to the candidate (My Draft Applications in Candidate Home). So each page boundary is a
+  disclosure, and a pause leaves a draft at the employer; a resume must reopen that draft, never
+  start another application.
+- Read by the loop's research reader on the same day, not re-quoted here (labelled
+  **documented-by-reader**): the GA4 reference's page order (sign in, start, autofill, My Information,
+  My Experience, Voluntary Disclosures, Self Identify, Assessment, Application Questions 1 and 2,
+  Review, submitted); per-tenant settings (Candidate Home account required or optional,
+  verification email, Apple/Google sign-in, automatic candidate merging, reapply rules); up to 6
+  branching follow-ups per single-select question and a new question version when an answered
+  question is edited; My Experience sections that can each be hidden or required. Their URLs are in
+  `docs/automation-loop.md` (research log).
+
 ## Labels used
 
 - **documented**: read by me in a page I opened, with its URL. (No Workday fact qualifies.)
@@ -153,6 +182,9 @@ plus unverified candidates:
 - **search-reported** Each career site may show the employer's own terms and conditions.
 - **inferred** This clause is a real risk for any browser automation on Workday-hosted sites. It
   needs the owner's (and possibly legal) review before a fixture-to-observation step.
+- **Corrected 2026-11-06 (documented):** the agreement defines "Website" as scoutrfp.com, so the
+  clause does not govern employers' career sites (see "Update, 2026-11-06" above). The owner's
+  decision remains, about the employer's own terms and consents instead.
 
 ## 6. Contradictions and updates for docs/provider-architecture.md §7
 
@@ -276,5 +308,7 @@ separately, and record any server-side draft.
 11. Any CAPTCHA or security prompt: hand off.
 12. A possible duplicate (same email and requisition, or an existing account with an application).
 13. Final submit: separate approval; unknown outcome becomes `submitted_unconfirmed`.
-14. Before any automation at all: the owner's decision on the end-user agreement's
-    automated-access clause.
+14. Before any automation at all: the owner's decision on automating employers' Workday career
+    sites (their own terms and consent check boxes, and Workday's automation signals). The
+    end-user agreement's automated-access clause covers scoutrfp.com, not career sites (corrected
+    2026-11-06).

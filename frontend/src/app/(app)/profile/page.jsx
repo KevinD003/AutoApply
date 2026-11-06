@@ -503,7 +503,7 @@ function SelfIdentificationCard() {
     api("/profile/self-identification")
       .then((s) => {
         setEnabled(s.enabled);
-        setText(s.labels.join(", "));
+        setText(s.labels.join("\n"));
         setLoaded(true);
       })
       .catch(setError);
@@ -513,10 +513,15 @@ function SelfIdentificationCard() {
     e.preventDefault();
     setError(null);
     setNotice("");
-    const labels = splitList(text);
+    // One label per line: the standard labels contain commas ("Yes, I have a disability, or have
+    // had one in the past"), and splitting them on commas would turn them into a bare "Yes".
+    const labels = text
+      .split("\n")
+      .map((x) => x.trim())
+      .filter(Boolean);
     try {
       const s = await api("/profile/self-identification", { method: "PUT", json: { enabled, labels } });
-      setText(s.labels.join(", "));
+      setText(s.labels.join("\n"));
       setNotice("Saved.");
     } catch (err) {
       setError(err);
@@ -548,9 +553,19 @@ function SelfIdentificationCard() {
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             Fill my self-identification on applications automatically
           </label>
-          <Field label="Your self-identification labels (comma-separated, exactly as forms word them)">
-            <input className={inputCls} value={text} onChange={(e) => setText(e.target.value)} placeholder="Male, Asian, I am not a protected veteran" />
+          <Field label="Your self-identification labels (one per line, exactly as forms word them)">
+            <textarea
+              className={inputCls}
+              rows={5}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={"Male\nAsian\nI am not a protected veteran"}
+            />
           </Field>
+          <p className="text-xs text-ink-muted">
+            A bare “Yes” or “No” names no category, so it never answers a question: use the full wording, such as “No, I do not have a
+            disability and have not had one in the past”.
+          </p>
           {notice && <Notice>{notice}</Notice>}
           <Button type="submit">Save self-identification</Button>
         </form>
