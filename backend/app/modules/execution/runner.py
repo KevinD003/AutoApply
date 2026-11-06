@@ -28,6 +28,7 @@ from app.modules.execution.adapters.ashby import AshbyFixtureAdapter
 from app.modules.execution.adapters.fake_api import FakeApiAdapter
 from app.modules.execution.adapters.fixture_ats import (
     FixtureAtsAdapter,
+    FormChanged,
     StoppedAfterDisclosure,
     UploadFailed,
 )
@@ -270,7 +271,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                 or adapter.schema_matches(page)
             )
             if reason:
-                svc.fail_safe(aid, worker, gen, reason)
+                _stop(aid, worker, gen, reason, svc.fail_safe)
                 return "failed_safe"
             beat()
             try:
@@ -302,9 +303,12 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                 svc.abandon(aid, worker, gen, f"{n} field(s) did not keep their values")
                 return "abandoned"
             # Conditional fields appear after filling; D111: a followed redirect stops it too.
+            # D132: never a pause here. Before filling the same page matched, so what changed is
+            # the page's own reaction to the answers, which no re-read can show. Every live
+            # approval is retired with the stop: entering the same data again is a new approval.
             reason = (LOCALE_REDIRECTED if eg.redirected else None) or adapter.schema_matches(page)
             if reason:
-                svc.abandon(aid, worker, gen, reason)
+                svc.abandon(aid, worker, gen, str(reason), retire_every="stopped_after_entry")
                 return "abandoned"
             svc.record_evidence(aid, worker, gen, "recheck", rehearsal.RECHECK_MATCHED)
             denied = eg.proxy_denied()
@@ -372,6 +376,17 @@ def _stop_rehearsal(aid, worker, gen) -> str:
         svc.abandon(aid, worker, gen, str(e), code=e.code)
         return "abandoned"
     return "rehearsed"
+
+
+def _stop(aid, worker, gen, reason: str, plain) -> None:
+    """End the attempt, before anything is entered, for a live page that is not the approved
+    one. D132: a change a fresh read can show (`FormChanged`) pauses the application, with
+    every live approval retired; any other reason, or a pause the fence refused, is the plain
+    stop it always was (`plain`). Either way the runner returns the same result."""
+    if isinstance(reason, FormChanged):
+        if svc.pause_for_form_change(aid, worker, gen, str(reason), reason.counts):
+            return
+    plain(aid, worker, gen, str(reason))
 
 
 def _record_disclosures(aid, worker, gen, disclosures: list[dict]) -> None:

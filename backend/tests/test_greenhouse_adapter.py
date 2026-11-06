@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from app.core.db import SessionLocal
 from app.modules.execution import runner
-from app.modules.execution.models import Evidence, ExecutionAttempt
+from app.modules.execution.models import ApplicationPause, Evidence, ExecutionAttempt
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation.forms import FieldType
 from tests.execution_harness import (
@@ -383,6 +383,13 @@ def test_a_required_control_added_only_by_javascript_stops_before_disclosure(api
     assert "question_" not in detail  # counts only, never the posting's field keys
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
+    # D132: a control the form does not list pauses however it appeared. A read never runs the
+    # page's script, so reading the form again cannot show this one: the read ends unexplained.
+    with SessionLocal() as db:
+        (p,) = db.scalars(
+            select(ApplicationPause).where(ApplicationPause.application_id == uuid.UUID(app_id))
+        ).all()
+    assert (p.status, p.detail) == ("open", {"new": 1, "changed": 0, "missing": 0})
 
 
 @pytest.mark.parametrize(

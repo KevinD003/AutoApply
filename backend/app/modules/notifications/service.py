@@ -32,6 +32,8 @@ from app.modules.autoapply.models import AutoApplyEvent
 from app.modules.discovery.models import BoardSource, DiscoveredJob
 from app.modules.execution import rehearsal
 from app.modules.execution.models import (
+    PAUSE_UNRESOLVED,
+    ApplicationPause,
     AttemptState,
     Checkpoint,
     ExecutionAttempt,
@@ -158,10 +160,12 @@ def _rehearsals(db: Session, user_id) -> list[dict]:
 
 def _attempts(db: Session, user_id) -> list[dict]:
     out = []
+    paused = select(ApplicationPause.attempt_id).where(ApplicationPause.user_id == user_id)
     for a in db.scalars(
         select(ExecutionAttempt).where(
             ExecutionAttempt.user_id == user_id,
             ExecutionAttempt.state.in_([s.value for s in _ATTEMPT]),
+            ExecutionAttempt.id.not_in(paused),  # D132: its pause is the item (`_pauses`)
         )
     ):
         kind, title, needs_action = _ATTEMPT[AttemptState(a.state)]
@@ -172,6 +176,33 @@ def _attempts(db: Session, user_id) -> list[dict]:
         out.append(_item(f"attempt:{a.id}", kind, a.finished_at or a.created_at,
                          a.application_id, title, text, needs_action=needs_action,
                          evidence=label))  # fmt: skip
+    return out
+
+
+# D132: what a form-change pause asks of you (it always stopped before anything was entered).
+_PAUSE_TEXT = (
+    "The employer's form no longer matched what you approved, so NoEfforts stopped before "
+    "sending anything. Read the form again under Questions, answer what is new and approve "
+    "again; nothing is sent until you do."
+)
+_UNEXPLAINED = (
+    "Reading the employer's form again showed no difference NoEfforts can see (the page's own "
+    "scripts may add it). Try this version again under Questions, or apply on the employer's "
+    "site."
+)
+
+
+def _pauses(db: Session, user_id) -> list[dict]:
+    out = []
+    for p in db.scalars(
+        select(ApplicationPause).where(
+            ApplicationPause.user_id == user_id, ApplicationPause.status.in_(PAUSE_UNRESOLVED)
+        )
+    ):
+        text = _UNEXPLAINED if p.status == "unexplained" else _PAUSE_TEXT
+        out.append(_item(f"pause:{p.id}:{p.status}", "form_changed", p.created_at,
+                         p.application_id, "The employer's form no longer matches", text,
+                         needs_action=True, link="/questions"))  # fmt: skip
     return out
 
 
@@ -238,11 +269,23 @@ def _auto_apply(db: Session, user_id) -> list[dict]:
                Application.state == AppState.needs_user_action)
         .order_by(AutoApplyEvent.created_at.desc())
     ).all()  # fmt: skip
+    # D132: an application automation already tried after the event (and that stopped) does
+    # not continue by itself; its own stop or pause is the item.
+    tried = {
+        (app_id, at)
+        for app_id, at in db.execute(
+            select(ExecutionAttempt.application_id, ExecutionAttempt.created_at).where(
+                ExecutionAttempt.user_id == user_id
+            )
+        )
+    }
     out, seen = [], set()
     for eid, app_id, at in rows:
         if app_id in seen:
             continue
         seen.add(app_id)
+        if any(a == app_id and t > at for a, t in tried):
+            continue
         out.append(_item(f"autoapply:{eid}", "auto_apply_questions", at, app_id,
                          "Questions are waiting for your answers",
                          "Automatic applying read this job's form. Answer the open questions "
@@ -296,6 +339,7 @@ def feed(db: Session, user_id, now: datetime | None = None) -> list[dict]:
         + _approvals(db, user_id)
         + _rehearsals(db, user_id)
         + _attempts(db, user_id)
+        + _pauses(db, user_id)
         + _follow_ups(db, user_id)
         + _boards(db, user_id, now)
         + _auto_apply(db, user_id)

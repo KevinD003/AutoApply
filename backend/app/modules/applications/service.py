@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.db import utcnow
@@ -8,7 +8,12 @@ from app.modules.applications import states
 from app.modules.applications.models import Application, ApplicationEvent
 from app.modules.applications.states import Actor, AppState, Outcome, Refused, Source
 from app.modules.audit.service import record
-from app.modules.execution.models import AttemptState, ExecutionAttempt
+from app.modules.execution.models import (
+    PAUSE_UNRESOLVED,
+    ApplicationPause,
+    AttemptState,
+    ExecutionAttempt,
+)
 
 # Fixed event reasons: what the user wrote goes to evidence_note, never into the label (D53).
 CONFIRMED_BY_YOU = "Confirmed by you"
@@ -49,6 +54,30 @@ def transition(
     )
     app.state = target
     app.state_changed_at = utcnow()
+    if target in LEAVES_REVIEW:
+        # D132: a form-change pause waits only while the application can still be approved;
+        # cancelled, expired, failed for good or submitted (by hand too), nothing is asked.
+        # The application's own (versioned) UPDATE is written first, so its row is locked
+        # before any pause row, as everywhere else, also on a path that did not lock it.
+        db.flush()
+        db.execute(
+            update(ApplicationPause)
+            .where(
+                ApplicationPause.application_id == app.id,
+                ApplicationPause.status.in_(PAUSE_UNRESOLVED),
+            )
+            .values(status="closed", resolution=LEAVES_REVIEW[target], resolved_at=utcnow())
+        )
+
+
+# The states that end a form-change pause, and how it is recorded (D132).
+LEAVES_REVIEW = {
+    AppState.cancelled: "cancelled",
+    AppState.expired: "expired",
+    AppState.failed_terminal: "failed",
+    AppState.submitted_confirmed: "submitted",
+    AppState.submitted_unconfirmed: "submitted",
+}
 
 
 def lock_submission(db: Session, app: Application) -> list[AttemptState]:

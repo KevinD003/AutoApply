@@ -33,7 +33,7 @@ Routes (on the synthetic receiver; same ledger):
   POST /gh2/{board}/jobs/{id}/attachments  upload (a disclosure)
   POST /gh2/{board}/jobs/{id}/submit       application (an acceptance)
 Modes (cfg["mode"]): gh2_robots_disallow (D102), gh2_duplicate_id, gh2_label_mismatch, gh2_missing_control,
-gh2_validation_fail, gh2_captcha, gh2_new_question, gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, gh2_many_assets,
+gh2_validation_fail, gh2_captcha, gh2_new_question, gh2_question_added (D132), gh2_options_changed, gh2_no_confirmation, gh2_combobox_ignores, gh2_external_asset, gh2_many_assets,
 gh2_navigate_away, gh2_redirect_loop, gh2_redirect_off_origin, gh2_slow, gh2_lazy_options, gh2_gh_assets, gh2_attach_group(_wrong|_shared), gh2_widgets (cfg widget_bad: submit, fetch, nav, captcha,
 filechooser, required, select, dialog, upload, hash, images, covered, hint_only, other_value,
 remove_control, anon_change, load_beacon, open_beacon; cfg beacon for the last two),
@@ -222,11 +222,20 @@ JOBS = _jobs()
 CONDITIONS = {"question_8105": ("question_8104", "1")}
 
 
+# D132: the question an employer adds after you approved (mode gh2_question_added).
+ADDED_QUESTION = _q("Are you available to work weekends?", "question_8106",
+                    "multi_value_single_select", True, YES_NO)
+
+
 def _job(board, job_id, cfg=None) -> dict:
     """The job as this mode serves it: the shared definition, except that D130's
-    gh2_phone_companion asks the phone as optional (cfg pcm phone_required_api: required)."""
+    gh2_phone_companion asks the phone as optional (cfg pcm phone_required_api: required), and
+    D132's gh2_question_added adds a required question: the job data, the page and the server's
+    own validation all ask it, as an employer's edit to a live posting would."""
     j = JOBS[(board, job_id)]
     c = cfg or {}
+    if c.get("mode") == "gh2_question_added":
+        return {**j, "questions": [*j["questions"], ADDED_QUESTION]}
     if c.get("mode") != "gh2_phone_companion" or c.get("pcm") == "phone_required_api":
         return j
     qs = [{**q, "required": False} if q["fields"][0]["name"] == "phone" else q

@@ -34,7 +34,9 @@ from app.modules.execution.adapters.fixture_ats import (
     ACK_ERROR,
     ACK_NONE,
     ACK_SHOWN,
+    FORM_CHANGED,
     FixtureAtsAdapter,
+    FormChanged,
     Outcome,
     StoppedAfterDisclosure,
     UploadFailed,
@@ -279,6 +281,8 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         controls = dom.snapshot(html)
         fields = approved_fields(self.content)
         changed, pending = [], []  # NoEfforts' fixed reasons, one per field; never field keys
+        # D132: how many of those reasons a fresh read of the form can show (counts only).
+        drift = {"changed": 0, "missing": 0}
         answered = {a["key"] for a in self.content["answers"] if a["value"] is not None}
         if any(f.widget in STAND_IN_WIDGETS for f in fields) and not self._stand_in:
             return STAND_IN_ONLY  # D104: before anything is entered
@@ -322,6 +326,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             )
             if not ok:
                 changed.append(m.status)
+                drift["missing" if m.status == "absent" else "changed"] += 1
                 continue
             # D104: each stand-in structure is re-proven exactly as it was captured.
             if f.widget == "phone_country" and not dom.phone_country_control(
@@ -355,6 +360,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 want = [[o.value, o.label] for o in f.options]
                 if got != want:
                     changed.append("options")
+                    drift["changed"] += 1
         # D111: an unlisted control is not a new question when the live page shows it to be a
         # hidden search box (as at capture, which reads the page without its scripts).
         codes = set(self._code_box_ids(page))  # D116: the emailed code's boxes, if shown
@@ -389,7 +395,15 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 )
                 if p
             )
-            return f"the form has changed since you approved it ({detail})"
+            text = f"{FORM_CHANGED} ({detail})"
+            if not (new or drift["changed"] or drift["missing"]):
+                # D132: only what the page does as it runs (a control its scripts show, hide or
+                # require, a stand-in's shape, a dropdown that cannot be acted on). Reading the
+                # form again never runs the page's scripts, so it cannot show these: a plain stop.
+                return text
+            # A control added, gone, renamed, retyped or doubled, or a dropdown's options: a
+            # fresh read of the form can show these, so the application pauses (counts only).
+            return FormChanged(text, new=len(new), **drift)
         for a in self.content["answers"]:
             cond = a.get("condition") or {}
             if cond.get("key") == dom.UNKNOWN_TRIGGER and a["value"] is not None:
@@ -637,7 +651,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
     def _sections_match(self, page: Page) -> str | None:
         """D120: before disclosure, re-prove each frozen section is still present: its root and
         first row's anchor exist (the readback during fill catches any option drift)."""
-        changed = "the form has changed since you approved it (structured section missing)"
+        changed = FormChanged(f"{FORM_CHANGED} (structured section missing)", missing=1)
         for sec in self.content.get("sections") or []:
             try:
                 plan = gsections.plan_content_section(sec)

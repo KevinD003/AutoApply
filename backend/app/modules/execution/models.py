@@ -162,6 +162,64 @@ class Checkpoint(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+PAUSE_UNRESOLVED = ("open", "unexplained")
+
+
+class ApplicationPause(Base):
+    """D132: an application stopped, before anything was entered on the page, because the
+    employer's form no longer matched the approved one in a way a fresh read can show. It
+    outlives its attempt by design, which is never resumed or retried. While it is unresolved
+    the application has no live approval and none can be given: the owner reads the form again
+    (a new form version resolves it), tries this version again (closes it), or the application
+    leaves review. Counts only, never a question's key or label.
+
+    status: open (read the form again), unexplained (read again, no difference NoEfforts can
+    see), resolved (a new form version was read), closed (tried again, superseded, or the
+    application left review: cancelled, applied by hand, expired, failed, submitted)."""
+
+    __tablename__ = "application_pauses"
+    __table_args__ = (
+        Index(
+            "uq_one_unresolved_pause",
+            "application_id",
+            unique=True,
+            postgresql_where=text("status IN ('open','unexplained')"),
+        ),
+        Index("ix_application_pauses_user_status", "user_id", "status"),
+        CheckConstraint("kind IN ('form_changed')", name="ck_pause_kind"),
+        CheckConstraint(
+            "status IN ('open','unexplained','resolved','closed')", name="ck_pause_status"
+        ),
+        CheckConstraint(
+            "resolution IS NULL OR resolution IN ('new_form','dismissed','superseded',"
+            "'cancelled','expired','failed','submitted')",
+            name="ck_pause_resolution",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_id)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"), index=True
+    )
+    attempt_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("execution_attempts.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(30), default="form_changed")
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    # The package the attempt ran (for display and the version diff; the gate is the pause).
+    package_version: Mapped[int] = mapped_column(Integer)
+    package_hash: Mapped[str] = mapped_column(String(64))
+    # The form version the attempt ran against (a read must find a different one).
+    form_version: Mapped[int | None] = mapped_column(Integer)
+    detail: Mapped[dict] = mapped_column(JSON, default=dict)  # counts only
+    recaptured_version: Mapped[int | None] = mapped_column(Integer)
+    # How it ended (ck_pause_resolution).
+    resolution: Mapped[str | None] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Evidence(Base):
     """Minimal outcome evidence. No answer values, cookies, codes, screenshots or traces."""
 
