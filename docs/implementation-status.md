@@ -75,11 +75,21 @@ What it does:
 
 | Check (branch `form-change-pause`) | Command | Result |
 |---|---|---|
-| New tests | `pytest tests/test_form_change_loop.py` (disposable database) | exit 0, 16 passed (33.2 s) |
-| Existing suites that cover drift stops, approval, notifications, auto-apply, contracts and migrations | `pytest` on test_account, test_approval_hardening, test_approval_reasons, test_ashby_adapter, test_audit_inventory, test_auto_apply, test_batch_review, test_dropdown_strategies, test_error_boundary, test_execution_failures, test_execution_security, test_form_change_loop, test_greenhouse_adapter, test_greenhouse_controls, test_greenhouse_dom, test_greenhouse_live, test_greenhouse_sections_e2e, test_hidden_search, test_lever_adapter, test_migrations, test_notifications, test_phone_companion, test_preparation, test_rehearsal_stop, test_required_signals, test_section_free_route, test_workday_adapter (disposable database) | running when this was committed; the result is recorded with the next commit |
+| Existing suites that cover drift stops, approval, notifications, auto-apply, contracts and migrations, first build (d197bb7) | `pytest` on test_account, test_approval_hardening, test_approval_reasons, test_ashby_adapter, test_audit_inventory, test_auto_apply, test_batch_review, test_dropdown_strategies, test_error_boundary, test_execution_failures, test_execution_security, test_form_change_loop, test_greenhouse_adapter, test_greenhouse_controls, test_greenhouse_dom, test_greenhouse_live, test_greenhouse_sections_e2e, test_hidden_search, test_lever_adapter, test_migrations, test_notifications, test_phone_companion, test_preparation, test_rehearsal_stop, test_required_signals, test_section_free_route, test_workday_adapter (disposable database) | JUnit 665 tests, 663 passed, 2 failed: `test_auto_apply.py::test_a_stopped_attempt_is_never_retried_automatically` (a form-change stop now has its own skip reason; the test now covers a plain stop and a pause apart) and `test_notifications.py::test_every_query_of_the_feed_is_scoped_to_the_account` (its guard now counts D132's three account-scoped queries) |
+| The same suites plus test_api_provider and test_rehearsal, after the rework (730f1b6) | the same, 29 files | exit 0; JUnit 693 tests, 693 passed, 0 failures, 0 errors (1637 s) |
+| After merging `main` (f7a54e4): D132 and contract suites | `pytest tests/test_form_change_loop.py tests/test_auto_apply.py tests/test_notifications.py tests/test_migrations.py tests/test_account.py tests/test_audit_inventory.py tests/test_approval_reasons.py` | exit 0, 85 passed |
+| Full e2e on the merged tree (f7a54e4) | `npx playwright test` (desktop and mobile, disposable database) | exit 0; JUnit 173 tests, 170 passed, 0 failures, 3 skipped by design (the bottom-nav check runs on mobile only, the two log-privacy configuration checks on desktop only); 777.9 s |
+| Race fixes (fb00d8c): the two two-connection race tests, then the same with the pause's row lock removed | `pytest tests/test_form_change_loop.py -k during` | exit 0 with the lock; without it both fail ("the read did not wait for the pause's lock") |
+| Head (76588f8) | `pytest tests/test_form_change_loop.py tests/test_auto_apply.py tests/test_notifications.py tests/test_lock_order.py`; `npx playwright test e2e/questions.spec.ts e2e/layout-regression.spec.ts e2e/notifications.spec.ts e2e/tracker-outcomes.spec.ts` | exit 0, 74 passed; exit 0, 15 passed, 1 skipped by design |
 | Lint and format | `uv run ruff check .`, `uv run ruff format --check .` | exit 0 ("All checks passed!"), exit 0 (362 files already formatted) |
 | Frontend | `npx tsc --noEmit`, `npm run lint` | exit 0, exit 0 |
-| E2E | `npx playwright test e2e/questions.spec.ts` (desktop and mobile) | not run yet (it shares the receiver port with the backend run above); recorded with the next commit |
+
+Reviews: three independent design critiques and a reconciling lead (the design was changed: the
+gate holds the application, structural drift pauses, approvals are retired after entry); a three-lens
+implementation review of the first build (five confirmed findings, all fixed); a four-lens review of
+the rework (its verifiers were cut off by a usage limit; each finding was checked against the code:
+four fixed, one narrowed in the docs as an open owner decision). The full backend suite runs in the
+pull request's CI.
 
 ## Answer safety: self-identification scope, follow-up reuse, job requirements (D131, 2026-11-06; local only)
 
