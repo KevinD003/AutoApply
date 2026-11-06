@@ -364,7 +364,15 @@ export default function ReviewPage() {
 
       <Tailored appId={id} status={view.drafting_status} onChange={load} />
 
-      <AnswerSuggestions appId={id} version={view.package.version} onView={setView} />
+      <AnswerSuggestions
+        appId={id}
+        version={view.package.version}
+        onView={(v, msg) => {
+          setView(v);
+          setError(null);
+          setNotice(msg ?? "");
+        }}
+      />
 
       <Card title={`Needs your answer (${pending.length})`}>
         {pending.length === 0 ? (
