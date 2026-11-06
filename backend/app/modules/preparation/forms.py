@@ -72,7 +72,11 @@ STAND_IN_WIDGETS = ("phone_country", "location_search", "location_structured")
 #   hidden_search        a search input the page keeps hidden inside one question's group: not
 #                        a question while the live page hides it, requires nothing in it and
 #                        holds nothing in it; never filled; anything else stops the attempt
-WIDGETS = (*STAND_IN_WIDGETS, "hidden_search")
+# D130 (from a real page's markup; greenhouse_dom `phone_companion`):
+#   phone_companion      the one other control inside an OPTIONAL phone question's group, not
+#                        required by the page: never touched, because the phone is left blank
+#   phone_left_blank     that optional phone: never entered (its second control cannot be set)
+WIDGETS = (*STAND_IN_WIDGETS, "hidden_search", "phone_companion", "phone_left_blank")
 
 
 class FormField(BaseModel):
@@ -87,7 +91,7 @@ class FormField(BaseModel):
     accept: str | None = Field(default=None, max_length=200)
     condition: Condition | None = None
     unsupported_reason: str | None = Field(default=None, max_length=300)
-    widget: str | None = Field(default=None, max_length=50)  # D104/D111: one of WIDGETS
+    widget: str | None = Field(default=None, max_length=50)  # D104/D111/D130: one of WIDGETS
 
     @model_validator(mode="after")
     def _options(self):
@@ -97,7 +101,9 @@ class FormField(BaseModel):
             raise ValueError(f"field '{self.key}' of type {self.type} cannot have options")
         shape = {"phone_country": FieldType.select, "location_search": FieldType.text,
                  "location_structured": FieldType.unsupported,
-                 "hidden_search": FieldType.unsupported}  # fmt: skip
+                 "hidden_search": FieldType.unsupported,
+                 "phone_companion": FieldType.unsupported,
+                 "phone_left_blank": FieldType.tel}  # fmt: skip
         if self.widget is not None and shape.get(self.widget) != self.type:
             raise ValueError(f"field '{self.key}' cannot be a {self.widget} control")
         return self

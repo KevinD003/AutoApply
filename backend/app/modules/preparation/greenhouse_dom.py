@@ -35,7 +35,15 @@ from app.modules.preparation.forms import (
 # recognised instead of refused: the country picker beside the phone field
 # (`phone_country_field`) and a location search picker whose own script sets the job data's
 # hidden values (`location_picker`). Anywhere else they stay checkpoints, as in v2.
-EXTRACTION_VERSION = "greenhouse-dom-v3"
+# v4 (D130): when the job data asks the phone as optional and the page's phone group holds
+# exactly one other control, unrequired (`phone_companion`), the phone is left blank and that
+# control is never touched, instead of both being refused. It is part of the adapter_version
+# that `check_binding` enforces (not of the hashed package content), so a worker built before
+# D130 -- which would not re-prove the live page -- can never claim such a package.
+# NOTE: D120 (unmerged branch greenhouse-structured-sections) also moves v3 to v4. Whichever of
+# the two reaches main second must take a version main has never carried (v5), with its pinned
+# tests, so that no two different behaviours ever share one version.
+EXTRACTION_VERSION = "greenhouse-dom-v4"
 UNKNOWN_TRIGGER = "unknown-trigger"  # Condition.key for "shown by page logic we cannot see"
 UNLISTED_REASON = (
     "a control on the page that the job data does not list: what it asks, and whether it is "
@@ -63,6 +71,7 @@ class Control:
     # accessible name (aria-labelledby / aria-label / legend). Never printed as text.
     group_key: int | None = None
     group_name: str | None = None
+    group_required: bool = False  # D130: aria-required="true" on the enclosing group
 
 
 @dataclass
@@ -168,6 +177,7 @@ def snapshot(html: str) -> list[Control]:
                 describedby=bool(n.attrs.get("aria-describedby")),
                 group_key=order[id(grp)] if grp is not None else None,
                 group_name=gname,
+                group_required=grp is not None and grp.attrs.get("aria-required") == "true",
             )
         )
     return out
@@ -495,6 +505,111 @@ def hidden_search_ok(state: dict | None) -> bool:
     )
 
 
+# -- D130: the optional phone question's own second control ----------------------------------
+# From the owner-supplied markup of one real form: beside an optional phone (`type=tel`,
+# `aria-required="false"`), a library combobox -- an editable input with opacity 0 behind a
+# visible control that shows the page's own default, no `aria-required`, options only once
+# opened -- and, from read-only run #11 (another posting), such a combobox inside the group the
+# page names as the phone question. Its label, its options and how a choice is shown and read
+# back were never observed, so NoEfforts never sets it. What is established is narrower: by the
+# page's own grouping it is part of the phone question, and the page does not require it. A
+# number entered without it might not reach the employer as approved, so when the job data asks
+# the phone as OPTIONAL, the phone is left blank (`phone_left_blank`) and the control is never
+# touched (`phone_companion`). The live page must show the same structure, require neither, and
+# hold no number in the phone -- before anything is entered and again before submitting --
+# otherwise the attempt stops. A required phone, a control the page requires, a second such
+# control, or one outside the group stays a blocking checkpoint. An input's opacity never makes
+# it hidden (`snapshot`): this rule is about the phone question, not about how a control looks.
+PHONE_COMPANION_LABEL = "Second control of the phone question (left as the page shows it)"
+PHONE_COMPANION_REASON = (
+    "inside the optional phone question's group and not required by the page; the phone is "
+    "left blank, so it is never touched; the attempt stops if the page requires either or the "
+    "phone holds a number"
+)
+PHONE_COMPANION_CHANGED = (
+    "the phone question's second control is not as approved or is required, or the phone "
+    "holds a number"
+)
+
+
+def _starred(s: str | None) -> bool:
+    """A trailing "*" (a label's required marker, which `_norm` removes)."""
+    return (s or "").strip().endswith("*")
+
+
+def phone_companion(fields: list[FormField], controls: list[Control]) -> Control | None:
+    """The one control the D130 rule recognises, from markup only (capture reads the page
+    without its scripts; the adapter adds the live checks), else None:
+    - the job data asks exactly one phone (tel) question, and it is optional;
+    - its control is the only one with that id, not hidden, with no required attribute and no
+      "*" on its own label or its group's name, in a group the page names exactly as the
+      question and does not mark required;
+    - apart from the phone, that group holds exactly one control that is neither hidden (hidden
+      controls are never questions, as in `unlisted_controls`) nor of the D111 hidden-search
+      shape: an input with the combobox role, in the form, the only control with its id, with no
+      required attribute and no "*" on its label.
+    What that control asks is never inferred (its label is not read for meaning): it belongs to
+    the phone question by the page's own grouping, and only a number in the phone would make it
+    matter -- which NoEfforts then never enters."""
+    tel = [f for f in fields if f.type == FieldType.tel]
+    if len(tel) != 1 or tel[0].required:
+        return None
+    phone = [c for c in controls if c.id == tel[0].key.removesuffix("[]")]
+    if len(phone) != 1:
+        return None
+    p = phone[0]
+    if (
+        p.group_key is None
+        or p.hidden
+        or p.required
+        or p.group_required
+        or _starred(p.accessible_name)
+        or _starred(p.group_name)
+        or _norm(p.group_name) != _norm(tel[0].label)
+    ):
+        return None
+    others = [c for c in controls if c.group_key == p.group_key and c is not p and not c.hidden
+              and not hidden_search_shape(fields, controls, c)]  # fmt: skip
+    if len(others) != 1:
+        return None
+    c = others[0]
+    ok = (
+        c.tag == "input"
+        and c.role == "combobox"
+        and c.in_form
+        and not c.hidden
+        and not c.required
+        and not _starred(c.accessible_name)
+        and sum(x.id == c.id for x in controls) == 1
+    )
+    return c if ok else None
+
+
+# What the live page shows for the phone and its second control: the number in the phone, and
+# each one's required signals (REQUIRED_SIGNALS_JS: attribute, ARIA, group, label markers).
+PHONE_COMPANION_STATE_JS = (
+    """([id, phone]) => {
+  const el = document.getElementById(id), ph = document.getElementById(phone);
+  if (!el || !ph) return null;
+  const signals = ("""
+    + REQUIRED_SIGNALS_JS
+    + """);
+  return {value: ph.value, signals: signals(id), phone_signals: signals(phone)};
+}"""
+)
+
+
+def phone_companion_ok(state: dict | None) -> bool:
+    """True only when the live page requires neither the phone nor its second control, by any
+    signal, and holds no number in the phone."""
+    return (
+        isinstance(state, dict)
+        and state.get("value") == ""
+        and page_marks_required(state.get("signals")) is False
+        and page_marks_required(state.get("phone_signals")) is False
+    )
+
+
 def required_evidence(api_required: bool, signals: dict | None) -> str:
     """How the page's marking relates to the job data's requirement (for review, never to
     change it): consistent, api_required_page_unmarked (still required), page_required_api_
@@ -563,6 +678,15 @@ def build_schema(api: dict, page_html: str, *, stand_ins: bool = False
         at = next(i for i, f in enumerate(fields) if f.type == FieldType.tel)
         fields.insert(at + 1, phone)
         taken.add(phone.key)
+    # D130: the optional phone's second control (never beside a recognised stand-in picker).
+    companion = phone_companion(from_api.fields, controls) if phone is None else None
+    if companion is not None and (
+        companion.id in taken or not re.fullmatch(KEY_PATTERN, companion.id)
+    ):
+        companion = None
+    if companion is not None:  # the phone is then left blank (resolver: `phone_left_blank`)
+        fields = [f.model_copy(update={"widget": "phone_left_blank"})
+                  if f.type == FieldType.tel else f for f in fields]  # fmt: skip
     unlisted = [c for c in unlisted_controls(from_api.fields, controls)
                 if phone is None or c.id != phone.key]  # fmt: skip
     hidden_search = {c.id for c in hidden_search_candidates(from_api.fields, controls)}
@@ -582,6 +706,20 @@ def build_schema(api: dict, page_html: str, *, stand_ins: bool = False
                     unsupported_reason=HIDDEN_SEARCH_REASON,
                     widget="hidden_search",
                 )  # fmt: skip
+            )
+            continue
+        if valid and companion is not None and c.id == companion.id:
+            # D130: part of the optional phone question, which is left blank; never touched,
+            # and re-proven on the live page by the adapter.
+            fields.append(
+                FormField(
+                    key=key,
+                    label=PHONE_COMPANION_LABEL,
+                    type=FieldType.unsupported,
+                    required=False,
+                    unsupported_reason=PHONE_COMPANION_REASON,
+                    widget="phone_companion",
+                )
             )
             continue
         fields.append(
