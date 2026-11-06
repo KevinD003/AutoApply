@@ -509,7 +509,7 @@ def _race(hold, first_name, first, start_second):
 
 
 def test_a_form_read_during_try_again_waits_and_never_overwrites_it(api, receiver, monkeypatch):
-    """"Try this version again" reads the pause under its row lock, as it is now. A form read
+    """Trying this version again reads the pause under its row lock, as it is now. A form read
     that would resolve it meanwhile waits, then finds it closed: one outcome, never a lost
     resolution (before, the read's "new_form" was overwritten with "dismissed")."""
     from app.modules.preparation import package as pk
