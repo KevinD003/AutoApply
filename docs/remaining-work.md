@@ -1,4 +1,4 @@
-# Remaining work: the canonical table (2026-10-29)
+# Remaining work: the canonical table (2026-10-29; automation loop section 2026-11-06)
 
 This is the one list of what NoEfforts is, what it is not yet, and what each remaining item
 depends on. It is reconciled against the original roadmap (`docs/product-evidence.md`, rows 1-23,
@@ -77,7 +77,7 @@ anywhere real. Real pages and APIs **have** been read, as above, under single-us
 | 29 | Ashby | **Fixture-tested (local approximation only)**, D87: `fixture_ashby` reads an Ashby-style posting's application page on the local receiver, fills only approved facts and answers (Yes/No questions naming the country from your facts), uploads files (evidence kept after a partial failure), reads back (a field resume autofill changed stops it), never clicks the cookie banner, rehearses without submitting, submits once after its own approval and binds the confirmation to the attempt. The approximation's spam check is a hard stop everywhere: a checkpoint at capture, a stop before anything is entered, an unknown outcome after the final click (as are "already applied" and a confirmation that shows a challenge), never solved, retried or resent. It has **no Ashby identity**: a real Ashby job stays a manual handoff. URL recognition for hosted postings and `?ashby_jid=` embeds as before (D81). No Ashby documentation page could be opened from this sandbox, so every page detail is the fixture's own design | `test_ashby_adapter.py`, `ashby.spec.ts`, `test_workday_ashby_fixtures.py`; `docs/research/ashby.md` | Network access to `developers.ashbyhq.com`, `docs.ashbyhq.com`; an owner's docs-and-terms review before any Ashby specification | Network only | Confirm the shapes from the documentation |
 | 30 | Verification codes | Fixture-tested by manual entry (checkpoint); from the owner's Gmail only once authorized (row 31; D101, D103: not authorized) | `test_execution_*`, `submission.spec.ts`, `test_inbox.py` | — | No | — |
 | 31 | Gmail or inbox access (codes, replies) | **Fixture-tested; codes authorized (D117), on by default for the owner; replies not authorized** (D101, D103, D117). Read-only Gmail for verification codes (entered only when exactly one code reads as this application's, the email naming its employer when applications overlap; Greenhouse's mixed-case codes read as written) and application emails proposed as outcomes the user confirms; the text is never kept. Codes: recorded through 2026-11-06 from the owner's words; application emails stay unread. Typing a code yourself is unaffected | `test_inbox.py`, `inbox.spec.ts`, `docs/inbox.md`, `docs/activation-status.md` | The owner's written authorization of each use, recorded; then their Google Cloud credentials and one connect run on their machine | Yes | Verify with the owner's real mailbox |
-| 32 | Standing approvals (auto-apply with caps) | **Decided: not built** (D91): every submission needs its own approval, by the owner's standing default | — | — | No | None |
+| 32 | Standing approvals (auto-apply with caps) | **Fixture-tested; built and on by default outside tests** (D113, D114; replaces D91's "not built"): the owner's recorded standing rule applies automatically to fully answered Greenhouse pilot packages only, rehearsal first per employer, within a daily cap and the recorded permission (which ends 2026-11-06), never retrying a stopped attempt, pausable; each account turns it on for itself. Gaps found 2026-11-06: it does not stop work it already queued when paused, and re-approves after an owner revocation when no attempt is held (automation loop, rank 3) | `test_auto_apply.py` | The recorded permission (ends 2026-11-06) | Yes, for real use | Automation loop rank 3 |
 | 33 | Tsenta as a provider | **Awaiting access**: developer docs not accessible (D8) | `docs/research/tsenta.md` | Public developer docs reachable | Yes | — |
 | **Track** | | | | | | |
 | 34 | Tracker, timeline, outcomes with sources, funnel | Fixture-tested | `test_funnel.py`, `tracker-outcomes.spec.ts`, `journey.spec.ts` | — | No | — |
@@ -90,6 +90,47 @@ anywhere real. Real pages and APIs **have** been read, as above, under single-us
 | 39 | Backups and restore (local stack) | **Awaiting deployment verification**: documented (`docs/deployment.md` sections 5 and 7: `pg_dump`, a storage archive, drop and restore); the CI smoke job runs the same commands on a throwaway stack; not run on the owner's machine; no scheduled or off-machine backup | `scripts/docker-smoke.sh` | The owner's machine; for scheduled or off-site backups, the hosting choice (row 40) | Yes (run it); hosting is the owner's choice | — |
 | 40 | Production hosting (TLS, domain, secrets store) | **Unfinished** | — | Hosting choice and any paid commitment | Yes | — |
 | 41 | Spend reporting | **Fixture-tested** (D97): Account → "AI drafting spend": the server's daily budget and reset, today's total and what is left, your requests, tokens and last 14 days, each amount marked estimated, worst case kept, held or nothing sent; an error reply keeps its worst case; each request settled once; exported with the budget settings. Not an invoice | `test_drafting_provider.py`, `drafting-spend.spec.ts` | — | No | Real provider usage only once the owner configures drafting (row 23) |
+
+## Automation loop: Greenhouse + Workday (2026-11-06)
+
+The loop builds the full application path for both providers. It runs from opening and reading the
+form, through resolving, filling and reading back, to a durable pause that sends unknown questions to
+a separate "Questions needing your answer" tab. It then resumes only after re-checking the page and
+the permissions, and submits once under application-specific authorization.
+
+The acceptance matrix (14 workflows by provider, with evidence levels), the tests run, rejected
+designs, blockers and the research log are in `docs/automation-loop.md`, the loop's continuation
+record. Nothing in it is real-observed beyond read-only Greenhouse mapping. Workday exists only as a
+single-page approximation.
+
+Ranked slices. Each is shippable through its own PR, with the receiver ledger as the oracle:
+
+| Rank | Slice | Acceptance items | Status |
+|---|---|---|---|
+| — | D131 answer safety: self-identification scope, follow-up keys, job requirements, review-page crash | 4, 10, 3 | PR #36 (CI) |
+| 1 | D132: a form change becomes a durable pause; "Questions needing your answer"; read the form again; answer; approve; one new attempt (gh2 and Workday-style stand-ins) | loop, tab, 2, 6, 14 | Design under review |
+| 2 | Finish the reuse and suggestion guards: D115 veto, "use here only", Workday decline wordings, an error boundary | 4, 10, 3 | Unfinished |
+| 3 | Standing rule: notify and continue after the owner answers; respect revocation and pause; approval provenance | loop, 13, 2, 14 | Unfinished; continuing after a form change needs the owner's decision |
+| 4 | Conditional and page-required questions on Greenhouse's id-only structure become answerable pauses; a click the page blocks is not terminal | 5, 2, 6 | Unfinished |
+| 5 | Capture refuses what the DOM adapter cannot fill; disclosure evidence survives any failure after an upload | 6, 11, 1 | Unfinished |
+| 6 | Saved-answer reuse and unsafe-reuse refusal on Greenhouse- and Workday-shaped forms (ledger) | 3, 4, 8 | Unfinished |
+| 7 | EEOC, demographic and Workday self-identification end to end (opt-in, decline, scope, withdrawal) | 10, 4, 6 | Unfinished |
+| 8 | Structured sections reviewable and diffed; employment stand-in; section comboboxes react-select-safe | 7, 8 | Unfinished; real pages wait on the section observation |
+| 9 | Workday-style multi-page wizard stand-in: per-step disclosure gates and per-page pauses | 1, 2, 5, 7, 9, 11, 12, 13, loop | Unfinished (fixture only) |
+| 10 | Recovery hardening: task time limits, lease renewal, checkpoint cleanup, crash tests on both providers | 9, 12, 13, 11 | Unfinished |
+
+**External, for the loop:**
+- The recorded pilot and mailbox permissions end 2026-11-06.
+- A capturable real Greenhouse posting is needed, with a single-use disclose-only permission.
+- The owner must decide on Greenhouse's invisible reCAPTCHA before a first real submission.
+- A real section observation is needed (D120).
+- Workday needs:
+  - the owner's terms decision, reframed: the End User Agreement covers scoutrfp.com, not career
+    sites;
+  - a recorded documentation review;
+  - a read-only observation;
+  - the user's own candidate sign-in.
+- D113 continuing after a pause needs the owner's decision.
 
 ## Provider evidence ladder
 
@@ -177,9 +218,9 @@ queue: only the rows marked **external** wait on someone else, and each blocks o
 | Freehire credit on the list and export | Discover and job pages only; the source stays on each record | Decided |
 | Who besides the owner may use AI drafting | Owner accounts only (single-owner deployment), each behind its disclosure consent (D74) | Decided |
 | What is kept of a deleted account; a grace period | Nothing in the database; immediate; no grace period. Backups are the owner's own files (D77) | Decided |
-| Standing approvals (auto-apply with caps) | Not built: every submission needs its own approval (owner default) | Decided (row 32) |
+| Standing approvals (auto-apply with caps) | Built (D113, D114, 2026-11-02): the owner chose "Fully automatic" within limits; superseded the earlier "not built" | Decided; built (row 32) |
 | Follow-ups | In the app, derived, with a message to copy; nothing sent (D92) | Decided; built |
-| Workday's terms and employers' Workday sites | Workday stays a manual handoff; a review of public terms would be mine, recorded as such, never the owner's acceptance | Decided |
+| Workday's terms and employers' Workday sites | Workday stays a manual handoff; a review of public terms would be mine, recorded as such, never the owner's acceptance. Corrected 2026-11-06: Workday's End User Agreement covers scoutrfp.com, not employers' career sites; the decision concerns each employer's own terms and consents and Workday's automation signals (`docs/research/workday.md`) | Decided |
 | Live-pilot permissions 1-4 | Not given (D103 corrects D102, which wrongly said the owner's switch replaced them). Each is recorded separately, from the owner's own words, in `app/core/authorizations.py` (empty), and checked at every step; your approval of each package is needed as well; every other real destination stays refused | **External**: the owner's permission (row 26; `docs/activation-status.md`) |
 | Inbox access for codes and replies | Built at the owner's request (D101). D117 (2026-11-02): the owner lifted "Do not: Read my inbox or retrieve OTPs" for verification codes ("read my email ... the most recent otp ... paste it in the greenhouse applications"); application emails stay unread. Manual code entry is unchanged | **External**: the owner's authorization (rows 31, 35; `docs/activation-status.md`) |
 | Approval mode | Per application, by default (owner, 2026-10-31). The batch review is built (D105, `/review`): it approves individually identified, immutable packages, each on its own, never future applications; each approval stays bound to the user, application, destination, package version, scope, expiry and revocation, and is used once where that matters (D103) | Decided; built (D105) |
