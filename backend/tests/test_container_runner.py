@@ -30,6 +30,7 @@ from app.modules.execution.browser import (
     control_request,
 )
 from app.modules.execution.sandbox import proxy_service
+from tests.conftest import CANARY_PORT, RECEIVER_PORT
 from tests.execution_harness import (
     BASE,
     ROOT,
@@ -165,29 +166,29 @@ def test_proxy_requires_a_session_and_keeps_sessions_apart(stack, receiver):
         stack,
         "POST",
         "/sessions",
-        {"allow": [["127.0.0.1", 8799]], "allow_private": [["127.0.0.1", 8799]]},
+        {"allow": [["127.0.0.1", RECEIVER_PORT]], "allow_private": [["127.0.0.1", RECEIVER_PORT]]},
     )[1]
     b = ctl(
         stack,
         "POST",
         "/sessions",
-        {"allow": [["127.0.0.1", 8798]], "allow_private": [["127.0.0.1", 8798]]},
+        {"allow": [["127.0.0.1", CANARY_PORT]], "allow_private": [["127.0.0.1", CANARY_PORT]]},
     )[1]
-    assert raw(b"CONNECT 127.0.0.1:8799 HTTP/1.1\r\n\r\n").startswith(b"HTTP/1.1 407")
+    # Every CONNECT names A's destination: this run's receiver (it must be listening for the
+    # 200), never a fixed port another run may be using.
+    connect = f"CONNECT 127.0.0.1:{RECEIVER_PORT} HTTP/1.1\r\n".encode()
+    assert raw(connect + b"\r\n").startswith(b"HTTP/1.1 407")
     auth_a = base64.b64encode(f"{a['id']}:{a['token']}".encode())
     auth_b = base64.b64encode(f"{b['id']}:{b['token']}".encode())
-    ok = raw(
-        b"CONNECT 127.0.0.1:8799 HTTP/1.1\r\nProxy-Authorization: Basic " + auth_a + b"\r\n\r\n"
-    )
+    ok = raw(connect + b"Proxy-Authorization: Basic " + auth_a + b"\r\n\r\n")
     assert ok.startswith(b"HTTP/1.1 200"), ok
     # B's credentials do not open A's destination, and a wrong token is not a session.
-    connect = b"CONNECT 127.0.0.1:8799 HTTP/1.1\r\nProxy-Authorization: Basic "
-    denied = raw(connect + auth_b + b"\r\n\r\n")
+    denied = raw(connect + b"Proxy-Authorization: Basic " + auth_b + b"\r\n\r\n")
     assert b" 403 " in denied
     forged = base64.b64encode(f"{a['id']}:wrong".encode())
-    assert raw(
-        b"CONNECT 127.0.0.1:8799 HTTP/1.1\r\nProxy-Authorization: Basic " + forged + b"\r\n\r\n"
-    ).startswith(b"HTTP/1.1 407")
+    assert raw(connect + b"Proxy-Authorization: Basic " + forged + b"\r\n\r\n").startswith(
+        b"HTTP/1.1 407"
+    )
     # An allow-list can only name a few destinations, and private ones only if also allowed.
     r = ctl(stack, "POST", "/sessions", {"allow": [["a", 1]], "allow_private": [["10.0.0.1", 80]]})
     assert r[0] == 400
@@ -220,13 +221,13 @@ def test_container_mode_hostile_page_reaches_nothing_else(container_mode, api, r
                 def log_message(self, *a):
                     pass
 
-            self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 8798), H)
+            self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", CANARY_PORT), H)
             self.srv.serve_forever()
 
     c = Canary(daemon=True)
     c.start()
     try:
-        receiver.config(mode="hostile", canary="http://127.0.0.1:8798")
+        receiver.config(mode="hostile", canary=f"http://127.0.0.1:{CANARY_PORT}")
         app_id = prepared_application(api, receiver)
         aid = queue(api, app_id)
         assert runner.run_attempt(aid, "w1") == "confirmed"
@@ -236,7 +237,7 @@ def test_container_mode_hostile_page_reaches_nothing_else(container_mode, api, r
         assert eg["blocked_requests"] >= 1
     finally:
         c.srv.shutdown()
-        c.srv.server_close()  # release port 8798 for the next canary
+        c.srv.server_close()  # release the canary port for the next canary
     assert receiver.ledger()["accepted"] == 1
 
 
@@ -290,7 +291,7 @@ def _wait_sessions(stack, n: int, timeout=15.0) -> bool:
 
 
 def test_control_channel_is_single_use_and_authenticated(container_mode):
-    remote = RemoteBrowser("127.0.0.1", 8799, True)
+    remote = RemoteBrowser("127.0.0.1", RECEIVER_PORT, True)
     ws = remote.open()
     try:
         # The browser's own server is on the runner's loopback; the endpoint handed out is
@@ -321,7 +322,7 @@ def test_control_channel_is_single_use_and_authenticated(container_mode):
 def test_hard_killed_controller_leaves_no_browser(container_mode):
     """A worker that dies without cleaning up: the runner closes the browser itself, so no page
     is left for anyone to drive later."""
-    remote = RemoteBrowser("127.0.0.1", 8799, True)
+    remote = RemoteBrowser("127.0.0.1", RECEIVER_PORT, True)
     ws = remote.open()
     r = subprocess.run(
         [sys.executable, "-c", CONNECT_THEN_DIE, ws, RUNNER_TOKEN], capture_output=True, timeout=60
@@ -332,7 +333,7 @@ def test_hard_killed_controller_leaves_no_browser(container_mode):
 
 
 def test_unused_session_expires(container_mode):
-    remote = RemoteBrowser("127.0.0.1", 8799, True)
+    remote = RemoteBrowser("127.0.0.1", RECEIVER_PORT, True)
     remote.open()  # never connected
     assert _sessions(container_mode) == 1
     assert _wait_sessions(container_mode, 0, timeout=20)
@@ -341,9 +342,9 @@ def test_unused_session_expires(container_mode):
 
 def test_busy_runner_waits_then_refuses(container_mode, monkeypatch):
     monkeypatch.setattr(get_settings(), "browser_slot_wait_seconds", 2)
-    first = RemoteBrowser("127.0.0.1", 8799, True)
+    first = RemoteBrowser("127.0.0.1", RECEIVER_PORT, True)
     first.open()
-    second = RemoteBrowser("127.0.0.1", 8799, True)
+    second = RemoteBrowser("127.0.0.1", RECEIVER_PORT, True)
     try:
         t0 = time.monotonic()
         with pytest.raises(IsolationUnavailable, match="429"):
@@ -383,31 +384,36 @@ def test_container_boundary_alone_blocks_egress_without_interception(container_m
         def log_message(self, *a):
             pass
 
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 8798), H)
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", CANARY_PORT), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
-        receiver.config(mode="hostile", canary="http://127.0.0.1:8798")
+        receiver.config(mode="hostile", canary=f"http://127.0.0.1:{CANARY_PORT}")
         with browser_session(
             BASE, 15000, isolation="container", intercept=False, allow_private_destination=True
         ) as (page, log):
             page.goto(f"{BASE}/apply/clinic")
             assert "SYNTHETIC" in page.title()  # the allowed destination works
-            page.evaluate("""async () => {
-                for (const u of ['http://127.0.0.1:8798/direct-fetch', 'http://127.0.0.1:5432/',
-                                 'http://127.0.0.1:6379/', 'http://169.254.169.254/latest/',
-                                 'https://example.com/', 'http://[::1]:8798/']) {
+            # The canary is this run's; 5432, 6379 and the metadata address are fixed probe
+            # targets (only denial is asserted; nothing needs to listen there).
+            probes = [f"http://127.0.0.1:{CANARY_PORT}/direct-fetch", "http://127.0.0.1:5432/",
+                      "http://127.0.0.1:6379/", "http://169.254.169.254/latest/",
+                      "https://example.com/", f"http://[::1]:{CANARY_PORT}/"]  # fmt: skip
+            page.evaluate(
+                """async ([urls, ws]) => {
+                for (const u of urls) {
                   try { await fetch(u, {mode: 'no-cors'}); } catch (e) {}
                 }
-                try { new WebSocket('ws://127.0.0.1:8798/ws'); } catch (e) {}
-                await new Promise(r => setTimeout(r, 1500)); }""")
+                try { new WebSocket(ws); } catch (e) {}
+                await new Promise(r => setTimeout(r, 1500)); }""",
+                [probes, f"ws://127.0.0.1:{CANARY_PORT}/ws"],
+            )
             denied = log.proxy_denied()
     finally:
         srv.shutdown()
         srv.server_close()
     assert hits == [], hits
-    assert {"127.0.0.1:8798", "127.0.0.1:5432", "127.0.0.1:6379", "169.254.169.254:80"} <= set(
-        denied
-    ), denied
+    canary = f"127.0.0.1:{CANARY_PORT}"
+    assert {canary, "127.0.0.1:5432", "127.0.0.1:6379", "169.254.169.254:80"} <= set(denied), denied
 
 
 def test_interception_cannot_be_disabled_outside_test_environments(
@@ -486,7 +492,7 @@ def test_control_api_is_an_owner_only_unix_socket_not_a_network_listener(stack):
 
     st = os.stat(stack["control_socket"])
     assert stat.S_ISSOCK(st.st_mode) and stat.S_IMODE(st.st_mode) == 0o600
-    code, made = ctl(stack, "POST", "/sessions", {"allow": [["127.0.0.1", 8799]]})
+    code, made = ctl(stack, "POST", "/sessions", {"allow": [["127.0.0.1", RECEIVER_PORT]]})
     assert code == 201
     assert ctl(stack, "GET", f"/sessions/{made['id']}/decisions")[0] == 200
     assert ctl(stack, "GET", f"/sessions/{made['id']}/decisions", token="")[0] == 401
