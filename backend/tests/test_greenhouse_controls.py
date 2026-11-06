@@ -320,6 +320,50 @@ def test_no_calling_code_is_a_checkpoint_never_inferred_from_residence(api, rece
     assert led["disclosures"] == [] and led["accepted"] == 0
 
 
+# ----------------------------------------------------------- D129: locked pre-filled identity
+
+
+def test_a_locked_prefilled_email_that_matches_is_trusted_and_submits(api, receiver):
+    # A real Greenhouse account pre-fills a DISABLED email. When it is exactly the approved one,
+    # NoEfforts trusts it, never overwrites it, and submits -- the page pre-filled it, so it is not
+    # one of NoEfforts' own disclosures.
+    receiver.config(mode="gh2_email_locked_match")  # prefills sam.synthetic@example.com
+    app_id = d104_application(api)
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "confirmed", attempt(aid).outcome_detail
+    led = receiver.ledger()
+    # One confirmed submission; the approved résumé reached the receiver; readback was clean.
+    assert led["accepted"] == 1 and kinds(led) == {"upload": 1}
+    assert not any(d.get("field") == "email" for d in led["disclosures"])  # page pre-filled it
+    rb = next(e for e in api.get(f"/applications/{app_id}/attempts").json()[0]["evidence"]
+              if e["kind"] == "readback")["data"]  # fmt: skip
+    assert rb["mismatched"] == 0
+
+
+def test_a_locked_prefilled_email_that_differs_refuses_before_disclosure(api, receiver):
+    # Pre-filled with a different account's email: never submitted under a different identity, and
+    # the refusal happens before anything is disclosed.
+    receiver.config(mode="gh2_email_locked_mismatch")  # prefills someone.else@example.com
+    app_id = d104_application(api)
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+    assert "different account" in (attempt(aid).outcome_detail or "")
+
+
+def test_a_locked_required_identity_that_cannot_be_read_refuses(api, receiver):
+    # A required identity field the page locks but leaves empty cannot be confirmed: refuse rather
+    # than submit under an unverified identity.
+    receiver.config(mode="gh2_email_locked_empty")  # disabled, no value
+    app_id = d104_application(api)
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+    assert "could not be read" in (attempt(aid).outcome_detail or "")
+
+
 # ------------------------------------------------------------------ location search (ledger oracle)
 
 
@@ -483,8 +527,8 @@ def test_capabilities_stay_fixture_only_and_real_destinations_refused():
 
 def test_only_forms_with_these_controls_carry_a_widget_so_schema_version_stays(api, receiver):
     """No SCHEMA_VERSION bump: a package gains `.answers[].widget` only for a form with one of
-    these stand-in controls (captured under greenhouse-dom-v4; D120 raised it from v3 for the
-    section capability, which rides in adapter_version, not the hashed content). Every other
+    these stand-in controls (captured since greenhouse-dom-v3; D130 and then D120 raised the
+    extraction version, which rides in adapter_version, not the hashed content). Every other
     package keeps the shape pinned for version 3, and so its content and hash."""
     assert pk.SCHEMA_VERSION == 3
     _, plain = prepare(api)  # the v2 form without them (normal mode)
@@ -494,4 +538,5 @@ def test_only_forms_with_these_controls_carry_a_widget_so_schema_version_stays(a
     assert paths(content(api, loc)) - SHAPES[3] == {".answers[].widget"}
     route = api.get(f"/jobs/{job_id}/route").json()
     assert (route["route"], route["provider"]) == ("browser", "greenhouse_dom")
-    assert gh.EXTRACTION_VERSION == "greenhouse-v1" and dom.EXTRACTION_VERSION.endswith("-v4")
+    # v5 (D130 + D120) is the extraction behind adapter_version, never package content.
+    assert gh.EXTRACTION_VERSION == "greenhouse-v1" and dom.EXTRACTION_VERSION.endswith("-v5")

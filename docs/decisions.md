@@ -3991,6 +3991,18 @@ is structured per category — deferred, not built speculatively.
   on its own; only the owner's explicit re-approval of the identical content restores it, recorded
   at the new version. So the change is invisible in the package (no hash churn) but visible to every
   existing `greenhouse_dom`/`greenhouse_live` approval, which must be given again once.
+- **Integrated after D130 (version made distinct):** D130 reached `main` first with
+  `greenhouse-dom-v4`; this branch had also called itself v4, and git merges the two identical
+  lines silently. The combined build is therefore `greenhouse-dom-v5`, a version neither carried.
+  Tested at the versions approvals were actually recorded under, v3 and v4, for `greenhouse_dom`
+  and `greenhouse_live`: retired at the queue and never renewed on their own
+  (`test_an_approval_from_before_the_extraction_bump_is_retired_never_renewed`); a worker at v3 or
+  v4 refuses a section or phone-companion package before any page action
+  (`test_a_worker_at_an_encountered_version_refuses_before_any_page_action`,
+  `test_greenhouse_sections_e2e::test_a_section_package_cannot_reach_a_section_blind_worker`);
+  a change to v3 or v4 after loading is refused at the disclosure gate, and after filling at the
+  send gate, with nothing submitted (`test_the_disclosure_gate_refuses_…`,
+  `test_the_send_gate_refuses_…`). D130's tripwire passes only because v5 is neither v3 nor v4.
 
 ## D123 — Rehearsal runbook + the dynamic-control stop, made explicit (2026-11-03)
 
@@ -4225,3 +4237,160 @@ a refresh token are each refused with nothing stored; non-owner and flow-off are
 then reconnect; a revoked token → reconnect-required; and the web token is what the reader reads.
 `frontend/e2e/connections.spec.ts` covers the card's states. The forbidden-capabilities,
 audit-inventory and export-completeness guards are updated and pass.
+
+## D129 — Section-free Greenhouse path: prefilled-identity verification; phone-country + upload + answers reuse (2026-11-05)
+
+- **Context.** The owner shared one real Greenhouse apply form (section-free: no Education/Employment
+  section). Priority shifted to making that common path operational, reusing existing machinery, not
+  rebuilding. An audit mapped what already exists against the path's needs.
+- **Already built (verified, reused unchanged).**
+  - **Document upload (D116).** `_attach` binds the sha256-verified approved bytes; the independent
+    receiver records the content digest (byte-identity assertable); the ack is checked; no retry
+    after disclosure + generation fencing prevent a duplicate upload. No new code.
+  - **Answers + profile links.** A link question (LinkedIn `question_<digits>`) resolves from the
+    profile's host-matched link (`_link_kind`: linkedin.com `/in|/pub` → "linkedin"), exactly one or
+    a checkpoint — from the profile, not restricted to the answer bank.
+  - **Self-identification (D122).** Standing consent fills only an exact option match of the owner's
+    own stated labels; it never overrides a per-application choice and never replaces a
+    per-application disclosure consent for other sensitive questions.
+  - **Phone-country (D104).** Exact calling-code match → fill + readback; a shared `+1` → checkpoint;
+    no code → checkpoint, never from residence; stand-in only.
+- **New: prefilled-identity verification.** A real Greenhouse page pre-fills the applicant's email
+  into a **disabled** field. Before D129 the adapter neither read nor compared it, and `fill()` would
+  time out on it (an abandoned attempt after disclosure). Now, mirroring the location-prefill guard,
+  `GreenhouseDomAdapter._identity_prefill_refusal` runs **before disclosure**: for a mapped identity
+  answer (fact_ref `contact_email`/names) whose live control is locked (disabled or read-only), it
+  reads the live value and (a) trusts + skips it when it equals the approved value (never overwritten),
+  (b) refuses (`IDENTITY_MISMATCH`) when it differs — NoEfforts never applies under a different
+  account, (c) refuses (`IDENTITY_UNREADABLE`) when a required locked identity is empty/unreadable.
+  `fill()` skips a trusted locked field. The only new DOM read is of a locked field's own value at
+  execution time; nothing prefilled is written into package content or git. Tests (receiver oracle):
+  `test_greenhouse_controls.py::test_a_locked_prefilled_email_that_matches_is_trusted_and_submits`
+  (match → confirmed, résumé byte-identical in the ledger, readback clean, email never disclosed),
+  `..._that_differs_refuses_before_disclosure`, `..._locked_required_identity_that_cannot_be_read`.
+  Fixture: `gh2_email_locked_{match,mismatch,empty}` (synthetic email only).
+- **D129 alone does not make that posting applicable (assessed 2026-11-05).** The fragment's
+  phone-country picker is a react-select whose input id is library-generated (`react-select-N-input`;
+  whether it is stable across loads is unobserved) and whose options render only when opened. On a
+  real page the D104 phone-country rule does not apply, and capture's `hidden` (type=hidden, the
+  `hidden` attribute, aria-hidden) does not cover its inline `opacity:0`, so if captured it is a
+  visible control no job-data field names: E3 records it as a required unsupported field and the
+  package cannot be approved (if it appears only on the live page, the pre-disclosure check stops
+  the attempt). Consent does not change that. Unanswered optional job-data dropdowns (e.g.
+  self-identification when it is off) are still mapped and opened for verification before
+  disclosure. The blocker table, and the read-only mapping observation that is the next justified
+  step (no rehearsal, no renewal requested), are in `docs/greenhouse-section-free-handoff.md`.
+
+## D130 — Phone picker: what is known and unknown; an optional phone is left blank beside a control NoEfforts cannot set (2026-11-05)
+
+- **Why:** the owner, on 2026-11-05: focus on phone-country capture and execution; identify exactly
+  what is unknown; prepare the smallest evidence collection that can answer it (the existing local
+  inspection if it can, otherwise the minimal markup, privately); resolve the optional phone
+  deliberately, with tests, without hiding required controls. No rehearsal, no submission, no
+  renewal request.
+- **Established from the owner-supplied fragment (one real form; structure only, no values kept):**
+  - the picker is a react-select control; at load it already shows a value (the page's default):
+    an intl-tel-input flag whose accessible text names a country, and the calling code in a
+    **separate** element;
+  - its focusable element is `input.select__input`, `role=combobox`, id `react-select-<N>-input`
+    (library-generated), named through `aria-labelledby` to a React `useId` label, `aria-expanded`
+    false, `aria-haspopup`, **no `aria-controls`** (no option list in the page at load), **no
+    `aria-required`**, inline `opacity: 0` behind the visible control; a "Toggle flyout" button;
+  - the phone is `input#phone`, `type=tel`, `aria-required="false"`, with intl-tel-input's class
+    and data attribute (added by the page's script).
+- **Established elsewhere (read-only run #11, another posting):** such a combobox (`u1`) sat inside
+  the group the page names as the phone question; it carried `aria-required` and a label marker
+  there; once opened it listed 244 options. Nothing recorded its label or option wording.
+- **The legacy bot:** it typed the profile's phone into `#phone` and never chose a country; its only
+  "country" handling answers any label containing "country" from one profile value. That would set
+  the phone's country from residence, which NoEfforts never infers: not ported.
+- **Unknown, precisely:**
+  1. the visible label (the `aria-labelledby` target is not in the fragment);
+  2. the association on this posting (the fragment does not include the picker's and the phone's
+     common ancestor or its name);
+  3. the options: count, and whether each states a country and its code (the shown value splits
+     them across two elements; D104's stand-in rule expects "Name (+code)" in one text);
+  4. stable identification: whether the library id and the label's `useId` are the same on every
+     load;
+  5. selection and readback: what a choice changes (the shown value, any hidden input, the phone's
+     own formatting) and how to read it back. No tool has ever selected on a real page.
+- **The existing inspection, stated narrowly.** `scripts/greenhouse-readonly-check.sh` passes its
+  arguments to the CLI, so `--inspect-widgets`, `--inspect-widgets-locales` and `--inspect-dropdowns`
+  run on the owner's machine without GitHub Actions (the workflow only supplies the posting secret
+  and calls the same script). By design it prints only the privacy-guarded summary and destroys raw
+  data with the stack. For the picker it can report structure (in a group with a job-data control
+  or not, labelled or not, id shape, required signals) and, when opened, whether a list appeared and
+  how many options. It cannot report the label, the option texts or their format, and it never
+  selects. So it cannot answer 1, 3 or 5; a private-output mode would be a new inspection system
+  and is not built. `--observe --mapping` makes one page load and reads the DOM: it may identify
+  controls and mapping gaps; it opens nothing, so it neither shows options nor proves dropdown
+  interaction or upload acknowledgement.
+- **Decided: an optional phone is left blank beside a second control NoEfforts cannot set.**
+  - **Rule (capture, `greenhouse_dom.phone_companion`):** the job data asks exactly one phone, as
+    **optional**; its control is unique, visible, unrequired (no attribute, no "*" on its own label
+    or the group's name, no `aria-required` on the group), in a group the page names exactly as the
+    question; apart from the phone, hidden controls (never questions, as everywhere in E3) and any
+    D111 hidden search box, that group holds exactly one control: a unique combobox input in the
+    form, not hidden, unrequired, with no "*" on its label.
+    What it asks is never read for meaning. Then the phone becomes `phone_left_blank` and that
+    control `phone_companion` (unsupported, not required).
+  - **Resolution:** the phone is `blank_optional` whatever the profile holds; nothing can be typed
+    in its place; the review explains why and that including the phone means applying on the
+    employer's site. Neither is bankable or draftable.
+  - **Execution:** before anything is entered and again before submitting, the live page must show
+    the same structure (re-proven by structure; the library id may differ between loads), require
+    neither control by any signal, and hold no number in the phone; otherwise the attempt stops
+    (`PHONE_COMPANION_CHANGED`). Neither is ever touched. A number the page puts in after the résumé
+    upload fails the readback before the send gate.
+  - **The four cases kept apart:** a visually hidden input backing a visible widget is a control
+    (opacity never makes anything hidden; `snapshot` is unchanged); a truly inactive control is
+    D111's hidden search box (hidden, unrequired, empty, re-proven live); a required control —
+    by attribute, ARIA, its own or its group's marker — stays a blocking checkpoint; only the
+    optional, intentionally unanswered phone question is omitted, with its second control.
+  - **Still blocking:** a required phone (job data or page), a second control the page requires, two
+    such controls, one outside the phone's group, or a page that differs on the live check.
+- **Tests:** `tests/test_phone_companion.py` — capture per fixture variant (real page and stand-in),
+  each structural property, the live-state predicate, resolver and route (no input accepted,
+  package shape unchanged), and receiver-ledger runs by id and through the pilot: confirmed with
+  no phone sent, the page's default unchanged and the page's own touch counter at 0; a rehearsal
+  stops before sending; live-required or page-prefilled → stopped before any disclosure; filled
+  after the upload → stopped before sending; changed after approval → stopped before any
+  disclosure; a different library id → same structure; real-board adapter. Fixture:
+  `gh2_phone_companion` (cfg `pcm`), labelled FIXTURE ASSUMPTIONS. A mutation check (live state
+  ignored) turns the page-prefilled case into a stop *after* disclosure, so the live read is what
+  stops it before.
+- **Compatibility:** `EXTRACTION_VERSION` becomes `greenhouse-dom-v4`, carried by `adapter_version`
+  (`check_binding`), so an approval recorded at v3 is retired and re-approved explicitly
+  (test included), and a worker built before D130 can never claim such a package. `SCHEMA_VERSION`
+  stays 3: only a form with these controls carries `.answers[].widget`, as for D104/D111. D120
+  (unmerged) also moves v3 to v4: whichever reaches `main` second takes a version `main` never
+  carried (v5) and updates its pinned tests. A trial merge (discarded) showed git merges the two
+  identical v4 lines silently and every pinned "-v4" test still passes, so
+  `test_one_extraction_version_never_names_two_behaviours` fails on any revision that has D120's
+  section capture and still says v3 or v4.
+- **Not changed:** D104's stand-in picker (a recognised stand-in still takes precedence); no new
+  host, request or interaction; nothing is selected on any real page.
+- **Residual, stated:** whether the real page submits the untouched picker's default with an empty
+  phone is unobserved (it is the page's default, not an answer NoEfforts gives); whether the
+  owner's posting meets the structure is decided by its capture, fail-closed.
+- **Including a phone later** needs unknowns 1–4 from the owner's own browser (the markup read in
+  `docs/greenhouse-section-free-handoff.md`, tested on the synthetic fixtures only; not requested
+  now) and then 5, which only a disclosure-only rehearsal's readback can show once a reviewed rule
+  exists.
+- **Review wording and limits (owner, 2026-11-05):** the phone row reads "Phone omitted: this
+  optional phone/country control is not supported for automatic filling." It is never presented
+  as the owner's choice and never stored as a profile preference (it holds for that form only;
+  the profile's phone is unchanged). The exception is not broadened to any other unknown optional
+  control: everything else stays a blocking checkpoint.
+- **The section-free route, end to end on synthetic data** (`tests/test_section_free_route.py`,
+  D129 and D130 together, through the pilot's path): capture → locked-identity verification →
+  phone omitted → approved answers and résumé (the receiver stores the approved bytes) → readback
+  clean → a rehearsal that stops before the send gate → a separately approved submission accepted
+  exactly once, never re-sent. On the same form: a control appearing after approval stops the
+  attempt before anything is entered, and a cancellation before the send gate still wins. It
+  proves the combined code paths on a fixture, not support for any real posting.
+- **D129's "next step" corrected:** D129 named a read-only `--observe --mapping` run. It cannot
+  show the picker's label or options and would mostly rediscover a known blocker. The next step is
+  integration (D129, then D130); then this posting's capture on the owner's machine settles, with
+  the actual rules, whether it meets the structure and maps. No owner action is needed now, and no
+  renewal is requested.

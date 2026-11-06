@@ -86,6 +86,9 @@ NO_BANK = PROFILE_ONLY | {
     "location_structured",
     # D111: a search box the page keeps hidden inside another question's group
     "hidden_search",
+    # D130: an optional phone left blank, and the second control of its question
+    "phone_left_blank",
+    "phone_companion",
 }
 SCOPE_EXPLANATION = {
     "employer": "Answer it for this application: it refers to the employer or the job (how you "
@@ -410,6 +413,10 @@ def _resolve_field(
         return _location_structured(f, _base(f, Intent("location_structured")))
     if f.widget == "hidden_search":
         return _hidden_search(f, _base(f, Intent("hidden_search")))
+    if f.widget == "phone_left_blank":  # D130: never from the profile on such a form
+        return _phone_left_blank(f, _base(f, Intent("phone_left_blank")))
+    if f.widget == "phone_companion":
+        return _phone_companion(f, _base(f, Intent("phone_companion")))
     intent = _inherit(f, classify(f), parent)
     r = _base(f, intent)
     # C6 (D51): only narrows; `scope` is set only on a row that was bankable until now.
@@ -716,6 +723,44 @@ def _hidden_search(f: FormField, r: Resolution) -> Resolution:
         "question's group. NoEfforts never types into it. Before entering anything (and again "
         "before submitting) it checks that the page still hides it, does not require it and "
         "has put nothing in it; otherwise the attempt stops."
+    )
+    return r
+
+
+# D130: how the review shows the omitted phone (exact wording; never as the owner's choice and
+# never as a profile preference: it holds for this form only).
+PHONE_OMITTED = (
+    "Phone omitted: this optional phone/country control is not supported for automatic filling."
+)
+
+
+def _phone_left_blank(f: FormField, r: Resolution) -> Resolution:
+    """D130: the optional phone of a form whose phone question holds a second control that
+    NoEfforts cannot set (`greenhouse_dom.phone_companion`). A number entered without it might
+    not reach the employer as approved, so the phone is left blank whatever the profile holds:
+    nothing is asked, entered or sent, and nothing about the phone is guessed. The attempt stops
+    if the page requires the phone or puts a number in it."""
+    r.user_input_allowed, r.bankable, r.draftable = False, False, False
+    r.status, r.value, r.display = "blank_optional", None, None
+    r.explanation = (
+        f"{PHONE_OMITTED} NoEfforts enters nothing in the phone and does not touch the control "
+        "beside it; this holds for this form only and changes nothing in your profile. Before "
+        "entering anything, and again before submitting, it checks that the page requires "
+        "neither and that the phone is still empty; otherwise the attempt stops. To include your "
+        "phone number, apply on the employer's site."
+    )
+    return r
+
+
+def _phone_companion(f: FormField, r: Resolution) -> Resolution:
+    """D130: the second control of that optional phone question. Never touched: the phone is
+    left blank. What it asks is never inferred."""
+    r.user_input_allowed, r.bankable, r.draftable = False, False, False
+    r.status, r.value, r.display = "blank_optional", None, None
+    r.explanation = (
+        "Not touched: part of the optional phone/country control, which is omitted on this form "
+        "(not supported for automatic filling). It is left as the page shows it; the attempt "
+        "stops if the page requires it."
     )
     return r
 

@@ -43,7 +43,8 @@ gh2_required_extra, gh2_required_marker_only, gh2_required_answered, gh2_require
 gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS; for dd locale_gate also locale_origin,
 locale_path, locale_via; for dd open_beacon also beacon, beacon_via; for dd late_other_host
 other_origin), GET /locales/{lang}/{ns}.json (cfg locale_delay_ms; lang "moved"
-redirects), D104 stand-ins: gh2_phone_country (cfg pc; see PHONE_COUNTRIES),
+redirects), D104 stand-ins: gh2_phone_country (cfg pc; see PHONE_COUNTRIES), D130
+gh2_phone_companion (cfg pcm; see _phone_companion),
 gh2_loc_search (cfg loc; see _LOC_JS) with GET /gh2/{board}/jobs/{id}/places (a disclosure: the
 search text), GET|POST /gh2/{board}/jobs/{id}/dd-options/{qid}.json (dd late_*),
 gh2_cdn_app (cfg cdn,
@@ -221,8 +222,20 @@ JOBS = _jobs()
 CONDITIONS = {"question_8105": ("question_8104", "1")}
 
 
-def _api_json(board, job_id, base):
+def _job(board, job_id, cfg=None) -> dict:
+    """The job as this mode serves it: the shared definition, except that D130's
+    gh2_phone_companion asks the phone as optional (cfg pcm phone_required_api: required)."""
     j = JOBS[(board, job_id)]
+    c = cfg or {}
+    if c.get("mode") != "gh2_phone_companion" or c.get("pcm") == "phone_required_api":
+        return j
+    qs = [{**q, "required": False} if q["fields"][0]["name"] == "phone" else q
+          for q in j["questions"]]
+    return {**j, "questions": qs}
+
+
+def _api_json(board, job_id, base, cfg=None):
+    j = _job(board, job_id, cfg)
     return {
         "id": int(job_id), "title": j["title"], "company_name": j["company_name"],
         "location": {"name": j["location"]}, "requisition_id": f"REQ-{job_id}",
@@ -287,6 +300,82 @@ def _hidden_search(phone_html, cfg) -> str:
     if hs == "outside":
         return f'<div class="field">{phone_html}</div><div class="field">{search}</div>{style}'
     return f"{group}{phone_html}{search}</div>{style}"
+
+
+# D129: a real Greenhouse account pre-fills the applicant's email into a DISABLED field. The
+# synthetic candidate's own email is sam.synthetic@example.com (tests); these modes vary the locked
+# prefill so the adapter's identity check can be exercised (match / mismatch / unreadable).
+_EMAIL_LOCKED = {
+    "gh2_email_locked_match": "sam.synthetic@example.com",
+    "gh2_email_locked_mismatch": "someone.else@example.com",
+    "gh2_email_locked_empty": "",
+}
+
+
+def _phone_companion(phone_html, cfg) -> str:
+    """D130 (FIXTURE ASSUMPTIONS, from the owner-supplied markup of one real form and run #11's
+    structure; not Greenhouse code): an OPTIONAL phone whose group, named as the question, also
+    holds a library-style combobox -- an editable input with opacity 0 (`role=combobox`,
+    `aria-labelledby`, no `aria-controls` until opened) behind a visible control showing the
+    page's own default. Its options (only once opened) are not modelled: nothing may open it.
+    How the real page submits an untouched picker is unobserved; this one submits its default
+    (`data-value`). The page counts every focus, click, key and input on it
+    (`fx_companion_touched` in the submission: the ledger's oracle that it was never touched).
+    cfg pcm varies one property: required (aria-required on the combobox), marker ("*" on its
+    label), phone_marker ("*" on the phone's own label), group_required (aria-required on the
+    group), phone_required_api (the job data requires the phone; see _job), two (a second such
+    combobox in the group), outside (beside the group, not in it), search (a D111 hidden search
+    box in the group as well), relabel (another label: what it asks never matters), late_required
+    (the page's script requires the combobox after load), prefill (the page's script puts a
+    number in the phone at load), autofill (the page puts one in after the resume upload),
+    renumber (the library id differs from the one served at capture: `phone-cc7-input`). cfg
+    email_locked: D129's disabled email, pre-filled with the synthetic candidate's address."""
+    pcm = (cfg or {}).get("pcm") or ""
+    label = "Phone type" if pcm == "relabel" else "Country"
+
+    def picker(n: str) -> str:
+        req = ' aria-required="true"' if pcm == "required" else ""
+        star = '<span aria-hidden="true">*</span>' if pcm == "marker" else ""
+        return (f'<div class="select__control" id="phone-cc{n}-control">'
+                '<div class="select__value-container select__value-container--has-value">'
+                f'<div class="select__single-value"><span class="fx-flag">United States</span>'
+                '<span>+1</span></div>'
+                f'<input class="select__input" id="phone-cc{n}-input" type="text" role="combobox" '
+                'aria-autocomplete="list" aria-expanded="false" aria-haspopup="true" '
+                f'aria-labelledby="phone-cc{n}-label" value="" data-value="US" '
+                f'style="opacity: 0"{req}></div></div>'
+                f'<span id="phone-cc{n}-label">{label}{star}</span>')
+
+    first = picker("7" if pcm == "renumber" else "")
+    pick = first + (picker("2") if pcm == "two" else "")
+    search = ('<input type="search" id="phone-search" role="combobox" aria-autocomplete="list" '
+              'aria-label="Search" class="fx-gone">' if pcm == "search" else "")
+    style = "<style>.fx-gone{display:none}</style>" if search else ""
+    greq = ' aria-required="true"' if pcm == "group_required" else ""
+    group = f'<div class="field" role="group" aria-labelledby="phone-label"{greq}>'
+    script = "<script>" + _PHONE_COMPANION_JS.replace("%PCM%", json.dumps(pcm)) + "</script>"
+    if pcm == "outside":
+        return f'{group}{phone_html}</div><div class="field">{pick}</div>{script}'
+    return f"{group}{pick}{phone_html}{search}</div>{style}{script}"
+
+
+_PHONE_COMPANION_JS = """
+(() => {
+  const PCM = %PCM%;
+  const touched = window.__fxTouched = {n: 0};
+  for (const el of document.querySelectorAll('[id^=phone-cc][id$=-input], [id^=phone-cc][id$=-control]')) {
+    for (const ev of ['focus', 'click', 'mousedown', 'keydown', 'input', 'change']) {
+      el.addEventListener(ev, () => { touched.n += 1; }, true);
+    }
+  }
+  const phone = document.getElementById('phone');
+  if (PCM === 'late_required') {
+    document.getElementById('phone-cc-input').setAttribute('aria-required', 'true');
+  }
+  if (PCM === 'prefill') phone.value = '+1 555 0100';
+  if (PCM === 'autofill') window.__fxAfterUpload = () => { phone.value = '+1 555 0100'; };
+})();
+"""
 
 
 def _render(q, mode, cfg=None) -> str:
@@ -387,7 +476,15 @@ def _render(q, mode, cfg=None) -> str:
                 f'aria-expanded="false" aria-controls="{qid}-listbox"{areq}>'
                 f'<ul id="{qid}-listbox" role="listbox" hidden></ul></div>')
     itype = {"email": "email", "phone": "tel"}.get(qid, "text")
-    body = f'{_label(qid, label_text, star)}<input type="{itype}" id="{qid}"{areq}>'
+    locked = _EMAIL_LOCKED.get(mode)
+    if locked is None and mode == "gh2_phone_companion" and (cfg or {}).get("email_locked"):
+        locked = _EMAIL_LOCKED["gh2_email_locked_match"]  # the section-free route test (D129+D130)
+    if qid == "email" and locked is not None:  # D129: disabled, pre-filled by the account
+        val = locked
+        attr = (f' value="{html.escape(val)}"' if val else "") + " disabled"
+        body = f'{_label(qid, label_text, star)}<input type="email" id="email"{attr}{areq}>'
+    else:
+        body = f'{_label(qid, label_text, star)}<input type="{itype}" id="{qid}"{areq}>'
     if qid == "phone" and mode == "gh2_phone_country":
         if (cfg or {}).get("pc") == "outside":  # beside the group, not in it: not recognised
             return (f'<div class="field" role="group" aria-labelledby="{qid}-label">{body}</div>'
@@ -396,6 +493,10 @@ def _render(q, mode, cfg=None) -> str:
                 f'{_phone_country(cfg)}</div>')
     if qid == "phone" and mode == "gh2_hidden_search":
         return _hidden_search(body, cfg)
+    if qid == "phone" and mode == "gh2_phone_companion":
+        if (cfg or {}).get("pcm") == "phone_marker":  # a "*" on the phone's own label only
+            body = f'{_label(qid, label_text, True)}<input type="tel" id="{qid}"{areq}>'
+        return _phone_companion(body, cfg)
     if qid == "phone" and mode in ("gh2_widgets", "gh2_widget_variants", "gh2_dd_extras"):
         # FIXTURE ASSUMPTION (structure observed in B3): a combobox inside the phone field's
         # group, labelled differently from any question; here a dialling-country list equal to
@@ -449,6 +550,7 @@ for (const inp of LIVE_LIKE ? [] : document.querySelectorAll('input[type=file]')
       const j = await r.json(); uploads[inp.id] = j.id;
       st.dataset.attachmentId = j.id; st.textContent = 'Attached: ' + j.filename;
       if (window.__fxLocAutofill) window.__fxLocAutofill();  // D104: a location "from the resume"
+      if (window.__fxAfterUpload) window.__fxAfterUpload();  // D130: a phone "from the resume"
       if (form.dataset.mode === 'gh2_autofill_overwrite') {  // S5 (R2.7): "autofill from resume"
         document.getElementById('phone').value = '+1 555 0199';
         document.getElementById('last_name').value = '';
@@ -468,6 +570,7 @@ if (!LIVE_LIKE) form.addEventListener('submit', async (e) => {
     fields.fx_hidden_writes_page = String(window.__fxWrites.page);
     fields.fx_hidden_writes_other = String(window.__fxWrites.other);
   }
+  if (window.__fxTouched) fields.fx_companion_touched = String(window.__fxTouched.n);  // D130
   const r = await fetch(form.dataset.submitPath, {method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({token: form.dataset.token, fields, attachments: uploads})});
@@ -1085,7 +1188,7 @@ _LOC_JS = """
 
 
 def _form_page(board, job_id, token, cfg) -> HTMLResponse:
-    j = JOBS[(board, job_id)]
+    j = _job(board, job_id, cfg)
     mode = cfg["mode"]
     base = f"/gh2/{board}/jobs/{job_id}"
     qs = "".join(_render(q, mode, cfg) for q in j["questions"] + j["location_questions"])
@@ -1322,7 +1425,7 @@ def mount(app, ledger, cfg, accept) -> None:
     @app.get("/gh2-api/v1/boards/{board}/jobs/{job_id}")
     def api_job(board: str, job_id: str, request: Request, questions: bool = False):
         job_or_404(board, job_id)
-        data = _api_json(board, job_id, str(request.base_url).rstrip("/"))
+        data = _api_json(board, job_id, str(request.base_url).rstrip("/"), cfg)
         if not questions:
             data.pop("questions"), data.pop("location_questions")
         return JSONResponse(data)
@@ -1411,7 +1514,7 @@ def mount(app, ledger, cfg, accept) -> None:
             return JSONResponse({"errors": ["Session expired"]}, status_code=419)
         fields = {str(k): str(v) for k, v in (body.get("fields") or {}).items()}
         attachments = {str(k): str(v) for k, v in (body.get("attachments") or {}).items()}
-        j = JOBS[(board, job_id)]
+        j = _job(board, job_id, cfg)
         missing = []
         for q in j["questions"] + j["location_questions"]:
             name = q["fields"][0]["name"]

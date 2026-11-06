@@ -199,24 +199,26 @@ def test_an_approval_given_for_a_manual_handoff_never_runs_through_an_adapter(
 # test in test_execution_routing, test_semantics_change_after_queueing_stops_before_disclosure and
 # test_change_between_loading_and_the_disclosure_gate_is_refused here, and the section-bearing
 # case in test_greenhouse_sections_e2e.)
-PRE_D120 = {
-    "greenhouse_dom": "greenhouse-dom-4+greenhouse-dom-v3",
-    "greenhouse_live": "greenhouse-live-2+greenhouse-dom-v3",
-}
+# The extraction versions approvals were actually recorded under before the combined build:
+# v3 (main before D130) and v4 (main with D130; D120's own branch also called itself v4). The
+# combined build is v5 (preparation/greenhouse_dom.py), which neither carried.
+ENCOUNTERED = ("greenhouse-dom-v3", "greenhouse-dom-v4")
+PREFIX = {"greenhouse_dom": "greenhouse-dom-4+", "greenhouse_live": "greenhouse-live-2+"}
 
 
-@pytest.mark.parametrize("adapter", sorted(PRE_D120))
+@pytest.mark.parametrize("prior", ENCOUNTERED)
+@pytest.mark.parametrize("adapter", sorted(PREFIX))
 def test_an_approval_from_before_the_extraction_bump_is_retired_never_renewed(
-    api, receiver, adapter
+    api, receiver, adapter, prior
 ):
     from tests.test_greenhouse_controls import d104_application, d104_live_application
 
     make = d104_live_application if adapter == "greenhouse_live" else d104_application
     app_id = make(api)
     assert approval_of(app_id).adapter == adapter
-    assert policy.ADAPTER_VERSIONS[adapter].endswith("+greenhouse-dom-v4")
+    assert policy.ADAPTER_VERSIONS[adapter] == PREFIX[adapter] + "greenhouse-dom-v5"
     before = api.get(f"/applications/{app_id}/package").json()["package"]
-    set_approval(app_id, adapter_version=PRE_D120[adapter])  # as recorded before D120
+    set_approval(app_id, adapter_version=PREFIX[adapter] + prior)  # as recorded under `prior`
 
     r = try_queue(api, app_id)
     assert r.status_code == 409 and "changed after you approved" in r.text
@@ -234,3 +236,73 @@ def test_an_approval_from_before_the_extraction_bump_is_retired_never_renewed(
     renewed = approval_of(app_id)
     assert renewed.id != retired.id and renewed.adapter_version == policy.ADAPTER_VERSIONS[adapter]
     queue(api, app_id)  # only now can it be queued
+
+
+def _combined_package(api, receiver, kind: str) -> str:
+    """An approved greenhouse_dom package of the kind each version change is about: a structured
+    section (D120) or the optional phone's second control (D130)."""
+    if kind == "sections":
+        from tests.test_greenhouse_sections_e2e import sections_application
+
+        receiver.config(mode="gh2_sections")
+        return sections_application(api)
+    from tests.test_phone_companion import by_id
+
+    receiver.config(mode="gh2_phone_companion", pcm="")
+    return by_id(api)
+
+
+@pytest.mark.parametrize("prior", ENCOUNTERED)
+@pytest.mark.parametrize("kind", ["sections", "phone_companion"])
+def test_a_worker_at_an_encountered_version_refuses_before_any_page_action(
+    api, receiver, monkeypatch, kind, prior
+):
+    """Queued at v5; a worker built at v3 or v4 (it would skip a section, or not know the phone's
+    second control) refuses before anything is entered."""
+    aid = queue(api, _combined_package(api, receiver, kind))
+    monkeypatch.setitem(policy.ADAPTER_VERSIONS, "greenhouse_dom", PREFIX["greenhouse_dom"] + prior)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert "execution method changed" in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+def _flip_at(monkeypatch, point: str, prior: str) -> None:
+    """At the runner's fault point `point`, the worker's own version becomes `prior` (a deploy or
+    a mixed fleet mid-run); the gate after it must re-check the binding under lock."""
+    real = runner.fault
+    current = policy.ADAPTER_VERSIONS["greenhouse_dom"]
+    monkeypatch.setitem(policy.ADAPTER_VERSIONS, "greenhouse_dom", current)  # restored after
+
+    def flip(p):
+        if p == point:
+            policy.ADAPTER_VERSIONS["greenhouse_dom"] = PREFIX["greenhouse_dom"] + prior
+        real(p)
+
+    monkeypatch.setattr(runner, "fault", flip)
+
+
+@pytest.mark.parametrize("prior", ENCOUNTERED)
+def test_the_disclosure_gate_refuses_an_encountered_version_after_loading(
+    api, receiver, monkeypatch, prior
+):
+    aid = queue(api, _combined_package(api, receiver, "phone_companion"))
+    _flip_at(monkeypatch, "before_navigate", prior)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert attempt(aid).outcome_detail.endswith("the execution method changed after approval")
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+@pytest.mark.parametrize("prior", ENCOUNTERED)
+def test_the_send_gate_refuses_an_encountered_version_after_filling(
+    api, receiver, monkeypatch, prior
+):
+    """After filling (the upload was disclosed) the send gate re-checks: nothing is submitted, and
+    nothing is retried."""
+    aid = queue(api, _combined_package(api, receiver, "phone_companion"))
+    _flip_at(monkeypatch, "before_send_gate", prior)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    assert "the execution method changed after approval" in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and led["acceptances"] == []

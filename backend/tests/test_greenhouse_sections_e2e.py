@@ -115,18 +115,18 @@ def test_submission_sends_once(api, receiver):
     assert receiver.ledger()["accepted"] == 1
 
 
-def test_a_section_package_cannot_reach_a_section_blind_worker(api, receiver, monkeypatch):
+@pytest.mark.parametrize("blind", ["greenhouse-dom-v3", "greenhouse-dom-v4"])
+def test_a_section_package_cannot_reach_a_section_blind_worker(api, receiver, monkeypatch, blind):
     # D120 compatibility: a section-bearing package is approved at the current, section-aware
-    # adapter version (greenhouse-dom-v4). An OLD worker whose greenhouse_dom predates D120 computes
-    # the pre-section version (greenhouse-dom-v3); the binding fence (check_binding) then refuses
-    # the attempt before anything is entered -- so a section package can never be claimed by a
-    # worker that would fill the ordinary fields and silently skip the section. This is why
-    # SCHEMA_VERSION can stay 3: worker compatibility is carried by adapter_version, not the hash.
+    # adapter version (greenhouse-dom-v5, D120 integrated after D130). A worker built before it
+    # computes a section-blind version: v3 (before D130) or v4 (D130 without D120); the binding
+    # fence (check_binding) then refuses the attempt before anything is entered -- so a section
+    # package can never be claimed by a worker that would fill the ordinary fields and silently
+    # skip the section. This is why SCHEMA_VERSION can stay 3: worker compatibility is carried
+    # by adapter_version, not the hash.
     app_id = sections_application(api)
     aid = queue(api, app_id)  # queued fine at the matching (current) version
-    monkeypatch.setitem(
-        policy.ADAPTER_VERSIONS, "greenhouse_dom", "greenhouse-dom-4+greenhouse-dom-v3"
-    )
+    monkeypatch.setitem(policy.ADAPTER_VERSIONS, "greenhouse_dom", f"greenhouse-dom-4+{blind}")
     assert runner.run_attempt(aid, "w1") == "failed_safe"
     assert receiver.ledger()["accepted"] == 0 and receiver.ledger()["disclosures"] == []
     with SessionLocal() as db:
