@@ -34,13 +34,16 @@ OPEN = ("needs_user", "needs_consent")
 
 def category(a: dict, control: dict) -> str:
     """What answering this question means. `answer`: you answer it here; `consent`: a choice
-    only you make (include a sensitive answer or not, agree or decline a statement); `profile`:
-    a fact that belongs in your profile, answered there; `technical`: a control NoEfforts cannot
-    fill or a question that depends on page logic: apply on the employer's site."""
+    only you make (include a sensitive answer or not, agree or decline a statement); `document`:
+    a document to choose (a resume, a cover letter) on the application's page; `profile`: a fact
+    that belongs in your profile, answered there; `technical`: a control NoEfforts cannot fill
+    or a question that depends on page logic: apply on the employer's site."""
     if a["status"] == "needs_consent" or a.get("acknowledgment"):
         return "consent"
     if control.get("answer_here"):
         return "answer"
+    if control.get("document_role"):
+        return "document"
     if a["type"] in (FieldType.unsupported.value, FieldType.file.value) or not a.get(
         "user_input_allowed"
     ):

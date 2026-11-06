@@ -11,7 +11,7 @@ import sys
 import uuid
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.db import SessionLocal
 from app.modules.audit.models import AuditEvent
@@ -397,12 +397,55 @@ def test_another_account_cannot_read_the_form_again_or_see_the_pause(api, other_
     assert p.status == "open"
 
 
-def test_the_count_never_writes_a_package(api, receiver):
+def test_the_count_never_builds_or_writes_a_package(api, receiver, monkeypatch):
+    # The navigation reads the count on every page: it must never rebuild a package (which
+    # writes versions, retires approvals and moves states). A rebuild is refused outright here,
+    # and nothing at all is written while it counts.
+    from app.modules.preparation import package as pk
+    from app.modules.preparation.models import ApplicationPackage
+
     app_id, _ = paused_application(api, receiver)
-    before = package(api, app_id)["version"]
-    for _ in range(3):
-        api.get("/questions/count")
-    assert package(api, app_id)["version"] == before
+    # An input changes without a rebuild: the next rebuild would write a new version.
+    r = api.put("/profile", json={"full_name": "Sam Q. Synthetic", "given_name": "Sam",
+                                  "family_name": "Synthetic"})  # fmt: skip
+    assert r.status_code == 200, r.text
+
+    def refuse(*a, **k):
+        raise AssertionError("the count rebuilt a package")
+
+    def written(db):
+        return (
+            db.scalar(select(func.count()).select_from(ApplicationPackage)),
+            db.scalar(select(func.count()).select_from(AuditEvent)),
+            db.scalar(select(func.count()).select_from(PackageApproval)),
+        )
+
+    with SessionLocal() as db:
+        before = written(db)
+    with monkeypatch.context() as m:
+        m.setattr(pk, "ensure_current", refuse)
+        for _ in range(3):
+            assert api.get("/questions/count").json() == {"applications": 1, "paused": 1}
+    with SessionLocal() as db:
+        assert written(db) == before
+    package(api, app_id)  # what a rebuild does write, so the check above can fail
+    with SessionLocal() as db:
+        assert written(db)[0] == before[0] + 1
+
+
+def test_a_document_to_choose_is_chosen_on_the_applications_page(api, receiver):
+    # Two resumes: which one to send is your choice, made on the application's page; it is
+    # never "apply on the employer's site".
+    from tests.execution_harness import PDF
+
+    synthetic_candidate(api)
+    r = api.post("/documents", files={"file": ("second-resume.pdf", PDF, "application/pdf")})
+    assert r.status_code in (200, 201), r.text
+    v2_application(api, approve=False)
+    (item,) = api.get("/questions").json()["items"]
+    rows = {q["key"]: q for q in item["questions"]}
+    assert rows["resume"]["category"] == "document"
+    assert {q["category"] for q in item["questions"]} <= {"answer", "consent", "document"}
 
 
 def test_no_question_key_or_label_in_the_pause_its_events_or_the_audit(api, receiver):

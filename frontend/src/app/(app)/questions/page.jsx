@@ -13,6 +13,7 @@ import { api, NOTIFICATIONS_CHANGED } from "@/lib/api";
 const CATEGORY = {
   answer: { label: "Your answer", tone: "amber" },
   consent: { label: "Your choice", tone: "indigo" },
+  document: { label: "Choose a document", tone: "indigo" },
   profile: { label: "From your profile", tone: "slate" },
   technical: { label: "Apply on the employer's site", tone: "red" },
 };
@@ -74,7 +75,11 @@ function QuestionRow({ item, q, busy, onSave }) {
       ) : (
         <p className="text-sm">
           <Link className="text-brand underline" href={`/applications/${item.application_id}`}>
-            {q.category === "profile" ? "Open the application (the fact is answered in your profile)" : "Decide on the application's page"}
+            {q.category === "profile"
+              ? "Open the application (the fact is answered in your profile)"
+              : q.category === "document"
+                ? "Choose the document on the application's page"
+                : "Decide on the application's page"}
           </Link>
         </p>
       )}

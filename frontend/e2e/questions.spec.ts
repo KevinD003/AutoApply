@@ -76,7 +76,7 @@ test("a form that changes during a run pauses; read it again, answer, and one ne
     await expect(page.getByRole("group", { name: "The employer's form no longer matches" })).toBeVisible();
 
     await openMoreIfMobile(page);
-    await page.getByRole("link", { name: "Questions" }).click();
+    await page.getByRole("link", { name: "Questions", exact: true }).click(); // not "Open Questions"
     await expect(page.getByRole("heading", { name: "Questions needing your answer" })).toBeVisible();
     await expect(page.getByText("The employer's form no longer matches what you approved.")).toBeVisible();
     await page.getByRole("button", { name: "Read the form again" }).click();
