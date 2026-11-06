@@ -10,7 +10,9 @@ What never happens: an answer is filled in without your choice; a suggestion cro
 a saved answer is suggested where wording disagrees on numbers, negation, countries or the kind
 of answer (features.veto); a sensitive or protected answer, a fact about authorization,
 sponsorship, residence or pay, or anything the bank rules refuse to reuse (D51, `bankable`) is
-suggested at all. Labels hold numbers only, never question or answer text."""
+suggested at all, whether it is the question asked now or the one the saved answer was given to
+(D133, `_suggestible`); nor is an answer that would not fit the field it is suggested for. Labels
+hold numbers only, never question or answer text."""
 
 from __future__ import annotations
 
@@ -25,14 +27,19 @@ from app.modules.applications.models import Application
 from app.modules.identity.models import User
 from app.modules.learning import engine, features
 from app.modules.learning.models import LearningLabel, LearningModel
+from app.modules.preparation import bankscope
 from app.modules.preparation import package as pk
 from app.modules.preparation.forms import FieldType, FormField, normalize
 from app.modules.preparation.models import AnswerBankEntry
 from app.modules.preparation.resolver import (
+    Context,
     answer_shape,
     display_value,
+    normalize_input,
     option_labels,
     question_key,
+    resolve_field,
+    saved_question,
 )
 from app.modules.profiles.models import Approval
 
@@ -107,16 +114,17 @@ def _model(db: Session, user_id) -> LearningModel | None:
     return db.get(LearningModel, user_id)
 
 
-def _rejected(db: Session, user_id, qkey: str) -> set:
-    return set(
-        db.scalars(
-            select(LearningLabel.bank_entry_id).where(
+def _rejections(db: Session, user_id) -> set[tuple[str, uuid.UUID]]:
+    """Every (wording key, saved answer) pair you said "Not this" to."""
+    return {
+        (qkey, entry_id)
+        for qkey, entry_id in db.execute(
+            select(LearningLabel.question_key, LearningLabel.bank_entry_id).where(
                 LearningLabel.user_id == user_id,
-                LearningLabel.question_key == qkey,
                 LearningLabel.accepted.is_(False),
             )
         )
-    )
+    }
 
 
 def _fields(db: Session, app: Application) -> dict[str, FormField]:
@@ -124,20 +132,39 @@ def _fields(db: Session, app: Application) -> dict[str, FormField]:
     return {x["key"]: FormField.model_validate(x) for x in form.schema["fields"]}
 
 
-def _candidates(db: Session, user: User, shape: str) -> list[AnswerBankEntry]:
-    return list(
-        db.scalars(
-            select(AnswerBankEntry).where(
-                AnswerBankEntry.user_id == user.id,
-                AnswerBankEntry.answer_shape == shape,
-                AnswerBankEntry.sensitive.is_(False),
-                AnswerBankEntry.approval_status == Approval.approved,
-            )
+def _suggestible(e: AnswerBankEntry) -> bool:
+    """D133: whether a saved answer may be suggested for another wording at all, judged from the
+    question it was given to, rebuilt from what was stored: one the bank rules reuse (D51), and
+    nothing sensitive, protected or a consent. The question asked now is judged the same way
+    (_eligible), but a wording that differs in one word ("necessary documents to work in Canada"
+    against "necessary forms") is only as safe as both sides. Also never a row stored under
+    another key than its own wording's: a D131 follow-up is saved under the questions it follows,
+    so its wording alone ("Which one?") does not say what it answered."""
+    f = saved_question(e)
+    if f is None or e.question_key != bankscope.question_key(f, e.answer_shape):
+        return False
+    r = resolve_field(f, Context())
+    return r.bankable and not (r.sensitive or r.protected or r.acknowledgment)
+
+
+def _usable(db: Session, user: User) -> dict[str, list[tuple[AnswerBankEntry, dict]]]:
+    """Your saved answers that may be suggested at all, by answer shape, each judged once per
+    request (_suggestible) with the form the features compare (_saved)."""
+    out: dict[str, list[tuple[AnswerBankEntry, dict]]] = {}
+    entries = db.scalars(
+        select(AnswerBankEntry).where(
+            AnswerBankEntry.user_id == user.id,
+            AnswerBankEntry.sensitive.is_(False),
+            AnswerBankEntry.approval_status == Approval.approved,
         )
     )
+    for e in entries:
+        if e.answer_shape in SHAPES and _suggestible(e):
+            out.setdefault(e.answer_shape, []).append((e, _saved(e)))
+    return out
 
 
-def _best(db: Session, user: User, f: FormField, model: LearningModel | None) -> dict | None:
+def _best(f: FormField, usable: dict, rejected: set, model: LearningModel | None) -> dict | None:
     """The one saved answer to suggest for this field, or None."""
     shape = answer_shape(f)
     if shape not in SHAPES:
@@ -148,52 +175,46 @@ def _best(db: Session, user: User, f: FormField, model: LearningModel | None) ->
         # after the same questions is already reused exactly by the resolver.
         return None
     new, qkey = _new(f), question_key(f)
-    rejected = _rejected(db, user.id, qkey)
     pairs = []
-    for e in _candidates(db, user, shape):
-        if e.id in rejected or features.veto(new, _saved(e)):
+    for e, saved in usable.get(shape, []):
+        if (qkey, e.id) in rejected or features.veto(new, saved):
             continue
         proposal = _proposal(f, e)
         if proposal is None:
             continue
-        pairs.append((e, proposal, features.pair(new, _saved(e))))
+        try:  # D133: never suggest what accepting would refuse (too long, not an email ...)
+            shown = normalize_input(f, proposal)
+        except ValueError:
+            continue
+        pairs.append((e, proposal, shown, features.pair(new, saved)))
     if not pairs:
         return None
+    vectors = [feats for *_, feats in pairs]
     if model is not None:
         try:
-            scores = engine.predict(model.engine, model.blob, [p[2] for p in pairs])
+            scores = engine.predict(model.engine, model.blob, vectors)
             threshold, how = MODEL_THRESHOLD, model.engine
         except Exception:  # noqa: BLE001 - a model that cannot load: the rules stand in
             log.exception("answer brain: the trained model could not be used")
             model = None
     if model is None:
-        scores = [features.rule_score(p[2]) for p in pairs]
+        scores = [features.rule_score(v) for v in vectors]
         threshold, how = RULE_THRESHOLD, "rules"
     i = max(range(len(pairs)), key=lambda k: scores[k])
     if scores[i] < threshold:
         return None
-    e, proposal, feats = pairs[i]
+    e, proposal, shown, feats = pairs[i]
     return {
         "key": f.key,
         "label": f.label,
         "bank_entry_id": str(e.id),
         "saved_question": e.question_text,
         "value": proposal,
-        "display": display_value(f, _shown(f, proposal)),
+        "display": display_value(f, shown),
         "score": round(scores[i], 3),
         "engine": how,
         "features": feats,
     }
-
-
-def _shown(f: FormField, proposal: dict) -> dict:
-    """The proposal in the stored shape display_value reads (options carry value and label)."""
-    from app.modules.preparation.resolver import normalize_input
-
-    try:
-        return normalize_input(f, proposal)
-    except ValueError:
-        return proposal
 
 
 def suggestions(db: Session, user: User, app: Application) -> list[dict]:
@@ -202,12 +223,13 @@ def suggestions(db: Session, user: User, app: Application) -> list[dict]:
     pkg = _current(db, app)
     fields = _fields(db, app)
     model = _model(db, user.id)
+    usable, rejected = _usable(db, user), _rejections(db, user.id)
     out = []
     for a in pkg.content["answers"]:
         f = fields.get(a["key"])
         if f is None or not _eligible(a):
             continue
-        s = _best(db, user, f, model)
+        s = _best(f, usable, rejected, model)
         if s is None or _reuse_refusal(db, app, a, f) is not None:
             continue
         out.append(s)

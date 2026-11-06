@@ -12,7 +12,10 @@ from app.core.db import SessionLocal
 from app.modules.audit.models import AuditEvent
 from app.modules.learning import engine, features, service
 from app.modules.learning.models import LearningLabel, LearningModel
+from app.modules.preparation.forms import FormField
 from app.modules.preparation.models import AnswerBankEntry
+from app.modules.preparation.resolver import answer_shape, option_labels, question_key
+from app.modules.profiles.models import Approval
 from tests.test_preparation import setup_candidate
 from tests.test_question_safety_api import application as _application
 from tests.test_question_safety_api import package, radio, rows
@@ -198,3 +201,114 @@ def test_a_follow_up_gets_no_suggestion(api):
     assert api.put(f"/applications/{other}/answers", json=body).status_code == 200
     assert rows(package(api, other))["which"]["value"] is None
     assert [s for s in suggest(api, other) if s["key"] == "which"] == []
+
+
+# ------------------------------------------------------------------ D133: the saved side too
+
+
+def legacy_entry(api, spec: dict, value: dict) -> str:
+    """A saved answer stored before today's rules (as test_question_safety_api does): kept, and
+    never used to answer its own wording. Its id."""
+    me = uuid.UUID(api.get("/auth/me").json()["user_id"])
+    f = FormField.model_validate(spec)
+    with SessionLocal() as db:
+        e = AnswerBankEntry(
+            user_id=me,
+            question_key=question_key(f),
+            question_text=f.label,
+            help_text="",
+            answer_shape=answer_shape(f),
+            value=value,
+            options_snapshot=option_labels(f),
+            sensitive=False,
+            version=1,
+            provenance="user_entered",
+            approval_status=Approval.approved,
+        )
+        db.add(e)
+        db.commit()
+        return str(e.id)
+
+
+def text_q(key, label, **kw) -> dict:
+    return {"key": key, "label": label, "type": "text", "required": True} | kw
+
+
+# A saved answer to a question the bank never reuses (a fact, one employer, a sensitive topic),
+# and a reworded question the resolver reads as ordinary: only the saved side says what it is.
+WITNESSES = [
+    (
+        radio("x", "Do you have the necessary documents to work in Canada?"),
+        radio("q", "Do you have the necessary forms to work in Canada?", required=True),
+        {"labels": ["Yes"]},
+    ),
+    (
+        radio("x", "Have you received the COVID-19 vaccine?"),
+        radio("q", "Have you received the COVID-19 booster?", required=True),
+        {"labels": ["Yes"]},
+    ),
+    (
+        radio("x", "Have you worked for Acme before?"),
+        radio("q", "Have you worked for Acme?", required=True),
+        {"labels": ["No"]},
+    ),
+    (
+        radio("x", "Do you have proof of vaccination?"),
+        radio("q", "Do you have proof of immunity?", required=True),
+        {"labels": ["Yes"]},
+    ),
+    (text_q("x", "What is your race?"), text_q("q", "What is your pace?"), {"text": "Steady"}),
+]
+
+
+@pytest.mark.parametrize(
+    ("saved_spec", "asked", "value"), WITNESSES, ids=[w[1]["label"] for w in WITNESSES]
+)
+def test_an_answer_saved_for_a_question_never_reused_is_never_suggested(
+    api, monkeypatch, saved_spec, asked, value
+):
+    """D133: the question asked now looks ordinary, but the saved answer was given to a fact, an
+    employer's question or a sensitive one: it is not suggested. With that check off it would be,
+    so the check is what refuses it (not a veto or the threshold)."""
+    setup_candidate(api)
+    entry_id = legacy_entry(api, saved_spec, value)
+    app_id = application(api, [asked])
+    row = rows(package(api, app_id))["q"]
+    assert row["bankable"] and row["status"] == "needs_user", row
+    assert suggest(api, app_id) == []
+    monkeypatch.setattr(service, "_suggestible", lambda e: True)
+    assert [s["bank_entry_id"] for s in suggest(api, app_id)] == [entry_id]
+
+
+def test_a_follow_up_answer_is_never_suggested_for_a_question_on_its_own(api, monkeypatch):
+    """D131/D133: "Which language?" saved after "Do you speak another language?" is kept under
+    that question; asked on its own elsewhere, it is not suggested. With the check off it would
+    be, word for word."""
+    setup_candidate(api)
+    langs = radio("lang_q", "Do you speak a language other than English?", required=True)
+    which = text_q("which", "Which language?")
+    first = application(api, [langs, which | {"condition": {"key": "lang_q", "any_of": ["1"]}}])
+    for key, value in (("lang_q", {"label": "Yes"}), ("which", {"text": "Spanish"})):
+        body = {"key": key, "value": value, "save_to_bank": key == "which"}
+        r = api.put(f"/applications/{first}/answers", json=body)
+        assert r.status_code == 200, r.text
+    other = application(api, [which])
+    assert rows(package(api, other))["which"]["value"] is None  # never reused for it either
+    assert suggest(api, other) == []
+    monkeypatch.setattr(service, "_suggestible", lambda e: True)
+    (s,) = suggest(api, other)
+    assert (s["display"], s["score"]) == ("Spanish", 1.0)
+
+
+def test_a_saved_answer_that_would_not_fit_the_field_is_never_suggested(api):
+    """D133: a saved text longer than the field allows (accepting it would be refused) is not
+    suggested; on the same wording without the limit it is."""
+    setup_candidate(api)
+    tools = ", ".join(f"Synthetic Tool {i}" for i in range(1, 21))  # 369 characters
+    saved(api, text_q("tools", "Which software tools are you familiar with?"), {"text": tools})
+    asked = text_q("q", "Which software tools are you most familiar with?")
+    limited = application(api, [asked | {"max_length": 100}])
+    assert suggest(api, limited) == []
+    open_ = application(api, [asked])
+    (s,) = suggest(api, open_)
+    assert s["display"] == tools
