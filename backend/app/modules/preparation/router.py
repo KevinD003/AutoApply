@@ -50,6 +50,7 @@ from app.modules.preparation.resolver import (
     normalize_input,
     option_labels,
     question_key,
+    reuse_key,
     saved_answer_scope,
 )
 from app.modules.profiles.models import (
@@ -705,11 +706,19 @@ def _reuse_refusal(db: Session, app: Application, entry: dict, f: FormField) -> 
     )
     parent_bankable = None
     if parent is not None:
-        # A stored row may predate C6 too: its own wording is checked again (review, D51).
+        # A stored row may predate C6 too: its own wording is checked again (review, D51), with
+        # its own question above it when it is itself a follow-up (D131), as the resolver does.
         pf = next((x for x in fields if x.key == parent["key"]), None)
+        above = pf.condition.key if pf is not None and pf.condition is not None else None
+        grand = next((a for a in pkg.content["answers"] if above and a["key"] == above), None)
         parent_bankable = parent["bankable"] and (
             pf is None
-            or bankscope.refusal_code(pf, classify(pf), repeated=keys.count(question_key(pf)) > 1)
+            or bankscope.refusal_code(
+                pf,
+                classify(pf),
+                parent=SimpleNamespace(bankable=grand["bankable"]) if grand is not None else None,
+                repeated=keys.count(question_key(pf)) > 1,
+            )
             is None
         )
     code = bankscope.refusal_code(
@@ -752,20 +761,22 @@ def _save_to_bank(db, user, app, f, value, sensitive: bool) -> None:
         if shape == "multi"
         else value
     )
-    parent = None
+    form_fields = None
     if f.condition is not None:
-        # D131: a follow-up is saved under the question it follows (question_key's trigger).
+        # D131: a follow-up is saved under the questions it follows (reuse_key's trigger chain).
         # _reuse_refusal has refused a follow-up whose question is not on this form.
-        fields = pk.latest_form(db, app.job_id).schema["fields"]
-        raw = next((x for x in fields if x["key"] == f.condition.key), None)
-        if raw is None:
-            raise bad_request(REUSE_REFUSED["followup"] + NOT_SAVED)
-        parent = FormField.model_validate(raw)
+        form_fields = {
+            x["key"]: FormField.model_validate(x)
+            for x in pk.latest_form(db, app.job_id).schema["fields"]
+        }
+    key = reuse_key(f, form_fields)
+    if key is None:
+        raise bad_request(REUSE_REFUSED["followup"] + NOT_SAVED)
     t = AnswerBankEntry.__table__
     ins = pg_insert(AnswerBankEntry).values(
         id=new_id(),
         user_id=user.id,
-        question_key=question_key(f, parent),
+        question_key=key,
         # PostgreSQL text cannot hold NUL; page text can (the key keeps it, so nothing re-keys).
         question_text=f.label.replace("\x00", ""),
         help_text=(f.help_text or "").replace("\x00", "").strip(),  # "": none; NULL: before C6

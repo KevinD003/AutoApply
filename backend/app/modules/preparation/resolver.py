@@ -29,8 +29,10 @@ from app.modules.preparation.classify import (
     _CITIZEN_CLAIM,
     _CLAIM,
     _DEMONYM,
+    _EEO_BOILERPLATE,
     _NEG_EXTRA,
     _PRONOUN_LABEL,
+    _SENSITIVE_STEP,
     COUNTRIES,
     DEMONYMS,
     GENERIC_LABEL,
@@ -42,6 +44,7 @@ from app.modules.preparation.classify import (
     classify,
     exact_country,
     find_countries,
+    sensitive_topic,
 )
 from app.modules.preparation.forms import (
     CHOICE_TYPES,
@@ -175,22 +178,61 @@ def answer_shape(f: FormField) -> str:
     return {"number": "number", "date": "date"}.get(f.type.value, "text")
 
 
-def question_key(f: FormField, parent: FormField | None = None) -> str:
-    """The saved-answer key (D51). D131: a follow-up's key carries its trigger, so saving or
-    reusing one needs `parent`, the question it follows (follow_up_trigger). Without it, a
-    follow-up's key is its own wording only, which serves to count a wording repeated on one form
-    and to remember a rejected suggestion, never to save or reuse an answer."""
-    return bankscope.question_key(f, answer_shape(f), follow_up_trigger(f, parent))
+def question_key(f: FormField) -> str:
+    """A question's own wording key (D51): what counts a wording repeated on one form and
+    remembers a rejected suggestion. Saving and reusing an answer use reuse_key (D131)."""
+    return bankscope.question_key(f, answer_shape(f))
 
 
-def follow_up_trigger(f: FormField, parent: FormField | None) -> list | None:
-    """D131: what makes a follow-up the question it is: the question it follows (its wording,
-    help text and shape) and the answers to it that show the follow-up, as option labels."""
-    if f.condition is None or parent is None:
+# D131: the most questions a follow-up may sit below (a deeper or circular chain is unplaced).
+MAX_FOLLOW_UP_DEPTH = 8
+
+
+def reuse_key(f: FormField, fields: dict | None) -> str | None:
+    """The key an answer to `f` is saved and reused under (D51), or None when it may not be:
+    D131: a follow-up's key carries its trigger chain (follow_up_trigger), read from `fields`,
+    the form's questions by key; a follow-up whose chain cannot be read is never saved or
+    reused. A question that follows none keeps its D51 key."""
+    trigger = follow_up_trigger(f, fields)
+    if trigger is UNPLACED:
         return None
-    by_value = {o.value: normalize(o.label) for o in parent.options}
-    shown_for = sorted(by_value.get(v, normalize(str(v))) for v in f.condition.any_of)
-    return [normalize(parent.label), normalize(parent.help_text), answer_shape(parent), shown_for]
+    return bankscope.question_key(f, answer_shape(f), trigger)
+
+
+UNPLACED = object()  # follow_up_trigger: a question in the chain is missing, circular or too deep
+
+
+def follow_up_trigger(f: FormField, fields: dict | None) -> list | object | None:
+    """D131: what makes a follow-up the question it is. For each question above it, nearest
+    first: that question's wording, help text, shape and full option list, and the answers to it
+    that show the one below, as option labels (page keys never count). None for a question that
+    follows none; UNPLACED when a question above it is not on the form, or the chain is circular
+    or deeper than MAX_FOLLOW_UP_DEPTH."""
+    if f.condition is None:
+        return None
+    if fields is None:
+        return UNPLACED
+    chain, cur, seen = [], f, set()
+    while cur.condition is not None:
+        if cur.key in seen or len(chain) >= MAX_FOLLOW_UP_DEPTH:
+            return UNPLACED
+        seen.add(cur.key)
+        parent = fields.get(cur.condition.key)
+        if parent is None:
+            return UNPLACED
+        by_value = {o.value: normalize(o.label) for o in parent.options}
+        shown_for = sorted(by_value.get(v, normalize(str(v))) for v in cur.condition.any_of)
+        chain.append(
+            [
+                normalize(parent.label),
+                normalize(parent.help_text),
+                answer_shape(parent),
+                sorted(normalize(o.label) for o in parent.options),
+                shown_for,
+            ]
+        )
+        cur = parent
+    return chain
 
 
 def option_labels(f: FormField) -> list[str]:
@@ -1403,18 +1445,29 @@ _SELF_DESCRIBING = re.compile(
 )
 
 
-def _self_id_applies(intent: Intent, r: Resolution) -> bool:
-    """D131: whether D122 may answer this sensitive question at all (_SELF_ID_TOPIC). A question
-    that also asks for a fact (an ambiguity), a protected one, or one outside those categories is
-    never answered from your self-identification, whatever its options."""
+def _self_id_applies(f: FormField, intent: Intent, r: Resolution) -> bool:
+    """D131: whether D122 may answer this sensitive question at all. Only an EEO category named
+    by the question itself (_SELF_ID_TOPIC): never a follow-up, never a question that also asks
+    for a fact (an ambiguity) or a protected one, never one whose wording also names another
+    sensitive topic ("Are you required to register as a sex offender?", "a disability that
+    requires an accommodation"), and options alone never bring a question in: a question known as
+    self-identification only from its options needs a self-identification section too."""
     topic = str((intent.params or {}).get("topic") or "")
-    return (
-        intent.kind == "demographic"
-        and intent.ambiguity is None
-        and not intent.protected
-        and not r.protected
-        and _SELF_ID_TOPIC.fullmatch(topic) is not None
-    )
+    if (
+        f.condition is not None
+        or intent.kind != "demographic"
+        or intent.ambiguity is not None
+        or intent.protected
+        or r.protected
+        or _SELF_ID_TOPIC.fullmatch(topic) is None
+    ):
+        return False
+    if topic == "self_identification" and not _SENSITIVE_STEP.search(normalize(f.step)):
+        return False
+    label, help_ = normalize(f.label), normalize(f.help_text)
+    if sensitive_topic(label) is not None:
+        return False
+    return not (help_ and not _EEO_BOILERPLATE.search(help_) and sensitive_topic(help_))
 
 
 def _self_describing(o: Option, decline: Option | None) -> bool:
@@ -1457,6 +1510,11 @@ def _self_id_outcome(f, self_id) -> tuple[str, dict | None, str | None, list]:
     hits = [o for o in f.options if normalize(o.label) in wanted]
     if any(not _self_describing(o, decline) for o in hits):
         return ("generic", None, None, [o.label for o in hits])
+    # D131: a decline is taken only on a question whose other options name a category (gender,
+    # race ...): on Yes / No / decline, nothing says which question your decline was for.
+    others = [o for o in f.options if decline is None or o.value != decline.value]
+    if decline is not None and not any(_self_describing(o, None) for o in others):
+        hits = [o for o in hits if o.value != decline.value]
     if f.type in CHOICE_TYPES:
         # Single-select holds one value: fill only on exactly one match, never one of two.
         if len(hits) == 1:
@@ -1531,7 +1589,7 @@ def _resolve_sensitive(f, r, ctx, intent: Intent) -> Resolution:
         proposed is None
         and ctx.self_id is not None
         and getattr(ctx.self_id, "enabled", False)
-        and _self_id_applies(intent, r)
+        and _self_id_applies(f, intent, r)
     ):
         kind, value, display, matched = _self_id_outcome(f, ctx.self_id)
         if kind == "fill":
@@ -1651,12 +1709,10 @@ def _resolve_document(f, r, ctx, role: str) -> Resolution:
 
 
 def _from_bank(f: FormField, r: Resolution, ctx: Context) -> Resolution | None:
-    parent = None
-    if f.condition is not None:
-        parent = ctx.form_fields.get(f.condition.key)
-        if parent is None:
-            return None  # D131: a follow-up is reused only after the question it follows
-    entry = ctx.bank.get(question_key(f, parent))
+    key = reuse_key(f, ctx.form_fields)
+    if key is None:
+        return None  # D131: a follow-up is reused only after the questions it follows
+    entry = ctx.bank.get(key)
     if entry is None or not _approved(entry):
         return None
     if not bankscope.help_matches(getattr(entry, "help_text", None), f):
