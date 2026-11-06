@@ -29,6 +29,7 @@ from playwright.sync_api import TimeoutError as PWTimeout
 
 from app.core.urlsafety import is_fixture_origin
 from app.modules.execution.adapters import dropdowns
+from app.modules.execution.adapters import greenhouse_sections as gsections
 from app.modules.execution.adapters.fixture_ats import (
     ACK_ERROR,
     ACK_NONE,
@@ -84,6 +85,22 @@ LOCATION_NOT_SET = (
 LOCATION_LABEL = "after the suggestion was chosen, the location shown is not the approved one"
 LOCATION_FAILED = "the location search could not be completed"
 LOCATION_MS = 5000  # how long the page's suggestions, or its hidden values, may take
+
+# D129 (owner's real section-free form): a real Greenhouse page pre-fills the applicant's email
+# into a disabled field. NoEfforts never trusts a locked (disabled or read-only) identity field it
+# did not set: before anything is disclosed it reads the live value and refuses unless it is exactly
+# the approved one, and never tries to overwrite a field it cannot edit (that would only time out
+# after disclosure). A matched locked field is trusted and skipped at fill time.
+IDENTITY_FACTS = frozenset(
+    {"contact_email", "full_name", "given_name", "family_name", "preferred_name"}
+)
+IDENTITY_MISMATCH = (
+    "the form is pre-filled with different applicant details than the ones you approved; NoEfforts "
+    "does not submit an application under a different account"
+)
+IDENTITY_UNREADABLE = (
+    "the form locks a required identity field whose value could not be read to confirm it is yours"
+)
 
 # D116: real-page mechanics rebuilt from the legacy bot's notes (legacy apply.py, ~700 real
 # applications by its author; never observed by NoEfforts itself, so each is a fail-closed
@@ -233,6 +250,9 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         self._stand_in = stand_ins(self.content)
         self._loc: dict[str, dict] = {}
         self._filled = False
+        # D129: keys of locked identity fields the page pre-filled with the approved value, verified
+        # before disclosure and therefore never overwritten at fill time.
+        self._trusted_prefill: set[str] = set()
 
     # -- inspect ----------------------------------------------------------------------------
     def extract(self, page: Page):
@@ -262,9 +282,29 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         answered = {a["key"] for a in self.content["answers"] if a["value"] is not None}
         if any(f.widget in STAND_IN_WIDGETS for f in fields) and not self._stand_in:
             return STAND_IN_ONLY  # D104: before anything is entered
+        if self.content.get("sections") and not self._stand_in:
+            return STAND_IN_ONLY  # D120: the hosted section DOM is unobserved; real pages refuse
+        sections_changed = self._sections_match(page)
+        if sections_changed:
+            return sections_changed
         structured = [f.key for f in fields if f.widget == "location_structured"]
         by_id = {c.id: c for c in controls}
+        # D130: the optional phone's second control, re-proven on the live page by structure
+        # (its id is the page library's own and may differ from the captured one; what it is
+        # for never matters, because the phone stays empty and it is never touched).
+        companion = (
+            self._phone_companion_live(page, fields, controls)
+            if any(f.widget == "phone_companion" for f in fields)
+            else None
+        )
         for f, m in zip(fields, dom.map_fields(fields, controls), strict=True):
+            if f.widget == "phone_companion":
+                if companion is None:
+                    changed.append(dom.PHONE_COMPANION_CHANGED)
+                continue
+            if f.widget == "phone_left_blank" and f.key in answered:
+                changed.append(dom.PHONE_COMPANION_CHANGED)  # never approved with a number
+                continue
             if f.widget == "hidden_search":
                 # D111: re-proven on the live page, before anything is entered and again
                 # after filling (the runner's recheck): still that shape, hidden, unrequired
@@ -321,7 +361,10 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         new = sorted(
             c.id
             for c in dom.unlisted_controls(fields, controls)
-            if c.id not in codes and not self._hidden_search_ok(page, fields, controls, c)
+            if c.id not in codes
+            and not self._is_section_control(c.id)  # D120: a frozen section's own row controls
+            and not self._hidden_search_ok(page, fields, controls, c)
+            and not (companion is not None and c.id == companion.id)  # D130, re-proven above
         )
         if not (changed or new) and not self._dd_checked:
             # Only once, before the disclosure gate: open, read, close; nothing is selected.
@@ -365,12 +408,52 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                     page, f.key, structured
                 ):
                     return LOCATION_PREFILLED
+            # D129: a locked identity field the page pre-filled must be exactly the approved one.
+            identity = self._identity_prefill_refusal(page, fields, controls)
+            if identity:
+                return identity
         if page.locator("form").count() != 1:
             return "the form now submits to a different address"  # one application form only
         if self._declared_target(page, html) != self.content["destination"]["submit_url"]:
             return "the form now submits to a different address"
         if self._submit_button(page) is None:
             return "the form's submit button cannot be identified"
+        return None
+
+    def _identity_prefill_refusal(self, page: Page, fields, controls) -> str | None:
+        """D129: before disclosure, a locked (disabled or read-only) identity field the page
+        pre-filled must hold exactly the approved value. A match is trusted and skipped at fill
+        time (never overwritten); a mismatch, or a required identity whose value cannot be read,
+        refuses the attempt -- NoEfforts never applies under a different account. Editable identity
+        fields are left to the ordinary fill + readback path."""
+        by_key = {a["key"]: a for a in self.content["answers"]}
+        for f, m in zip(fields, dom.map_fields(fields, controls), strict=True):
+            if m.status != "mapped":
+                continue
+            a = by_key.get(f.key)
+            if a is None or a["value"] is None or a["type"] not in ("text", "email"):
+                continue
+            if not any(
+                r.get("type") == "profile" and r.get("field") in IDENTITY_FACTS
+                for r in (a.get("fact_refs") or [])
+            ):
+                continue
+            loc = page.locator(f'[id="{m.control.id}"]').first
+            try:
+                if loc.is_editable():
+                    continue  # ordinary editable field; fill + readback handle it
+                shown = (loc.input_value() or "").strip()
+            except PWError:
+                if f.required:
+                    return IDENTITY_UNREADABLE
+                continue
+            if not shown:
+                if f.required:
+                    return IDENTITY_UNREADABLE
+                continue
+            if shown.casefold() != _text(a["value"]).strip().casefold():
+                return IDENTITY_MISMATCH
+            self._trusted_prefill.add(f.key)
         return None
 
     # -- D116: where the form sends, and its button --------------------------------------------
@@ -452,6 +535,27 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             return False
         return dom.hidden_search_ok(state)
 
+    @staticmethod
+    def _phone_companion_live(page: Page, fields, controls):
+        """D130: the live page's control for the approved `phone_companion`, or None. The same
+        markup rule as at capture (`dom.phone_companion`), and the live page requires neither it
+        nor the phone and holds no number in the phone. The approved phone must still be the
+        one left blank."""
+        if not any(f.widget == "phone_left_blank" for f in fields):
+            return None
+        c = dom.phone_companion(fields, controls)
+        if c is None or not _SAFE_ID.match(c.id):
+            return None
+        tel = next(f for f in fields if f.type == FieldType.tel)
+        phone = tel.key.removesuffix("[]")
+        if not _SAFE_ID.match(phone):
+            return None
+        try:
+            state = page.evaluate(dom.PHONE_COMPANION_STATE_JS, [c.id, phone])
+        except PWError:
+            return None
+        return c if dom.phone_companion_ok(state) else None
+
     # -- fill -------------------------------------------------------------------------------
     def fill(self, page: Page) -> list[dict]:
         self._filled = True
@@ -483,13 +587,68 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             try:
                 if a["type"] == "select":
                     self._choose(page, a)
-                else:
+                elif a["key"] not in self._trusted_prefill:
                     _by_id(page, a["key"]).fill(_text(a["value"]))
+                # else D129: a locked field, pre-filled with the approved identity and verified
+                # before disclosure -- the page will not let it be edited; never overwritten.
             except PWTimeout:
                 raise
             except PWError:
                 continue  # readback reports it
+        self._fill_sections(page, disclosures)
         return disclosures
+
+    def _fill_sections(self, page: Page, disclosures: list) -> None:
+        """D120: fill each frozen structured section (education/employment). Every filled control is
+        a disclosure; a mid-fill stop keeps the disclosures already made and abandons the attempt,
+        so nothing is reported as "nothing disclosed" once data has reached the form."""
+        for sec in self.content.get("sections") or []:
+            try:
+                plan = gsections.plan_content_section(sec)
+                entered = gsections.apply_section_plan(page, plan, gsections.section_root(sec))
+            except gsections.Refused as e:
+                made = list(disclosures) + [
+                    self._section_disclosure(sec, en) for en in getattr(e, "entered", []) or []
+                ]
+                raise StoppedAfterDisclosure(str(e), made) from e
+            disclosures.extend(self._section_disclosure(sec, en) for en in entered)
+
+    @staticmethod
+    def _section_disclosure(sec: dict, entered: dict) -> dict:
+        # A disclosed section control: its kind, row and field only -- never the applicant's value.
+        return {
+            "kind": "section_field",
+            "section": sec["kind"],
+            "row": entered["row"],
+            "field": entered["field"],
+        }
+
+    def _is_section_control(self, cid: str) -> bool:
+        """A control id that belongs to a frozen structured section (so it is not an unlisted new
+        question): the legacy per-row ids, for the kinds this package actually carries."""
+        kinds = {s.get("kind") for s in self.content.get("sections") or []}
+        edu = r"^(school|degree|discipline|start-month|start-year|end-month|end-year)--\d+$"
+        emp = (r"^(company-name|title|start-date-month|start-date-year|current-role|"
+               r"end-date-month|end-date-year)-\d+$")  # fmt: skip
+        if "education" in kinds and re.match(edu, cid):
+            return True
+        return bool("employment" in kinds and re.match(emp, cid))
+
+    def _sections_match(self, page: Page) -> str | None:
+        """D120: before disclosure, re-prove each frozen section is still present: its root and
+        first row's anchor exist (the readback during fill catches any option drift)."""
+        changed = "the form has changed since you approved it (structured section missing)"
+        for sec in self.content.get("sections") or []:
+            try:
+                plan = gsections.plan_content_section(sec)
+                root = gsections.section_root(sec)
+            except gsections.Refused:
+                return changed
+            if page.locator(root).count() == 0:
+                return changed
+            if plan.rows and page.locator(plan.rows[0].anchor).count() == 0:
+                return changed
+        return None
 
     def _choose(self, page: Page, a: dict) -> None:
         if a["key"] in self._dd:
