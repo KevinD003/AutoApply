@@ -54,6 +54,30 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## A form that no longer matches pauses the application; Questions needing your answer (D132, 2026-11-06; local only)
+
+**partial** — built and tested on local fixtures only (the gh2 Greenhouse-style approximation by id
+and through the pilot path, the Workday-style approximation in the e2e). No real page was read,
+opened, filled or submitted. Decision: D132.
+
+What it does:
+- A question added after approval now pauses the application. The run stops before anything is
+  sent and every live approval is retired, and the pause is recorded, bound to the package that
+  ran. That package is not approved again until you decide.
+- "Questions needing your answer" (`/questions`) lists it. "Read the form again" brings the new
+  question through the same capture route (and its permission checks). Once you answer and
+  approve, exactly one new run fills it.
+- "Try this version again" ends a pause found before anything was entered.
+- Changes only the live page shows stay plain stops, as before.
+
+| Check (branch `form-change-pause`) | Command | Result |
+|---|---|---|
+| New tests | `pytest tests/test_form_change_loop.py` (disposable database) | exit 0, 16 passed (33.2 s) |
+| Existing suites that cover drift stops, approval, notifications, auto-apply, contracts and migrations | `pytest` on test_account, test_approval_hardening, test_approval_reasons, test_ashby_adapter, test_audit_inventory, test_auto_apply, test_batch_review, test_dropdown_strategies, test_error_boundary, test_execution_failures, test_execution_security, test_form_change_loop, test_greenhouse_adapter, test_greenhouse_controls, test_greenhouse_dom, test_greenhouse_live, test_greenhouse_sections_e2e, test_hidden_search, test_lever_adapter, test_migrations, test_notifications, test_phone_companion, test_preparation, test_rehearsal_stop, test_required_signals, test_section_free_route, test_workday_adapter (disposable database) | running when this was committed; the result is recorded with the next commit |
+| Lint and format | `uv run ruff check .`, `uv run ruff format --check .` | exit 0 ("All checks passed!"), exit 0 (362 files already formatted) |
+| Frontend | `npx tsc --noEmit`, `npm run lint` | exit 0, exit 0 |
+| E2E | `npx playwright test e2e/questions.spec.ts` (desktop and mobile) | not run yet (it shares the receiver port with the backend run above); recorded with the next commit |
+
 ## Answer safety: self-identification scope, follow-up reuse, job requirements (D131, 2026-11-06; local only)
 
 Found by the first acceptance inventory of the Greenhouse + Workday loop and reproduced on `main`
