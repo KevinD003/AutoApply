@@ -4,7 +4,8 @@ meaning the same, and suggests it. You decide: "Use this" saves it as your answe
 this exact wording from then on (the resolver reuses it deterministically, `_from_bank`); "Not
 this" is remembered so the same pair is never suggested again. Every verdict is a training label
 for your own model (LightGBM, else XGBoost; engine.py), retrained after each one; until there
-are enough verdicts the fixed rule score ranks the candidates.
+are enough verdicts the fixed rule score ranks the candidates. D133: the rule score is also a
+floor a model cannot lower; a model only ranks and narrows what the rules let through.
 
 What never happens: an answer is filled in without your choice; a suggestion crosses accounts;
 a saved answer is suggested where wording disagrees on numbers, negation, countries or the kind
@@ -45,7 +46,7 @@ from app.modules.profiles.models import Approval
 
 log = logging.getLogger(__name__)
 
-RULE_THRESHOLD = 0.5  # the fixed blend (features.rule_score)
+RULE_THRESHOLD = 0.6  # the fixed blend (features.rule_score); D133: also a floor under a model
 MODEL_THRESHOLD = 0.5  # a trained model's probability that you would accept
 TRAIN_LIMIT = 5000  # the newest verdicts a model learns from
 SHAPES = ("choice", "multi", "boolean", "text", "number", "date")
@@ -187,19 +188,21 @@ def _best(f: FormField, usable: dict, rejected: set, model: LearningModel | None
         except ValueError:
             continue
         pairs.append((e, proposal, shown, features.pair(new, saved)))
+    # D133: the rule score is a floor. A pair below it is never suggested, whatever a trained
+    # model would say: the model only ranks and narrows what the rules let through.
+    rules = [features.rule_score(feats) for *_, feats in pairs]
+    pairs = [p for p, r in zip(pairs, rules, strict=True) if r >= RULE_THRESHOLD]
+    rules = [r for r in rules if r >= RULE_THRESHOLD]
     if not pairs:
         return None
-    vectors = [feats for *_, feats in pairs]
+    scores, threshold, how = rules, RULE_THRESHOLD, "rules"
     if model is not None:
         try:
-            scores = engine.predict(model.engine, model.blob, vectors)
+            scores = engine.predict(model.engine, model.blob, [feats for *_, feats in pairs])
             threshold, how = MODEL_THRESHOLD, model.engine
         except Exception:  # noqa: BLE001 - a model that cannot load: the rules stand in
             log.exception("answer brain: the trained model could not be used")
-            model = None
-    if model is None:
-        scores = [features.rule_score(v) for v in vectors]
-        threshold, how = RULE_THRESHOLD, "rules"
+            scores, threshold, how = rules, RULE_THRESHOLD, "rules"
     i = max(range(len(pairs)), key=lambda k: scores[k])
     if scores[i] < threshold:
         return None

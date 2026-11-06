@@ -235,3 +235,52 @@ def test_every_word_family_is_load_bearing(code, monkeypatch):
     families = [(c, (lambda *a: False) if c == code else f) for c, f in features.FAMILIES]
     monkeypatch.setattr(features, "FAMILIES", families)
     assert veto(*WITNESS[code]) is None
+
+
+# ------------------------------------------------------------------ the rule score (D133)
+
+
+def test_the_rule_score_reads_the_wording_only():
+    # Help and options similarity are left out: two questions with neither once scored 0.30.
+    assert features.rule_score([0, 0, 1, 1, 1, 1, 0, 0]) == pytest.approx(0.125)
+
+
+def score(saved_label, new_label):
+    return features.rule_score(features.pair(side(new_label), side(saved_label)))
+
+
+REWORDED = [
+    (
+        "Which programming language do you use most?",
+        "Which programming language do you use the most?",
+    ),
+    ("Do you have experience with Python?", "Do you have Python experience?"),
+    ("Have you used Salesforce?", "Have you ever used Salesforce?"),
+    ("Do you speak Spanish?", "Can you speak Spanish?"),
+    ("Are you comfortable working with animals?", "Are you comfortable around animals?"),
+    ("Do you own a car?", "Do you have your own car?"),
+    ("Can you lift 50 pounds?", "Are you able to lift 50 pounds?"),
+    ("Do you have a portfolio?", "Do you have a portfolio website?"),
+    ("Have you managed a team?", "Have you ever managed a team?"),
+    ("Are you proficient in Microsoft Excel?", "How proficient are you in Microsoft Excel?"),
+    ("What is your GitHub username?", "GitHub username"),
+    ("Do you have a bachelor's degree?", "Do you hold a bachelor's degree?"),
+]
+# A common noun swapped is invisible to the vetoes; the score keeps these below the threshold.
+# "Can you operate a forklift?" vs "...a crane?" still scores above it (0.656): stated in D133.
+UNRELATED = [
+    ("Do you own a car?", "Do you own a laptop?"),
+    ("Do you have a portfolio?", "Do you have a pet?"),
+    ("Are you comfortable with public speaking?", "Are you comfortable with heights?"),
+    ("Which programming language do you use most?", "Which colour do you like best?"),
+]
+
+
+@pytest.mark.parametrize(("saved_label", "new_label"), REWORDED, ids=[r[1] for r in REWORDED])
+def test_a_rewording_scores_at_or_above_the_threshold(saved_label, new_label):
+    assert score(saved_label, new_label) >= service.RULE_THRESHOLD
+
+
+@pytest.mark.parametrize(("saved_label", "new_label"), UNRELATED, ids=[u[1] for u in UNRELATED])
+def test_an_unrelated_question_scores_below_the_threshold(saved_label, new_label):
+    assert score(saved_label, new_label) < service.RULE_THRESHOLD

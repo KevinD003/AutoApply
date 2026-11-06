@@ -287,6 +287,8 @@ def pair(new: dict, saved: dict) -> list[float]:
 
 
 def rule_score(f: list[float]) -> float:
-    """Before an account has taught its own model: a fixed blend of the similarities."""
-    tj, c3, hj, oj, fw, lr = f[0], f[1], f[2], f[3], f[4], f[5]
-    return 0.35 * tj + 0.35 * c3 + 0.1 * hj + 0.1 * oj + 0.05 * fw + 0.05 * lr
+    """Before an account has taught its own model: a fixed blend of the wording's similarities.
+    D133: the help-text and option similarities are left out of it; for the many questions with
+    neither, they were a constant 1 (two empty sets) and lifted every pair alike."""
+    tj, c3, fw, lr = f[0], f[1], f[4], f[5]
+    return (0.35 * tj + 0.35 * c3 + 0.05 * fw + 0.05 * lr) / 0.8

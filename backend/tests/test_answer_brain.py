@@ -191,6 +191,39 @@ def test_enough_verdicts_train_the_accounts_own_model_which_then_ranks(api):
         assert db.get(LearningModel, me) is None
 
 
+def test_a_trained_model_never_suggests_below_the_rule_floor(api):
+    """D133: the rule score is a floor a trained model cannot lower. A model trained the wrong
+    way round (unrelated wording accepted, rewordings rejected) would suggest an unrelated saved
+    answer; it is not suggested, and the model only narrows what the floor lets through."""
+    setup_candidate(api)
+    me = uuid.UUID(api.get("/auth/me").json()["user_id"])
+    unrelated = [0.1, 0.2, 0.0, 1.0, 0.0, 0.5, 5.0, 5.0]
+    reworded = [1.0, 0.95, 0.0, 1.0, 1.0, 0.9, 5.0, 5.0]
+    with SessionLocal() as db:
+        for i in range(engine.MIN_LABELS):
+            db.add(LearningLabel(user_id=me, question_key=f"k{i}", accepted=i % 2 == 0,
+                                 features=unrelated if i % 2 == 0 else reworded))  # fmt: skip
+        db.flush()
+        m = service.retrain(db, me)
+        db.commit()
+    saved(api, lang(), {"label": "Rust"})
+    asked = lang(label="Which colour do you like best?")  # the same options, unrelated wording
+    with SessionLocal() as db:
+        (e,) = db.scalars(select(AnswerBankEntry).where(AnswerBankEntry.user_id == me)).all()
+        feats = features.pair(service._new(FormField.model_validate(asked)), service._saved(e))
+    assert features.rule_score(feats) < service.RULE_THRESHOLD
+    (p,) = engine.predict(m.engine, m.blob, [feats])
+    assert p > service.MODEL_THRESHOLD  # the model alone would suggest it
+    assert suggest(api, application(api, [asked])) == []
+    # The rewording passes the floor; this model scores it low, and it is not suggested either.
+    assert (
+        suggest(
+            api, application(api, [lang(label="Which programming language do you use the most?")])
+        )
+        == []
+    )
+
+
 def test_a_follow_up_gets_no_suggestion(api):
     # D131: "Which one?" saved after a language question is not suggested for "Which one?" after
     # an instrument question; the features compare its words, not the question it follows.
