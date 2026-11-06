@@ -29,7 +29,10 @@ from app.modules.preparation.classify import (
     _CITIZEN_CLAIM,
     _CLAIM,
     _DEMONYM,
+    _EEO_BOILERPLATE,
     _NEG_EXTRA,
+    _PRONOUN_LABEL,
+    _SENSITIVE_STEP,
     COUNTRIES,
     DEMONYMS,
     GENERIC_LABEL,
@@ -41,6 +44,7 @@ from app.modules.preparation.classify import (
     classify,
     exact_country,
     find_countries,
+    sensitive_topic,
 )
 from app.modules.preparation.forms import (
     CHOICE_TYPES,
@@ -138,6 +142,9 @@ class Context:
     # D122: the owner's voluntary self-identification (EEOC/demographic), or None. Used only
     # when enabled, only by exact option match, only for sensitive demographic questions.
     self_id: object | None = None
+    # D131: the form's questions by key, so a follow-up's saved answer is looked up with the
+    # question it follows (question_key's trigger). Set by package.resolve_answers.
+    form_fields: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -172,7 +179,60 @@ def answer_shape(f: FormField) -> str:
 
 
 def question_key(f: FormField) -> str:
+    """A question's own wording key (D51): what counts a wording repeated on one form and
+    remembers a rejected suggestion. Saving and reusing an answer use reuse_key (D131)."""
     return bankscope.question_key(f, answer_shape(f))
+
+
+# D131: the most questions a follow-up may sit below (a deeper or circular chain is unplaced).
+MAX_FOLLOW_UP_DEPTH = 8
+
+
+def reuse_key(f: FormField, fields: dict | None) -> str | None:
+    """The key an answer to `f` is saved and reused under (D51), or None when it may not be:
+    D131: a follow-up's key carries its trigger chain (follow_up_trigger), read from `fields`,
+    the form's questions by key; a follow-up whose chain cannot be read is never saved or
+    reused. A question that follows none keeps its D51 key."""
+    trigger = follow_up_trigger(f, fields)
+    if trigger is UNPLACED:
+        return None
+    return bankscope.question_key(f, answer_shape(f), trigger)
+
+
+UNPLACED = object()  # follow_up_trigger: a question in the chain is missing, circular or too deep
+
+
+def follow_up_trigger(f: FormField, fields: dict | None) -> list | object | None:
+    """D131: what makes a follow-up the question it is. For each question above it, nearest
+    first: that question's wording, help text, shape and full option list, and the answers to it
+    that show the one below, as option labels (page keys never count). None for a question that
+    follows none; UNPLACED when a question above it is not on the form, or the chain is circular
+    or deeper than MAX_FOLLOW_UP_DEPTH."""
+    if f.condition is None:
+        return None
+    if fields is None:
+        return UNPLACED
+    chain, cur, seen = [], f, set()
+    while cur.condition is not None:
+        if cur.key in seen or len(chain) >= MAX_FOLLOW_UP_DEPTH:
+            return UNPLACED
+        seen.add(cur.key)
+        parent = fields.get(cur.condition.key)
+        if parent is None:
+            return UNPLACED
+        by_value = {o.value: normalize(o.label) for o in parent.options}
+        shown_for = sorted(by_value.get(v, normalize(str(v))) for v in cur.condition.any_of)
+        chain.append(
+            [
+                normalize(parent.label),
+                normalize(parent.help_text),
+                answer_shape(parent),
+                sorted(normalize(o.label) for o in parent.options),
+                shown_for,
+            ]
+        )
+        cur = parent
+    return chain
 
 
 def option_labels(f: FormField) -> list[str]:
@@ -442,7 +502,7 @@ def _resolve_field(
         return _resolve_ack(f, r, ctx, intent)
 
     if intent.sensitive:
-        return _resolve_sensitive(f, r, ctx)
+        return _resolve_sensitive(f, r, ctx, intent)
 
     if intent.ambiguity is None and intent.kind in FACT_RESOLVERS:
         out = FACT_RESOLVERS[intent.kind](f, r, ctx, intent)
@@ -1357,9 +1417,75 @@ def _resolve_fact_statement(f, r, ctx, intent: Intent) -> Resolution:
     return r
 
 
+# D131: the sensitive questions D122 may answer from your saved self-identification. Only the
+# EEO self-identification categories (gender and pronouns, race and ethnicity, Hispanic or
+# Latino, protected veteran, disability, sexual orientation, transgender identity), a Greenhouse
+# demographic survey question, or a question in a self-identification section. Never criminal
+# history, health, accommodation, age, family, religion, national origin, military service,
+# salary history, government ids or a follow-up: you answer those yourself. Matched whole against
+# the intent's topic (classify: the legacy sensitive word, or the named topic).
+_SELF_ID_TOPIC = re.compile(
+    r"genders?|sex|pronouns?|races?|racial|ethnicit(y|ies)|ethnic|hispanic|latin[oax]|"
+    r"(protected )?veterans?|disabilit(y|ies)|disabled|sexual orientation|gender identity|"
+    r"transgender|non-?binary|genderqueer|lgbt\w*|2slgbt\w*|two or more races|"
+    r"african american|native hawaiian|american indian|alaskan? native|pacific islander|"
+    r"heterosexual|bisexual|asexual|pansexual|demographic_survey|self_identification"
+)
+# D131: an option that names its own category ("Male", "Asian", "I am not a protected veteran",
+# "No, I do not have a disability"). A bare "Yes", "No" or "Other" names none: a flat list of
+# labels cannot say which question such a label answered, so it never answers one.
+_SELF_DESCRIBING = re.compile(
+    r"\b(male|female|man|woman|men|women|non-?binary|genderqueer|agender|bigender|genderfluid|"
+    r"gender|transgender|trans (man|woman)|cisgender|two-spirit|intersex|white|black|african|"
+    r"asian|hispanic|latin[oax]|spanish origin|native|indigenous|aboriginal|first nations?|"
+    r"pacific islander|alaskan?|american indian|middle eastern|north african|caucasian|"
+    r"multiracial|biracial|races?|racial|ethnicit(y|ies)|ethnic|veterans?|disabilit(y|ies)|"
+    r"disabled|heterosexual|straight|gay|lesbian|bisexual|asexual|pansexual|queer|"
+    r"questioning|sexual orientation)\b"
+)
+
+
+def _self_id_applies(f: FormField, intent: Intent, r: Resolution) -> bool:
+    """D131: whether D122 may answer this sensitive question at all. Only an EEO category named
+    by the question itself (_SELF_ID_TOPIC): never a follow-up, never a question that also asks
+    for a fact (an ambiguity) or a protected one, never one whose wording also names another
+    sensitive topic ("Are you required to register as a sex offender?", "a disability that
+    requires an accommodation"), and options alone never bring a question in: a question known as
+    self-identification only from its options needs a self-identification section too."""
+    topic = str((intent.params or {}).get("topic") or "")
+    if (
+        f.condition is not None
+        or intent.kind != "demographic"
+        or intent.ambiguity is not None
+        or intent.protected
+        or r.protected
+        or _SELF_ID_TOPIC.fullmatch(topic) is None
+    ):
+        return False
+    if topic == "self_identification" and not _SENSITIVE_STEP.search(normalize(f.step)):
+        return False
+    label, help_ = normalize(f.label), normalize(f.help_text)
+    if sensitive_topic(label) is not None:
+        return False
+    return not (help_ and not _EEO_BOILERPLATE.search(help_) and sensitive_topic(help_))
+
+
+def _self_describing(o: Option, decline: Option | None) -> bool:
+    """D131: an option that says what it is about, or the form's one decline option (declining
+    discloses nothing, whichever question it is)."""
+    label = normalize(o.label)
+    return (
+        (decline is not None and o.value == decline.value)
+        or _SELF_DESCRIBING.search(label) is not None
+        or _PRONOUN_LABEL.match(label) is not None
+    )
+
+
 def _self_id_outcome(f, self_id) -> tuple[str, dict | None, str | None, list]:
     """D122: how the owner's saved self-identification resolves one sensitive choice/multi
     question, by exact (normalized) option-label match only. Never inferred, never fuzzy.
+    D131: only for a question _self_id_applies to, and only when every option your labels match
+    names its own category (_self_describing).
 
     Returns (kind, value, display, matched_labels):
       * "fill"          -> resolve this value now: one single-select option, or the one
@@ -1368,6 +1494,9 @@ def _self_id_outcome(f, self_id) -> tuple[str, dict | None, str | None, list]:
                            several answers; a flat label list cannot prove the set is
                            complete, so a partial self-identification is never submitted and
                            the owner answers it (a checkpoint).
+      * "generic"       -> one of your labels matches an option that names no category (a
+                           bare "Yes", "No" or "Other"): nothing says it was meant for this
+                           question, so nothing is filled and the owner answers it (D131).
       * "none"          -> nothing matched unambiguously; the normal sensitive path decides
                            (0 or >1 single-select matches, a decline mixed with substantive
                            choices, or no match at all).
@@ -1377,14 +1506,21 @@ def _self_id_outcome(f, self_id) -> tuple[str, dict | None, str | None, list]:
     wanted = {normalize(x) for x in (getattr(self_id, "labels", None) or []) if x}
     if not wanted:
         return ("none", None, None, [])
+    decline = map_decline(f)
     hits = [o for o in f.options if normalize(o.label) in wanted]
+    if any(not _self_describing(o, decline) for o in hits):
+        return ("generic", None, None, [o.label for o in hits])
+    # D131: a decline is taken only on a question whose other options name a category (gender,
+    # race ...): on Yes / No / decline, nothing says which question your decline was for.
+    others = [o for o in f.options if decline is None or o.value != decline.value]
+    if decline is not None and not any(_self_describing(o, None) for o in others):
+        hits = [o for o in hits if o.value != decline.value]
     if f.type in CHOICE_TYPES:
         # Single-select holds one value: fill only on exactly one match, never one of two.
         if len(hits) == 1:
             return ("fill", _choice(hits[0]), hits[0].label, [hits[0].label])
         return ("none", None, None, [])
     # Multi-select. A decline option is exclusive; a substantive set is never sent partially.
-    decline = map_decline(f)
     decline_wanted = decline is not None and normalize(decline.label) in wanted
     substantive = [o for o in hits if decline is None or o.value != decline.value]
     if decline_wanted and not substantive:
@@ -1397,7 +1533,7 @@ def _self_id_outcome(f, self_id) -> tuple[str, dict | None, str | None, list]:
     return ("none", None, None, [])
 
 
-def _resolve_sensitive(f, r, ctx) -> Resolution:
+def _resolve_sensitive(f, r, ctx, intent: Intent) -> Resolution:
     choice = ctx.consents.get(f.key)
     inp = ctx.inputs.get(f.key)
     proposed, source = None, None
@@ -1446,8 +1582,15 @@ def _resolve_sensitive(f, r, ctx) -> Resolution:
     # include your stated self-identification, so a match resolves without a per-application
     # confirmation. It runs only after an explicit per-application choice above (a "withhold", or
     # an answer you entered), which takes precedence; it never replaces that consent. It is never
-    # inferred, never saved to the answer bank, and only an exact option match is taken.
-    if proposed is None and ctx.self_id is not None and getattr(ctx.self_id, "enabled", False):
+    # inferred, never saved to the answer bank, and only an exact option match is taken. D131:
+    # only for the EEO self-identification categories, and only with options that name their own
+    # category (_self_id_applies, _self_describing).
+    if (
+        proposed is None
+        and ctx.self_id is not None
+        and getattr(ctx.self_id, "enabled", False)
+        and _self_id_applies(f, intent, r)
+    ):
         kind, value, display, matched = _self_id_outcome(f, ctx.self_id)
         if kind == "fill":
             r.status, r.source, r.value, r.display = (
@@ -1480,6 +1623,15 @@ def _resolve_sensitive(f, r, ctx) -> Resolution:
                 "Your self-identification matches one or more options here, but this question "
                 "takes several answers and NoEfforts never submits a partial self-identification. "
                 + ("Choose your answer for this application." if f.required else "Left blank."),
+            )
+        if kind == "generic":
+            r.bankable = False
+            return _unresolved(
+                r,
+                f,
+                "Your self-identification includes a label such as “Yes” or “No” "
+                "that names no category, so NoEfforts cannot tell which question it answers. "
+                + ("Answer this one yourself." if f.required else "Left blank."),
             )
     if proposed is None:
         return _unresolved(
@@ -1557,7 +1709,10 @@ def _resolve_document(f, r, ctx, role: str) -> Resolution:
 
 
 def _from_bank(f: FormField, r: Resolution, ctx: Context) -> Resolution | None:
-    entry = ctx.bank.get(question_key(f))
+    key = reuse_key(f, ctx.form_fields)
+    if key is None:
+        return None  # D131: a follow-up is reused only after the questions it follows
+    entry = ctx.bank.get(key)
     if entry is None or not _approved(entry):
         return None
     if not bankscope.help_matches(getattr(entry, "help_text", None), f):

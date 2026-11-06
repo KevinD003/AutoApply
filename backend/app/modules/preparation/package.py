@@ -245,6 +245,8 @@ def resolve_answers(fields: list, ctx: Context) -> list[tuple]:
     out = []
     # C6 (D51): the same question twice on one form never takes a saved answer.
     counts = Counter(question_key(f) for f in fields if f.type != FieldType.file)
+    # D131: a follow-up's saved answer is looked up with the question it follows.
+    ctx.form_fields = {f.key: f for f in fields}
     for f in fields:
         # A follow-up takes its trigger's sensitivity (N6): see resolver._inherit.
         parent = resolved.get(f.condition.key) if f.condition else None
@@ -285,6 +287,58 @@ def resolve_answers(fields: list, ctx: Context) -> list[tuple]:
         resolved[f.key] = r
         out.append((f, r))
     return out
+
+
+def _approved_records(db: Session, user_id, kind: str) -> list:
+    """The owner's approved education or employment facts, newest first (a stable order gives a
+    stable row order and package hash)."""
+    from app.modules.profiles.models import Approval, EducationRecord, EmploymentRecord
+
+    model = EducationRecord if kind == "education" else EmploymentRecord
+    return list(
+        db.scalars(
+            select(model)
+            .where(model.user_id == user_id, model.approval_status == Approval.approved)
+            .order_by(model.start_date.desc(), model.id)
+        )
+    )
+
+
+def _resolve_sections(
+    db: Session, app: Application, schema, unresolved: list, errors: list
+) -> list:
+    """D120: resolve each captured structured section from the owner's approved records; freeze the
+    ready ones into the package and turn an unready one into checkpoints that block approval. Only a
+    form that actually has a section (a stand-in today) carries any specs here, so a form without
+    one produces no ``sections`` key and its package content and hash are unchanged."""
+    from app.modules.execution.adapters import greenhouse_sections as gs
+    from app.modules.preparation import structured_sections as ss
+
+    frozen: list = []
+    for spec in getattr(schema, "sections", None) or []:
+        records = _approved_records(db, app.user_id, spec.kind)
+        options = None
+        if spec.kind == "education":
+            options = ss.EducationOptions(
+                schools=tuple(ss.SectionOption(o.id, o.text) for o in spec.schools),
+                degrees=tuple(ss.SectionOption(o.id, o.text) for o in spec.degrees),
+                disciplines=tuple(ss.SectionOption(o.id, o.text) for o in spec.disciplines),
+            )
+        result = ss.resolve_section(spec.kind, records, options=options)
+        if result.ready():
+            frozen.append(gs.section_to_content(result, root=spec.root))
+            continue
+        if not result.supported:
+            key = f"section:{spec.kind}"
+            unresolved.append(key)
+            errors.append(
+                {"key": key, "message": result.reason or f"{spec.kind} section unsupported"}
+            )
+        for record_id, field, why in result.checkpoints():
+            key = f"section:{spec.kind}:{record_id}:{field}"
+            unresolved.append(key)
+            errors.append({"key": key, "message": why or f"Resolve your {spec.kind} record."})
+    return frozen
 
 
 def build_content(db: Session, app: Application) -> dict:
@@ -364,6 +418,7 @@ def build_content(db: Session, app: Application) -> dict:
                     "accepted_at": None if doc.accepted_at is None else doc.accepted_at.isoformat(),
                 }
             )
+    sections = _resolve_sections(db, app, schema, unresolved, errors)
     job_url = job.url or job.canonical_url  # as given; canonical form is for dedupe only
     return {
         "schema": SCHEMA_VERSION,
@@ -389,6 +444,9 @@ def build_content(db: Session, app: Application) -> dict:
         "consents": {k: v for k, v in sorted(ctx.consents.items())},
         "unresolved": unresolved,
         "validation_errors": errors,
+        # D120: present only for a form with a structured section (a stand-in today), so no ordinary
+        # package's content or hash changes and SCHEMA_VERSION stays 3 (same approach as `widget`).
+        **({"sections": sections} if sections else {}),
     }
 
 

@@ -3933,6 +3933,77 @@ is structured per category — deferred, not built speculatively.
   or an approved read-only inspection) to pin the rendered controls and repeating-row indexing;
   then the DOM filler + live package wiring.
 
+## D120 (cont.) — Structured sections: execution integration + package-contract verification (2026-11-05)
+
+- **What was built (feature branch `greenhouse-structured-sections`, unmerged while required CI is
+  unavailable).** The execution half of D120, all proven locally through the real runner and the
+  independent receiver ledger against a clearly-labelled synthetic stand-in:
+  - `execution/adapters/greenhouse_sections.py`: a read-back-checked fill **planner** + Playwright
+    **executor** (row-by-row, "Add another" scoped to the section container, exact combobox option
+    match or stop), and a package↔plan **bridge** that reuses only the legacy id/row mechanics
+    (`autojob-greenhouse/src/apply.py`), never its unsafe inference (`_degree_label`, fuzzy school
+    match).
+  - `preparation/package.py`: resolved sections are frozen into package content under an **optional
+    `sections` key** (present only on a form that has a section); `preparation/greenhouse_dom.py`
+    `detect_sections()` recognises a stand-in's section and excludes its own row controls from the
+    unlisted-control check.
+  - On a real (non-stand-in) destination the adapter returns `STAND_IN_ONLY` before anything is
+    entered: the hosted section DOM is still unobserved (see the resolution-layer entry above and
+    `docs/greenhouse-sections-observation-request.md`).
+  - Bridge hardening: malformed section content, an unknown kind/field, an unsafe non-`#id` root, a
+    duplicate row identity and a bad value shape are each **refused** (never `KeyError`, never
+    silently driven); a mid-fill failure preserves the disclosures already made.
+- **Package-contract verification (the SCHEMA_VERSION question, answered against the real gates).**
+  Retaining `SCHEMA_VERSION = 3` was re-checked against four criteria, not only hash stability:
+  - *Optional extension keys permitted?* Yes — `build_content` already adds per-form keys only when
+    present (the D104 `widget` precedent); `sections` follows it, so a form without a section emits
+    no key and its content hash is unchanged (pinned by `tests/test_package_contract.py` and
+    `tests/test_greenhouse_sections_package.py::test_a_form_without_a_section_carries_no_sections_key`).
+  - *Do old and new readers handle their presence safely?* A new reader fills; an **old** reader
+    would not know the key and would silently skip the section. That is the real risk, and hash
+    stability does **not** address it.
+  - *Approval/execution gates?* The content hash binds the frozen section values (changing an
+    education/employment fact re-hashes and the stale approval is refused); `schema_matches`
+    re-proves each section is present before disclosure; a real destination is refused `STAND_IN_ONLY`.
+  - *Can a section-bearing package reach an incompatible worker?* It could have: a section-aware and
+    a section-blind build both computed the same `adapter_version`, so the D28 binding fence
+    (`check_binding`) could not tell them apart. **Fix:** `gdom.EXTRACTION_VERSION` bumped
+    `greenhouse-dom-v3 → v4` (it rides in `ADAPTER_VERSIONS` for `greenhouse_dom` and
+    `greenhouse_live`, but is **not** part of the hashed content). Now an old worker computes the
+    old `adapter_version`, mismatches the section-bearing approval, and `check_binding` raises
+    `BindingChanged` before anything is entered. This keeps every content hash stable **and** closes
+    the compatibility hole; the only cost is that existing `greenhouse_dom`/`greenhouse_live`
+    approvals must be approved again (correct when an adapter's capability changes; D28).
+- **Conclusion.** `SCHEMA_VERSION = 3` is valid for the content-hash dimension; worker compatibility
+  is carried deliberately by `adapter_version` (the D28 layer), not by the schema number. No broad
+  refactor; a one-line version bump plus contract tests.
+- **Tests (executed):** the five section suites (`tests/test_greenhouse_sections*.py`) plus the
+  compatibility proof `test_a_section_package_cannot_reach_a_section_blind_worker` (a section package
+  is refused `failed_safe`, nothing disclosed or accepted, when the adapter version reverts to the
+  pre-D120 string), alongside the generic
+  `test_execution_routing::test_an_adapter_version_mismatch_blocks_queueing_and_execution` and the
+  unchanged `test_package_contract` hash corpus.
+- **Approval impact of the version change, pinned:**
+  `test_approval_binding::test_an_approval_from_before_the_extraction_bump_is_retired_never_renewed`
+  (for `greenhouse_dom` and the pilot's `greenhouse_live`): an approval recorded at the pre-D120
+  version is refused at the queue gate and retired (nothing disclosed); the stored package keeps the
+  same version and content hash; a second queue attempt is still refused and no new approval appears
+  on its own; only the owner's explicit re-approval of the identical content restores it, recorded
+  at the new version. So the change is invisible in the package (no hash churn) but visible to every
+  existing `greenhouse_dom`/`greenhouse_live` approval, which must be given again once.
+- **Integrated after D130 (version made distinct):** D130 reached `main` first with
+  `greenhouse-dom-v4`; this branch had also called itself v4, and git merges the two identical
+  lines silently. The combined build is therefore `greenhouse-dom-v5`, a version neither carried.
+  Tested at the versions approvals were actually recorded under, v3 and v4, for `greenhouse_dom`
+  and `greenhouse_live`: retired at the queue and never renewed on their own
+  (`test_an_approval_from_before_the_extraction_bump_is_retired_never_renewed`); a worker at v3 or
+  v4 refuses a section or phone-companion package before any page action
+  (`test_a_worker_at_an_encountered_version_refuses_before_any_page_action`,
+  `test_greenhouse_sections_e2e::test_a_section_package_cannot_reach_a_section_blind_worker`);
+  a change to v3 or v4 after loading is refused at the disclosure gate, and after filling at the
+  send gate, with nothing submitted (`test_the_disclosure_gate_refuses_…`,
+  `test_the_send_gate_refuses_…`). D130's tripwire passes only because v5 is neither v3 nor v4.
+
 ## D123 — Rehearsal runbook + the dynamic-control stop, made explicit (2026-11-03)
 
 - **Runbook.** `docs/rehearsal-runbook.md`: the exact disclosure-only Greenhouse rehearsal
@@ -4323,3 +4394,76 @@ audit-inventory and export-completeness guards are updated and pass.
   integration (D129, then D130); then this posting's capture on the owner's machine settles, with
   the actual rules, whether it meets the structure and maps. No owner action is needed now, and no
   renewal is requested.
+
+## D131 — Self-identification answers only its own categories; a follow-up's saved answer keeps its question; job requirements are never reused (2026-11-06)
+
+- **Why:** the first inventory of the Greenhouse + Workday automation loop (2026-11-06) found three
+  answer-safety defects on `main` and one review-page crash. Each is reproduced by a test that
+  fails on `main` (b194438) and passes here:
+  1. **Self-identification answered other sensitive questions.** D122's opt-in self-identification
+     ran for every sensitive choice question, matching the owner's flat list of option labels by
+     text. With "No" among the labels (the answer to "Are you Hispanic or Latino?", say), a required
+     "Have you ever been convicted of a felony?" and "Will you require a reasonable accommodation for
+     the interview?" resolved to "No" from the self-identification; so would marital status,
+     military service, an age range and any other sensitive question whose option text matched.
+  2. **A follow-up's saved answer ignored its question.** A saved answer is keyed by its question's
+     own wording, so "Which one?" saved after "Do you speak a language other than English?"
+     ("Spanish") answered "Which one?" after any other reusable question.
+  3. **"Do you meet all minimum qualifications?" was reused for every employer.** C6's job-fit rule
+     needed "the", "these", "those" or "its" before the qualifier.
+  4. **The review page failed** ("Application error: a client-side exception") on any application
+     with a question answered from self-identification: that source had no label on the page.
+- **Decided:**
+  - **Self-identification answers only the EEO self-identification categories:** gender and
+    pronouns, race and ethnicity, Hispanic or Latino, protected veteran, disability, sexual
+    orientation, transgender identity, a Greenhouse demographic-survey question, or a question in a
+    self-identification section (`resolver._self_id_applies`, matched whole against the question's
+    topic). Never criminal history, health, accommodation, age, family or marital status, religion,
+    national origin, military service, political or union membership, salary history, government
+    ids or a follow-up; never a question that also asks a fact (an ambiguity) or a protected one;
+    never one whose wording also names another sensitive topic ("Are you required to register as
+    a sex offender?", "a disability that requires a reasonable accommodation", outside
+    equal-opportunity boilerplate in its help text); and options alone never bring a question in
+    (a uniform colour with Black and White options is not race): a question known as
+    self-identification only from its options needs a self-identification section too.
+  - **Only options that name their category.** Your labels answer a question only when every option
+    they match names its own category ("Male", "Asian", "I am not a protected veteran", "No, I do not
+    have a disability …") or is the form's one decline option (`resolver._self_describing`). A bare
+    "Yes", "No" or "Other" names none: a flat list cannot say which question it answered, so it
+    answers none, and the row says so. A decline is taken only where the question's other options
+    name a category (Gender: Male, Female, decline), never on Yes / No / decline. Consequence,
+    stated: a Yes/No "Are you Hispanic or Latino?" is now yours to answer each time. Answering it
+    from your self-identification would need answers stored by category; not built.
+  - **A follow-up is saved and reused with the questions it follows** (`resolver.reuse_key`).
+    Its key also carries the chain above it, nearest first: each question's wording, help text,
+    shape and full option list, and the answers that show the next one, as option labels (page
+    keys do not count). "Other" after [English, Spanish, Other] is not "Other" after [English,
+    French, Other]. A follow-up whose chain cannot be read (a question missing from the form,
+    circular, deeper than eight) is never saved or reused. A second-level follow-up can be saved
+    (its save was refused as soon as its own question was a follow-up). Keys of questions that
+    are not follow-ups are unchanged. An answer saved for a follow-up before D131 (keyed by its own
+    wording) no longer answers it: that question asks again, once. The answer brain (D115)
+    suggests nothing for a follow-up: its features compare the words, not the questions above.
+  - **Job requirements without "the":** "meet / satisfy / fulfil (all) (minimum …) requirements,
+    qualifications or criteria" and "have / possess (all) required, minimum … certifications,
+    skills, licences …" are about the job, so never saved or reused (`bankscope.E_FIT`). "Do you have
+    experience with Python?" stays reusable.
+  - **The review page** labels a self-identified answer "Your self-identification", and shows a
+    source it does not know as "Answered" instead of failing.
+- **Not changed:** what the owner stores (a list of labels); D122's opt-in and its precedence (an
+  answer you enter, or "Don't disclose", still wins); the package shape and `SCHEMA_VERSION` (3). A
+  package whose answers change under these rules rebuilds with a new content hash, so its approval
+  is asked again; nothing is approved for you. Nothing real was run.
+- **Reviewed adversarially before merging** (four review lenses on the first commit): the scope
+  above, the decline rule, the parent's option list and chain in the key, second-level saves and
+  the suggestion rule came from that review; each was reproduced by a probe before fixing and has
+  a test.
+- **Tests:** `test_self_identification.py` (questions outside the categories, a bare label, a bare
+  label never turned into a decline, labels that name their category still answer, another
+  sensitive topic in the wording, options alone, the decline rule, a follow-up),
+  `test_bank_scope.py` (a follow-up reused only after its question and option list; the chain;
+  never without it; keys), `test_answer_brain.py` (no suggestion for a follow-up),
+  `bank_scope_wordings.json` (five requirement wordings), `test_bank_scope_api.py` (save and reuse
+  through the route, no reuse after another question, a second-level chain),
+  `frontend/e2e/self-identification.spec.ts`
+  (desktop and mobile: the source label, and the felony question left to you).
