@@ -245,6 +245,8 @@ def resolve_answers(fields: list, ctx: Context) -> list[tuple]:
     out = []
     # C6 (D51): the same question twice on one form never takes a saved answer.
     counts = Counter(question_key(f) for f in fields if f.type != FieldType.file)
+    # D131: a follow-up's saved answer is looked up with the question it follows.
+    ctx.form_fields = {f.key: f for f in fields}
     for f in fields:
         # A follow-up takes its trigger's sensitivity (N6): see resolver._inherit.
         parent = resolved.get(f.condition.key) if f.condition else None

@@ -4323,3 +4323,59 @@ audit-inventory and export-completeness guards are updated and pass.
   integration (D129, then D130); then this posting's capture on the owner's machine settles, with
   the actual rules, whether it meets the structure and maps. No owner action is needed now, and no
   renewal is requested.
+
+## D131 — Self-identification answers only its own categories; a follow-up's saved answer keeps its question; job requirements are never reused (2026-11-06)
+
+- **Why:** the first inventory of the Greenhouse + Workday automation loop (2026-11-06) found three
+  answer-safety defects on `main` and one review-page crash. Each is reproduced by a test that
+  fails on `main` (b194438) and passes here:
+  1. **Self-identification answered other sensitive questions.** D122's opt-in self-identification
+     ran for every sensitive choice question, matching the owner's flat list of option labels by
+     text. With "No" among the labels (the answer to "Are you Hispanic or Latino?", say), a required
+     "Have you ever been convicted of a felony?" and "Will you require a reasonable accommodation for
+     the interview?" resolved to "No" from the self-identification; so would marital status,
+     military service, an age range and any other sensitive question whose option text matched.
+  2. **A follow-up's saved answer ignored its question.** A saved answer is keyed by its question's
+     own wording, so "Which one?" saved after "Do you speak a language other than English?"
+     ("Spanish") answered "Which one?" after any other reusable question.
+  3. **"Do you meet all minimum qualifications?" was reused for every employer.** C6's job-fit rule
+     needed "the", "these", "those" or "its" before the qualifier.
+  4. **The review page failed** ("Application error: a client-side exception") on any application
+     with a question answered from self-identification: that source had no label on the page.
+- **Decided:**
+  - **Self-identification answers only the EEO self-identification categories:** gender and
+    pronouns, race and ethnicity, Hispanic or Latino, protected veteran, disability, sexual
+    orientation, transgender identity, a Greenhouse demographic-survey question, or a question in a
+    self-identification section (`resolver._self_id_applies`, matched whole against the question's
+    topic). Never criminal history, health, accommodation, age, family or marital status, religion,
+    national origin, military service, political or union membership, salary history, government
+    ids or a follow-up; never a question that also asks a fact (an ambiguity) or a protected one.
+  - **Only options that name their category.** Your labels answer a question only when every option
+    they match names its own category ("Male", "Asian", "I am not a protected veteran", "No, I do not
+    have a disability …") or is the form's one decline option (`resolver._self_describing`). A bare
+    "Yes", "No" or "Other" names none: a flat list cannot say which question it answered, so it
+    answers none, and the row says so. Consequence, stated: a Yes/No "Are you Hispanic or Latino?"
+    is now yours to answer each time. Answering it from your self-identification would need answers
+    stored by category; not built.
+  - **A follow-up is saved and reused with the question it follows.** Its key also carries a
+    trigger: that question's wording, help text and shape, and the answers to it that show the
+    follow-up, as option labels (page keys do not count). A follow-up whose question is not on the
+    form is never saved or reused. Keys of questions that are not follow-ups are unchanged. An answer
+    saved for a follow-up before D131 (keyed by its own wording) no longer answers it: that question
+    asks again, once.
+  - **Job requirements without "the":** "meet / satisfy / fulfil (all) (minimum …) requirements,
+    qualifications or criteria" and "have / possess (all) required, minimum … certifications,
+    skills, licences …" are about the job, so never saved or reused (`bankscope.E_FIT`). "Do you have
+    experience with Python?" stays reusable.
+  - **The review page** labels a self-identified answer "Your self-identification", and shows a
+    source it does not know as "Answered" instead of failing.
+- **Not changed:** what the owner stores (a list of labels); D122's opt-in and its precedence (an
+  answer you enter, or "Don't disclose", still wins); the package shape and `SCHEMA_VERSION` (3). A
+  package whose answers change under these rules rebuilds with a new content hash, so its approval
+  is asked again; nothing is approved for you. Nothing real was run.
+- **Tests:** `test_self_identification.py` (questions outside the categories, a bare label, a bare
+  label never turned into a decline, labels that name their category still answer),
+  `test_bank_scope.py` (a follow-up reused only after its question; never without it; keys),
+  `bank_scope_wordings.json` (five requirement wordings), `test_bank_scope_api.py` (save and reuse
+  through the route, and no reuse after another question), `frontend/e2e/self-identification.spec.ts`
+  (desktop and mobile: the source label, and the felony question left to you).
