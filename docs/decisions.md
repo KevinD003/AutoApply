@@ -3683,6 +3683,10 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   "Questions are waiting for your answers" links to the application, where the suggestions are.
 - **Not found in the shared legacy files:** the XGBoost/LightGBM code itself (only the `.py`
   files shared were read); this is written fresh.
+- **2026-11-06 (D133):** suggestions now also judge the saved side, read label and help text,
+  veto a word on one side only by its family, keep a rule floor under the model, never offer an
+  answer that would not fit, and offer "Use here only". Correction: "Forget" exists only as the
+  API's `DELETE /answer-brain`; the app has no button for it yet.
 
 ## D116 — Greenhouse real-page mechanics rebuilt from the legacy bot (2026-11-02)
 
@@ -3823,6 +3827,15 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
   malformed-entry skip). The end-to-end fill of an EEOC react-select on a real Greenhouse page
   is unobserved, so like the D104 location stand-ins it stays checkpoint-first until the pilot
   sees one.
+- **Amendment (2026-11-06, D133):**
+  - "Never auto-filled" above is superseded by D122 within D131's scope: with self-identification
+    switched on, an equal-opportunity question is answered from the owner's own labels when its
+    options name their category (or by its one decline option).
+  - The original EEO topics found in the wording keep D49/D61's saved-answer policy: a saved answer
+    is proposed, and sent only after "Include this answer".
+  - With self-identification on, an exactly matched EEO question no longer holds automatic
+    applying: D113 waits only on unresolved questions (`autoapply/service.py`).
+  - The decline mapping above is D61, not "D79".
 
 ## D122 — Self-identification: the owner's own EEOC/demographic answers, opt-in auto-fill (2026-11-02)
 
@@ -4500,3 +4513,117 @@ audit-inventory and export-completeness guards are updated and pass.
     not used), `test_classify_vocabulary.py` (vaccination wordings in, giving vaccines out),
     `frontend/e2e/self-identification.spec.ts` (a label with commas saved and shown whole, desktop
     and mobile).
+
+## D133 — Reuse and suggestion guards: the saved side is judged too, word-level vetoes, a rule floor under the model, "Use here only" (2026-11-06)
+
+- **Why:** rank 2 of the Greenhouse + Workday automation loop (`docs/automation-loop.md`). Each
+  finding was reproduced on `main` (bd38529) by a probe or a test before fixing:
+  1. **The answer brain judged only the question asked now.** A saved answer kept from before
+     today's rules, given to a question the bank never reuses, was suggested for a rewording the
+     resolver reads as ordinary: "Do you have the necessary documents to work in Canada?" for
+     "…necessary forms…", "Have you received the COVID-19 vaccine?" for "…booster?", "Have you
+     worked for Acme before?" for "Have you worked for Acme?", "Do you have proof of vaccination?"
+     for "…immunity?", "What is your race?" for "What is your pace?". A follow-up's answer, kept
+     under the question it follows (D131), was suggested word for word for the same wording asked
+     on its own.
+  2. **Wording that differs on what matters was suggested:** another product, language, unit or
+     name ("Salesforce" / "HubSpot", "Spanish" / "French", "lbs" / "kg", "AWS" / "Azure"), a
+     negation the parity check missed ("uncomfortable", "fail", "other than English", a typographic
+     apostrophe in "Can’t"), number words ("twenty" / "fifty"), or a difference in the help text
+     only ("In pounds" / "In kilograms").
+  3. **The rule score lifted every pair alike:** its help-text and option similarities were a
+     constant 1 for the many questions with neither, so unrelated pairs ("Do you own a car?" / "…a
+     laptop?") passed 0.5; and a trained model could suggest any pair, however unrelated.
+  4. **A suggestion could be refused on accept:** a saved text longer than the field allows (or
+     not an email or link where one is needed) was offered, then refused with a 400.
+  5. **Accepting always saved for the new wording,** and a verdict's unknown field was ignored, so
+     a client asking not to save got a saved answer.
+  6. **Self-identification:** "I don't wish to self-identify", the wording `classify` already read
+     as a self-identification option, was no decline option, so it answered nothing even when it
+     was your label; no table, corpus or receiver test exercised self-identification beyond its
+     own rows.
+  7. **A page failing while it rendered** replaced the whole app with "Application error", and the
+     profile said self-identification answers "your own self-describe", which it never does.
+- **Decided:**
+  - **The saved side is judged too** (`learning.service._suggestible`). A saved answer is suggested
+    for another wording only when the question it was given to, rebuilt from what was stored
+    (`resolver.saved_question`, factored out of `saved_answer_scope` with identical results), is one
+    the bank reuses and nothing sensitive, protected or a consent; and only when it is stored under
+    its own wording's key (never a follow-up's). Saved answers and your "Not this" verdicts are
+    loaded once per request and each saved answer is judged once.
+  - **Never an answer that would not fit:** a suggestion is checked with the normalisation accepting
+    uses; one that would be refused is not offered.
+  - **Vetoes over label and help text** (`learning.features.veto`): typographic apostrophes folded
+    and answering instructions removed ("(Yes/No)", "Select one"); numbers include number words;
+    negation parity includes lack, neither and unable; countries are compared over the help text
+    too. A word on one side only vetoes the pair when it is a negation (a negator, "n't", fail,
+    refuse, except, "other than", an un-, in-, dis- or non- word whose stem is on the other side),
+    a unit, a language, a name (by its shape anywhere: AWS, HubSpot, C++; in the label also a
+    capital after its first word, or any word of a heading; a question is never read as a heading)
+    or a product. A capitalised first word, and a capital in the help text, count only by shape or
+    list.
+  - **The rule score reads the wording only, and is a floor:** help-text and option similarity are
+    out of the blend; the threshold is 0.6; a pair below it is never suggested, whatever a trained
+    model says. The model ranks and narrows what remains (its threshold stays 0.5); a model that
+    cannot be used falls back to the same floored rule scores.
+  - **"Use here only":** accepting takes `save_to_bank` (default true); false answers this
+    application alone and saves nothing, so the next application asking it is offered the same
+    saved answer again. The verdict is a yes either way. Verdict bodies refuse unknown fields
+    (422). The card offers "Use and save", "Use here only" and "Not this", with D132's notices.
+  - **"I don't wish to self-identify" and "I do not wish to self-identify"** (typographic
+    apostrophe folded) are decline options. As before: never chosen between two declines, never on
+    an optional question, never without "Don't disclose"; for self-identification, only where the
+    other options name a category (D131).
+  - **An error boundary for the signed-in pages:** "This page could not be shown" under the app's
+    own navigation, with "Try again" and "Reload the page". The error itself is never read, shown
+    or logged there.
+  - **The profile** lists the categories self-identification answers and the questions it never
+    answers.
+- **Not changed:** `SCHEMA_VERSION` (3), `RESOLVER_VERSION`, the model's feature columns
+  (`features.NAMES`) and stored verdicts, exact reuse (`_from_bank`), D122's scope, which questions
+  may get a suggestion (`_eligible`, `_reuse_refusal`), execution, approvals and D113. A package
+  whose options include one of the two new decline wordings resolves differently and gets a new
+  hash, so its approval is asked again. The screening job is a local fixture assumption (a real
+  Greenhouse board sends equal-opportunity questions in `compliance[]`). Nothing real was run.
+- **Deferred:** training the model on the similarity columns only, with monotone constraints (it
+  changes a stored model's column count: existing models would fail until retrained); suggestions
+  in D132's questions tab (D132 not merged); wording gaps on the asked side ("necessary forms",
+  "worked for Acme" without "before", booster, immunity, shots, "stand for 8 hours"), which change
+  exact reuse and package hashes and need their own probe-first slice; answers saved for
+  follow-ups before D131, still keyed by their own wording, so they still answer an identical
+  question asked on its own through exact reuse (from code reading; not run).
+- **Residuals, stated:** a common noun swapped above the floor can still be suggested (forklift /
+  crane, 0.656): you confirm it; headings (Title Case or all capitals) lose most suggestions, since
+  any differing word counts as a name ("LinkedIn Profile" / "LinkedIn URL"); the unit, language
+  and product lists are incomplete; a stored answer has no form, so section and repeated-question
+  rules cannot be judged on the saved side; the model's ranking within the floor is unchanged;
+  "fluent in Spanish" / "speak Spanish fluently" is no longer suggested (0.426); no provider
+  source is recorded for "I do not wish to self-identify"; with self-identification on and a bare
+  "No" among your labels, a named equal-opportunity question ("Are you Hispanic or Latino?") is
+  not offered for saving (D131's path for a label naming no category; narrowing only).
+- **The plan, corrected while building:** the Hispanic-origin row is reusable as a proposal
+  (D61), so the question-safety table records it as such and the self-identification test tries
+  each option on it; queueing an application that waits on answers is refused by the state
+  machine (400) before the approval gate; forcing only `_self_id_applies` cannot reproduce the
+  felony fill (D131's second guard catches it), so that sabotage used the pre-D131 code.
+- **Tests:** `test_disclosure_ledger.py` (both wordings and the typographic apostrophe as the one
+  decline; two declines never chosen between; self-describe never a decline);
+  `test_self_identification.py` (the new wording declines gender only: Hispanic and felony stay
+  yours, a race multi-select takes only the decline); `test_question_safety.py` (rows
+  `c5.selfid.*`; every row, controls included, with each option alone and a trap set as
+  self-identification: only the equal-opportunity rows in a self-identification section change);
+  `test_resolver.py` (the legacy corpus with each option as self-identification: no change);
+  `test_greenhouse_dom.py` (screening job 5020003, by id and through the pilot: felony and
+  sponsorship wait, gender from self-identification, approval and queueing refused, the receiver
+  counts nothing; then exactly the owner's answers arrive); `test_answer_brain_rules.py` (the
+  saved-side rule, the veto table both ways, help-only differences, fifteen rewordings kept,
+  every family load-bearing, the rule score); `test_answer_brain.py` (five saved-side witnesses,
+  a follow-up's answer, an answer that would not fit, one case per veto family, a model trained
+  the wrong way round, "Use here only", unknown fields); `frontend/e2e/answer-suggestions.spec.ts`
+  and `frontend/e2e/error-boundary.spec.ts` (desktop and mobile).
+- **Each test fails without its change** (run once each): the decline row with the resolver
+  before step 1; the self-identification dimension (47 rows in a per-row copy), three
+  `c5.selfid` rows, the corpus row `r8_10_prevent_work_help_disability` and both screening runs
+  with the pre-D131 code (c4503cf); seven suggestion tests with the previous service; 44 veto
+  tests with the previous vetoes; five score tests with step 5's scoring; two verdict tests with
+  the previous router; the error-boundary spec without `error.jsx`.
