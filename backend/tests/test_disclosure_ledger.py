@@ -117,6 +117,9 @@ def test_a_required_question_without_a_choice_blocks_approval(api, receiver):
     assert receiver.ledger()["accepted"] == 0
 
 
+CURLY_WISH = "I don\u2019t wish to self-identify"  # a typographic apostrophe, folded by normalize
+
+
 def select(*labels, required=True, typ=FieldType.select):
     return FormField(
         key="gender",
@@ -134,6 +137,10 @@ def select(*labels, required=True, typ=FieldType.select):
         (("Woman", "Man", "I don't wish to answer"), "I don't wish to answer"),
         (("Female", "Male", "Prefer not to say"), "Prefer not to say"),
         (("Female", "Male", "  DECLINE TO ANSWER  "), "  DECLINE TO ANSWER  "),
+        # D133: the wording classify already reads as a self-identification option.
+        (("Woman", "Man", "I don't wish to self-identify"), "I don't wish to self-identify"),
+        (("Woman", "Man", "I do not wish to self-identify"), "I do not wish to self-identify"),
+        (("Woman", "Man", CURLY_WISH), CURLY_WISH),
     ],
 )
 def test_the_one_decline_option_is_the_answer(labels, want):
@@ -152,6 +159,9 @@ def test_the_one_decline_option_is_the_answer(labels, want):
         ("Woman", "Man", "Other / decline"),  # not clearly a decline
         ("Woman", "Man", "Decline"),  # one word could mean anything
         ("Woman", "Man", "I identify as declining"),
+        ("Woman", "Man", "I prefer to self-describe"),  # discloses: never a decline (D121)
+        # D133: two recognised declines are never chosen between.
+        ("Woman", "Man", "I don't wish to self-identify", "Decline to self-identify"),
     ],
 )
 def test_without_exactly_one_decline_option_a_required_question_stays_a_checkpoint(labels):

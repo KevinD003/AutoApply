@@ -388,6 +388,11 @@ DECLINE_WORDS = frozenset(
         "i choose not to disclose",
         "i don't want to answer",
         "i do not want to answer",
+        # D133: the wording classify._SENSITIVE_OPTION_STRONG already reads as a
+        # self-identification option; an unambiguous refusal. No provider source is recorded for
+        # it (the Workday sources record "I do not want to answer", above).
+        "i don't wish to self-identify",
+        "i do not wish to self-identify",
     }
 )
 
@@ -1889,29 +1894,38 @@ _SHAPE_TYPE = {
 }
 
 
-def saved_answer_scope(entry) -> str | None:
-    """Why a saved answer can no longer answer its own wording, judged from what was stored
-    (wording, help text, answer shape, options): a bankscope category, "other", or None (it may
-    still be reused where a form asks exactly this question). A stored row has no form, so the
-    section, repeated and follow-up rules cannot be judged here."""
+def saved_question(entry) -> FormField | None:
+    """The question a saved answer was given to, rebuilt from what was stored (wording, help
+    text, answer shape, options), or None when it cannot be rebuilt: stored text may no longer
+    fit a field (an option longer after lower())."""
     typ = _SHAPE_TYPE.get(entry.answer_shape, FieldType.text)
     labels = list(entry.options_snapshot or [])
     if typ in CHOICE_TYPES | MULTI_TYPES and not labels:
         typ = FieldType.text
-    try:  # stored text may no longer fit a field (an option longer after lower()): no claim
+    try:
         options = (
             [Option(value=str(i), label=x) for i, x in enumerate(labels)]
             if typ in CHOICE_TYPES | MULTI_TYPES
             else []
         )
-        f = FormField(
+        return FormField(
             key="saved",
             label=entry.question_text,
             help_text=entry.help_text or None,
             type=typ,
             options=options,
         )
-    except ValueError:  # not a question NoEfforts can rebuild: make no claim about it
+    except ValueError:
+        return None
+
+
+def saved_answer_scope(entry) -> str | None:
+    """Why a saved answer can no longer answer its own wording, judged from what was stored
+    (wording, help text, answer shape, options): a bankscope category, "other", or None (it may
+    still be reused where a form asks exactly this question). A stored row has no form, so the
+    section, repeated and follow-up rules cannot be judged here."""
+    f = saved_question(entry)
+    if f is None:  # not a question NoEfforts can rebuild: make no claim about it
         return None
     if resolve_field(f, Context()).bankable:
         return None

@@ -23,8 +23,9 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | What | Where |
 |---|---|
 | `main` | a13b3c6 (tree ee316cc2, as predicted): #35 D120 (d42dabd, tree f8b49d21; main CI #246 green on all four jobs), #38 exposure-evidence note (c4503cf), #36 D131 (a13b3c6; 4/4 green on the combined tree) |
-| D131 follow-up (the review's remaining findings) | PR #39, branch `answer-safety-followup`; 2596 focused tests passed locally; CI running |
-| D132 form-change pause and questions tab | branch `form-change-pause` (d197bb7), built after three design critiques; 16 new tests pass locally; affected suites, an implementation review and the e2e still to finish before its PR |
+| D131 follow-up (the review's remaining findings) | merged (#39, bd38529); main CI #254 passed all four jobs |
+| D132 form-change pause and questions tab | PR #40, branch `form-change-pause`; reworked after an adversarial review; CI running on its head |
+| D133 reuse and suggestion guards | branch `suggestion-guards` (from `main` bd38529); ten steps committed, each with a test that fails without it; focused suites and e2e below |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -42,14 +43,14 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 |---|---|---|---|
 | 1 | Known answer fills and survives readback | fx (gh2 stand-in) | fx, single-page approximation only |
 | 2 | New question → questions tab → saved → resumes | fx on the D132 branch (gh2 by id and pilot stand-in), not on `main` | fx on the D132 branch (e2e), not on `main` |
-| 3 | Future reuse | unit (resolver), generic form | unit |
-| 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39 | unit |
+| 3 | Future reuse | unit (resolver), generic form; D133 (branch): suggestions judge the saved side, "Use here only" | unit |
+| 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 (branch): word-level vetoes over label and help, a rule floor under the model | unit |
 | 5 | Conditional question | partial: v1 fixture only; id-only real structure cannot answer it | absent (no branching fixture) |
 | 6 | Unsupported widget → checkpoint | fx at capture; some types refused only after approval | fx at capture |
 | 7 | Repeating records | fx education stand-in (D120); employment unit | absent |
 | 8 | Answer edits invalidate approvals | fx | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; not run on gh2 | partial |
-| 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39 | partial (never inferred only) |
+| 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 (branch): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify" |
 | 11 | Upload failure preserves evidence | fx for UploadFailed; other exceptions lose it | fx (single page) |
 | 12 | Uncertain send quarantined | fx | fx (final send only; each Next not modelled) |
 | 13 | Cancellation respected | fx on the generic form; D113 ignores revocation and pause for queued work | partial |
@@ -80,6 +81,16 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   dead-ending; "Questions needing your answer"; read the form again; "Try this version again".
   - Three design critiques changed the first build. Only a new question pauses; changes only the
     live page shows stay plain stops; a change found after filling never pauses.
+- **D133 (branch `suggestion-guards`, not merged).** Rank 2, reuse and suggestion guards:
+  - a saved answer is suggested only when the question it was given to is still reused (never a
+    fact, one employer's question, a sensitive topic or a follow-up's answer), and never when it
+    would not fit the field;
+  - vetoes read label and help text; a word on one side only vetoes by family (negation, unit,
+    language, name, product); the rule score reads the wording only and is a floor under the model;
+  - "Use here only" saves nothing; verdicts refuse unknown fields;
+  - "I don't wish to self-identify" is a decline; a screening job on the gh2 stand-in shows
+    self-identification never answering felony or sponsorship (receiver ledger);
+  - an error boundary keeps the app around a page that fails while it is shown.
 - **Research** (log below):
   - corrected the Workday terms note: the End User Agreement covers scoutrfp.com;
   - Workday saves a draft on every Next;
@@ -106,8 +117,11 @@ stand-ins. Next: finish its validation and open its PR. Later ranks:
 - **D131:** merged; its CI passed on the combined tree.
 - **D131 follow-up (#39):** focused suites passed locally (2596 tests) and e2e passed (6 tests). The
   full suites run in its CI.
-- **D132:** 16 new tests pass locally. Still to finish: the existing suites it touches, an
-  implementation review and its e2e.
+- **D132 (PR #40):** reworked after an adversarial review; its open findings fixed (564b4f1); CI
+  on that head decides the merge.
+- **D133 (branch `suggestion-guards`):** focused suites (2543 passed), the 31 fixture suites (898
+  passed), the e2e that touch it (56 passed) and each sabotage run locally; the full suites run in
+  its pull request's CI.
 
 ## Tests run (this loop)
 
@@ -121,6 +135,10 @@ stand-ins. Next: finish its validation and open its PR. Later ranks:
 | D131 follow-up focused backend suites (27 files, disposable database, JUnit) | 2596 passed, 0 failures |
 | `playwright test self-identification.spec.ts profile-edit.spec.ts` (follow-up) | 6 passed |
 | `pytest tests/test_form_change_loop.py` (D132) | 16 passed |
+| D133 focused backend suites (14 files, disposable database, JUnit) | 2543 passed, 0 failures |
+| D133: the 31 test files that use the second Greenhouse-style fixture | 898 passed |
+| D133 sabotage runs (each change removed in turn) | every new test fails without its change |
+| D133 e2e (12 specs, desktop and mobile, JUnit) | 56 passed, 0 failures |
 
 ## Failed approaches and rejected designs
 
@@ -162,10 +180,11 @@ stand-ins. Next: finish its validation and open its PR. Later ranks:
 
 ## Exact next action
 
-1. Merge #39 (D131 follow-up) when its 4 checks pass.
-2. D132: record the affected suites and the implementation review, fix what they find, run
-   `e2e/questions.spec.ts`, then merge `main` into `form-change-pause` and open its PR.
-3. Then the next ranked slice: the owner's decision on D113 continuing after a form change.
+1. D132 (PR #40): merge when its four checks pass on 564b4f1.
+2. D133: open its pull request from `suggestion-guards`; an adversarial review of the slice; merge
+   when green (after D132, resolving the `decisions.md` tail).
+3. Then rank 3, D134: the standing rule respects the owner's pause and revocation for work it
+   already queued; continuing after a form change still needs the owner's decision.
 
 ## Research log (accessed 2026-11-06)
 

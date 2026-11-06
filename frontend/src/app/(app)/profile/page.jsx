@@ -537,9 +537,12 @@ function SelfIdentificationCard() {
       <details className="mt-2 text-sm text-ink-muted">
         <summary className="cursor-pointer text-brand underline">How it works</summary>
         <p className="mt-2">
-          When on, an EEOC or demographic question (gender, race, veteran, disability, and your own self-describe) is answered from the exact
-          option labels you list below — your own stated identity. A label is used only when it matches an option on the form exactly;
-          anything it doesn’t match stays a question for you, and “Decline to self-identify” is always still available. A question that takes
+          When on, an equal-opportunity question about gender or pronouns, race or ethnicity, Hispanic or Latino origin, protected-veteran
+          status, disability, sexual orientation or transgender identity is answered from the exact option labels you list below — your own
+          stated identity. A label is used only when it matches an option on the form exactly, and only an option that names its own
+          category: a bare “Yes” or “No” answers no question, because nothing says which question it was meant for. Criminal history,
+          health, accommodation, age and other personal questions are never answered from it: you answer those yourself. Anything it
+          doesn’t match stays a question for you, and the form’s own decline option is always still available. A question that takes
           several answers (such as race/ethnicity) is left for you unless you choose to decline, so a partial answer is never sent. A
           per-application choice you make always overrides this.
         </p>
