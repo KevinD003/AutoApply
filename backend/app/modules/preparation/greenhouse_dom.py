@@ -13,6 +13,7 @@ is refused; nothing is guessed. Hidden-at-load questions are flagged; this struc
 no trigger, so their condition is recorded as unknown (never filled; a checkpoint if
 required)."""
 
+import html
 import re
 from dataclasses import asdict, dataclass, field
 
@@ -25,6 +26,8 @@ from app.modules.preparation.forms import (
     FormField,
     FormSchema,
     Option,
+    SectionOptionSpec,
+    SectionSpec,
     _Node,
     _TreeBuilder,
 )
@@ -35,15 +38,20 @@ from app.modules.preparation.forms import (
 # recognised instead of refused: the country picker beside the phone field
 # (`phone_country_field`) and a location search picker whose own script sets the job data's
 # hidden values (`location_picker`). Anywhere else they stay checkpoints, as in v2.
-# v4 (D130): when the job data asks the phone as optional and the page's phone group holds
-# exactly one other control, unrequired (`phone_companion`), the phone is left blank and that
-# control is never touched, instead of both being refused. It is part of the adapter_version
-# that `check_binding` enforces (not of the hashed package content), so a worker built before
-# D130 -- which would not re-prove the live page -- can never claim such a package.
-# NOTE: D120 (unmerged branch greenhouse-structured-sections) also moves v3 to v4. Whichever of
-# the two reaches main second must take a version main has never carried (v5), with its pinned
-# tests, so that no two different behaviours ever share one version.
-EXTRACTION_VERSION = "greenhouse-dom-v4"
+# v4 (D130, on main): when the job data asks the phone as optional and the page's phone group
+# holds exactly one other control, unrequired (`phone_companion`), the phone is left blank and
+# that control is never touched, instead of both being refused.
+# v5 (D120 integrated after D130): the extractor also recognises structured Education/Employment
+# sections and the adapter fills them. D120's own branch had called this v4 too, so the combined
+# build takes a version neither carried: v3 (main before D130) and v4 (main with D130; D120's
+# branch) each meant a different behaviour.
+# The version rides in `policy.ADAPTER_VERSIONS` for greenhouse_dom and greenhouse_live (the
+# adapter_version `check_binding` enforces at queueing, before any page action, and at the
+# disclosure and send gates), NOT in the hashed package content: no content hash changes; only
+# existing greenhouse_dom/greenhouse_live approvals are retired and must be given again. A worker
+# built before this -- one that would skip a section or not re-prove the phone's control -- can
+# never claim a package approved under it.
+EXTRACTION_VERSION = "greenhouse-dom-v5"
 UNKNOWN_TRIGGER = "unknown-trigger"  # Condition.key for "shown by page logic we cannot see"
 UNLISTED_REASON = (
     "a control on the page that the job data does not list: what it asks, and whether it is "
@@ -622,6 +630,62 @@ def required_evidence(api_required: bool, signals: dict | None) -> str:
     return "api_required_page_unmarked" if api_required else "page_required_api_optional"
 
 
+_SECTION_OPTION_RE = re.compile(
+    r'<li[^>]*role="option"[^>]*data-value="([^"]+)"[^>]*>(.*?)</li>', re.S
+)
+
+
+def _section_options(page_html: str, control_id: str) -> list[SectionOptionSpec]:
+    m = re.search(rf'<ul id="{re.escape(control_id)}-listbox"[^>]*>(.*?)</ul>', page_html, re.S)
+    if not m:
+        return []
+    out = []
+    for value, text in _SECTION_OPTION_RE.findall(m.group(1)):
+        label = html.unescape(re.sub(r"<[^>]+>", "", text)).strip()
+        if label:
+            out.append(SectionOptionSpec(id=value, text=label))
+    return out
+
+
+def detect_sections(page_html: str) -> list[SectionSpec]:
+    """D120 (stand-ins only): recognise a structured education/employment section rendered in the
+    legacy-evidence shape -- per-row ids ``school--0`` / ``company-name-0`` and option lists as
+    ``<li role=option data-value=ID>``. The real hosted structure is unobserved; this reads the
+    synthetic stand-in's own structure (container ids education-section / employment-section)."""
+    sections: list[SectionSpec] = []
+    if 'id="school--0"' in page_html:
+        sections.append(
+            SectionSpec(
+                kind="education",
+                root="#education-section",
+                schools=_section_options(page_html, "school--0"),
+                degrees=_section_options(page_html, "degree--0"),
+                disciplines=_section_options(page_html, "discipline--0"),
+            )
+        )
+    if 'id="company-name-0"' in page_html:
+        sections.append(SectionSpec(kind="employment", root="#employment-section"))
+    return sections
+
+
+_EDU_CTL_RE = re.compile(
+    r"^(school|degree|discipline|start-month|start-year|end-month|end-year)--\d+$"
+)
+_EMP_CTL_RE = re.compile(
+    r"^(company-name|title|start-date-month|start-date-year|current-role|"
+    r"end-date-month|end-date-year)-\d+$"
+)
+
+
+def _section_control_id(cid: str, kinds: set) -> bool:
+    """True when cid is a per-row control of a detected section, so capture represents it inside the
+    section rather than as an unlisted unsupported question."""
+    return bool(
+        ("education" in kinds and _EDU_CTL_RE.match(cid))
+        or ("employment" in kinds and _EMP_CTL_RE.match(cid))
+    )
+
+
 def build_schema(api: dict, page_html: str, *, stand_ins: bool = False
                  ) -> tuple[FormSchema, list[FieldMapping]]:  # fmt: skip
     """Job-post fields, verified against the page's controls. Raises gh.SchemaMismatch unless
@@ -687,8 +751,13 @@ def build_schema(api: dict, page_html: str, *, stand_ins: bool = False
     if companion is not None:  # the phone is then left blank (resolver: `phone_left_blank`)
         fields = [f.model_copy(update={"widget": "phone_left_blank"})
                   if f.type == FieldType.tel else f for f in fields]  # fmt: skip
-    unlisted = [c for c in unlisted_controls(from_api.fields, controls)
-                if phone is None or c.id != phone.key]  # fmt: skip
+    sections = detect_sections(page_html) if stand_ins else []  # D120
+    section_kinds = {s.kind for s in sections}
+    unlisted = [
+        c
+        for c in unlisted_controls(from_api.fields, controls)
+        if (phone is None or c.id != phone.key) and not _section_control_id(c.id, section_kinds)
+    ]
     hidden_search = {c.id for c in hidden_search_candidates(from_api.fields, controls)}
     for n, c in enumerate(unlisted, 1):
         valid = bool(c.id) and re.fullmatch(KEY_PATTERN, c.id) and c.id not in taken
@@ -737,6 +806,7 @@ def build_schema(api: dict, page_html: str, *, stand_ins: bool = False
             action=form.get("data-submit-path") or form.get("action"),
             method="post" if (form.get("data-submit-path") or form.get("action")) else None,
             fields=fields,
+            sections=sections,
         ),
         mappings,
     )
