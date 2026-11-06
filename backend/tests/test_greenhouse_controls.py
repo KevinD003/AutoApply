@@ -527,8 +527,9 @@ def test_capabilities_stay_fixture_only_and_real_destinations_refused():
 
 def test_only_forms_with_these_controls_carry_a_widget_so_schema_version_stays(api, receiver):
     """No SCHEMA_VERSION bump: a package gains `.answers[].widget` only for a form with one of
-    these stand-in controls (captured since greenhouse-dom-v3). Every other package keeps the
-    shape pinned for version 3, and so its content and hash."""
+    these stand-in controls (captured since greenhouse-dom-v3; D130 and then D120 raised the
+    extraction version, which rides in adapter_version, not the hashed content). Every other
+    package keeps the shape pinned for version 3, and so its content and hash."""
     assert pk.SCHEMA_VERSION == 3
     _, plain = prepare(api)  # the v2 form without them (normal mode)
     assert paths(content(api, plain)) <= SHAPES[3]
@@ -537,5 +538,5 @@ def test_only_forms_with_these_controls_carry_a_widget_so_schema_version_stays(a
     assert paths(content(api, loc)) - SHAPES[3] == {".answers[].widget"}
     route = api.get(f"/jobs/{job_id}/route").json()
     assert (route["route"], route["provider"]) == ("browser", "greenhouse_dom")
-    # v4 (D130) is the extraction behind adapter_version, never package content.
-    assert gh.EXTRACTION_VERSION == "greenhouse-v1" and dom.EXTRACTION_VERSION.endswith("-v4")
+    # v5 (D130 + D120) is the extraction behind adapter_version, never package content.
+    assert gh.EXTRACTION_VERSION == "greenhouse-v1" and dom.EXTRACTION_VERSION.endswith("-v5")
