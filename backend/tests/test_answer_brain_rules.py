@@ -117,6 +117,7 @@ def veto(saved_label, new_label, saved_help="", new_help="", shape="choice"):
 
 
 CURLY = "’"  # a typographic apostrophe
+ACUTE = "\u00b4"  # an acute accent typed for one (Spanish, Portuguese, German keyboards)
 VETOED = [
     ("proper_noun", "Have you used Salesforce?", "Have you used HubSpot?"),
     ("proper_noun", "Do you have experience with AWS?", "Do you have experience with Azure?"),
@@ -154,6 +155,45 @@ VETOED = [
         "Are you eligible for the bonus scheme?",
         "Are you ineligible for the bonus scheme?",
     ),
+    # D133 review: what the first build missed.
+    ("negation", "Can you lift 50 pounds?", f"Can{ACUTE}t you lift 50 pounds?"),
+    ("negation", "Can you lift 50 pounds?", "Can`t you lift 50 pounds?"),
+    (
+        "negation",
+        "Are you comfortable working at heights?",
+        "Are you afraid of working at heights?",
+    ),
+    ("negation", "Do you enjoy working with customers?", "Do you dislike working with customers?"),
+    ("numbers", "Can you lift twenty-five pounds?", "Can you lift seventy-five pounds?"),
+    ("numbers", "Have you used three-phase power?", "Have you used single-phase power?"),
+    ("numbers", "Can you work 7am-7pm?", "Can you work 7pm-7am?"),
+    ("numbers", "Can you work from 9 a.m. to 5 p.m.?", "Can you work from 9 p.m. to 5 a.m.?"),
+    (
+        "numbers",
+        "Can you lift 50 pounds and carry 25 pounds?",
+        "Can you lift 25 pounds and carry 50 pounds?",
+    ),
+    (
+        "countries",
+        "Do you have payroll experience in the U.K.?",
+        "Do you have payroll experience in the U.S.?",
+    ),
+    ("countries", "Do you have payroll experience?", "Do you have US payroll experience?"),
+    ("bound", "Can you lift more than 50 pounds?", "Can you lift less than 50 pounds?"),
+    ("bound", "Can you lift at least 50 pounds?", "Can you lift at most 50 pounds?"),
+    ("bound", "Do you have a GPA above 3.5?", "Do you have a GPA below 3.5?"),
+    ("quantity", "Have you used any of these tools?", "Have you used all of these tools?"),
+    ("restrictive", "Do you speak English?", "Do you speak only English?"),
+    ("level", "Do you have basic Excel skills?", "Do you have advanced Excel skills?"),
+    ("schedule", "Can you work evening shifts?", "Can you work weekend shifts?"),
+    ("workplace", "Are you able to work remotely?", "Are you able to work on-site?"),
+    (
+        "employment",
+        "Are you available for full-time work?",
+        "Are you available for part-time work?",
+    ),
+    ("script", "У вас есть опыт работы с Excel?", "Вы никогда не работали с Excel?"),
+    ("script", "您有Salesforce经验吗？", "您有Salesforce认证吗？"),
 ]
 
 
@@ -179,6 +219,24 @@ def test_help_text_that_differs_on_what_matters_vetoes_identical_labels(code, sa
     assert veto(label, label, saved_help, new_help, shape="text") == code
 
 
+def test_an_answering_instruction_in_the_help_text_cancels_no_negation():
+    # D133 review: "If not, please explain." on one side once cancelled the other label's "not".
+    got = veto(
+        "Can you work in a climate-controlled warehouse?",
+        "Can you work in a warehouse that is not climate-controlled?",
+        saved_help="If not, please explain.",
+    )
+    assert got == "negation"
+    got = veto(
+        "Are you comfortable working with supervision?",
+        "Are you comfortable working with no supervision?",
+        saved_help="If no, please explain in the next question.",
+    )
+    assert got == "negation"
+    label = "Do you have a driver's license?"  # the instruction itself changes nothing
+    assert veto(label, label, saved_help="If not, please explain.") is None
+
+
 def test_a_product_named_only_in_the_help_text_vetoes():
     label = "Which customer relationship tool have you used?"
     got = veto(label, label, "For example Salesforce", "For example HubSpot", shape="text")
@@ -201,6 +259,9 @@ CONTROLS = [
     ("What is your GitHub username?", "GitHub username"),
     ("Do you have a bachelor's degree?", "Do you hold a bachelor's degree?"),
     ("Do you speak Spanish?", "Do you speak Spanish? (Yes/No)"),
+    ("Do you speak Spanish?", "Do you speak Spanish? Yes/No"),
+    ("Do you speak Spanish?", "Do you speak Spanish? [Yes/No]"),
+    ("What is your phone number?", "What is your phone no.?"),
     ("Portfolio website", "Portfolio URL"),
     ("Experience with Salesforce?", "Have you used Salesforce?"),
     ("Are you proficient in Microsoft Excel?", "How proficient are you in Microsoft Excel?"),
@@ -225,6 +286,8 @@ WITNESS = {
     "language": ("do you speak spanish?", "do you speak french?"),
     "proper_noun": ("Do you have experience with AWS?", "Do you have experience with Azure?"),
     "product": ("have you used salesforce?", "have you used hubspot?"),
+    "restrictive": ("Do you speak English?", "Do you speak only English?"),
+    "level": ("Do you have basic Excel skills?", "Do you have advanced Excel skills?"),
 }
 
 
@@ -235,6 +298,47 @@ def test_every_word_family_is_load_bearing(code, monkeypatch):
     families = [(c, (lambda *a: False) if c == code else f) for c, f in features.FAMILIES]
     monkeypatch.setattr(features, "FAMILIES", families)
     assert veto(*WITNESS[code]) is None
+
+
+# One witness per kind of alternative: emptied, the pair is no longer vetoed.
+ALTERNATIVE_WITNESS = {
+    "bound": ("Can you lift more than 50 pounds?", "Can you lift less than 50 pounds?"),
+    "quantity": ("Have you used any of these tools?", "Have you used all of these tools?"),
+    "schedule": ("Can you work evening shifts?", "Can you work weekend shifts?"),
+    "workplace": ("Are you able to work remotely?", "Are you able to work on-site?"),
+    "employment": (
+        "Are you available for full-time work?",
+        "Are you available for part-time work?",
+    ),
+}
+
+
+@pytest.mark.parametrize("code", sorted(ALTERNATIVE_WITNESS))
+def test_every_kind_of_alternative_is_load_bearing(code, monkeypatch):
+    assert sorted(features.ALTERNATIVES) == sorted(ALTERNATIVE_WITNESS)
+    assert veto(*ALTERNATIVE_WITNESS[code]) == code
+    monkeypatch.setitem(features.ALTERNATIVES, code, set())
+    assert veto(*ALTERNATIVE_WITNESS[code]) is None
+
+
+def test_a_long_label_is_read_afresh_not_cached():
+    # D133 review: the cache holds the short labels forms repeat, never a long one.
+    before = features._cached_side.cache_info().currsize
+    features._side("Do you have experience " + "with these tools " * 100, "")
+    assert features._cached_side.cache_info().currsize == before
+
+
+def test_equal_scores_prefer_the_matching_help_text_whatever_the_row_order():
+    # D133 review: two saved answers with the same wording score the same; the database's row
+    # order once chose between them.
+    label, work = "Which programming language do you use most?", "At work, in your current team."
+    langs = ("Python", "Go")
+    plain = stored(field(label, options=langs), value={"labels": ["Python"]}, id="a")
+    at_work = stored(field(label, options=langs, help_text=work), value={"labels": ["Go"]}, id="b")
+    new = field("Which programming language do you use the most?", options=langs, help_text=work)
+    for order in ([plain, at_work], [at_work, plain]):
+        usable = {"choice": [(e, service._saved(e)) for e in order]}
+        assert service._best(new, usable, set(), None)["value"] == {"label": "Go"}
 
 
 # ------------------------------------------------------------------ the rule score (D133)

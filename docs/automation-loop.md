@@ -22,10 +22,10 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 
 | What | Where |
 |---|---|
-| `main` | a13b3c6 (tree ee316cc2, as predicted): #35 D120 (d42dabd, tree f8b49d21; main CI #246 green on all four jobs), #38 exposure-evidence note (c4503cf), #36 D131 (a13b3c6; 4/4 green on the combined tree) |
+| `main` | ab671e1 (tree cbd706a, as predicted): #40 D132 (c19c683, tree a54ae63, as predicted; main CI #260 green on all four jobs) and #42, the receiver's reset in one transaction (ab671e1) |
 | D131 follow-up (the review's remaining findings) | merged (#39, bd38529); main CI #254 passed all four jobs |
-| D132 form-change pause and questions tab | PR #40, branch `form-change-pause`; reworked after an adversarial review; CI running on its head |
-| D133 reuse and suggestion guards | branch `suggestion-guards` (from `main` bd38529); ten steps committed, each with a test that fails without it; focused suites and e2e below |
+| D132 form-change pause and questions tab | merged (#40, c19c683); main CI #260 passed all four jobs |
+| D133 reuse and suggestion guards | PR #41, branch `suggestion-guards`; `main` (D132) merged in, 4/4 green on that head; an adversarial review's findings fixed, each with a test that fails without it |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -42,7 +42,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | # | Workflow | Greenhouse | Workday |
 |---|---|---|---|
 | 1 | Known answer fills and survives readback | fx (gh2 stand-in) | fx, single-page approximation only |
-| 2 | New question → questions tab → saved → resumes | fx on the D132 branch (gh2 by id and pilot stand-in), not on `main` | fx on the D132 branch (e2e), not on `main` |
+| 2 | New question → questions tab → saved → resumes | fx (gh2 by id and pilot stand-in), on `main` since D132 (#40) | fx (e2e), on `main` since D132 |
 | 3 | Future reuse | unit (resolver), generic form; D133 (branch): suggestions judge the saved side, "Use here only" | unit |
 | 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 (branch): word-level vetoes over label and help, a rule floor under the model | unit |
 | 5 | Conditional question | partial: v1 fixture only; id-only real structure cannot answer it | absent (no branching fixture) |
@@ -117,11 +117,13 @@ stand-ins. Next: finish its validation and open its PR. Later ranks:
 - **D131:** merged; its CI passed on the combined tree.
 - **D131 follow-up (#39):** focused suites passed locally (2596 tests) and e2e passed (6 tests). The
   full suites run in its CI.
-- **D132 (PR #40):** reworked after an adversarial review; its open findings fixed (564b4f1); CI
-  on that head decides the merge.
-- **D133 (branch `suggestion-guards`):** focused suites (2543 passed), the 31 fixture suites (898
-  passed), the e2e that touch it (56 passed) and each sabotage run locally; the full suites run in
-  its pull request's CI.
+- **D132:** merged (#40); PR CI passed all four jobs on 564b4f1 and main CI #260 on c19c683. An
+  earlier PR run (6b01b2e) errored once in a fixture: the receiver's reset outlasted its 5-second
+  wait on a busy runner disk. Not D132's; fixed in its own PR (#42, merged).
+- **D133 (PR #41):** focused suites (2543 passed), the 31 fixture suites (898 passed), the e2e
+  that touch it (56 passed) and each sabotage run locally; with `main` (D132) merged in, 1300
+  backend and 51 e2e passed and its CI passed all four jobs; after the adversarial review's fixes,
+  2581 passed, each fix's test failing without it. The full suites run in its CI.
 
 ## Tests run (this loop)
 
@@ -139,6 +141,10 @@ stand-ins. Next: finish its validation and open its PR. Later ranks:
 | D133: the 31 test files that use the second Greenhouse-style fixture | 898 passed |
 | D133 sabotage runs (each change removed in turn) | every new test fails without its change |
 | D133 e2e (12 specs, desktop and mobile, JUnit) | 56 passed, 0 failures |
+| D133 with `main` (D132) merged in: the suites both touch (11 files) | 1300 passed, 0 failures |
+| D133 with `main` merged in: 8 e2e specs, desktop and mobile | 51 passed, 1 skipped by design |
+| D133 review fixes: the 14 focused files plus the rules, vocabulary and ledger tests (JUnit) | 2581 passed, 0 failures |
+| D133 review fixes: each changed file restored to 1b5cc0b in turn | features 39, service 1, resolver 3, classify 1 tests fail |
 
 ## Failed approaches and rejected designs
 
@@ -180,11 +186,11 @@ stand-ins. Next: finish its validation and open its PR. Later ranks:
 
 ## Exact next action
 
-1. D132 (PR #40): merge when its four checks pass on 564b4f1.
-2. D133: open its pull request from `suggestion-guards`; an adversarial review of the slice; merge
-   when green (after D132, resolving the `decisions.md` tail).
-3. Then rank 3, D134: the standing rule respects the owner's pause and revocation for work it
-   already queued; continuing after a form change still needs the owner's decision.
+1. D133 (PR #41): merge when its four checks pass on the head with the review fixes.
+2. Rank 3, D134 (branch `rule-respects-owner`): the standing rule respects the owner's pause and
+   revocation for work it already queued; its pull request after D133 merges.
+3. Owner decisions: every recorded permission ended on 2026-11-06 (renewing is the owner's call,
+   never extended because work took longer); continuing after a form change (D132).
 
 ## Research log (accessed 2026-11-06)
 

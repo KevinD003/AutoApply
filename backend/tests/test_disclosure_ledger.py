@@ -141,6 +141,9 @@ def select(*labels, required=True, typ=FieldType.select):
         (("Woman", "Man", "I don't wish to self-identify"), "I don't wish to self-identify"),
         (("Woman", "Man", "I do not wish to self-identify"), "I do not wish to self-identify"),
         (("Woman", "Man", CURLY_WISH), CURLY_WISH),
+        # D133 review: the unhyphenated spelling, as the older pair has it.
+        (("Woman", "Man", "I don't wish to self identify"), "I don't wish to self identify"),
+        (("Woman", "Man", "I do not wish to self identify"), "I do not wish to self identify"),
     ],
 )
 def test_the_one_decline_option_is_the_answer(labels, want):

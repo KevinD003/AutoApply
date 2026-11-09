@@ -392,7 +392,9 @@ DECLINE_WORDS = frozenset(
         # self-identification option; an unambiguous refusal. No provider source is recorded for
         # it (the Workday sources record "I do not want to answer", above).
         "i don't wish to self-identify",
+        "i don't wish to self identify",
         "i do not wish to self-identify",
+        "i do not wish to self identify",
     }
 )
 
@@ -1526,7 +1528,8 @@ def _self_id_outcome(f, self_id) -> tuple[str, dict | None, str | None, list]:
             return ("fill", _choice(hits[0]), hits[0].label, [hits[0].label])
         return ("none", None, None, [])
     # Multi-select. A decline option is exclusive; a substantive set is never sent partially.
-    decline_wanted = decline is not None and normalize(decline.label) in wanted
+    # The decline only where it survived D131's rule above (the other options name a category).
+    decline_wanted = decline is not None and any(o.value == decline.value for o in hits)
     substantive = [o for o in hits if decline is None or o.value != decline.value]
     if decline_wanted and not substantive:
         return ("fill", {"options": [_choice(decline)]}, decline.label, [decline.label])

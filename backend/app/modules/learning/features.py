@@ -12,6 +12,7 @@ used Salesforce?" vs "...HubSpot?", "In pounds" vs "In kilograms" in the help te
 import functools
 import math
 import re
+import unicodedata
 from typing import NamedTuple
 
 from app.modules.preparation.classify import COUNTRIES, find_countries
@@ -31,13 +32,16 @@ _STOP = {
     "a", "an", "the", "of", "to", "in", "on", "for", "and", "or", "is", "are", "be", "you",
     "your", "do", "does", "this", "that", "with", "at", "as", "by", "please", "if", "we", "our",
 }  # fmt: skip
-_NUM = re.compile(r"\d+(?:[.,]\d+)?")
 # D133: what the vetoes read. Answering instructions say nothing about the question.
 _INSTRUCTIONS = re.compile(
-    r"\(\s*(?:yes\s*/\s*no|y\s*/\s*n|optional|required)\s*\)|\byes or no\b|"
+    r"[\[(]\s*(?:yes\s*/\s*no|no\s*/\s*yes|y\s*/\s*n|optional|required)\s*[\])]|"
+    r"\b(?:yes\s*/\s*no|no\s*/\s*yes)\b|\byes or no\b|"
+    r"\bif\s+(?:yes|no|not|so)\b[^.?!]*[.?!]?|"  # "If not, please explain.": what to do next
     r"\b(?:select|choose) one\b|\bselect all that apply\b",
     re.IGNORECASE,
 )
+_NO_ABBREVIATION = re.compile(r"\bno\.(?=\s*(?:[?:)\]]|$))", re.IGNORECASE)  # "phone no.?"
+_APOSTROPHES = str.maketrans(dict.fromkeys("\u2018\u2019\u02bc\u00b4\u0060\u2032", "'"))
 _NEG = re.compile(
     r"\b(?:not|no|never|none|nor|neither|without|cannot|lack(?:s|ed|ing)?|unable)\b|n't\b"
 )
@@ -49,6 +53,11 @@ _NUMBER_WORDS = {
     "nineteen", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
     "hundred", "thousand", "million", "dozen", "half", "twice",
 }  # fmt: skip
+_NUMBER = re.compile(
+    r"(\d+(?:[.,]\d+)?)(\s*[ap]\.?\s*m\b\.?)?|\b("
+    + "|".join(sorted(_NUMBER_WORDS, key=len, reverse=True))
+    + r")\b"
+)
 # Countries are compared on their own (find_countries); their names are never content words.
 _COUNTRY_NAMES = re.compile(
     r"(?<![A-Za-z])(?:"
@@ -60,12 +69,36 @@ _COUNTRY_NAMES = re.compile(
     re.IGNORECASE,
 )
 _US = re.compile(r"(?<![A-Za-z])U\.?S\.?(?:A\.?)?(?![A-Za-z])")  # "us" only as written US/U.S.
+# Written in capitals, these are countries; find_countries misses them before a "?" or bare. "US" in
+# an all-capitals label ("CONTACT US") is a pronoun.
+_ABBREVIATED = re.compile(r"(?<![A-Za-z.])(U\.S\.A\.?|U\.S\.?|USA|US|U\.K\.?|UK)(?![A-Za-z])")
 
 # The word families a difference vetoes on (_differ).
 _NEGATORS = {
     "not", "never", "none", "nor", "neither", "without", "cannot", "lack", "lacks", "lacked",
     "lacking", "unable", "fail", "fails", "failed", "refuse", "refuses", "refused", "except",
-    "besides", "excluding",
+    "besides", "excluding", "afraid", "dislike", "dislikes", "avoid", "avoids", "prevent",
+    "prevents", "prohibited", "forbidden", "restricted",
+}  # fmt: skip
+_RESTRICTIVE = {"only", "solely", "exclusively"}
+_LEVELS = {"basic", "beginner", "intermediate", "advanced", "expert"}
+# Words that name one of several alternatives: one side naming none says nothing, but naming a
+# different one changes the question ("more than" / "less than", "any" / "all").
+ALTERNATIVES = {
+    "bound": {
+        "more", "less", "fewer", "greater", "least", "most", "above", "below", "over", "under",
+        "minimum", "maximum", "max", "exceed", "exceeds", "higher", "lower", "faster", "slower",
+    },
+    "quantity": {"any", "all", "every", "either", "both"},
+    "schedule": {
+        "day", "days", "daytime", "night", "nights", "overnight", "evening", "evenings", "morning",
+        "mornings", "afternoon", "afternoons", "weekday", "weekdays", "weekend", "weekends",
+    },
+    "workplace": {"remote", "remotely", "on-site", "onsite", "in-person", "hybrid"},
+    "employment": {
+        "full-time", "part-time", "fulltime", "parttime", "temporary", "permanent", "contract",
+        "seasonal", "freelance", "internship",
+    },
 }  # fmt: skip
 _NEGATED = {
     "unable", "unwilling", "unfamiliar", "uncomfortable", "unaware", "unlicensed",
@@ -143,17 +176,41 @@ class _Side(NamedTuple):
     """One side of a pair as the vetoes read it: its label and help text together."""
 
     text: str  # lower case, apostrophes folded, answering instructions removed
-    numbers: frozenset
-    negations: int
+    numbers: tuple  # in the order written (_numbers)
+    negations: tuple  # (in the label, in the help text): compared part by part
     countries: frozenset
     words: frozenset  # content words: not stop words, not countries
     tokens: tuple  # the content words in order, as written (_Token)
     capital_label: bool  # a Title Case or all-capitals label
+    foreign: bool  # letters of a script these word lists cannot read
 
 
 def _fold(text: str | None) -> str:
-    folded = (text or "").replace("\u2019", "'").replace("\u2018", "'")
+    folded = _NO_ABBREVIATION.sub("number", (text or "").translate(_APOSTROPHES))
     return _INSTRUCTIONS.sub(" ", folded)
+
+
+def _numbers(low: str) -> tuple:
+    """The numbers in the order written, each with its a.m. or p.m.: "7am-7pm" is not "7pm-7am",
+    and "twenty-five" is twenty and five."""
+    return tuple(
+        word or digits + ("" if not meridiem else "am" if "a" in meridiem else "pm")
+        for digits, meridiem, word in _NUMBER.findall(low)
+    )
+
+
+def _abbreviated(text: str) -> set[str]:
+    capitals = any(c.isalpha() for c in text) and text.upper() == text
+    return {
+        "GB" if "K" in m else "US"
+        for m in _ABBREVIATED.findall(text)
+        if not (m == "US" and capitals)
+    }
+
+
+def _foreign(text: str) -> bool:
+    """Letters outside the Latin script: none of these word lists can read them."""
+    return any(c.isalpha() and not unicodedata.name(c, "").startswith("LATIN") for c in text)
 
 
 def _content(text: str, in_label: bool) -> list[_Token]:
@@ -166,13 +223,18 @@ def _content(text: str, in_label: bool) -> list[_Token]:
     return out
 
 
-@functools.lru_cache(maxsize=8192)
 def _side(label: str, help_: str) -> _Side:
+    # Long inputs are read afresh: the cache holds the short labels forms repeat.
+    if len(label) + len(help_) > 1000:
+        return _read_side(label, help_)
+    return _cached_side(label, help_)
+
+
+def _read_side(label: str, help_: str) -> _Side:
     label, help_ = _fold(label), _fold(help_)
     text = f"{label} {help_}"
     low = text.lower()
     tokens = _content(label, True) + _content(help_, False)
-    words = [t.lower() for t in _TOKEN.findall(low)]
     # A heading such as "Epic Analyst Certification": its capitals say nothing about names. A
     # question ("Experience with Salesforce?") is a sentence, never a heading.
     named = [t for t in _TOKEN.findall(label) if t.lower() not in _STOP and t[:1].isalpha()]
@@ -184,13 +246,17 @@ def _side(label: str, help_: str) -> _Side:
     capitals = any(c.isalpha() for c in label) and label.upper() == label
     return _Side(
         text=low,
-        numbers=frozenset(_NUM.findall(text)) | frozenset(w for w in words if w in _NUMBER_WORDS),
-        negations=len(_NEG.findall(low)),
-        countries=frozenset(find_countries(text)),
+        numbers=_numbers(low),
+        negations=(len(_NEG.findall(label.lower())), len(_NEG.findall(help_.lower()))),
+        countries=frozenset(find_countries(text)) | _abbreviated(label) | _abbreviated(help_),
         words=frozenset(t.low for t in tokens),
         tokens=tuple(tokens),
         capital_label=title or capitals,
+        foreign=_foreign(text),
     )
+
+
+_cached_side = functools.lru_cache(maxsize=8192)(_read_side)
 
 
 def _negation(t: _Token, side: _Side, other: _Side) -> bool:
@@ -227,6 +293,14 @@ def _product(t: _Token, side: _Side, other: _Side) -> bool:
     return t.low in _PRODUCTS
 
 
+def _restrictive(t: _Token, side: _Side, other: _Side) -> bool:
+    return t.low in _RESTRICTIVE
+
+
+def _level(t: _Token, side: _Side, other: _Side) -> bool:
+    return t.low in _LEVELS
+
+
 # D133: in this order, the first family a word on one side only belongs to names the veto.
 FAMILIES = [
     ("negation", _negation),
@@ -234,6 +308,8 @@ FAMILIES = [
     ("language", _language),
     ("proper_noun", _proper_noun),
     ("product", _product),
+    ("restrictive", _restrictive),
+    ("level", _level),
 ]
 
 
@@ -251,15 +327,26 @@ def _differ(a: _Side, b: _Side) -> str | None:
     return None
 
 
+def _alternative(a: _Side, b: _Side) -> str | None:
+    """The kind of alternative each side names differently, or None."""
+    for code, group in ALTERNATIVES.items():
+        x, y = a.words & group, b.words & group
+        if x and y and x != y:
+            return code
+    return None
+
+
 def veto(new: dict, saved: dict) -> str | None:
     """Why this saved answer can never answer the new question, or None."""
     if new["shape"] != saved["shape"]:
         return "shape"
     a = _side(new["label"], new.get("help") or "")
     b = _side(saved["label"], saved.get("help") or "")
+    if a.foreign or b.foreign:
+        return "script"
     if a.numbers != b.numbers:
         return "numbers"
-    if a.negations % 2 != b.negations % 2:
+    if any(x % 2 != y % 2 for x, y in zip(a.negations, b.negations, strict=True)):
         return "negation"
     if a.countries != b.countries:
         return "countries"
@@ -267,7 +354,7 @@ def veto(new: dict, saved: dict) -> str | None:
         options = {normalize(o) for o in new["options"]}
         if not saved["labels"] or not all(normalize(x) in options for x in saved["labels"]):
             return "options"
-    return _differ(a, b)
+    return _differ(a, b) or _alternative(a, b)
 
 
 def pair(new: dict, saved: dict) -> list[float]:

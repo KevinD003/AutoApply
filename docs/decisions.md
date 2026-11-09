@@ -4693,31 +4693,47 @@ audit-inventory and export-completeness guards are updated and pass.
     for another wording only when the question it was given to, rebuilt from what was stored
     (`resolver.saved_question`, factored out of `saved_answer_scope` with identical results), is one
     the bank reuses and nothing sensitive, protected or a consent; and only when it is stored under
-    its own wording's key (never a follow-up's). Saved answers and your "Not this" verdicts are
-    loaded once per request and each saved answer is judged once.
+    its own wording's key (never a follow-up's saved since D131; one saved before D131 is keyed by
+    its own wording and cannot be told apart: Deferred). Saved answers and your "Not this" verdicts
+    are loaded once each time the suggestions are worked out, and each saved answer is judged once
+    in it; "Not this" records the verdict, then works them out again.
   - **Never an answer that would not fit:** a suggestion is checked with the normalisation accepting
     uses; one that would be refused is not offered.
   - **Vetoes over label and help text** (`learning.features.veto`): typographic apostrophes folded
-    and answering instructions removed ("(Yes/No)", "Select one"); numbers include number words;
-    negation parity includes lack, neither and unable; countries are compared over the help text
-    too. A word on one side only vetoes the pair when it is a negation (a negator, "n't", fail,
-    refuse, except, "other than", an un-, in-, dis- or non- word whose stem is on the other side),
-    a unit, a language, a name (by its shape anywhere: AWS, HubSpot, C++; in the label also a
-    capital after its first word, or any word of a heading; a question is never read as a heading)
-    or a product. A capitalised first word, and a capital in the help text, count only by shape or
-    list.
+    (also ´, ʼ, ` and ′), and answering instructions removed ("(Yes/No)", "Yes/No", "[Yes/No]",
+    "Select one", an "If not, please explain." clause; "no." before the end is "number"). Numbers
+    are compared in the order written, each with its a.m. or p.m., number words included, also
+    inside a hyphenated word ("twenty-five", "three-phase"). Negation parity, which includes lack,
+    neither and unable, is compared label to label and help text to help text. Countries are
+    compared over the help text too, with U.S., U.K. and US or UK written in capitals ("US" in an
+    all-capitals heading is a pronoun). A word on one side only vetoes the pair when it is a
+    negation (a negator, "n't", fail, refuse, except, "other than", afraid, dislike, avoid,
+    prevent, prohibited, forbidden, restricted, an un-, in-, dis- or non- word whose stem is on the
+    other side), a unit, a language, a name (by its shape anywhere: AWS, HubSpot, C++; in the label
+    also a capital after its first word, or any word of a heading; a question is never read as a
+    heading), a product, a restriction (only, solely, exclusively) or a level (basic, beginner,
+    intermediate, advanced, expert). A capitalised first word, and a capital in the help text,
+    count only by shape or list. Where both sides name an alternative of one kind, naming
+    different ones vetoes: a bound (more or less than, at least or at most, above or below,
+    minimum or maximum, faster or slower ...), a quantity (any or all, either or both), a schedule
+    (day, night, evening, weekend ...), a workplace (remote, on-site, hybrid, in person) or an
+    employment type (full-time, part-time, temporary, contract ...); one side naming none does not
+    ("most familiar" / "familiar"). Letters outside the Latin script veto: these word lists cannot
+    read them.
   - **The rule score reads the wording only, and is a floor:** help-text and option similarity are
     out of the blend; the threshold is 0.6; a pair below it is never suggested, whatever a trained
     model says. The model ranks and narrows what remains (its threshold stays 0.5); a model that
-    cannot be used falls back to the same floored rule scores.
+    cannot be used falls back to the same floored rule scores. Equal scores prefer the saved answer
+    whose help text, then options, match the question, then the same one every time.
   - **"Use here only":** accepting takes `save_to_bank` (default true); false answers this
     application alone and saves nothing, so the next application asking it is offered the same
     saved answer again. The verdict is a yes either way. Verdict bodies refuse unknown fields
     (422). The card offers "Use and save", "Use here only" and "Not this", with D132's notices.
   - **"I don't wish to self-identify" and "I do not wish to self-identify"** (typographic
-    apostrophe folded) are decline options. As before: never chosen between two declines, never on
-    an optional question, never without "Don't disclose"; for self-identification, only where the
-    other options name a category (D131).
+    apostrophe folded; also written "self identify", as the older pair is) are decline options. As
+    before: never chosen between two declines, never on an optional question, never without
+    "Don't disclose"; for self-identification, only where the other options name a category
+    (D131), now on a multi-select too, where it had been taken whenever it was among your labels.
   - **An error boundary for the signed-in pages:** "This page could not be shown" under the app's
     own navigation, with "Try again" and "Reload the page". The error itself is never read, shown
     or logged there.
@@ -4725,19 +4741,32 @@ audit-inventory and export-completeness guards are updated and pass.
     answers.
 - **Not changed:** `SCHEMA_VERSION` (3), `RESOLVER_VERSION`, the model's feature columns
   (`features.NAMES`) and stored verdicts, exact reuse (`_from_bank`), D122's scope, which questions
-  may get a suggestion (`_eligible`, `_reuse_refusal`), execution, approvals and D113. A package
-  whose options include one of the two new decline wordings resolves differently and gets a new
-  hash, so its approval is asked again. The screening job is a local fixture assumption (a real
+  may get a suggestion (`_eligible`, `_reuse_refusal`), execution, approvals and D113. Packages
+  change only where a question offers one of the new decline wordings and you chose "Don't
+  disclose" or your self-identification labels include a decline: as the form's one decline, a
+  question that waited for you now resolves to it; beside another decline wording, a question that
+  resolved to that one now waits for you (required) or is left blank (optional), so such an
+  approved package gets a new hash and cannot be approved again until you answer. A multi-select
+  self-identification question offering only Yes, No and a decline is no longer answered with the
+  decline: it waits for you. The screening job is a local fixture assumption (a real
   Greenhouse board sends equal-opportunity questions in `compliance[]`). Nothing real was run.
 - **Deferred:** training the model on the similarity columns only, with monotone constraints (it
   changes a stored model's column count: existing models would fail until retrained); suggestions
-  in D132's questions tab (D132 not merged); wording gaps on the asked side ("necessary forms",
-  "worked for Acme" without "before", booster, immunity, shots, "stand for 8 hours"), which change
-  exact reuse and package hashes and need their own probe-first slice; answers saved for
-  follow-ups before D131, still keyed by their own wording, so they still answer an identical
-  question asked on its own through exact reuse (from code reading; not run).
-- **Residuals, stated:** a common noun swapped above the floor can still be suggested (forklift /
-  crane, 0.656): you confirm it; headings (Title Case or all capitals) lose most suggestions, since
+  in D132's questions tab (D132 merged in #40; not built); wording gaps on the asked side
+  ("necessary forms", "worked for Acme" without "before", booster, immunity, shots, "stand for 8
+  hours"), which change exact reuse and package hashes and need their own probe-first slice;
+  answers saved for follow-ups before D131, still keyed by their own wording, so they still answer
+  an identical question asked on its own through exact reuse and can be suggested for other
+  wordings ("Which one?" saved after a language question, offered for "Which one?" about an
+  instrument; from code reading and a probe of the pure functions, not run end to end). Telling
+  them apart needs the form each was saved from, a migration of its own.
+- **Residuals, stated:** a word that changes the answer but belongs to no family above can still
+  be suggested above the floor: a common noun swapped (forklift / crane, 0.656), other antonyms
+  and qualifiers; you confirm it. An alternative named on one side only does not veto ("more than
+  50 pounds" / "50 pounds"). The word lists are English: another language in the Latin script
+  ("keine Erfahrung", "mal à l'aise") is not read, though other scripts are vetoed. Ordinary words
+  in the unit list (day, second, words, degrees) veto some rewordings ("What degree" / "What
+  degrees"): a suggestion lost, never a wrong one; headings (Title Case or all capitals) lose most suggestions, since
   any differing word counts as a name ("LinkedIn Profile" / "LinkedIn URL"); the unit, language
   and product lists are incomplete; a stored answer has no form, so section and repeated-question
   rules cannot be judged on the saved side; the model's ranking within the floor is unchanged;
@@ -4745,6 +4774,16 @@ audit-inventory and export-completeness guards are updated and pass.
   source is recorded for "I do not wish to self-identify"; with self-identification on and a bare
   "No" among your labels, a named equal-opportunity question ("Are you Hispanic or Latino?") is
   not offered for saving (D131's path for a label naming no category; narrowing only).
+- **Adversarial review (2026-11-09):** three of five lenses ran (the suggestion pipeline, the
+  vetoes, self-identification); the documentation and frontend lenses and every verifier were cut
+  off by a usage limit, so each of the 17 findings was checked here against the code with a probe.
+  Fixed (the rules above): an "If not, ..." help text cancelling the other label's negation (a
+  regression of this decision), U.S. / U.K., hyphenated number words, numbers out of order and
+  a.m. / p.m., bounds, quantities, levels, restrictions and other antonyms, non-Latin scripts,
+  other apostrophes, bare "Yes/No" and "no." as negations, equal scores decided by the database's
+  row order, the size of the vetoes' cache (long labels are no longer kept), the multi-select
+  decline, and "self identify" without the hyphen. Corrected here: the follow-up and "once per
+  request" claims and the package-hash note. Stated: ordinary unit words, legacy follow-ups.
 - **The plan, corrected while building:** the Hispanic-origin row is reusable as a proposal
   (D61), so the question-safety table records it as such and the self-identification test tries
   each option on it; queueing an application that waits on answers is refused by the state
@@ -4764,10 +4803,17 @@ audit-inventory and export-completeness guards are updated and pass.
   every family load-bearing, the rule score); `test_answer_brain.py` (five saved-side witnesses,
   a follow-up's answer, an answer that would not fit, one case per veto family, a model trained
   the wrong way round, "Use here only", unknown fields); `frontend/e2e/answer-suggestions.spec.ts`
-  and `frontend/e2e/error-boundary.spec.ts` (desktop and mobile).
+  and `frontend/e2e/error-boundary.spec.ts` (desktop and mobile). Review fixes: the veto table's
+  later rows (both ways round), `::test_an_answering_instruction_in_the_help_text_cancels_no_negation`,
+  `::test_every_kind_of_alternative_is_load_bearing`, `::test_a_long_label_is_read_afresh_not_cached`
+  and `::test_equal_scores_prefer_the_matching_help_text_whatever_the_row_order` in
+  `test_answer_brain_rules.py`; `test_self_identification.py::test_a_multi_select_decline_is_taken_only_where_the_other_options_name_a_category`;
+  the unhyphenated wordings in `test_disclosure_ledger.py` and `test_classify_vocabulary.py`.
 - **Each test fails without its change** (run once each): the decline row with the resolver
   before step 1; the self-identification dimension (47 rows in a per-row copy), three
   `c5.selfid` rows, the corpus row `r8_10_prevent_work_help_disability` and both screening runs
   with the pre-D131 code (c4503cf); seven suggestion tests with the previous service; 44 veto
   tests with the previous vetoes; five score tests with step 5's scoring; two verdict tests with
-  the previous router; the error-boundary spec without `error.jsx`.
+  the previous router; the error-boundary spec without `error.jsx`. Review fixes, each file
+  restored to 1b5cc0b: `features.py` (39 tests fail), `service.py` (1), `resolver.py` (3),
+  `classify.py` (1).

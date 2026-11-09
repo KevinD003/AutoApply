@@ -204,7 +204,12 @@ def _best(f: FormField, usable: dict, rejected: set, model: LearningModel | None
         except Exception:  # noqa: BLE001 - a model that cannot load: the rules stand in
             log.exception("answer brain: the trained model could not be used")
             scores, threshold, how = rules, RULE_THRESHOLD, "rules"
-    i = max(range(len(pairs)), key=lambda k: scores[k])
+    # Equal scores (two saved answers with the same wording): the one whose help text and options
+    # match wins, then the same one every time, never the database's row order.
+    i = max(
+        range(len(pairs)),
+        key=lambda k: (scores[k], pairs[k][3][2], pairs[k][3][3], str(pairs[k][0].id)),
+    )
     if scores[i] < threshold:
         return None
     e, proposal, shown, feats = pairs[i]

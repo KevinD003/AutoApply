@@ -319,6 +319,18 @@ def test_a_decline_is_taken_only_where_the_other_options_name_a_category(api):
     )
 
 
+def test_a_multi_select_decline_is_taken_only_where_the_other_options_name_a_category(api):
+    # The D131 rule holds on a multi-select too (D133 review): on Yes / No / decline nothing says
+    # which question your decline was for, whichever decline wording the form uses.
+    setup_candidate(api)
+    for wish in ("Decline To Self Identify", "I don't wish to self-identify"):
+        set_self_id(api, True, [wish])
+        q = _choice("hisp", "Are you Hispanic or Latino?", ["Yes", "No", wish], typ="multiselect")
+        h, _ = row(api, [q], "hisp")
+        assert h["status"] != "resolved" and h["value"] is None, wish
+        assert h["source"] != "self_identification", wish
+
+
 def test_a_follow_up_is_never_answered_from_self_identification(api):
     setup_candidate(api)
     set_self_id(api, True, ["I don't wish to answer"])
