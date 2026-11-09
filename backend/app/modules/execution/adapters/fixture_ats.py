@@ -257,6 +257,26 @@ class FormChanged(str):
         return s
 
 
+CONDITIONAL_REQUIRED = (
+    "the page showed a question it requires after your earlier answers (one it reveals by its "
+    "own logic) and no answer was approved for it; nothing was submitted"
+)
+
+
+class ConditionalRequired(str):
+    """D135: the only finding of the check after filling: the page now shows, and requires, a
+    question the job data lists but the page had hidden (revealed by an earlier answer), with no
+    approved answer. The application pauses so you can answer it; any other finding stays the
+    stop it was. `count` is a number only, never a question's key or label."""
+
+    count: int
+
+    def __new__(cls, count: int):
+        s = super().__new__(cls, CONDITIONAL_REQUIRED)
+        s.count = count
+        return s
+
+
 class StoppedAfterDisclosure(RuntimeError):
     """Filling stopped after something may have reached the employer. `disclosures`: the
     evidence of every disclosure this attempt made, the last one included. The runner records

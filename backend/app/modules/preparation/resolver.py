@@ -145,6 +145,10 @@ class Context:
     # D131: the form's questions by key, so a follow-up's saved answer is looked up with the
     # question it follows (question_key's trigger). Set by package.resolve_answers.
     form_fields: dict = field(default_factory=dict)
+    # D135: the application paused because the employer's page required a question it shows only
+    # after an earlier answer, and none was approved: while that pause is open, every such
+    # question you can answer and have not asks for your answer. Set by package.load_context.
+    conditional_required: bool = False
 
 
 @dataclass

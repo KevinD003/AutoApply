@@ -147,8 +147,10 @@ def test_preferred_name_and_unknown_condition_are_not_guessed(api, receiver):
     c = api.get(f"/applications/{app_id}/package").json()["package"]["content"]
     a = {x["key"]: x for x in c["answers"]}
     assert a["preferred_name"]["status"] == "needs_user"  # not copied from the given name
-    assert a["question_8105"]["value"] is None
-    assert "cannot tell when" in a["question_8105"]["explanation"]
+    assert a["question_8105"]["value"] is None  # never guessed
+    # D135: yours to answer, entered only if the page shows it (no longer a dead end).
+    assert a["question_8105"]["user_input_allowed"] is True
+    assert "only after an earlier answer" in a["question_8105"]["explanation"]
 
 
 def test_location_job_is_a_checkpoint(api, receiver):

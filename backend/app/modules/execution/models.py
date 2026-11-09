@@ -178,7 +178,11 @@ class ApplicationPause(Base):
 
     status: open (read the form again), unexplained (read again, no difference NoEfforts can
     see), resolved (a new form version was read), closed (tried again, superseded, or the
-    application left review: cancelled, applied by hand, expired, failed, submitted)."""
+    application left review: cancelled, applied by hand, expired, failed, submitted).
+
+    kind: form_changed (D132, before anything was entered), or conditional_required (D135, after
+    filling and before the send gate: the page showed and required a question it reveals by its
+    own logic, with no approved answer; it is answered, then tried again)."""
 
     __tablename__ = "application_pauses"
     __table_args__ = (
@@ -189,7 +193,7 @@ class ApplicationPause(Base):
             postgresql_where=text("status IN ('open','unexplained')"),
         ),
         Index("ix_application_pauses_user_status", "user_id", "status"),
-        CheckConstraint("kind IN ('form_changed')", name="ck_pause_kind"),
+        CheckConstraint("kind IN ('form_changed','conditional_required')", name="ck_pause_kind"),
         CheckConstraint(
             "status IN ('open','unexplained','resolved','closed')", name="ck_pause_status"
         ),

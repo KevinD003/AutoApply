@@ -224,9 +224,15 @@ export default function ReviewPage() {
         )}
         {view.pause && (
           // D132: the employer's form no longer matched the approved one; nothing is approved until that is resolved.
-          <div className="mt-3 rounded-lg bg-caution-weak p-2 text-sm text-caution-ink" role="group" aria-label="The employer's form no longer matches">
+          <div
+            className="mt-3 rounded-lg bg-caution-weak p-2 text-sm text-caution-ink"
+            role="group"
+            aria-label={view.pause.kind === "conditional_required" ? "The employer's page asked a question" : "The employer's form no longer matches"}
+          >
             <p>
-              {view.pause.status === "unexplained"
+              {view.pause.kind === "conditional_required"
+                ? "The employer's page asked a question it shows only after an earlier answer, and requires it, so NoEfforts stopped before submitting (your answers were already entered on the page). Answer it under Questions, then try this version again."
+                : view.pause.status === "unexplained"
                 ? "The employer's form no longer matched what you approved, and reading it again showed no difference NoEfforts can see. Try this version again under Questions, or apply on the employer's site."
                 : "The employer's form no longer matched what you approved, so NoEfforts stopped before sending anything. Read the form again under Questions and answer what is new; nothing can be approved until then."}
             </p>

@@ -190,6 +190,13 @@ _UNEXPLAINED = (
     "scripts may add it). Try this version again under Questions, or apply on the employer's "
     "site."
 )
+# D135: after filling, the page showed and required a question it reveals by its own logic, with no
+# approved answer: your answers were entered on the page, nothing was submitted.
+_CONDITIONAL_TEXT = (
+    "After filling, the employer's page showed a question it asks only after an earlier answer, "
+    "and requires it, so NoEfforts stopped before submitting (your answers were entered on the "
+    "page). Answer it under Questions, then try this version again."
+)
 
 
 def _pauses(db: Session, user_id) -> list[dict]:
@@ -199,6 +206,11 @@ def _pauses(db: Session, user_id) -> list[dict]:
             ApplicationPause.user_id == user_id, ApplicationPause.status.in_(PAUSE_UNRESOLVED)
         )
     ):
+        if p.kind == "conditional_required":
+            out.append(_item(f"pause:{p.id}:{p.status}", "conditional_required", p.created_at,
+                             p.application_id, "The employer's page asked a question",
+                             _CONDITIONAL_TEXT, needs_action=True, link="/questions"))  # fmt: skip
+            continue
         text = _UNEXPLAINED if p.status == "unexplained" else _PAUSE_TEXT
         out.append(_item(f"pause:{p.id}:{p.status}", "form_changed", p.created_at,
                          p.application_id, "The employer's form no longer matches", text,

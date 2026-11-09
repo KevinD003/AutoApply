@@ -744,6 +744,67 @@ def pause_for_form_change(attempt_id, worker, gen, reason: str, counts: dict) ->
         return True
 
 
+def pause_after_entry(attempt_id, worker, gen, reason: str, required: int) -> bool:
+    """D135: after filling, the page showed a question it reveals by its own logic (after an
+    earlier answer), requires it, and no answer was approved for it. One generation-fenced finish
+    from `claimed`, after the disclosure gate and before the send gate (nothing was submitted), in
+    one transaction: the attempt ends `abandoned`, as any stop after entering data; the
+    application waits for you; every live approval is retired (entering the data again is a new
+    approval); and an open pause of kind `conditional_required` records the form version, with a
+    count only. While it is open, every such question you can answer asks for your answer
+    (package.load_context) and nothing can be approved; "Try this version again" ends it once they
+    are answered. Never resumed or retried. Returns False and writes nothing when the fence fails
+    (the caller then abandons the attempt as before).
+
+    Lock order as `pause_for_form_change`: the attempt, its application, its approvals, then the
+    pause rows."""
+    with SessionLocal() as db:
+        att = db.scalar(
+            select(ExecutionAttempt).where(ExecutionAttempt.id == attempt_id).with_for_update()
+        )
+        if (
+            att is None
+            or att.generation != gen
+            or att.state != S.claimed
+            or att.disclosure_started_at is None
+            or att.send_started_at is not None
+        ):
+            return False
+        app = pk.lock_application(db, att.application_id)
+        _apply_outcome(db, att, app, S.abandoned, AppState.needs_user_action,
+                       f"Stopped after entering data but before submitting: {reason}",
+                       retire_every="stopped_after_entry",
+                       reason_code=pk.CONDITIONAL_REQUIRED)  # fmt: skip
+        now = utcnow()
+        db.execute(
+            update(ApplicationPause)
+            .where(
+                ApplicationPause.application_id == app.id,
+                ApplicationPause.status.in_(PAUSE_UNRESOLVED),
+            )
+            .values(status="closed", resolution="superseded", resolved_at=now)
+        )
+        package = db.get(ApplicationPackage, att.package_id)
+        dest = (package.content or {}).get("destination", {}) if package else {}
+        db.add(
+            ApplicationPause(
+                user_id=att.user_id,
+                application_id=app.id,
+                attempt_id=att.id,
+                kind=pk.CONDITIONAL_REQUIRED,
+                status="open",
+                package_version=package.version if package else 0,
+                package_hash=att.package_hash,
+                form_version=dest.get("form_version"),
+                detail={"required": int(required)},
+                created_at=now,
+            )
+        )
+        event(db, att, "paused", reason_code=pk.CONDITIONAL_REQUIRED, required=int(required))
+        db.commit()
+        return True
+
+
 def retire_live_approvals(db: Session, application_id, reason: str) -> int:
     """Invalidate every approval of the application that is still live; how many were."""
     rows = db.scalars(

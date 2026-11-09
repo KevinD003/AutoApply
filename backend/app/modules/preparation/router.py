@@ -35,6 +35,7 @@ from app.modules.preparation.forms import (
     FormSchema,
     extract_form_schema,
     form_fingerprint,
+    shown_by_page,
 )
 from app.modules.preparation.models import (
     AnswerBankEntry,
@@ -539,13 +540,27 @@ def dismiss_pause(
     before anything was entered), so a package can be approved again: every approval was retired
     when it paused, and the live page is checked again before anything is entered, so a change
     still there stops it again with nothing sent. Never approves, queues or sends anything; the
-    automatic rule never takes this step."""
+    automatic rule never takes this step.
+
+    D135: a pause for a question the page revealed and required after filling ends only once
+    every such question you can answer has your answer (`questions_open` otherwise): trying again
+    without one would enter your data and stop at the same question."""
     app = _owned_app(db, user, app_id)
     pk.lock_application(db, app.id)
     db.refresh(app)
     pause = pk.unresolved_pause(db, app.id, lock=True)  # as it is now: a read may have ended it
     if pause is None:
         raise conflict("Nothing is paused for this application. (reason: no_pause)")
+    if pause.kind == pk.CONDITIONAL_REQUIRED:
+        pkg = pk.ensure_current(db, app)  # with the pause open, those questions ask for answers
+        if any(
+            a["status"] == "needs_user" and shown_by_page(a.get("condition") or {}, a["type"])
+            for a in pkg.content["answers"]
+        ):
+            raise conflict(
+                "Answer the questions the employer's page shows after an earlier answer first; "
+                "they are entered only if the page asks them. (reason: questions_open)"
+            )
     pause.status, pause.resolution, pause.resolved_at = "closed", "dismissed", utcnow()
     db.flush()
     pkg = pk.ensure_current(db, app)  # settles the state now that nothing holds it
@@ -593,9 +608,15 @@ def _pause_out(pause) -> dict | None:
         return None
     return {
         "id": str(pause.id),
+        # D135: form_changed (D132), or conditional_required (a question the page revealed and
+        # required after filling, with no approved answer).
+        "kind": pause.kind,
         "status": pause.status,
         "resolution": pause.resolution,
-        "counts": {k: int((pause.detail or {}).get(k) or 0) for k in ("new", "changed", "missing")},
+        "counts": {
+            k: int((pause.detail or {}).get(k) or 0)
+            for k in ("new", "changed", "missing", "required")
+        },
         "package_version": pause.package_version,
         "form_version": pause.form_version,
         "recaptured_version": pause.recaptured_version,

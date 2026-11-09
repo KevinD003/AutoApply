@@ -29,7 +29,7 @@ from app.modules.audit.service import record
 from app.modules.documents.models import Document, DocumentKind
 from app.modules.jobs.models import Job
 from app.modules.preparation import binding, drafting, sending
-from app.modules.preparation.forms import FieldType, FormSchema
+from app.modules.preparation.forms import FieldType, FormSchema, shown_by_page
 from app.modules.preparation.models import (
     AnswerBankEntry,
     ApplicationInput,
@@ -205,7 +205,14 @@ def load_context(db: Session, app: Application) -> Context:
         changed={k for k, _ in changed},
         consent_digests={i.field_key: (i.meta or {}).get("value_digest") for i in consents},
         self_id=db.get(SelfIdentification, uid),  # D122: opt-in EEOC/demographic self-ID
+        conditional_required=_conditional_pause(db, app.id),  # D135
     )
+
+
+def _conditional_pause(db: Session, app_id: uuid.UUID) -> bool:
+    """D135: the application waits on a pause for a question the page required once shown."""
+    pause = unresolved_pause(db, app_id)
+    return pause is not None and pause.kind == CONDITIONAL_REQUIRED
 
 
 def _changed_questions(db: Session, app: Application, inputs: list) -> set[tuple[str, str]]:
@@ -242,6 +249,39 @@ def _condition_met(cond, value: dict | None) -> bool:
     return bool(chosen & set(cond.any_of))
 
 
+CONDITIONAL_REQUIRED = "conditional_required"  # D135: the pause kind (execution.models)
+SHOWN_BY_PAGE = (
+    "The employer's page shows this question only after an earlier answer, by its own logic, "
+    "which NoEfforts cannot see: your answer is entered only if the page shows it."
+)
+PAGE_REQUIRED_IT = (
+    "When it was shown, the page required such a question and no answer was approved: answer "
+    "it, in case it is asked again."
+)
+
+
+def _shown_by_page(f, r: Resolution, ctx: Context) -> None:
+    """D135: a typed question the page hides until an earlier answer reveals it (Greenhouse's
+    id-only pages; which answer is unknown). It keeps the resolver's answer only when it is yours
+    for this application or an approved profile fact: a saved answer or a draft may mean
+    something else after the answer that reveals it, so neither is used, and it is never saved
+    for reuse. Unanswered, a required one asks for your answer (approval waits for it), an
+    optional one stays blank; while the application waits on a pause for such a question
+    (`ctx.conditional_required`), every one you can answer asks for an answer."""
+    r.bankable = r.draftable = False
+    if r.status == "resolved" and r.source in ("answer_bank", "draft"):
+        # What it said of the saved answer or draft no longer applies: neither is used here.
+        r.status, r.source, r.explanation = "needs_user", "unresolved", ""
+    if r.status not in ("resolved", "needs_consent"):
+        r.value = r.display = None
+        asked = f.required or (ctx.conditional_required and r.user_input_allowed)
+        r.status = "needs_user" if asked else "blank_optional"
+    note = SHOWN_BY_PAGE
+    if ctx.conditional_required and r.status == "needs_user" and r.user_input_allowed:
+        note = f"{SHOWN_BY_PAGE} {PAGE_REQUIRED_IT}"
+    r.explanation = f"{r.explanation} {note}".strip()
+
+
 def resolve_answers(fields: list, ctx: Context) -> list[tuple]:
     """Each field with its resolution, in form order: the resolver, then what the answers
     above decide about a conditional question. Pure (no database), so the tests run the very
@@ -259,7 +299,9 @@ def resolve_answers(fields: list, ctx: Context) -> list[tuple]:
         parent = resolved.get(f.condition.key) if f.condition else None
         r = resolve_field(f, ctx, parent=parent, repeated=counts[question_key(f)] > 1)
         trigger = statuses.get(f.condition.key) if f.condition else None
-        if f.condition and f.condition.key not in statuses:
+        if f.condition and shown_by_page(f.condition, f.type):
+            _shown_by_page(f, r, ctx)
+        elif f.condition and f.condition.key not in statuses:
             # Depends on a question that is missing, later in the form, or circular: when it
             # is asked cannot be known, so it is never filled; if required, apply manually.
             r.value = r.display = None
