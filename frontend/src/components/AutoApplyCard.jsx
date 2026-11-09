@@ -6,6 +6,22 @@ import { useEffect, useState } from "react";
 import { Badge, Button, Card, ErrorBox } from "@/components/ui";
 import { api } from "@/lib/api";
 
+// D134: what pausing stopped of the rule's queued work (the pause's reply).
+function stoppedNotice({ cancelled, stopped, in_flight: inFlight }) {
+  const n = cancelled + stopped;
+  const parts = [];
+  if (n)
+    parts.push(
+      `Stopped ${n} application${n === 1 ? "" : "s"} it had queued, before sending.`,
+    );
+  if (inFlight) {
+    parts.push(
+      `${inFlight} ${inFlight === 1 ? "was" : "were"} already being sent and could not be stopped; the outcome shows on the Tracker.`,
+    );
+  }
+  return parts.join(" ");
+}
+
 // D113: your standing rule to apply automatically (backend app/modules/autoapply): whether it
 // acts here, today's count against the cap, what it did for each job, and your pause switch.
 export default function AutoApplyCard() {
@@ -51,9 +67,15 @@ export default function AutoApplyCard() {
         {s.unavailable && !s.paused && <span className="text-ink-muted">{s.unavailable.message}</span>}
       </p>
       {s.paused && !s.chosen && <p className="mb-2 text-sm">{s.consent}</p>}
+      {s.stopped && stoppedNotice(s.stopped) && (
+        <p className="mb-2 text-sm" role="status">
+          {stoppedNotice(s.stopped)}
+        </p>
+      )}
       <p className="mb-2 text-sm text-ink-muted">
-        Fully answered Greenhouse applications only; the first one to each employer is a rehearsal that never submits. Today:{" "}
-        {s.approved_today} of {s.daily_cap}.
+        Fully answered Greenhouse applications only; the first one to each employer is a rehearsal that never submits.
+        Pausing also stops what it queued that has not started sending; an application whose approval you revoke stays
+        yours. Today: {s.approved_today} of {s.daily_cap}.
         {s.permission_attempts && (
           <>
             {" "}

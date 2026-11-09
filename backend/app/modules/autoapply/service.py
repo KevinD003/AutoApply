@@ -22,10 +22,11 @@ does or declines is an `AutoApplyEvent` with a fixed reason code, shown to the o
 """
 
 import logging
+import uuid
 from datetime import UTC, datetime, time, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.core import authorizations
@@ -70,6 +71,9 @@ REASONS = {
     # D132: continuing after a form change is the owner's decision, not the rule's.
     "form_changed": "The employer's form changed during an attempt; automatic applying leaves "
     "this application to you.",
+    # D134: an application whose approval you revoked is yours from then on.
+    "owner_revoked": "You revoked this application's approval; automatic applying leaves it "
+    "to you.",
     "approval_refused": "NoEfforts could not approve this package automatically.",
     "queue_refused": "The approved package could not be queued.",
 }
@@ -107,13 +111,40 @@ def paused(db: Session, user: User) -> bool:
     return bool(row.paused)
 
 
-def set_paused(db: Session, user_id, value: bool) -> None:
+# D134: one account's pause and its rule's work on each job are serialized (pg advisory lock,
+# this class and the account): a pause waits for a job being approved and queued, then stops it.
+_RULE_LOCK = 7_402_113
+
+
+def _hold(db: Session, user_id, exclusive: bool = False) -> None:
+    fn = "pg_advisory_xact_lock" if exclusive else "pg_advisory_xact_lock_shared"
+    key = int.from_bytes(uuid.UUID(str(user_id)).bytes[:4], "big", signed=True)
+    db.execute(text(f"SELECT {fn}(:c, :k)"), {"c": _RULE_LOCK, "k": key})
+
+
+def set_paused(db: Session, user_id, value: bool) -> dict | None:
+    """Pause or resume the account's rule. D134: pausing also stops what the rule queued that
+    has not started sending (execution.service.stop_for_pause) and retires the approvals it
+    gave; it returns what it stopped."""
+    from app.modules.execution.service import stop_for_pause
+    from app.modules.preparation import package as pk
+
+    if value:
+        _hold(db, user_id, exclusive=True)
     row = db.get(AutoApplyPrefs, user_id)
     if row is None:
         row = AutoApplyPrefs(user_id=user_id)
         db.add(row)
     row.paused, row.updated_at = value, utcnow()
-    record(db, user_id, "auto_apply.paused" if value else "auto_apply.resumed", "user", user_id)
+    if not value:
+        record(db, user_id, "auto_apply.resumed", "user", user_id)
+        return None
+    db.flush()
+    stopped = stop_for_pause(db, user_id) | {"approvals": pk.retire_rule_approvals(db, user_id)}
+    record(db, user_id, "auto_apply.paused", "user", user_id, cancelled=stopped["cancelled"],
+           stopped=stopped["stopped"], in_flight=stopped["in_flight"],
+           approvals=stopped["approvals"])  # fmt: skip
+    return stopped
 
 
 def _day_start(now: datetime) -> datetime:
@@ -243,6 +274,45 @@ def _ever_paused(db: Session, app) -> bool:
     )
 
 
+def _paused_before_entry(db: Session, att: ExecutionAttempt) -> bool:
+    """D134: an attempt your pause stopped before anything was entered is not a stop of the
+    attempt's own: resumed, the rule continues the application. One stopped after entering
+    something stays yours, like any other stop."""
+    from app.modules.execution.models import AttemptEvent
+    from app.modules.execution.service import PAUSE_STOPPED
+
+    if att.state != AttemptState.cancelled or att.disclosure_started_at is not None:
+        return False
+    return (
+        db.scalar(
+            select(AttemptEvent.id)
+            .where(AttemptEvent.attempt_id == att.id, AttemptEvent.kind == PAUSE_STOPPED)
+            .limit(1)
+        )
+        is not None
+    )
+
+
+def _owner_revoked(db: Session, app) -> bool:
+    """D134: an application whose approval you revoked is yours from then on: the rule never
+    approves it again, whatever it queued or not (only you can)."""
+    from app.modules.preparation import package as pk
+    from app.modules.preparation.models import PackageApproval
+
+    return (
+        db.scalar(
+            select(PackageApproval.id)
+            .where(
+                PackageApproval.application_id == app.id,
+                PackageApproval.user_id == app.user_id,
+                PackageApproval.invalidation_reason == pk.REVOKED_BY_YOU,
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
 def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
     """One step for one job. Returns "approved" when it queued something, else None."""
     from app.modules.execution.rehearsal import RehearsalRequired
@@ -259,14 +329,18 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
         if _ever_paused(db, app):
             _note(db, user.id, job, app, "skipped", "form_changed")
             return None
+        if _owner_revoked(db, app):
+            _note(db, user.id, job, app, "skipped", "owner_revoked")
+            return None
         att = _latest_attempt(db, app)
         if att is not None and att.state in HELD:
             return None
         if att is not None and att.state not in (AttemptState.rehearsed,):
             if att.state == AttemptState.confirmed:
                 return None
-            _note(db, user.id, job, app, "skipped", "attempt_stopped")
-            return None
+            if not _paused_before_entry(db, att):
+                _note(db, user.id, job, app, "skipped", "attempt_stopped")
+                return None
     form = pk.latest_form(db, job.id)
     if form is None:
         last = _last_event(db, job.id)
@@ -278,6 +352,10 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
             return None
         if not _capture(db, user, job):
             _note(db, user.id, job, None, "skipped", "capture_failed")
+            return None
+        # The capture committed, which ended this step's hold (run_for): hold again first.
+        _hold(db, user.id)
+        if paused(db, user):
             return None
         form = pk.latest_form(db, job.id)
     if form_checkpoint(form.schema):
@@ -308,9 +386,13 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
         return None
     try:
         try:
-            appr = pk.approve(db, app, pkg.version, pkg.content_hash, ApprovalScope.submit)
+            appr = pk.approve(
+                db, app, pkg.version, pkg.content_hash, ApprovalScope.submit, by_rule=True
+            )
         except RehearsalRequired:
-            appr = pk.approve(db, app, pkg.version, pkg.content_hash, ApprovalScope.disclose_only)
+            appr = pk.approve(
+                db, app, pkg.version, pkg.content_hash, ApprovalScope.disclose_only, by_rule=True
+            )
     except pk.ApprovalError:
         db.rollback()
         _note(db, user.id, job, app, "skipped", "approval_refused")
@@ -320,7 +402,7 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
         with db.begin_nested():
             pk.require_valid_approval(db, app)
             transition(db, app, AppState.queued, Actor.user, QUEUE_REASON)
-            enqueue(db, app)
+            enqueue(db, app).queued_by_rule = True
     except Exception:  # noqa: BLE001 - any refusal leaves nothing queued; it waits for the owner
         log.info("auto-apply: queueing refused (job kept for the owner)")
         _note(db, user.id, job, app, "skipped", "queue_refused")
@@ -339,6 +421,12 @@ def run_for(db: Session, user: User, now: datetime | None = None) -> int:
     queued = 0
     for job in _candidates(db, user):
         try:
+            # D134: before any row lock, as a pause takes it (exclusive): a pause recorded while
+            # this tick runs waits for this job's step, and every later step reads it.
+            _hold(db, user.id)
+            if paused(db, user):
+                db.rollback()
+                break
             if _advance(db, user, job, now) == "approved":
                 queued += 1
             db.commit()

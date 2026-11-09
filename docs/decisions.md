@@ -4817,3 +4817,74 @@ audit-inventory and export-completeness guards are updated and pass.
   the previous router; the error-boundary spec without `error.jsx`. Review fixes, each file
   restored to 1b5cc0b: `features.py` (39 tests fail), `service.py` (1), `resolver.py` (3),
   `classify.py` (1).
+
+## D134 — Your pause and your revocation reach what the standing rule already queued (2026-11-09)
+
+- **Why:** rank 3 of the Greenhouse + Workday automation loop (`docs/automation-loop.md`). A
+  read-only map of the code (three readers, on D132's head 564b4f1, whose application code is what
+  main received as c19c683) found:
+  1. **Pausing the rule stopped only its next tick.** The pause was read once, at the start of
+     each tick. Rehearsals and submissions it had already queued still ran (a submission still
+     clicked submit); the sweeper could re-pend one; a pause made during a tick did not reach that
+     tick's remaining jobs. Switching it off on the server (`NOEFFORTS_AUTO_APPLY_ENABLED=false`)
+     did the same. The owner was told either control stops the rule (`.env.example`, the card).
+  2. **A revocation was overridden.** After you revoked an approval with nothing queued, the next
+     tick approved the application again and queued it.
+  3. **Nothing recorded the rule as the source** of an approval or an attempt, so neither could be
+     told apart from yours.
+- **Decided:**
+  - **Provenance:** `package_approvals.by_rule` (an approval the rule created; one of yours that it
+    reuses stays yours) and `execution_attempts.queued_by_rule`. Outside the package content: no
+    hash changes, `SCHEMA_VERSION` stays 3. Both are in the account export.
+  - **Pausing stops the rule's queued work** (`execution.service.stop_for_pause`, under the cancel
+    lock order: each attempt, then its application). One no worker has taken is cancelled and the
+    application waits for approval again; one a worker holds is cancelled too, and the worker
+    stops at its next step (the same as Cancel: a page it already opened may have been read, and
+    anything it already entered stays entered; the application then waits for you). One past the
+    send gate may be in flight: it is left alone and counted. Every live approval the rule gave is
+    retired ("Your automatic rule was paused"), that of an attempt in flight too: nothing after the
+    send gate reads the approval (a verification code still completes it), so the submission runs
+    on and its outcome is recorded as usual. What you queued yourself, and approvals you gave,
+    are never touched. The pause's reply and its audit row carry the counts; the Tracker says what
+    was stopped.
+  - **A pause during a tick:** the pause and the rule's step for one job are serialized by an
+    advisory lock per account: exclusive for the pause, taken first; shared for the step, taken at
+    its start and again after a capture commits, always before any row lock, so neither ever
+    waits for the other while holding rows. A pause waits for a step being approved and queued,
+    then stops what it queued; a step after the pause reads it and approves nothing.
+  - **Switched off, or paused another way:** a worker taking an attempt the rule queued refuses it
+    while the rule is switched off on the server or the account is paused ("Your automatic rule is
+    paused or switched off; nothing was sent."), before any page is opened. One a worker already
+    holds when the server switch changes runs on until the worker restarts (the setting is read at
+    start); the sweeper then re-pends it only if nothing was entered, and the claim refuses it.
+  - **Resumed, the rule continues** an application a pause stopped before anything was entered (its
+    attempt carries a `stopped_by_pause` event): a pause is not a decision about the application.
+    One stopped after something was entered stays yours, like any other stop.
+  - **Your revocation stands:** an application whose approval you revoked is skipped from then on
+    (`owner_revoked`): the rule never approves it again; only you can.
+- **Not changed:** the gates, fencing and the lock order of every other path; no retry after
+  `disclosure_started_at` or `sending`; D132's pause (the rule still never continues an application
+  that paused on a changed form); the recorded permission and its checks; the consent text you
+  agreed to (D114).
+- **Not fixed, stated:** revoking while a queueing transaction commits leaves that attempt pending
+  until a worker takes it, which then refuses it (the revoked approval); the application shows
+  `queued` until then (`stop_for_revoke` does not look again after the application lock). A worker
+  that holds an attempt when a pause lands may already have opened the page (a read).
+- **Owner decisions, open:** every recorded permission ended on 2026-11-06 (`app/core/authorizations.py`):
+  until you record new ones nothing real is read, opened or sent, whatever the rule says; renewing
+  is yours, never extended because work took longer. Continuing after a form change (D132).
+- **Tests** (`test_auto_apply.py`, the receiver's ledger as the oracle):
+  - a pause cancels a rehearsal the rule queued before a worker took it (no disclosure; its
+    approval retired; the application waits; resumed, the rule rehearses it);
+  - a pause that lands just after a worker took the attempt stops it before anything is entered
+    (the application waits for you; resumed, the rule rehearses it);
+  - what you queued yourself runs through a pause;
+  - after your revocation the rule never approves the application again;
+  - switched off, and paused without stopping (as an older version recorded it), the rule's
+    queued attempt is refused when a worker takes it;
+  - the pause waits for a step holding the lock (two connections), and the next step reads the
+    pause and approves nothing;
+  - another account's pause touches nothing of yours.
+
+  And `frontend/e2e/auto-apply-pause.spec.ts`, desktop and mobile: the Tracker's card says what a
+  pause stopped, says nothing when it stopped nothing, and clears when you resume.

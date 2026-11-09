@@ -9,12 +9,34 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Your pause and your revocation reach what the standing rule queued (D134, 2026-11-09; local only)
+
+Nothing here ran against a real page or a real account; every recorded permission ended on
+2026-11-06. Branch `rule-respects-owner` (from `main` ab671e1; `main` merged in after D133), not on
+`main`. The rule's tests run on the second Greenhouse-style fixture through the pilot
+(`execution_harness.pilot_on`), with the receiver's ledger as the oracle for what was disclosed and
+submitted.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| A pause cancels a rehearsal the rule queued before a worker took it: nothing is disclosed, the rule's approval is retired ("Your automatic rule was paused") and the application waits for approval; resumed, the rule rehearses it | `test_pausing_stops_what_the_rule_queued_before_a_worker_takes_it` | receiver ledger: no disclosure, nothing accepted, then the rehearsal; the pause's reply counts one cancelled and one approval |
+| A pause that lands just after a worker took the attempt stops it before anything is entered; the application waits for you; resumed, the rule rehearses it | `test_pausing_stops_an_attempt_a_worker_holds_before_anything_is_entered` | receiver ledger: no disclosure, then the rehearsal |
+| What you queued yourself, on your own approval, runs through a pause | `test_what_you_queued_yourself_is_never_stopped_by_a_pause` | receiver ledger: disclosed; the pause's reply counts nothing |
+| After you revoke, the rule never approves that application again | `test_after_you_revoke_the_rule_never_approves_that_application_again` | approvals (none given again); the rule's event `owner_revoked`; receiver ledger: no disclosure |
+| Switched off on the server, a worker refuses an attempt the rule queued before opening anything | `test_switched_off_the_rules_queued_attempt_is_refused_when_a_worker_takes_it` | receiver ledger: no disclosure, nothing accepted; the attempt ends `failed_safe` |
+| A pause recorded without stopping anything (as an older version recorded it) is still read when a worker takes the rule's attempt | `test_a_pause_recorded_without_stopping_is_still_read_when_a_worker_takes_it` | receiver ledger: no disclosure |
+| A pause waits for the rule's step being approved and queued (two database connections), and a step after the pause approves nothing | `test_a_pause_waits_for_a_job_being_queued_then_the_job_sees_it` | the lock wait (a 300 ms lock timeout); approvals; receiver ledger |
+| Another account's pause touches nothing of yours | `test_a_pause_never_touches_another_accounts_work` | its reply counts nothing; your attempt stays pending |
+| The two provenance columns are in the account export; the pause's audit row names its keys | `test_every_table_and_column_has_an_export_decision`, `test_audit_inventory.py` | the export decision table; the audit inventory |
+| The Tracker's card says what a pause stopped, and nothing when it stopped nothing; resuming clears it | `frontend/e2e/auto-apply-pause.spec.ts` (desktop, mobile) | the browser: the real pause reply, then counts altered in the browser only |
+| Each test fails without its change | seven runs, each with one change removed | each fails its tests |
+
 ## Reuse and suggestion guards (D133, 2026-11-06; local only)
 
 Nothing here ran against a real page or a real account. The screening job (5020003) on the second
 Greenhouse-style fixture is a FIXTURE ASSUMPTION: a real board sends its equal-opportunity
 questions in `compliance[]`. Branch `suggestion-guards` (from `main` bd38529; `main` merged in
-after D132), not on `main`. The review fixes (D133, "Adversarial review") are the rows marked
+after D132), merged as #41 (da7ac61). The review fixes (D133, "Adversarial review") are the rows marked
 "review".
 
 | Requirement | Test | Oracle / evidence |

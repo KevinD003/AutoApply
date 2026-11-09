@@ -271,6 +271,14 @@ def claim(attempt_id: uuid.UUID, worker: str) -> int | None:
             _claim_refused(db, app, att.outcome_detail)
             db.commit()
             return None
+        if att.queued_by_rule and _rule_stopped(db, att):
+            # D134: queued by the standing rule, which is now paused or switched off.
+            att.state, att.finished_at = S.failed_safe, now
+            att.outcome_detail = RULE_STOPPED
+            event(db, att, "claim_refused_rule_stopped")
+            _claim_refused(db, app, att.outcome_detail)
+            db.commit()
+            return None
         code = _claim_prerequisite(db, att)
         if code is not None:  # before any page is opened; nothing is disclosed
             att.state, att.finished_at = S.failed_safe, now
@@ -284,6 +292,22 @@ def claim(attempt_id: uuid.UUID, worker: str) -> int | None:
         event(db, att, "claimed", worker=worker)
         db.commit()
         return gen
+
+
+RULE_STOPPED = "Your automatic rule is paused or switched off; nothing was sent."
+PAUSE_STOPPED = "stopped_by_pause"  # the attempt event of an attempt a pause stopped (D134)
+
+
+def _rule_stopped(db: Session, att: ExecutionAttempt) -> bool:
+    """D134: the standing rule that queued this attempt no longer acts: switched off on this
+    server, or paused by the account (read under the claim's locks)."""
+    from app.modules.autoapply.service import paused
+    from app.modules.identity.models import User
+
+    if not get_settings().auto_apply_enabled:
+        return True
+    user = db.get(User, att.user_id)
+    return user is None or paused(db, user)
 
 
 def _claim_refused(db: Session, app: Application, reason: str) -> None:
@@ -1010,6 +1034,46 @@ def stop_for_revoke(db: Session, app: Application) -> str:
     event(db, att, "cancelled")
     _app_to(db, app, AppState.awaiting_approval, Actor.system, "Approval revoked")
     return "cancelled"
+
+
+def stop_for_pause(db: Session, user_id) -> dict:
+    """D134: pausing the standing rule stops what it queued, under the cancel lock order (each
+    attempt, then its application). An attempt no worker has taken is cancelled at once; one a
+    worker holds is cancelled too, and the worker stops at its next step (anything it had already
+    entered on the page stays entered, as with Cancel). One past the send gate may be in flight:
+    it is left alone and counted. What you queued yourself is never touched."""
+    out = {"cancelled": 0, "stopped": 0, "in_flight": 0}
+    ids = db.scalars(
+        select(ExecutionAttempt.id).where(
+            ExecutionAttempt.user_id == user_id,
+            ExecutionAttempt.queued_by_rule.is_(True),
+            ExecutionAttempt.state.in_(ACTIVE),
+        )
+    ).all()
+    for att_id in ids:
+        att = db.scalar(  # waits for a gate holding the attempt
+            select(ExecutionAttempt).where(ExecutionAttempt.id == att_id).with_for_update()
+        )
+        app = pk.lock_application(db, att.application_id)
+        db.refresh(app)
+        if att.state in (S.sending, S.awaiting_code):
+            out["in_flight"] += 1
+            continue
+        if att.state not in (S.pending, S.claimed):
+            continue  # it finished while this waited
+        held = att.state == S.claimed
+        att.cancel_requested = True
+        att.state, att.finished_at = S.cancelled, utcnow()
+        att.outcome_detail = (
+            "Your automatic rule was paused while a worker held this; it stops at its next step. "
+            "Anything already entered on the page stays entered."
+            if held and att.disclosure_started_at is not None
+            else "Your automatic rule was paused before anything was sent."
+        )
+        event(db, att, PAUSE_STOPPED)
+        _claim_refused(db, app, "Your automatic rule was paused")
+        out["stopped" if held else "cancelled"] += 1
+    return out
 
 
 def sweep(publish_new: bool = True) -> dict:

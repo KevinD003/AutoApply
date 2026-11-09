@@ -149,6 +149,8 @@ class PackageApproval(Base):
     # foreign key: one would make a cycle with execution_attempts.approval_id, and an id that
     # no longer matches simply fails the check.
     prerequisite_attempt_id: Mapped[uuid.UUID | None] = mapped_column()
+    # D134: given by your standing rule (D113), not by you; a pause retires it.
+    by_rule: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 class AnswerDraft(Base):

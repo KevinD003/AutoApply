@@ -73,6 +73,7 @@ class PauseIn(BaseModel):
 def set_state(
     body: PauseIn, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> dict:
-    service.set_paused(db, user.id, body.paused)
+    stopped = service.set_paused(db, user.id, body.paused)
     db.commit()
-    return _state(db, user)
+    # D134: what pausing stopped of the rule's queued work (none when resuming).
+    return _state(db, user) | ({"stopped": stopped} if stopped is not None else {})
