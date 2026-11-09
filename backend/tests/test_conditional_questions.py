@@ -23,9 +23,7 @@ from tests.test_greenhouse_dom import live_application, v2_application
 
 COND = "question_8105"  # "Which team did you work in?": hidden until question_8104 is "Yes"
 LABEL = "Which team did you work in?"
-MAKERS = pytest.mark.parametrize(
-    "make", [v2_application, live_application], ids=["by_id", "pilot"]
-)
+MAKERS = pytest.mark.parametrize("make", [v2_application, live_application], ids=["by_id", "pilot"])
 
 
 @pytest.fixture(scope="module")

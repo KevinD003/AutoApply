@@ -177,6 +177,10 @@ page's own checks block is not terminal. Later ranks:
 | D134 with `main` (D133) merged in: the 17 suites plus `test_greenhouse_dom.py` (JUnit) | 363 passed, 0 failures |
 | D134: a held attempt stopped by a pause, then resumed (`test_auto_apply.py`, JUnit) | 18 passed; the resume fails without its change |
 | D134: `playwright test e2e/auto-apply-pause.spec.ts` (desktop and mobile, JUnit) | 2 passed |
+| D135: `pytest tests/test_conditional_questions.py` (JUnit) | 9 passed |
+| D135: every suite that loads the second Greenhouse-style fixture, with the pause, resolution, migration, export and audit suites (47 files, JUnit) | 1079 tests: 1078 passed, 1 failed (an existing test of the old wording for the hidden question, updated); then 22 passed |
+| D135 sabotage runs (each of eight changes removed in turn) | each fails its tests |
+| D135: `playwright test` conditional-pause, questions, journey and the gh2 submission (desktop and mobile, JUnit) | 10 passed |
 
 ## Failed approaches and rejected designs
 

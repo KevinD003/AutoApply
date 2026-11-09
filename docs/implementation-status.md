@@ -63,10 +63,10 @@ real was run.
 | Check (branch `conditional-pauses`, from `main` 2e10418) | Command | Result |
 |---|---|---|
 | The new tests | `pytest tests/test_conditional_questions.py` (disposable database, alternate ports) | exit 0; 9 passed |
-| Every suite that loads the second Greenhouse-style fixture, with the pause, resolution, migration, export and audit suites (47 files) | `pytest` on the files in the run's list (JUnit) | @@AFFECTED@@ |
-| Each change removed in turn | @@SABOTAGE_CMD@@ | @@SABOTAGE@@ |
-| The pause cards (Questions and the application's page) | @@E2E_CMD@@ | @@E2E@@ |
-| Lint, format, types, the tests that read the documents (after the last edit) | @@FINAL_CMD@@ | @@FINAL@@ |
+| Every suite that loads the second Greenhouse-style fixture, with the pause, resolution, migration, export and audit suites (47 files) | `pytest` on the files in the run's list (JUnit) | JUnit 1079 tests: 1078 passed, 1 failed: `test_preferred_name_and_unknown_condition_are_not_guessed` checked the old wording for the hidden question (now: still never guessed, answerable, explained as shown only after an earlier answer); after updating it, with the new tests and `test_notifications.py`: exit 0, 22 passed |
+| Each change removed in turn (8 cases) | one change at a time, its tests run, the file restored (checksum compared) | each fails its tests: never answerable; a saved answer or draft kept; no late fill pass; filled even when hidden (the fill times out); a revealed required one a plain stop; the runner never pausing; trying again unguarded; the pause never asking |
+| The pause cards (Questions and the application's page), with the specs that use the same form or cards | `npx playwright test e2e/conditional-pause.spec.ts e2e/questions.spec.ts e2e/journey.spec.ts e2e/submission.spec.ts --grep "reveals and requires\|form that changes\|another account\|journey\|Greenhouse-style v2"` (desktop and mobile, a fresh build) | exit 0; JUnit 10 tests, 10 passed, 0 failures |
+| Lint, format, types, the tests that read the documents (after the last edit) | `pytest tests/test_doc_references.py tests/test_audit_inventory.py tests/test_authorizations.py tests/test_provider_contracts.py tests/test_provider_admission.py tests/test_package_contract.py`, `ruff check .`, `ruff format --check .`, `npx tsc --noEmit`, `npm run lint` | exit 0; JUnit 218 passed, 0 failures (the new tests again, after formatting); ruff: all checks passed, 367 files already formatted; tsc exit 0; eslint exit 0 |
 
 The full backend and e2e suites run in the pull request's CI.
 
