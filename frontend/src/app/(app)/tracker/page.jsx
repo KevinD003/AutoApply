@@ -38,8 +38,21 @@ const ACTIONS = {
     { to: "cancelled", label: "Cancel" },
   ],
   awaiting_approval: [{ to: "cancelled", label: "Cancel" }],
-  needs_user_action: [{ to: "cancelled", label: "Cancel" }],
+  // D132: an application waiting for you (a question, or a form that changed) can also be
+  // applied to on the employer's site and recorded here.
+  needs_user_action: [
+    { to: "submitted_unconfirmed", label: "I applied myself", reason: "User reported a manual submission" },
+    { to: "cancelled", label: "Cancel" },
+  ],
 };
+
+// An attempt that still holds the application (a verification code awaited, a send under way):
+// the server refuses a manual record or a cancellation here until it ends, so neither is offered.
+const HELD = ["claimed", "sending", "awaiting_code"];
+
+function actionsFor(app) {
+  return HELD.includes(app.last_attempt?.state) ? [] : (ACTIONS[app.state] ?? []);
+}
 
 // A submission NoEfforts is still handling: recording Withdrawn does not stop it.
 const IN_PROGRESS = ["queued", "running", "ready_to_submit", "submitting"];
@@ -142,7 +155,7 @@ function Tracker() {
             <Reconcile key={open.id} appId={open.id} receipt={open.submission === "receipt"} onDone={done} />
           )}
           <div className="mb-3 flex flex-wrap gap-2">
-            {(ACTIONS[open.state] ?? []).map((a) => (
+            {actionsFor(open).map((a) => (
               <Button key={a.to} variant={a.to === "cancelled" ? "danger" : "secondary"} onClick={() => act(open.id, a.to, a.reason)}>
                 {a.label}
               </Button>
@@ -259,7 +272,7 @@ function OutcomeForm({ app, onDone }) {
       {!choices.includes("interviewing") && (
         <p className="text-ink-muted">
           Employer outcomes can be recorded once NoEfforts knows of a submission. Withdrawn can always be recorded.
-          {app.state === "draft" && " If you applied yourself, choose “I applied myself” first."}
+          {(app.state === "draft" || app.state === "needs_user_action") && " If you applied yourself, choose “I applied myself” first."}
         </p>
       )}
       {outcome === "withdrawn" && app.state === "submitting" && (

@@ -94,6 +94,13 @@ APPROVAL_REASONS = {
     "worker; it will stop, because the package changed. Try again in a moment.",
     "revoke_in_flight": "The submission may already be in flight, so revoking cannot stop it. "
     "Wait for the outcome, or reconcile it.",
+    # D132: while an application's form-change pause is unresolved, nothing is approved for it.
+    "form_recapture_needed": "The employer's form no longer matched the approved one when it "
+    'ran. Read the form again under Questions, or choose "Try this version again" there; '
+    "nothing can be approved until then.",
+    "form_change_unexplained": "Reading the employer's form again showed no difference NoEfforts "
+    'can see (the page\'s own scripts may add it). Choose "Try this version again" under '
+    "Questions, or apply on the employer's site.",
 }
 
 
@@ -606,6 +613,23 @@ def execution_owns_state(db: Session, app: Application) -> bool:
     )
 
 
+def unresolved_pause(db: Session, app_id: uuid.UUID, *, lock: bool = False):
+    """D132: the application's form-change pause that still waits for you (open or
+    unexplained), or None. At most one, by a partial unique index. `lock`: for a caller about to
+    change it, which holds the application lock: the row is locked and read as it is now (not as
+    the session last saw it), so a form read that resolved it meanwhile is seen, never
+    overwritten; a read that resolves it later waits for this transaction."""
+    from app.modules.execution.models import PAUSE_UNRESOLVED, ApplicationPause
+
+    q = select(ApplicationPause).where(
+        ApplicationPause.application_id == app_id,
+        ApplicationPause.status.in_(PAUSE_UNRESOLVED),
+    )
+    if lock:
+        q = q.with_for_update().execution_options(populate_existing=True)
+    return db.scalar(q)
+
+
 def ensure_current(db: Session, app: Application) -> ApplicationPackage:
     """Return the current package version, writing a new one if inputs changed.
 
@@ -657,6 +681,9 @@ def _settle_state(
 ) -> None:
     """Move the application to the state the package implies, via legal system transitions."""
     ready = not pkg.content["unresolved"] and not pkg.content["validation_errors"]
+    paused = unresolved_pause(db, app.id) is not None
+    if paused:
+        ready = False  # D132: stopped on a changed form; it waits for you whatever it holds
     target = AppState.awaiting_approval if ready else AppState.needs_user_action
     s = app.state
     if s == AppState.failed_retryable:
@@ -686,11 +713,16 @@ def _settle_state(
             app,
             target,
             Actor.system,
-            "Ready for your approval"
+            PAUSED_REASON
+            if paused
+            else "Ready for your approval"
             if ready
             else f"{len(pkg.content['unresolved'])} question(s) need your input",
         )
 
+
+# D132: why an application waits while its form-change pause is unresolved (its timeline).
+PAUSED_REASON = "The employer's form changed: read it again under Questions"
 
 SCOPE_WORDS = {
     ApprovalScope.submit: "to fill and submit",
@@ -710,6 +742,13 @@ def approve(
         raise refused("package_changed")
     if pkg.content["unresolved"] or pkg.content["validation_errors"]:
         raise refused("package_unresolved")
+    pause = unresolved_pause(db, app.id)
+    if pause is not None:
+        # D132: the application stopped on a changed form. Whatever this package holds, it is
+        # not approved until the form is read again or you choose to try this version again.
+        raise refused(
+            "form_change_unexplained" if pause.status == "unexplained" else "form_recapture_needed"
+        )
     from app.modules.jobs import signals
 
     # S3 (D59): a closed, excluded or possibly duplicate job waits for your statement. Read

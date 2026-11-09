@@ -54,6 +54,47 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## A form that no longer matches pauses the application; Questions needing your answer (D132, 2026-11-06; local only)
+
+**partial** — built and tested on local fixtures only (the gh2 Greenhouse-style approximation by id
+and through the pilot path, the Workday-style approximation in the e2e). No real page was read,
+opened, filled or submitted. Decision: D132.
+
+What it does:
+- A change a fresh read of the form can show (a question added, gone, reworded or retyped, other
+  options, a section gone) now pauses the application. The run stops before anything is sent,
+  every live approval is retired, and the pause is recorded. Nothing is approved for the
+  application until it is resolved.
+- "Questions needing your answer" (`/questions`) lists it. "Read the form again" brings the new
+  question through the same capture route (and its permission checks). Once you answer and
+  approve, exactly one new run fills it.
+- "Try this version again" ends the pause; the page is checked again before anything is entered.
+- What only the running page shows about the questions the form lists stays a plain stop, as
+  before. A control the form does not list pauses however it appeared; one added only by the page's
+  script cannot be seen by a read, so the read ends "unexplained". A change found after filling is
+  abandoned as before, now with every approval retired, so entering the data again is a new
+  approval.
+
+| Check (branch `form-change-pause`) | Command | Result |
+|---|---|---|
+| Existing suites that cover drift stops, approval, notifications, auto-apply, contracts and migrations, first build (d197bb7) | `pytest` on test_account, test_approval_hardening, test_approval_reasons, test_ashby_adapter, test_audit_inventory, test_auto_apply, test_batch_review, test_dropdown_strategies, test_error_boundary, test_execution_failures, test_execution_security, test_form_change_loop, test_greenhouse_adapter, test_greenhouse_controls, test_greenhouse_dom, test_greenhouse_live, test_greenhouse_sections_e2e, test_hidden_search, test_lever_adapter, test_migrations, test_notifications, test_phone_companion, test_preparation, test_rehearsal_stop, test_required_signals, test_section_free_route, test_workday_adapter (disposable database) | JUnit 665 tests, 663 passed, 2 failed: `test_auto_apply.py::test_a_stopped_attempt_is_never_retried_automatically` (a form-change stop now has its own skip reason; the test now covers a plain stop and a pause apart) and `test_notifications.py::test_every_query_of_the_feed_is_scoped_to_the_account` (its guard now counts D132's three account-scoped queries) |
+| The same suites plus test_api_provider and test_rehearsal, after the rework (730f1b6) | the same, 29 files | exit 0; JUnit 693 tests, 693 passed, 0 failures, 0 errors (1637 s) |
+| After merging `main` (f7a54e4): D132 and contract suites | `pytest tests/test_form_change_loop.py tests/test_auto_apply.py tests/test_notifications.py tests/test_migrations.py tests/test_account.py tests/test_audit_inventory.py tests/test_approval_reasons.py` | exit 0, 85 passed |
+| Full e2e on the merged tree (f7a54e4) | `npx playwright test` (desktop and mobile, disposable database) | exit 0; JUnit 173 tests, 170 passed, 0 failures, 3 skipped by design (the bottom-nav check runs on mobile only, the two log-privacy configuration checks on desktop only); 777.9 s |
+| Race fixes (fb00d8c): the two two-connection race tests, then the same with the pause's row lock removed | `pytest tests/test_form_change_loop.py -k during` | exit 0 with the lock; without it both fail ("the read did not wait for the pause's lock") |
+| Head (76588f8) | `pytest tests/test_form_change_loop.py tests/test_auto_apply.py tests/test_notifications.py tests/test_lock_order.py`; `npx playwright test e2e/questions.spec.ts e2e/layout-regression.spec.ts e2e/notifications.spec.ts e2e/tracker-outcomes.spec.ts` | exit 0, 74 passed; exit 0, 15 passed, 1 skipped by design |
+| PR #40 CI on d2851c6 | the backend job | 2 failed, 4828 passed: `test_audit_repair` (the migration's message named "the employer's form", a word that test keeps out of migration output) and `test_phase_a_verification::test_concurrent_writers_conflict_instead_of_overwriting` (the conflict now surfaces at `transition()`'s flush); both reproduced locally on d2851c6, both pass after 6b01b2e |
+| The rework review's open findings (sensitive rows decided on the application's page; the tracker's refused actions hidden while an attempt holds the application; tests for structural drift, a missing section, the pre-read refusal, the job page's dedupe commit, the ever-paused guard after a rehearsal, the waiting state and batch review, a script-added control) | `pytest tests/test_form_change_loop.py tests/test_auto_apply.py tests/test_greenhouse_adapter.py tests/test_phase_a_verification.py tests/test_audit_repair.py tests/test_notifications.py tests/test_migrations.py tests/test_greenhouse_dom.py tests/test_greenhouse_sections_e2e.py` (disposable database); each new test run once with its mutation (sensitive rows answerable, no pre-read attempt check, no dedupe commit, guard only while unresolved); `npx playwright test e2e/questions.spec.ts e2e/submission.spec.ts e2e/follow-ups.spec.ts e2e/tracker-outcomes.spec.ts` | exit 0; JUnit 181 passed; each mutation fails its test; e2e JUnit 34 passed, 0 failures |
+| Lint and format | `uv run ruff check .`, `uv run ruff format --check .` | exit 0 ("All checks passed!"), exit 0 (362 files already formatted) |
+| Frontend | `npx tsc --noEmit`, `npm run lint` | exit 0, exit 0 |
+
+Reviews: three independent design critiques and a reconciling lead (the design was changed: the
+gate holds the application, structural drift pauses, approvals are retired after entry); a three-lens
+implementation review of the first build (five confirmed findings, all fixed); a four-lens review of
+the rework (its verifiers were cut off by a usage limit; each finding was checked against the code:
+four fixed, one narrowed in the docs as an open owner decision). The full backend suite runs in the
+pull request's CI.
+
 ## Answer safety: self-identification scope, follow-up reuse, job requirements (D131, 2026-11-06; local only)
 
 Found by the first acceptance inventory of the Greenhouse + Workday loop and reproduced on `main`

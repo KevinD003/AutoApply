@@ -272,6 +272,13 @@ test("expired verification stops without acceptance", async ({ page, request }, 
   await admin(request, "config", { mode: "otp" });
   await approveAndSubmit(page, appId);
   await expect(page.getByLabel("Verification code")).toBeVisible({ timeout: 60_000 });
+  // While the attempt waits for a code it holds the application: the tracker offers neither "I
+  // applied myself" nor "Cancel", which the server refuses then (D132 review).
+  await page.goto(`/tracker?highlight=${appId}`);
+  await expect(page.getByRole("link", { name: "Open the application review" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "I applied myself" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+  await page.goto(`/applications/${appId}`);
   sql(`update checkpoints set expires_at = now() - interval '1 minute' where application_id = '${appId}'`);
   await expect(badge(page, "Stopped after entering data, not submitted")).toBeVisible({ timeout: 60_000 });
   expect((await ledger(request, slug)).accepted).toBe(0);

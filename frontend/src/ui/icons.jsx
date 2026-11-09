@@ -43,6 +43,13 @@ export const IconReview = (p) => (
   </Svg>
 );
 
+export const IconQuestion = (p) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5h.01" />
+  </Svg>
+);
+
 export const IconTracker = (p) => (
   <Svg {...p}>
     <path d="M3 12h4l2 6 4-14 2 8h6" />
