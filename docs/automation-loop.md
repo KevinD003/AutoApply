@@ -5,7 +5,7 @@ answers, credentials, employer-identifying evidence, raw pages or unredacted log
 canonical backlog is `docs/remaining-work.md` (its "Automation loop" section); decisions are in
 `docs/decisions.md`.
 
-**Updated:** 2026-11-06 (UTC).
+**Updated:** 2026-11-09 (UTC).
 
 ## Objective
 
@@ -22,10 +22,11 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 
 | What | Where |
 |---|---|
-| `main` | ab671e1 (tree cbd706a, as predicted): #40 D132 (c19c683, tree a54ae63, as predicted; main CI #260 green on all four jobs) and #42, the receiver's reset in one transaction (ab671e1) |
+| `main` | da7ac61 (tree d2214b6, as predicted): #41 D133. Before it, ab671e1 (tree cbd706a): #40 D132 (c19c683; main CI #260 green on all four jobs) and #42, the receiver's reset in one transaction |
 | D131 follow-up (the review's remaining findings) | merged (#39, bd38529); main CI #254 passed all four jobs |
 | D132 form-change pause and questions tab | merged (#40, c19c683); main CI #260 passed all four jobs |
-| D133 reuse and suggestion guards | PR #41, branch `suggestion-guards`; `main` (D132) merged in, 4/4 green on that head; an adversarial review's findings fixed, each with a test that fails without it |
+| D133 reuse and suggestion guards | merged (#41, da7ac61); its PR CI passed all four jobs on 360f34c; main CI #265 on da7ac61 had not finished when this was written |
+| D134 the standing rule respects your pause and revocation | branch `rule-respects-owner` (from ab671e1, `main` with D133 merged in) and its pull request; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -43,20 +44,20 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 |---|---|---|---|
 | 1 | Known answer fills and survives readback | fx (gh2 stand-in) | fx, single-page approximation only |
 | 2 | New question → questions tab → saved → resumes | fx (gh2 by id and pilot stand-in), on `main` since D132 (#40) | fx (e2e), on `main` since D132 |
-| 3 | Future reuse | unit (resolver), generic form; D133 (branch): suggestions judge the saved side, "Use here only" | unit |
-| 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 (branch): word-level vetoes over label and help, a rule floor under the model | unit |
+| 3 | Future reuse | unit (resolver), generic form; D133 merged (#41): suggestions judge the saved side, "Use here only" | unit |
+| 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model | unit |
 | 5 | Conditional question | partial: v1 fixture only; id-only real structure cannot answer it | absent (no branching fixture) |
 | 6 | Unsupported widget → checkpoint | fx at capture; some types refused only after approval | fx at capture |
 | 7 | Repeating records | fx education stand-in (D120); employment unit | absent |
 | 8 | Answer edits invalidate approvals | fx | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; not run on gh2 | partial |
-| 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 (branch): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify" |
+| 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify" |
 | 11 | Upload failure preserves evidence | fx for UploadFailed; other exceptions lose it | fx (single page) |
 | 12 | Uncertain send quarantined | fx | fx (final send only; each Next not modelled) |
-| 13 | Cancellation respected | fx on the generic form; D113 ignores revocation and pause for queued work | partial |
+| 13 | Cancellation respected | fx on the generic form; D134 (branch), on the gh2 stand-in through the pilot (receiver ledger): a pause stops what the standing rule queued, your own queued work runs on, a revocation stands | partial |
 | 14 | Tenant isolation | fx (per-application routes) | partial (no Workday-shaped test) |
-| loop | Durable pause → answer → recheck → continue | fx on the D132 branch: pause, read again, answer, one new run (receiver ledger) | fx on the D132 branch (e2e) |
-| tab | "Questions needing your answer" | built on the D132 branch (`/questions`) | built on the D132 branch |
+| loop | Durable pause → answer → recheck → continue | fx, on `main` since D132 (#40): pause, read again, answer, one new run (receiver ledger) | fx (e2e), on `main` since D132 |
+| tab | "Questions needing your answer" | on `main` since D132 (#40) (`/questions`) | on `main` since D132 |
 
 The full matrix, with test names and file references, was produced on 2026-11-06 by the read-only
 acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
@@ -77,11 +78,11 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   - the documents that let you work are legal-status wording;
   - vaccinations in any wording are sensitive;
   - self-identification labels are one per line, so the standard disability "No, …" stays whole.
-- **D132 (branch, not merged).** A form that no longer matches pauses the application instead of
+- **D132 (PR #40, merged).** A form that no longer matches pauses the application instead of
   dead-ending; "Questions needing your answer"; read the form again; "Try this version again".
   - Three design critiques changed the first build. Only a new question pauses; changes only the
     live page shows stay plain stops; a change found after filling never pauses.
-- **D133 (branch `suggestion-guards`, not merged).** Rank 2, reuse and suggestion guards:
+- **D133 (PR #41, merged).** Rank 2, reuse and suggestion guards:
   - a saved answer is suggested only when the question it was given to is still reused (never a
     fact, one employer's question, a sensitive topic or a follow-up's answer), and never when it
     would not fit the field;
@@ -91,6 +92,16 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   - "I don't wish to self-identify" is a decline; a screening job on the gh2 stand-in shows
     self-identification never answering felony or sponsorship (receiver ledger);
   - an error boundary keeps the app around a page that fails while it is shown.
+- **D134 (branch `rule-respects-owner`, not merged).** Rank 3, the standing rule respects the
+  owner's pause and revocation for work it already queued:
+  - the rule's approvals and attempts are marked as its own (`by_rule`, `queued_by_rule`);
+  - pausing cancels the attempts the rule queued (one a worker holds stops at its next step),
+    leaves one past the send gate alone and counts it, and retires the rule's approvals; what you
+    queued yourself and approvals you gave are never touched;
+  - a worker refuses an attempt the rule queued while the rule is switched off or paused;
+  - a pause and the rule's step for one job are serialized per account, so a pause during a tick
+    reaches that tick's remaining jobs;
+  - after you revoke, the rule never approves that application again.
 - **Research** (log below):
   - corrected the Workday terms note: the End User Agreement covers scoutrfp.com;
   - Workday saves a draft on every Next;
@@ -98,13 +109,11 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
 
 ## Hypothesis and next slice
 
-The loop itself (**D132**) is built on its branch: a form change found before anything is entered
-becomes a durable, user-scoped pause, listed under "Questions needing your answer". Reading the form
-again rechecks the capture route's permissions, the new questions are answered and approved, and
-exactly one new attempt runs. The receiver ledger is the oracle, on the gh2 and Workday-style
-stand-ins. Next: finish its validation and open its PR. Later ranks:
-- D113 notify-and-continue (needs an owner decision);
-- answerable conditionals on the id-only structure;
+The loop itself (**D132**, #40) and the reuse and suggestion guards (**D133**, #41) are on `main`.
+**D134** (rank 3, on its branch) makes the standing rule respect the owner's pause and revocation
+for work it already queued. What rank 3 leaves, the rule continuing after a form-change pause, needs
+the owner's decision. Next, rank 4: conditional and page-required questions on Greenhouse's id-only
+structure become answerable pauses, and a click the page blocks is not terminal. Later ranks:
 - capture refusing what cannot be filled, and evidence surviving any failure;
 - provider-shaped reuse tests;
 - EEOC/demographic end to end;
@@ -120,10 +129,15 @@ stand-ins. Next: finish its validation and open its PR. Later ranks:
 - **D132:** merged (#40); PR CI passed all four jobs on 564b4f1 and main CI #260 on c19c683. An
   earlier PR run (6b01b2e) errored once in a fixture: the receiver's reset outlasted its 5-second
   wait on a busy runner disk. Not D132's; fixed in its own PR (#42, merged).
-- **D133 (PR #41):** focused suites (2543 passed), the 31 fixture suites (898 passed), the e2e
-  that touch it (56 passed) and each sabotage run locally; with `main` (D132) merged in, 1300
-  backend and 51 e2e passed and its CI passed all four jobs; after the adversarial review's fixes,
-  2581 passed, each fix's test failing without it. The full suites run in its CI.
+- **D133:** merged (#41, da7ac61); its PR CI passed all four jobs on 360f34c (the head with the
+  review fixes). Locally: focused suites (2543 passed), the 31 fixture suites (898 passed), the e2e
+  that touch it (56 passed) and each sabotage run; with `main` (D132) merged in, 1300 backend and
+  51 e2e passed; after the adversarial review's fixes, 2581 passed, each fix's test failing without
+  it.
+- **D134 (branch `rule-respects-owner`):** locally, the 17 suites the change touches, each of its
+  seven changes removed in turn, and frontend lint and types; with `main` (D133) merged in, the same
+  suites with `test_greenhouse_dom.py`, the resumed held attempt, and the Tracker's card in one e2e
+  spec (desktop and mobile). Results in Tests run below. The full suites run in its CI.
 
 ## Tests run (this loop)
 
@@ -145,6 +159,10 @@ stand-ins. Next: finish its validation and open its PR. Later ranks:
 | D133 with `main` merged in: 8 e2e specs, desktop and mobile | 51 passed, 1 skipped by design |
 | D133 review fixes: the 14 focused files plus the rules, vocabulary and ledger tests (JUnit) | 2581 passed, 0 failures |
 | D133 review fixes: each changed file restored to 1b5cc0b in turn | features 39, service 1, resolver 3, classify 1 tests fail |
+| D134: `pytest tests/test_auto_apply.py` (disposable database) | 18 passed (8 new) |
+| D134: the 17 suites the change touches (JUnit) | 304 tests: 303 passed, 1 failed (the pause's audit row hid its keys), fixed; then `test_audit_inventory.py` and `test_auto_apply.py`: 20 passed |
+| D134 sabotage runs (each of seven changes removed in turn) | each fails its tests |
+| D134: `npm run lint`, `npx tsc --noEmit`, `ruff check`, `ruff format` | all clean |
 
 ## Failed approaches and rejected designs
 
@@ -186,9 +204,9 @@ stand-ins. Next: finish its validation and open its PR. Later ranks:
 
 ## Exact next action
 
-1. D133 (PR #41): merge when its four checks pass on the head with the review fixes.
-2. Rank 3, D134 (branch `rule-respects-owner`): the standing rule respects the owner's pause and
-   revocation for work it already queued; its pull request after D133 merges.
+1. D134 (branch `rule-respects-owner`): merge its pull request when its four checks pass.
+2. Rank 4: conditional and page-required questions on Greenhouse's id-only structure become
+   answerable pauses; a click the page blocks is not terminal.
 3. Owner decisions: every recorded permission ended on 2026-11-06 (renewing is the owner's call,
    never extended because work took longer); continuing after a form change (D132).
 

@@ -327,6 +327,11 @@ def test_pausing_stops_an_attempt_a_worker_holds_before_anything_is_entered(
     assert attempt_row(att).state == "cancelled"
     assert api.get(f"/applications/{app_id}").json()["state"] == "needs_user_action"
     assert receiver.ledger()["disclosures"] == [] and receiver.ledger()["accepted"] == 0
+    # Resumed, the rule continues it: the pause stopped it before anything was entered.
+    monkeypatch.setattr(svc, "claim", claim)
+    api.put("/auto-apply", json={"paused": False})
+    assert tick() == 1 and runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
 
 
 def test_what_you_queued_yourself_is_never_stopped_by_a_pause(api, receiver):

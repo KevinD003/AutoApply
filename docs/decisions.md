@@ -4821,7 +4821,8 @@ audit-inventory and export-completeness guards are updated and pass.
 ## D134 — Your pause and your revocation reach what the standing rule already queued (2026-11-09)
 
 - **Why:** rank 3 of the Greenhouse + Workday automation loop (`docs/automation-loop.md`). A
-  read-only map of the code (main 564b4f1, three readers) found:
+  read-only map of the code (three readers, on D132's head 564b4f1, whose application code is what
+  main received as c19c683) found:
   1. **Pausing the rule stopped only its next tick.** The pause was read once, at the start of
      each tick. Rehearsals and submissions it had already queued still ran (a submission still
      clicked submit); the sweeper could re-pend one; a pause made during a tick did not reach that
@@ -4841,7 +4842,9 @@ audit-inventory and export-completeness guards are updated and pass.
     stops at its next step (the same as Cancel: a page it already opened may have been read, and
     anything it already entered stays entered; the application then waits for you). One past the
     send gate may be in flight: it is left alone and counted. Every live approval the rule gave is
-    retired ("Your automatic rule was paused"). What you queued yourself, and approvals you gave,
+    retired ("Your automatic rule was paused"), that of an attempt in flight too: nothing after the
+    send gate reads the approval (a verification code still completes it), so the submission runs
+    on and its outcome is recorded as usual. What you queued yourself, and approvals you gave,
     are never touched. The pause's reply and its audit row carry the counts; the Tracker says what
     was stopped.
   - **A pause during a tick:** the pause and the rule's step for one job are serialized by an
@@ -4873,7 +4876,8 @@ audit-inventory and export-completeness guards are updated and pass.
 - **Tests** (`test_auto_apply.py`, the receiver's ledger as the oracle):
   - a pause cancels a rehearsal the rule queued before a worker took it (no disclosure; its
     approval retired; the application waits; resumed, the rule rehearses it);
-  - a pause that lands just after a worker took the attempt stops it before anything is entered;
+  - a pause that lands just after a worker took the attempt stops it before anything is entered
+    (the application waits for you; resumed, the rule rehearses it);
   - what you queued yourself runs through a pause;
   - after your revocation the rule never approves the application again;
   - switched off, and paused without stopping (as an older version recorded it), the rule's
@@ -4881,3 +4885,6 @@ audit-inventory and export-completeness guards are updated and pass.
   - the pause waits for a step holding the lock (two connections), and the next step reads the
     pause and approves nothing;
   - another account's pause touches nothing of yours.
+
+  And `frontend/e2e/auto-apply-pause.spec.ts`, desktop and mobile: the Tracker's card says what a
+  pause stopped, says nothing when it stopped nothing, and clears when you resume.
