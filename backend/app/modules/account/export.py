@@ -478,6 +478,7 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "state",
         "retry_count",
         "cancel_requested",
+        "queued_by_rule",
         "destination_class",
         "rehearsal_prerequisite",
         "disclosure_started_at",
@@ -625,6 +626,7 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "invalidated_at",
         "invalidation_reason",
         "prerequisite_attempt_id",
+        "by_rule",
     ),
     "rehearsal_records": (
         "id",

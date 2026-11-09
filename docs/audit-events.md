@@ -110,7 +110,7 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `application.transition` | `application` | `to` | the new application state |
 | `application.create` | `application` | `by` | made by the owner's standing rule to apply automatically (D113): `by` is its fixed name `auto_apply` |
 | `application.transition` | `application` | `by`, `to` | queued by the standing rule (D113): `by` is `auto_apply`, `to` the new state |
-| `auto_apply.paused` / `auto_apply.resumed` | `user` | - | the account switched its automatic applying off or on (D113, D114) |
+| `auto_apply.paused` / `auto_apply.resumed` | `user` | `approvals`, `cancelled`, `in_flight`, `stopped` | the account switched its automatic applying off or on (D113, D114). A pause (D134) also counts what it stopped of the rule's own work: attempts cancelled before a worker took them, attempts a worker held, attempts already being sent (left alone) and the rule's approvals retired; a resume records none |
 | `auto_apply.{action}` | `job` | `reason_code` | what the standing rule did for one job (D113): `approved_rehearsal`, `approved_submit` or `skipped`, and a fixed reason code (`autoapply/service.py` `REASONS`); never the job's title, employer or address |
 | `answer_brain.rejected` | `application` | `field_ref` | you said a suggested saved answer does not answer this question (D115); reference only, never the question, its key or the answer. Accepting one is an `application.answer` |
 | `application.reconcile` | `application` | `finding` | `received` or `not_received` |

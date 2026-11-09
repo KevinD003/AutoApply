@@ -736,7 +736,10 @@ def approve(
     version: int,
     expected_hash: str,
     scope: ApprovalScope = ApprovalScope.submit,
+    by_rule: bool = False,
 ) -> PackageApproval:
+    """`by_rule`: given by the owner's standing rule (D113). Recorded only on an approval this
+    creates; a live approval of yours that it returns stays yours (D134)."""
     pkg = ensure_current(db, app)
     if pkg.version != version or pkg.content_hash != expected_hash:
         raise refused("package_changed")
@@ -796,6 +799,7 @@ def approve(
         approved_at=now,
         expires_at=now + timedelta(hours=get_settings().approval_ttl_hours),
         prerequisite_attempt_id=verdict.basis if verdict else None,
+        by_rule=by_rule,
     )
     db.add(appr)
     record(
@@ -816,6 +820,26 @@ def approve(
 
 # An approval you revoked yourself (notifications leave it out: you did it).
 REVOKED_BY_YOU = "Revoked by you"
+
+
+PAUSED_RULE = "Your automatic rule was paused"
+
+
+def retire_rule_approvals(db: Session, user_id) -> int:
+    """D134: pausing the standing rule retires every live approval it gave, so nothing it
+    approved is queued or sent while it is paused. Yours are never touched."""
+    rows = db.scalars(
+        select(PackageApproval)
+        .where(
+            PackageApproval.user_id == user_id,
+            PackageApproval.by_rule.is_(True),
+            PackageApproval.invalidated_at.is_(None),
+        )
+        .with_for_update()
+    ).all()
+    for appr in rows:
+        appr.invalidated_at, appr.invalidation_reason = utcnow(), PAUSED_RULE
+    return len(rows)
 
 
 def revoke(db: Session, app: Application, queued_attempt: str = "none") -> None:

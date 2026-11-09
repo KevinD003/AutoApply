@@ -85,6 +85,9 @@ class ExecutionAttempt(Base):
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    # D134: queued by your standing rule (D113), not by you; a pause or the rule's switch
+    # stops it before anything is sent.
+    queued_by_rule: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # "fixture" or "real" (rehearsal.destination_class), fixed when queued; NULL = queued before
     # it was recorded, which counts in no evidence class.
     destination_class: Mapped[str | None] = mapped_column(String(10))

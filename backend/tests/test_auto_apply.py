@@ -4,15 +4,22 @@ Against the local Greenhouse-style stand-in playing a real board through the pil
 (execution_harness.pilot_on); the receiver's ledger is the oracle for what was disclosed and
 submitted. Synthetic data only."""
 
+import uuid
+
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError
 
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.modules.autoapply import service
-from app.modules.autoapply.models import AutoApplyEvent
+from app.modules.autoapply.models import AutoApplyEvent, AutoApplyPrefs
 from app.modules.execution import runner
+from app.modules.execution import service as svc
 from app.modules.execution.models import ExecutionAttempt
+from app.modules.identity.models import User
+from app.modules.preparation import package as pk
+from app.modules.preparation.models import PackageApproval
 from tests.execution_harness import Receiver, pilot_on, queue, synthetic_candidate
 from tests.test_greenhouse_dom import v2_job
 
@@ -242,3 +249,167 @@ def test_d114_the_mailbox_and_the_owner_default_stay_the_owners(api, other_api, 
     src = open(inbox.__file__).read()
     # One mailbox token on the server, the owner's: never opened to every account.
     assert "app.core.accounts" not in src and "all_accounts" not in src
+
+
+# ------------------------------------------------------------------ D134: your pause and revocation
+
+
+def attempt_row(att_id: str) -> ExecutionAttempt:
+    with SessionLocal() as db:
+        return db.get(ExecutionAttempt, uuid.UUID(att_id))
+
+
+def approvals(app_id: str) -> list[PackageApproval]:
+    with SessionLocal() as db:
+        return db.scalars(
+            select(PackageApproval).where(PackageApproval.application_id == uuid.UUID(app_id))
+        ).all()
+
+
+def owner_id() -> uuid.UUID:
+    with SessionLocal() as db:
+        return db.scalar(select(User.id).where(User.email == "synthetic.user@example.com"))
+
+
+def ready(api) -> tuple[str, str]:
+    """A job whose package the rule may approve: read, answered; nothing approved yet."""
+    pilot_on()
+    synthetic_candidate(api)
+    job = v2_job(api)
+    tick()
+    app_id = app_of(api, job)
+    answer(api, app_id)
+    return job, app_id
+
+
+def approve_yourself(api, app_id: str) -> None:
+    p = api.get(f"/applications/{app_id}/package").json()["package"]
+    body = {"version": p["version"], "content_hash": p["content_hash"], "scope": "disclose_only"}
+    assert api.post(f"/applications/{app_id}/package/approve", json=body).status_code == 200
+
+
+def test_pausing_stops_what_the_rule_queued_before_a_worker_takes_it(api, receiver):
+    job, app_id = ready(api)
+    assert tick() == 1  # a rehearsal queued, not yet taken by a worker
+    att = latest_attempt()
+    assert attempt_row(att).queued_by_rule is True
+    assert [a.by_rule for a in approvals(app_id)] == [True]
+    r = api.put("/auto-apply", json={"paused": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["stopped"] == {"cancelled": 1, "stopped": 0, "in_flight": 0, "approvals": 1}
+    assert runner.run_attempt(att, "w1") == "ignored"  # nothing left for a worker to take
+    assert attempt_row(att).state == "cancelled"
+    assert [a.invalidation_reason for a in approvals(app_id)] == [pk.PAUSED_RULE]
+    assert api.get(f"/applications/{app_id}").json()["state"] == "awaiting_approval"
+    assert receiver.ledger()["disclosures"] == [] and receiver.ledger()["accepted"] == 0
+    assert tick() == 0  # paused: nothing new either
+    # Resumed, the rule continues: a pause stopped this before anything was entered.
+    api.put("/auto-apply", json={"paused": False})
+    assert tick() == 1 and runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+
+
+def test_pausing_stops_an_attempt_a_worker_holds_before_anything_is_entered(
+    api, receiver, monkeypatch
+):
+    job, app_id = ready(api)
+    assert tick() == 1
+    att = latest_attempt()
+    claim = svc.claim
+
+    def claim_then_pause(aid, worker):
+        gen = claim(aid, worker)
+        assert api.put("/auto-apply", json={"paused": True}).status_code == 200
+        return gen
+
+    monkeypatch.setattr(svc, "claim", claim_then_pause)
+    assert runner.run_attempt(att, "w1") not in ("rehearsed", "confirmed")
+    assert attempt_row(att).state == "cancelled"
+    assert api.get(f"/applications/{app_id}").json()["state"] == "needs_user_action"
+    assert receiver.ledger()["disclosures"] == [] and receiver.ledger()["accepted"] == 0
+
+
+def test_what_you_queued_yourself_is_never_stopped_by_a_pause(api, receiver):
+    job, app_id = ready(api)
+    approve_yourself(api, app_id)
+    att = queue(api, app_id)
+    assert attempt_row(att).queued_by_rule is False
+    assert [a.by_rule for a in approvals(app_id)] == [False]
+    r = api.put("/auto-apply", json={"paused": True})
+    assert r.json()["stopped"] == {"cancelled": 0, "stopped": 0, "in_flight": 0, "approvals": 0}
+    assert runner.run_attempt(att, "w1") == "rehearsed"
+    assert receiver.ledger()["disclosures"]
+
+
+def test_after_you_revoke_the_rule_never_approves_that_application_again(api, receiver):
+    job, app_id = ready(api)
+    approve_yourself(api, app_id)
+    assert api.post(f"/applications/{app_id}/package/revoke").status_code == 200
+    assert tick() == 0 and events(job)[-1] == ("skipped", "owner_revoked")
+    assert all(a.invalidated_at is not None for a in approvals(app_id))  # none given again
+    assert receiver.ledger()["disclosures"] == []
+
+
+def test_switched_off_the_rules_queued_attempt_is_refused_when_a_worker_takes_it(
+    api, receiver, monkeypatch
+):
+    job, app_id = ready(api)
+    assert tick() == 1
+    att = latest_attempt()
+    monkeypatch.setattr(get_settings(), "auto_apply_enabled", False)
+    assert runner.run_attempt(att, "w1") == "ignored"
+    row = attempt_row(att)
+    assert (row.state, row.outcome_detail) == ("failed_safe", svc.RULE_STOPPED)
+    assert receiver.ledger()["disclosures"] == [] and receiver.ledger()["accepted"] == 0
+
+
+def test_a_pause_recorded_without_stopping_is_still_read_when_a_worker_takes_it(api, receiver):
+    job, app_id = ready(api)
+    assert tick() == 1
+    att = latest_attempt()
+    with SessionLocal() as db:  # paused, as an older version recorded it: nothing stopped
+        db.add(AutoApplyPrefs(user_id=owner_id(), paused=True))
+        db.commit()
+    assert runner.run_attempt(att, "w1") == "ignored"
+    assert attempt_row(att).outcome_detail == svc.RULE_STOPPED
+    assert receiver.ledger()["disclosures"] == []
+
+
+def test_a_pause_waits_for_a_job_being_queued_then_the_job_sees_it(api, receiver, monkeypatch):
+    """The pause and the rule's step for one job are serialized: a pause waits for a job being
+    approved and queued (then stops what it queued), and a job after the pause sees it."""
+    job_id, app_id = ready(api)
+    uid = owner_id()
+    with SessionLocal() as tick_db, SessionLocal() as pause_db:
+        service._hold(tick_db, uid)  # a tick's step for one job, in progress
+        pause_db.execute(text("SET lock_timeout = '300ms'"))
+        with pytest.raises(DBAPIError):  # the pause waits for it
+            service.set_paused(pause_db, uid, True)
+        pause_db.rollback()
+        tick_db.commit()
+        assert service.set_paused(pause_db, uid, True) is not None  # the step is done
+        pause_db.commit()
+    api.put("/auto-apply", json={"paused": False})
+    # A pause recorded after a tick began, before its next job: that job reads it.
+    candidates = service._candidates
+
+    def candidates_then_pause(db, user):
+        jobs = candidates(db, user)
+        with SessionLocal() as other:
+            service.set_paused(other, user.id, True)
+            other.commit()
+        return jobs
+
+    monkeypatch.setattr(service, "_candidates", candidates_then_pause)
+    with SessionLocal() as db:
+        assert service.run_for(db, db.get(User, uid)) == 0
+    assert approvals(app_id) == [] and receiver.ledger()["disclosures"] == []
+
+
+def test_a_pause_never_touches_another_accounts_work(api, other_api, receiver):
+    job, app_id = ready(api)
+    assert tick() == 1
+    att = latest_attempt()
+    r = other_api.put("/auto-apply", json={"paused": True})
+    assert r.json()["stopped"] == {"cancelled": 0, "stopped": 0, "in_flight": 0, "approvals": 0}
+    assert attempt_row(att).state == "pending"
