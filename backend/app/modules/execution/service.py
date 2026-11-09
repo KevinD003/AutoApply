@@ -19,7 +19,9 @@ prerequisite relies on (a rehearsal record or a receipt, FOR SHARE). Inserting a
 references an application (evidence, events) key-share locks the application too, after the
 attempt: the same order. Paths that never lock an attempt (approve, revoke, answers, withdraw,
 evidence deletion) start at the application. A checkpoint row is locked only alone (the user
-entering a code) or while holding its attempt (the worker).
+entering a code) or while holding its attempt (the worker). A form-change pause (D132) is written
+after the approvals, under the attempt and application locks (the worker), or under the
+application lock alone (reading the form again, approving, cancelling).
 """
 
 import logging
@@ -42,6 +44,8 @@ from app.modules.audit.service import record
 from app.modules.execution import live, rehearsal
 from app.modules.execution.models import (
     ACTIVE,
+    PAUSE_UNRESOLVED,
+    ApplicationPause,
     AttemptEvent,
     AttemptState,
     Checkpoint,
@@ -530,6 +534,7 @@ def _finish(
     evidence: list[dict] | None = None,
     reason_code: str | None = None,
     retire: str | None = None,
+    retire_every: str | None = None,
 ) -> bool:
     """`app_target` may be a function of the locked application: an outcome that depends on the
     application's state decides it under the lock, never from an earlier read."""
@@ -542,7 +547,7 @@ def _finish(
         app = pk.lock_application(db, att.application_id)
         target = app_target(app) if callable(app_target) else app_target
         _apply_outcome(db, att, app, to, target, detail, evidence, reason_code=reason_code,
-                       retire=retire)  # fmt: skip
+                       retire=retire, retire_every=retire_every)  # fmt: skip
         db.commit()
         return True
 
@@ -557,12 +562,15 @@ def _apply_outcome(
     evidence: list[dict] | None = None,
     *,
     retire: str | None = None,
+    retire_every: str | None = None,
     reason_code: str | None = None,
 ) -> None:
     """End the attempt in the caller's transaction, which holds its row and application locks.
     `retire`: a reason code (RETIRED); the attempt's approval is retired with it here, so it
     cannot outlive the outcome that used it up, and the retirement is recorded only if the
-    approval was still live. `reason_code`: a fixed code kept on the outcome event."""
+    approval was still live. `retire_every` (D132): the same for every live approval of the
+    application, including one given while this attempt ran (approving does not wait for a
+    running attempt), recorded once. `reason_code`: a fixed code kept on the outcome event."""
     att.state, att.finished_at, att.outcome_detail = to, utcnow(), detail[:2000]
     att.lease_owner, att.lease_expires_at = None, None
     if app_target is not None:
@@ -572,6 +580,11 @@ def _apply_outcome(
     if retire is not None and retire_approval(db, att.approval_id, RETIRED[retire]):
         record(db, att.user_id, "package.approval_retired", "application",
                att.application_id, reason_code=retire)  # fmt: skip
+    if retire_every is not None and retire_live_approvals(
+        db, att.application_id, RETIRED[retire_every]
+    ):
+        record(db, att.user_id, "package.approval_retired", "application",
+               att.application_id, reason_code=retire_every)  # fmt: skip
     extra = {"reason_code": reason_code} if reason_code else {}
     event(db, att, f"outcome_{to.value}", detail=detail[:500], **extra)
     record(db, att.user_id, f"execution.{to.value}", "application", att.application_id)
@@ -615,8 +628,12 @@ def fail_safe(attempt_id, worker, gen, reason: str, code: str | None = None) -> 
     )
 
 
-def abandon(attempt_id, worker, gen, reason: str, code: str | None = None) -> bool:
-    """Data was disclosed (filled/uploaded) but not submitted. Never retried automatically."""
+def abandon(
+    attempt_id, worker, gen, reason: str, code: str | None = None, retire_every: str | None = None
+) -> bool:
+    """Data was disclosed (filled/uploaded) but not submitted. Never retried automatically.
+    `retire_every` (D132): every live approval of the application is retired with that reason in
+    the same transaction, so entering the same data again is a new approval."""
     ok = _finish(
         attempt_id,
         worker,
@@ -626,6 +643,7 @@ def abandon(attempt_id, worker, gen, reason: str, code: str | None = None) -> bo
         AppState.needs_user_action,
         f"Stopped after entering data but before submitting: {reason}",
         reason_code=code,
+        retire_every=retire_every,
     )
     # Waiting for a code, the final click was already made: the approval that made it is used
     # up, so sending again is a new decision (D15).
@@ -641,6 +659,83 @@ def abandon(attempt_id, worker, gen, reason: str, code: str | None = None) -> bo
     )
 
 
+def pause_for_form_change(attempt_id, worker, gen, reason: str, counts: dict) -> bool:
+    """D132: before anything was entered, the employer's form no longer matches the approved one
+    in a way a fresh read of the form can show (the adapter's `FormChanged`). One
+    generation-fenced finish from `claimed`, in one transaction: the attempt ends failed_safe
+    with its usual text; the application waits for the user; every live approval of the
+    application is retired, including one given while the attempt ran; and an open pause
+    records the form version the attempt ran against. While the pause is unresolved no approval
+    can be given (package.approve). The attempt is never resumed or retried, and nothing waits on
+    a worker, a lease or a browser. Returns False and writes nothing when the fence fails or
+    data was already entered (never a pause then): the caller ends the attempt as before.
+
+    Lock order: the attempt, then its application, then its approvals (as `_apply_outcome`);
+    the pause rows come last, under them. An earlier unresolved pause of the application (there
+    should be none: a pause blocks approval) is closed first, so the partial unique index can
+    never turn this stop into an internal error."""
+    with SessionLocal() as db:
+        att = db.scalar(
+            select(ExecutionAttempt).where(ExecutionAttempt.id == attempt_id).with_for_update()
+        )
+        if (
+            att is None
+            or att.generation != gen
+            or att.state != S.claimed
+            or att.disclosure_started_at is not None
+        ):
+            return False
+        app = pk.lock_application(db, att.application_id)
+        _apply_outcome(db, att, app, S.failed_safe, AppState.needs_user_action,
+                       f"Stopped before sending anything: {reason}",
+                       retire_every="form_changed", reason_code="form_changed")  # fmt: skip
+        now = utcnow()
+        db.execute(
+            update(ApplicationPause)
+            .where(
+                ApplicationPause.application_id == app.id,
+                ApplicationPause.status.in_(PAUSE_UNRESOLVED),
+            )
+            .values(status="closed", resolution="superseded", resolved_at=now)
+        )
+        package = db.get(ApplicationPackage, att.package_id)
+        dest = (package.content or {}).get("destination", {}) if package else {}
+        safe = {k: int(counts.get(k) or 0) for k in ("new", "changed", "missing")}
+        db.add(
+            ApplicationPause(
+                user_id=att.user_id,
+                application_id=app.id,
+                attempt_id=att.id,
+                kind="form_changed",
+                status="open",
+                package_version=package.version if package else 0,
+                package_hash=att.package_hash,
+                form_version=dest.get("form_version"),
+                detail=safe,
+                created_at=now,
+            )
+        )
+        event(db, att, "paused", reason_code="form_changed", **safe)
+        db.commit()
+        return True
+
+
+def retire_live_approvals(db: Session, application_id, reason: str) -> int:
+    """Invalidate every approval of the application that is still live; how many were."""
+    rows = db.scalars(
+        select(PackageApproval)
+        .where(
+            PackageApproval.application_id == application_id,
+            PackageApproval.invalidated_at.is_(None),
+        )
+        .with_for_update()
+    ).all()
+    now = utcnow()
+    for appr in rows:
+        appr.invalidated_at, appr.invalidation_reason = now, reason
+    return len(rows)
+
+
 REHEARSAL_DONE = "Rehearsal finished: the form was filled and checked, and nothing was submitted."
 # Why an outcome retired its approval (`_finish(retire=...)`), shown on the review page.
 RETIRED = {
@@ -652,6 +747,14 @@ RETIRED = {
     "received. Approve again to send it again.",
     "verification_not_completed": "Used by a submission the employer asked to verify with a "
     "code that was not completed. Approve again to send it again.",
+    # D132: the employer's form no longer matched this package when it ran.
+    "form_changed": "The employer's form no longer matched this package when it ran. Read the "
+    "form again under Questions, answer what is new, then approve again.",
+    # D132: the page no longer matched after your answers were entered on it; nothing was
+    # submitted. Entering them again is a new decision.
+    "stopped_after_entry": "Used by an attempt that entered your answers on the employer's page "
+    "and stopped before submitting, because the page then no longer matched. Approve again to "
+    "run it again.",
 }
 
 

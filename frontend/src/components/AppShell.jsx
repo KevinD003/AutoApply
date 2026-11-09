@@ -15,6 +15,7 @@ import {
   IconCompass,
   IconFileText,
   IconGear,
+  IconQuestion,
   IconReview,
   IconSliders,
   IconTracker,
@@ -39,6 +40,8 @@ const PRIMARY = [
   { href: "/tracker", label: "Tracker", icon: IconTracker },
 ];
 const SECONDARY = [
+  // D132: every question an application leaves to you, and forms that changed, on one page.
+  { href: "/questions", label: "Questions", icon: IconQuestion },
   { href: "/documents", label: "Documents", icon: IconFileText },
   { href: "/answers", label: "Saved answers", icon: IconBookmark },
   { href: "/profile", label: "Profile", icon: IconUser },

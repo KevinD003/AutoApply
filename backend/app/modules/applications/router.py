@@ -349,10 +349,18 @@ def transition_application(
             raise bad_request(str(e)) from None
         db.commit()
         return _out(db, app, detail=True)
-    from app.modules.preparation.package import execution_owns_state, refused
+    from app.modules.preparation.package import execution_owns_state, refused, unresolved_pause
 
     if execution_owns_state(db, app):
         raise conflict(str(refused("submission_in_progress")))
+    pause = unresolved_pause(db, app.id) if body.to == AppState.running else None
+    if pause is not None:
+        # D132: a form-change pause ends by reading the form again, trying the version again or
+        # leaving review; marking the application as running would only hide it.
+        unexplained = pause.status == "unexplained"
+        raise conflict(
+            str(refused("form_change_unexplained" if unexplained else "form_recapture_needed"))
+        )
     if body.to == AppState.submitted_confirmed:
         return _confirm_by_user(db, user, app, body.evidence)
     try:

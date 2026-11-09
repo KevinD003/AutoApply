@@ -53,7 +53,7 @@ async function lowestVsNav(page: Page) {
 test("the sticky header stays pinned and the page never overflows horizontally", async ({ page }, info) => {
   await register(page, info);
 
-  for (const path of ["/jobs", "/profile"]) {
+  for (const path of ["/jobs", "/profile", "/questions"]) {
     await page.goto(path);
     await expect(page.getByRole("banner")).toBeVisible();
 

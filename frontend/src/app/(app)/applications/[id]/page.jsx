@@ -222,6 +222,21 @@ export default function ReviewPage() {
             </p>
           </div>
         )}
+        {view.pause && (
+          // D132: the employer's form no longer matched the approved one; nothing is approved until that is resolved.
+          <div className="mt-3 rounded-lg bg-caution-weak p-2 text-sm text-caution-ink" role="group" aria-label="The employer's form no longer matches">
+            <p>
+              {view.pause.status === "unexplained"
+                ? "The employer's form no longer matched what you approved, and reading it again showed no difference NoEfforts can see. Try this version again under Questions, or apply on the employer's site."
+                : "The employer's form no longer matched what you approved, so NoEfforts stopped before sending anything. Read the form again under Questions and answer what is new; nothing can be approved until then."}
+            </p>
+            <p className="mt-1">
+              <Link className="text-brand underline" href="/questions">
+                Open Questions
+              </Link>
+            </p>
+          </div>
+        )}
         <div className="mt-3 rounded-lg border border-hairline p-2 text-sm" role="group" aria-label="Before the first submission">
           <p className="flex flex-wrap items-center gap-2">
             <span className="font-medium">Before the first submission</span>
@@ -247,7 +262,7 @@ export default function ReviewPage() {
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
-            disabled={!ready || busy || view.approval.status === "approved" || prereq.status === "unmet" || !!view.job_signals.approval_blocked}
+            disabled={!ready || busy || view.approval.status === "approved" || prereq.status === "unmet" || !!view.job_signals.approval_blocked || !!view.pause}
             onClick={() =>
               call(
                 `/applications/${id}/package/approve`,
@@ -261,7 +276,7 @@ export default function ReviewPage() {
           </Button>
           <Button
             variant="secondary"
-            disabled={!ready || busy || view.approval.status === "approved" || !!view.job_signals.approval_blocked}
+            disabled={!ready || busy || view.approval.status === "approved" || !!view.job_signals.approval_blocked || !!view.pause}
             onClick={() =>
               call(
                 `/applications/${id}/package/approve`,

@@ -163,8 +163,10 @@ def test_concurrent_writers_conflict_instead_of_overwriting(api):
         y = b.get(Application, app_id)
         transition(a, x, AppState.preparing, Actor.system)
         a.commit()
-        transition(b, y, AppState.cancelled, Actor.user)
         try:
+            # D132: transition() flushes the state change before it touches a pause, so the
+            # conflict can surface there rather than at commit; either way nothing is overwritten.
+            transition(b, y, AppState.cancelled, Actor.user)
             b.commit()
             raise AssertionError("stale write succeeded")
         except Exception as e:  # StaleDataError

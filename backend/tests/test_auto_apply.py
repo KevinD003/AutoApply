@@ -13,7 +13,7 @@ from app.modules.autoapply import service
 from app.modules.autoapply.models import AutoApplyEvent
 from app.modules.execution import runner
 from app.modules.execution.models import ExecutionAttempt
-from tests.execution_harness import Receiver, pilot_on, synthetic_candidate
+from tests.execution_harness import Receiver, pilot_on, queue, synthetic_candidate
 from tests.test_greenhouse_dom import v2_job
 
 ANSWERS = {
@@ -141,12 +141,38 @@ def test_a_stopped_attempt_is_never_retried_automatically(api, receiver):
     job = v2_job(api)
     tick()
     answer(api, app_of(api, job))
-    receiver.config(mode="gh2_new_question")  # the page now asks something the data does not
+    receiver.config(mode="gh2_required_cover_group")  # the running page requires a document
     assert tick() == 1
     assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
     receiver.config(mode="normal")
     assert tick() == 0 and events(job)[-1] == ("skipped", "attempt_stopped")
     assert receiver.ledger()["disclosures"] == []
+
+
+def test_a_form_change_leaves_the_application_to_the_owner(api, receiver):
+    # D132: a question added after approval pauses the application. Continuing is the owner's
+    # decision, so the rule skips it with its own reason, even once the page is back to normal.
+    pilot_on()
+    synthetic_candidate(api)
+    job = v2_job(api)
+    tick()
+    answer(api, app_of(api, job))
+    receiver.config(mode="gh2_new_question")  # the page now asks something the data does not
+    assert tick() == 1
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
+    receiver.config(mode="normal")
+    assert tick() == 0 and events(job)[-1] == ("skipped", "form_changed")
+    assert tick() == 0 and receiver.ledger()["disclosures"] == []
+    # Not even once the pause is over and the owner ran a rehearsal themselves: continuing an
+    # application that stopped on a changed form stays the owner's own decision.
+    app_id = app_of(api, job)
+    assert api.post(f"/applications/{app_id}/pause/dismiss").status_code == 200
+    p = api.get(f"/applications/{app_id}/package").json()["package"]
+    body = {"version": p["version"], "content_hash": p["content_hash"], "scope": "disclose_only"}
+    assert api.post(f"/applications/{app_id}/package/approve", json=body).status_code == 200
+    assert runner.run_attempt(queue(api, app_id), "w1") == "rehearsed"
+    assert tick() == 0 and events(job)[-1] == ("skipped", "form_changed")
+    assert receiver.ledger()["accepted"] == 0
 
 
 def test_another_account_never_sees_or_triggers_the_owners_rule(api, other_api, receiver):

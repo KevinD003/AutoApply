@@ -7,7 +7,12 @@ from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PWTimeout
 
-from app.modules.preparation.forms import FormSchema, extract_form_schema, form_fingerprint
+from app.modules.preparation.forms import (
+    BOT_CHECK_KEY,
+    FormSchema,
+    extract_form_schema,
+    form_fingerprint,
+)
 from app.modules.preparation.sending import sendable_view
 
 
@@ -52,8 +57,17 @@ class FixtureAtsAdapter:
         if form_fingerprint(live) != dest["form_fingerprint"]:
             approved = {a["key"] for a in self.content["answers"]}
             extra = sorted({f.key for f in live.fields} - approved)
-            return "the form has changed since you approved it" + (
-                f" ({len(extra)} new field(s))" if extra else ""
+            if BOT_CHECK_KEY in extra:  # a bot check, not a question: never "read it again"
+                return (
+                    "the employer's page shows a CAPTCHA or bot check; NoEfforts does not solve "
+                    "or bypass these. Apply on the employer's site."
+                )
+            gone = len(approved - {f.key for f in live.fields})
+            return FormChanged(
+                FORM_CHANGED + (f" ({len(extra)} new field(s))" if extra else ""),
+                new=len(extra),
+                changed=0 if (extra or gone) else 1,
+                missing=gone,
             )
         if live.action and urljoin(page.url, live.action) != dest["submit_url"]:
             return "the form now submits to a different address"
@@ -222,6 +236,25 @@ class FixtureAtsAdapter:
             "final_origin": f"{p.scheme}://{p.netloc}",
             "http_status": out.http_status,
         }
+
+
+FORM_CHANGED = "the form has changed since you approved it"
+
+
+class FormChanged(str):
+    """D132: the live form no longer matches the approved one in a way a fresh read of the form
+    can show: a question added, gone, reworded or retyped, or offering other options. The text
+    is the same as before (`FORM_CHANGED` and counts); `counts` are numbers only, never a
+    question's key or label. Every other stop, including the page-behaviour checks that only a
+    browser sees (a dropdown that would not open, a control a script shows), stays a plain
+    str: reading the form again could not explain it."""
+
+    counts: dict
+
+    def __new__(cls, text: str, *, new: int = 0, changed: int = 0, missing: int = 0):
+        s = super().__new__(cls, text)
+        s.counts = {"new": new, "changed": changed, "missing": missing}
+        return s
 
 
 class StoppedAfterDisclosure(RuntimeError):
