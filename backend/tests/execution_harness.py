@@ -22,6 +22,9 @@ BACKEND = ROOT / "backend"
 RECEIVER = ROOT / "fixtures" / "ats_receiver" / "receiver.py"
 BASE = f"http://127.0.0.1:{RECEIVER_PORT}"
 PDF = b"%PDF-1.4\n% synthetic resume for execution tests\n"
+# The receiver is the oracle, never what a test measures: its admin calls may wait well past
+# httpx's 5-second default, which a reset outlasted on a busy CI disk (CI run 42292071699).
+ADMIN_TIMEOUT = 60
 
 
 class Receiver:
@@ -62,13 +65,17 @@ class Receiver:
         return {"X-Admin-Token": self.token}
 
     def config(self, **cfg):
-        httpx.post(f"{BASE}/_admin/config", json=cfg, headers=self._h()).raise_for_status()
+        httpx.post(
+            f"{BASE}/_admin/config", json=cfg, headers=self._h(), timeout=ADMIN_TIMEOUT
+        ).raise_for_status()
 
     def reset(self):
-        httpx.post(f"{BASE}/_admin/reset", headers=self._h()).raise_for_status()
+        httpx.post(
+            f"{BASE}/_admin/reset", headers=self._h(), timeout=ADMIN_TIMEOUT
+        ).raise_for_status()
 
     def ledger(self) -> dict:
-        return httpx.get(f"{BASE}/_admin/ledger", headers=self._h()).json()
+        return httpx.get(f"{BASE}/_admin/ledger", headers=self._h(), timeout=ADMIN_TIMEOUT).json()
 
     def form_html(self, slug="clinic") -> str:
         return httpx.get(f"{BASE}/apply/{slug}").text
