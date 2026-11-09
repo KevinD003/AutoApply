@@ -66,6 +66,24 @@ class Ledger:
         with self.lock, self._conn() as c:
             return c.execute(sql, args).fetchall()
 
+    def run_all(self, statements):
+        """Several statements as one transaction: all or nothing, and one commit. Committing a
+        reset's nine deletes one by one made 36 disk syncs (one transaction makes 4); on a busy CI
+        disk that outlasted the test client's wait (CI run 42292071699)."""
+        with self.lock:
+            c = self._conn()
+            try:
+                c.execute("begin")
+                for sql in statements:
+                    c.execute(sql)
+                c.execute("commit")
+            except BaseException:
+                if c.in_transaction:
+                    c.execute("rollback")
+                raise
+            finally:
+                c.close()
+
 
 def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -139,9 +157,9 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
     @app.post("/_admin/reset")
     def reset(x_admin_token: str | None = Header(None)):
         admin(x_admin_token)
-        for t in ("acceptances", "disclosures", "tokens", "challenges", "requests", "fh_requests",
-                  "board_requests", "inbox_messages", "inbox_requests"):
-            ledger.run(f"delete from {t}")
+        ledger.run_all([f"delete from {t}" for t in (
+            "acceptances", "disclosures", "tokens", "challenges", "requests", "fh_requests",
+            "board_requests", "inbox_messages", "inbox_requests")])
         cfg.update({"mode": "normal", "delay_s": 0.0, "idempotent": True, "autosave": False,
                     "tamper": None, "form_delay_s": 0.0, "fh_mode": "normal", "board_mode": "normal",
                     "fh_rate_limit": 1000, "upload_fail_field": None, "upload_delay_s": 0.0,
