@@ -22,11 +22,12 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 
 | What | Where |
 |---|---|
-| `main` | da7ac61 (tree d2214b6, as predicted): #41 D133. Before it, ab671e1 (tree cbd706a): #40 D132 (c19c683; main CI #260 green on all four jobs) and #42, the receiver's reset in one transaction |
+| `main` | 2e10418 (tree 3a18998, as predicted): #43 D134. Before it, da7ac61 (tree d2214b6): #41 D133 (main CI #265 green on all four jobs); ab671e1: #40 D132 (c19c683; main CI #260 green) and #42, the receiver's reset in one transaction |
 | D131 follow-up (the review's remaining findings) | merged (#39, bd38529); main CI #254 passed all four jobs |
 | D132 form-change pause and questions tab | merged (#40, c19c683); main CI #260 passed all four jobs |
-| D133 reuse and suggestion guards | merged (#41, da7ac61); its PR CI passed all four jobs on 360f34c; main CI #265 on da7ac61 had not finished when this was written |
-| D134 the standing rule respects your pause and revocation | branch `rule-respects-owner` (from ab671e1, `main` with D133 merged in) and its pull request; not merged |
+| D133 reuse and suggestion guards | merged (#41, da7ac61); its PR CI passed all four jobs on 360f34c, and main CI #265 on da7ac61 |
+| D134 the standing rule respects your pause and revocation | merged (#43, 2e10418); its PR CI passed all four jobs on 118b4b9 |
+| D135 a question the page shows after an earlier answer | branch `conditional-pauses` (from 2e10418) and its pull request; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -46,7 +47,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 2 | New question → questions tab → saved → resumes | fx (gh2 by id and pilot stand-in), on `main` since D132 (#40) | fx (e2e), on `main` since D132 |
 | 3 | Future reuse | unit (resolver), generic form; D133 merged (#41): suggestions judge the saved side, "Use here only" | unit |
 | 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model | unit |
-| 5 | Conditional question | partial: v1 fixture only; id-only real structure cannot answer it | absent (no branching fixture) |
+| 5 | Conditional question | fx on the v1 fixture; D135 (branch), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | absent (no branching fixture) |
 | 6 | Unsupported widget → checkpoint | fx at capture; some types refused only after approval | fx at capture |
 | 7 | Repeating records | fx education stand-in (D120); employment unit | absent |
 | 8 | Answer edits invalidate approvals | fx | fx (single page) |
@@ -54,7 +55,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify" |
 | 11 | Upload failure preserves evidence | fx for UploadFailed; other exceptions lose it | fx (single page) |
 | 12 | Uncertain send quarantined | fx | fx (final send only; each Next not modelled) |
-| 13 | Cancellation respected | fx on the generic form; D134 (branch), on the gh2 stand-in through the pilot (receiver ledger): a pause stops what the standing rule queued, your own queued work runs on, a revocation stands | partial |
+| 13 | Cancellation respected | fx on the generic form; D134 merged (#43), on the gh2 stand-in through the pilot (receiver ledger): a pause stops what the standing rule queued, your own queued work runs on, a revocation stands | partial |
 | 14 | Tenant isolation | fx (per-application routes) | partial (no Workday-shaped test) |
 | loop | Durable pause → answer → recheck → continue | fx, on `main` since D132 (#40): pause, read again, answer, one new run (receiver ledger) | fx (e2e), on `main` since D132 |
 | tab | "Questions needing your answer" | on `main` since D132 (#40) (`/questions`) | on `main` since D132 |
@@ -92,7 +93,7 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   - "I don't wish to self-identify" is a decline; a screening job on the gh2 stand-in shows
     self-identification never answering felony or sponsorship (receiver ledger);
   - an error boundary keeps the app around a page that fails while it is shown.
-- **D134 (branch `rule-respects-owner`, not merged).** Rank 3, the standing rule respects the
+- **D134 (PR #43, merged).** Rank 3, the standing rule respects the
   owner's pause and revocation for work it already queued:
   - the rule's approvals and attempts are marked as its own (`by_rule`, `queued_by_rule`);
   - pausing cancels the attempts the rule queued (one a worker holds stops at its next step),
@@ -102,6 +103,13 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   - a pause and the rule's step for one job are serialized per account, so a pause during a tick
     reaches that tick's remaining jobs;
   - after you revoke, the rule never approves that application again.
+- **D135 (branch `conditional-pauses`, not merged).** Rank 4, first half, on Greenhouse's id-only
+  structure:
+  - a typed question the page hides until an earlier answer reveals it is answerable (your answer
+    or a profile fact, never a saved answer or a draft), and entered only if the page shows it;
+  - a revealed question the page requires with no approved answer pauses the application after
+    filling, with nothing submitted (`conditional_required`); answered and tried again, one new
+    attempt sends it.
 - **Research** (log below):
   - corrected the Workday terms note: the End User Agreement covers scoutrfp.com;
   - Workday saves a draft on every Next;
@@ -109,11 +117,12 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
 
 ## Hypothesis and next slice
 
-The loop itself (**D132**, #40) and the reuse and suggestion guards (**D133**, #41) are on `main`.
-**D134** (rank 3, on its branch) makes the standing rule respect the owner's pause and revocation
-for work it already queued. What rank 3 leaves, the rule continuing after a form-change pause, needs
-the owner's decision. Next, rank 4: conditional and page-required questions on Greenhouse's id-only
-structure become answerable pauses, and a click the page blocks is not terminal. Later ranks:
+The loop itself (**D132**, #40), the reuse and suggestion guards (**D133**, #41) and the standing
+rule's respect for the owner's pause and revocation (**D134**, #43) are on `main`. What rank 3
+leaves, the rule continuing after a form-change pause, needs the owner's decision. **D135** (rank
+4, first half, on its branch) makes questions the page reveals after an earlier answer answerable,
+and pauses on a revealed one the page requires. Next, rank 4's second half: a final click the
+page's own checks block is not terminal. Later ranks:
 - capture refusing what cannot be filled, and evidence surviving any failure;
 - provider-shaped reuse tests;
 - EEOC/demographic end to end;
@@ -134,10 +143,12 @@ structure become answerable pauses, and a click the page blocks is not terminal.
   that touch it (56 passed) and each sabotage run; with `main` (D132) merged in, 1300 backend and
   51 e2e passed; after the adversarial review's fixes, 2581 passed, each fix's test failing without
   it.
-- **D134 (branch `rule-respects-owner`):** locally, the 17 suites the change touches, each of its
-  seven changes removed in turn, and frontend lint and types; with `main` (D133) merged in, the same
-  suites with `test_greenhouse_dom.py`, the resumed held attempt, and the Tracker's card in one e2e
-  spec (desktop and mobile). Results in Tests run below. The full suites run in its CI.
+- **D134:** merged (#43, 2e10418); its PR CI passed all four jobs on 118b4b9. Locally: the 17
+  suites the change touches, each of its seven changes removed in turn, frontend lint and types;
+  with `main` (D133) merged in, the same suites with `test_greenhouse_dom.py`, the resumed held
+  attempt, and the Tracker's card in one e2e spec (desktop and mobile).
+- **D135 (branch `conditional-pauses`):** the new tests and every suite that loads the second
+  Greenhouse-style fixture, locally (Tests run below). The full suites run in its CI.
 
 ## Tests run (this loop)
 
@@ -207,9 +218,9 @@ structure become answerable pauses, and a click the page blocks is not terminal.
 
 ## Exact next action
 
-1. D134 (branch `rule-respects-owner`): merge its pull request when its four checks pass.
-2. Rank 4: conditional and page-required questions on Greenhouse's id-only structure become
-   answerable pauses; a click the page blocks is not terminal.
+1. D135 (branch `conditional-pauses`): merge its pull request when its four checks pass.
+2. Rank 4's second half: a final click the page's own checks block (`CLIENT_BLOCKED`), with no
+   request sent, pauses the application instead of ending it rejected.
 3. Owner decisions: every recorded permission ended on 2026-11-06 (renewing is the owner's call,
    never extended because work took longer); continuing after a form change (D132).
 

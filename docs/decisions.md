@@ -4888,3 +4888,71 @@ audit-inventory and export-completeness guards are updated and pass.
 
   And `frontend/e2e/auto-apply-pause.spec.ts`, desktop and mobile: the Tracker's card says what a
   pause stopped, says nothing when it stopped nothing, and clears when you resume.
+
+## D135 — A question the page shows after an earlier answer is yours to answer; one the page requires pauses the application (2026-11-09)
+
+- **Why:** rank 4 of the Greenhouse + Workday automation loop (`docs/automation-loop.md`). On
+  Greenhouse's id-only pages, the structure real pages use, a question hidden at load is shown by
+  the page's own logic after an earlier answer, and NoEfforts cannot see which answer. Until now
+  (mapped on main 2e10418):
+  1. it was never filled: a required one was a checkpoint you could not answer, so the application
+     could never be approved; an optional one was always left blank; an answer to it was refused
+     before anything was entered;
+  2. after filling, a revealed one the page required ended the attempt `abandoned`, every approval
+     retired, with no way to answer it ("required by the page, no approved answer").
+- **Decided:**
+  - **Typed questions become answerable:** a text, long-text, email, phone or link question hidden
+    at load takes your answer for this application, or an approved profile fact. Never a saved
+    answer or a draft: what it asks may depend on the answer that reveals it. It is never saved for
+    reuse. A required one waits for your answer before approval, as before, but can now be answered.
+    An optional one stays blank unless you answer it. A choice, an upload or anything else hidden
+    at load is unchanged: never filled, and a required one means applying on the employer's site.
+  - **Entered only when shown:** after every other answer, and the page's reaction to them, each
+    such answer is entered only if the page shows its question then. A hidden one is never touched.
+    The readback requires a hidden one to be empty. The check after filling requires the page to
+    still show exactly the ones entered: a question shown later, or hidden after it was entered,
+    stops the attempt as before.
+  - **A revealed question the page requires pauses:** sometimes this is all the check after filling
+    finds: the page shows and requires such a question, and no answer was approved. Then the
+    attempt ends `abandoned` and the application pauses (`conditional_required`, a count only).
+    Your answers were entered on the page, but nothing was submitted: the send gate was never
+    passed. Every live approval is retired.
+    - While the pause is open, every such question you can answer asks for your answer, under
+      Questions and on the application's page, and nothing can be approved.
+    - "Try this version again" ends the pause once they are answered (`questions_open` otherwise).
+      Approved again, one new attempt enters the answer when the page shows the question.
+    - Any other finding after filling stays the stop it was.
+- **Not changed:**
+  - D132's rule that nothing found after filling pauses, but for this one finding;
+  - the gates, fencing and lock order, and no retry after `disclosure_started_at` or `sending`;
+  - the standing rule never continues an application that paused (D132, D134), whatever the kind;
+  - the package content's shape: `SCHEMA_VERSION` stays 3. A package containing such a question
+    gets a new version when next built (its explanation and answerability change), so an approval
+    given for the previous version must be given again.
+
+  `application_pauses.kind` takes `conditional_required` (migration c4e8f2a19d35; downgrade deletes
+  those pauses).
+- **Not fixed, stated:**
+  - A choice, multi-choice or upload hidden at load is still never filled.
+  - The real reveal logic is unobserved. These are fixture assumptions:
+    - whether Greenhouse's job data marks a revealed question required;
+    - how soon the page shows it;
+    - whether a hidden control holding a value is sent.
+
+    A question the page shows later than the settle after filling is caught by the check after
+    filling, and stops the attempt.
+  - While such a pause is open, every unanswered question of this kind asks for an answer, not only
+    the one the page required: the pause keeps a count, never which question.
+  - A final click the page's own checks block (`CLIENT_BLOCKED`) still ends the application as
+    rejected. That is rank 4's second half.
+- **Tests** (`test_conditional_questions.py`, the receiver's ledger as the oracle, by id and
+  through the pilot):
+  - a revealed question is yours to answer, never saved for reuse;
+  - a saved answer or a draft is never used for it; your answer or a profile fact is;
+  - while paused, every one you can answer asks, and none you cannot is forced;
+  - a choice hidden at load is still never filled;
+  - your answer is entered when the page shows the question;
+  - it is never entered when the page never shows it;
+  - a revealed question the page requires pauses with nothing submitted, its key and label in
+    nothing recorded. Trying again is refused until it is answered; then exactly one acceptance,
+    with your answer.

@@ -9,11 +9,29 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A question the page shows after an earlier answer (D135, 2026-11-09; local only)
+
+Nothing here ran against a real page or a real account. Branch `conditional-pauses` (from `main`
+2e10418), not on `main`. The second Greenhouse-style fixture is the stand-in: question_8105 is hidden
+until question_8104 is "Yes", and mode `gh2_conditional_required` (a FIXTURE ASSUMPTION) marks it
+required when shown. The receiver's ledger is the oracle for what was submitted.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| A typed question the page reveals is yours to answer and never saved for reuse; answered, it is resolved from your answer | `test_a_question_the_page_reveals_is_yours_to_answer` | package content |
+| A saved answer or a draft is never used for it (required: it waits for your answer); your answer or an approved profile fact is | `test_a_saved_answer_or_a_draft_is_never_used_for_it` | resolution |
+| While paused on such a question, every one you can answer asks for an answer; one you cannot answer here is never forced | `test_while_paused_on_such_a_question_every_one_you_can_answer_asks` | resolution |
+| A choice hidden at load is still never filled (required: apply on the employer's site) | `test_a_choice_the_page_reveals_is_still_never_filled` | resolution |
+| Your answer is entered when the page shows the question (by id and through the pilot) | `test_an_answer_is_entered_when_the_page_shows_the_question` | receiver ledger: the acceptance holds it |
+| It is never entered when the page never shows the question | `test_an_answer_is_never_entered_when_the_page_never_shows_the_question` | receiver ledger: the acceptance lacks it |
+| A revealed question the page requires, unanswered, pauses the application after filling with nothing submitted; every approval retired; counts only; listed under Questions; trying again refused until answered; then exactly one acceptance with your answer (by id and through the pilot) | `test_a_revealed_question_the_page_requires_pauses_then_one_attempt_sends_it` | receiver ledger: 0 accepted, then 1 with the answer; the pause row; the attempt's events and outcome |
+| An optional question the page reveals but does not require stays blank when unanswered (unchanged) | `test_trigger_answer_reveals_a_question_that_is_left_alone` | receiver ledger |
+
 ## Your pause and your revocation reach what the standing rule queued (D134, 2026-11-09; local only)
 
 Nothing here ran against a real page or a real account; every recorded permission ended on
-2026-11-06. Branch `rule-respects-owner` (from `main` ab671e1; `main` merged in after D133), not on
-`main`. The rule's tests run on the second Greenhouse-style fixture through the pilot
+2026-11-06. Branch `rule-respects-owner` (from `main` ab671e1; `main` merged in after D133), merged
+as #43 (2e10418). The rule's tests run on the second Greenhouse-style fixture through the pilot
 (`execution_harness.pilot_on`), with the receiver's ledger as the oracle for what was disclosed and
 submitted.
 
