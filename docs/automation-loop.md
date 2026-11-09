@@ -163,6 +163,9 @@ structure become answerable pauses, and a click the page blocks is not terminal.
 | D134: the 17 suites the change touches (JUnit) | 304 tests: 303 passed, 1 failed (the pause's audit row hid its keys), fixed; then `test_audit_inventory.py` and `test_auto_apply.py`: 20 passed |
 | D134 sabotage runs (each of seven changes removed in turn) | each fails its tests |
 | D134: `npm run lint`, `npx tsc --noEmit`, `ruff check`, `ruff format` | all clean |
+| D134 with `main` (D133) merged in: the 17 suites plus `test_greenhouse_dom.py` (JUnit) | 363 passed, 0 failures |
+| D134: a held attempt stopped by a pause, then resumed (`test_auto_apply.py`, JUnit) | 18 passed; the resume fails without its change |
+| D134: `playwright test e2e/auto-apply-pause.spec.ts` (desktop and mobile, JUnit) | 2 passed |
 
 ## Failed approaches and rejected designs
 
