@@ -129,7 +129,6 @@ def set_paused(db: Session, user_id, value: bool) -> dict | None:
     from app.modules.execution.service import stop_for_pause
     from app.modules.preparation import package as pk
 
-    stopped = None
     if value:
         _hold(db, user_id, exclusive=True)
     row = db.get(AutoApplyPrefs, user_id)
@@ -137,12 +136,14 @@ def set_paused(db: Session, user_id, value: bool) -> dict | None:
         row = AutoApplyPrefs(user_id=user_id)
         db.add(row)
     row.paused, row.updated_at = value, utcnow()
-    if value:
-        db.flush()
-        stopped = stop_for_pause(db, user_id) | {"approvals": pk.retire_rule_approvals(db, user_id)}
-    detail = stopped or {}
-    record(db, user_id, "auto_apply.paused" if value else "auto_apply.resumed", "user", user_id,
-           **detail)  # fmt: skip
+    if not value:
+        record(db, user_id, "auto_apply.resumed", "user", user_id)
+        return None
+    db.flush()
+    stopped = stop_for_pause(db, user_id) | {"approvals": pk.retire_rule_approvals(db, user_id)}
+    record(db, user_id, "auto_apply.paused", "user", user_id, cancelled=stopped["cancelled"],
+           stopped=stopped["stopped"], in_flight=stopped["in_flight"],
+           approvals=stopped["approvals"])  # fmt: skip
     return stopped
 
 
