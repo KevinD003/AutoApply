@@ -170,6 +170,10 @@ def test_a_revealed_question_the_page_requires_pauses_then_one_attempt_sends_it(
     assert item["pause"]["counts"]["required"] == 1
     q = next(q for q in item["questions"] if q["key"] == COND)
     assert (q["status"], q["category"]) == ("needs_user", "answer")
+    # The feed says what happened: never "the form no longer matches", never "nothing was sent".
+    note = next(n for n in api.get("/notifications").json()["items"]
+                if n["kind"] == "conditional_required")  # fmt: skip
+    assert note["application_id"] == app_id and "stopped before submitting" in note["text"]
     r = api.post(f"/applications/{app_id}/pause/dismiss")
     assert r.status_code == 409 and "questions_open" in r.text
     answer(api, app_id, COND, {"text": "Platform"})
