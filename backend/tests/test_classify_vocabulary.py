@@ -209,6 +209,8 @@ U = [
             "Two or more races",
             "Yes, I have a disability",
             "I don't wish to answer",
+            "I don't wish to self identify",  # D133 review: either spelling
+            "Decline to self identify",
         ],
         ["Yes", "No", "Referral", "Isle of Man", "White"],
     ),

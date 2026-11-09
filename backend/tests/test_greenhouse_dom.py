@@ -260,6 +260,94 @@ def test_drift_after_approval_stops_before_anything_is_disclosed(api, receiver, 
     assert "changed since you approved" in attempt(aid).outcome_detail
 
 
+# ------------------------------------------------------------------ screening job (D133)
+
+SCREEN_JOB = "5020003"
+SCREENING = ("question_8111", "question_8112", "question_8113")  # felony, sponsorship, gender
+
+
+def test_the_screening_questions_map_to_one_control_each():
+    _, maps = dom.build_schema(api(SCREEN_JOB), page_html(SCREEN_JOB))
+    by_key = {m.key: m for m in maps}
+    for key in SCREENING:
+        assert by_key[key].status == "mapped", key
+        assert by_key[key].control.role == "combobox", key
+
+
+def refusal(r) -> str:
+    assert r.status_code == 409, r.text
+    return r.json()["detail"].rsplit("(reason: ", 1)[-1].rstrip(")")
+
+
+@pytest.mark.parametrize("pilot", [False, True], ids=["by_id", "pilot"])
+def test_self_identification_never_answers_a_screening_question(api, receiver, pilot):
+    """D133 (D122, D131): with "Male" and a bare "No" in your saved self-identification, the
+    screening job's gender question is answered from it; its felony and sponsorship questions
+    wait for you, and nothing reaches the employer (counted by the receiver's ledger) until you
+    answer them. Then exactly your answers do: the positive control."""
+    if pilot:
+        pilot_on()
+    synthetic_candidate(api)
+    r = api.put("/profile/self-identification", json={"enabled": True, "labels": ["Male", "No"]})
+    assert r.status_code == 200, r.text
+    job_id = v2_job(api, SCREEN_JOB)
+    assert api.post(f"/jobs/{job_id}/form/greenhouse").status_code == 201
+    app_id = api.post("/applications", json={"job_id": job_id}).json()["id"]
+
+    def answer(key, value):
+        r = api.put(f"/applications/{app_id}/answers", json={"key": key, "value": value})
+        assert r.status_code == 200, (key, r.text)
+
+    def package():
+        return api.get(f"/applications/{app_id}/package").json()["package"]
+
+    def approve():
+        p = package()
+        body = {"version": p["version"], "content_hash": p["content_hash"]}
+        return api.post(f"/applications/{app_id}/package/approve", json=body)
+
+    answer("preferred_name", {"text": "Sammy"})
+    answer("question_8101", {"label": "Yes"})
+    answer("question_8104", {"label": "No"})
+    p = package()
+    rows = {a["key"]: a for a in p["content"]["answers"]}
+    felony, visa, gender = (rows[k] for k in SCREENING)
+    assert (felony["status"], felony["value"], felony["source"], felony["fact_refs"]) == (
+        "needs_user",
+        None,
+        "unresolved",
+        [],
+    )
+    assert (visa["status"], visa["value"]) == ("needs_user", None)
+    assert (gender["status"], gender["source"], gender["display"]) == (
+        "resolved",
+        "self_identification",
+        "Male",
+    )
+    assert set(p["content"]["unresolved"]) == {"question_8111", "question_8112"}
+    assert refusal(approve()) == "package_unresolved"
+    assert api.get(f"/applications/{app_id}").json()["state"] == "needs_user_action"
+    queued = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
+    assert queued.status_code == 400, queued.text  # it waits on your answers
+    answer("question_8112", {"label": "No"})
+    assert refusal(approve()) == "package_unresolved"  # the felony question still waits
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and led["disclosures"] == []
+
+    # Positive control: you answer the felony question and include it; the run sends exactly that.
+    answer("question_8111", {"label": "No"})
+    r = api.put(
+        f"/applications/{app_id}/consents", json={"key": "question_8111", "choice": "disclose"}
+    )
+    assert r.status_code == 200, r.text
+    assert approve().status_code == 200
+    assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
+    led = receiver.ledger()
+    assert led["accepted"] == 1
+    sent = led["acceptances"][0]["fields"]
+    assert (sent["question_8111"], sent["question_8112"], sent["question_8113"]) == ("0", "0", "1")
+
+
 @pytest.mark.parametrize(
     "mode,expected,accepted",
     [

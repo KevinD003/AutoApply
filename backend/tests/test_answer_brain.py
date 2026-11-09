@@ -12,7 +12,10 @@ from app.core.db import SessionLocal
 from app.modules.audit.models import AuditEvent
 from app.modules.learning import engine, features, service
 from app.modules.learning.models import LearningLabel, LearningModel
+from app.modules.preparation.forms import FormField
 from app.modules.preparation.models import AnswerBankEntry
+from app.modules.preparation.resolver import answer_shape, option_labels, question_key
+from app.modules.profiles.models import Approval
 from tests.test_preparation import setup_candidate
 from tests.test_question_safety_api import application as _application
 from tests.test_question_safety_api import package, radio, rows
@@ -80,6 +83,45 @@ def test_a_reworded_question_gets_your_saved_answer_as_a_suggestion_and_acceptin
     assert (row["status"], row["source"]) == ("resolved", "answer_bank")
 
 
+def test_use_here_only_answers_this_application_and_saves_nothing(api):
+    """D133: "Use here only": the saved answer becomes your answer for this application alone.
+    Nothing is saved for this wording, so the next application asking it is offered the same
+    suggestion again; the verdict still counts as a yes for your model."""
+    setup_candidate(api)
+    saved(api, lang(), {"label": "Python"})
+    reworded = lang(label="Which programming language do you use the most?")
+    app2 = application(api, [reworded])
+    (s,) = suggest(api, app2)
+    body = {"key": s["key"], "bank_entry_id": s["bank_entry_id"], "save_to_bank": False}
+    r = api.post(f"/applications/{app2}/suggestions/accept", json=body)
+    assert r.status_code == 200, r.text
+    row = rows(r.json())["lang"]
+    assert (row["status"], row["source"], row["display"]) == ("resolved", "user_entered", "Python")
+    assert suggest(api, app2) == []
+    with SessionLocal() as db:
+        assert len(db.scalars(select(AnswerBankEntry)).all()) == 1  # still only the first
+        (lab,) = db.scalars(select(LearningLabel)).all()
+        assert lab.accepted is True
+    app3 = application(api, [reworded])
+    assert [x["bank_entry_id"] for x in suggest(api, app3)] == [s["bank_entry_id"]]
+
+
+def test_a_verdict_with_a_field_the_api_does_not_take_is_refused(api):
+    """D133: an unknown field is refused (422), never ignored: before, accept saved anyway."""
+    setup_candidate(api)
+    saved(api, lang(), {"label": "Python"})
+    app2 = application(api, [lang(label="Which programming language do you use the most?")])
+    (s,) = suggest(api, app2)
+    base = {"key": s["key"], "bank_entry_id": s["bank_entry_id"]}
+    url = f"/applications/{app2}/suggestions"
+    assert api.post(f"{url}/accept", json=base | {"save": False}).status_code == 422
+    assert api.post(f"{url}/reject", json=base | {"save_to_bank": False}).status_code == 422
+    with SessionLocal() as db:
+        assert db.scalars(select(LearningLabel)).all() == []
+        assert len(db.scalars(select(AnswerBankEntry)).all()) == 1
+    assert rows(package(api, app2))["lang"]["status"] == "needs_user"
+
+
 def test_rejecting_is_remembered_and_never_suggested_again(api):
     setup_candidate(api)
     saved(api, lang(), {"label": "Go"})
@@ -103,6 +145,12 @@ def test_rejecting_is_remembered_and_never_suggested_again(api):
         ("Can you lift 25 pounds?", "Can you lift 50 pounds?"),  # numbers
         ("Do you have a portfolio website?", "Do you not have a portfolio website?"),  # negation
         ("Have you lived in Canada?", "Have you lived in Mexico?"),  # countries
+        # D133: a word on one side only
+        ("Are you comfortable with animals?", "Are you uncomfortable with animals?"),  # negation
+        ("Can you lift 50 lbs?", "Can you lift 50 kg?"),  # unit
+        ("Do you speak Spanish?", "Do you speak French?"),  # language
+        ("Have you used Salesforce?", "Have you used HubSpot?"),  # proper_noun
+        ("have you used salesforce?", "have you used hubspot?"),  # product
     ],
 )
 def test_similar_wording_that_differs_on_what_matters_is_never_suggested(api, saved_label,
@@ -110,6 +158,7 @@ def test_similar_wording_that_differs_on_what_matters_is_never_suggested(api, sa
     setup_candidate(api)
     saved(api, radio("q", saved_label), {"label": "Yes"})
     app2 = application(api, [radio("q", new_label)])
+    assert rows(package(api, app2))["q"]["bankable"]  # nothing else refuses it
     assert suggest(api, app2) == []
 
 
@@ -181,6 +230,39 @@ def test_enough_verdicts_train_the_accounts_own_model_which_then_ranks(api):
         assert db.get(LearningModel, me) is None
 
 
+def test_a_trained_model_never_suggests_below_the_rule_floor(api):
+    """D133: the rule score is a floor a trained model cannot lower. A model trained the wrong
+    way round (unrelated wording accepted, rewordings rejected) would suggest an unrelated saved
+    answer; it is not suggested, and the model only narrows what the floor lets through."""
+    setup_candidate(api)
+    me = uuid.UUID(api.get("/auth/me").json()["user_id"])
+    unrelated = [0.1, 0.2, 0.0, 1.0, 0.0, 0.5, 5.0, 5.0]
+    reworded = [1.0, 0.95, 0.0, 1.0, 1.0, 0.9, 5.0, 5.0]
+    with SessionLocal() as db:
+        for i in range(engine.MIN_LABELS):
+            db.add(LearningLabel(user_id=me, question_key=f"k{i}", accepted=i % 2 == 0,
+                                 features=unrelated if i % 2 == 0 else reworded))  # fmt: skip
+        db.flush()
+        m = service.retrain(db, me)
+        db.commit()
+    saved(api, lang(), {"label": "Rust"})
+    asked = lang(label="Which colour do you like best?")  # the same options, unrelated wording
+    with SessionLocal() as db:
+        (e,) = db.scalars(select(AnswerBankEntry).where(AnswerBankEntry.user_id == me)).all()
+        feats = features.pair(service._new(FormField.model_validate(asked)), service._saved(e))
+    assert features.rule_score(feats) < service.RULE_THRESHOLD
+    (p,) = engine.predict(m.engine, m.blob, [feats])
+    assert p > service.MODEL_THRESHOLD  # the model alone would suggest it
+    assert suggest(api, application(api, [asked])) == []
+    # The rewording passes the floor; this model scores it low, and it is not suggested either.
+    assert (
+        suggest(
+            api, application(api, [lang(label="Which programming language do you use the most?")])
+        )
+        == []
+    )
+
+
 def test_a_follow_up_gets_no_suggestion(api):
     # D131: "Which one?" saved after a language question is not suggested for "Which one?" after
     # an instrument question; the features compare its words, not the question it follows.
@@ -198,3 +280,114 @@ def test_a_follow_up_gets_no_suggestion(api):
     assert api.put(f"/applications/{other}/answers", json=body).status_code == 200
     assert rows(package(api, other))["which"]["value"] is None
     assert [s for s in suggest(api, other) if s["key"] == "which"] == []
+
+
+# ------------------------------------------------------------------ D133: the saved side too
+
+
+def legacy_entry(api, spec: dict, value: dict) -> str:
+    """A saved answer stored before today's rules (as test_question_safety_api does): kept, and
+    never used to answer its own wording. Its id."""
+    me = uuid.UUID(api.get("/auth/me").json()["user_id"])
+    f = FormField.model_validate(spec)
+    with SessionLocal() as db:
+        e = AnswerBankEntry(
+            user_id=me,
+            question_key=question_key(f),
+            question_text=f.label,
+            help_text="",
+            answer_shape=answer_shape(f),
+            value=value,
+            options_snapshot=option_labels(f),
+            sensitive=False,
+            version=1,
+            provenance="user_entered",
+            approval_status=Approval.approved,
+        )
+        db.add(e)
+        db.commit()
+        return str(e.id)
+
+
+def text_q(key, label, **kw) -> dict:
+    return {"key": key, "label": label, "type": "text", "required": True} | kw
+
+
+# A saved answer to a question the bank never reuses (a fact, one employer, a sensitive topic),
+# and a reworded question the resolver reads as ordinary: only the saved side says what it is.
+WITNESSES = [
+    (
+        radio("x", "Do you have the necessary documents to work in Canada?"),
+        radio("q", "Do you have the necessary forms to work in Canada?", required=True),
+        {"labels": ["Yes"]},
+    ),
+    (
+        radio("x", "Have you received the COVID-19 vaccine?"),
+        radio("q", "Have you received the COVID-19 booster?", required=True),
+        {"labels": ["Yes"]},
+    ),
+    (
+        radio("x", "Have you worked for Acme before?"),
+        radio("q", "Have you worked for Acme?", required=True),
+        {"labels": ["No"]},
+    ),
+    (
+        radio("x", "Do you have proof of vaccination?"),
+        radio("q", "Do you have proof of immunity?", required=True),
+        {"labels": ["Yes"]},
+    ),
+    (text_q("x", "What is your race?"), text_q("q", "What is your pace?"), {"text": "Steady"}),
+]
+
+
+@pytest.mark.parametrize(
+    ("saved_spec", "asked", "value"), WITNESSES, ids=[w[1]["label"] for w in WITNESSES]
+)
+def test_an_answer_saved_for_a_question_never_reused_is_never_suggested(
+    api, monkeypatch, saved_spec, asked, value
+):
+    """D133: the question asked now looks ordinary, but the saved answer was given to a fact, an
+    employer's question or a sensitive one: it is not suggested. With that check off it would be,
+    so the check is what refuses it (not a veto or the threshold)."""
+    setup_candidate(api)
+    entry_id = legacy_entry(api, saved_spec, value)
+    app_id = application(api, [asked])
+    row = rows(package(api, app_id))["q"]
+    assert row["bankable"] and row["status"] == "needs_user", row
+    assert suggest(api, app_id) == []
+    monkeypatch.setattr(service, "_suggestible", lambda e: True)
+    assert [s["bank_entry_id"] for s in suggest(api, app_id)] == [entry_id]
+
+
+def test_a_follow_up_answer_is_never_suggested_for_a_question_on_its_own(api, monkeypatch):
+    """D131/D133: "Which language?" saved after "Do you speak another language?" is kept under
+    that question; asked on its own elsewhere, it is not suggested. With the check off it would
+    be, word for word."""
+    setup_candidate(api)
+    langs = radio("lang_q", "Do you speak a language other than English?", required=True)
+    which = text_q("which", "Which language?")
+    first = application(api, [langs, which | {"condition": {"key": "lang_q", "any_of": ["1"]}}])
+    for key, value in (("lang_q", {"label": "Yes"}), ("which", {"text": "Spanish"})):
+        body = {"key": key, "value": value, "save_to_bank": key == "which"}
+        r = api.put(f"/applications/{first}/answers", json=body)
+        assert r.status_code == 200, r.text
+    other = application(api, [which])
+    assert rows(package(api, other))["which"]["value"] is None  # never reused for it either
+    assert suggest(api, other) == []
+    monkeypatch.setattr(service, "_suggestible", lambda e: True)
+    (s,) = suggest(api, other)
+    assert (s["display"], s["score"]) == ("Spanish", 1.0)
+
+
+def test_a_saved_answer_that_would_not_fit_the_field_is_never_suggested(api):
+    """D133: a saved text longer than the field allows (accepting it would be refused) is not
+    suggested; on the same wording without the limit it is."""
+    setup_candidate(api)
+    tools = ", ".join(f"Synthetic Tool {i}" for i in range(1, 21))  # 369 characters
+    saved(api, text_q("tools", "Which software tools are you familiar with?"), {"text": tools})
+    asked = text_q("q", "Which software tools are you most familiar with?")
+    limited = application(api, [asked | {"max_length": 100}])
+    assert suggest(api, limited) == []
+    open_ = application(api, [asked])
+    (s,) = suggest(api, open_)
+    assert s["display"] == tools
