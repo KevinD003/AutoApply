@@ -44,6 +44,19 @@ class FieldType(enum.StrEnum):
 CHOICE_TYPES = {FieldType.radio, FieldType.select}
 MULTI_TYPES = {FieldType.checkbox_group, FieldType.multiselect}
 TEXT_TYPES = {FieldType.text, FieldType.textarea, FieldType.email, FieldType.tel, FieldType.url}
+# Condition.key of a question the page shows by its own logic, which NoEfforts cannot see: on
+# Greenhouse's id-only pages a question hidden at load, revealed by an answer it cannot name.
+UNKNOWN_TRIGGER = "unknown-trigger"
+# D135: such a question can be answered only with typed text, and only you (or an approved profile
+# fact) answer it; it is entered only if the page shows it after the other answers.
+SHOWN_BY_PAGE_TYPES = TEXT_TYPES
+
+
+def shown_by_page(condition, ftype) -> bool:
+    """D135: a typed question the page shows by its own logic (its trigger unknown). `condition`
+    is a Condition or its dict form, as in a package's answers."""
+    key = condition.get("key") if isinstance(condition, dict) else getattr(condition, "key", None)
+    return key == UNKNOWN_TRIGGER and FieldType(ftype) in SHOWN_BY_PAGE_TYPES
 
 
 class Option(BaseModel):

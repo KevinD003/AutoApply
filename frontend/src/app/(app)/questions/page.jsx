@@ -20,6 +20,25 @@ const CATEGORY = {
 
 function PauseCard({ item, busy, onRecapture, onDismiss }) {
   const p = item.pause;
+  if (p.kind === "conditional_required") {
+    // D135: after filling, the page showed and required a question it reveals by its own logic.
+    return (
+      <div role="status" className="rounded-[var(--r-md)] border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+        <p className="font-medium">The employer&apos;s page asked a question it shows only after an earlier answer, and requires it.</p>
+        <p className="mt-1">
+          No answer was approved for it, so NoEfforts stopped before submitting: your answers were already entered on the page (and any
+          document uploaded), but the application was not submitted. Answer the question below (it is entered only if the page shows it),
+          then try this version again.
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button variant="secondary" disabled={busy} onClick={onDismiss}>
+            Try this version again
+          </Button>
+          <span className="text-xs">Lets you approve it again once it is answered.</span>
+        </div>
+      </div>
+    );
+  }
   const counts = [
     p.counts.new && `${p.counts.new} new`,
     p.counts.changed && `${p.counts.changed} changed`,

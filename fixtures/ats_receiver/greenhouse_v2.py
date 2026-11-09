@@ -40,6 +40,7 @@ remove_control, anon_change, load_beacon, open_beacon; cfg beacon for the last t
 gh2_widget_variants (cfg variant, delay_ms; see _VARIANTS_JS), gh2_hidden_search (D111; cfg hs, see
 _hidden_search), gh2_required_unmarked,
 gh2_required_extra, gh2_required_marker_only, gh2_required_answered, gh2_required_group, gh2_required_cover_group,
+gh2_conditional_required (D135: question_8105, optional in the job data, is required once shown),
 gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS; for dd locale_gate also locale_origin,
 locale_path, locale_via; for dd open_beacon also beacon, beacon_via; for dd late_other_host
 other_origin), GET /locales/{lang}/{ns}.json (cfg locale_delay_ms; lang "moved"
@@ -560,7 +561,14 @@ for (const cb of document.querySelectorAll('input[role=combobox]')) {
 const COND = %CONDITIONS%;
 for (const [qid, [trig, want]] of Object.entries(COND)) {
   const t = document.getElementById(trig), w = document.getElementById(qid + '-wrapper');
-  if (t && w) t.addEventListener('change', () => { w.hidden = t.dataset.value !== want; });
+  if (t && w) t.addEventListener('change', () => {
+    w.hidden = t.dataset.value !== want;
+    // D135: gh2_conditional_required marks the revealed question required (the job data does not).
+    const q = document.getElementById(qid);
+    if (q && form.dataset.mode === 'gh2_conditional_required') {
+      if (w.hidden) q.removeAttribute('aria-required'); else q.setAttribute('aria-required', 'true');
+    }
+  });
 }
 for (const b of document.querySelectorAll('.manual-toggle')) {
   b.addEventListener('click', () => { document.getElementById(b.dataset.for).hidden = false; });
@@ -1550,6 +1558,12 @@ def mount(app, ledger, cfg, accept) -> None:
                 else fields.get(name)
             if not got:
                 missing.append(q["label"])
+        if (
+            cfg["mode"] == "gh2_conditional_required"  # D135: required once its trigger is "Yes"
+            and fields.get("question_8104") == "1"
+            and not fields.get("question_8105")
+        ):
+            missing.append("Which team did you work in?")
         if cfg["mode"] == "gh2_phone_country" and not fields.get("phone-country"):
             missing.append("Country code")  # D104: the stand-in requires its picker
         if cfg["mode"] == "gh2_challenge_after_submit":  # S5: each final click is recorded

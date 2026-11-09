@@ -27,6 +27,7 @@ from app.modules.execution import service as svc
 from app.modules.execution.adapters.ashby import AshbyFixtureAdapter
 from app.modules.execution.adapters.fake_api import FakeApiAdapter
 from app.modules.execution.adapters.fixture_ats import (
+    ConditionalRequired,
     FixtureAtsAdapter,
     FormChanged,
     StoppedAfterDisclosure,
@@ -303,11 +304,17 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                 svc.abandon(aid, worker, gen, f"{n} field(s) did not keep their values")
                 return "abandoned"
             # Conditional fields appear after filling; D111: a followed redirect stops it too.
-            # D132: never a pause here. Before filling the same page matched, so what changed is
-            # the page's own reaction to the answers, which no re-read can show. Every live
-            # approval is retired with the stop: entering the same data again is a new approval.
+            # D132: never a form-change pause here. Before filling the same page matched, so what
+            # changed is the page's own reaction to the answers, which no re-read can show. Every
+            # live approval is retired with the stop: entering the same data again is a new
+            # approval. D135: the one exception, a question the page revealed and requires with no
+            # approved answer, pauses so you can answer it (nothing was submitted either way).
             reason = (LOCALE_REDIRECTED if eg.redirected else None) or adapter.schema_matches(page)
             if reason:
+                if isinstance(reason, ConditionalRequired) and svc.pause_after_entry(
+                    aid, worker, gen, str(reason), reason.count
+                ):
+                    return "abandoned"
                 svc.abandon(aid, worker, gen, str(reason), retire_every="stopped_after_entry")
                 return "abandoned"
             svc.record_evidence(aid, worker, gen, "recheck", rehearsal.RECHECK_MATCHED)

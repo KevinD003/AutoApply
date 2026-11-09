@@ -9,9 +9,14 @@ FIXTURE ASSUMPTIONS (see the fixture's header); none has been observed on a real
 
 Supported: text, email, phone, textarea, single-choice combobox, attachments uploaded on
 selection. Refused before disclosure: CAPTCHA, any mapping that is no longer unique and
-labelled, changed options, a new visible control, a different submit address, an answer to a
-question whose trigger is unknown. Search pickers, multi-choice comboboxes and hidden
-coordinates were already checkpoints at preparation.
+labelled, changed options, a new visible control, a different submit address, an answer other
+than typed text to a question whose trigger is unknown. Search pickers, multi-choice comboboxes
+and hidden coordinates were already checkpoints at preparation.
+
+D135: a typed question the page hides until an earlier answer reveals it (its trigger unknown) is
+entered after every other answer, only if the page shows it then; a hidden one is never touched.
+After filling, a shown one the page requires that has no approved answer pauses the application
+(`ConditionalRequired`): you answer it and try again. Nothing is submitted.
 
 D104, on local stand-ins only (`stand_ins`: the destination is a fixture origin, which no origin
 is in production): the phone country picker (a combobox whose option was chosen by a unique
@@ -35,6 +40,7 @@ from app.modules.execution.adapters.fixture_ats import (
     ACK_NONE,
     ACK_SHOWN,
     FORM_CHANGED,
+    ConditionalRequired,
     FixtureAtsAdapter,
     FormChanged,
     Outcome,
@@ -49,7 +55,7 @@ from app.modules.execution.adapters.greenhouse import (
     approved_fields,
 )
 from app.modules.preparation import greenhouse_dom as dom
-from app.modules.preparation.forms import STAND_IN_WIDGETS, FieldType
+from app.modules.preparation.forms import STAND_IN_WIDGETS, FieldType, shown_by_page
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
 _OPTIONS_JS = """id => { const lb = document.getElementById(id);
@@ -255,6 +261,8 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         # D129: keys of locked identity fields the page pre-filled with the approved value, verified
         # before disclosure and therefore never overwritten at fill time.
         self._trusted_prefill: set[str] = set()
+        # D135: the questions the page shows by its own logic that were shown, and so entered.
+        self._shown_filled: set[str] = set()
 
     # -- inspect ----------------------------------------------------------------------------
     def extract(self, page: Page):
@@ -281,6 +289,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         controls = dom.snapshot(html)
         fields = approved_fields(self.content)
         changed, pending = [], []  # NoEfforts' fixed reasons, one per field; never field keys
+        conditional = []  # D135: revealed after filling, required by the page, unanswered
         # D132: how many of those reasons a fresh read of the form can show (counts only).
         drift = {"changed": 0, "missing": 0}
         answered = {a["key"] for a in self.content["answers"] if a["value"] is not None}
@@ -339,6 +348,13 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             ):
                 changed.append("widget")
                 continue
+            shown_late = self._filled and shown_by_page(f.condition, f.type)
+            if shown_late and f.key in answered:
+                # D135: entered only if shown when filled; what the page shows now must be the same
+                # (shown and entered, or hidden and empty), else it would send something else.
+                if _by_id(page, f.key).is_visible() != (f.key in self._shown_filled):
+                    changed.append("a question the page shows by its own logic changed")
+                    continue
             # Required: the job data's requirement stands whatever the page shows (a required
             # field was approved with an answer). What blocks is the page requiring a field
             # the package leaves empty, by any signal (HTML, ARIA, group, label marker).
@@ -347,7 +363,10 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 changed.append("not readable")
                 continue
             if dom.page_marks_required(signals) and not f.required and f.key not in answered:
-                changed.append("required by the page, no approved answer")
+                if shown_late and _by_id(page, f.key).is_visible():
+                    conditional.append(f.key)  # D135: you can answer it; the application pauses
+                else:
+                    changed.append("required by the page, no approved answer")
                 continue
             if f.type == FieldType.select:
                 if m.control.role != "combobox":
@@ -406,7 +425,11 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             return FormChanged(text, new=len(new), **drift)
         for a in self.content["answers"]:
             cond = a.get("condition") or {}
-            if cond.get("key") == dom.UNKNOWN_TRIGGER and a["value"] is not None:
+            if (
+                cond.get("key") == dom.UNKNOWN_TRIGGER
+                and a["value"] is not None
+                and not shown_by_page(cond, a["type"])
+            ):
                 return "an answer depends on page logic NoEfforts cannot see"
             if (
                 a["value"] is not None
@@ -432,7 +455,8 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             return "the form now submits to a different address"
         if self._submit_button(page) is None:
             return "the form's submit button cannot be identified"
-        return None
+        # D135: only now, with nothing else found: a pause you can answer (counts only).
+        return ConditionalRequired(len(conditional)) if conditional else None
 
     def _identity_prefill_refusal(self, page: Page, fields, controls) -> str | None:
         """D129: before disclosure, a locked (disabled or read-only) identity field the page
@@ -586,7 +610,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             if a["value"] is None or a["type"] == FieldType.unsupported.value:
                 continue
             if a.get("condition"):
-                continue  # unknown trigger: refused in schema_matches if answered
+                continue  # D135: entered last, and only if the page shows it (_fill_shown_by_page)
             if a.get("widget") == "location_search":
                 disclosures.append(self._search_location(page, a, disclosures))
                 continue
@@ -610,7 +634,33 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             except PWError:
                 continue  # readback reports it
         self._fill_sections(page, disclosures)
+        self._fill_shown_by_page(page)
         return disclosures
+
+    def _fill_shown_by_page(self, page: Page) -> None:
+        """D135: a typed question the page shows by its own logic is entered after every other
+        answer, once the page has reacted to them, and only if it is shown then. A hidden one is
+        never touched: the readback requires it empty, and the check after filling that the page
+        still shows exactly the ones entered."""
+        waiting = [
+            a
+            for a in self.content["answers"]
+            if a["value"] is not None and shown_by_page(a.get("condition") or {}, a["type"])
+        ]
+        if not waiting:
+            return
+        self._settle(page)
+        for a in waiting:
+            loc = _by_id(page, a["key"])
+            if loc.count() != 1 or not loc.is_visible():
+                continue  # not asked: nothing is entered
+            try:
+                loc.fill(_text(a["value"]))
+            except PWTimeout:
+                raise
+            except PWError:
+                continue  # the readback and the check after filling report it
+            self._shown_filled.add(a["key"])
 
     def _fill_sections(self, page: Page, disclosures: list) -> None:
         """D120: fill each frozen structured section (education/employment). Every filled control is
@@ -811,6 +861,8 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             t, v = a["type"], a["value"]
             if t == FieldType.unsupported.value:
                 continue
+            if shown_by_page(a.get("condition") or {}, t) and a["key"] not in self._shown_filled:
+                v = None  # D135: not shown, so never entered: it must still be empty
             loc = _by_id(page, a["key"])
             if loc.count() != 1:
                 if v is not None:

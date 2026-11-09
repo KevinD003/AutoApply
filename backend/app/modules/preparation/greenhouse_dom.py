@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass, field
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation.forms import (
     KEY_PATTERN,
+    UNKNOWN_TRIGGER,
     Condition,
     ExtractionError,
     FieldType,
@@ -52,7 +53,6 @@ from app.modules.preparation.forms import (
 # built before this -- one that would skip a section or not re-prove the phone's control -- can
 # never claim a package approved under it.
 EXTRACTION_VERSION = "greenhouse-dom-v5"
-UNKNOWN_TRIGGER = "unknown-trigger"  # Condition.key for "shown by page logic we cannot see"
 UNLISTED_REASON = (
     "a control on the page that the job data does not list: what it asks, and whether it is "
     "required, are never inferred"
