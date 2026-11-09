@@ -5,7 +5,7 @@ is a 404. A question's key travels in the request body, never in the path (A8)."
 import uuid
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -21,8 +21,15 @@ GONE = "This suggestion no longer applies (the question was answered or changed)
 
 
 class VerdictIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # D133: an unknown field is refused, not ignored
+
     key: QuestionKey
     bank_entry_id: uuid.UUID
+
+
+class AcceptIn(VerdictIn):
+    # D133: false is "Use here only": your answer for this application, not saved for its wording.
+    save_to_bank: bool = True
 
 
 def _public(s: dict) -> dict:
@@ -41,13 +48,15 @@ def get_suggestions(
 @router.post("/applications/{app_id}/suggestions/accept")
 def accept_suggestion(
     app_id: uuid.UUID,
-    body: VerdictIn,
+    body: AcceptIn,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> dict:
     app = _owned_app(db, user, app_id)
     try:
-        return service.accept(db, user, app, body.key, body.bank_entry_id)
+        return service.accept(
+            db, user, app, body.key, body.bank_entry_id, save_to_bank=body.save_to_bank
+        )
     except service.NoSuggestion:
         raise conflict(GONE) from None
 

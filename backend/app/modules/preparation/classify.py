@@ -252,10 +252,10 @@ _EEO_BOILERPLATE = re.compile(
     r"(include|share|provide|disclose|mention))\b"
 )
 _SENSITIVE_OPTION_STRONG = re.compile(
-    r"\b(protected veteran|veteran|disabilit(y|ies)|self-identify|sexual orientation|"
+    r"\b(protected veteran|veteran|disabilit(y|ies)|self[- ]identify|sexual orientation|"
     r"gender identity|non-?binary|genderqueer|transgender|two or more races|hispanic|latin[oax]|"
     r"african american|native hawaiian|american indian|alaska(n)? native|pacific islander|"
-    r"heterosexual|bisexual|asexual|pansexual|i (do not|don't) wish to (answer|self-identify))\b"
+    r"heterosexual|bisexual|asexual|pansexual|i (do not|don't) wish to (answer|self[- ]identify))\b"
 )
 _SENSITIVE_OPTION_WEAK = re.compile(
     r"^(woman|women|man|men|male|female|white|black|asian|gay|lesbian)$"
