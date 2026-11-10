@@ -115,11 +115,12 @@ def test_submission_sends_once(api, receiver):
     assert receiver.ledger()["accepted"] == 1
 
 
-@pytest.mark.parametrize("blind", ["greenhouse-dom-v3", "greenhouse-dom-v4"])
+@pytest.mark.parametrize("blind", ["greenhouse-dom-v3", "greenhouse-dom-v4", "greenhouse-dom-v5"])
 def test_a_section_package_cannot_reach_a_section_blind_worker(api, receiver, monkeypatch, blind):
     # D120 compatibility: a section-bearing package is approved at the current, section-aware
-    # adapter version (greenhouse-dom-v5, D120 integrated after D130). A worker built before it
-    # computes a section-blind version: v3 (before D130) or v4 (D130 without D120); the binding
+    # adapter version (greenhouse-dom-v6, D141). A worker built before it computes an older
+    # version: v3 (before D130), v4 (D130 without D120) or v5 (sections, but a combobox it types
+    # into and reads back from its input, D141); the binding
     # fence (check_binding) then refuses the attempt before anything is entered -- so a section
     # package can never be claimed by a worker that would fill the ordinary fields and silently
     # skip the section. This is why SCHEMA_VERSION can stay 3: worker compatibility is carried

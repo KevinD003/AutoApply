@@ -359,7 +359,7 @@ def test_an_approval_from_before_the_extraction_bump_is_retired_never_renewed(
     receiver.config(mode=MODE, pcm="")
     app_id = pilot(api) if adapter_name == "greenhouse_live" else by_id(api)
     assert approval_of(app_id).adapter == adapter_name
-    assert policy.ADAPTER_VERSIONS[adapter_name].endswith("+greenhouse-dom-v5")  # with D120
+    assert policy.ADAPTER_VERSIONS[adapter_name].endswith("+greenhouse-dom-v6")  # D120, D141
     before = api.get(f"/applications/{app_id}/package").json()["package"]
     set_approval(app_id, adapter_version=PRE_D130[adapter_name])
     r = try_queue(api, app_id)

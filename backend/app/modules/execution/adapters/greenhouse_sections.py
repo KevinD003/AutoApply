@@ -97,6 +97,9 @@ class FillOp:
     selector: str
     value: object
     readback: str | None
+    # D141: a combobox's frozen option id (the captured `data-value`). The chosen option, and the
+    # control after choosing, must carry it wherever the page exposes one. None for a month.
+    option_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -106,6 +109,9 @@ class RowPlan:
     anchor: str  # "#...": the control whose presence proves this row exists on the page
     add_another_first: bool  # row > 0: click a page "Add another" when the anchor is absent
     ops: tuple[FillOp, ...]
+    # D141: the controls of an intentionally omitted field (a current role's end date): never
+    # entered, and they must still be empty when read back.
+    blank: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -122,7 +128,12 @@ def _ops_for_field(kind: str, template, field: str, fr, row: int) -> list[FillOp
     if kind in ("text", "combobox"):
         if not isinstance(fr.display, str) or not fr.display.strip():
             raise Refused(f"{field}: resolved value carries no display text")
-        return [FillOp(row, field, kind, _sel(template, row), fr.display, fr.display)]
+        oid = None
+        if kind == "combobox":
+            oid = fr.value.get("id") if isinstance(fr.value, dict) else None
+            if not isinstance(oid, str) or not oid:
+                raise Refused(f"{field}: combobox value carries no option id")
+        return [FillOp(row, field, kind, _sel(template, row), fr.display, fr.display, oid)]
     val = fr.value if isinstance(fr.value, dict) else None
     if kind == "checkbox":
         if val is None or not isinstance(val.get("bool"), bool):
@@ -161,9 +172,12 @@ def plan_section(section: SectionResult) -> SectionPlan:
     rows: list[RowPlan] = []
     for i, row in enumerate(section.rows):
         ops: list[FillOp] = []
+        blank: list[str] = []
         for field, kind, template in spec:
             fr = row.fields.get(field)
             if fr is None or fr.status == "omitted":
+                templates = template if isinstance(template, tuple) else (template,)
+                blank.extend(_sel(t, i) for t in templates)
                 continue
             if fr.status != "resolved":  # ready() rules this out; refuse rather than risk a value
                 raise Refused(f"{section.kind} field {field} is {fr.status}")
@@ -175,6 +189,7 @@ def plan_section(section: SectionResult) -> SectionPlan:
                 anchor=_sel(anchor_tpl, i),
                 add_another_first=i > 0,
                 ops=tuple(ops),
+                blank=tuple(blank),
             )
         )
     return SectionPlan(kind=section.kind, rows=tuple(rows))
@@ -330,21 +345,74 @@ def _set_checkbox(page, selector: str, want: bool, timeout_ms: int) -> None:
         raise SectionFillError(f"{selector}: checkbox did not take state {want}")
 
 
-def _select_combobox(page, selector: str, want_text: str, timeout_ms: int) -> None:
-    """Open a type-ahead combobox, choose the option whose text is exactly ``want_text`` (scoped to
-    this input's own listbox via aria-controls, so another open menu is never read), and confirm
-    the choice stuck. No near match is ever accepted."""
-    loc = page.locator(selector).first
-    loc.scroll_into_view_if_needed(timeout=timeout_ms)
-    loc.click(timeout=timeout_ms)
+_COMBO_JS = """(sel) => {
+  const cb = document.querySelector(sel);
+  if (!cb) return null;
+  const box = cb.closest('.select__control');
+  return {
+    react: !!box,
+    single: box ? [...box.querySelectorAll('.select__single-value')]
+      .map(e => e.textContent.trim()) : [],
+    multi: box ? box.querySelectorAll('.select__multi-value').length : 0,
+    input: (cb.value || '').trim(),
+    id: cb.hasAttribute('data-value') ? cb.getAttribute('data-value') : null,
+  };
+}"""
+_LIST_ID = re.compile(r"[A-Za-z][A-Za-z0-9_\-:.]*")
+
+
+def combobox_shows(page, selector: str, want_text: str | None, want_id: str | None) -> bool:
+    """D141 (as D109 does for a top-level dropdown): on a react-select-style control the choice is
+    the one `select__single-value` shown, with no search text left and no chips; otherwise the
+    input's own value. Where the control exposes the chosen option's id, it must be the frozen one.
+    `want_text` None: the control must be empty."""
+    got = page.evaluate(_COMBO_JS, selector)
+    if got is None:
+        return False
+    if want_text is None:
+        return got["input"] == "" and not got["single"] and not got["id"]
+    if got["react"]:
+        if got["multi"] or got["input"] or got["single"] != [want_text]:
+            return False
+    elif got["input"] != want_text:
+        return False
+    return want_id is None or got["id"] is None or got["id"] == want_id
+
+
+def _close_list(page, loc) -> None:
     try:
-        loc.fill("")
+        loc.press("Escape")
     except Exception:  # noqa: BLE001
         pass
-    loc.type(want_text, delay=10)
-    page.wait_for_timeout(150)
+
+
+def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
+                     timeout_ms: int) -> None:  # fmt: skip
+    """Open a section combobox and choose the one option whose text is exactly ``want_text``.
+
+    D141, following D108/D109: nothing is ever typed into it; it is opened by a click on the
+    control, then (a react-select-style control) on its container; options are read only from the
+    control's own list (aria-controls / aria-owns), never from the rest of the page; exactly one
+    option may read ``want_text`` and, where it exposes an id, that id must be the frozen one; the
+    choice is then proven by readback (``combobox_shows``). No near match is ever accepted."""
+    loc = page.locator(selector).first
+    loc.scroll_into_view_if_needed(timeout=timeout_ms)
     ac = loc.get_attribute("aria-controls") or loc.get_attribute("aria-owns") or ""
-    opts = page.locator(f"#{ac} [role=option]") if ac else page.locator("[role=option]")
+    if not _LIST_ID.fullmatch(ac):
+        raise SectionFillError(f"{selector}: names no list of its own")
+    listbox = page.locator(f"[id='{ac}']")
+    loc.click(timeout=timeout_ms)
+    if not listbox.first.is_visible():
+        box = loc.locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), "
+                          "' select__control ')][1]")  # fmt: skip
+        if box.count():
+            box.first.click(timeout=timeout_ms)
+    try:
+        listbox.first.wait_for(state="visible", timeout=timeout_ms)
+    except Exception:  # noqa: BLE001
+        raise SectionFillError(f"{selector}: its list did not open") from None
+    opts = listbox.first.locator("[role=option]")
+    hits = []
     for k in range(opts.count()):
         option = opts.nth(k)
         try:
@@ -352,26 +420,25 @@ def _select_combobox(page, selector: str, want_text: str, timeout_ms: int) -> No
         except Exception:  # noqa: BLE001
             text = ""
         if text == want_text:
-            option.click(timeout=timeout_ms)
-            page.wait_for_timeout(50)
-            got = (loc.input_value() or "").strip()
-            if got != want_text:
-                raise SectionFillError(
-                    f"{selector}: shows {got!r} after choosing, want {want_text!r}"
-                )
-            return
-    try:
-        loc.press("Escape")
-    except Exception:  # noqa: BLE001
-        pass
-    raise SectionFillError(f"{selector}: no option exactly {want_text!r} to choose")
+            hits.append(option)
+    if len(hits) != 1:
+        _close_list(page, loc)
+        raise SectionFillError(f"{selector}: {len(hits)} options read exactly {want_text!r}")
+    exposed = hits[0].get_attribute("data-value")
+    if want_id is not None and exposed is not None and exposed != want_id:
+        _close_list(page, loc)
+        raise SectionFillError(f"{selector}: the option {want_text!r} records another id")
+    hits[0].click(timeout=timeout_ms)
+    page.wait_for_timeout(50)
+    if not combobox_shows(page, selector, want_text, want_id):
+        raise SectionFillError(f"{selector}: does not show {want_text!r} after choosing")
 
 
 def _apply_op(page, op: FillOp, timeout_ms: int) -> None:
     if op.kind in ("text", "year"):
         _fill_text(page, op.selector, op.value, op.readback, timeout_ms)
     elif op.kind in ("combobox", "month"):
-        _select_combobox(page, op.selector, op.readback, timeout_ms)
+        _select_combobox(page, op.selector, op.readback, op.option_id, timeout_ms)
     elif op.kind == "checkbox":
         _set_checkbox(page, op.selector, bool(op.value), timeout_ms)
     else:
@@ -405,3 +472,54 @@ def apply_section_plan(
         e.entered = entered
         raise
     return entered
+
+
+_MAX_EXTRA_ROWS = 20
+
+
+def _op_holds(page, op: FillOp) -> bool:
+    loc = page.locator(op.selector)
+    if loc.count() != 1:
+        return False
+    if op.kind in ("combobox", "month"):
+        return combobox_shows(page, op.selector, op.readback, op.option_id)
+    if op.kind == "checkbox":
+        return loc.first.is_checked() == bool(op.value)
+    return (loc.first.input_value() or "").strip() == (op.readback or "")
+
+
+def _empty(page, selector: str) -> bool:
+    loc = page.locator(selector)
+    if loc.count() == 0:
+        return True
+    if loc.count() != 1:
+        return False
+    if (loc.first.get_attribute("role") or "") == "combobox":
+        return combobox_shows(page, selector, None, None)
+    if (loc.first.get_attribute("type") or "") == "checkbox":
+        return not loc.first.is_checked()
+    return (loc.first.input_value() or "") == ""
+
+
+def readback_section(page, plan: SectionPlan) -> list[str]:
+    """D141: after filling, before the send gate, read back every control of a filled section:
+    each planned control holds what was approved, each intentionally omitted one is still empty,
+    and a row the page shows beyond the plan holds nothing. Returns what does not match, as
+    "section:<kind>:<row>:<field or selector>" (never a value)."""
+    bad: list[str] = []
+    for row in plan.rows:
+        for op in row.ops:
+            if not _op_holds(page, op):
+                bad.append(f"section:{plan.kind}:{row.row}:{op.field}")
+        for sel in row.blank:
+            if not _empty(page, sel):
+                bad.append(f"section:{plan.kind}:{row.row}:{sel.lstrip('#')}")
+    spec = _SPEC[plan.kind]
+    for i in range(len(plan.rows), len(plan.rows) + _MAX_EXTRA_ROWS):
+        if page.locator(_sel(_ANCHOR[plan.kind], i)).count() == 0:
+            break
+        for _field, _kind, template in spec:
+            for t in template if isinstance(template, tuple) else (template,):
+                if not _empty(page, _sel(t, i)):
+                    bad.append(f"section:{plan.kind}:{i}:{t.format(i=i)}")
+    return bad
