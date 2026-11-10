@@ -55,10 +55,13 @@ does **not** lift this gate; it does, however, sharpen the request:
 - Therefore the single most decisive thing the Education observation must settle is **which markup
   the school/degree/discipline controls use**: the legacy plain `<input id="school--0">` that the
   bot recorded, or a react-select widget like the rest of the modern form. That choice decides the
-  executor path — the existing `_select_combobox` already drives a react-select by its
-  `aria-controls` listbox (and `execution.adapters.dropdowns` already reads `select__single-value`),
-  whereas a plain input uses the text path. Record the container/widget type for one such control
-  alongside the row-0 ids above.
+  executor path. Since D141 the section `_select_combobox` never types: it opens a control by a
+  click (then on its `select__control` container), reads options only from the control's own
+  `aria-controls`/`aria-owns` list, and reads a react-select choice back from
+  `select__single-value` — on local stand-ins only. Before D141 it typed into the input and read
+  the input back, which a react-select page leaves empty, so this claim did not hold then. A school
+  list that is a server-side search (`?term=`) is refused, since nothing is typed. Record the
+  container/widget type for one such control alongside the row-0 ids above.
 
 This refinement changes no code and lifts no gate; it only makes the read-only request more precise.
 
