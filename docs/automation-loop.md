@@ -30,7 +30,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D135 a question the page shows after an earlier answer | merged (#44, 53b28af); its PR CI passed all four jobs on 2d3c07c, and main CI #269 on 53b28af |
 | D136 a control NoEfforts cannot fill is refused when the form is read | merged (#45, 32c8f7c); its PR CI passed all four jobs on 9602bda |
 | D137 what reached the employer stays recorded whatever fails after it | merged (#46, e2fd286, tree as predicted); its PR CI passed all four jobs on a9b6880 (CI #276) |
-| D138 saved answers on Greenhouse- and Workday-shaped forms | branch `provider-reuse` (from D137's branch, 035a085; `main` merged in after #46, changing no file); its pull request; not merged |
+| D138 saved answers on Greenhouse- and Workday-shaped forms | merged (#47, a7f8742, tree as predicted); its PR CI passed all four jobs on ea11c6e |
+| D139 your self-identification on Greenhouse- and Workday-shaped forms; a change retires its approvals at once | branch `self-id-ledger` (from D138's branch, e3e584a; `main` merged in after #47); its pull request; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -48,14 +49,14 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 |---|---|---|---|
 | 1 | Known answer fills and survives readback | fx (gh2 stand-in) | fx, single-page approximation only |
 | 2 | New question → questions tab → saved → resumes | fx (gh2 by id and pilot stand-in), on `main` since D132 (#40) | fx (e2e), on `main` since D132 |
-| 3 | Future reuse | unit (resolver), generic form; D133 merged (#41): suggestions judge the saved side, "Use here only"; D138 (branch): a saved answer reaches the next gh2 job that asks the same question (receiver ledger) | D138 (branch): reused on the next posting (receiver ledger); single page |
-| 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 (branch): a gh2 look-alike naming a country is neither reused nor suggested | D138 (branch): "Preferred shift" never saved or reused |
+| 3 | Future reuse | unit (resolver), generic form; D133 merged (#41): suggestions judge the saved side, "Use here only"; D138 merged (#47): a saved answer reaches the next gh2 job that asks the same question (receiver ledger) | D138 merged (#47): reused on the next posting (receiver ledger); single page |
+| 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 merged (#47): a gh2 look-alike naming a country is neither reused nor suggested | D138 merged (#47): "Preferred shift" never saved or reused |
 | 5 | Conditional question | fx on the v1 fixture; D135 merged (#44), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | absent (no branching fixture) |
 | 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger) | fx at capture |
 | 7 | Repeating records | fx education stand-in (D120); employment unit | absent |
-| 8 | Answer edits invalidate approvals | fx; D138 (branch): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger) | fx (single page) |
+| 8 | Answer edits invalidate approvals | fx; D138 merged (#47): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger) | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; not run on gh2 | partial |
-| 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify" |
+| 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus; D139 (branch): self-identification on gh2 (by id and pilot) up to the ledger: off or unmatched never sent, a label or a decline label sent, your per-application "Don't disclose" beats it, a required one without a match waits; a change retires its approvals at once (queued, held by a worker, under the standing rule: nothing withdrawn is sent) | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify"; D139 (branch): self-identification sent as each option's own value, each question only from the label naming its category, a bare "No" or two labels never used, a decline only where the choices name a category, a required gender without a match waits; withdrawal and change retire the approval (single page; the Workday decline wording is a fixture assumption) |
 | 11 | Upload failure preserves evidence | fx for UploadFailed; D137 merged (#46): every disclosure is recorded as it is made (receiver ledger): an unexpected error after an upload keeps its evidence (generic form, gh2 by id, the API route); a killed worker after an upload (generic form); a failure during an upload counts the document as possibly received (generic form, gh2 by id, the first Greenhouse-style page, the API route); a draft or document the API received and answered badly is recorded | fx; D137: a failure during an upload counts it as possibly received (Workday-style page) |
 | 12 | Uncertain send quarantined | fx | fx (final send only; each Next not modelled) |
 | 13 | Cancellation respected | fx on the generic form; D134 merged (#43), on the gh2 stand-in through the pilot (receiver ledger): a pause stops what the standing rule queued, your own queued work runs on, a revocation stands | partial |
@@ -125,11 +126,17 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   the employer; a failure during an upload counts the document as possibly received; through the
   API, a document sent without an answer is recorded too. Attempts that disclosed anything are
   still abandoned and never retried.
-- **D138 (branch `provider-reuse`, not merged).** Rank 6, tests and fixtures only: a saved answer
+- **D138 (PR #47, merged).** Rank 6, tests and fixtures only: a saved answer
   reaches the next Greenhouse-style job that asks the same question, and the employer receives it;
   a look-alike naming a country is neither reused nor suggested; on the Workday-style form the
   education answer is reused and the shift never is; editing a saved answer retires the approval
   that used it until it is approved again.
+- **D139 (branch `self-id-ledger`, not merged).** Rank 7: your self-identification on
+  Greenhouse- and Workday-shaped forms up to the employer (opt-in, decline, scope, your
+  per-application choice, a required question without a match), and turning it off or changing it
+  now retires the approvals of what it answered at once (before, only a worker's gate kept a
+  withdrawn answer from being sent, and you were not told); the profile page says how many
+  applications need your approval again.
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
   Pausing there and later queuing one new attempt is a retry after `sending`, which CLAUDE.md
@@ -149,9 +156,10 @@ adapter cannot fill (**D136**, rank 5's first half, #45) are on `main`. Two rema
 owner's decision: the rule continuing after a form-change pause (rank 3), and a final click the
 page's own checks block (rank 4, second half: a retry after `sending`). **D137** (rank 5, second
 half, #46) keeps the evidence of what reached the employer whatever fails after it.
-**D138** (rank 6, on its branch) shows saved answers on Greenhouse- and Workday-shaped forms up to
-the employer. Next, rank 7: EEOC, demographic and Workday self-identification end to end. Later
-ranks:
+**D138** (rank 6, #47) shows saved answers on Greenhouse- and Workday-shaped forms up to
+the employer. **D139** (rank 7, on its branch) shows your self-identification there too, and a
+change to it retires its approvals at once. Next, rank 8: structured sections reviewable and
+diffed, an employment stand-in. Later ranks:
 - reviewable sections;
 - the Workday multi-page wizard stand-in;
 - recovery hardening.
@@ -181,9 +189,12 @@ ranks:
 - **D137:** merged (#46, e2fd286, tree as predicted); its PR CI passed all four jobs on a9b6880
   (CI #276), and on 929f94b, its last code commit (CI #275). Locally: the new tests, their sabotage
   runs and every suite that runs an attempt or uses an adapter (Tests run below).
-- **D138 (branch `provider-reuse`):** the new tests, their sabotage runs and the suites that use the
-  fixtures it extends, locally (Tests run below). The full suites run in its CI (`main` with D137
-  merged in, changing no file).
+- **D138:** merged (#47, a7f8742, tree as predicted); its PR CI passed all four jobs on ea11c6e.
+  Locally: the new tests, their sabotage runs and the suites that use the fixtures it extends
+  (Tests run below).
+- **D139 (branch `self-id-ledger`):** the new tests, their sabotage runs, the e2e spec and the suites
+  that touch self-identification, the profile, packages and approvals or the two fixtures, locally
+  (Tests run below). The full suites run in its CI (`main` with D138 merged in).
 
 ## Tests run (this loop)
 
@@ -232,6 +243,11 @@ ranks:
 | D138 sabotage runs at bfba231 (seven changes, each in turn) | reuse off: 3 of 4 fail; scope off: 1; the shift's three rules removed: 1; a 36-character key: 1; any one shift rule alone: 0 (the other two refuse it) |
 | D138 before the review: the bank, Greenhouse DOM and live, Workday, answer-brain, API-provider and bank-edit suites (8 files, JUnit) | 1325 passed, 0 failures |
 | D138 at bfba231: every suite that loads the gh2 or Workday-style fixture, with the bank and document suites (44 files, JUnit) | 2210 passed, 0 failures |
+| D139: `pytest tests/test_self_identification_ledger.py` (JUnit) | 25 passed; then the review's added test, 1 passed |
+| D139: the new standing-rule and mutation-table cases, then `test_auto_apply.py`, `test_execution_validation.py`, `test_self_identification.py`, `test_greenhouse_dom.py`, `test_workday_adapter.py` in full (JUnit) | 3 passed; then 154 passed |
+| D139 sabotage runs (five changes, each in turn) | the eager retirement removed: 9 fail; the gate's hash check removed: 2; self-identification over "Don't disclose": 3; the Workday decline wording removed: 2; the "names a category" rule removed: 1 |
+| D139: `playwright test e2e/self-identification.spec.ts` (desktop and mobile) | 6 passed; with the eager retirement removed, the new test fails on both (2 failed, 4 passed) |
+| D139: every suite that touches self-identification, the profile, packages and approvals, or either fixture (70 files, JUnit) | 2637 passed, 0 failures |
 
 ## Failed approaches and rejected designs
 
@@ -277,11 +293,11 @@ ranks:
 
 ## Exact next action
 
-1. D138 (branch `provider-reuse`, `main` merged in after D137): merge its pull request when its four
+1. D139 (branch `self-id-ledger`, `main` merged in after D138): merge its pull request when its four
    checks pass.
-2. Rank 7: EEOC, demographic and Workday self-identification end to end (opt-in, decline, scope,
-   withdrawal), with the receiver's ledger.
-3. Owner decisions: every recorded permission ended on 2026-11-06 (renewing is the owner's call,
+2. Rank 8: structured sections reviewable and diffed; an employment stand-in.
+3. Owner decisions: the standing rule's consent text does not name self-identification, which it
+   sends since D133 (D139); every recorded permission ended on 2026-11-06 (renewing is the owner's call,
    never extended because work took longer); continuing after a form change (D132); a final click
    the page's own checks block (`CLIENT_BLOCKED`, after `sending`).
 

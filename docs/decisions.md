@@ -5130,3 +5130,94 @@ audit-inventory and export-completeness guards are updated and pass.
   two findings here, both fixed: two receiver-ledger checks in the look-alike and edit tests could
   not fail, since nothing had been queued or run, and are replaced by the refusal to queue; and the
   shift is refused three ways, not two.
+
+## D139 — Your self-identification on Greenhouse- and Workday-shaped forms, shown up to the employer; a change retires its approvals at once (2026-11-10)
+
+- **Why:** rank 7 of the Greenhouse + Workday automation loop (`docs/automation-loop.md`;
+  acceptance items 10, 4 and 6). D122, D131 and D133 decided how your self-identification answers
+  an equal-opportunity question, tested in the resolver and the API. A read-only map of the code
+  (2026-11-10) found that nothing showed it reaching an employer except one gh2 run with
+  "Male"; nothing showed a decline sent, a question it cannot tell apart left alone on a
+  Workday-shaped form, or what happens to an approval when you turn it off. Turning it off saved
+  the row and nothing else: an approval of the old answer stayed live until something read the
+  package, and the standing rule never reads a package while its own attempt waits, so only a
+  worker's gate kept the withdrawn answer from being sent, and you were not told.
+- **Decided:**
+  - **A change retires its approvals at once.** `PUT /profile/self-identification` saves the row,
+    then rebuilds each of your applications that holds a live approval of a package with a
+    sensitive answer (only such an answer can come from self-identification), as an edit to a
+    saved answer does (D78): an approval of what changed is retired now, a queued application
+    returns to awaiting approval, and the response says how many
+    (`applications_to_approve_again`); the profile page says "N approved application(s) changed
+    and need your approval again". The rebuild is a whole one: an approval whose package is
+    unchanged stays (a label no question on the form matches changes nothing sent), and one
+    already out of date for another reason (a profile edit made after approving, which does not
+    rebuild by itself) is retired by the same save, as a worker's gate would refuse it anyway;
+    the message counts both. An application whose attempt a worker holds is not rebuilt then (the
+    worker owns its state); the gates rebuild the package themselves and refuse a changed one, so
+    nothing of what you withdrew is sent from then on. `SCHEMA_VERSION` stays 3: the package
+    content is unchanged.
+  - **Shown on the receiver's ledger** (`tests/test_self_identification_ledger.py`; gh2 by id
+    and through the pilot, and the Workday-style form):
+    - off, on with no matching label, or on with no labels: an optional gender is never sent;
+    - on: your label is sent as that option's own value (gh2 "1"/"3"; Workday "Female", "Male");
+    - a decline label sends the form's own decline, and only where the other choices name a
+      category: on the Workday-style form it declines gender and veteran status, never "Are you
+      Hispanic or Latino?" (Yes / No / decline) or the disability form, whose decline is worded
+      "I do not want to answer";
+    - a bare "No" answers no question, and two labels for one question are never guessed: those
+      are left blank;
+    - each question takes only the label that names its category: gender, veteran status and
+      disability from their own labels; your eligibility and sponsorship facts are never
+      self-identification;
+    - your "Don't disclose" for one application beats your standing self-identification: an
+      optional question is left blank, a required one sends the form's decline; a required
+      question without a match waits for you and nothing is approved or sent;
+    - turned off or changed after approval: the approval is retired at once, queueing is
+      refused, and approved again the package as it now stands is sent (nothing, or the new
+      value); turned off while queued: the queued attempt is refused before any page is opened;
+      while a worker holds the attempt: the send gate abandons it (also in the protected-mutation
+      table of `test_execution_validation.py`); a label that changes nothing sent leaves the
+      approval alone;
+    - under the standing rule (D113): your gender is sent as you stated it; turned off after the
+      rule queued the submission, nothing is sent and the rule never tries that application
+      again (it is yours).
+  - **Fixtures (FIXTURE ASSUMPTIONS, never seen on a real page):** gh2 mode `gh2_eeo_required`
+    (the screening job's Gender required by the job data, the page and the server); Workday-style
+    modes `wd_self_identify` (veteran status and Hispanic or Latino origin under "Voluntary
+    Disclosures", the disability question as three radios under "Self Identify", all optional)
+    and `wd_gender_required`. The step names, the gender options, "I am not a protected veteran"
+    and the disability wordings follow the preparation fixture `workday.html`;
+    `docs/research/workday.md` records an ethnicity question, veteran status and the disability
+    form's three choices; the Hispanic-or-Latino wording, "I am a protected veteran" and every
+    value are this fixture's own.
+- **Not changed:** what your self-identification answers (D122, D131, D133), the precedence of a
+  per-application choice, the standing rule's consent text, `SCHEMA_VERSION` (3).
+- **Not fixed, stated:**
+  - The standing rule's consent text (D114) does not mention self-identification, although
+    since D133 the rule sends what it answers. Whether accounts already opted in must agree again
+    to a text that names it is the owner's decision.
+  - The self-identification row is read, not locked, by the gates: a change committed after the
+    send gate has read it does not stop that attempt (the change reaches the next one). Locking
+    it was not added here.
+  - Workday's own step name "Voluntary Disclosures" (plural) is not read as a self-identification
+    section, so a question recognisable only by that section is not treated as one. It fails
+    closed (never answered from self-identification); reading it would change Workday-style
+    package hashes.
+  - The disability form's name and date are not modelled: whether your profile name may go onto
+    it is the owner's decision. Greenhouse's own `compliance[]` and demographic survey are not
+    modelled on gh2 (their page ids are unobserved), and gh2's submit never collects a native
+    select, so an unfillable demographic control's content is not visible to its ledger.
+  - "Include this answer" on a self-identified row does nothing but shows as pressed (the
+    review page).
+  - The Workday decline wording "I do not wish to answer" has no recorded public source; it is a
+    fixture assumption.
+- **Review:** an adversarial review before merging (three reviewers, two skeptics per finding)
+  raised thirteen findings and upheld one, fixed: the decision said a save that changes nothing
+  sent retires nothing, but the rebuild is a whole one, so an approval already out of date for
+  another reason is retired by the same save; the text says so and a test pins it. The fixture's
+  account of where its Workday-style wordings come from is corrected too (the Hispanic-or-Latino
+  wording and "I am a protected veteran" are its own). The others were refuted: a worker holding
+  the attempt is told through the abandoned attempt's notice, not the profile page, as for any
+  other change (D78, D134), and the rest restate stated residuals or ask for more than D139
+  claims.

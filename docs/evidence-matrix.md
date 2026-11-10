@@ -9,10 +9,36 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Your self-identification on Greenhouse- and Workday-shaped forms (D139, 2026-11-10; local only)
+
+Nothing here ran against a real page or a real account. Branch `self-id-ledger` (from D138's
+branch, e3e584a). The required gender (`gh2_eeo_required`), the Workday-style veteran,
+Hispanic-origin and disability questions (`wd_self_identify`), the required Workday-style gender
+(`wd_gender_required`) and the values each sends are FIXTURE ASSUMPTIONS. The receiver's ledger
+is the oracle for what reached the employer. Tests in `tests/test_self_identification_ledger.py`
+unless named otherwise.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| Off, or on without a matching label, an optional gender is never sent (gh2, by id and pilot) | `test_without_a_match_you_chose_gender_is_never_sent` | receiver ledger: no `question_8113` |
+| On, your label is sent; a decline label sends the form's decline (gh2, by id and pilot) | `test_opted_in_your_label_is_sent_and_a_decline_label_sends_the_forms_decline` | receiver ledger: `question_8113` "3" |
+| Your "Don't disclose" for one application beats your standing self-identification | `test_your_dont_disclose_for_one_application_beats_your_standing_self_identification` | receiver ledger: no `question_8113` |
+| A required gender without a match waits for you; "Don't disclose" sends the decline (gh2; Workday-style) | `test_a_required_gender_without_a_match_waits_for_you_and_dont_disclose_sends_the_decline`, `test_on_workday_pages_a_required_gender_waits_for_you_and_dont_disclose_sends_the_decline` | approval refused (`package_unresolved`), receiver ledger empty; then "3" / "Decline" |
+| Turned off or changed after approval, the approval is retired at once and queueing refused; approved again, the package as it now stands is sent (gh2, by id and pilot; Workday-style) | `test_withdrawing_or_changing_it_after_approval_retires_the_approval_at_once`, `test_on_workday_pages_withdrawing_or_changing_it_retires_the_approval` | `applications_to_approve_again` 1; no live approval; reason names the question, never the value; `approval_needed`; receiver ledger: nothing, then blank or the new value |
+| Turned off while queued: the queued attempt is refused before any page is opened (gh2; Workday-style) | `test_withdrawing_it_while_queued_stops_the_queued_attempt_before_anything_is_sent`, `test_on_workday_pages_withdrawing_it_while_queued_sends_nothing` | run `ignored`; receiver ledger: no request disclosed, nothing accepted |
+| Turned off while a worker holds the attempt: the send gate abandons it | `test_withdrawing_it_while_a_worker_holds_the_attempt_stops_it_at_the_send_gate`; `test_execution_validation.py::test_every_protected_mutation_stops_a_running_attempt[self_identification]` | a real worker process paused before the send gate; `abandoned`, "changed after approval"; receiver ledger: nothing accepted |
+| A label that changes nothing sent leaves an approval alone | `test_an_unrelated_change_to_it_leaves_an_approval_alone` | approval live; receiver ledger: "1" |
+| A save also retires an approval already out of date for another reason (a phone edited after approving) | `test_a_save_also_retires_an_approval_already_out_of_date_for_another_reason` | `applications_to_approve_again` 1; the reason names the phone, not the gender; receiver ledger: the new phone and "1" once approved again |
+| Workday-style: your label is sent as the option's own value; each question takes only the label naming its category; a bare "No" and two labels for one question are never used | `test_on_workday_pages_your_label_is_sent_as_the_options_own_value`, `test_on_workday_pages_each_question_takes_only_the_label_that_names_its_category`, `test_on_workday_pages_two_labels_for_one_question_are_never_guessed` | receiver ledger: `vd.gender`, `vd.veteran` "Not a veteran", `si.disability` "No"; `vd.hispanic` blank; your eligibility and sponsorship facts |
+| Workday-style: a decline label declines only where the other choices name a category | `test_on_workday_pages_a_decline_label_declines_only_where_the_choices_name_a_category` | receiver ledger: gender and veteran "Decline"; Hispanic origin and disability blank |
+| The standing rule sends your gender as stated; turned off after it queued the submission, nothing is sent and the rule leaves the application to you | `test_auto_apply.py::test_the_rule_sends_your_self_identification_and_withdrawing_it_stops_what_it_queued` | receiver ledger: "1"; or nothing accepted, the rule's next step `attempt_stopped` |
+| The profile page opts in and, turned off after an approval, says the approval must be given again | `e2e/self-identification.spec.ts` (desktop and mobile) | the page's message; queueing refused (`approval_needed`); the package's gender blank |
+| Each check fails without what it checks | the eager retirement removed: 9 tests and the e2e test; the gate's hash check removed: 2; self-identification over "Don't disclose": 3; the Workday decline wording removed: 2; the "names a category" rule removed: 1 | recorded in `docs/automation-loop.md` |
+
 ## Saved answers on Greenhouse- and Workday-shaped forms (D138, 2026-11-10; local only)
 
-Nothing here ran against a real page or a real account. Branch `provider-reuse` (from D137's branch,
-035a085); fixtures and tests only. The second Greenhouse-style fixture's jobs 5020004-5020006 and
+Nothing here ran against a real page or a real account. Merged as #47 (a7f8742; built on branch
+`provider-reuse` from D137's branch, 035a085); fixtures and tests only. The second Greenhouse-style fixture's jobs 5020004-5020006 and
 the Workday-style mode `wd_bank_question` are FIXTURE ASSUMPTIONS. The receiver's ledger is the
 oracle for what reached the employer.
 

@@ -244,6 +244,14 @@ def m_answer_bank_edit(api, app_id, ctx):
     assert r.status_code == 200 and r.json()["changed"], r.text
 
 
+def m_self_identification(api, app_id, ctx):
+    # D139: turning your self-identification off while a worker holds the attempt. The worker
+    # owns the application's state then, so nothing is rebuilt at once: the send gate is what
+    # stops it.
+    r = api.put("/profile/self-identification", json={"enabled": False, "labels": ["Woman"]})
+    assert r.status_code == 200, r.text
+
+
 def m_preferences(api, app_id, ctx):
     api.put("/profile/preferences", json={"willing_to_relocate": "yes"})
 
@@ -276,6 +284,7 @@ MUTATIONS = {
     "answer_bank_delete": m_answer_bank,
     "answer_bank_edit": m_answer_bank_edit,
     "preferences": m_preferences,
+    "self_identification": m_self_identification,
     "job_destination": m_job,
     "form_version": m_form,
     "draft_accept": m_draft,
@@ -301,6 +310,13 @@ def test_every_protected_mutation_stops_a_running_attempt(api, receiver, monkeyp
             )["source"]
             == "answer_bank"
         )
+    elif name == "self_identification":
+        r = api.put("/profile/self-identification", json={"enabled": True, "labels": ["Woman"]})
+        assert r.status_code == 200, r.text
+        app_id = prepared_application(api, receiver)
+        content = api.get(f"/applications/{app_id}/package").json()["package"]["content"]
+        gender = next(a for a in content["answers"] if a["key"] == "gender")
+        assert (gender["source"], gender["display"]) == ("self_identification", "Woman")
     else:
         app_id = prepared_application(api, receiver)
     aid = queue(api, app_id)

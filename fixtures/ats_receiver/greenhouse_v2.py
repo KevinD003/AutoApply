@@ -43,6 +43,8 @@ gh2_required_extra, gh2_required_marker_only, gh2_required_answered, gh2_require
 gh2_conditional_required (D135: question_8105, optional in the job data, is required once shown),
 gh2_native_select (D136: question_8104 as a native <select>; gh2_native_select_optional:
 the same, asked as optional by the job data, the page and the server),
+gh2_eeo_required (D139: the screening job's Gender, question_8113, asked as required by the job
+data, the page and the server; a FIXTURE ASSUMPTION, never seen on a real page),
 gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS; for dd locale_gate also locale_origin,
 locale_path, locale_via; for dd open_beacon also beacon, beacon_via; for dd late_other_host
 other_origin), GET /locales/{lang}/{ns}.json (cfg locale_delay_ms; lang "moved"
@@ -278,6 +280,10 @@ def _job(board, job_id, cfg=None) -> dict:
     c = cfg or {}
     if c.get("mode") == "gh2_question_added":
         return {**j, "questions": [*j["questions"], ADDED_QUESTION]}
+    if c.get("mode") == "gh2_eeo_required":  # D139: the screening job's gender, required
+        qs = [{**q, "required": True} if q["fields"][0]["name"] == "question_8113" else q
+              for q in j["questions"]]
+        return {**j, "questions": qs}
     if c.get("mode") == "gh2_native_select_optional":  # D136: optional everywhere
         qs = [{**q, "required": False} if q["fields"][0]["name"] == "question_8104" else q
               for q in j["questions"]]

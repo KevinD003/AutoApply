@@ -26,7 +26,16 @@ fields on the page), wd_location_cascade (a required State list that depends on 
 wd_custom_dropdown (the "How did you hear about us?" button dropdown is required),
 wd_challenge (a CAPTCHA-style challenge widget on the application page),
 wd_verification (the final click is answered "verify your email"), wd_drift (a new required
-question), wd_receipt_elsewhere (the confirmation is shown on another posting's page); and the
+question), wd_receipt_elsewhere (the confirmation is shown on another posting's page),
+wd_self_identify (D139: Voluntary Disclosures also asks veteran status and Hispanic or Latino
+origin, and a "Self Identify" section asks the disability question as three radios, all
+optional; the step names, the gender options, "I am not a protected veteran" and the
+disability wordings follow the preparation fixture workday.html, the research proposal in
+docs/research/workday.md records an ethnicity question, veteran status and the disability
+form's three choices, and the Hispanic-or-Latino wording, "I am a protected veteran" and every
+value are this fixture's own: FIXTURE ASSUMPTIONS, no real Workday page was observed),
+wd_gender_required (D139: the
+gender question is required by the page and the server); and the
 shared modes validation_fail, error_before_accept, error_after_accept, drop_after_accept, delay,
 upload_fail and upload_fail_field. All tenants, postings and people are fictional.
 """
@@ -128,6 +137,26 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
                  '<option value="">Select One</option>'
                  + "".join(f'<option value="{e}">{e}</option>' for e in EDUCATION)
                  + "</select>" if mode == "wd_bank_question" else "")  # fmt: skip
+    self_id = mode == "wd_self_identify"
+    disclosures = ('<label for="vd_veteran">Veteran status</label>'
+                   '<select id="vd_veteran" name="vd.veteran"><option value="">Select One</option>'
+                   '<option value="Protected">I am a protected veteran</option>'
+                   '<option value="Not a veteran">I am not a protected veteran</option>'
+                   '<option value="Decline">I do not wish to answer</option></select>'
+                   '<label for="vd_hispanic">Are you Hispanic or Latino?</label>'
+                   '<select id="vd_hispanic" name="vd.hispanic"><option value="">Select One</option>'
+                   '<option value="Yes">Yes</option><option value="No">No</option>'
+                   '<option value="Decline">I do not wish to answer</option></select>'
+                   if self_id else "")  # fmt: skip
+    disability = ('<section data-step="Self Identify"><fieldset><legend>Please check one of the '
+                  "boxes below (voluntary self-identification of disability)</legend>"
+                  '<label><input type="radio" name="si.disability" value="Yes"> Yes, I have a '
+                  "disability (or previously had a disability)</label>"
+                  '<label><input type="radio" name="si.disability" value="No"> No, I do not have a '
+                  "disability and have not had one in the past</label>"
+                  '<label><input type="radio" name="si.disability" value="Decline"> I do not want '
+                  "to answer</label></fieldset></section>" if self_id else "")  # fmt: skip
+    gender_required = " required" if mode == "wd_gender_required" else ""
     challenge = ('<div class="h-captcha" data-sitekey="fixture-not-a-key"></div>'
                  if mode == "wd_challenge" else "")  # fmt: skip
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
@@ -172,12 +201,14 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 </section>
 <section data-step="Voluntary Disclosures">
 <label for="vd_gender">Gender</label>
-<select id="vd_gender" name="vd.gender"><option value="">Select One</option>
+<select id="vd_gender" name="vd.gender"{gender_required}><option value="">Select One</option>
 <option value="Female">Female</option><option value="Male">Male</option>
 <option value="Decline">I do not wish to answer</option></select>
+{disclosures}
 <label><input type="checkbox" name="terms_ack" value="1" required> I have read and agree to
  the (fictional) terms and conditions.</label>
 </section>
+{disability}
 {challenge}
 {footer}
 <button type="submit" data-automation-id="bottom-navigation-next-button">Submit</button>
@@ -283,6 +314,8 @@ def mount(app, ledger, cfg, accept) -> None:
             required.append("q.weekends")
         if mode == "wd_bank_question":
             required.append("q.education")
+        if mode == "wd_gender_required":
+            required.append("vd.gender")
         missing = [k for k in required if not fields.get(k)]
         if mode == "validation_fail" or missing:
             items = "".join(f"<li>{html.escape(m)}</li>" for m in missing or ["phone--number"])

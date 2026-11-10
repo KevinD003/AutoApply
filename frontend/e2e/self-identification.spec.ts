@@ -77,3 +77,63 @@ test("a self-identification label with commas is saved and shown as one label", 
     `Male\n${disability}`,
   );
 });
+
+// D139: opting in and withdrawing on the profile page. Turned off after you approved an
+// application it answered, the page says that application needs your approval again, and the
+// approval is retired at once: queueing it is refused until you approve it as it now stands.
+test("turning self-identification off after approving says how many approvals it retired", async ({ page }, info) => {
+  const email = `d139.${info.project.name}.${Date.now()}@example.com`;
+  const reg = await page.request.post("/api/auth/register", { data: { email, password: "synthetic-password-1" } });
+  expect(reg.status()).toBe(201);
+  const h = { "X-CSRF-Token": (await reg.json()).csrf_token as string };
+  const put = (url: string, data: object) => page.request.put(`/api${url}`, { headers: h, data });
+  const post = (url: string, data: object) => page.request.post(`/api${url}`, { headers: h, data });
+  expect(
+    (await put("/profile", { full_name: "Sam Synthetic", given_name: "Sam", family_name: "Synthetic", contact_email: "sam.synthetic@example.com" })).ok(),
+  ).toBeTruthy();
+
+  await page.goto("/profile");
+  const card = page.locator("section", { has: page.getByRole("heading", { name: /^Self-identification \(EEOC/ }) });
+  const optIn = card.getByRole("checkbox", { name: "Fill my self-identification on applications automatically" });
+  await optIn.check();
+  await card.getByLabel("Your self-identification labels (one per line, exactly as forms word them)").fill("Male");
+  await card.getByRole("button", { name: "Save self-identification" }).click();
+  await expect(card.getByText("Saved.", { exact: true })).toBeVisible();
+
+  const job = await (await post("/jobs", { title: "Clinic Assistant", employer: "Example Health (fictional)" })).json();
+  const form = {
+    title: "Synthetic form",
+    fields: [
+      {
+        key: "gender",
+        label: "Gender",
+        type: "select",
+        required: false,
+        options: [
+          { value: "1", label: "Male" },
+          { value: "2", label: "Female" },
+          { value: "3", label: "Decline To Self Identify" },
+        ],
+      },
+    ],
+  };
+  expect((await post(`/jobs/${job.job.id}/form`, { form })).status()).toBe(201);
+  const app = await (await post("/applications", { job_id: job.job.id })).json();
+  const pkg = (await (await page.request.get(`/api/applications/${app.id}/package`)).json()).package;
+  const gender = pkg.content.answers.find((a: { key: string }) => a.key === "gender");
+  expect([gender.status, gender.source, gender.display]).toEqual(["resolved", "self_identification", "Male"]);
+  const approved = await post(`/applications/${app.id}/package/approve`, { version: pkg.version, content_hash: pkg.content_hash });
+  expect(approved.status(), await approved.text()).toBe(200);
+
+  await page.reload();
+  await optIn.uncheck();
+  await card.getByRole("button", { name: "Save self-identification" }).click();
+  await expect(card.getByText("Saved. 1 approved application changed and needs your approval again.", { exact: true })).toBeVisible();
+
+  const queued = await post(`/applications/${app.id}/transition`, { to: "queued" });
+  expect([400, 409]).toContain(queued.status());
+  expect(await queued.text()).toContain("approval_needed");
+  const after = (await (await page.request.get(`/api/applications/${app.id}/package`)).json()).package;
+  const blank = after.content.answers.find((a: { key: string }) => a.key === "gender");
+  expect([blank.status, blank.value]).toEqual(["blank_optional", null]);
+});
