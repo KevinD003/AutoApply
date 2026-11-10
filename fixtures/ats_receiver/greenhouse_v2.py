@@ -70,6 +70,10 @@ from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 YES_NO = [{"value": 1, "label": "Yes"}, {"value": 0, "label": "No"}]
+# D138: the choices of the question a saved answer can answer (the jobs 5020004-5020006).
+EDUCATION = [{"value": 20 + i, "label": t} for i, t in enumerate(
+    ("High school diploma", "Associate degree", "Bachelor's degree", "Master's degree or higher",
+     "Other"), 1)]
 # D104 (FIXTURE ASSUMPTION, never seen on a real page): the country picker beside the phone
 # field, each option naming its calling code. +1 is shared on purpose: a code alone is not a
 # country.
@@ -235,7 +239,25 @@ def _jobs():
         ("northwind", "5020003"): {**base, "title": "Clinic Coordinator",
                                    "questions": _standard() + SCREENING,
                                    "location_questions": []},
+        # D138 (FIXTURE ASSUMPTION): two jobs that ask the same question a saved answer can answer
+        # (each under its own question id, as each Greenhouse job numbers its own), and one that
+        # asks a question that only looks the same (it names a country).
+        ("northwind", "5020004"): {**base, "title": "Warehouse Associate",
+                                   "questions": _standard()[:7] + [_edu("question_8121")],
+                                   "location_questions": []},
+        ("northwind", "5020005"): {**base, "title": "Inventory Clerk",
+                                   "questions": _standard()[:7] + [_edu("question_8131")],
+                                   "location_questions": []},
+        ("northwind", "5020006"): {**base, "title": "Dispatch Coordinator",
+                                   "questions": _standard()[:7] + [_edu(
+                                       "question_8141",
+                                       "Highest level of education completed in Canada")],
+                                   "location_questions": []},
     }
+
+
+def _edu(qid, label="Highest level of education completed"):
+    return _q(label, qid, "multi_value_single_select", True, EDUCATION)
 
 
 JOBS = _jobs()
