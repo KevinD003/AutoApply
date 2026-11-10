@@ -29,11 +29,11 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D134 the standing rule respects your pause and revocation | merged (#43, 2e10418); its PR CI passed all four jobs on 118b4b9, and main CI #267 on 2e10418 |
 | D135 a question the page shows after an earlier answer | merged (#44, 53b28af); its PR CI passed all four jobs on 2d3c07c, and main CI #269 on 53b28af |
 | D136 a control NoEfforts cannot fill is refused when the form is read | merged (#45, 32c8f7c); its PR CI passed all four jobs on 9602bda |
-| D137 what reached the employer stays recorded whatever fails after it | branch `disclosure-evidence` (from D136's branch, 9602bda; `main` merged in after #45), pull request #46; not merged |
-| D138 saved answers on Greenhouse- and Workday-shaped forms | branch `provider-reuse` (from D137's branch, 035a085); not merged |
-| D139 your self-identification on Greenhouse- and Workday-shaped forms; a change retires its approvals at once | branch `self-id-ledger` (from D138's branch, e3e584a); not merged |
-| D140 education and work history reviewable and diffed; a record edit retires its approvals at once | branch `sections-review` (from D139's branch, 84af539); not merged |
-| D141 an employment stand-in; section comboboxes safe on react-select pages | branch `section-widgets` (from D140's branch, 08cd8bd); not merged |
+| D137 what reached the employer stays recorded whatever fails after it | merged (#46, e2fd286, tree as predicted); its PR CI passed all four jobs on a9b6880 (CI #276) |
+| D138 saved answers on Greenhouse- and Workday-shaped forms | merged (#47, a7f8742, tree as predicted); its PR CI passed all four jobs on ea11c6e |
+| D139 your self-identification on Greenhouse- and Workday-shaped forms; a change retires its approvals at once | merged (#48, 4585c59, tree as predicted); its PR CI passed all four jobs on 3df9d9d |
+| D140 education and work history reviewable and diffed; a record edit retires its approvals at once | merged (#49, 3df7d0d, tree as predicted); its PR CI passed all four jobs on 48fde99 |
+| D141 an employment stand-in; section comboboxes safe on react-select pages | branch `section-widgets` (from D140's branch, 08cd8bd; D140's final branch and `main` merged in after #49); not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -51,15 +51,15 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 |---|---|---|---|
 | 1 | Known answer fills and survives readback | fx (gh2 stand-in) | fx, single-page approximation only |
 | 2 | New question → questions tab → saved → resumes | fx (gh2 by id and pilot stand-in), on `main` since D132 (#40) | fx (e2e), on `main` since D132 |
-| 3 | Future reuse | unit (resolver), generic form; D133 merged (#41): suggestions judge the saved side, "Use here only"; D138 (branch): a saved answer reaches the next gh2 job that asks the same question (receiver ledger) | D138 (branch): reused on the next posting (receiver ledger); single page |
-| 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 (branch): a gh2 look-alike naming a country is neither reused nor suggested | D138 (branch): "Preferred shift" never saved or reused |
+| 3 | Future reuse | unit (resolver), generic form; D133 merged (#41): suggestions judge the saved side, "Use here only"; D138 merged (#47): a saved answer reaches the next gh2 job that asks the same question (receiver ledger) | D138 merged (#47): reused on the next posting (receiver ledger); single page |
+| 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 merged (#47): a gh2 look-alike naming a country is neither reused nor suggested | D138 merged (#47): "Preferred shift" never saved or reused |
 | 5 | Conditional question | fx on the v1 fixture; D135 merged (#44), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | absent (no branching fixture) |
 | 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger) | fx at capture |
-| 7 | Repeating records | fx education stand-in (D120); D140 (branch): the rows sent shown on the review page and diffed by record and field; D141 (branch): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger) | absent |
-| 8 | Answer edits invalidate approvals | fx; D138 (branch): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger); D140 (branch): an education or employment edit retires the approval at once; on the education stand-in, approved again, the new degree is sent, and an edit while a worker fills is stopped at the send gate (receiver ledger) | fx (single page) |
+| 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 (branch): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger) | absent |
+| 8 | Answer edits invalidate approvals | fx; D138 merged (#47): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger); D140 merged (#49): an education or employment edit retires the approval at once; on the education stand-in, approved again, the new degree is sent, and an edit while a worker fills is stopped at the send gate (receiver ledger) | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; not run on gh2 | partial |
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus; D139 (branch): self-identification on gh2 (by id and pilot) up to the ledger: off or unmatched never sent, a label or a decline label sent, your per-application "Don't disclose" beats it, a required one without a match waits; a change retires its approvals at once (queued, held by a worker, under the standing rule: nothing withdrawn is sent) | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify"; D139 (branch): self-identification sent as each option's own value, each question only from the label naming its category, a bare "No" or two labels never used, a decline only where the choices name a category, a required gender without a match waits; withdrawal and change retire the approval (single page; the Workday decline wording is a fixture assumption) |
-| 11 | Upload failure preserves evidence | fx for UploadFailed; D137 (PR #46): every disclosure is recorded as it is made (receiver ledger): an unexpected error after an upload keeps its evidence (generic form, gh2 by id, the API route); a killed worker after an upload (generic form); a failure during an upload counts the document as possibly received (generic form, gh2 by id, the first Greenhouse-style page, the API route); a draft or document the API received and answered badly is recorded | fx; D137: a failure during an upload counts it as possibly received (Workday-style page) |
+| 11 | Upload failure preserves evidence | fx for UploadFailed; D137 merged (#46): every disclosure is recorded as it is made (receiver ledger): an unexpected error after an upload keeps its evidence (generic form, gh2 by id, the API route); a killed worker after an upload (generic form); a failure during an upload counts the document as possibly received (generic form, gh2 by id, the first Greenhouse-style page, the API route); a draft or document the API received and answered badly is recorded | fx; D137: a failure during an upload counts it as possibly received (Workday-style page) |
 | 12 | Uncertain send quarantined | fx | fx (final send only; each Next not modelled) |
 | 13 | Cancellation respected | fx on the generic form; D134 merged (#43), on the gh2 stand-in through the pilot (receiver ledger): a pause stops what the standing rule queued, your own queued work runs on, a revocation stands | partial |
 | 14 | Tenant isolation | fx (per-application routes) | partial (no Workday-shaped test) |
@@ -122,24 +122,24 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   one is left blank and the rest is sent. Before, a native dropdown stopped every attempt as a form
   change ("widget"), and reading the form again read it the same way; the others were refused only
   after approval.
-- **D137 (branch `disclosure-evidence`, not merged).** Rank 5, second half: each disclosure is
+- **D137 (PR #46, merged).** Rank 5, second half: each disclosure is
   recorded the moment it is made, fenced by generation, not after filling ends. An unexpected
   error or a killed worker after an upload no longer loses the evidence that the résumé reached
   the employer; a failure during an upload counts the document as possibly received; through the
   API, a document sent without an answer is recorded too. Attempts that disclosed anything are
   still abandoned and never retried.
-- **D138 (branch `provider-reuse`, not merged).** Rank 6, tests and fixtures only: a saved answer
+- **D138 (PR #47, merged).** Rank 6, tests and fixtures only: a saved answer
   reaches the next Greenhouse-style job that asks the same question, and the employer receives it;
   a look-alike naming a country is neither reused nor suggested; on the Workday-style form the
   education answer is reused and the shift never is; editing a saved answer retires the approval
   that used it until it is approved again.
-- **D139 (branch `self-id-ledger`, not merged).** Rank 7: your self-identification on
+- **D139 (merged, #48).** Rank 7: your self-identification on
   Greenhouse- and Workday-shaped forms up to the employer (opt-in, decline, scope, your
   per-application choice, a required question without a match), and turning it off or changing it
   now retires the approvals of what it answered at once (before, only a worker's gate kept a
   withdrawn answer from being sent, and you were not told); the profile page says how many
   applications need your approval again.
-- **D140 (branch `sections-review`, not merged).** Rank 8, first half: the education and work
+- **D140 (merged, #49).** Rank 8, first half: the education and work
   history a package sends are shown on the review page as frozen in it, and diffed by record and
   field; an education or employment edit retires the approvals it affects at once and names the
   section in the reason (receiver ledger on the education stand-in).
@@ -168,10 +168,10 @@ after an earlier answer (**D135**, #44) and, when the form is read, the refusal 
 adapter cannot fill (**D136**, rank 5's first half, #45) are on `main`. Two remainders need the
 owner's decision: the rule continuing after a form-change pause (rank 3), and a final click the
 page's own checks block (rank 4, second half: a retry after `sending`). **D137** (rank 5, second
-half, on its branch) keeps the evidence of what reached the employer whatever fails after it.
-**D138** (rank 6, on its branch) shows saved answers on Greenhouse- and Workday-shaped forms up to
-the employer. **D139** (rank 7, on its branch) shows your self-identification there too, and a
-change to it retires its approvals at once. **D140** (rank 8, first half, on its branch) makes
+half, #46) keeps the evidence of what reached the employer whatever fails after it.
+**D138** (rank 6, #47) shows saved answers on Greenhouse- and Workday-shaped forms up to
+the employer. **D139** (rank 7, #48) shows your self-identification there too, and a
+change to it retires its approvals at once. **D140** (rank 8, first half, #49) makes
 education and work history reviewable and diffed, and **D141** (rank 8, second half) adds an
 employment stand-in and react-select-safe section comboboxes. Next, rank 9: the Workday-style
 multi-page wizard stand-in. Later ranks:
@@ -201,21 +201,21 @@ multi-page wizard stand-in. Later ranks:
 - **D136:** merged (#45, 32c8f7c, tree as predicted); its PR CI passed all four jobs on 9602bda.
   Locally: the new tests, their sabotage runs and every suite that touches the second
   Greenhouse-style fixture or reads a Greenhouse form (Tests run below).
-- **D137 (branch `disclosure-evidence`):** the new tests, their sabotage runs and every suite that
-  runs an attempt or uses an adapter, locally (Tests run below). The full suites run in its CI
-  (PR #46).
-- **D138 (branch `provider-reuse`):** the new tests, their sabotage runs and the suites that use the
-  fixtures it extends, locally (Tests run below). The full suites run in its CI, after D137 is merged
-  and `main` merged in.
+- **D137:** merged (#46, e2fd286, tree as predicted); its PR CI passed all four jobs on a9b6880
+  (CI #276), and on 929f94b, its last code commit (CI #275). Locally: the new tests, their sabotage
+  runs and every suite that runs an attempt or uses an adapter (Tests run below).
+- **D138:** merged (#47, a7f8742, tree as predicted); its PR CI passed all four jobs on ea11c6e.
+  Locally: the new tests, their sabotage runs and the suites that use the fixtures it extends
+  (Tests run below).
+- **D139:** merged (#48, 4585c59, tree as predicted); its PR CI passed all four jobs on 3df9d9d.
+  Locally: the new tests, their sabotage runs, the e2e spec and the suites that touch
+  self-identification, the profile, packages and approvals or the two fixtures (Tests run below).
+- **D140:** merged (#49, 3df7d0d, tree as predicted); its PR CI passed all four jobs on 48fde99.
+  Locally: the new tests, their sabotage runs, the e2e spec and the suites that touch sections,
+  profiles, packages, approvals and diffs (Tests run below).
 - **D141 (branch `section-widgets`):** the new tests, their sabotage runs and the suites that
   touch sections, the stand-in and the extraction version, locally (Tests run below). The full
-  suites run in its CI, after D140 is merged and `main` merged in.
-- **D140 (branch `sections-review`):** the new tests, their sabotage runs, the e2e spec and the
-  suites that touch sections, profiles, packages, approvals and diffs, locally (Tests run below).
-  The full suites run in its CI, after D139 is merged and `main` merged in.
-- **D139 (branch `self-id-ledger`):** the new tests, their sabotage runs, the e2e spec and the suites
-  that touch self-identification, the profile, packages and approvals or the two fixtures, locally
-  (Tests run below). The full suites run in its CI, after D138 is merged and `main` merged in.
+  suites run in its CI (`main` with D140 merged in).
 
 ## Tests run (this loop)
 
@@ -263,12 +263,12 @@ multi-page wizard stand-in. Later ranks:
 | D138: `pytest tests/test_provider_reuse.py` (JUnit) | 4 passed (before and after the review's fixes) |
 | D138 sabotage runs at bfba231 (seven changes, each in turn) | reuse off: 3 of 4 fail; scope off: 1; the shift's three rules removed: 1; a 36-character key: 1; any one shift rule alone: 0 (the other two refuse it) |
 | D138 before the review: the bank, Greenhouse DOM and live, Workday, answer-brain, API-provider and bank-edit suites (8 files, JUnit) | 1325 passed, 0 failures |
-| D138 at bfba231: every suite that loads the gh2 or Workday-style fixture, with the bank and document suites (44 files, JUnit) | running |
+| D138 at bfba231: every suite that loads the gh2 or Workday-style fixture, with the bank and document suites (44 files, JUnit) | 2210 passed, 0 failures |
 | D139: `pytest tests/test_self_identification_ledger.py` (JUnit) | 25 passed; then the review's added test, 1 passed |
 | D139: the new standing-rule and mutation-table cases, then `test_auto_apply.py`, `test_execution_validation.py`, `test_self_identification.py`, `test_greenhouse_dom.py`, `test_workday_adapter.py` in full (JUnit) | 3 passed; then 154 passed |
 | D139 sabotage runs (five changes, each in turn) | the eager retirement removed: 9 fail; the gate's hash check removed: 2; self-identification over "Don't disclose": 3; the Workday decline wording removed: 2; the "names a category" rule removed: 1 |
 | D139: `playwright test e2e/self-identification.spec.ts` (desktop and mobile) | 6 passed; with the eager retirement removed, the new test fails on both (2 failed, 4 passed) |
-| D139: every suite that touches self-identification, the profile, packages and approvals, or either fixture (70 files, JUnit) | running |
+| D139: every suite that touches self-identification, the profile, packages and approvals, or either fixture (70 files, JUnit) | 2637 passed, 0 failures |
 | D140: `pytest tests/test_sections_review.py tests/test_greenhouse_sections_package.py tests/test_version_diff.py` (JUnit) | 18 passed; then `test_sections_review.py` with the notice check, 7 passed |
 | D140: `pytest tests/test_greenhouse_sections_e2e.py` (JUnit) | 9 passed |
 | D140: `pytest tests/test_package_contract.py` with the section packages (JUnit) | 3 passed |
@@ -328,18 +328,11 @@ multi-page wizard stand-in. Later ranks:
 
 ## Exact next action
 
-1. D137 (PR #46): merge it when its four checks pass.
-2. D138 (branch `provider-reuse`): merge `main` into it once D137 is merged, open its pull request,
-   merge it when its four checks pass.
-3. D139 (branch `self-id-ledger`): merge `main` into it once D138 is merged, open its pull request,
-   merge it when its four checks pass.
-4. D140 (branch `sections-review`): merge `main` into it once D139 is merged, open its pull
-   request, merge it when its four checks pass.
-5. D141 (branch `section-widgets`): merge `main` into it once D140 is merged, open its pull
-   request, merge it when its four checks pass.
-6. Rank 9: the Workday-style multi-page wizard stand-in (per-step disclosure gates, per-page
+1. D141 (branch `section-widgets`, `main` merged in after D140): open its pull request, merge it
+   when its four checks pass.
+2. Rank 9: the Workday-style multi-page wizard stand-in (per-step disclosure gates, per-page
    pauses).
-7. Owner decisions: the standing rule's consent text does not name self-identification, which it
+3. Owner decisions: the standing rule's consent text does not name self-identification, which it
    sends since D133 (D139); every recorded permission ended on 2026-11-06 (renewing is the owner's call,
    never extended because work took longer); continuing after a form change (D132); a final click
    the page's own checks block (`CLIENT_BLOCKED`, after `sending`).

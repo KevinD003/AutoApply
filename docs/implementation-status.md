@@ -119,8 +119,8 @@ building; decision, fixture assumptions and residuals in D139, evidence in
 | Each change removed in turn (5 cases) | one change at a time, the D139 tests and the selected cases of the two suites run, the file restored | the eager retirement removed: 9 fail; the gate's hash check removed: 2; self-identification run before "Don't disclose": 3; "I do not wish to answer" removed from the decline wordings: 2; the "names a category" rule removed: 1 |
 | The profile page | `npx playwright test e2e/self-identification.spec.ts` (desktop and mobile; `noefforts_e2e_test`) | exit 0; 6 passed; with the eager retirement removed, the new test fails on both projects (2 failed, 4 passed); after the review (its title corrected): 6 passed |
 | Frontend checks | `npx tsc --noEmit`, `npm run lint` | exit 0, exit 0 |
-| Every suite that touches self-identification, the profile, packages and approvals, or either fixture, with the documents suites (70 files) | `pytest` on the files in the run's list (JUnit) | running; recorded here when it ends |
-| Lint, format, the tests that read the documents (after the last edit) | `ruff check .`, `ruff format --check .`, `pytest tests/test_doc_references.py tests/test_audit_inventory.py tests/test_provider_contracts.py tests/test_package_contract.py` | exit 0 at 71b659d with these documents: JUnit 49 passed, 0 failures; to run again after the last edit |
+| Every suite that touches self-identification, the profile, packages and approvals, or either fixture, with the documents suites (70 files), on the code committed as 71b659d | `pytest` on the files in the run's list (JUnit) | exit 0; JUnit 2637 tests, 2637 passed, 0 failures (54 min 59 s) |
+| Lint, format, the tests that read the documents (after the last edit) | `ruff check .`, `ruff format --check .`, `pytest tests/test_doc_references.py tests/test_audit_inventory.py tests/test_provider_contracts.py tests/test_package_contract.py` | exit 0; ruff: all checks passed, 371 files already formatted; JUnit 49 passed, 0 failures |
 
 The full backend and e2e suites run in the pull request's CI.
 
@@ -130,19 +130,20 @@ Rank 6 of the automation loop. Tests and fixtures only; no product code changed 
 stays 3. Decision, fixture assumptions and residuals in D138, evidence in `docs/evidence-matrix.md`.
 Nothing real was run.
 
-| Check (branch `provider-reuse`, from D137's branch 035a085; D137's later commits merged in) | Command | Result |
+| Check (branch `provider-reuse`, from D137's branch 035a085; D137's later commits merged in; merged as #47, a7f8742, its PR CI green on all four jobs at ea11c6e) | Command | Result |
 |---|---|---|
 | The new tests | `pytest tests/test_provider_reuse.py` (disposable database, JUnit) | exit 0; 4 passed (before and after the review's fixes) |
 | Each check removed in turn, at bfba231 (7 cases) | one change at a time, the 4 tests run, the file restored | reuse from saved answers switched off: 3 of 4 fail; the saved-answer scope check switched off: 1 (the shift test); all three of the shift's rules removed: 1 (the shift test); reuse keyed on the first 36 characters of the wording: 1 (the look-alike test); any one of the shift's three rules removed alone: 0, as D138 states |
 | The suites that use the fixtures it extends, before the review (8 files) | `pytest` on the bank, Greenhouse DOM and live, Workday, answer-brain, API-provider and bank-edit suites with the new tests (JUnit) | exit 0; JUnit 1325 tests, 1325 passed, 0 failures |
-| Every suite that loads the Greenhouse-style id-only or Workday-style fixture, with the bank, answer-brain, bank-edit and document suites, at bfba231 (44 files) | `pytest` on the files in the run's list (JUnit) | running; recorded here when it ends |
-| Lint, format, the tests that read the documents (after the last edit) | `ruff check .`, `ruff format --check .`, `pytest tests/test_doc_references.py tests/test_audit_inventory.py tests/test_provider_contracts.py tests/test_package_contract.py` | not yet run after this edit |
+| Every suite that loads the Greenhouse-style id-only or Workday-style fixture, with the bank, answer-brain, bank-edit and document suites, at bfba231 (44 files) | `pytest` on the files in the run's list (JUnit) | exit 0; JUnit 2210 tests, 2210 passed, 0 failures (41 min 44 s) |
+| Lint, format, the tests that read the documents (after the last edit) | `ruff check .`, `ruff format --check .`, `pytest tests/test_doc_references.py tests/test_audit_inventory.py tests/test_provider_contracts.py tests/test_package_contract.py` | exit 0; ruff: all checks passed, 370 files already formatted; JUnit 49 passed, 0 failures |
 
 The full backend and e2e suites run in the pull request's CI. No frontend file changed.
 
 ## What reached the employer stays recorded whatever fails after it (D137, 2026-11-10; local only)
 
-Rank 5 of the automation loop, second half. The gap was mapped on D136's branch (9602bda, the same
+Rank 5 of the automation loop, second half; merged as #46 (e2fd286), its PR CI green on all four
+jobs (a9b6880, CI #276). The gap was mapped on D136's branch (9602bda, the same
 code as `main` 53b28af) before building; decision and residuals in D137, evidence in
 `docs/evidence-matrix.md`. Nothing real was run.
 
