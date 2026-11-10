@@ -343,6 +343,9 @@ class UploadFailed(StoppedAfterDisclosure):
 ACK_SHOWN = "attachment_shown"  # the page showed the attachment as received
 ACK_ERROR = "error_shown"  # the page showed an error for it
 ACK_NONE = "none"  # the page showed nothing in time
+# D142: how a multi-page form answered a page's Next (also ACK_ERROR and ACK_NONE).
+ACK_DRAFT = "draft_saved"  # the page said it saved that page and showed the next one
+ACK_LEFT_FORM = "left_form"  # the page is no longer the form (a confirmation, "already applied")
 
 
 def upload_evidence(content: dict, field: str, ack: str) -> dict:
@@ -350,3 +353,10 @@ def upload_evidence(content: dict, field: str, ack: str) -> dict:
     of the approved document that was sent."""
     digest = next((d["sha256"] for d in content["documents"] if d["field"] == field), None)
     return {"field": field, "ack": ack, "sha256": digest}
+
+
+def draft_evidence(page: int, ack: str) -> dict:
+    """D142: disclosure evidence for one page of a multi-page form sent with its Next: the page's
+    number and how the page answered, as a fixed value. Never a field, a value or the page's
+    text (the answers sent are the approved package's)."""
+    return {"kind": "draft_page", "page": page, "ack": ack}

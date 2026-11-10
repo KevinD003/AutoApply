@@ -30,7 +30,7 @@ import uuid
 from datetime import timedelta
 from typing import NamedTuple
 
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
@@ -97,6 +97,8 @@ def _app_to(db, app: Application, target: AppState, actor: Actor, reason: str) -
 
 
 def enqueue(db: Session, app: Application) -> ExecutionAttempt:
+    if wizard_entered(db, app):  # D142: first, before anything about the approval
+        raise pk.refused("wizard_draft_at_employer")
     pkg = pk.latest_package(db, app.id)
     appr = pk.active_approval(db, pkg)
     if appr is None:
@@ -151,6 +153,51 @@ def enqueue(db: Session, app: Application) -> ExecutionAttempt:
     db.add(OutboxMessage(topic=TOPIC_EXECUTE, attempt_id=att.id))
     event(db, att, "enqueued", package_version=pkg.version)
     return att
+
+
+# D142: a multi-page form (the Workday-style stand-in's wizard; package content key `wizard`).
+WIZARD_ADAPTER = "fixture_workday"  # the one adapter that drives a wizard, page by page
+
+
+def _is_wizard(db: Session, att: ExecutionAttempt) -> bool:
+    """The attempt's package is a multi-page wizard (read from the immutable package)."""
+    pkg = db.get(ApplicationPackage, att.package_id)
+    return pkg is not None and pkg.user_id == att.user_id and "wizard" in (pkg.content or {})
+
+
+def wizard_entered(db: Session, app: Application) -> bool:
+    """D142: an attempt of this application passed the disclosure gate on a multi-page wizard,
+    so the employer may keep a draft of it, or have received it: NoEfforts never runs it again
+    (approve, queue, enqueue and claim refuse it). Read from the attempt's disclosure stamp and
+    its immutable package, scoped by the application and its owner; neither is ever purged or
+    deleted with the evidence. Takes no row lock: the callers hold the application lock, and
+    locking attempts here would take them against the order (D46)."""
+    package_ids = db.scalars(
+        select(ExecutionAttempt.package_id).where(
+            ExecutionAttempt.application_id == app.id,
+            ExecutionAttempt.user_id == app.user_id,
+            ExecutionAttempt.disclosure_started_at.is_not(None),
+        )
+    ).all()
+    for pid in set(package_ids):
+        pkg = db.scalar(
+            select(ApplicationPackage).where(
+                ApplicationPackage.id == pid, ApplicationPackage.user_id == app.user_id
+            )
+        )
+        if pkg is not None and "wizard" in (pkg.content or {}):
+            return True
+    return False
+
+
+def _nexts(db: Session, att: ExecutionAttempt) -> int:
+    """How many pages' Next this attempt was authorized to click (each may have been saved)."""
+    rows = db.scalars(
+        select(AttemptEvent.detail).where(
+            AttemptEvent.attempt_id == att.id, AttemptEvent.kind == "step_authorized"
+        )
+    ).all()
+    return sum(1 for d in rows if (d or {}).get("phase") == "next")
 
 
 def _supersede_stale_attempt(db: Session, app: Application) -> None:
@@ -264,10 +311,27 @@ def claim(attempt_id: uuid.UUID, worker: str) -> int | None:
             return None
         app = pk.lock_application(db, app_id)  # serialize with revoke/cancel/approve
         att = db.get(ExecutionAttempt, attempt_id)
+        if wizard_entered(db, app):
+            # D142: an earlier attempt entered this application on a multi-page form.
+            att.state, att.finished_at = S.failed_safe, now
+            att.outcome_detail = WIZARD_CLAIM_REFUSED
+            event(db, att, "claim_refused_wizard_draft")
+            _claim_refused(db, app, att.outcome_detail)
+            db.commit()
+            return None
         if not _approval_still_valid(db, app, att):
             att.state, att.finished_at = S.failed_safe, now
             att.outcome_detail = "Approval no longer valid when a worker picked this up."
             event(db, att, "claim_refused_approval")
+            _claim_refused(db, app, att.outcome_detail)
+            db.commit()
+            return None
+        if att.queued_by_rule and _is_wizard(db, att):
+            # D142: whether the standing rule may drive a multi-page form is the owner's
+            # decision, not taken: refused before any page is opened.
+            att.state, att.finished_at = S.failed_safe, now
+            att.outcome_detail = RULE_WIZARD
+            event(db, att, "claim_refused_rule_wizard")
             _claim_refused(db, app, att.outcome_detail)
             db.commit()
             return None
@@ -295,6 +359,15 @@ def claim(attempt_id: uuid.UUID, worker: str) -> int | None:
 
 
 RULE_STOPPED = "Your automatic rule is paused or switched off; nothing was sent."
+# D142
+WIZARD_CLAIM_REFUSED = (
+    "NoEfforts already entered this application on the employer's multi-page form and never "
+    "runs it again; this attempt sent nothing. Finish it on the employer's site."
+)
+RULE_WIZARD = (
+    "Your automatic rule does not apply on a multi-page form; nothing was sent. Apply on the "
+    "employer's site, or approve and queue it yourself."
+)
 PAUSE_STOPPED = "stopped_by_pause"  # the attempt event of an attempt a pause stopped (D134)
 
 
@@ -505,7 +578,13 @@ def gate_before_disclosure(attempt_id, worker: str, gen: int) -> None:
     with _gate_session() as db:
         att = _locked_attempt(db, attempt_id, worker, gen, S.claimed)
         try:
-            _gate_prerequisite(db, att, _gate_checks(db, att), "disclosure")
+            ctx = _gate_checks(db, att)
+            if "wizard" in ctx.content:  # D142: only its adapter, and only to submit
+                if att.adapter != WIZARD_ADAPTER:
+                    raise GateRefused(WIZARD_ADAPTER_REFUSED, "wizard_adapter")
+                if ctx.approval.scope != ApprovalScope.submit:
+                    raise GateRefused(WIZARD_REHEARSAL, "wizard_rehearsal")
+            _gate_prerequisite(db, att, ctx, "disclosure")
             _pilot_limit(db, att)
         except GateRefused as e:
             db.rollback()
@@ -543,6 +622,66 @@ def gate_before_send(attempt_id, worker: str, gen: int) -> None:
         db.commit()
 
 
+WIZARD_ADAPTER_REFUSED = "this multi-page form can only be filled by its own adapter"
+WIZARD_REHEARSAL = "a rehearsal is not available on a multi-page form"
+WIZARD_STEP_ORDER = "a page of the employer's multi-page form was reached out of order"
+STEP_PHASES = ("fill", "next")
+
+
+def _expected_steps(pages: int) -> list[tuple[int, str]]:
+    """D142: every step gate of a wizard of `pages` pages, in order: the Next of page 1 (the
+    disclosure gate authorized filling it), then for each later page before the review page,
+    filling it and its Next."""
+    return [(1, "next")] + [(i, p) for i in range(2, pages) for p in STEP_PHASES]
+
+
+def gate_before_step(attempt_id, worker: str, gen: int, page: int, phase: str) -> None:
+    """D142: authority for one step of a multi-page form, after the disclosure gate and before
+    the send gate: filling page `page` (from page 2) or clicking its Next. In one transaction
+    under the gates' locks (the attempt, then the application and approval in _gate_checks), it
+    re-checks everything the other gates check (authority, application state, the approval
+    still live, the content and execution method unchanged, the destination's class), that the
+    approval permits submitting, the rehearsal prerequisite, and that this is exactly the next
+    step: never one repeated, skipped or out of order. Only then does it record the step
+    (`step_authorized`) and commit, before the page is filled or the Next clicked, so a worker
+    lost after the click leaves the record. It never stamps `disclosure_started_at` again and
+    never counts against the pilot's limit. A refusal raises GateRefused (nothing written);
+    LostAuthority propagates."""
+    with _gate_session() as db:
+        att = _locked_attempt(db, attempt_id, worker, gen, S.claimed)
+        try:
+            ctx = _gate_checks(db, att)
+            wizard = ctx.content.get("wizard")
+            if (
+                not wizard
+                or att.disclosure_started_at is None
+                or att.send_started_at is not None
+                or phase not in STEP_PHASES
+            ):
+                raise GateRefused(WIZARD_STEP_ORDER, "wizard_step_order")
+            if ctx.approval.scope != ApprovalScope.submit:
+                raise GateRefused(WIZARD_REHEARSAL, "wizard_rehearsal")
+            _gate_prerequisite(db, att, ctx, "disclosure")
+            pages = len(wizard["pages"])
+            expected = _expected_steps(pages)
+            done = db.scalar(
+                select(func.count())
+                .select_from(AttemptEvent)
+                .where(
+                    AttemptEvent.attempt_id == att.id,
+                    AttemptEvent.generation == att.generation,
+                    AttemptEvent.kind == "step_authorized",
+                )
+            )
+            if done >= len(expected) or (page, phase) != expected[done]:
+                raise GateRefused(WIZARD_STEP_ORDER, "wizard_step_order")
+        except GateRefused as e:
+            db.rollback()
+            raise GateRefused(str(e), e.code) from None
+        event(db, att, "step_authorized", page=page, phase=phase, pages=pages)
+        db.commit()
+
+
 # --------------------------------------------------------------------------------------------
 # Outcomes (all fenced by generation)
 
@@ -559,16 +698,33 @@ def _finish(
     reason_code: str | None = None,
     retire: str | None = None,
     retire_every: str | None = None,
+    *,
+    require_undisclosed: bool = False,
+    reason: str | None = None,
 ) -> bool:
     """`app_target` may be a function of the locked application: an outcome that depends on the
-    application's state decides it under the lock, never from an earlier read."""
+    application's state decides it under the lock, never from an earlier read.
+    `require_undisclosed` (D142): write nothing, and return False, once the disclosure gate was
+    passed (a stop "before sending anything" would then be untrue). D142: an attempt abandoned on
+    a multi-page form says so (`WIZARD_STOPPED`, with `reason`) and retires every live approval
+    of the application, whatever the caller asked: it is never run again."""
     with SessionLocal() as db:
         att = db.scalar(
             select(ExecutionAttempt).where(ExecutionAttempt.id == attempt_id).with_for_update()
         )
         if att is None or att.generation != gen or att.state not in from_states:
             return False
+        if require_undisclosed and att.disclosure_started_at is not None:
+            return False
         app = pk.lock_application(db, att.application_id)
+        if (
+            to == S.abandoned
+            and tuple(from_states) == (S.claimed,)
+            and att.disclosure_started_at is not None
+            and _is_wizard(db, att)
+        ):
+            detail = WIZARD_STOPPED.format(k=_nexts(db, att), reason=reason or detail)
+            retire_every = "wizard_draft_at_employer"
         target = app_target(app) if callable(app_target) else app_target
         _apply_outcome(db, att, app, to, target, detail, evidence, reason_code=reason_code,
                        retire=retire, retire_every=retire_every)  # fmt: skip
@@ -639,7 +795,9 @@ def record_evidence(attempt_id, worker, gen, kind, data, strength="none") -> Non
 
 
 def fail_safe(attempt_id, worker, gen, reason: str, code: str | None = None) -> bool:
-    """Stopped before disclosing anything. The application waits for the user."""
+    """Stopped before disclosing anything. The application waits for the user. D142: once the
+    disclosure gate was passed this is never written; the attempt is abandoned instead (no
+    current path calls it then; a guard for every adapter)."""
     return _finish(
         attempt_id,
         worker,
@@ -649,16 +807,12 @@ def fail_safe(attempt_id, worker, gen, reason: str, code: str | None = None) -> 
         AppState.needs_user_action,
         f"Stopped before sending anything: {reason}",
         reason_code=code,
-    )
+        require_undisclosed=True,
+    ) or _abandon_claimed(attempt_id, worker, gen, reason, code)
 
 
-def abandon(
-    attempt_id, worker, gen, reason: str, code: str | None = None, retire_every: str | None = None
-) -> bool:
-    """Data was disclosed (filled/uploaded) but not submitted. Never retried automatically.
-    `retire_every` (D132): every live approval of the application is retired with that reason in
-    the same transaction, so entering the same data again is a new approval."""
-    ok = _finish(
+def _abandon_claimed(attempt_id, worker, gen, reason: str, code=None, retire_every=None) -> bool:
+    return _finish(
         attempt_id,
         worker,
         gen,
@@ -668,7 +822,19 @@ def abandon(
         f"Stopped after entering data but before submitting: {reason}",
         reason_code=code,
         retire_every=retire_every,
+        reason=reason,
     )
+
+
+def abandon(
+    attempt_id, worker, gen, reason: str, code: str | None = None, retire_every: str | None = None
+) -> bool:
+    """Data was disclosed (filled/uploaded) but not submitted. Never retried automatically.
+    `retire_every` (D132): every live approval of the application is retired with that reason in
+    the same transaction, so entering the same data again is a new approval. D142: on a
+    multi-page form, always every live approval, and the outcome says pages may be saved at the
+    employer (`_finish`)."""
+    ok = _abandon_claimed(attempt_id, worker, gen, reason, code, retire_every)
     # Waiting for a code, the final click was already made: the approval that made it is used
     # up, so sending again is a new decision (D15).
     return ok or _finish(
@@ -768,6 +934,7 @@ def pause_after_entry(attempt_id, worker, gen, reason: str, required: int) -> bo
             or att.state != S.claimed
             or att.disclosure_started_at is None
             or att.send_started_at is not None
+            or _is_wizard(db, att)  # D142: never a pause on a multi-page form (defence only)
         ):
             return False
         app = pk.lock_application(db, att.application_id)
@@ -801,6 +968,63 @@ def pause_after_entry(attempt_id, worker, gen, reason: str, required: int) -> bo
             )
         )
         event(db, att, "paused", reason_code=pk.CONDITIONAL_REQUIRED, required=int(required))
+        db.commit()
+        return True
+
+
+WIZARD_STOPPED = (
+    "Stopped on the employer's multi-page form after entering data: up to {k} page(s) were "
+    "saved there with Next, and the employer may keep what was entered as a draft. NoEfforts "
+    "submitted nothing and will not run this application again: finish it on the employer's "
+    "site. Why: {reason}"
+)
+WIZARD_POSSIBLY_SUBMITTED = (
+    "Outcome unknown — check with the employer before doing anything: after a page's Next on "
+    "the employer's multi-page form, {what}. The employer may hold this application. NoEfforts "
+    "will not run it again."
+)
+WIZARD_SWEPT = (
+    "Worker stopped on the employer's multi-page form after entering data: pages may be saved "
+    "there as a draft, and the employer may hold the application. NoEfforts will not run it "
+    "again: check with the employer, and finish it on their site."
+)
+
+
+def quarantine_after_step(attempt_id, worker, gen, what: str) -> bool:
+    """D142: after a page's Next on a multi-page form, the page showed something that may mean
+    the employer received the application (a confirmation, "already applied", or it left the
+    form). The final click was never made, but nothing may run it again: one generation-fenced
+    finish from `claimed`, in one transaction, ends the attempt `unknown` (reason code
+    `wizard_possibly_submitted`), retires every live approval of the application, and moves the
+    application to `submitted_unconfirmed` through `needs_user_action` (the transitions the
+    sweeper uses), for you to reconcile. Never retried, never resent. Returns False and writes
+    nothing unless the attempt is this worker's generation, still `claimed`, past the
+    disclosure gate and not past the send gate, on a wizard, with at least one Next authorized.
+
+    Lock order: the attempt, then its application, then its approvals (as `_apply_outcome`)."""
+    with SessionLocal() as db:
+        att = db.scalar(
+            select(ExecutionAttempt).where(ExecutionAttempt.id == attempt_id).with_for_update()
+        )
+        if (
+            att is None
+            or att.generation != gen
+            or att.state != S.claimed
+            or att.disclosure_started_at is None
+            or att.send_started_at is not None
+            or not _is_wizard(db, att)
+            or _nexts(db, att) < 1
+        ):
+            return False
+        app = pk.lock_application(db, att.application_id)
+        detail = WIZARD_POSSIBLY_SUBMITTED.format(what=what)
+        _apply_outcome(db, att, app, S.unknown, None, detail,
+                       retire_every="wizard_draft_at_employer",
+                       reason_code="wizard_possibly_submitted")  # fmt: skip
+        if app.state == AppState.running:
+            _app_to(db, app, AppState.needs_user_action, Actor.worker, detail[:900])
+        if app.state == AppState.needs_user_action:
+            _app_to(db, app, AppState.submitted_unconfirmed, Actor.worker, detail[:900])
         db.commit()
         return True
 
@@ -840,6 +1064,10 @@ RETIRED = {
     "stopped_after_entry": "Used by an attempt that entered your answers on the employer's page "
     "and stopped before submitting, because the page then no longer matched. Approve again to "
     "run it again.",
+    # D142: an attempt entered the application on a multi-page form; it is never run again.
+    "wizard_draft_at_employer": "Used by an attempt that entered this application on the "
+    "employer's multi-page form, which may keep it as a draft or have received it. NoEfforts "
+    "never runs it again: finish it on the employer's site.",
 }
 
 
@@ -1184,6 +1412,13 @@ def _sweep_one(db: Session, att: ExecutionAttempt, publish_new: bool) -> str:
         att.outcome_detail = (
             "Worker stopped after entering data but before submitting. Not retried automatically."
         )
+        if _is_wizard(db, att):
+            # D142: pages may be saved at the employer, which may even hold the application;
+            # every live approval is retired (the attempt, then the application, then them).
+            att.outcome_detail = WIZARD_SWEPT
+            if retire_live_approvals(db, att.application_id, RETIRED["wizard_draft_at_employer"]):
+                record(db, att.user_id, "package.approval_retired", "application",
+                       att.application_id, reason_code="wizard_draft_at_employer")  # fmt: skip
         _app_to(db, app, AppState.needs_user_action, Actor.system, att.outcome_detail)
         event(db, att, "swept_abandoned")
         return "abandoned"

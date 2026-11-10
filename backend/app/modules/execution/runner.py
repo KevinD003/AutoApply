@@ -6,6 +6,10 @@ Phases and what a failure in each one means:
   after send gate    -> unknown       (may have been accepted; reconcile, never auto-retry)
 A rehearsal (an approval to disclose only) succeeds as `rehearsed` once the checks after
 filling pass, before the send gate: data entered/uploaded, nothing submitted.
+D142: a multi-page wizard is filled one page at a time between the disclosure gate and the
+send gate (`_wizard_pages`): forward only, each step behind a gate that commits before it, and
+anything unexpected ends the attempt for good (`abandoned`, or `unknown` when the employer may
+hold the application); NoEfforts never runs that application again.
 """
 
 import hashlib
@@ -27,11 +31,16 @@ from app.modules.execution import service as svc
 from app.modules.execution.adapters.ashby import AshbyFixtureAdapter
 from app.modules.execution.adapters.fake_api import FakeApiAdapter
 from app.modules.execution.adapters.fixture_ats import (
+    ACK_DRAFT,
+    ACK_ERROR,
+    ACK_LEFT_FORM,
+    ACK_NONE,
     ConditionalRequired,
     FixtureAtsAdapter,
     FormChanged,
     StoppedAfterDisclosure,
     UploadFailed,
+    draft_evidence,
 )
 from app.modules.execution.adapters.greenhouse import GreenhouseHostedAdapter
 from app.modules.execution.adapters.greenhouse_dom import (
@@ -284,8 +293,14 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             fault("after_disclosure_gate")
             recorded = _record_as_made(aid, worker, gen, adapter)
             try:
-                disclosures = adapter.fill(page)
-            except StoppedAfterDisclosure as e:  # an upload, or D104's location search
+                if content.get("wizard"):  # D142: page by page, up to the review page
+                    stopped = _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat)
+                    if stopped:
+                        return stopped
+                    disclosures = []  # every page's evidence is recorded as it was made
+                else:
+                    disclosures = adapter.fill(page)
+            except StoppedAfterDisclosure as e:  # an upload, D104's search, or a page's Next
                 _log_cause(aid, e)
                 _record_disclosures(aid, worker, gen, _not_yet(e.disclosures, recorded))
                 svc.abandon(aid, worker, gen, str(e))
@@ -385,6 +400,97 @@ def _stop_rehearsal(aid, worker, gen) -> str:
         svc.abandon(aid, worker, gen, str(e), code=e.code)
         return "abandoned"
     return "rehearsed"
+
+
+NEXT_NOT_SAVED = {
+    ACK_ERROR: "the employer's page showed an error after a page's Next",
+    ACK_NONE: "the employer's page did not answer a page's Next in time",
+}
+NOT_NEXT_PAGE = "the employer's form did not show the next page after a page's Next"
+LEFT_FORM = {
+    "confirmation": "the page showed a confirmation",
+    "already_applied": "the page said you have already applied",
+}
+
+
+def _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat) -> str | None:
+    """D142: pages 1 to N-1 of a multi-page wizard, forward only, after the disclosure gate (which
+    authorized filling page 1). For each page: a gate before filling it (from page 2), filling it
+    (documents first), a readback of every page so far recorded as evidence `step`, a gate before
+    its Next, one click of its Next, the page's answer recorded as disclosure evidence, then the
+    checks that the form now shows the next page and is still the approved form. Each gate commits
+    its `step_authorized` event before the action, so a worker lost after a click leaves the
+    record. Returns None when the review page is reached, or the runner's result once the attempt
+    has ended: `abandoned` (any refusal or finding; `svc.abandon` says pages may be saved at the
+    employer and retires every approval), `unknown` (the page left the form after a Next:
+    quarantined, the employer may hold the application) or `lost_authority`. Never a pause,
+    never `fail_safe`, never a second click. LostAuthority and StoppedAfterDisclosure propagate
+    to the runner, which ends the attempt as for any other step."""
+    s = get_settings()
+    pages = len(adapter.content["wizard"]["pages"])
+
+    def gate(i: int, phase: str) -> str | None:
+        try:
+            svc.gate_before_step(aid, worker, gen, i, phase)
+        except svc.GateRefused as e:
+            svc.abandon(aid, worker, gen, str(e), code=e.code)
+            return "abandoned"
+        return None
+
+    for i in range(1, pages):
+        if i >= 2:
+            beat()
+            fault(f"before_fill_gate_{i}")
+            if gate(i, "fill"):
+                return "abandoned"
+            beat()
+        for d in _not_yet(adapter.fill_page(page, i), recorded):
+            svc.record_evidence(aid, worker, gen, "disclosure", d)
+        mismatches = adapter.readback_through(page, i)
+        # How many fields so far kept their values, never which (the posting's field keys).
+        checked = len(adapter.page_answers(*range(1, i + 1)))
+        step = {"page": i, "checked": checked, "mismatched": len(mismatches)}
+        svc.record_evidence(aid, worker, gen, "step", step)
+        if mismatches:
+            svc.abandon(aid, worker, gen, f"{len(mismatches)} field(s) did not keep their values")
+            return "abandoned"
+        beat()
+        fault(f"before_next_gate_{i}")
+        if gate(i, "next"):
+            return "abandoned"
+        beat()
+        loading = _Loading(page)  # before the click: what the Next starts is waited for
+        try:
+            ack = adapter.click_next(page, i, s.navigation_timeout_seconds * 1000)
+            fault(f"after_next_ack_{i}")
+            adapter._disclosed(draft_evidence(i, ack))  # recorded at once, fenced (D137)
+            settled = _settle(page, loading)
+        finally:
+            loading.close()
+        kind = adapter.body_kind(page)
+        if ack == ACK_LEFT_FORM or kind != "form":
+            what = LEFT_FORM.get(kind or "", "the page was no longer the application form")
+            if svc.quarantine_after_step(aid, worker, gen, what):
+                return "unknown"
+            return "lost_authority"  # the fence refused: another writer ended it first
+        if ack != ACK_DRAFT:
+            svc.abandon(aid, worker, gen, NEXT_NOT_SAVED.get(ack, NEXT_NOT_SAVED[ACK_NONE]))
+            return "abandoned"
+        if not settled:
+            svc.abandon(aid, worker, gen, NOT_READY)
+            return "abandoned"
+        if not adapter.on_page(page, i + 1):
+            svc.abandon(aid, worker, gen, NOT_NEXT_PAGE)
+            return "abandoned"
+        reason = (
+            (LOCALE_REDIRECTED if eg.redirected else None)
+            or adapter.blocked_reason(page)
+            or adapter.schema_matches(page)
+        )
+        if reason:
+            svc.abandon(aid, worker, gen, str(reason))
+            return "abandoned"
+    return None
 
 
 def _stop(aid, worker, gen, reason: str, plain) -> None:

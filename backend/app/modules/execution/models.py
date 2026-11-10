@@ -240,7 +240,8 @@ class Evidence(Base):
         ForeignKey("applications.id", ondelete="CASCADE"), index=True
     )
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    # disclosure | readback | recheck | egress | receipt
+    # disclosure | readback | recheck | egress | receipt | step (D142: one page of a wizard read
+    # back before its Next: {page, checked, mismatched})
     kind: Mapped[str] = mapped_column(String(30))
     # employer_receipt | employer_confirmation_page | api_receipt | none
     strength: Mapped[str] = mapped_column(String(30), default="none")

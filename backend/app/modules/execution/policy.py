@@ -263,7 +263,10 @@ ADAPTER_VERSIONS: dict[str, str] = {
     "fixture_ashby": f"fixture-ashby-1+{forms.EXTRACTION_VERSION}",
     # D88: the Workday-style approximation's single application page, read by the generic
     # extractor plus its checkpoints (several pages, prefill, dependent location lists).
-    "fixture_workday": f"fixture-workday-1+{forms.EXTRACTION_VERSION}",
+    # 2 (D142): the stand-in's multi-page wizard, page by page through a gate before each step.
+    # Deliberate: every live fixture_workday approval (single-page ones too) is retired at
+    # queueing, and an attempt queued under version 1 is refused at its gates.
+    "fixture_workday": f"fixture-workday-2+{forms.EXTRACTION_VERSION}",
     # The internal authorized-API contract, exercised only against the local fake API.
     "fake_api": "fake-api-1",
 }

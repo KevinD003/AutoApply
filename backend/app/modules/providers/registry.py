@@ -372,8 +372,8 @@ _TRAITS: dict[str, dict[Trait, TraitValue]] = {
                                                 "verification after the final click (unknown)"),
         T.captcha_possible: V("yes", "fixture design: a mode puts a challenge on the page; "
                                      "Workday documents none"),
-        T.multi_step: V("no", "fixture design: one application page; a mode has several, "
-                              "which stops before anything is entered"),
+        T.multi_step: V("yes", "fixture design: a mode serves five pages in one document; "
+                               "each Next saves that page as a draft (FIXTURE ASSUMPTION)"),
     },
     "fake_api": {
         T.login_required: V("no", "credentials, not a login: the user's grant plus a token"),
