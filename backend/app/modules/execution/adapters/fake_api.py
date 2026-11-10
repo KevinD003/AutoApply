@@ -18,7 +18,7 @@ import urllib.request
 from urllib.parse import quote, urlsplit
 
 from app.core.config import get_settings
-from app.core.urlsafety import fixture_opener, is_fixture_origin
+from app.core.urlsafety import UnsafeURL, fixture_opener, is_fixture_origin
 from app.modules.execution.adapters.fixture_ats import Outcome, ReportsDisclosures, UploadFailed
 from app.modules.execution.adapters.greenhouse import approved_fields
 from app.modules.execution.faults import fault
@@ -31,9 +31,27 @@ class ApiRefused(RuntimeError):
     """A definite, reportable refusal (message has no content, ids or secrets)."""
 
 
+class _Redirected(ApiRefused):
+    """The API answered with a redirect: the request had been sent (D137)."""
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise ApiRefused(f"the API redirected (HTTP {code}); not followed")
+        raise _Redirected(f"the API redirected (HTTP {code}); not followed")
+
+
+def _may_have_arrived(e: BaseException) -> bool:
+    """D137: whether a request that failed may still have reached the API. Not when it was
+    refused before anything was sent: the destination not enabled or no credentials (ApiRefused
+    other than a redirect), an address the fixture check refused (UnsafeURL), or a connection
+    the API refused. Anything else (no answer, a redirect, a broken answer) may have."""
+    if isinstance(e, _Redirected):
+        return True
+    if isinstance(e, ApiRefused | UnsafeURL):
+        return False
+    return not (
+        isinstance(e, urllib.error.URLError) and isinstance(e.reason, ConnectionRefusedError)
+    )
 
 
 def _sig(fields) -> dict:
@@ -114,12 +132,22 @@ class FakeApiAdapter(ReportsDisclosures):
             for a in self.content["answers"]
             if a["value"] is not None and a["type"] not in ("file", FieldType.unsupported.value)
         }
-        status, data = self._call(
-            "POST", f"/fapi/v1/boards/{quote(self.board)}/jobs/{quote(self.job_id)}/applications",
-            {"answers": answers}, key=f"{self.key}:draft",
-        )  # fmt: skip
+        draft = {"route": "api", "kind": "application_draft"}
+        try:
+            status, data = self._call(
+                "POST",
+                f"/fapi/v1/boards/{quote(self.board)}/jobs/{quote(self.job_id)}/applications",
+                {"answers": answers}, key=f"{self.key}:draft",
+            )  # fmt: skip
+        except Exception as e:
+            if not _may_have_arrived(e):
+                raise  # refused before anything was sent
+            # D137: the answers were sent; the API may have created the draft.
+            raise UploadFailed("the API did not answer the application draft",
+                               [draft | {"ack": "no_response"}]) from e  # fmt: skip
         if status != 200 or not data.get("application"):
-            raise UploadFailed(f"the API did not create the application (HTTP {status})")
+            raise UploadFailed(f"the API did not create the application (HTTP {status})",
+                               [draft | {"ack": "not_created"}])  # fmt: skip
         return data["application"]
 
     def upload(self, draft: str) -> list[dict]:
@@ -138,9 +166,9 @@ class FakeApiAdapter(ReportsDisclosures):
                         "content_b64": base64.b64encode(raw).decode(),
                     })  # fmt: skip
                 fault("during_upload")
-            except ApiRefused:
-                raise  # refused before anything was sent
-            except Exception as e:  # noqa: BLE001 - the document may have arrived
+            except Exception as e:
+                if not _may_have_arrived(e):
+                    raise  # refused before anything was sent
                 raise UploadFailed("the API did not answer a document upload",
                                    out + [sent | {"ack": "no_response"}]) from e  # fmt: skip
             if status != 200 or data.get("sha256") != d["sha256"]:

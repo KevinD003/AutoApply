@@ -24,7 +24,11 @@ error, `exit` a killed worker. The receiver's ledger is the oracle for what reac
 | The same on Greenhouse's id-only page | `test_on_greenhouse_pages_an_error_after_an_upload_keeps_its_evidence` | receiver ledger: 1 upload |
 | Through the authorized API: an error after a document keeps its evidence | `test_through_the_api_an_error_after_a_document_keeps_its_evidence` | receiver ledger: the document arrived; evidence rows |
 | Through the API: a document sent with no answer counts as possibly received | `test_an_api_upload_without_an_answer_counts_as_possibly_received` | evidence `ack` `no_response`; receiver ledger: it arrived |
-| Each test fails without its change | the recorder not installed: 4 of 7 fail; an interrupted upload not converted: 1; the API's unanswered upload not converted: 1; recorded disclosures recorded again after filling: 1 | recorded in `docs/automation-loop.md` |
+| An error during an upload counts it as possibly received on Greenhouse's id-only page, the Workday-style page and the first Greenhouse-style page | `test_on_each_page_adapter_an_error_during_an_upload_counts_it` | evidence `ack` `none`; 0 accepted |
+| A failure before the document is handed over stays an internal error, with nothing recorded | `test_a_failure_before_the_document_is_handed_over_stays_an_internal_error` | evidence: none; receiver ledger: nothing |
+| An upload stop logs its cause's type and place, never its message | `test_an_upload_stop_keeps_the_type_and_place_of_what_caused_it` | log record |
+| Through the API, a draft or a document received then answered with a redirect, and a draft received but not created, are recorded | `test_through_the_api_a_request_answered_badly_after_it_arrived_is_recorded` | evidence `no_response` / `not_created`; receiver ledger: each arrived |
+| Each test fails without its change | the recorder not installed: 4 of the first 7 fail; an interrupted upload not converted: 1; the API's unanswered upload not converted: 1; disclosures recorded again after filling: 1. Review fixes: a redirect treated as refused: 2; the uncreated draft unrecorded: 1; conversion before the hand-over: 1; each page adapter's hand-over mark removed: 1 each; the cause not logged: 1 | recorded in `docs/automation-loop.md` |
 
 ## A control NoEfforts cannot fill is refused when the form is read (D136, 2026-11-10; local only)
 

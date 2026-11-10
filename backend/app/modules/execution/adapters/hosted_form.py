@@ -93,6 +93,7 @@ class HostedFormAdapter(FixtureAtsAdapter):
 
     def _attach(self, page: Page, key: str) -> dict:
         name, ctype, data = self.documents[key]
+        self._hand_over()
         page.locator(f'{self.FORM} input[type=file][name="{key}"]').set_input_files(
             files=[{"name": name, "mimeType": ctype, "buffer": data}]
         )

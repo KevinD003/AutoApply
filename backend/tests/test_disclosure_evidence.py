@@ -23,8 +23,11 @@ from tests.execution_harness import (
     queue,
     run_worker_process,
 )
+from app.modules.execution.adapters import fixture_ats
 from tests.test_api_provider import TOKEN, api_application
+from tests.test_greenhouse_adapter import gh_application
 from tests.test_greenhouse_dom import v2_application
+from tests.test_workday_adapter import workday_application
 
 
 @pytest.fixture(scope="module")
@@ -185,3 +188,86 @@ def test_an_api_upload_without_an_answer_counts_as_possibly_received(api, receiv
     while not uploads(receiver) and time.monotonic() < deadline:
         time.sleep(0.1)
     assert len(uploads(receiver)) == 1  # it did arrive: the evidence was right to count it
+
+
+@pytest.mark.parametrize(
+    ("make", "field"),
+    [(v2_application, "resume"), (workday_application, "resume"), (gh_application, "resume")],
+    ids=["greenhouse_by_id", "workday_style", "greenhouse_first_fixture"],
+)
+def test_on_each_page_adapter_an_error_during_an_upload_counts_it(
+    api, receiver, monkeypatch, make, field
+):
+    app_id = make(api)
+    content = api.get(f"/applications/{app_id}/package").json()["package"]["content"]
+    sha = next(d["sha256"] for d in content["documents"] if d["field"] == field)
+    aid = queue(api, app_id)
+    monkeypatch.setenv("NOEFFORTS_FAULT", "during_upload=raise")
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    assert disclosures(aid) == [{"field": field, "ack": "none", "sha256": sha}]
+    state, outcome = finished(aid)
+    assert state == "abandoned" and "a document upload was interrupted" in outcome
+    assert receiver.ledger()["accepted"] == 0
+    monkeypatch.delenv("NOEFFORTS_FAULT")
+    assert runner.run_attempt(aid, "w2") == "ignored"
+
+
+def test_a_failure_before_the_document_is_handed_over_stays_an_internal_error(
+    api, receiver, monkeypatch, caplog
+):
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+
+    def broken(self, page, key, loc):
+        raise KeyError("no such document")  # an adapter or package bug, before set_input_files
+
+    monkeypatch.setattr(fixture_ats.FixtureAtsAdapter, "_attach_file", broken)
+    assert runner.run_attempt(aid, "w1") == "error"
+    assert disclosures(aid) == []  # nothing was handed to the page: no disclosure is claimed
+    state, outcome = finished(aid)
+    assert state == "abandoned" and "internal error (KeyError)" in outcome
+    assert receiver.ledger()["disclosures"] == []
+
+
+def test_an_upload_stop_keeps_the_type_and_place_of_what_caused_it(
+    api, receiver, monkeypatch, caplog
+):
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    monkeypatch.setenv("NOEFFORTS_FAULT", "during_upload=raise")
+    with caplog.at_level("WARNING", logger="noefforts.execution"):
+        assert runner.run_attempt(aid, "w1") == "abandoned"
+    (line,) = [
+        r.getMessage() for r in caplog.records if "stopped after disclosure by" in r.getMessage()
+    ]
+    assert "RuntimeError" in line and "injected fault" not in line  # the type, never the message
+
+
+@pytest.mark.parametrize(
+    ("mode", "ack", "documents", "reason"),
+    [
+        ("fapi_redirect_draft", "no_response", 0, "the API did not answer the application draft"),
+        ("fapi_draft_error", "not_created", 0, "the API did not create the application"),
+        ("fapi_redirect_document", None, 1, "the API did not answer a document upload"),
+    ],
+)
+def test_through_the_api_a_request_answered_badly_after_it_arrived_is_recorded(
+    api, receiver, mode, ack, documents, reason
+):
+    app_id = api_application(api)
+    sha = resume_sha(api, app_id)
+    aid = queue(api, app_id)
+    receiver.config(mode=mode)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    draft = {"route": "api", "kind": "application_draft"}
+    if documents:
+        want = [draft, {"field": "resume", "sha256": sha, "route": "api", "ack": "no_response"}]
+    else:
+        want = [draft | {"ack": ack}]
+    assert disclosures(aid) == want
+    state, outcome = finished(aid)
+    assert state == "abandoned" and reason in outcome
+    led = receiver.ledger()
+    kinds = sorted(d["kind"] for d in led["disclosures"])
+    assert kinds == ["api_draft"] + ["upload"] * documents  # it did arrive: rightly recorded
+    assert led["accepted"] == 0

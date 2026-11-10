@@ -286,6 +286,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             try:
                 disclosures = adapter.fill(page)
             except StoppedAfterDisclosure as e:  # an upload, or D104's location search
+                _log_cause(aid, e)
                 _record_disclosures(aid, worker, gen, _not_yet(e.disclosures, recorded))
                 svc.abandon(aid, worker, gen, str(e))
                 return "abandoned"
@@ -400,9 +401,11 @@ def _stop(aid, worker, gen, reason: str, plain) -> None:
 def _record_as_made(aid, worker, gen, adapter) -> list[dict]:
     """D137: the adapter reports each disclosure the moment it makes it (an acknowledged upload,
     a location search, a section control), and it is recorded at once, fenced by generation. So
-    a failure later in filling, or a worker lost mid-fill, never loses the evidence that it
+    a failure later in filling, or a worker lost after it, never loses the evidence that it
     reached the employer; a worker that lost its authority stops at its next disclosure (the
-    fence raises LostAuthority). Returns what was recorded, which is never recorded again."""
+    fence raises LostAuthority). Not covered: a worker killed while a disclosure is still in
+    flight (a document handed over, its acknowledgement not yet read). Returns what was
+    recorded, which is never recorded again."""
     recorded: list[dict] = []
 
     def record(d: dict) -> None:
@@ -411,6 +414,17 @@ def _record_as_made(aid, worker, gen, adapter) -> list[dict]:
 
     adapter.on_disclosure = record
     return recorded
+
+
+def _log_cause(aid, e: BaseException) -> None:
+    """D137: a stop that wraps another error keeps its diagnostics: the type and where it was
+    raised, never the message (browser errors can quote URLs, selectors or page text)."""
+    cause = e.__cause__
+    if cause is not None:
+        log.warning(
+            "attempt %s stopped after disclosure by %s at %s",
+            aid, type(cause).__name__, _origin_frames(cause),
+        )  # fmt: skip
 
 
 def _not_yet(disclosures: list[dict], recorded: list[dict]) -> list[dict]:
@@ -506,6 +520,7 @@ def _run_api(aid, worker, gen, adapter) -> str:
             for d in _not_yet(adapter.upload(draft), recorded):
                 svc.record_evidence(aid, worker, gen, "disclosure", d)
         except UploadFailed as e:
+            _log_cause(aid, e)
             _record_disclosures(aid, worker, gen, _not_yet(e.disclosures, recorded))
             svc.abandon(aid, worker, gen, str(e))
             return "abandoned"
