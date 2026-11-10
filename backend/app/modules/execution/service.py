@@ -19,7 +19,9 @@ prerequisite relies on (a rehearsal record or a receipt, FOR SHARE). Inserting a
 references an application (evidence, events) key-share locks the application too, after the
 attempt: the same order. Paths that never lock an attempt (approve, revoke, answers, withdraw,
 evidence deletion) start at the application. A checkpoint row is locked only alone (the user
-entering a code) or while holding its attempt (the worker). A form-change pause (D132) is written
+entering a code; D143: the sweeper's pass over stale requests, which holds nothing else and so
+never waits on a worker) or while holding its attempt (the worker; D143: every outcome, and the
+sweeper recovering an attempt, which close its request). A form-change pause (D132) is written
 after the approvals, under the attempt and application locks (the worker), or under the
 application lock alone (reading the form again, approving, cancelling).
 """

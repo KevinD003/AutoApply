@@ -88,8 +88,12 @@ def checkpoint(cp_id: str) -> tuple[str, str | None]:
         return cp.status, cp.code
 
 
+def disclosed(led, kind: str) -> int:
+    return sum(1 for d in led["disclosures"] if d["kind"] == kind)
+
+
 def uploads(led) -> int:
-    return sum(1 for d in led["disclosures"] if d["kind"] == "upload")
+    return disclosed(led, "upload")
 
 
 def default_limits() -> Settings:
@@ -480,6 +484,31 @@ def test_a_cancel_after_entry_says_what_may_have_been_entered(api, receiver):
     assert a.state == "cancelled" and a.outcome_detail == svc.CANCELLED_AFTER_ENTRY
     led = receiver.ledger()
     assert led["accepted"] == 0 and len(led["disclosures"]) == 1  # the resume had been uploaded
+
+
+def test_a_cancel_while_a_form_is_filled_stops_the_worker_between_fields(api, receiver):
+    """The page saves each field as it changes (the receiver's autosave), and every field takes
+    a second. Cancelled after the first fields, the worker finds its attempt gone at its next
+    lease renewal, between two fields: the rest are never entered, and nothing is submitted."""
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    receiver.config(autosave=True)
+    content = api.get(f"/applications/{app_id}/package").json()["package"]["content"]
+    typed = [a for a in content["answers"] if a["value"] is not None and a["type"] != "file"]
+    p = start_worker(aid, "w1", "between_fields=sleep:1", lease_seconds=4)
+    try:
+        wait_for(lambda: disclosed(receiver.ledger(), "autosave") >= 2, timeout=60)
+        assert api.post(f"/applications/{app_id}/cancel").status_code == 200
+        out, err = p.communicate(timeout=60)
+    finally:
+        if p.poll() is None:
+            p.kill()
+    assert out.strip().splitlines()[-1] == "lost_authority", err[-800:]
+    a = attempt(aid)
+    assert a.state == "cancelled" and a.outcome_detail == svc.CANCELLED_AFTER_ENTRY
+    led = receiver.ledger()
+    assert led["accepted"] == 0
+    assert 2 <= disclosed(led, "autosave") < len(typed) - 2  # the rest were never entered
 
 
 def test_a_cancel_before_anything_was_entered_says_so(api, receiver):

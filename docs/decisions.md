@@ -5505,3 +5505,125 @@ audit-inventory and export-completeness guards are updated and pass.
   approval (`docs/research/workday.md` and `docs/provider-architecture.md` disagree); whether the
   standing rule may drive a wizard (refused at claim for now); whether every stop after data
   entry should use the approval up for the other adapters (D132).
+
+## D143 — Recovery hardening: the runner bounds its own run, an attempt's task has one time limit and no soft limit, leases follow progress, and a verification request ends with its attempt (2026-11-10)
+
+- **Why:** rank 10 of the automation loop (`docs/automation-loop.md`; acceptance items 9, 11, 12
+  and 13). A read-only mapping of the recovery paths (2026-11-10) found:
+  - the worker's 240-second soft limit (300 hard) applied to an attempt's task, although its wait
+    for a verification code alone may take 600 seconds: a code typed after about four minutes
+    was never entered;
+  - a verification request stayed open, and a code already typed stayed stored, after the worker
+    itself ended the attempt; only the sweeper's path closed and erased them (D50);
+  - nothing renewed an attempt's lease while a long form was filled or read back: 60 seconds
+    without a step and the sweeper took the worker for lost;
+  - the send lease was the submit timeout plus 30 seconds, shorter than the real Greenhouse
+    page's own wait for its answer (10 s for the click, then at least 75 s): the sweeper could
+    call a send unknown while its worker still watched it;
+  - the browser runner closed a session after 600 seconds, inside the wait for a code;
+  - no worker had ever been killed on the Greenhouse-style (gh2) or Workday-style forms;
+  - a cancel after data was entered said only "before anything was submitted", and a stopped
+    wizard said its pages were "saved" and that NoEfforts "submitted nothing", also where a Next
+    had gone unanswered.
+- **Measured before deciding (2026-11-10, a real Celery prefork worker on this branch, the local
+  receiver answering the final click late):** a soft time limit that lands inside a browser wait
+  is not handled. The exception reaches the runner, but closing the browser then never returns
+  (Playwright's synchronous API has lost the greenlet that drives it), so the runner's handler
+  never runs. The worker logged "Soft time limit (6s) exceeded" at 13:58:23, wrote nothing, and
+  was killed at the hard limit at 13:59:23; the attempt was still `sending`. A probe outside the
+  application hung at `browser.close()` the same way. So the first design of this slice (a longer
+  soft limit, handled by phase) was dropped: the 240/300 limits had this flaw before it too. A
+  second run showed that giving the task equal soft and hard limits does not remove the soft
+  one: Celery's prefork pool arms the soft limit first whenever a task or the default has one.
+- **Decided:**
+  - **The runner bounds its own run.** `attempt_run_budget_seconds` (420) is how long an attempt
+    may take to reach the final click. The runner checks it itself between steps (at every
+    heartbeat, between fields while filling and reading back, and right before the send gate),
+    so it is never raised inside a browser wait. Past it the run stops as its phase says:
+    nothing entered, "Stopped before sending anything"; data entered, abandoned, and on a
+    multi-page form the wizard stop of D142. The text says "the run reached its time limit and
+    was stopped", and the final click is never made. After the click the worker only waits,
+    each wait with its own limit, and the budget no longer applies.
+  - **One task time limit, no soft limit.** `attempt_time_limit_seconds` is the budget, plus
+    `attempt_after_send_seconds` (360: the watch for the click's answer and for the last code's,
+    and one step's overrun of the budget), plus the whole wait for a code
+    (`checkpoint_ttl_seconds`, 600): 1380 seconds by default, under the broker's visibility
+    timeout. At it the worker process is ended, the message is acknowledged (never
+    redelivered), and the sweeper decides from the attempt's phase, as for any dead worker.
+    The worker's default soft limit is removed, and every other task sets the 240-second one
+    itself (their hard limit stays 300); a test fails if a task is added without it.
+  - **The browser runner's session limit is 1500 seconds** (was 600), above the task's limit.
+  - **A lease follows progress.** Recording evidence renews the lease, never shortening a
+    longer one. Adapters call a progress hook between fields, from which the runner renews the
+    lease at most every quarter of it; a worker whose attempt was cancelled or taken away stops
+    at that renewal, between two fields, and enters no more. There is still no background
+    heartbeat: a worker that stops making progress loses its lease.
+  - **A lease covers each wait for the employer's answer.** Each adapter says how long it may
+    wait for the answer to the final click (`send_watch_seconds`): the generic forms their
+    submit timeout; the Greenhouse page 10 seconds for the click, then its watch (on a real
+    page at least 75 seconds) and half again, because the watch counts only its own waits. The
+    send lease is that wait (at least the submit timeout, at most `attempt_after_send_seconds`)
+    plus 30 seconds. Taking a typed code extends the lease the same way, so a code typed at the
+    end of its wait is still answered under a lease (before, the wait's lease ended 30 seconds
+    after the request, and the answer to a late code arrived after it).
+  - **A verification request ends with its attempt.** Every outcome the worker writes closes
+    the attempt's request and erases a code not yet read, in the same transaction. The code
+    endpoint (and the mailbox code filler, which uses it) refuses a request whose attempt no
+    longer waits for a code. The sweeper closes, in a pass of its own that holds no attempt
+    lock, every request whose attempt no longer waits or whose time ran out more than a minute
+    ago. So the code form, shown for an open request, goes away when its attempt ends, and the
+    mailbox is no longer read for a request nobody waits on.
+  - **Texts say what happened.** A cancel after the disclosure gate says the worker stops at
+    its next step, that what it had entered stays entered, and that a document it was uploading
+    may have been received. A stopped wizard says its pages were "sent there with Next" and
+    that NoEfforts "never made the final submit"; a Next that got no answer in time, or whose
+    click failed, says NoEfforts does not know whether that page was saved.
+  - **A worker killed on each provider's stand-in** (Greenhouse-style by id, Workday-style
+    single page and wizard review page): before anything was sent it is run again once; after
+    data was entered, at the send gate, around the final click and after the employer's receipt
+    it is abandoned or called unknown, and nothing sends it again.
+- **Not changed:** no state, transition or retry was added. `SCHEMA_VERSION` (3), the
+  extraction and adapter versions and every package hash are unchanged. The sweeper's rules are
+  unchanged. A wizard's unanswered Next still ends `abandoned` (D142), with the new wording.
+  For tests only (ignored outside the test environment): the fault action `elapse`, the fault
+  points `in_code_wait` and `between_fields`, and the receiver option `verify_delay_s`.
+- **Not fixed, stated:**
+  - The budget is checked between steps. A step stuck inside one browser call is ended only by
+    that call's own timeout or by the task's limit, so the budget can be overrun by one step.
+  - At the task's limit the process is killed and writes nothing; the sweeper writes the
+    outcome when the lease expires, which for a code wait is 30 seconds after the request's own
+    end.
+  - The Greenhouse wait is an estimate, not a bound: its watch does not count page reads. A
+    watch that outlasts its lease is still called unknown by the sweeper while it runs.
+  - The runner hands the adapter's wait to the code step too, but that is tested only where the
+    wait equals the submit timeout (the generic form).
+  - `greenhouse_live` has no test that kills a worker process (the pilot's switch exists only
+    in the test process); the budget tests run it in process.
+  - Attempts and the periodic tasks (the sweeper, the outbox relay, the mailbox reader) share
+    one worker pool of two processes: two attempts waiting for codes hold both for up to their
+    wait. A queue and worker of their own for attempts is the next recovery slice.
+  - A request whose code the worker had already taken stays "consumed" when its attempt ends
+    unknown; the feed keeps saying the code was passed on.
+  - The sweeper's own closing of a dead worker's request (D50) is now repeated by the pass that
+    follows it; the two are not tested apart. How often the progress hook renews (a quarter of
+    a lease) is not tested.
+  - No screen changed. A request closed with its attempt reads "expired" in the feed, the
+    word the sweeper's path already used.
+- **Tests:** `tests/test_recovery_hardening.py` (39 cases) and two additions to
+  `tests/test_workday_wizard.py`, the receiver's ledger as the oracle; one case runs a real
+  Celery prefork worker to its time limit. Each of these was removed in turn and its test
+  failed: the attempt task's own limit; the removal of the default soft limit; the budget check
+  at the heartbeat, between fields and before the send gate; the time-limit text; the closing of
+  requests at an outcome; the code endpoint's state check; the sweeper's pass, each half of its
+  rule and its minute of grace; the lease renewal with evidence and its never-shortening; the
+  progress hook; the send lease's use of the adapter's wait, its upper bound and its lower
+  bound; the runner handing that wait to the gate; the lease extension when a code is taken;
+  the Greenhouse wait's formula; both cancel texts; the three wizard texts; both session-limit
+  defaults; the after-send allowance. Two existing sweeper rules (never re-pend an attempt
+  that entered data, or one that was sending) were removed as well, and the new crash tests
+  failed. The first pass missed one (the send lease's lower bound: the test's bounds were too
+  loose for the tests' 4-second submit timeout), caught once the test compared the lease
+  exactly. Not sabotaged: the checks named untested above. Runs are listed in
+  `docs/automation-loop.md`.
+- **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
+  one: no state, permission or retry was added.

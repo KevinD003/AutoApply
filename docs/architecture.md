@@ -197,7 +197,23 @@ sweeper (beat): expired leases → claimed & nothing disclosed: re-pend (≤2) |
   claimed & disclosed: abandoned | sending/awaiting_code: unknown (its open checkpoint expires,
   a held code is erased). Each attempt in its own savepoint: one that fails is counted
   (`errors`), stays for the next sweep and never stops the others (D50). Never re-sends.
+  Then, in a transaction of its own, it closes every verification request whose attempt no
+  longer waits for a code or whose time ran out over a minute ago (D143).
 ```
+
+Time and leases (D143). The runner bounds its own run: `NOEFFORTS_ATTEMPT_RUN_BUDGET_SECONDS`
+(420) is how long an attempt may take to reach gate 2. The runner checks it between steps (at
+each heartbeat, between fields, and right before gate 2), never inside a browser wait; past it
+the run stops as its phase says and the final click is never made. The attempt's Celery task has
+one time limit and no soft limit: the budget, `NOEFFORTS_ATTEMPT_AFTER_SEND_SECONDS` (360) for
+the waits after the click, and the whole wait for a code (1380 s by default). At it the worker
+process is ended, and the sweeper decides from the attempt's phase. A soft limit is not used
+because one that lands inside a browser wait cannot be handled (measured: the browser can no
+longer be closed, so the handler never runs). A lease is renewed by each heartbeat, by recorded
+evidence and between fields while a form is filled and read back; the send lease covers the
+adapter's own wait for the click's answer, and taking a typed code extends the lease over the
+watch for that code's answer. No background heartbeat exists: a worker that stops making
+progress loses its lease.
 
 Key properties and their limits are in the `service.py` docstring. In short: one active
 attempt per application (partial unique index); one worker per attempt can pass gate 2
@@ -243,8 +259,11 @@ against both gates.
 Inserting a row that references an application (evidence, events) key-share locks the
 application too; that happens after the attempt, in the same order. Paths that never lock an
 attempt (approve, revoke, answers, consents, withdrawal, evidence deletion) start at the
-application. A checkpoint row is locked only alone (the user entering a code) or while its
-attempt is held (the worker). Cancel locks the active attempt, then the application. Two locks
+application. A checkpoint row is locked only alone (the user entering a code; D143: the
+sweeper's pass that closes stale requests, which holds nothing else and so never waits on a
+worker) or while its attempt is held (the worker; D143: every outcome, and the sweeper
+recovering an attempt, which close its request). Cancel locks the active attempt, then the
+application. Two locks
 are taken against the order, and only without waiting (NOWAIT), so they can never be part of
 a deadlock: cancel's look again, after the application lock, for an attempt queued while it
 waited; and queueing's lock of an earlier pending attempt it stops (below). If either row is
@@ -302,6 +321,11 @@ attempt moves to `awaiting_code`, the application to `needs_user_action`, and a 
 bound to user, application, attempt and round is opened. The code is stored only until the
 worker reads it, then erased. Wrong codes open a new round (max 3); old rounds are replays.
 The worker keeps its browser open while waiting, bounded by `NOEFFORTS_CHECKPOINT_TTL_SECONDS`.
+D143: the attempt's task may run for that whole wait (its time limit is the run budget, the
+waits after the click and this wait; no soft limit is raised inside it); a code the worker
+takes extends its lease over the watch for the employer's answer; and the request ends with its
+attempt: any outcome closes it and erases a code not yet read, the code endpoint refuses a
+request whose attempt no longer waits, and the sweeper closes stale ones.
 While a worker holds an attempt (claimed, sending, awaiting a code) only the execution service
 may change the application's state: package reads do not re-settle it and user transitions
 return 409 (`package.execution_owns_state`). Without this, the review page's package read
