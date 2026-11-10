@@ -57,9 +57,10 @@ celery_app = Celery("noefforts", broker=settings.redis_url, backend=None)
 celery_app.conf.update(
     # D144: both queues are declared, so a worker started without -Q takes both; a deployment
     # gives each queue its own worker (see the module docstring). Each queue has an exchange
-    # and routing key of its own name, as a queue Celery creates itself has: a queue declared
-    # without them is bound to the default exchange and key, and would receive the default
-    # queue's messages as well.
+    # and routing key of its own name, as a queue Celery creates itself has. Declared by name
+    # only, both would be bound to the default exchange under one key: Celery's own publishing
+    # addresses a queue directly and would not notice, but a message published to that
+    # exchange and key would reach both queues (measured).
     task_default_queue=DEFAULT_QUEUE,
     task_queues=tuple(
         Queue(name, Exchange(name, type="direct"), routing_key=name)

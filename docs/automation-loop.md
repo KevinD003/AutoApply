@@ -400,11 +400,13 @@ hold up the sweeper, the outbox relay and the mailbox reader.
 - **Equal soft and hard limits on the attempt's task.** Rejected after a run: Celery's prefork
   pool arms the soft limit first whenever one is set and starts the hard one from it, so the
   soft limit still fired. The default has none now, and every other task sets its own.
-- **Declaring the attempts' queue by name only** (D144's first draft, caught before any run by
-  reading Celery's source). A queue declared without an exchange is bound to the default
-  exchange and routing key, so it would have received every periodic task too, and the default
-  queue every attempt. Each queue names its own exchange and key; a test reads the broker's
-  lists after each kind of publish.
+- **Declaring the attempts' queue by name only** (D144's first draft). A queue declared without
+  an exchange is bound to the default exchange and routing key, with the default queue. I first
+  took that to mean every message would reach both queues; a probe showed otherwise: Celery's
+  own publishing addresses a queue directly, so each message still reaches one queue. Only a
+  message published to the default exchange and key by name reaches both. Each queue names its
+  own exchange and key all the same (as a queue Celery creates itself has), and a test reads
+  the broker's bindings.
 - **Passing a misplaced attempt message on through the outbox** (D144). Durable, but a message
   passed on that way cannot be told from a new one, so a broker naming the queue differently
   would pass it on for ever. It is published directly, marked, and passed on once.

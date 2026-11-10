@@ -78,8 +78,8 @@ def test_only_an_attempts_task_goes_to_the_attempts_queue():
     assert set(routed.values()) == {DEFAULT_QUEUE}, routed
     assert (DEFAULT_QUEUE, ATTEMPT_QUEUE) == ("celery", "attempts")
     # Both are declared, so a worker started without -Q takes both (local development, tests).
-    # Each has an exchange and a routing key of its own name: declared without them, a queue is
-    # bound to the default exchange and key, and receives the default queue's messages too.
+    # Each has an exchange and a routing key of its own name (the next test reads what that
+    # makes of the broker's bindings).
     declared = {q.name: (q.exchange.name, q.exchange.type, q.routing_key)
                 for q in celery_app.amqp.queues.values()}  # fmt: skip
     assert declared == {
@@ -89,6 +89,26 @@ def test_only_an_attempts_task_goes_to_the_attempts_queue():
     assert celery_app.conf.task_default_queue == DEFAULT_QUEUE
     scheduled = {e["task"] for e in celery_app.conf.beat_schedule.values()}
     assert scheduled == set(routed), (scheduled, routed)  # all of them periodic, none an attempt
+
+
+def test_each_queue_is_bound_to_its_own_exchange_only():
+    """What the declaration makes of the broker: each queue under an exchange of its own name
+    and nowhere else. Declared by name only, both would sit under the default exchange with one
+    key, and a message published to that exchange and key would reach both (a probe showed it;
+    Celery's own publishing addresses a queue directly and reaches one either way)."""
+    from app.worker import ATTEMPT_QUEUE, DEFAULT_QUEUE, celery_app
+
+    r = broker()
+    names = (DEFAULT_QUEUE, ATTEMPT_QUEUE)
+    r.delete(*(f"_kombu.binding.{n}" for n in names))  # as a broker that never saw them
+    with celery_app.connection_for_write() as conn:
+        for name in names:
+            celery_app.amqp.queues[name](conn.default_channel).declare()
+    bound = {
+        n: sorted(m.decode().split("\x06\x16")[-1] for m in r.smembers(f"_kombu.binding.{n}"))
+        for n in names
+    }
+    assert bound == {DEFAULT_QUEUE: [DEFAULT_QUEUE], ATTEMPT_QUEUE: [ATTEMPT_QUEUE]}
 
 
 def test_each_message_reaches_one_queue_only(api, receiver):
