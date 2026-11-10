@@ -212,6 +212,10 @@ forms with the receiver's ledger. Later ranks:
 | D136: every suite that loads the second Greenhouse-style fixture or reads a Greenhouse form (48 files, JUnit) | 1373 passed, 0 failures |
 | D136 sabotage runs (each of three changes removed in turn) | each fails its tests: 5, 4 and 1 of 6 |
 | D136 at its commit, after formatting: the new tests and `test_greenhouse_dom.py` (JUnit) | 65 passed |
+| D137: `pytest tests/test_disclosure_evidence.py` (JUnit) | 7 passed |
+| D137 sabotage runs (each of four changes removed in turn) | each fails its tests: 4, 1, 1 and 1 of 7 |
+| D137: every suite that runs an attempt or uses an adapter, with the Celery and broker-failure suites (63 files, JUnit) | 1500 passed, 0 failures |
+| D137 at its commit: the new tests, upload evidence, sections end to end and rehearsal (JUnit) | 31 passed |
 
 ## Failed approaches and rejected designs
 
