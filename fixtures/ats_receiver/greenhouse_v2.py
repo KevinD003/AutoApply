@@ -47,7 +47,8 @@ gh2_eeo_required (D139: the screening job's Gender, question_8113, asked as requ
 data, the page and the server; a FIXTURE ASSUMPTION, never seen on a real page),
 gh2_sections (D120: an Education section; D141: cfg sections "education,employment" adds an
 Employment section, and cfg section_widget plain | react_select | ignores_choice | wrong_value |
-prefill_end_date varies how its comboboxes behave; FIXTURE ASSUMPTIONS, never seen on a real page),
+prefill_end_date | option_other_id | extra_row varies how its comboboxes behave; FIXTURE ASSUMPTIONS,
+never seen on a real page),
 gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS; for dd locale_gate also locale_origin,
 locale_path, locale_via; for dd open_beacon also beacon, beacon_via; for dd late_other_host
 other_origin), GET /locales/{lang}/{ns}.json (cfg locale_delay_ms; lang "moved"
@@ -119,12 +120,15 @@ SECTION_MONTHS = [(str(i), m) for i, m in enumerate(
 def _section_combo(cid, options, widget="plain"):
     """A section combobox. D141 (FIXTURE ASSUMPTIONS): `widget` react_select renders it as a
     react-select-style control (the choice shown in `select__single-value`, the input left
-    empty); ignores_choice, wrong_value and prefill_end_date change only the page's script."""
+    empty) that names its list in `aria-controls` only while it is open, as the one real
+    react-select recorded did (D130); the other widgets change only the page's script.
+    `data-fx-list` is the stand-in's own wiring, never read by NoEfforts."""
     lis = "".join(
         f'<li role="option" data-value="{v}" aria-selected="false">{html.escape(t)}</li>'
         for v, t in options
     )
-    box = (f'<input type="text" id="{cid}" role="combobox" aria-controls="{cid}-listbox" '
+    named = "" if widget == "react_select" else f'aria-controls="{cid}-listbox" '
+    box = (f'<input type="text" id="{cid}" role="combobox" {named}data-fx-list="{cid}-listbox" '
            f'aria-expanded="false" autocomplete="off">')  # fmt: skip
     if widget == "react_select":
         box = (f'<div class="select__control"><div class="select__value-container">{box}'
@@ -195,9 +199,13 @@ _SECTION_SCRIPT = """
 (() => {
   const WIDGET = %WIDGET%;
   window.__fxSectionTyped = 0;  // D141: keys typed into a section combobox (posted with the form)
+  const close = (cb, lb) => {
+    lb.hidden = true; cb.setAttribute('aria-expanded','false');
+    if (WIDGET === 'react_select') cb.removeAttribute('aria-controls');  // named only while open
+  };
   const choose = (cb, lb, opt) => {
     for (const o of lb.querySelectorAll('[role=option]')) o.setAttribute('aria-selected','false');
-    lb.hidden = true; cb.setAttribute('aria-expanded','false');
+    close(cb, lb);
     if (WIDGET === 'ignores_choice') return;  // the page drops the choice
     opt.setAttribute('aria-selected','true');
     if (WIDGET === 'react_select') {  // the choice is shown beside an emptied input
@@ -213,13 +221,23 @@ _SECTION_SCRIPT = """
   };
   const wire = (root) => {
     for (const cb of root.querySelectorAll('input[role=combobox]')) {
-      const lb = document.getElementById(cb.getAttribute('aria-controls'));
+      const lb = document.getElementById(cb.dataset.fxList);
       if (!lb) continue;
-      const open = () => { lb.hidden = false; cb.setAttribute('aria-expanded','true'); };
+      const open = () => {
+        if (WIDGET === 'option_other_id' && cb.id === 'school--0') {  // re-keyed once opened
+          const o = lb.querySelector('[data-value="sch_state"]');
+          if (o) o.dataset.value = 'sch_other';
+        }
+        lb.hidden = false; cb.setAttribute('aria-expanded','true');
+        if (WIDGET === 'react_select') cb.setAttribute('aria-controls', lb.id);
+      };
       cb.addEventListener('click', open);
       const box = cb.closest('.select__control');
       if (box) box.addEventListener('click', open);
-      cb.addEventListener('keydown', () => { window.__fxSectionTyped++; });
+      cb.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') close(cb, lb);
+        else if (e.key.length === 1) window.__fxSectionTyped++;  // a character typed
+      });
       for (const opt of lb.querySelectorAll('[role=option]')) {
         opt.addEventListener('click', () => choose(cb, lb, opt));
       }
@@ -249,6 +267,10 @@ _SECTION_SCRIPT = """
     const m = document.getElementById('end-date-month-0');
     const y = document.getElementById('end-date-year-0');
     if (m && y) { m.value = 'January'; m.dataset.value = '1'; y.value = '2020'; }
+  }
+  if (WIDGET === 'extra_row') {  // the page shows a second education row already holding a year
+    const add = document.getElementById('edu-add');
+    if (add) { add.click(); const y = document.getElementById('start-year--1'); if (y) y.value = '2010'; }
   }
 })();
 """

@@ -335,7 +335,7 @@ def _fill_text(page, selector: str, value, readback, timeout_ms: int) -> None:
     loc.fill(str(value), timeout=timeout_ms)
     got = (loc.input_value() or "").strip()
     if got != (readback or ""):
-        raise SectionFillError(f"{selector}: reads back {got!r}, expected {readback!r}")
+        raise SectionFillError(f"{selector}: does not read back the approved value")
 
 
 def _set_checkbox(page, selector: str, want: bool, timeout_ms: int) -> None:
@@ -379,6 +379,12 @@ def combobox_shows(page, selector: str, want_text: str | None, want_id: str | No
     return want_id is None or got["id"] is None or got["id"] == want_id
 
 
+def _own_list(page, loc):
+    """The list a combobox names as its own right now (aria-controls / aria-owns), or None."""
+    ac = loc.get_attribute("aria-controls") or loc.get_attribute("aria-owns") or ""
+    return page.locator(f"[id='{ac}']") if _LIST_ID.fullmatch(ac) else None
+
+
 def _close_list(page, loc) -> None:
     try:
         loc.press("Escape")
@@ -392,21 +398,24 @@ def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
 
     D141, following D108/D109: nothing is ever typed into it; it is opened by a click on the
     control, then (a react-select-style control) on its container; options are read only from the
-    control's own list (aria-controls / aria-owns), never from the rest of the page; exactly one
-    option may read ``want_text`` and, where it exposes an id, that id must be the frozen one; the
-    choice is then proven by readback (``combobox_shows``). No near match is ever accepted."""
+    list the control names as its own (aria-controls / aria-owns) once it is open (a react-select
+    control names none until then, D130), never from the rest of the page, and a control that
+    names none when open is refused; exactly one option may read ``want_text`` and, where it
+    exposes an id, that id must be the frozen one; the choice is then proven by readback
+    (``combobox_shows``). No near match is ever accepted."""
     loc = page.locator(selector).first
     loc.scroll_into_view_if_needed(timeout=timeout_ms)
-    ac = loc.get_attribute("aria-controls") or loc.get_attribute("aria-owns") or ""
-    if not _LIST_ID.fullmatch(ac):
-        raise SectionFillError(f"{selector}: names no list of its own")
-    listbox = page.locator(f"[id='{ac}']")
     loc.click(timeout=timeout_ms)
-    if not listbox.first.is_visible():
+    listbox = _own_list(page, loc)
+    if listbox is None or not listbox.first.is_visible():
         box = loc.locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), "
                           "' select__control ')][1]")  # fmt: skip
         if box.count():
             box.first.click(timeout=timeout_ms)
+            listbox = _own_list(page, loc)
+    if listbox is None:
+        _close_list(page, loc)
+        raise SectionFillError(f"{selector}: names no list of its own")
     try:
         listbox.first.wait_for(state="visible", timeout=timeout_ms)
     except Exception:  # noqa: BLE001
@@ -423,15 +432,15 @@ def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
             hits.append(option)
     if len(hits) != 1:
         _close_list(page, loc)
-        raise SectionFillError(f"{selector}: {len(hits)} options read exactly {want_text!r}")
+        raise SectionFillError(f"{selector}: {len(hits)} options read the approved text exactly")
     exposed = hits[0].get_attribute("data-value")
     if want_id is not None and exposed is not None and exposed != want_id:
         _close_list(page, loc)
-        raise SectionFillError(f"{selector}: the option {want_text!r} records another id")
+        raise SectionFillError(f"{selector}: the approved option records another id")
     hits[0].click(timeout=timeout_ms)
     page.wait_for_timeout(50)
     if not combobox_shows(page, selector, want_text, want_id):
-        raise SectionFillError(f"{selector}: does not show {want_text!r} after choosing")
+        raise SectionFillError(f"{selector}: does not show the approved option after choosing")
 
 
 def _apply_op(page, op: FillOp, timeout_ms: int) -> None:

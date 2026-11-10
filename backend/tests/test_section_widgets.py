@@ -124,6 +124,8 @@ def test_section_comboboxes_are_never_typed_into(api, receiver):
 
 
 def test_a_react_select_section_reads_back_from_its_single_value(api, receiver):
+    # Its comboboxes name their list (aria-controls) only while open, as the one real react-select
+    # recorded did (D130): the list is read after opening.
     app_id = application(api, receiver, widget="react_select")
     assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
     got = sent(receiver)
@@ -143,12 +145,35 @@ def test_a_choice_the_page_ignores_is_never_submitted(api, receiver):
     assert receiver.ledger()["accepted"] == 0
 
 
-def test_an_option_recording_another_id_is_refused(api, receiver):
+def test_a_control_recording_another_id_after_choosing_is_refused(api, receiver):
     app_id = application(api, receiver, widget="wrong_value")
-    assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    assert "after choosing" in attempt(aid).outcome_detail
     led = receiver.ledger()
     assert led["accepted"] == 0
     assert "zz" not in str(led["acceptances"])
+
+
+def test_an_option_exposing_another_id_is_never_clicked(api, receiver):
+    # The page re-keys the approved school's option once its list opens: refused before the click,
+    # so the control never records the other id.
+    app_id = application(api, receiver, widget="option_other_id")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    detail = attempt(aid).outcome_detail
+    assert "school--0" in detail and "records another id" in detail
+    assert "State University" not in detail  # the refusal names the control, never the value
+    assert receiver.ledger()["accepted"] == 0
+
+
+def test_a_row_the_page_shows_beyond_the_plan_must_hold_nothing(api, receiver):
+    # One approved education record; the page shows a second row already holding a start year.
+    app_id = application(api, receiver, widget="extra_row")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    assert "did not keep their values" in attempt(aid).outcome_detail
+    assert receiver.ledger()["accepted"] == 0
 
 
 def test_an_end_date_the_page_fills_for_a_current_role_is_refused(api, receiver):
