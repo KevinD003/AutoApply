@@ -36,6 +36,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D141 an employment stand-in; section comboboxes safe on react-select pages | merged (#50, 98fe380, tree as predicted); its PR CI passed all four jobs on 2ead6ff |
 | D142 a Workday-style multi-page wizard, filled forward only; never run again once entered | merged (#51, 25d04ea, tree as predicted); its PR CI passed all four jobs on 85e0213 |
 | D143 recovery hardening: a run budget, one task time limit and no soft limit, leases that follow progress, verification requests that end with their attempt | branch `recovery-hardening` (from D142's branch, 85e0213, with `main` merged in); reviewed independently, its seven findings fixed (bb94e9f); not merged |
+| D144 attempts on a queue and a worker of their own; the schedule and the periodic tasks on another | branch `attempt-queue` (from D143's branch, fa36039); not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -187,6 +188,21 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     against the order outcomes use since this slice; a code accepted in the last moment of its
     wait was erased unused; two test timings; a missing test that the budget never fires
     after the send gate.
+- **D144 (branch `attempt-queue`, not merged).** Rank 11, attempts on a queue and worker of
+  their own:
+  - measured first: one worker taking every task, both of its processes held by attempts
+    waiting for codes, did not take a periodic task until a code was entered (20 s watched;
+    taken 0.6 s after the code). Since D143 such a wait may last ten minutes;
+  - an attempt's task goes to its own queue (`attempts`), every other task to the default one;
+    each queue is declared with its own exchange, so a message reaches one queue only;
+  - the Compose stack runs two workers: `worker` (attempts only, one process for the one
+    browser slot) and `scheduler` (the schedule and the periodic tasks; no runner token, no
+    control socket). A second application waits in the queue instead of failing after 40 s,
+    and a stopped worker's attempt is recovered while that worker is still down;
+  - a message for an attempt on another queue (one waiting at an upgrade) is passed on once
+    and never run there; a worker started without `-Q` still takes both (development, tests);
+  - the smoke test asks both workers by name; the deployment guide and the owner's stop
+    controls name both (`docker compose stop worker scheduler` stops everything).
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
   Pausing there and later queuing one new attempt is a retry after `sending`, which CLAUDE.md
@@ -384,6 +400,14 @@ hold up the sweeper, the outbox relay and the mailbox reader.
 - **Equal soft and hard limits on the attempt's task.** Rejected after a run: Celery's prefork
   pool arms the soft limit first whenever one is set and starts the hard one from it, so the
   soft limit still fired. The default has none now, and every other task sets its own.
+- **Declaring the attempts' queue by name only** (D144's first draft, caught before any run by
+  reading Celery's source). A queue declared without an exchange is bound to the default
+  exchange and routing key, so it would have received every periodic task too, and the default
+  queue every attempt. Each queue names its own exchange and key; a test reads the broker's
+  lists after each kind of publish.
+- **Passing a misplaced attempt message on through the outbox** (D144). Durable, but a message
+  passed on that way cannot be told from a new one, so a broker naming the queue differently
+  would pass it on for ever. It is published directly, marked, and passed on once.
 
 ## Blockers (external; each blocks one action, not the local work)
 

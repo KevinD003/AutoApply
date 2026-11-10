@@ -33,7 +33,7 @@ def receiver():
 
 
 @pytest.fixture(autouse=True)
-def _clean(receiver):
+def _reset_receiver_and_broker(receiver):
     receiver.reset()
     clean_broker()
     yield
@@ -183,6 +183,7 @@ def test_a_message_on_another_queue_is_passed_on_and_never_run_there(api, receiv
     aid = queue(api, prepared_application(api, receiver))
     assert svc.relay_outbox(publish_as_before_the_queues) == 1
     assert queued(broker()) == {"celery": 1, "attempts": 0}
+    requests_before = receiver.ledger()["requests"]  # the form as it was read, nothing more
     periodic_worker = Worker(queues="celery", concurrency=1)
     try:
         periodic_worker.wait_log("succeeded in", 30)
@@ -190,7 +191,7 @@ def test_a_message_on_another_queue_is_passed_on_and_never_run_there(api, receiv
         wait_until(lambda: queued(broker()) == passed_on, 20, "the message to be passed on")
         assert "'forwarded'" in periodic_worker.text()
         assert attempt(aid).state == "pending" and claims(aid) == 0
-        assert receiver.ledger()["requests"] == []  # that worker opened nothing
+        assert receiver.ledger()["requests"] == requests_before  # that worker opened nothing
         attempts_worker = Worker(queues="attempts", concurrency=1)
         try:
             assert wait_state(aid, ENDED) == "confirmed"

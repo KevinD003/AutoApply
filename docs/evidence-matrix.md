@@ -9,6 +9,31 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Attempts on a queue and a worker of their own (D144, 2026-11-10; local only)
+
+Nothing here ran against a real page or a real account. Branch `attempt-queue` (from D143's
+branch, fa36039). Real Celery prefork workers on the run's own Redis; the receiver's ledger is
+the oracle for everything said to have reached the employer. Every form is a local stand-in.
+Tests in `tests/test_attempt_queue.py` unless another file is named. The Compose layout itself
+runs only in CI (the `docker-smoke` and `execution-compose` jobs): this sandbox has no Docker
+daemon, so the rows that name a Compose scenario are evidence only once that job has passed.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| Only an attempt's task goes to the attempts' queue; every other task, and everything the schedule names, to the default queue; each queue has an exchange and routing key of its own | `test_only_an_attempts_task_goes_to_the_attempts_queue` | Celery's own router for every registered `noefforts.` task; the declared queues' exchanges and keys; the schedule's task names |
+| Each message reaches one queue only: an attempt's (from the relay, or the task's own `delay`) the attempts' queue, a periodic task's the default queue | `test_each_message_reaches_one_queue_only` | the real broker: the length of each queue's Redis list after each publish (0/1, 0/2, then 1/2) |
+| A worker started without `-Q` takes both queues (development, the tests) | `test_a_worker_started_without_queues_takes_both` | one real worker: the attempt `confirmed`, a periodic task received by the same worker; receiver ledger: accepted 1 |
+| Two attempts waiting for codes do not hold up the periodic tasks; a third application waits in the queue, unclaimed | `test_two_attempts_waiting_for_codes_do_not_hold_up_the_periodic_tasks` | a worker of the attempts' queue with two processes, both held in the code wait, and a worker of the default queue: a sweep published then is received and finished by the second worker at once, recovering nothing; the third attempt `pending`, no claim, its message still in the broker's list; both codes entered: all three `confirmed`, one claim each; receiver ledger: accepted 3 |
+| A message for an attempt on another queue is passed on and never run there | `test_a_message_on_another_queue_is_passed_on_and_never_run_there` | published to the default queue as a relay did before D144; a worker of that queue returns `forwarded`, claims nothing and makes no request to the receiver; the message is then in the attempts' list; a worker of that queue runs it: `confirmed`, one claim; receiver ledger: accepted 1 |
+| A message is passed on once at most | `test_a_message_is_passed_on_once_at_most`, `test_a_message_passed_on_is_marked_as_passed_on` | a message already marked, on the default queue: the worker of that queue runs it (`confirmed`, accepted 1) and passes nothing on; the mark is set by the pass-on and only then (the task run with a delivery from the default queue, the publish recorded) |
+| A task called directly (no delivery) is run | `test_a_task_called_directly_is_run` | the task function and its eager `apply`, with an unknown attempt: `ignored` (the claim's answer), nothing published |
+| The attempts' worker removes its own host's stale browser directories, never a live process's | `test_an_attempts_worker_removes_its_own_hosts_stale_browser_directories` | a directory named for a process that has exited is gone after the task; one named for this process stays |
+| The smoke test's ping passes only when both named workers answered | `test_the_smoke_check_needs_both_named_workers_to_answer`; `scripts/test_smoke_lib.sh` | `scripts/smoke_lib.sh` run on Celery's real `inspect ping` reply: with the `attempts@` worker alone it fails, with `scheduler@` too it passes; the script's own cases: one worker, both, and a name that only ends like the wanted one |
+| Compose: `worker` takes only the attempts' queue with one process per browser slot; `scheduler` takes only the default queue, runs the schedule, and has no runner token, no control socket and only the application's network; every declared queue has one worker | `test_deployment_config.py`: `test_attempts_have_a_worker_of_their_own_and_the_schedule_runs_once` | `docker-compose.yml` read as a file, against the queues the application declares and the runner's `MAX_SESSIONS` |
+| Both overlays treat the two workers alike; the scheduler gets every owner setting and starts only once the API is healthy | `test_deployment_config.py`: `test_the_execution_test_overlay_gives_both_workers_the_same_settings`, `test_the_greenhouse_pilot_override_changes_only_what_it_says`, `test_every_owner_setting_in_the_example_reaches_the_api_and_the_worker`, `test_the_worker_and_web_app_start_only_once_the_api_is_healthy` | the three Compose files and `.env.example` read as files |
+| In the Compose stack: each worker takes its own queue; while the worker's one process waits for a code, the scheduler publishes a second application, which waits unclaimed; both are then submitted once (CI only) | `compose_tests/run_execution_test.py`: `s_scheduler_runs_while_an_attempt_waits_for_its_code` | Celery's `inspect active_queues`; the broker's list lengths; the scheduler's and the worker's logs; receiver ledger: one acceptance each |
+| In the Compose stack: a killed worker's attempt is swept while that worker is still down (CI only) | `compose_tests/run_execution_test.py`: `s_worker_killed_mid_submit` | the attempt `unknown` with `worker` not running and `scheduler` running; receiver ledger: at most one acceptance |
+
 ## Recovery hardening: a run budget, one task time limit, leases that follow progress, requests that end with their attempt (D143, 2026-11-10; local only)
 
 Nothing here ran against a real page or a real account. Branch `recovery-hardening` (from D142's
