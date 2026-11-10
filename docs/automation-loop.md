@@ -22,7 +22,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 
 | What | Where |
 |---|---|
-| `main` | 32c8f7c (tree 201ddbd, as predicted): #45 D136. Before it, 53b28af (tree fe5c8c3): #44 D135 (main CI #269 green on all four jobs); 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
+| `main` | 25d04ea (tree a3054b8, as predicted): #51 D142. Before it, 98fe380 (tree b75d64c): #50 D141; 3df7d0d (tree a625f26): #49 D140; 4585c59 (tree fac890a): #48 D139; a7f8742 (tree af2f25f): #47 D138; e2fd286 (tree 1d69376): #46 D137; 32c8f7c (tree 201ddbd): #45 D136; 53b28af (tree fe5c8c3): #44 D135 (main CI #269 green on all four jobs); 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
 | D131 follow-up (the review's remaining findings) | merged (#39, bd38529); main CI #254 passed all four jobs |
 | D132 form-change pause and questions tab | merged (#40, c19c683); main CI #260 passed all four jobs |
 | D133 reuse and suggestion guards | merged (#41, da7ac61); its PR CI passed all four jobs on 360f34c, and main CI #265 on da7ac61 |
@@ -34,7 +34,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D139 your self-identification on Greenhouse- and Workday-shaped forms; a change retires its approvals at once | merged (#48, 4585c59, tree as predicted); its PR CI passed all four jobs on 3df9d9d |
 | D140 education and work history reviewable and diffed; a record edit retires its approvals at once | merged (#49, 3df7d0d, tree as predicted); its PR CI passed all four jobs on 48fde99 |
 | D141 an employment stand-in; section comboboxes safe on react-select pages | merged (#50, 98fe380, tree as predicted); its PR CI passed all four jobs on 2ead6ff |
-| D142 a Workday-style multi-page wizard, filled forward only; never run again once entered | branch `workday-wizard` (from D141's branch, 2dfc956; D141's final branch and `main` merged in after #50); not merged |
+| D142 a Workday-style multi-page wizard, filled forward only; never run again once entered | merged (#51, 25d04ea, tree as predicted); its PR CI passed all four jobs on 85e0213 |
+| D143 recovery hardening: a run budget, one task time limit and no soft limit, leases that follow progress, verification requests that end with their attempt | branch `recovery-hardening` (from D142's branch, 85e0213, with `main` merged in); reviewed independently, its seven findings fixed (bb94e9f); not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -50,7 +51,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 
 | # | Workflow | Greenhouse | Workday |
 |---|---|---|---|
-| 1 | Known answer fills and survives readback | fx (gh2 stand-in) | fx, single-page approximation; D142 (branch): the five-page wizard stand-in, each page read back before its Next, the unanswered fields included (receiver ledger) |
+| 1 | Known answer fills and survives readback | fx (gh2 stand-in) | fx, single-page approximation; D142 merged (#51): the five-page wizard stand-in, each page read back before its Next, the unanswered fields included (receiver ledger) |
 | 2 | New question → questions tab → saved → resumes | fx (gh2 by id and pilot stand-in), on `main` since D132 (#40) | fx (e2e), on `main` since D132 |
 | 3 | Future reuse | unit (resolver), generic form; D133 merged (#41): suggestions judge the saved side, "Use here only"; D138 merged (#47): a saved answer reaches the next gh2 job that asks the same question (receiver ledger) | D138 merged (#47): reused on the next posting (receiver ledger); single page |
 | 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 merged (#47): a gh2 look-alike naming a country is neither reused nor suggested | D138 merged (#47): "Preferred shift" never saved or reused |
@@ -58,12 +59,12 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger) | fx at capture |
 | 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger) | absent |
 | 8 | Answer edits invalidate approvals | fx; D138 merged (#47): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger); D140 merged (#49): an education or employment edit retires the approval at once; on the education stand-in, approved again, the new degree is sent, and an edit while a worker fills is stopped at the send gate (receiver ledger) | fx (single page) |
-| 9 | Recovery without duplicates | fx on the generic form; not run on gh2 | partial; D142 (branch): on the wizard stand-in a lost or killed worker leaves the record of each page's Next, is never taken over, and the application is never run again (receiver ledger) |
+| 9 | Recovery without duplicates | fx on the generic form; D143 (branch): on gh2 by id a worker killed before anything was sent is run again once, and one killed after entering data, at the send gate, around the final click or after the employer's receipt is never run again; a run past its budget stops before the final click (gh2 by id and the pilot stand-in; receiver ledger) | partial; D142 merged (#51): on the wizard stand-in a lost or killed worker leaves the record of each page's Next, is never taken over, and the application is never run again (receiver ledger); D143 (branch): the same kills on the single-page form and on the wizard's review page, and a wizard past its budget stops for good (receiver ledger) |
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus; D139 merged (#48): self-identification on gh2 (by id and pilot) up to the ledger: off or unmatched never sent, a label or a decline label sent, your per-application "Don't disclose" beats it, a required one without a match waits; a change retires its approvals at once (queued, held by a worker, under the standing rule: nothing withdrawn is sent) | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify"; D139 merged (#48): self-identification sent as each option's own value, each question only from the label naming its category, a bare "No" or two labels never used, a decline only where the choices name a category, a required gender without a match waits; withdrawal and change retire the approval (single page; the Workday decline wording is a fixture assumption) |
-| 11 | Upload failure preserves evidence | fx for UploadFailed; D137 merged (#46): every disclosure is recorded as it is made (receiver ledger): an unexpected error after an upload keeps its evidence (generic form, gh2 by id, the API route); a killed worker after an upload (generic form); a failure during an upload counts the document as possibly received (generic form, gh2 by id, the first Greenhouse-style page, the API route); a draft or document the API received and answered badly is recorded | fx; D137: a failure during an upload counts it as possibly received (Workday-style page); D142 (branch): each page's Next is recorded as disclosure evidence as it is made (wizard stand-in) |
-| 12 | Uncertain send quarantined | fx | fx; D142 (branch): on the wizard stand-in, a Next after which the page shows a confirmation or "already applied" is quarantined in `submitted_unconfirmed`, as is an unknown final click; never run again (receiver ledger) |
-| 13 | Cancellation respected | fx on the generic form; D134 merged (#43), on the gh2 stand-in through the pilot (receiver ledger): a pause stops what the standing rule queued, your own queued work runs on, a revocation stands | partial; D142 (branch): a revocation or a profile edit between wizard pages stops at the next page's gate; a cancel there is refused (`wizard_in_progress`), so a Next that submits is still quarantined (receiver ledger) |
-| 14 | Tenant isolation | fx (per-application routes) | D142 (branch): fx on the wizard stand-in: another account on the same posting is not refused and reaches nothing of the first (404) |
+| 11 | Upload failure preserves evidence | fx for UploadFailed; D137 merged (#46): every disclosure is recorded as it is made (receiver ledger): an unexpected error after an upload keeps its evidence (generic form, gh2 by id, the API route); a killed worker after an upload (generic form); a failure during an upload counts the document as possibly received (generic form, gh2 by id, the first Greenhouse-style page, the API route); a draft or document the API received and answered badly is recorded | fx; D137: a failure during an upload counts it as possibly received (Workday-style page); D142 merged (#51): each page's Next is recorded as disclosure evidence as it is made (wizard stand-in) |
+| 12 | Uncertain send quarantined | fx; D143 (branch): at the task's time limit the worker process is ended and the sweeper calls the outcome unknown (a real worker, generic form); the send lease covers the page's own wait for its answer; a code typed late in its wait is still answered under a lease (generic form); on gh2 by id a worker killed around the final click is quarantined (receiver ledger) | fx; D142 merged (#51): on the wizard stand-in, a Next after which the page shows a confirmation or "already applied" is quarantined in `submitted_unconfirmed`, as is an unknown final click; never run again (receiver ledger); D143 (branch): a worker killed around the final click on the single-page form, or before it on the wizard's review page, is quarantined and never run again (receiver ledger) |
+| 13 | Cancellation respected | fx on the generic form; D134 merged (#43), on the gh2 stand-in through the pilot (receiver ledger): a pause stops what the standing rule queued, your own queued work runs on, a revocation stands; D143 (branch): a cancel after data was entered says what may have been entered, and a worker whose attempt was cancelled stops between fields (generic form) | partial; D142 merged (#51): a revocation or a profile edit between wizard pages stops at the next page's gate; a cancel there is refused (`wizard_in_progress`), so a Next that submits is still quarantined (receiver ledger) |
+| 14 | Tenant isolation | fx (per-application routes) | D142 merged (#51): fx on the wizard stand-in: another account on the same posting is not refused and reaches nothing of the first (404) |
 | loop | Durable pause → answer → recheck → continue | fx, on `main` since D132 (#40): pause, read again, answer, one new run (receiver ledger) | fx (e2e), on `main` since D132 |
 | tab | "Questions needing your answer" | on `main` since D132 (#40) (`/questions`) | on `main` since D132 |
 
@@ -151,7 +152,7 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   greenhouse_live approvals once. Its review's three findings fixed (a stale v5 pin, two checks
   without a test, an overclaim), and a combobox's list is read once open, as real react-select
   names it.
-- **D142 (branch `workday-wizard`, not merged).** Rank 9: a Workday-style multi-page wizard
+- **D142 (merged, #51).** Rank 9: a Workday-style multi-page wizard
   stand-in, filled forward only. A gate commits `step_authorized` before each page is filled and
   before each Next; each page is read back, unanswered fields included, before its Next; a Next is
   clicked once and its answer recorded. Anything unexpected after disclosure ends the attempt for
@@ -161,6 +162,31 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   (continuing needs the owner). Adapter version `fixture-workday-2`. Its adversarial review upheld
   8 minor findings, all fixed: a cancel mid-wizard is refused (revoke stops it), a stopped wizard
   stays where it stopped, and six guards gained a test that fails without them.
+- **D143 (branch `recovery-hardening`, not merged).** Rank 10, recovery hardening:
+  - the runner bounds its own run: a budget (420 s to reach the final click) it checks between
+    steps; past it the run stops as its phase says and the final click is never made;
+  - an attempt's task has one time limit (1380 s: the budget, the waits after the click and the
+    whole wait for a code) and no soft limit. A run with a real worker showed that a soft limit
+    landing inside a browser wait is never handled: the browser cannot close, the handler never
+    runs, and the process hangs until the hard limit. At the limit the process is ended and the
+    sweeper decides; every other task keeps 240/300;
+  - a lease follows progress (evidence, and a hook between fields) and covers each wait for the
+    employer's answer, also for a code typed late in its wait;
+  - a verification request ends with its attempt: closed and its code erased at any outcome,
+    refused once its attempt no longer waits, and swept when stale;
+  - a cancel after entry and a stopped wizard say what happened ("sent there with Next", "never
+    made the final submit", an unanswered Next "does not know whether that page was saved");
+  - a worker killed at each point on the gh2 and Workday-style stand-ins is never run again
+    once data was entered; the browser runner's session limit is 1500 s;
+  - its independent review found no path to a second submission, to a retry after disclosure
+    or sending, or to a wrong outcome, and seven things to change, all fixed: the egress
+    proxy's session (900 s) ended inside the longer code wait (now 1500 s); a cancelled attempt
+    could still hand over a document (the runner now checks before each document and each
+    Next, and the cancel text says what is guaranteed); the Greenhouse watch could outlast the
+    figure its lease was sized to (the clock ends it now); the mailbox filler took its locks
+    against the order outcomes use since this slice; a code accepted in the last moment of its
+    wait was erased unused; two test timings; a missing test that the budget never fires
+    after the send gate.
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
   Pausing there and later queuing one new attempt is a retry after `sending`, which CLAUDE.md
@@ -184,9 +210,13 @@ half, #46) keeps the evidence of what reached the employer whatever fails after 
 the employer. **D139** (rank 7, #48) shows your self-identification there too, and a
 change to it retires its approvals at once. **D140** (rank 8, first half, #49) makes
 education and work history reviewable and diffed, and **D141** (rank 8, second half, #50) adds an
-employment stand-in and react-select-safe section comboboxes. **D142** (rank 9, on its
-branch) fills the Workday-style multi-page wizard stand-in forward only, a gate before every
-step, and never runs an application entered there again. Next, rank 10: recovery hardening.
+employment stand-in and react-select-safe section comboboxes. **D142** (rank 9, #51) fills
+the Workday-style multi-page wizard stand-in forward only, a gate before every
+step, and never runs an application entered there again. **D143** (rank 10, on its branch)
+hardens recovery: a run budget the runner checks itself, one task time limit and no soft limit,
+leases that follow progress, and verification requests that end with their attempt. Next,
+rank 11: attempts on a queue and worker of their own, so two attempts waiting for codes never
+hold up the sweeper, the outbox relay and the mailbox reader.
 
 ## Unvalidated or partly validated changes
 
@@ -225,10 +255,16 @@ step, and never runs an application entered there again. Next, rank 10: recovery
 - **D141:** merged (#50, 98fe380, tree as predicted); its PR CI passed all four jobs on 2ead6ff.
   Locally: the new tests, their sabotage runs and the suites that touch sections, the stand-in
   and the extraction version (Tests run below).
-- **D142 (branch `workday-wizard`):** the new tests, their sabotage runs and the regression
-  set the build plan names (29 files before the review, 27 after it), locally (Tests run
-  below). The full suites run in its CI (`main` with D141 merged in). `scripts/validate.sh all`
-  was not run (it runs the whole backend and e2e suites).
+- **D142:** merged (#51, 25d04ea, tree as predicted); its PR CI passed all four jobs on
+  85e0213. Locally: the new tests, their sabotage runs and the regression set the build plan
+  names (29 files before the review, 27 after it) (Tests run below).
+- **D143 (branch `recovery-hardening`):** the new tests, their sabotage runs, a real Celery
+  worker run to its time limit and the regression set before the review's fixes, locally
+  (Tests run below); the regression set on the fixed code was still running when this was
+  committed. The full suites run in its CI. `scripts/validate.sh all` was not run. Not tested:
+  the clock's bound on the code step's button wait, a worker process killed on
+  `greenhouse_live`, and the runner passing the Greenhouse code-step figure to the lease (the
+  figure and the passing are each tested, on different adapters).
 
 ## Tests run (this loop)
 
@@ -310,6 +346,23 @@ step, and never runs an application entered there again. Next, rank 10: recovery
 | D142 sabotage runs on 98736d1 (15 changes, each in turn): the six never-again checks again (their test changed), then the nine checks the review added or found untested | each fails its test: the six (1 each); the cancel refusal (2), the settle guard (2), the review list's exclusion (2), the fingerprint's wizard part deleted (2), rule 6's last-page half (1), the next-page check (1), the manual form's refusal (1), the `wizard_adapter` refusal (1), the wizard markers on a single-page package (1) |
 | D142 after the review: the regression set again with `test_sections_review.py` and `test_version_diff.py`, without the tests that read documents (27 files, JUnit), on 98736d1 | exit 0; 513 passed, 0 failures (26 min) |
 | D142 after the review's documents: `ruff format .`, `ruff check .`, `ruff format --check .`; `pytest tests/test_doc_references.py tests/test_approval_reasons.py tests/test_lever.py tests/test_audit_inventory.py tests/test_provider_admission.py` (JUnit) | ruff clean (374 files unchanged); exit 0; 178 passed, 0 failures |
+| D143: the nine existing execution suites on the first build (JUnit) | exit 0; 185 passed |
+| D143: a probe outside the application: a signal raising during Playwright's synchronous waits | during `time.sleep` handled and the browser closed; during each browser wait the script had not finished after 60 s; with a stack dump, the exception surfaced in the caller and `browser.close()` never returned |
+| D143, first build: a real Celery prefork worker, soft limit 6 s and hard 66 s, the receiver answering the final click after 45 s (a temporary test, not committed) | soft limit logged at 13:58:23, no outcome written, killed at the hard limit at 13:59:23; the attempt still `sending` |
+| D143 after the redesign: `pytest tests/test_recovery_hardening.py` (JUnit) | 38 passed, 3 failed (equal soft and hard limits still fired the soft one: fixed by removing it; two test bugs); the four fixed or changed rows: 8 passed |
+| D143: the new tests with the nine suites and `test_celery_execution` (11 files, JUnit), before the unreachable soft-limit handling was dropped | exit 0; 230 passed |
+| D143 sabotage runs on a83b0ce (31 changes, each in turn) | 30 fail their test; 1 did not (a send lease under the submit timeout: bounds too loose for the tests' 4-second timeout) |
+| D143: the send-lease test made exact (c307576), then the three lease changes again | each fails its test |
+| D143: the 64 test files that run an attempt or touch what changed (every adapter suite, the execution, recovery, rehearsal, evidence, inbox, notification, deployment-configuration and container-runner suites, the Celery and broker-failure suites, `test_doc_references`, `test_audit_inventory`; JUnit), on a83b0ce | exit 0; 1539 passed, 0 failures (54 min) |
+| D143 on the merged head 3930850: `pytest tests/test_recovery_hardening.py tests/test_workday_wizard.py tests/test_code_wait_quarantine.py` (JUnit) | exit 0; 87 passed |
+| D143: a cancel while a form is filled, a test added after the runs above (`pytest tests/test_recovery_hardening.py -k cancel_`, JUnit) | exit 0; 3 passed |
+| D143 before the review: `ruff format .`, `ruff check .`, `ruff format --check .`; the tests that read the documents | ruff clean (375 files unchanged); 177 passed, 1 failed (the evidence matrix still cited a test removed with the soft-limit handling; its row removed); then exit 0, 178 passed |
+| D143: three earlier changes run again once the cancel-while-filling test existed (no progress hook, each cancel text), on 9c92e54 | each fails its test |
+| D143 review fixes: `pytest tests/test_recovery_hardening.py tests/test_inbox.py -k "outlast or never_stops_a_run or last_moment or hands_over_no_document or watch_ends_by_the_clock or send_lease or sweeper_closes_its_request or while_a_form_is_filled or typed_late"` (JUnit) | exit 0; 9 passed |
+| D143 review fixes: the code-wait, quarantine and sweeper tests in `test_recovery_hardening.py`, `test_code_wait_quarantine.py` and `test_execution_security.py` (`-k "last_moment or typed_late or then_ends_is_erased or only_while_its_attempt_waits or code_checkpoint or quarantine or unknown_result or sweeper"`, JUnit) | exit 0; 12 passed |
+| D143 review fixes removed in turn on bb94e9f (9 changes), then three earlier changes whose code or test the fixes touched | all 12 fail their test |
+| D143: the regression set again on the reviewed code (62 of the 64 files, without the two that read the documents; JUnit), on bb94e9f | started 18:33 UTC, still running when this was committed; result in the pull request, recorded here with the next change |
+| D143 after the last edit (the documents and one docstring): `ruff format .`, `ruff check .`, `ruff format --check .`; the tests that read the documents, `test_lock_order.py` and `test_inbox.py` (JUnit) | ruff clean (375 files unchanged); exit 0; 270 passed |
 
 ## Failed approaches and rejected designs
 
@@ -324,6 +377,13 @@ step, and never runs an application entered there again. Next, rank 10: recovery
   re-read compares the job data and the page without its scripts, so a page-only change, or the
   page's reaction to entered answers, would always end "unexplained" and block approval. Those
   stay plain stops.
+- **A longer soft time limit on the attempt's task, handled by phase** (D143's first build).
+  Rejected after a run with a real worker: a soft limit that lands inside a browser wait leaves
+  the browser unable to close, so the runner's handler never runs and the process hangs until
+  the hard limit. The runner checks a run budget itself between steps instead.
+- **Equal soft and hard limits on the attempt's task.** Rejected after a run: Celery's prefork
+  pool arms the soft limit first whenever one is set and starts the hard one from it, so the
+  soft limit still fired. The default has none now, and every other task sets its own.
 
 ## Blockers (external; each blocks one action, not the local work)
 
@@ -355,9 +415,12 @@ step, and never runs an application entered there again. Next, rank 10: recovery
 
 ## Exact next action
 
-1. D142 (branch `workday-wizard`, `main` merged in after D141): open its pull request, merge it
-   when its four checks pass.
-2. Rank 10: recovery hardening.
+1. D143 (branch `recovery-hardening`, `main` with D142 merged in): open its pull request,
+   merge it when its four checks pass, and record here the result of the regression run on
+   its reviewed code.
+2. Rank 11: attempts on a queue and worker of their own, so two attempts waiting for codes
+   never hold up the sweeper, the outbox relay and the mailbox reader. Then ranks 12 and 13
+   (`docs/remaining-work.md`).
 3. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it

@@ -15,6 +15,8 @@ part of the product and must never be deployed.
   `required_eeo` (the Gender self-identification question becomes required, as some boards make
   it; D61). Option
   `verify_drop=true` (with `otp`): the code is accepted but the reply never arrives (D50).
+  Option `verify_delay_s` (with `otp`): the code is accepted at once and the reply arrives that
+  many seconds later (D143).
 - `idempotent=true` makes repeated submissions of the same form token return the original
   receipt; `idempotent=false` accepts every POST, so duplicate-send bugs are visible.
 - Two labelled Greenhouse-style approximations, mounted on the same receiver and ledger. Neither

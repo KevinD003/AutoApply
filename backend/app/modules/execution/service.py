@@ -19,9 +19,13 @@ prerequisite relies on (a rehearsal record or a receipt, FOR SHARE). Inserting a
 references an application (evidence, events) key-share locks the application too, after the
 attempt: the same order. Paths that never lock an attempt (approve, revoke, answers, withdraw,
 evidence deletion) start at the application. A checkpoint row is locked only alone (the user
-entering a code) or while holding its attempt (the worker). A form-change pause (D132) is written
-after the approvals, under the attempt and application locks (the worker), or under the
-application lock alone (reading the form again, approving, cancelling).
+entering a code; D143: the sweeper's pass over stale requests, which holds nothing else and so
+never waits on a worker), while holding its attempt (the worker; D143: every outcome, and the
+sweeper recovering an attempt, which close its request), or after its application's key-share
+lock (D143: the mailbox entering a code, which then writes rows that key-share lock the
+application, and commits each code at once). A form-change pause (D132) is written after the
+approvals, under the attempt and application locks (the worker), or under the application lock
+alone (reading the form again, approving, cancelling).
 """
 
 import logging
@@ -30,7 +34,7 @@ import uuid
 from datetime import timedelta
 from typing import NamedTuple
 
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
@@ -594,11 +598,24 @@ def gate_before_disclosure(attempt_id, worker: str, gen: int) -> None:
         db.commit()
 
 
-def gate_before_send(attempt_id, worker: str, gen: int) -> None:
+def _watch_covered(watch_seconds: int | None) -> int:
+    """D143: the wait for an answer from the employer that a lease covers: what the adapter
+    says it may wait (`send_watch_seconds`), at least the submit timeout and at most
+    attempt_after_send_seconds."""
+    cfg = get_settings()
+    watch = max(cfg.submit_timeout_seconds, int(watch_seconds or 0))
+    return min(watch, max(cfg.attempt_after_send_seconds, cfg.submit_timeout_seconds))
+
+
+def gate_before_send(attempt_id, worker: str, gen: int, watch_seconds: int | None = None) -> None:
     """The linearization point. If this commits, this worker (and only it) may click submit.
     Cancellation, revocation or edits committed before this gate reads them stop the send
     (_gate_checks says which writers wait for it); anything after it cannot recall data already
-    in flight."""
+    in flight. D143: `watch_seconds` is how long this adapter may wait for the click's answer
+    (`send_watch_seconds`); the send lease covers it (at least the submit timeout, at most
+    attempt_after_send_seconds, plus 30s), so the sweeper does not call a send it is still
+    watching unknown. A longer lease only delays that sweep: nothing ever runs a sending attempt
+    again."""
     with _gate_session() as db:
         att = _locked_attempt(db, attempt_id, worker, gen, S.claimed)
         try:
@@ -615,7 +632,7 @@ def gate_before_send(attempt_id, worker: str, gen: int) -> None:
         now = utcnow()
         att.state, att.send_started_at = S.sending, now
         att.rehearsal_prerequisite = verdict.status
-        att.lease_expires_at = now + timedelta(seconds=get_settings().submit_timeout_seconds + 30)
+        att.lease_expires_at = now + timedelta(seconds=_watch_covered(watch_seconds) + 30)
         _app_to(db, app, AppState.ready_to_submit, Actor.worker, "Filled and checked")
         _app_to(db, app, AppState.submitting, Actor.worker, "Submitting")
         event(db, att, "send_authorized")
@@ -753,6 +770,9 @@ def _apply_outcome(
     running attempt), recorded once. `reason_code`: a fixed code kept on the outcome event."""
     att.state, att.finished_at, att.outcome_detail = to, utcnow(), detail[:2000]
     att.lease_owner, att.lease_expires_at = None, None
+    # D143: its verification request ends with it. Nothing may take a code for an attempt that
+    # is over, and a code already typed is erased (lock order: the attempt, then its checkpoint).
+    close_checkpoints(db, att.id)
     if app_target is not None:
         _app_to(db, app, app_target, Actor.worker, detail[:900])
     for ev in evidence or []:
@@ -768,6 +788,16 @@ def _apply_outcome(
     extra = {"reason_code": reason_code} if reason_code else {}
     event(db, att, f"outcome_{to.value}", detail=detail[:500], **extra)
     record(db, att.user_id, f"execution.{to.value}", "application", att.application_id)
+
+
+def close_checkpoints(db: Session, attempt_id) -> int:
+    """D143: this attempt's verification requests that still wait for a code, or hold one not
+    yet read, take no more and keep none. Called holding the attempt's row lock."""
+    return db.execute(
+        update(Checkpoint)
+        .where(Checkpoint.attempt_id == attempt_id, Checkpoint.status.in_(("open", "submitted")))
+        .values(status="expired", code=None)
+    ).rowcount
 
 
 def add_evidence(
@@ -788,9 +818,17 @@ def add_evidence(
 
 
 def record_evidence(attempt_id, worker, gen, kind, data, strength="none") -> None:
+    """Record evidence for an attempt this worker still holds (`_locked_attempt`). D143: that
+    is progress, so it also renews the lease as a heartbeat does (never shortening a longer
+    one): a long form that keeps disclosing is not taken for a lost worker."""
     with SessionLocal() as db:
         att = _locked_attempt(db, attempt_id, worker, gen, (S.claimed, S.sending, S.awaiting_code))
         add_evidence(db, att, kind, data, strength)
+        now = utcnow()
+        renewed = now + timedelta(seconds=get_settings().lease_seconds)
+        if att.lease_expires_at < renewed:
+            att.lease_expires_at = renewed
+        att.heartbeat_at = now
         db.commit()
 
 
@@ -974,9 +1012,9 @@ def pause_after_entry(attempt_id, worker, gen, reason: str, required: int) -> bo
 
 WIZARD_STOPPED = (
     "Stopped on the employer's multi-page form after entering data: up to {k} page(s) were "
-    "saved there with Next, and the employer may keep what was entered as a draft. NoEfforts "
-    "submitted nothing and will not run this application again: finish it on the employer's "
-    "site. Why: {reason}"
+    "sent there with Next, and the employer may keep what was entered as a draft. NoEfforts "
+    "never made the final submit and will not run this application again: finish it on the "
+    "employer's site. Why: {reason}"
 )
 WIZARD_POSSIBLY_SUBMITTED = (
     "Outcome unknown — check with the employer before doing anything: after a page's Next on "
@@ -1196,12 +1234,20 @@ def open_checkpoint(attempt_id, worker, gen, message: str) -> uuid.UUID:
         return cp.id
 
 
-def take_code(checkpoint_id, attempt_id, worker, gen) -> tuple[str | None, str]:
-    """Worker side: returns (code, status). The code is erased from the database as it is read."""
+def take_code(
+    checkpoint_id, attempt_id, worker, gen, watch_seconds: int | None = None
+) -> tuple[str | None, str]:
+    """Worker side: returns (code, status). The code is erased from the database as it is read.
+    D143: a code handed to the worker is about to be entered, so the lease is extended to cover
+    the watch for its answer (`watch_seconds`, the adapter's `code_watch_seconds`, bounded as
+    the send lease is, plus 30s; never shortened). The wait's own lease ends 30s after the
+    request does, and a code typed late in the wait would otherwise be answered after it."""
     with SessionLocal() as db:
-        _locked_attempt(db, attempt_id, worker, gen, S.awaiting_code)
+        att = _locked_attempt(db, attempt_id, worker, gen, S.awaiting_code)
         cp = db.scalar(select(Checkpoint).where(Checkpoint.id == checkpoint_id).with_for_update())
-        if cp.expires_at <= utcnow() and cp.status in ("open", "submitted"):
+        # D143: a held code is handed over even if the request's time has run out since: it was
+        # accepted in time (`submit_code` refuses after the expiry), and the lease covers it.
+        if cp.status == "open" and cp.expires_at <= utcnow():
             cp.status, cp.code = "expired", None
             db.commit()
             return None, "expired"
@@ -1209,6 +1255,9 @@ def take_code(checkpoint_id, attempt_id, worker, gen) -> tuple[str | None, str]:
             db.commit()
             return None, cp.status
         code, cp.code, cp.status = cp.code, None, "consumed"
+        covered = utcnow() + timedelta(seconds=_watch_covered(watch_seconds) + 30)
+        if att.lease_expires_at < covered:
+            att.lease_expires_at = covered
         db.commit()
         return code, "consumed"
 
@@ -1247,6 +1296,13 @@ def submit_code(db: Session, user_id, app_id, checkpoint_id, round_: int, code: 
         raise PermissionError("This verification request has expired.")
     if cp.status != "open" or cp.round != round_:
         raise PermissionError("This verification request is not waiting for a code.")
+    # D143: only while its attempt still waits for it. An attempt that ended closes its request
+    # (`close_checkpoints`); this refuses one left open by anything else. Read without a lock:
+    # the checkpoint row is locked alone here (lock order), and an attempt that ends after this
+    # read erases the code as it closes the request.
+    state = db.scalar(select(ExecutionAttempt.state).where(ExecutionAttempt.id == cp.attempt_id))
+    if state != S.awaiting_code:
+        raise PermissionError("This verification request is not waiting for a code.")
     if not _CODE.match(code or ""):
         raise ValueError("Codes are 4–12 letters, digits or dashes.")
     cp.code, cp.status = code, "submitted"
@@ -1256,6 +1312,14 @@ def submit_code(db: Session, user_id, app_id, checkpoint_id, round_: int, code: 
 
 # --------------------------------------------------------------------------------------------
 # Cancellation and recovery
+
+
+CANCELLED_AFTER_ENTRY = (
+    "Cancelled by you before anything was submitted. The worker stops at its next check: it may "
+    "type into a few more fields first, but it hands over no further document and never "
+    "submits. What it had already entered on the employer's page stays entered, and a document "
+    "it was handing over when you cancelled may have been received."
+)
 
 
 def _active_attempt(db: Session, app_id, *, nowait: bool = False) -> ExecutionAttempt | None:
@@ -1307,7 +1371,13 @@ def cancel(db: Session, app: Application) -> str:
     if att is not None:
         att.cancel_requested = True
         att.state, att.finished_at = S.cancelled, utcnow()
-        att.outcome_detail = "Cancelled by you before anything was submitted."
+        # D143: after the disclosure gate the worker may already have entered answers or
+        # uploaded a document, and one in flight when you cancelled is not recorded.
+        att.outcome_detail = (
+            CANCELLED_AFTER_ENTRY
+            if att.disclosure_started_at is not None
+            else "Cancelled by you before anything was submitted."
+        )
         event(db, att, "cancelled")
     transition(db, app, AppState.cancelled, Actor.user, "Cancelled")
     return "cancelled"
@@ -1399,7 +1469,33 @@ def sweep(publish_new: bool = True) -> dict:
                 log.warning("sweep: attempt %s not recovered (%s)", att_id, type(e).__name__)
                 out["errors"] += 1
         db.commit()
+    out["checkpoints_closed"] = close_stale_checkpoints()
     return out
+
+
+CHECKPOINT_GRACE_SECONDS = 60  # past its time before the sweeper closes a request itself
+
+
+def close_stale_checkpoints() -> int:
+    """D143: a verification request must not outlive its use. In its own transaction, holding
+    no attempt lock (so it can never wait on a worker inside the lock order), close every
+    request still open, or holding a code, whose attempt no longer waits for a code, or whose
+    time ran out more than a minute ago (a worker still polling closes its own sooner, and
+    reads "expired" either way). The code is erased. How many were closed."""
+    waiting = select(ExecutionAttempt.id).where(ExecutionAttempt.state == S.awaiting_code)
+    cutoff = utcnow() - timedelta(seconds=CHECKPOINT_GRACE_SECONDS)
+    with SessionLocal() as db:
+        n = db.execute(
+            update(Checkpoint)
+            .where(
+                Checkpoint.status.in_(("open", "submitted")),
+                or_(Checkpoint.attempt_id.not_in(waiting), Checkpoint.expires_at < cutoff),
+            )
+            .values(status="expired", code=None)
+            .execution_options(synchronize_session=False)
+        ).rowcount
+        db.commit()
+    return n
 
 
 def _sweep_one(db: Session, att: ExecutionAttempt, publish_new: bool) -> str:
@@ -1409,11 +1505,7 @@ def _sweep_one(db: Session, att: ExecutionAttempt, publish_new: bool) -> str:
         att.state, att.finished_at = S.unknown, utcnow()
         att.outcome_detail = "Worker stopped after the submit step began; outcome unknown."
         # A code typed for the dead worker is erased, and the checkpoint takes no more.
-        db.execute(
-            update(Checkpoint)
-            .where(Checkpoint.attempt_id == att.id, Checkpoint.status.in_(("open", "submitted")))
-            .values(status="expired", code=None)
-        )
+        close_checkpoints(db, att.id)
         if app.state in (AppState.submitting, AppState.needs_user_action):
             _app_to(db, app, AppState.submitted_unconfirmed, Actor.system, att.outcome_detail)
         event(db, att, "swept_unknown")

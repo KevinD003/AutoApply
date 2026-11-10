@@ -73,6 +73,7 @@ class HostedFormAdapter(FixtureAtsAdapter):
         answers = [a for a in self.content["answers"]
                    if a["value"] is not None and a["type"] != skip]  # fmt: skip
         for a in (a for a in answers if a["type"] == "file"):
+            self._progress()
             try:
                 attach = partial(self._attach, page, a["key"])
                 disclosures.append(self._disclosed(self._upload(a["key"], attach)))
@@ -80,6 +81,7 @@ class HostedFormAdapter(FixtureAtsAdapter):
                 e.disclosures[:0] = disclosures  # the uploads before it were sent too
                 raise
         for a in (a for a in answers if a["type"] != "file"):
+            self._progress()
             try:
                 self._fill_one(page, a)
             except PWTimeout:
@@ -120,6 +122,7 @@ class HostedFormAdapter(FixtureAtsAdapter):
         a value the page put there itself (a parsed resume) would be sent unapproved."""
         bad, plain = [], []
         for a in self.content["answers"]:
+            self._progress()
             key = a["key"]
             if a["type"] == "file":
                 hidden = page.locator(f'{self.FORM} input[name="{key}{self.HANDLE_SUFFIX}"]')

@@ -115,7 +115,10 @@ services:
       EGRESS_PROXY: http://egress-proxy:3128
       RUNNER_PUBLIC_HOST: browser-runner
       MAX_SESSIONS: "1"  # one browser per runner: sessions in one container share a user
-      MAX_SESSION_SECONDS: ${BROWSER_MAX_SESSION_SECONDS:-600}
+      # D143: above the attempt task's time limit (attempt_time_limit_seconds, 1380s by
+      # default), or a run waiting for a verification code loses its browser before the wait
+      # ends.
+      MAX_SESSION_SECONDS: ${BROWSER_MAX_SESSION_SECONDS:-1500}
     networks: [exec_control, exec_egress]
     user: "10002:10002"
     read_only: true
@@ -140,6 +143,10 @@ services:
     environment:
       EGRESS_CONTROL_TOKEN: ${EGRESS_CONTROL_TOKEN:?set EGRESS_CONTROL_TOKEN in .env}
       EGRESS_CONTROL_SOCKET: /run/egress-control/control.sock
+      # D143: as the browser runner's session limit, above the attempt task's time limit: a
+      # session that expires first refuses the browser's next connection (407) while it still
+      # waits for a verification code.
+      EGRESS_SESSION_TTL_SECONDS: ${EGRESS_SESSION_TTL_SECONDS:-1500}
     volumes: [egress_control:/run/egress-control]
     networks: [exec_egress]
     read_only: true

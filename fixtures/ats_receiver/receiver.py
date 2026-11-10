@@ -91,6 +91,7 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
            "token_ttl_s": 3600, "autosave": False, "tamper": None, "form_delay_s": 0.0,
            "fh_mode": "normal", "fh_rate_limit": 1000, "upload_fail_field": None,
            "upload_delay_s": 0.0, "verify_drop": False, "inbox_mode": "normal", "email_codes": None,
+           "verify_delay_s": 0.0,  # D143: the code is accepted, its reply arrives this much later
            "wizard": None}  # D142: the Workday-style wizard variant (workday_like.py)
 
     def admin(tok: str | None):
@@ -165,6 +166,7 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                     "tamper": None, "form_delay_s": 0.0, "fh_mode": "normal", "board_mode": "normal",
                     "fh_rate_limit": 1000, "upload_fail_field": None, "upload_delay_s": 0.0,
                     "verify_drop": False, "inbox_mode": "normal", "email_codes": None,
+                    "verify_delay_s": 0.0,
                     # D128 OAuth stand-in per-mode settings, so none leaks into the next test
                     "oauth_mode": None, "oauth_extra_scope": None, "oauth_email": None,
                     # the v2 approximation's per-mode settings, so none leaks into the next test
@@ -306,6 +308,8 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
         receipt = _accept(slug, token, json.loads(fields))
         if cfg["verify_drop"]:
             await asyncio.sleep(3600)  # the code was accepted, but the reply never arrives in time
+        if cfg["verify_delay_s"]:  # D143: accepted at once, the reply only later
+            await asyncio.sleep(cfg["verify_delay_s"])
         return HTMLResponse(page_receipt(receipt))
 
     @app.get("/redirect-chain")
