@@ -101,6 +101,16 @@ APPROVAL_REASONS = {
     "form_change_unexplained": "Reading the employer's form again showed no difference NoEfforts "
     'can see (the page\'s own scripts may add it). Choose "Try this version again" under '
     "Questions, or apply on the employer's site.",
+    # D142: an application NoEfforts entered on a multi-page form is never run again.
+    "wizard_draft_at_employer": "NoEfforts already entered this application on the employer's "
+    "multi-page form, which may keep it as a draft or have received it. It never runs it again: "
+    "finish it on the employer's site.",
+    "wizard_rehearsal_unsupported": "A rehearsal is not available on a multi-page form: the "
+    "employer saves each page as you go. Approve it to submit, or apply on the employer's site.",
+    # D142 review: cancelling is refused once a multi-page form is being entered (a cancel).
+    "wizard_in_progress": "NoEfforts is entering this application on the employer's multi-page "
+    "form, and each page it already sent may be saved or received there, so cancelling cannot "
+    "undo it. Revoke the approval to stop it before the next page.",
 }
 
 
@@ -496,6 +506,10 @@ def build_content(db: Session, app: Application) -> dict:
         # D120: present only for a form with a structured section (a stand-in today), so no ordinary
         # package's content or hash changes and SCHEMA_VERSION stays 3 (same approach as `widget`).
         **({"sections": sections} if sections else {}),
+        # D142: present only for a form captured as a multi-page wizard (the Workday-style
+        # stand-in), which no form stored before D142 is: no existing package's content or hash
+        # changes, and SCHEMA_VERSION stays 3, deliberately (tests/test_package_contract.py).
+        **({"wizard": {"pages": list(schema.wizard.pages)}} if schema.wizard else {}),
     }
 
 
@@ -838,7 +852,14 @@ def retire_after_section_record(db: Session, user_id: uuid.UUID, kind: str) -> i
 def _settle_state(
     db: Session, app: Application, pkg: ApplicationPackage, changed: bool = False
 ) -> None:
-    """Move the application to the state the package implies, via legal system transitions."""
+    """Move the application to the state the package implies, via legal system transitions.
+    D142 review: never for an application NoEfforts entered on a multi-page form: it stays where
+    its stop left it (waiting for you, possibly submitted), never "Ready for your approval",
+    since it can never be approved or run again."""
+    from app.modules.execution import service as execution
+
+    if execution.wizard_entered(db, app):
+        return
     ready = not pkg.content["unresolved"] and not pkg.content["validation_errors"]
     paused = unresolved_pause(db, app.id) is not None
     if paused:
@@ -900,6 +921,14 @@ def approve(
     """`by_rule`: given by the owner's standing rule (D113). Recorded only on an approval this
     creates; a live approval of yours that it returns stays yours (D134)."""
     pkg = ensure_current(db, app)
+    from app.modules.execution import service as execution
+
+    # D142: before anything else, the live approval returned below included. An application
+    # NoEfforts entered on a multi-page form is never run again; a rehearsal of one is refused.
+    if execution.wizard_entered(db, app):
+        raise refused("wizard_draft_at_employer")
+    if scope == ApprovalScope.disclose_only and "wizard" in pkg.content:
+        raise refused("wizard_rehearsal_unsupported")
     if pkg.version != version or pkg.content_hash != expected_hash:
         raise refused("package_changed")
     if pkg.content["unresolved"] or pkg.content["validation_errors"]:
@@ -1016,8 +1045,13 @@ def revoke(db: Session, app: Application, queued_attempt: str = "none") -> None:
 
 
 def require_valid_approval(db: Session, app: Application) -> None:
-    """Gate for queueing: the current content must carry a live approval."""
+    """Gate for queueing: the current content must carry a live approval. D142: never for an
+    application NoEfforts entered on a multi-page form (the queue route, the standing rule)."""
     pkg = ensure_current(db, app)
+    from app.modules.execution import service as execution
+
+    if execution.wizard_entered(db, app):
+        raise refused("wizard_draft_at_employer")
     if active_approval(db, pkg) is None:
         raise refused("approval_needed")
 

@@ -11,7 +11,7 @@ import pytest
 
 from app.modules.preparation import drafting
 from app.modules.preparation import package as pk
-from tests.execution_harness import Receiver, prepared_application
+from tests.execution_harness import BASE, Receiver, prepared_application
 from tests.test_execution_validation import _Fake, _keep_profile
 from tests.test_preparation import new_application, setup_candidate
 
@@ -170,6 +170,10 @@ SHAPES[3] = SHAPES[3] | {
     ".sections[].rows[].fields.title.display",
     ".sections[].rows[].fields.title.value.text",
 }
+# D142: a package built from a form captured as a multi-page wizard (the Workday-style stand-in)
+# names its pages. Present only for such a form, which no form stored before D142 is, so no
+# existing package's content or hash changes: recorded under version 3, deliberately.
+SHAPES[3] = SHAPES[3] | {".wizard.pages[]"}
 
 
 @pytest.fixture(scope="module")
@@ -275,6 +279,20 @@ def _contents(api, receiver, monkeypatch) -> list[dict]:
     app = api.post("/applications", json={"job_id": job["id"]}).json()
     content = api.get(f"/applications/{app['id']}/package").json()["package"]["content"]
     assert [x["kind"] for x in content["sections"]] == ["education", "employment"], content
+    out.append(content)
+    # D142: a multi-page wizard, captured from the receiver's Workday-style stand-in.
+    receiver.config(wizard="plain")
+    try:
+        posting = {"url": f"{BASE}/workday/examplehealth/R-1420001", "title": "Wizard",
+                   "employer": "Example Health"}  # fmt: skip
+        job = api.post("/jobs", json=posting).json()
+        r = api.post(f"/jobs/{job['job']['id']}/form/workday")
+        assert r.status_code == 201, r.text
+    finally:
+        receiver.config(wizard=None)
+    app = api.post("/applications", json={"job_id": job["job"]["id"]}).json()
+    content = api.get(f"/applications/{app['id']}/package").json()["package"]["content"]
+    assert content["wizard"]["pages"][-1] == "Review", content.get("wizard")
     out.append(content)
     return out
 

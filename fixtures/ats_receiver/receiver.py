@@ -90,7 +90,8 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
     cfg = {"mode": "normal", "delay_s": 0.0, "idempotent": True, "canary": None,
            "token_ttl_s": 3600, "autosave": False, "tamper": None, "form_delay_s": 0.0,
            "fh_mode": "normal", "fh_rate_limit": 1000, "upload_fail_field": None,
-           "upload_delay_s": 0.0, "verify_drop": False, "inbox_mode": "normal", "email_codes": None}
+           "upload_delay_s": 0.0, "verify_drop": False, "inbox_mode": "normal", "email_codes": None,
+           "wizard": None}  # D142: the Workday-style wizard variant (workday_like.py)
 
     def admin(tok: str | None):
         if tok != admin_token:
@@ -169,7 +170,9 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                     # the v2 approximation's per-mode settings, so none leaks into the next test
                     "dd": None, "delay_ms": 0, "locale_delay_ms": 0, "loc": None, "pc": None,
                     "locale_origin": None, "locale_path": None, "locale_via": None,
-                    "sections": None, "section_widget": None})
+                    "sections": None, "section_widget": None,
+                    # D142: the Workday-style wizard variant, so none leaks into the next test
+                    "wizard": None})
         return {"ok": True}
 
     @app.post("/_admin/inbox")

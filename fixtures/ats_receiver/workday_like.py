@@ -38,6 +38,34 @@ wd_gender_required (D139: the
 gender question is required by the page and the server); and the
 shared modes validation_fail, error_before_accept, error_after_accept, drop_after_accept, delay,
 upload_fail and upload_fail_field. All tenants, postings and people are fictional.
+
+D142: a multi-page wizard, switched on by cfg["wizard"] (a separate key, so the shared outcome
+modes in cfg["mode"] and `idempotent` still combine with it; None, the default, serves the page
+above unchanged). Route:
+  POST /workday/{tenant}/{req}/apply/draft/{page}   a page's Next: saves that page as a draft
+Every behaviour of the wizard is a FIXTURE ASSUMPTION, never an observation of a real Workday
+tenant:
+  FA1  every page is in the one GET /apply document, each a <section data-wizard-page=i>; only
+       the current one is shown (`hidden` is toggled on sections, never on controls);
+  FA2  the pages follow the documented-by-reader order (docs/research/workday.md): My
+       Information, My Experience, Voluntary Disclosures, Application Questions, Review; Review
+       has no field and the form's only submit button; each earlier page has one Next;
+  FA3  a Next is a fetch, with no navigation, that saves only that page's named controls (file
+       inputs excluded, their hidden handles included) as a draft; there is no draft before the
+       first Next; the draft row is written before any check, as an upload's is;
+  FA4  the final POST /apply is accepted only when the form token has drafts for pages 1 to 4;
+  FA5  the variants below, with a confirmation or "already applied" page rendered in place.
+cfg["wizard"] values: plain; drift (a required q.weekends on page 4 at load); already_applied
+(shown at open instead of the form); step_error (the page-2 draft is answered 422 with errors);
+step_timeout (the page-2 draft reply waits cfg["delay_s"]); late_question (the page-2 reply
+makes the page add a required q.weekend_nights to page 3); next_submits (the page-4 Next
+submits the application: accept() with the token's merged drafts, and a confirmation shown in
+place); already_applied_after_next (the page-1 Next is answered "already applied");
+parse_current_page (a resume upload fills the optional page-2 field exp.details);
+parse_saved_page (a resume upload overwrites three page-1 fields already saved); page_shift
+(D142 review: the work-eligibility question sits at the end of page 3 instead of the start of
+page 4, the document order unchanged); next_stays (D142 review: the page-2 draft is saved, but
+the page stays on page 2).
 """
 
 import asyncio
@@ -240,6 +268,176 @@ for (const input of document.querySelectorAll('input[type=file][data-wd-file]'))
     return _page(f"{title} — {employer}", body, "form")
 
 
+# D142: the multi-page wizard (FIXTURE ASSUMPTIONS FA1-FA5, module docstring).
+WIZARD_PAGES = ("My Information", "My Experience", "Voluntary Disclosures",
+                "Application Questions", "Review")  # fmt: skip
+_NEXT = '<button type="button" data-wizard-next>Save and Continue</button>'
+LATE_QUESTION = "q.weekend_nights"
+
+
+def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
+    """The application as five pages in one document (FA1, FA2). Only page 1 is shown at load;
+    a Next saves its page as a draft (FA3) and shows the next one."""
+    variant = cfg["wizard"]
+    title, employer = _title(tenant, req), EMPLOYER[tenant]
+    base = f"/workday/{tenant}/{req}/apply"
+    drift = (_yes_no("q.weekends", "Are you available to work weekends?", True)
+             if variant == "drift" else "")  # fmt: skip
+    late = _yes_no(LATE_QUESTION, "Are you available to work weekend nights?", True)
+    eligibility = _yes_no("q.work_eligibility",
+                          "Are you legally authorized to work in the United States?", True)
+    shifted = eligibility if variant == "page_shift" else ""  # end of page 3 (FA5)
+    on_page_4 = "" if variant == "page_shift" else eligibility
+    body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
+<p>Apply Manually</p>
+<div data-wizard-progress>Page 1 of {len(WIZARD_PAGES)}</div>
+<span data-draft-status="idle" data-draft-page="0"></span>
+<form id="workday-application" action="{base}" method="post" enctype="multipart/form-data"
+ data-wizard-pages="{len(WIZARD_PAGES)}" data-wizard-current="1">
+<input type="hidden" name="form_token" value="{token}">
+<section data-step="My Information" data-wizard-page="1">
+<div id="source_label">How did you hear about us?</div>
+<button type="button" id="source" role="combobox" aria-labelledby="source_label"
+ aria-haspopup="listbox" aria-controls="source_list">Select One</button>
+<ul id="source_list" role="listbox" hidden><li role="option">Job board</li>
+<li role="option">Referral</li></ul>
+<label for="first">Given Name(s)</label>
+<input id="first" name="legalName--firstName" type="text" required>
+<label for="last">Family Name</label>
+<input id="last" name="legalName--lastName" type="text" required>
+<label for="email">Email Address</label><input id="email" name="email" type="email" required>
+<label for="phone">Phone Number</label><input id="phone" name="phone--number" type="tel" required>
+<label for="line1">Address Line 1</label>
+<input id="line1" name="address--addressLine1" type="text">
+<label for="city">City</label><input id="city" name="address--city" type="text">
+{_NEXT}
+</section>
+<section data-step="My Experience" data-wizard-page="2" hidden>
+{_file("resume", "Resume/CV", True)}
+{_file("cover_letter", "Cover Letter", False)}
+<label for="exp_details">Additional details (optional)</label>
+<input id="exp_details" name="exp.details" type="text">
+{_NEXT}
+</section>
+<section data-step="Voluntary Disclosures" data-wizard-page="3" hidden>
+<label for="vd_gender">Gender</label>
+<select id="vd_gender" name="vd.gender"><option value="">Select One</option>
+<option value="Female">Female</option><option value="Male">Male</option>
+<option value="Decline">I do not wish to answer</option></select>
+<label><input type="checkbox" name="terms_ack" value="1" required> I have read and agree to
+ the (fictional) terms and conditions.</label>
+{shifted}
+{_NEXT}
+</section>
+<section data-step="Application Questions" data-wizard-page="4" hidden>
+{on_page_4}
+{_yes_no("q.sponsorship", "Will you now or in the future require sponsorship for employment "
+         "visa status in the United States?", True)}
+<fieldset required><legend>Which nursing licence do you hold?</legend>
+<label><input type="radio" name="q.licence_type" value="RN"> RN</label>
+<label><input type="radio" name="q.licence_type" value="LPN"> LPN</label>
+<label><input type="radio" name="q.licence_type" value="None"> None</label></fieldset>
+<label for="shift">Preferred shift</label>
+<select id="shift" name="q.shift" required><option value="">Select One</option>
+<option value="Nights">Nights</option><option value="Days">Days</option></select>
+{drift}
+{_NEXT}
+</section>
+<section data-step="Review" data-wizard-page="5" hidden>
+<p>Review your application, then submit it.</p>
+<button type="submit" data-automation-id="bottom-navigation-next-button">Submit</button>
+</section>
+</form>
+<template id="late-question">{late}</template>
+<script>
+for (const input of document.querySelectorAll('input[type=file][data-wd-file]')) {{
+  input.addEventListener('change', async () => {{
+    const name = input.name;
+    const st = document.querySelector(`[data-attachment-status="${{name}}"]`);
+    const hidden = document.querySelector(`input[name="${{name}}_attachment"]`);
+    const fd = new FormData();
+    fd.append('file', input.files[0]);
+    fd.append('field', name);
+    try {{
+      const r = await fetch('{base}/files', {{method: 'POST', body: fd}});
+      if (!r.ok) throw new Error('upload');
+      const j = await r.json();
+      hidden.value = j.attachment;
+      st.textContent = 'Successfully Uploaded';
+      st.dataset.attachmentId = j.attachment;
+      for (const [k, v] of Object.entries(j.parsed || {{}})) {{
+        const el = document.querySelector(`[name="${{k}}"]`);
+        if (el) el.value = v;
+      }}
+    }} catch (e) {{ st.textContent = 'Upload failed'; st.dataset.attachmentError = '1'; }}
+  }});
+}}
+const form = document.getElementById('workday-application');
+const status = document.querySelector('[data-draft-status]');
+const progress = document.querySelector('[data-wizard-progress]');
+const pages = Number(form.dataset.wizardPages);
+function replaceBody(kind, heading, receipt) {{
+  document.body.replaceChildren();
+  document.body.dataset.workday = kind;
+  const h = document.createElement('h1');
+  h.textContent = heading;
+  document.body.append(h);
+  if (receipt) {{
+    const r = document.createElement('span');
+    r.dataset.receiptId = receipt;
+    r.textContent = receipt;
+    document.body.append(r);
+  }}
+}}
+for (const btn of form.querySelectorAll('[data-wizard-next]')) {{
+  btn.addEventListener('click', async () => {{
+    const sec = btn.closest('section[data-wizard-page]');
+    const i = Number(sec.dataset.wizardPage);
+    status.dataset.draftPage = String(i);
+    status.dataset.draftStatus = 'pending';
+    const fd = new FormData();
+    fd.append('form_token', form.querySelector('input[name=form_token]').value);
+    for (const el of sec.querySelectorAll('input[name], select[name], textarea[name]')) {{
+      if (el.type === 'file') continue;
+      if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) continue;
+      fd.append(el.name, el.value);
+    }}
+    let r, j;
+    try {{
+      r = await fetch(`{base}/draft/${{i}}`, {{method: 'POST', body: fd}});
+      j = await r.json().catch(() => ({{}}));
+    }} catch (e) {{ status.dataset.draftStatus = 'error'; return; }}
+    if (j.submitted) {{ replaceBody('confirmation', 'Application Submitted', j.receipt); return; }}
+    if (j.already_applied) {{
+      replaceBody('already_applied', 'You have already applied for this job'); return;
+    }}
+    if (!r.ok) {{
+      const ul = document.createElement('ul');
+      ul.dataset.wizardErrors = '';
+      for (const m of (j.errors || ['Something went wrong'])) {{
+        const li = document.createElement('li'); li.textContent = m; ul.append(li);
+      }}
+      sec.append(ul);
+      status.dataset.draftStatus = 'error';
+      return;
+    }}
+    if (j.stay) {{ status.dataset.draftStatus = 'saved'; return; }}
+    if (j.reveal) {{
+      const third = form.querySelector('section[data-wizard-page="3"]');
+      third.insertBefore(document.getElementById('late-question').content.cloneNode(true),
+                         third.querySelector('[data-wizard-next]'));
+    }}
+    sec.hidden = true;
+    form.querySelector(`section[data-wizard-page="${{i + 1}}"]`).hidden = false;
+    form.dataset.wizardCurrent = String(i + 1);
+    progress.textContent = `Page ${{i + 1}} of ${{pages}}`;
+    status.dataset.draftStatus = 'saved';
+  }});
+}}
+</script>"""
+    return _page(f"{title} — {employer}", body, "form")
+
+
 def mount(app, ledger, cfg, accept) -> None:
     """Add the Workday-like routes to the receiver. `accept(slug, token, fields)` records an
     acceptance in the shared ledger and returns its internal id."""
@@ -267,6 +465,11 @@ def mount(app, ledger, cfg, accept) -> None:
             await asyncio.sleep(cfg["form_delay_s"])
         token = secrets.token_hex(8)
         ledger.run("insert into tokens (token, issued_at) values (?,?)", (token, time.time()))
+        if cfg.get("wizard") == "already_applied":  # D142, FA5
+            return _page("Already applied", "<h1>You have already applied for this job</h1>",
+                         "already_applied")  # fmt: skip
+        if cfg.get("wizard"):  # D142: the multi-page wizard (FA1-FA5)
+            return _wizard_page(tenant, req, token, cfg)
         return _form_page(tenant, req, token, cfg)
 
     @app.post("/workday/{tenant}/{req}/apply/files")
@@ -286,11 +489,64 @@ def mount(app, ledger, cfg, accept) -> None:
         if cfg["upload_delay_s"]:
             await asyncio.sleep(cfg["upload_delay_s"])
         out = {"attachment": attachment}
-        if cfg["mode"] == "wd_resume_parse" and field == "resume":
-            # Resume parsing overwrites what is on the page (fixture design).
+        if (cfg["mode"] == "wd_resume_parse" or cfg.get("wizard") == "parse_saved_page") and (
+            field == "resume"
+        ):
+            # Resume parsing overwrites what is on the page (fixture design). D142: on the
+            # wizard, these are page-1 fields already saved as a draft (FIXTURE ASSUMPTION).
             out["parsed"] = {"legalName--firstName": "Samuel",
                              "address--addressLine1": "12 Parsed Street (fictional)",
                              "address--city": "Shelbyville (fictional)"}  # fmt: skip
+        if cfg.get("wizard") == "parse_current_page" and field == "resume":
+            # D142: the parse fills the optional field on the upload's own page (FIXTURE
+            # ASSUMPTION), which NoEfforts leaves unanswered.
+            out["parsed"] = {"exp.details": "Parsed details (fictional)"}
+        return out
+
+    def drafted_pages(slug: str, token: str) -> list[dict]:
+        """D142: the drafts this form token saved, oldest first (FA3, FA4)."""
+        rows = ledger.run("select detail from disclosures where kind='draft_page' and slug=? "
+                          "order by id", (slug,))  # fmt: skip
+        return [d for d in (json.loads(r[0]) for r in rows) if d.get("form_token") == token]
+
+    @app.post("/workday/{tenant}/{req}/apply/draft/{page}")
+    async def draft(tenant: str, req: str, page: int, request: Request):
+        """D142, FA3: a page's Next saves that page as a draft. The row is written first, before
+        any check, error or wait: the page's values reached the employer either way."""
+        posting_or_404(tenant, req)
+        slug, variant = _slug(tenant, req), cfg.get("wizard")
+        form = await request.form()
+        fields = {}
+        for k in form.keys():
+            vals = [v for v in form.getlist(k) if not hasattr(v, "read")]
+            if vals:
+                fields[k] = vals if len(vals) > 1 else vals[0]
+        token = str(fields.pop("form_token", ""))
+        disclose("draft_page", slug,
+                 json.dumps({"page": page, "form_token": token, "fields": fields}))  # fmt: skip
+        if not 1 <= page < len(WIZARD_PAGES):
+            return JSONResponse({"error": "no such page"}, status_code=404)
+        row = ledger.run("select issued_at from tokens where token=?", (token,))
+        if not row or time.time() - row[0][0] > cfg["token_ttl_s"]:
+            return JSONResponse({"error": "session expired"}, status_code=419)
+        if variant == "step_error" and page == 2:
+            return JSONResponse({"errors": ["Enter your work history (fixture design)"]},
+                                status_code=422)  # fmt: skip
+        if variant == "step_timeout" and page == 2:
+            await asyncio.sleep(cfg["delay_s"])
+        if variant == "next_submits" and page == len(WIZARD_PAGES) - 1:
+            merged: dict = {}
+            for d in drafted_pages(slug, token):
+                merged.update(d["fields"])
+            return {"submitted": True, "receipt": accept(slug, token, merged)}
+        if variant == "already_applied_after_next" and page == 1:
+            return {"already_applied": True}
+        digest = hashlib.sha256(f"{token}:{page}".encode()).hexdigest()[:10]
+        out = {"saved": True, "draft_id": f"WD-{digest}"}
+        if variant == "late_question" and page == 2:
+            out["reveal"] = LATE_QUESTION
+        if variant == "next_stays" and page == 2:
+            out["stay"] = True  # saved, but the page does not move on (FA5)
         return out
 
     @app.post("/workday/{tenant}/{req}/apply", response_class=HTMLResponse)
@@ -316,7 +572,15 @@ def mount(app, ledger, cfg, accept) -> None:
             required.append("q.education")
         if mode == "wd_gender_required":
             required.append("vd.gender")
+        wizard = cfg.get("wizard")
+        if wizard == "drift":
+            required.append("q.weekends")
+        if wizard == "late_question":
+            required.append(LATE_QUESTION)
         missing = [k for k in required if not fields.get(k)]
+        if wizard:  # D142, FA4: every page before Review was saved under this form token
+            saved = {d["page"] for d in drafted_pages(slug, token)}
+            missing += [f"page {i}" for i in range(1, len(WIZARD_PAGES)) if i not in saved]
         if mode == "validation_fail" or missing:
             items = "".join(f"<li>{html.escape(m)}</li>" for m in missing or ["phone--number"])
             return _page("Errors", f"<h1>Errors Found</h1><ul>{items}</ul>", "errors", 422)

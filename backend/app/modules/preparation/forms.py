@@ -155,6 +155,23 @@ class SectionSpec(BaseModel):
     disciplines: list[SectionOptionSpec] = Field(default_factory=list, max_length=5000)
 
 
+class WizardSpec(BaseModel):
+    """D142: a captured multi-page application (the Workday-style stand-in's wizard): its pages'
+    names in order, the last one the review page that holds the only submit. Each field's `step`
+    is the page it is on (preparation/workday.py checks that before setting this). Set only by
+    that capture, never by hand (the manual form endpoint refuses it)."""
+
+    pages: list[str] = Field(min_length=2, max_length=10)
+
+    @model_validator(mode="after")
+    def _names(self):
+        if any(not p.strip() or len(p) > 200 for p in self.pages):
+            raise ValueError("a wizard page needs a name of at most 200 characters")
+        if len(set(self.pages)) != len(self.pages):
+            raise ValueError("wizard page names must be unique")
+        return self
+
+
 class FormSchema(BaseModel):
     title: str | None = Field(default=None, max_length=300)
     # The form's own submission target as written in the page (may be relative).
@@ -163,6 +180,8 @@ class FormSchema(BaseModel):
     fields: list[FormField] = Field(min_length=1, max_length=300)
     # D120: stand-in-only structured sections; empty for every ordinary/real form.
     sections: list[SectionSpec] = Field(default_factory=list, max_length=4)
+    # D142: stand-in-only multi-page wizard; None for every other form.
+    wizard: WizardSpec | None = None
 
     @model_validator(mode="after")
     def _unique(self):
@@ -172,6 +191,15 @@ class FormSchema(BaseModel):
         if len({s.kind for s in self.sections}) != len(self.sections):
             raise ValueError("a section kind may appear at most once")
         return self
+
+    @model_serializer(mode="wrap")
+    def _dump(self, handler):
+        # D142: written only for a form that has one, so every other stored form keeps its
+        # exact content (as FormField's `widget`).
+        out = handler(self)
+        if isinstance(out, dict) and out.get("wizard") is None:
+            out.pop("wizard", None)
+        return out
 
 
 def normalize(s: str | None) -> str:
@@ -210,6 +238,12 @@ def form_fingerprint(schema: FormSchema) -> str:
             for o in group
         ]
         parts.append("|".join(["section", s.kind, s.root, *opts]))
+    if schema.wizard:  # D142: added only for a wizard, so every other form's is unchanged
+        # The pages' names in order and which question is on which page: never which page is
+        # shown, so the same form reads the same before and after a Next.
+        parts.append("|".join(["wizard", *(
+            f"{n}=" + ",".join(f.key for f in schema.fields if f.step == n)
+            for n in schema.wizard.pages)]))  # fmt: skip
     return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
 

@@ -145,7 +145,9 @@ Search-result URLs used for **search-reported** facts (pages not opened):
   cannot reapply to a requisition while active; no such rule found for external candidates.
   External candidates with an account may Withdraw, if the stage allows it.
 - **unknown** CAPTCHA or bot checks: searches found nothing in Workday's documentation.
-- **unknown** Whether drafts are saved per step on the server before final submit.
+- **documented** (the 2026-11-06 update above) A draft is saved on each Next. How a real
+  tenant answers a Next (its reply, its errors, any navigation) is still **unknown**; the D142
+  stand-in's per-page drafts are FIXTURE ASSUMPTIONS.
 - **unknown** Per-step server validation behaviour (only implied by the wizard).
 
 ## 4. URL patterns (checked against `detect_ats`)
@@ -290,7 +292,8 @@ list. (u) marks a shape I have not seen documented; it is a fixture design choic
 ```
 
 The receiver ledger must count disclosures per step (each "Next" sends data) and the final submit
-separately, and record any server-side draft.
+separately, and record any server-side draft. D142: the Workday-style stand-in's wizard does
+(`draft_page` rows, one per page's Next; FIXTURE ASSUMPTIONS in `workday_like.py`).
 
 ## 8. Checkpoints (stop and ask the user)
 

@@ -17,6 +17,14 @@ codes, search-as-you-type pickers and custom controls unsupported), `extract_sch
     trusted, so a required unsupported field until you review them there;
   * a location list that depends on another answer (`data-cascade-from`): unsupported.
 
+D142: a multi-page wizard (`data-wizard-*` markers; the stand-in's mode, FIXTURE ASSUMPTIONS in
+fixtures/ats_receiver/workday_like.py) is read as one form whose pages are all in the document,
+and recorded as `FormSchema.wizard`, only when its structure is exactly what the executor drives
+page by page (`_wizard_problem`): pages 1 to N in order with unique names, no step nested in a
+page, one Next on each page before the last and none elsewhere, the only submit on the last
+page, every question on a page before it, and no other step marker. Anything else is the
+several-pages checkpoint above (fail closed), so each field's `step` is exactly its page.
+
 A parsed resume that fills fields after an upload is caught at execution by the readback of
 every field NoEfforts leaves unanswered (`hosted_form.HostedFormAdapter`)."""
 
@@ -25,13 +33,25 @@ from html.parser import HTMLParser
 from typing import NamedTuple
 from urllib.parse import urlsplit
 
-from app.modules.preparation.forms import FieldType, FormField, FormSchema, extract_form_schema
+from app.modules.preparation.forms import (
+    _VOID,
+    FieldType,
+    FormField,
+    FormSchema,
+    WizardSpec,
+    extract_form_schema,
+)
 
 _FIXTURE = re.compile(r"^/workday/(?P<tenant>[a-z0-9-]{1,64})/(?P<req>R-[0-9]{4,12})(?:/apply)?/?$")
 _REAL_HOST = re.compile(r"^[a-z0-9-]+\.(?:wd\d+\.myworkdayjobs\.com|myworkdaysite\.com)$")
 _REAL_REQ = re.compile(r"_(?P<req>[A-Z]*-?\d[\w-]*)/?$", re.IGNORECASE)
 MULTI_STEP_KEY, PREFILLED_KEY = "multi_step", "prefilled_values"
 STEP_SELECTOR = "[data-workday-progress], [data-automation-id=pageFooterNextButton]"
+# D142: the stand-in wizard's markers (any one of them makes the page a wizard to check).
+WIZARD_MARKERS = ("data-wizard-pages", "data-wizard-page", "data-wizard-next",
+                  "data-wizard-progress")  # fmt: skip
+WIZARD_SELECTOR = ", ".join(f"[{m}]" for m in WIZARD_MARKERS)
+_NO_STEP = {"bot_check", MULTI_STEP_KEY, PREFILLED_KEY}  # checkpoints added here, not questions
 _STEP_OF = re.compile(r"\bof\s+(\d+)\b", re.IGNORECASE)
 _TEXT_TYPES = {"text", "email", "tel", "url", "number", "date", ""}
 
@@ -98,9 +118,44 @@ class _Scan(HTMLParser):
         self._in_progress = False
         self._select: str | None = None
         self._textarea: str | None = None
+        # D142: the wizard's structure, as written in the page.
+        self.wizard_seen = False
+        self.wizard_pages: list[str] = []  # data-wizard-pages, as written (normally one)
+        self.wizard_sections: list[tuple[str, str]] = []  # (data-wizard-page, data-step)
+        self.nexts: dict[str, int] = {}  # Next buttons per page
+        self.nexts_outside = 0
+        self.submits: list[str | None] = []  # the page each submit button is on (None: none)
+        self.nested_steps = 0  # a data-step inside a wizard page
+        self._stack: list[tuple[str, str | None]] = []  # (tag, wizard page) of open elements
+
+    def _page(self) -> str | None:
+        return next((p for _, p in reversed(self._stack) if p is not None), None)
 
     def handle_starttag(self, tag, attrs):
         a = {k: (v or "") for k, v in attrs}
+        if any(m in a for m in WIZARD_MARKERS):
+            self.wizard_seen = True
+        if "data-wizard-pages" in a:
+            self.wizard_pages.append(a["data-wizard-pages"])
+        current = self._page()
+        if "data-step" in a and current is not None:
+            self.nested_steps += 1
+        if "data-wizard-next" in a:
+            if current is None:
+                self.nexts_outside += 1
+            else:
+                self.nexts[current] = self.nexts.get(current, 0) + 1
+        if tag == "button" and a.get("type", "submit").lower() == "submit":
+            self.submits.append(current)
+        elif tag == "input" and a.get("type", "").lower() in ("submit", "image"):
+            self.submits.append(current)
+        page = a.get("data-wizard-page") if "data-wizard-page" in a else None
+        if page is not None:
+            self.wizard_sections.append((page, a.get("data-step", "")))
+            if current is not None:
+                self.nested_steps += 1  # a page inside a page
+        if tag not in _VOID:
+            self._stack.append((tag, page))
         if "data-workday-progress" in a:
             self._in_progress = True
         if a.get("data-automation-id") == "pageFooterNextButton":
@@ -118,6 +173,10 @@ class _Scan(HTMLParser):
             self._textarea = name
 
     def handle_endtag(self, tag):
+        for i in range(len(self._stack) - 1, -1, -1):  # as the form extractor closes elements
+            if self._stack[i][0] == tag:
+                del self._stack[i:]
+                break
         if tag == "select":
             self._select = None
         elif tag == "textarea":
@@ -148,9 +207,43 @@ def _as_picker(m: re.Match) -> str:
     return f'<input type="text" role="combobox" aria-autocomplete="list"{attrs}>'
 
 
+def _wizard_problem(scan: _Scan, schema: FormSchema) -> str | None:
+    """D142: why a page with wizard markers is not a wizard the executor drives page by page
+    (any reason: the several-pages checkpoint), or None. The rules, each one checked:"""
+    # 1. The number of pages, written once, from 2 to 10.
+    if len(scan.wizard_pages) != 1 or not scan.wizard_pages[0].isdigit():
+        return "page count"
+    n = int(scan.wizard_pages[0])
+    if not 2 <= n <= 10:
+        return "page count"
+    # 2. Exactly N pages numbered 1 to N in order, each with its own non-empty name.
+    names = [step for _, step in scan.wizard_sections]
+    if [p for p, _ in scan.wizard_sections] != [str(i) for i in range(1, n + 1)]:
+        return "page numbers"
+    if not all(x.strip() and len(x) <= 200 for x in names) or len(set(names)) != n:
+        return "page names"
+    # 3. No step inside a page: a field's step is then exactly its page.
+    if scan.nested_steps:
+        return "nested step"
+    # 4. One Next on each page before the last, none on the last and none outside a page.
+    if scan.nexts_outside or scan.nexts != {str(i): 1 for i in range(1, n)}:
+        return "next buttons"
+    # 5. The form's only submit button is on the last page.
+    if scan.submits != [str(n)]:
+        return "submit button"
+    # 6. Every question is on a page before the last.
+    if any(f.step not in names[:-1] for f in schema.fields if f.key not in _NO_STEP):
+        return "field outside a page"
+    # 7. No other several-pages marker at the same time.
+    if scan.steps > 1 or scan.next_button:
+        return "mixed markers"
+    return None
+
+
 def extract_schema(html: str) -> FormSchema:
     """The generic extractor (documented CAPTCHAs included), then the Workday-style
-    checkpoints above."""
+    checkpoints above. D142: a wizard that passes `_wizard_problem` is recorded as
+    `schema.wizard`; one that does not is the several-pages checkpoint."""
     scan = _Scan()
     scan.feed(html)
     schema = extract_form_schema(_CASCADE.sub(_as_picker, html), challenges=True)
@@ -158,7 +251,13 @@ def extract_schema(html: str) -> FormSchema:
     for f in schema.fields:
         if f.key in scan.cascade:
             f.unsupported_reason = CASCADE_REASON
-    if (scan.steps > 1 or scan.next_button) and MULTI_STEP_KEY not in keys:
+    wizard_refused = False
+    if scan.wizard_seen:
+        if _wizard_problem(scan, schema) is None:
+            schema.wizard = WizardSpec(pages=[step for _, step in scan.wizard_sections])
+        else:
+            wizard_refused = True
+    if (scan.steps > 1 or scan.next_button or wizard_refused) and MULTI_STEP_KEY not in keys:
         schema.fields.append(
             _checkpoint(MULTI_STEP_KEY, "An application on several pages", MULTI_STEP_REASON)
         )
