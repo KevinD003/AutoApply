@@ -1,6 +1,7 @@
 # Approval reasons (C13, D65)
 
-Why NoEfforts refuses to approve a package, to queue an approved one, or to revoke an approval.
+Why NoEfforts refuses to approve a package, to queue an approved one, or to revoke an approval
+(and, on a multi-page form, to cancel an attempt in progress: `wizard_in_progress`, D142).
 Each refusal is a 409 whose message ends with `(reason: code)`, a fixed code that is safe to
 record. Implemented in `backend/app/modules/preparation/package.py` (`APPROVAL_REASONS`) and
 `backend/app/modules/execution/service.py`; tested in `backend/tests/test_approval_reasons.py`,
@@ -23,6 +24,7 @@ prerequisite has its codes in `docs/rehearsal-prerequisite.md`.
 | `form_change_unexplained` | Reading the employer's form again showed no difference NoEfforts can see (the page's own scripts may add it). Choose "Try this version again" under Questions, or apply on the employer's site. |
 | `wizard_draft_at_employer` | NoEfforts already entered this application on the employer's multi-page form, which may keep it as a draft or have received it. It never runs it again: finish it on the employer's site. |
 | `wizard_rehearsal_unsupported` | A rehearsal is not available on a multi-page form: the employer saves each page as you go. Approve it to submit, or apply on the employer's site. |
+| `wizard_in_progress` | NoEfforts is entering this application on the employer's multi-page form, and each page it already sent may be saved or received there, so cancelling cannot undo it. Revoke the approval to stop it before the next page. |
 
 ## Revoking while an attempt is in progress
 
@@ -34,6 +36,10 @@ prerequisite has its codes in `docs/rehearsal-prerequisite.md`.
 - **After the final click** (`sending`, or waiting for a verification code): refused with
   `revoke_in_flight`; the approval stays as it was, since revoking could not stop what may
   already have been sent.
+- **On a multi-page form (D142), once its first page may have been sent:** cancelling is refused
+  (`wizard_in_progress`), and revoking is how it is stopped: the next page's gate refuses the
+  revoked approval, the attempt ends with the wizard's outcome, and a page's Next already in
+  flight is still recorded (and quarantined if the page shows a confirmation).
 
 `package.revoke` records which of these happened (`queued_attempt`: `none`, `cancelled` or
 `stopping`).

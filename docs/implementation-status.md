@@ -70,8 +70,13 @@ ASSUMPTIONS FA1-FA5). Decision and residuals in D142, evidence in `docs/evidence
 Sabotage showed three checks no test caught (the page-count rule, the page-order rule,
 `require_valid_approval`'s check); two capture cases and a direct call were added, and each
 now fails without its check. `scripts/validate.sh all` was not run (it runs the whole backend
-and e2e suites); ruff was. Tests run are listed in `docs/automation-loop.md`. Nothing real
-was run.
+and e2e suites); ruff was. After its adversarial review (8 minor findings upheld, all fixed):
+a cancel of a wizard attempt past its disclosure gate is refused (`wizard_in_progress`; revoke
+stops it), an application entered on a wizard is never re-settled to "Ready for your approval"
+or listed for review, and the per-page fingerprint, a question on the review page, the next-page
+check, the manual form's refusal, the `wizard_adapter` refusal and the wizard markers on a
+single-page package each have a test (fixture variants `page_shift`, `next_stays`). Tests run
+are listed in `docs/automation-loop.md`. Nothing real was run.
 
 | Check (branch `workday-wizard`, from D141's branch 2dfc956) | Command | Result |
 |---|---|---|
@@ -80,7 +85,11 @@ was run.
 | Package contract, provider contracts and admission, the existing Workday-style suite | `pytest tests/test_package_contract.py tests/test_provider_contracts.py tests/test_provider_admission.py tests/test_workday_adapter.py` (JUnit) | exit 0; 232 passed |
 | Each check removed in turn (42 sabotages, then 6 again) | one change at a time on a committed tree, its row's test run, the file restored | 39 of 42 failed their test; the 3 missed (the page-count rule, the page-order rule, `require_valid_approval`'s check) fail once two cases and a direct call were added (655cce3), as do 3 whose test changed |
 | The regression set the build plan names, with the document references | `pytest` on 29 files (`test_workday_wizard`, `test_workday_adapter`, `test_execution_failures`, `test_execution_security`, `test_execution`, `test_disclosure_evidence`, `test_upload_evidence`, `test_form_change_loop`, `test_conditional_questions`, `test_code_wait_quarantine`, `test_lock_order`, `test_gate_snapshot_race`, the four rehearsal suites, `test_approval_reasons`, `test_approval_binding`, `test_approval_hardening`, `test_batch_review`, `test_auto_apply`, `test_evidence_lifecycle`, `test_package_contract`, `test_greenhouse_controls`, `test_provider_contracts`, `test_provider_admission`, `test_lever`, `test_celery_execution`, `test_doc_references`; JUnit), on 655cce3 with the two doc cells of 3bc2179 | exit 0; 659 passed, 0 failures |
-| Lint, format, the tests that read the documents and the new tests (after the last edit) | `ruff format .`, `ruff check .`, `ruff format --check .`; `pytest tests/test_doc_references.py tests/test_approval_reasons.py tests/test_lever.py tests/test_audit_inventory.py tests/test_provider_admission.py tests/test_provider_contracts.py tests/test_workday_wizard.py` (JUnit), on 3bc2179 with the docs and the formatting | ruff: 2 files reformatted, all checks passed, 374 files formatted; exit 0; 254 passed (1, 9, 12, 2, 154, 43, 33), 0 failures |
+| Lint, format, the tests that read the documents and the new tests (after the last edit, before the review) | `ruff format .`, `ruff check .`, `ruff format --check .`; `pytest tests/test_doc_references.py tests/test_approval_reasons.py tests/test_lever.py tests/test_audit_inventory.py tests/test_provider_admission.py tests/test_provider_contracts.py tests/test_workday_wizard.py` (JUnit), on 3bc2179 with the docs and the formatting | ruff: 2 files reformatted, all checks passed, 374 files formatted; exit 0; 254 passed (1, 9, 12, 2, 154, 43, 33), 0 failures |
+| After the review: the new tests | `pytest tests/test_workday_wizard.py` (JUnit) | 42 passed, 1 failed (test 13's queue call, now refused by the state machine first), fixed: 1 passed |
+| After the review: each new or changed check removed in turn (15 sabotages on 98736d1) | one change at a time on a committed tree, its test run, the file restored | every one failed its test |
+| After the review: the regression set again | `pytest` on 27 files (the plan's set without the tests that read documents, with `test_sections_review` and `test_version_diff`; JUnit), on 98736d1 | exit 0; 513 passed, 0 failures (26 min) |
+| After the review's documents: lint, format and the tests that read the documents | `ruff format .`, `ruff check .`, `ruff format --check .`; `pytest tests/test_doc_references.py tests/test_approval_reasons.py tests/test_lever.py tests/test_audit_inventory.py tests/test_provider_admission.py` (JUnit) | ruff clean (374 files unchanged); exit 0; 178 passed, 0 failures |
 
 The full backend and e2e suites run in the pull request's CI.
 

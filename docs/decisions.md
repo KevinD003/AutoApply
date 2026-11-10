@@ -5367,8 +5367,10 @@ audit-inventory and export-completeness guards are updated and pass.
       first Next.
     - FA4: the final POST is accepted only with drafts for pages 1 to 4.
     - FA5: the variants `drift`, `already_applied`, `step_error`, `step_timeout`,
-      `late_question`, `next_submits`, `already_applied_after_next`, `parse_current_page` and
-      `parse_saved_page`; a confirmation or "already applied" page is rendered in place.
+      `late_question`, `next_submits`, `already_applied_after_next`, `parse_current_page`,
+      `parse_saved_page` and, after the review, `page_shift` (a question moved to the end of
+      the page before) and `next_stays` (a page saved that does not move on); a confirmation
+      or "already applied" page is rendered in place.
   - **Capture.** `FormSchema.wizard` (the page names) is set only when the structure is exactly
     what the executor drives: pages 1 to N in order with unique names, no step nested in a page,
     one Next on each page before the last and none elsewhere, the only submit on the last page,
@@ -5413,6 +5415,17 @@ audit-inventory and export-completeness guards are updated and pass.
     standing rule), `enqueue` and `claim`. The record is the attempt's disclosure stamp and its
     immutable package, never evidence, so deleting the evidence changes nothing. It is scoped by
     application and owner: another account on the same posting is not refused.
+  - **A cancel during a wizard is refused (after the review).** From the disclosure gate on, a
+    cancel of a wizard attempt is refused with `wizard_in_progress` (a 409, as a cancel after
+    the send gate is): each page already sent may be saved, or received, at the employer, and a
+    cancel would end the attempt with nothing recorded of a Next in flight. Revoking stops it
+    instead: the attempt stays held, its next step gate ends it with the wizard outcome, and a
+    Next that left the form still reaches the quarantine.
+  - **A stopped wizard stays where it stopped (after the review).** Reading the package never
+    moves an application NoEfforts entered on a wizard back to "Ready for your approval" (it
+    stays waiting for you, or `submitted_unconfirmed`), and the review page never lists it.
+    Queueing it from there is refused by the state machine; from `failed_retryable` (after a
+    quarantine reconciled as not received) by `require_valid_approval`.
   - **Refused, not decided:** a wizard rehearsal (approving one: `wizard_rehearsal_unsupported`;
     the disclosure gate: `wizard_rehearsal`) and the standing rule on a wizard (claim, event
     `claim_refused_rule_wizard`).
@@ -5451,11 +5464,41 @@ audit-inventory and export-completeness guards are updated and pass.
   - The send gate does not itself check that every page's steps were authorized; the runner
     reaches it only after the last page, and the stand-in refuses a submit without drafts 1 to 4.
   - The version bump retires every live `fixture_workday` approval, single-page ones too.
-- **Tests:** `tests/test_workday_wizard.py` (17 rows, 33 cases), the receiver's ledger as the
-  oracle. Each check was removed in turn and its row's test failed; the first pass missed
-  three (the page-count rule, the page-order rule, `require_valid_approval`'s check), now
-  covered by two capture cases and a direct call. No adversarial review has been run on this
-  slice yet.
+  - Untested: the `settled` check after a Next, the redirect and `blocked_reason` checks after a
+    Next (no variant redirects or asks for an account after a Next), and the quarantine's own
+    fence (generation, state, stamps, at least one Next), which only the full runs reach. Capture
+    trusts a field's step string (a `data-step` outside every page, or a radio group split across
+    pages, is not refused) and counts a `<button>` of an invalid type as no submit; the review
+    judged both unreachable with the only HTML ever captured (the local stand-in).
+- **Tests:** `tests/test_workday_wizard.py` (the 17 planned rows and 8 added after the review, 43
+  cases), the receiver's ledger as the oracle. Each of these checks was removed in turn and its
+  test failed: the capture's wizard and its seven rules, rule 6's "not on the last page" half,
+  the fingerprint's wizard part (made unconditional, and deleted), the document order, each step
+  gate, the step rows, one click per Next, the readback before the Next and over every page so
+  far, the gate's checks, the wizard outcome in `_finish`, the sweeper's branch, the event before
+  the click, the check after a Next and the next-page check, the quarantine, the disclosure
+  stamp, the rehearsal refusal, each never-again check and its place, its scope, the rule's claim
+  guard, the step gate's lock and order, `fail_safe`'s undisclosed guard, the cancel refusal, the
+  settle guard and the review list's exclusion, the manual form's refusal, the `wizard_adapter`
+  refusal and the wizard markers on a single-page package. The first pass missed three (the
+  page-count rule, the page-order rule, `require_valid_approval`'s check), now covered by two
+  capture cases and a direct call. The checks named untested above were not sabotaged.
+- **Review:** an adversarial review before merging (four reviewers, two skeptics per finding)
+  raised 16 findings and upheld 8, all minor after checking, all fixed:
+  - a cancel during a wizard ended it as "Cancelled by you before anything was submitted" and
+    could lose a Next that submitted: cancel is now refused there (`wizard_in_progress`) and
+    revoking stops it;
+  - reading the package after a wizard stop moved it back to "Ready for your approval" and the
+    review page listed it: it now stays where it stopped and is left out;
+  - the fingerprint's per-page part, rule 6's last-page half, the next-page check, the manual
+    form's refusal, the `wizard_adapter` refusal and the wizard markers on a single-page package
+    had no test that failed without them: each has one now (variants `page_shift` and
+    `next_stays`);
+  - three documents claimed more than the code or the tests: the evidence matrix (what the
+    between-pages cases retire), the audit inventory (where `wizard_draft_at_employer` is
+    written) and the claim that every check was sabotaged (now the list above, with what stays
+    untested).
+  Each new check fails its test when removed (recorded in `docs/automation-loop.md`).
 - **Owner decisions unchanged (not built):** continuing a wizard after a stop (reopening the
   draft needs the candidate's own sign-in); re-queueing under a kept approval (moot here: never
   run again); rehearsing and then submitting on a wizard; a separate permission per page or one
