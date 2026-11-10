@@ -60,7 +60,9 @@ production refuses execution entirely. Results by revision are in "Verification"
   (`BROWSER_MAX_SESSION_SECONDS`, default 1500). It must stay above the attempt task's time limit
   (D143, `attempt_time_limit_seconds`: the run budget, the waits after the click and the whole
   wait for a verification code; 1380 s by default), or a run still waiting for a code loses its
-  browser before the wait ends.
+  browser before the wait ends. The egress proxy's session has the same rule and the same
+  default (`EGRESS_SESSION_TTL_SECONDS`, 1500; it was 900): once it expires, the browser's next
+  connection is refused (407).
 - **egress-proxy** (`app.modules.execution.sandbox.proxy_service`): the existing destination
   policy, applied per session:
   - exact host:port;
@@ -202,7 +204,7 @@ flight. Nothing is ever recalled or retried.
 - **Recovery after a runner restart or OOM kill.** The runner's sessions are in memory, so a
   restart invalidates them: an old endpoint and secret are refused (401). `/tmp` is a fresh
   tmpfs. The worker's cleanup removes the old proxy session; if the worker died as well, that
-  proxy session expires after its TTL (900 s). Its credentials only reach that attempt's
+  proxy session expires after its TTL (1500 s). Its credentials only reach that attempt's
   destination, and only from the browser network. The interrupted attempt is classified by its
   evidence and never replayed automatically:
   - before disclosure → `failed_safe`;

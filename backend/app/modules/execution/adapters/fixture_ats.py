@@ -39,6 +39,7 @@ class ReportsDisclosures:
 
     on_disclosure = None  # the runner's recorder, set for each attempt
     on_progress = None  # D143: the runner's heartbeat, set for each attempt
+    on_hand_over = None  # D143: the runner's own check of its authority, never throttled
 
     def _disclosed(self, d: dict) -> dict:
         if self.on_disclosure is not None:
@@ -48,9 +49,11 @@ class ReportsDisclosures:
 
     def _progress(self) -> None:
         """D143: called between fields while filling and reading back. The runner renews the
-        attempt's lease from it (at most every quarter of a lease), so a long form is not taken
-        for a lost worker, and it raises LostAuthority there once the attempt was cancelled or
-        taken away, so the worker stops between fields, not only at the next gate."""
+        attempt's lease from it, at most every quarter of a lease, so a long form is not taken
+        for a lost worker. That renewal raises LostAuthority once the attempt was cancelled or
+        taken away, so the worker stops between two fields, up to a quarter of a lease after
+        the cancel, and not only at the next gate. (A document is checked for at once:
+        `_hand_over`.)"""
         fault("between_fields")
         if self.on_progress is not None:
             self.on_progress()
@@ -144,7 +147,12 @@ class FixtureAtsAdapter(ReportsDisclosures):
 
     def _hand_over(self) -> None:
         """D137: called just before the document is handed to the page (set_input_files): from
-        here, whatever happens, it may have reached the employer."""
+        here, whatever happens, it may have reached the employer. D143: first the runner checks,
+        unthrottled, that this worker still holds the attempt (and is within its budget): no
+        document is handed over, and no page's Next clicked, for an attempt cancelled or taken
+        away before it. Nothing was handed over then, so it is no upload failure."""
+        if self.on_hand_over is not None:
+            self.on_hand_over()
         self._handing_over = True
 
     def _attach_file(self, page: Page, key: str, loc) -> dict:
@@ -232,6 +240,10 @@ class FixtureAtsAdapter(ReportsDisclosures):
         """D143: the longest this adapter waits for the answer to the final click, in seconds;
         the send gate sizes the attempt's lease to it."""
         return -(-timeout_ms // 1000)
+
+    def code_watch_seconds(self, timeout_ms: int) -> int:
+        """D143: the same for the step that enters a verification code and sends it."""
+        return self.send_watch_seconds(timeout_ms)
 
     def submit(self, page: Page, timeout_ms: int) -> Outcome:
         button = page.locator("form#application button[type=submit]")

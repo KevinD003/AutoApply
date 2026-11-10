@@ -1237,13 +1237,15 @@ def take_code(
 ) -> tuple[str | None, str]:
     """Worker side: returns (code, status). The code is erased from the database as it is read.
     D143: a code handed to the worker is about to be entered, so the lease is extended to cover
-    the watch for its answer (`watch_seconds`, bounded as the send lease is, plus 30s; never
-    shortened). The wait's own lease ends 30s after the request does, and a code typed late in
-    the wait would otherwise be answered after it."""
+    the watch for its answer (`watch_seconds`, the adapter's `code_watch_seconds`, bounded as
+    the send lease is, plus 30s; never shortened). The wait's own lease ends 30s after the
+    request does, and a code typed late in the wait would otherwise be answered after it."""
     with SessionLocal() as db:
         att = _locked_attempt(db, attempt_id, worker, gen, S.awaiting_code)
         cp = db.scalar(select(Checkpoint).where(Checkpoint.id == checkpoint_id).with_for_update())
-        if cp.expires_at <= utcnow() and cp.status in ("open", "submitted"):
+        # D143: a held code is handed over even if the request's time has run out since: it was
+        # accepted in time (`submit_code` refuses after the expiry), and the lease covers it.
+        if cp.status == "open" and cp.expires_at <= utcnow():
             cp.status, cp.code = "expired", None
             db.commit()
             return None, "expired"
@@ -1311,9 +1313,10 @@ def submit_code(db: Session, user_id, app_id, checkpoint_id, round_: int, code: 
 
 
 CANCELLED_AFTER_ENTRY = (
-    "Cancelled by you before anything was submitted. The worker stops at its next step; what it "
-    "had already entered on the employer's page stays entered, and a document it was uploading "
-    "may have been received."
+    "Cancelled by you before anything was submitted. The worker stops at its next check: it may "
+    "type into a few more fields first, but it hands over no further document and never "
+    "submits. What it had already entered on the employer's page stays entered, and a document "
+    "it was handing over when you cancelled may have been received."
 )
 
 

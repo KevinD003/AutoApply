@@ -296,7 +296,8 @@ def _code_sender(domain: str) -> bool:
 
 def fill_codes(db: Session, user: User, gmail: GmailReader | None = None) -> int:
     """Enter a code from your mail for each code step of yours that is waiting. Returns how many
-    codes were entered. The caller commits."""
+    codes were entered. Each code entered is committed at once (D143); the caller commits the
+    rest."""
     st = settings_of(db, user.id)
     if not st.codes_enabled or available_for(db, user) or not codes_authorized():
         return 0
@@ -346,14 +347,26 @@ def fill_codes(db: Session, user: User, gmail: GmailReader | None = None) -> int
                 _event(db, user.id, m, mref, "code", "code_unclear", cp.application_id)
             continue
         code = codes.pop()
+        # D143 (lock order): the application before the request, as every outcome and the
+        # sweeper take them. The event rows below key-share lock the application; taken after
+        # the request's lock, that could deadlock with an outcome closing this request.
+        db.execute(
+            select(Application.id)
+            .where(Application.id == cp.application_id)
+            .with_for_update(read=True, key_share=True)
+        )
         try:
             execution.submit_code(db, user.id, cp.application_id, cp.id, cp.round, code)
         except (LookupError, PermissionError, ValueError):
+            db.commit()  # nothing was entered: the locks are not kept for the next request
             continue
         for m, mref, _ in found:
             _event(db, user.id, m, mref, "code", "code_used", cp.application_id)
         record(db, user.id, "inbox.code_entered", "checkpoint", cp.id, round=cp.round)
         entered += 1
+        # D143: committed at once. The waiting worker reads this request under its attempt's
+        # lock, and must not wait for the rest of the mailbox.
+        db.commit()
     return entered
 
 

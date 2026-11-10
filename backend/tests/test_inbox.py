@@ -184,6 +184,40 @@ def test_a_waiting_code_step_is_filled_from_the_mail_once(api, receiver, connect
     assert fill() == 0  # the message is used once; nothing waits now
 
 
+def test_the_mail_entering_a_code_while_the_sweeper_closes_its_request_waits_for_it(
+    api, receiver, connected, monkeypatch
+):
+    """D143 (lock order): an outcome, and the sweeper recovering an attempt, lock the
+    application and then close its verification request. The code filler takes the same order
+    (the application's key-share lock before the request's), so the two serialize: neither
+    hangs, no deadlock is left for PostgreSQL to break, and no code is stored for an attempt
+    that is over. Held at an exact point, as tests/test_lock_order.py does."""
+    from app.modules.execution import service as execution
+    from app.modules.preparation import package as pk
+    from tests.test_code_wait_quarantine import expire_lease
+    from tests.test_lock_order import no_errors, race
+
+    app_id = prepared_application(api, receiver)
+    api.put("/inbox", json={"codes_enabled": True, "tracking_enabled": False})
+    aid = queue(api, app_id)
+    receiver.config(mode="otp", email_codes=CODE_SENDER)
+    w = start_worker(aid)
+    cp = open_checkpoint(api, app_id, 1)
+    wait_for(lambda: receiver.ledger()["challenges"])
+    w.kill()
+    w.wait(timeout=30)
+    expire_lease(aid)  # simulated: the dead worker's lease has run out
+    sweeper, mail = race(monkeypatch, "sweeper", pk, "lock_application",
+                         lambda: execution.sweep(publish_new=False), fill, after=True)  # fmt: skip
+    no_errors(sweeper, mail)
+    assert (sweeper.result["unknown"], sweeper.result["errors"]) == (1, 0)
+    assert mail.result == 0  # the request was closed first: nothing was entered
+    with SessionLocal() as db:
+        held = db.get(Checkpoint, uuid.UUID(cp["id"]))
+        assert (held.status, held.code) == ("expired", None)
+    assert events() == [] and receiver.ledger()["accepted"] == 0
+
+
 def test_a_code_from_another_sender_or_two_codes_are_left_to_you(api, receiver, connected):
     app_id = prepared_application(api, receiver)
     api.put("/inbox", json={"codes_enabled": True, "tracking_enabled": False})

@@ -236,6 +236,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             return _run_api(aid, worker, gen, API_ADAPTERS[adapter_name](content, docs, str(aid)))
         adapter = ADAPTERS[adapter_name](content, docs)
         adapter.on_progress = progress
+        adapter.on_hand_over = beat  # D143: before each document and each page's Next
         dest = content["destination"]
         if s.browser_isolation not in ("netns", "container") and s.env == "production":
             svc.fail_safe(aid, worker, gen, "browser network isolation is required")
@@ -760,18 +761,20 @@ def _conclude(aid, worker, gen, adapter, page, out) -> str:
 
 def _verification_loop(aid, worker, gen, adapter, page, s) -> str:
     cp = svc.open_checkpoint(aid, worker, gen, "Enter the code the employer emailed you.")
-    fault("in_code_wait")
     submit_ms = s.submit_timeout_seconds * 1000
-    deadline = time.monotonic() + s.checkpoint_ttl_seconds
+    deadline = run_clock() + s.checkpoint_ttl_seconds  # from the request, not from the first look
+    fault("in_code_wait")
     while True:
-        if time.monotonic() > deadline:
-            svc.abandon(aid, worker, gen, "no code was entered in time")
-            return "abandoned"
-        code, status = svc.take_code(cp, aid, worker, gen, adapter.send_watch_seconds(submit_ms))
+        # D143: a code is looked for before the wait's own end is judged, so one accepted in the
+        # wait's last moment is still entered.
+        code, status = svc.take_code(cp, aid, worker, gen, adapter.code_watch_seconds(submit_ms))
         if status in ("expired", "failed"):
             svc.abandon(aid, worker, gen, f"verification {status}")
             return "abandoned"
         if code is None:
+            if run_clock() > deadline:
+                svc.abandon(aid, worker, gen, "no code was entered in time")
+                return "abandoned"
             time.sleep(0.3)
             continue
         out = adapter.enter_code(page, code, submit_ms)

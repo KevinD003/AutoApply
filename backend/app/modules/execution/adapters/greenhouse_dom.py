@@ -26,6 +26,7 @@ anything is entered. Synthetic coverage of these controls is not evidence that a
 """
 
 import re
+import time
 from functools import partial
 from urllib.parse import urljoin, urlsplit
 
@@ -183,6 +184,18 @@ CLIENT_BLOCKED = (
 )
 REAL_WAIT_MS = 75_000  # on a real page: how long the answer to the final click may take
 REAL_CONFIRM_MS = 30_000
+CODE_BUTTON_WAIT_MS = 12_000  # how long the button may take to accept a typed code
+# D143: the watch and the button wait count only their own 250 ms waits, not the page reads
+# between them, so each is also ended by the clock at this multiple of its nominal wait. The
+# attempt's lease is sized to the same figure (`send_watch_seconds`, `code_watch_seconds`).
+WATCH_CLOCK_FACTOR = 1.5
+
+
+def _clock_seconds(wait_ms: int) -> int:
+    """D143: a nominal wait, in milliseconds, as the whole seconds the clock allows it."""
+    return -(-int(wait_ms * WATCH_CLOCK_FACTOR) // 1000)
+
+
 _LOC_STATE_JS = """([id, hidden]) => { const el = document.getElementById(id);
   if (!el) return null;
   const structured = {};
@@ -911,11 +924,18 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
     # -- submit -----------------------------------------------------------------------------
     def send_watch_seconds(self, timeout_ms: int) -> int:
         """D143: the click may take 10s, then the watch for its answer: on a real page at least
-        REAL_WAIT_MS (`_watch`), and half again, because the watch counts only its own waits,
-        not the page reads between them. The send lease covers this, so the sweeper does not
-        call the outcome unknown while the answer is still being watched for."""
+        REAL_WAIT_MS (`_watch`), and half again, where the clock ends the watch
+        (WATCH_CLOCK_FACTOR). The send lease covers this, so the sweeper does not call the
+        outcome unknown while the answer is still being watched for."""
         wait_ms = timeout_ms if self._stand_in else max(timeout_ms, REAL_WAIT_MS)
-        return 10 + -(-wait_ms * 3 // 2000)
+        return 10 + _clock_seconds(wait_ms)
+
+    def code_watch_seconds(self, timeout_ms: int) -> int:
+        """D143: the code step: the button may take CODE_BUTTON_WAIT_MS to accept the typed code
+        (half again by the clock), then the click and its watch as for the final click."""
+        return _clock_seconds(CODE_BUTTON_WAIT_MS) + GreenhouseDomAdapter.send_watch_seconds(
+            self, timeout_ms
+        )
 
     def submit(self, page: Page, timeout_ms: int) -> Outcome:
         """Bound to this attempt: only the response to its own POST (`_ours`) counts, and
@@ -966,8 +986,9 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         confirm_ms = REAL_CONFIRM_MS if real else 5000
         if raised:
             wait_ms = min(wait_ms, 15_000)
+        clock_end = time.monotonic() + _clock_seconds(wait_ms)  # D143: what the lease covers
         step, waited, answered_at, prev_errs = 250, 0, None, None
-        while waited <= wait_ms:
+        while waited <= wait_ms and time.monotonic() < clock_end:
             status = responses[0].status if responses else None
             if responses and answered_at is None:
                 answered_at = waited
@@ -1118,8 +1139,9 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         btn = self._submit_button(page)
         if btn is None:
             return Outcome("unknown", "the form's submit button cannot be identified")
-        for _ in range(48):  # up to 12 s for the button to accept the code
-            if self._confirmed(page):
+        clock_end = time.monotonic() + _clock_seconds(CODE_BUTTON_WAIT_MS)  # D143
+        for _ in range(CODE_BUTTON_WAIT_MS // 250):  # up to 12 s for the button to accept the code
+            if self._confirmed(page) or time.monotonic() > clock_end:
                 break
             try:
                 if btn.is_enabled() and btn.get_attribute("aria-disabled") != "true":

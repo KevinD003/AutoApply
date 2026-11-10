@@ -16,7 +16,9 @@ Sessions expire on their own. Decisions are logged as host:port only.
 
 Run: python -m app.modules.execution.sandbox.proxy_service
 Env: EGRESS_CONTROL_TOKEN (required, >= 16 chars), EGRESS_PROXY_PORT (3128),
-     EGRESS_CONTROL_SOCKET (/run/egress-control/control.sock), EGRESS_SESSION_TTL_SECONDS (900),
+     EGRESS_CONTROL_SOCKET (/run/egress-control/control.sock), EGRESS_SESSION_TTL_SECONDS (1500;
+     D143: above an attempt task's time limit, or a browser still waiting for a verification
+     code is refused its next connection, 407, before the wait ends),
      EGRESS_FIXTURE_NETWORKS (TEST ONLY, JSON list of private CIDRs; default none: a fixture
      host:port may then only be loopback, which here is this container itself).
 """
@@ -235,7 +237,7 @@ def main():
             int(os.environ.get("EGRESS_PROXY_PORT", "3128")),
             os.environ.get("EGRESS_CONTROL_SOCKET", "/run/egress-control/control.sock"),
             token,
-            float(os.environ.get("EGRESS_SESSION_TTL_SECONDS", "900")),
+            float(os.environ.get("EGRESS_SESSION_TTL_SECONDS", "1500")),
             networks,
         )
     )

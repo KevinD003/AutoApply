@@ -136,15 +136,23 @@ def test_an_attempts_task_has_one_time_limit_that_covers_the_whole_code_wait():
     assert 2 * REAL_WATCH + 60 <= d.attempt_after_send_seconds
 
 
-def test_the_browser_runners_session_outlasts_the_attempts_task():
-    """The runner closes a session at its own limit; below the task's limit, a run still
-    waiting for a code would lose its browser first."""
+def test_the_browser_and_proxy_sessions_outlast_the_attempts_task():
+    """The browser runner closes a session at its own limit, and the egress proxy's session
+    expires at its own (the browser's next connection is then refused). Below the task's limit,
+    a run still waiting for a code would lose its browser, or its way out, first."""
+    limit = default_limits().attempt_time_limit_seconds
     compose = (ROOT / "docker-compose.yml").read_text()
     (default,) = re.findall(r"MAX_SESSION_SECONDS: \$\{BROWSER_MAX_SESSION_SECONDS:-(\d+)\}",
                             compose)  # fmt: skip
     launcher = (ROOT / "browser" / "launcher.js").read_text()
     (fallback,) = re.findall(r"process\.env\.MAX_SESSION_SECONDS \|\| (\d+)\)", launcher)
-    assert int(default) == int(fallback) >= default_limits().attempt_time_limit_seconds + 60
+    assert int(default) == int(fallback) >= limit + 60
+    (proxy,) = re.findall(
+        r"EGRESS_SESSION_TTL_SECONDS: \$\{EGRESS_SESSION_TTL_SECONDS:-(\d+)\}", compose
+    )
+    service = (BACKEND / "app/modules/execution/sandbox/proxy_service.py").read_text()
+    (proxy_fallback,) = re.findall(r'get\("EGRESS_SESSION_TTL_SECONDS", "(\d+)"\)', service)
+    assert int(proxy) == int(proxy_fallback) >= limit + 60
 
 
 # point: (attempt state, how the outcome begins, documents uploaded before the stop)
@@ -196,6 +204,17 @@ def test_a_run_within_its_budget_is_not_stopped(api, receiver, monkeypatch):
     monkeypatch.setenv("NOEFFORTS_FAULT", f"before_send_gate=elapse:{almost}")
     assert runner.run_attempt(aid, "w1") == "confirmed"
     assert receiver.ledger()["accepted"] == 1
+
+
+def test_the_budget_never_stops_a_run_after_the_send_gate(api, receiver, monkeypatch):
+    """Past the budget right after the send gate: the click is made and its answer recorded.
+    After that gate only the waits' own limits apply."""
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    monkeypatch.setattr(faults, "_elapsed", 0.0)
+    monkeypatch.setenv("NOEFFORTS_FAULT", over_budget("before_click"))
+    assert runner.run_attempt(aid, "w1") == "confirmed"
+    assert attempt(aid).state == "confirmed" and receiver.ledger()["accepted"] == 1
 
 
 def test_a_wizard_past_its_budget_stops_for_good(api, receiver, monkeypatch):
@@ -366,6 +385,29 @@ def test_a_code_typed_late_in_its_wait_is_entered_under_a_lease_that_covers_its_
     assert receiver.ledger()["accepted"] == 1
 
 
+def test_a_code_accepted_in_the_last_moment_of_its_wait_is_still_entered(api, receiver):
+    """The code was accepted (202) while the request was open; its time ran out before the
+    worker's next look (simulated: the request's expiry a second ago, and the worker's own
+    clock past the end of its wait). The worker enters it all the same. Before, either end
+    won and the accepted code was erased unused. The run is also past its budget by then,
+    which no longer applies after the final click."""
+    over = get_settings().attempt_run_budget_seconds + 1
+    app_id, aid, p, gate, cp, code = _code_request(api, receiver, f"in_code_wait=elapse:{over}")
+    url = f"/applications/{app_id}/checkpoints/{cp['id']}/code"
+    try:
+        assert api.post(url, json={"round": 1, "code": code}).status_code == 202
+        with SessionLocal() as db:
+            db.get(Checkpoint, uuid.UUID(cp["id"])).expires_at = utcnow() - timedelta(seconds=1)
+            db.commit()
+        # Too late for another: the request's own time is checked when a code is typed.
+        assert api.post(url, json={"round": 1, "code": code}).status_code == 409
+    finally:
+        result = release(p, gate)
+    assert result == "confirmed"
+    assert attempt(aid).state == "confirmed" and checkpoint(cp["id"]) == ("done", None)
+    assert receiver.ledger()["accepted"] == 1
+
+
 # ------------------------------------------------------------------------------------ leases
 
 
@@ -404,28 +446,29 @@ def test_recording_evidence_renews_the_lease_and_never_shortens_it(api, receiver
 
 
 def test_a_slow_form_keeps_its_lease_while_it_makes_progress(api, receiver):
-    """Every field takes over half a second, while filling and while reading back: more than
-    two of the worker's 8-second leases in all. It renews the lease between fields and submits
-    once."""
+    """Every field takes a second, while filling and while reading back: longer in all than
+    the worker's 15-second lease, and the read-back alone runs past the last renewal an upload
+    gives. It renews the lease between fields and submits once. (The lease is long enough for
+    the browser to start on a slow machine.)"""
     app_id = prepared_application(api, receiver)
     aid = queue(api, app_id)
-    r = run_worker_process(aid, "w1", fault="between_fields=sleep:0.6",
-                           extra_env={"NOEFFORTS_LEASE_SECONDS": "8"})  # fmt: skip
+    r = run_worker_process(aid, "w1", fault="between_fields=sleep:1", timeout=150,
+                           extra_env={"NOEFFORTS_LEASE_SECONDS": "15"})  # fmt: skip
     assert r.returncode == 0 and r.stdout.strip().splitlines()[-1] == "confirmed", r.stderr[-800:]
     a = attempt(aid)
     assert a.state == "confirmed"
-    assert (a.finished_at - a.disclosure_started_at).total_seconds() > 16  # over two leases
+    assert (a.finished_at - a.disclosure_started_at).total_seconds() > 20  # well over a lease
     assert receiver.ledger()["accepted"] == 1
 
 
 def test_a_worker_that_stops_making_progress_loses_its_lease(api, receiver):
-    """No background heartbeat holds the lease for a stuck worker: after its upload the worker
-    does nothing for 12 s under an 8-second lease, and finds the lease gone at its next step.
-    Nothing is submitted."""
+    """No background heartbeat holds the lease for a stuck worker, as before D143: after its
+    upload the worker does nothing for 20 s under a 15-second lease, and finds the lease gone
+    at its next step. Nothing is submitted."""
     app_id = prepared_application(api, receiver)
     aid = queue(api, app_id)
-    r = run_worker_process(aid, "w1", fault="after_disclosure_recorded=sleep:12",
-                           extra_env={"NOEFFORTS_LEASE_SECONDS": "8"})  # fmt: skip
+    r = run_worker_process(aid, "w1", fault="after_disclosure_recorded=sleep:20", timeout=150,
+                           extra_env={"NOEFFORTS_LEASE_SECONDS": "15"})  # fmt: skip
     assert r.stdout.strip().splitlines()[-1] == "lost_authority", r.stderr[-800:]
     assert attempt(aid).state == "claimed"
     assert svc.sweep(publish_new=False)["abandoned"] == 1  # disclosed: never taken over
@@ -443,6 +486,10 @@ def test_the_send_lease_covers_the_adapters_wait_for_the_answer(api, receiver):
     real = SimpleNamespace(_stand_in=False)
     assert GreenhouseDomAdapter.send_watch_seconds(real, 30_000) == REAL_WATCH
     assert GreenhouseDomAdapter.send_watch_seconds(real, 120_000) == 190  # a longer timeout
+    # The step that enters a code: on the Greenhouse page 12 s for its button first (18 by the
+    # clock); elsewhere the same wait as the final click's.
+    assert GreenhouseDomAdapter.code_watch_seconds(real, 30_000) == 18 + REAL_WATCH
+    assert object.__new__(FixtureAtsAdapter).code_watch_seconds(30_000) == 30
     submit = get_settings().submit_timeout_seconds
 
     postings = iter(range(2, 9))
@@ -467,6 +514,30 @@ def test_the_send_lease_covers_the_adapters_wait_for_the_answer(api, receiver):
     assert receiver.ledger()["accepted"] == 0
 
 
+def test_the_greenhouse_watch_ends_by_the_clock_its_lease_was_sized_to():
+    """The watch counts only its own 250 ms waits. With page reads of half a second each (a
+    stand-in for a struggling page; no browser), a 1-second watch would run for almost four
+    seconds. The clock ends it at half again, the figure the lease was sized to."""
+
+    class Page:
+        def wait_for_timeout(self, ms):
+            time.sleep(ms / 1000)
+
+    stub = SimpleNamespace(
+        _stand_in=True,
+        _code_boxes=lambda page: time.sleep(0.5),  # no code boxes, slowly
+        _confirmed=lambda page: False,
+        _form_errors=lambda page: [],
+        _challenge_now=lambda page: False,
+    )
+    assert GreenhouseDomAdapter.send_watch_seconds(stub, 1000) == 10 + 2  # the click, then 1.5 s
+    began = time.monotonic()
+    out = GreenhouseDomAdapter._watch(stub, Page(), 1000, False, False, [], [], False)
+    took = time.monotonic() - began
+    assert out.kind == "unknown" and "no response" in out.detail
+    assert 1.4 < took < 3.0, took  # by its waits alone: five steps of 0.75 s
+
+
 # ------------------------------------------------------------------------------- cancelling
 
 
@@ -488,14 +559,15 @@ def test_a_cancel_after_entry_says_what_may_have_been_entered(api, receiver):
 
 def test_a_cancel_while_a_form_is_filled_stops_the_worker_between_fields(api, receiver):
     """The page saves each field as it changes (the receiver's autosave), and every field takes
-    a second. Cancelled after the first fields, the worker finds its attempt gone at its next
-    lease renewal, between two fields: the rest are never entered, and nothing is submitted."""
+    two seconds. Cancelled after the first fields, the worker finds its attempt gone at its next
+    lease renewal (every 4 s here), between two fields: the rest are never entered, and nothing
+    is submitted."""
     app_id = prepared_application(api, receiver)
     aid = queue(api, app_id)
     receiver.config(autosave=True)
     content = api.get(f"/applications/{app_id}/package").json()["package"]["content"]
     typed = [a for a in content["answers"] if a["value"] is not None and a["type"] != "file"]
-    p = start_worker(aid, "w1", "between_fields=sleep:1", lease_seconds=4)
+    p = start_worker(aid, "w1", "between_fields=sleep:2", lease_seconds=16)
     try:
         wait_for(lambda: disclosed(receiver.ledger(), "autosave") >= 2, timeout=60)
         assert api.post(f"/applications/{app_id}/cancel").status_code == 200
@@ -509,6 +581,28 @@ def test_a_cancel_while_a_form_is_filled_stops_the_worker_between_fields(api, re
     led = receiver.ledger()
     assert led["accepted"] == 0
     assert 2 <= disclosed(led, "autosave") < len(typed) - 2  # the rest were never entered
+
+
+def test_a_cancelled_attempt_hands_over_no_document(api, receiver):
+    """Cancelled right after the disclosure gate, with a lease so long that no renewal falls
+    due while the first fields are typed: the worker still checks before it hands a document
+    over, so the resume never reaches the employer."""
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    receiver.config(autosave=True)
+    gate = tempfile.mktemp(prefix="release-")
+    p = start_worker(aid, "w1", f"after_disclosure_gate=waitfile:{gate}", lease_seconds=240)
+    try:
+        wait_for(lambda: reached(gate), timeout=60)
+        assert api.post(f"/applications/{app_id}/cancel").status_code == 200
+    finally:
+        result = release(p, gate)
+    assert result == "lost_authority"
+    a = attempt(aid)
+    assert a.state == "cancelled" and a.outcome_detail == svc.CANCELLED_AFTER_ENTRY
+    led = receiver.ledger()
+    assert disclosed(led, "autosave") >= 1  # fields before the document were typed ...
+    assert uploads(led) == 0 and led["accepted"] == 0  # ... the document was never handed over
 
 
 def test_a_cancel_before_anything_was_entered_says_so(api, receiver):

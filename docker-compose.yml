@@ -143,6 +143,10 @@ services:
     environment:
       EGRESS_CONTROL_TOKEN: ${EGRESS_CONTROL_TOKEN:?set EGRESS_CONTROL_TOKEN in .env}
       EGRESS_CONTROL_SOCKET: /run/egress-control/control.sock
+      # D143: as the browser runner's session limit, above the attempt task's time limit: a
+      # session that expires first refuses the browser's next connection (407) while it still
+      # waits for a verification code.
+      EGRESS_SESSION_TTL_SECONDS: ${EGRESS_SESSION_TTL_SECONDS:-1500}
     volumes: [egress_control:/run/egress-control]
     networks: [exec_egress]
     read_only: true
