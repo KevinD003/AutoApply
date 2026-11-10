@@ -13,7 +13,9 @@ Routes (Bearer token required on every one; cfg["fapi_token"]):
 Modes (cfg["mode"]): fapi_unauthorized, fapi_rate_limited_schema, fapi_rate_limited_submit,
 fapi_reject, fapi_error_before_accept, fapi_drop_after_accept (accepted, then the response is
 held past the client's timeout), fapi_schema_changed, fapi_receipt_other (S5: accepted, but the
-reply names another application).
+reply names another application), fapi_redirect_draft and fapi_redirect_document (D137: the
+request is received and recorded, then answered with a redirect), fapi_draft_error (D137: the
+draft is received and recorded, then the API answers 500).
 Acceptances go to the receiver's own ledger (same `accept`, keyed by the idempotency key, so a
 repeated key never creates a second acceptance)."""
 
@@ -26,7 +28,7 @@ import secrets
 import time
 
 from fastapi import Header, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 import greenhouse_v2
 
@@ -75,6 +77,10 @@ def mount(app, ledger, cfg, accept) -> None:
         ledger.run("insert into disclosures (kind,slug,detail,created_at) values (?,?,?,?)",
                    ("api_draft", f"fapi:{board}/{job_id}",
                     json.dumps({"fields": sorted(drafts[d_id]["answers"])}), time.time()))
+        if cfg.get("mode") == "fapi_redirect_draft":  # D137: received, then a redirect
+            return RedirectResponse("/fapi/v1/moved", status_code=307)
+        if cfg.get("mode") == "fapi_draft_error":  # D137: received, then an error
+            return JSONResponse({"error": "unavailable"}, status_code=500)
         return {"application": d_id, "status": "draft"}
 
     @app.post("/fapi/v1/applications/{draft}/documents")
@@ -93,6 +99,8 @@ def mount(app, ledger, cfg, accept) -> None:
         ledger.run("insert into disclosures (kind,slug,detail,created_at) values (?,?,?,?)",
                    ("upload", f"fapi:{d['job']}", json.dumps({"field": body["field"],
                                                                "sha256": digest}), time.time()))
+        if cfg.get("mode") == "fapi_redirect_document":  # D137: received, then a redirect
+            return RedirectResponse("/fapi/v1/moved", status_code=307)
         return {"document_ref": ref, "sha256": digest}
 
     @app.post("/fapi/v1/applications/{draft}/submit")

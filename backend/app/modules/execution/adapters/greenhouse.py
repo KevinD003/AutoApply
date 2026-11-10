@@ -155,6 +155,7 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
     def _attach(self, page: Page, a: dict) -> dict:
         key = a["key"]
         name, ctype, data = self.documents[key]
+        self._hand_over()
         page.locator(f'input[type=file][name="{key}"]').set_input_files(
             files=[{"name": name, "mimeType": ctype, "buffer": data}]
         )

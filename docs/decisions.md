@@ -5032,11 +5032,20 @@ audit-inventory and export-completeness guards are updated and pass.
     stops, a document the API acknowledged. The runner's recorder writes it, fenced by the
     attempt's generation (`_record_as_made`); adapters report through `ReportsDisclosures`. What
     was recorded is never recorded again (`_not_yet`, by identity, not by equal content).
-  - **A failure during an upload is that upload's failure:** once a document was handed to the page,
-    or its request sent to the API, any failure before its acknowledgement records it as possibly
-    received (`ack` `none` on a page, `no_response` through the API) and stops the attempt as an
-    upload failure ("a document upload was interrupted", "the API did not answer a document
-    upload"). A refusal before anything was sent (the API destination not enabled) is not one.
+  - **A failure during an upload is that upload's failure:** from the moment a document is handed
+    to the page (`_hand_over`, just before `set_input_files`), or its request is sent to the API,
+    any failure before its acknowledgement records it as possibly received (`ack` `none` on a
+    page, `no_response` through the API) and stops the attempt as an upload failure ("a document
+    upload was interrupted", "the API did not answer a document upload"). That includes an API
+    answer that redirects: the request had arrived. A failure before the hand-over (an adapter or
+    package bug) stays the internal error it was, with nothing recorded; so does a refusal before
+    anything was sent (the API destination not enabled, no credentials, an address the fixture
+    check refuses, a refused connection).
+  - **The API's application draft too:** the answers it carries are recorded as possibly received
+    when its request fails after sending (`no_response`), or when the API answers that it did
+    not create it (`not_created`).
+  - **Diagnostics kept:** an upload stop that wraps another error logs that error's type and
+    where it was raised, never its message (as the runner's internal-error log does).
   - **A worker that lost its authority stops at its next disclosure:** the fence refuses the
     recording (`LostAuthority`), so it no longer fills on until its next fenced write.
 - **Not changed:**
@@ -5046,6 +5055,15 @@ audit-inventory and export-completeness guards are updated and pass.
     evidence checks are unchanged;
   - the package (`SCHEMA_VERSION` 3), the approvals, the gates, the fencing and the lock order.
 - **Not fixed, stated:**
+  - a worker killed while a disclosure is in flight records nothing for it: a document handed over
+    whose acknowledgement was not yet read (up to `navigation_timeout_seconds` on a page, up to
+    `api_timeout_seconds` through the API), a location search not yet complete. The same holds for
+    a worker whose lease lapses there: filling does not renew it, so the fence refuses the record.
+    The sweeper still abandons the attempt (`disclosure_started_at` is set), which is never
+    retried; only the receiver's ledger shows whether the document arrived. Recording a pending row
+    before the hand-over would change what evidence holds and its order, which this decision keeps;
+  - a failure inside the browser's hand-over itself (for example a missing or duplicated file
+    input) counts the document as possibly received, though it may not have been sent;
   - a section control whose entry failed midway is not recorded: only entered ones are;
   - typing an answer is not a disclosure in NoEfforts' evidence. A page that saves as you type
     sends it anyway, which only the receiver's ledger counts (its autosave mode);
@@ -5058,8 +5076,15 @@ audit-inventory and export-completeness guards are updated and pass.
     id-only page and through the API; the attempt is abandoned and never retried;
   - a worker killed after an upload leaves its evidence; the sweeper abandons the attempt, which is
     never retried;
-  - an error during an upload counts the document as possibly received, on a page and through the
-    API.
+  - an error during an upload counts the document as possibly received on the generic form, on
+    Greenhouse's id-only page, on the Workday-style page and on the first Greenhouse-style page;
+  - a failure before the document is handed over stays an internal error, with nothing recorded;
+  - an upload stop logs its cause's type and place, never its message;
+  - through the API, a draft or a document received and then answered with a redirect, and a draft
+    the API received but did not create, are recorded (the receiver's ledger shows each arrived).
+- **Review:** an adversarial review before merging (five reviewers, two skeptics per finding)
+  upheld eight minor findings and no blocker; the decided points above on the hand-over, the API
+  redirect and draft, the diagnostics, and the first item under "Not fixed, stated" come from it.
 
 ## D138 — Saved answers on Greenhouse- and Workday-shaped forms, shown up to the employer (2026-11-10)
 
