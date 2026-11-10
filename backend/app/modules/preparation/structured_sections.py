@@ -25,10 +25,11 @@ Deliberately OUT OF SCOPE here (the isolated remaining gaps, not guessed):
     real Greenhouse education/employment section are UNOBSERVED and are not invented. The option
     lists are supplied by the caller (at capture, from the education endpoints) or, in tests, by
     a clearly-labelled synthetic contract fixture.
-  * live package integration — no real captured form carries these sections yet (capture fails
-    closed), so this is not wired into `package.build_content` and `SCHEMA_VERSION` is unchanged.
-    Each field result carries the same `fact_refs` shape the package uses, so wiring it in is a
-    thin, reviewable step once a real section is observed.
+  * real pages — `package.build_content` freezes a ready section into `content["sections"]`
+    (D120 (cont.)), but only a captured local stand-in carries one: capture reads a section on
+    stand-ins only, and a real destination refuses a section package before anything is entered.
+    `SCHEMA_VERSION` is unchanged (an ordinary form has no `sections` key); D140 shows the frozen
+    rows on the review page and in the version diff.
 """
 
 import re

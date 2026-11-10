@@ -133,6 +133,44 @@ SHAPES[3] = (SHAPES[2] - {".answers[].fact_refs[preferences].version"}) | {
     ".documents[].origin",
 }
 
+# D140: the structured sections a captured stand-in carries (D120), recorded as they have been since
+# D120 under version 3. Recording them is not a change of shape: no package hash changes. An
+# omitted field (a current role's end date) has no value, hence ".end_date.value" as a leaf.
+SHAPES[3] = SHAPES[3] | {
+    ".sections[]",
+    ".sections[].kind",
+    ".sections[].root",
+    ".sections[].rows[]",
+    ".sections[].rows[].record_id",
+    ".sections[].rows[].fields.company_name.status",
+    ".sections[].rows[].fields.company_name.display",
+    ".sections[].rows[].fields.company_name.value.text",
+    ".sections[].rows[].fields.current.status",
+    ".sections[].rows[].fields.current.display",
+    ".sections[].rows[].fields.current.value.bool",
+    ".sections[].rows[].fields.degree_id.status",
+    ".sections[].rows[].fields.degree_id.display",
+    ".sections[].rows[].fields.degree_id.value.id",
+    ".sections[].rows[].fields.discipline_id.status",
+    ".sections[].rows[].fields.discipline_id.display",
+    ".sections[].rows[].fields.discipline_id.value.id",
+    ".sections[].rows[].fields.end_date.status",
+    ".sections[].rows[].fields.end_date.display",
+    ".sections[].rows[].fields.end_date.value",
+    ".sections[].rows[].fields.end_date.value.month",
+    ".sections[].rows[].fields.end_date.value.year",
+    ".sections[].rows[].fields.school_name_id.status",
+    ".sections[].rows[].fields.school_name_id.display",
+    ".sections[].rows[].fields.school_name_id.value.id",
+    ".sections[].rows[].fields.start_date.status",
+    ".sections[].rows[].fields.start_date.display",
+    ".sections[].rows[].fields.start_date.value.month",
+    ".sections[].rows[].fields.start_date.value.year",
+    ".sections[].rows[].fields.title.status",
+    ".sections[].rows[].fields.title.display",
+    ".sections[].rows[].fields.title.value.text",
+}
+
 
 @pytest.fixture(scope="module")
 def receiver():
@@ -211,6 +249,33 @@ def _contents(api, receiver, monkeypatch) -> list[dict]:
     api.put(f"/applications/{app['id']}/answers",
             json={"key": "start", "value": {"date": "2026-11-02"}})  # fmt: skip
     out.append(api.get(f"/applications/{app['id']}/package").json()["package"]["content"])
+    # D140: structured sections (D120), as a captured stand-in carries them: an education row
+    # (option ids and dates) and a current employment row (text, a flag, an omitted end date).
+    for r in api.get("/profile/employment").json():  # setup_candidate's undated record
+        api.delete(f"/profile/employment/{r['id']}")
+    edu = api.post("/profile/education", json={
+        "institution": "State University", "degree": "Bachelor's Degree",
+        "field_of_study": "Computer Science", "start_date": "2014-09-01",
+        "end_date": "2018-05-01"}).json()  # fmt: skip
+    api.post(f"/profile/education/{edu['id']}/approve")
+    emp = api.post("/profile/employment", json={
+        "employer": "Example Health", "title": "Clinic Assistant", "start_date": "2019-01-01",
+        "is_current": True}).json()  # fmt: skip
+    api.post(f"/profile/employment/{emp['id']}/approve")
+    job = api.post("/jobs", json={"title": "Sections", "employer": "Example Health"}).json()["job"]
+    form = {"title": "Sections (fictional)", "fields": [
+        {"key": "nickname", "label": "Nickname", "type": "text", "required": False}],
+        "sections": [
+        {"kind": "education", "root": "#education-section",
+         "schools": [{"id": "s1", "text": "State University"}],
+         "degrees": [{"id": "d1", "text": "Bachelor's Degree"}],
+         "disciplines": [{"id": "x1", "text": "Computer Science"}]},
+        {"kind": "employment", "root": "#employment-section"}]}  # fmt: skip
+    assert api.post(f"/jobs/{job['id']}/form", json={"form": form}).status_code == 201
+    app = api.post("/applications", json={"job_id": job["id"]}).json()
+    content = api.get(f"/applications/{app['id']}/package").json()["package"]["content"]
+    assert [x["kind"] for x in content["sections"]] == ["education", "employment"], content
+    out.append(content)
     return out
 
 
@@ -223,7 +288,8 @@ def test_the_package_shape_is_the_one_recorded_for_its_schema_version(api, recei
     assert sorted(observed - want) == [] and sorted(want - observed) == [], (
         "The package content shape changed: bump SCHEMA_VERSION in package.py deliberately "
         "(every approval is invalidated; say so in docs/implementation-status.md) and record "
-        "the new shape under the new version."
+        "the new shape under the new version.",
+        {"new": sorted(observed - want), "missing": sorted(want - observed)},
     )
 
 
