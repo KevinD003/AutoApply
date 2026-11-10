@@ -41,6 +41,8 @@ gh2_widget_variants (cfg variant, delay_ms; see _VARIANTS_JS), gh2_hidden_search
 _hidden_search), gh2_required_unmarked,
 gh2_required_extra, gh2_required_marker_only, gh2_required_answered, gh2_required_group, gh2_required_cover_group,
 gh2_conditional_required (D135: question_8105, optional in the job data, is required once shown),
+gh2_native_select (D136: question_8104 as a native <select>; gh2_native_select_optional:
+the same, asked as optional by the job data, the page and the server),
 gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS; for dd locale_gate also locale_origin,
 locale_path, locale_via; for dd open_beacon also beacon, beacon_via; for dd late_other_host
 other_origin), GET /locales/{lang}/{ns}.json (cfg locale_delay_ms; lang "moved"
@@ -254,6 +256,10 @@ def _job(board, job_id, cfg=None) -> dict:
     c = cfg or {}
     if c.get("mode") == "gh2_question_added":
         return {**j, "questions": [*j["questions"], ADDED_QUESTION]}
+    if c.get("mode") == "gh2_native_select_optional":  # D136: optional everywhere
+        qs = [{**q, "required": False} if q["fields"][0]["name"] == "question_8104" else q
+              for q in j["questions"]]
+        return {**j, "questions": qs}
     if c.get("mode") != "gh2_phone_companion" or c.get("pcm") == "phone_required_api":
         return j
     qs = [{**q, "required": False} if q["fields"][0]["name"] == "phone" else q
@@ -475,6 +481,12 @@ def _render(q, mode, cfg=None) -> str:
                        for v in values)
         if mode == "gh2_lazy_options":  # options exist only after the dropdown opens
             opts = ""
+        if mode in ("gh2_native_select", "gh2_native_select_optional") and qid == "question_8104":
+            # D136: a native <select>, which the DOM adapter does not fill (refused at capture).
+            nopts = "".join(f'<option value="{v["value"]}">{html.escape(v["label"])}</option>'
+                            for v in values)
+            return (f'<div class="field">{_label(qid, label_text, req)}'
+                    f'<select id="{qid}"{areq}><option value=""></option>{nopts}</select></div>')
         dup = (f'<input type="text" id="{qid}" aria-label="duplicate">'
                if mode == "gh2_duplicate_id" and qid == "question_8101" else "")
         if mode in ("gh2_cdn_app", "gh2_widgets", "gh2_widget_variants", "gh2_dd", "gh2_dd_extras"):

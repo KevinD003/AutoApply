@@ -9,10 +9,28 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A control NoEfforts cannot fill is refused when the form is read (D136, 2026-11-10; local only)
+
+Nothing here ran against a real page or a real account. Branch `capture-refusals` (from `main`
+53b28af). The second Greenhouse-style fixture is the stand-in: modes `gh2_native_select` and
+`gh2_native_select_optional` render question_8104 as a native `<select>` (a FIXTURE ASSUMPTION), and
+the tests add a `<select multiple>` and a consent checkbox. The receiver's ledger is the oracle for
+what was submitted.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| Reading the form lets through exactly what the adapter fills (one list; every field type, as a combobox and not) | `test_capture_lets_through_exactly_what_the_adapter_fills` | unit |
+| A native dropdown is refused when the form is read; the page's combobox for the same question stays a choice | `test_a_native_dropdown_is_refused_when_the_form_is_read` | form schema |
+| A list of several choices on a native `<select multiple>` is refused when the form is read | `test_a_list_of_several_choices_is_refused_when_the_form_is_read` | form schema |
+| A consent checkbox is refused when the form is read | `test_a_consent_checkbox_is_refused_when_the_form_is_read` | form schema |
+| A required native dropdown is a checkpoint: no answer accepted here, approval refused, nothing disclosed | `test_a_required_native_dropdown_is_a_checkpoint_and_nothing_is_sent` | receiver ledger: no disclosure, 0 accepted |
+| An optional native dropdown is left blank and the rest is sent (before D136: stopped as a form change, "widget", nothing disclosed) | `test_an_optional_native_dropdown_is_left_blank_and_the_application_is_sent` | receiver ledger: 1 acceptance without it |
+| Each test fails without its change | the reading step's refusal removed: 5 of 6 fail; the native-dropdown rule removed: 4 of 6; the adapter given its own list, with the checkbox added: 1 of 6 (the shared-list test) | recorded in `docs/automation-loop.md` |
+
 ## A question the page shows after an earlier answer (D135, 2026-11-09; local only)
 
 Nothing here ran against a real page or a real account. Branch `conditional-pauses` (from `main`
-2e10418), not on `main`. The second Greenhouse-style fixture is the stand-in: question_8105 is hidden
+2e10418), merged as #44 (53b28af). The second Greenhouse-style fixture is the stand-in: question_8105 is hidden
 until question_8104 is "Yes", and mode `gh2_conditional_required` (a FIXTURE ASSUMPTION) marks it
 required when shown. The receiver's ledger is the oracle for what was submitted.
 

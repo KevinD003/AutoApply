@@ -53,6 +53,31 @@ from app.modules.preparation.forms import (
 # built before this -- one that would skip a section or not re-prove the phone's control -- can
 # never claim a package approved under it.
 EXTRACTION_VERSION = "greenhouse-dom-v5"
+# D136: what the DOM adapter (execution/adapters/greenhouse_dom.py) fills, by field type; a choice
+# only as an ARIA combobox. Anything else is decided here, at capture, never after an approval:
+# a required one is a checkpoint (apply on the employer's site), an optional one stays blank.
+DOM_FILLABLE = frozenset({"text", "email", "tel", "url", "textarea", "number", "select", "file"})
+NATIVE_DROPDOWN_REASON = "native dropdown (not supported yet)"
+_UNFILLABLE_REASONS = {
+    FieldType.checkbox: "a checkbox (not supported yet)",
+    FieldType.checkbox_group: "a list of several choices (not supported yet)",
+    FieldType.multiselect: "a list of several choices (not supported yet)",
+    FieldType.radio: "a set of options (not supported yet)",
+    FieldType.date: "a date (not supported yet)",
+}
+
+
+def unfillable(f: FormField, c: "Control") -> str | None:
+    """D136: why the DOM adapter would refuse to fill `f` on control `c`, or None."""
+    if f.type == FieldType.select and c.role != "combobox":
+        return NATIVE_DROPDOWN_REASON
+    if f.type.value not in DOM_FILLABLE and f.type != FieldType.unsupported:
+        return _UNFILLABLE_REASONS.get(
+            f.type, "a control NoEfforts cannot fill (not supported yet)"
+        )
+    return None
+
+
 UNLISTED_REASON = (
     "a control on the page that the job data does not list: what it asks, and whether it is "
     "required, are never inferred"
@@ -731,6 +756,11 @@ def build_schema(api: dict, page_html: str, *, stand_ins: bool = False
                     "unsupported_reason": "multi-choice dropdown (not supported yet)",
                     "options": [],
                 }
+            )
+        elif m.status == "mapped" and (reason := unfillable(f, m.control)) is not None:
+            # D136: refused at capture, not after you approved it (the adapter would stop there).
+            f = f.model_copy(
+                update={"type": FieldType.unsupported, "unsupported_reason": reason, "options": []}
             )
         elif m.hidden_at_load and f.type != FieldType.unsupported:
             # Shown by page logic we cannot see: its condition is unknown, never a guess.

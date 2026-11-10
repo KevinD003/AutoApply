@@ -22,12 +22,13 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 
 | What | Where |
 |---|---|
-| `main` | 2e10418 (tree 3a18998, as predicted): #43 D134. Before it, da7ac61 (tree d2214b6): #41 D133 (main CI #265 green on all four jobs); ab671e1: #40 D132 (c19c683; main CI #260 green) and #42, the receiver's reset in one transaction |
+| `main` | 53b28af (tree fe5c8c3, as predicted): #44 D135 (main CI #269 running at 2026-11-10 00:08 UTC). Before it, 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
 | D131 follow-up (the review's remaining findings) | merged (#39, bd38529); main CI #254 passed all four jobs |
 | D132 form-change pause and questions tab | merged (#40, c19c683); main CI #260 passed all four jobs |
 | D133 reuse and suggestion guards | merged (#41, da7ac61); its PR CI passed all four jobs on 360f34c, and main CI #265 on da7ac61 |
-| D134 the standing rule respects your pause and revocation | merged (#43, 2e10418); its PR CI passed all four jobs on 118b4b9 |
-| D135 a question the page shows after an earlier answer | branch `conditional-pauses` (from 2e10418) and its pull request; not merged |
+| D134 the standing rule respects your pause and revocation | merged (#43, 2e10418); its PR CI passed all four jobs on 118b4b9, and main CI #267 on 2e10418 |
+| D135 a question the page shows after an earlier answer | merged (#44, 53b28af); its PR CI passed all four jobs on 2d3c07c |
+| D136 a control NoEfforts cannot fill is refused when the form is read | branch `capture-refusals` (from 53b28af) and its pull request; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -47,8 +48,8 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 2 | New question → questions tab → saved → resumes | fx (gh2 by id and pilot stand-in), on `main` since D132 (#40) | fx (e2e), on `main` since D132 |
 | 3 | Future reuse | unit (resolver), generic form; D133 merged (#41): suggestions judge the saved side, "Use here only" | unit |
 | 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model | unit |
-| 5 | Conditional question | fx on the v1 fixture; D135 (branch), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | absent (no branching fixture) |
-| 6 | Unsupported widget → checkpoint | fx at capture; some types refused only after approval | fx at capture |
+| 5 | Conditional question | fx on the v1 fixture; D135 merged (#44), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | absent (no branching fixture) |
+| 6 | Unsupported widget → checkpoint | fx at capture; D136 (branch): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger) | fx at capture |
 | 7 | Repeating records | fx education stand-in (D120); employment unit | absent |
 | 8 | Answer edits invalidate approvals | fx | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; not run on gh2 | partial |
@@ -103,13 +104,24 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   - a pause and the rule's step for one job are serialized per account, so a pause during a tick
     reaches that tick's remaining jobs;
   - after you revoke, the rule never approves that application again.
-- **D135 (branch `conditional-pauses`, not merged).** Rank 4, first half, on Greenhouse's id-only
-  structure:
+- **D135 (PR #44, merged).** Rank 4, first half, on Greenhouse's id-only structure:
   - a typed question the page hides until an earlier answer reveals it is answerable (your answer
     or a profile fact, never a saved answer or a draft), and entered only if the page shows it;
   - a revealed question the page requires with no approved answer pauses the application after
     filling, with nothing submitted (`conditional_required`); answered and tried again, one new
     attempt sends it.
+- **D136 (branch `capture-refusals`, not merged).** Rank 5, first half: on Greenhouse's id-only
+  structure a control the adapter cannot fill is refused when the form is read, never after you
+  approve. One list of what the adapter fills serves both steps. A required native dropdown,
+  checkbox or list of several choices is a checkpoint (apply on the employer's site); an optional
+  one is left blank and the rest is sent. Before, a native dropdown stopped every attempt as a form
+  change ("widget"), and reading the form again read it the same way; the others were refused only
+  after approval.
+- **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
+  (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
+  Pausing there and later queuing one new attempt is a retry after `sending`, which CLAUDE.md
+  forbids ("never add a retry after `disclosure_started_at` or `sending`"). Today it ends
+  `failed_terminal` (apply on the employer's site). Not built.
 - **Research** (log below):
   - corrected the Workday terms note: the End User Agreement covers scoutrfp.com;
   - Workday saves a draft on every Next;
@@ -117,13 +129,13 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
 
 ## Hypothesis and next slice
 
-The loop itself (**D132**, #40), the reuse and suggestion guards (**D133**, #41) and the standing
-rule's respect for the owner's pause and revocation (**D134**, #43) are on `main`. What rank 3
-leaves, the rule continuing after a form-change pause, needs the owner's decision. **D135** (rank
-4, first half, on its branch) makes questions the page reveals after an earlier answer answerable,
-and pauses on a revealed one the page requires. Next, rank 4's second half: a final click the
-page's own checks block is not terminal. Later ranks:
-- capture refusing what cannot be filled, and evidence surviving any failure;
+The loop itself (**D132**, #40), the reuse and suggestion guards (**D133**, #41), the standing
+rule's respect for the owner's pause and revocation (**D134**, #43) and questions the page reveals
+after an earlier answer (**D135**, #44) are on `main`. Two remainders need the owner's decision:
+the rule continuing after a form-change pause (rank 3), and a final click the page's own checks
+block (rank 4, second half: a retry after `sending`). **D136** (rank 5, first half, on its branch)
+refuses, when the form is read, every control the adapter cannot fill. Next, rank 5's second half:
+evidence of what was disclosed survives any failure after an upload. Later ranks:
 - provider-shaped reuse tests;
 - EEOC/demographic end to end;
 - reviewable sections;
@@ -147,8 +159,11 @@ page's own checks block is not terminal. Later ranks:
   suites the change touches, each of its seven changes removed in turn, frontend lint and types;
   with `main` (D133) merged in, the same suites with `test_greenhouse_dom.py`, the resumed held
   attempt, and the Tracker's card in one e2e spec (desktop and mobile).
-- **D135 (branch `conditional-pauses`):** the new tests and every suite that loads the second
-  Greenhouse-style fixture, locally (Tests run below). The full suites run in its CI.
+- **D135:** merged (#44, 53b28af); its PR CI passed all four jobs on 2d3c07c. Main CI #269 on
+  53b28af was running when D136 branched.
+- **D136 (branch `capture-refusals`):** the new tests, their sabotage runs and every suite that
+  touches the second Greenhouse-style fixture or reads a Greenhouse form, locally (Tests run below).
+  The full suites run in its CI.
 
 ## Tests run (this loop)
 
@@ -219,14 +234,20 @@ page's own checks block is not terminal. Later ranks:
     and a resume needs the user's own sign-in.
 - **D113 continuing after a form-change pause.** The owner's recorded words say a stopped attempt
   waits for them; continuing needs their decision.
+- **A final click the page's own checks block (`CLIENT_BLOCKED`).** Nothing was sent, but it is
+  found after `sending` began; making it a pause that later queues a new attempt is a retry after
+  `sending`, which CLAUDE.md forbids. Today: `failed_terminal`, apply on the employer's site. Only
+  the owner can decide whether an intercepted, never-sent click may be tried again.
 
 ## Exact next action
 
-1. D135 (branch `conditional-pauses`): merge its pull request when its four checks pass.
-2. Rank 4's second half: a final click the page's own checks block (`CLIENT_BLOCKED`), with no
-   request sent, pauses the application instead of ending it rejected.
+1. D136 (branch `capture-refusals`): merge its pull request when its four checks pass.
+2. Rank 5's second half: evidence of what was disclosed survives any failure after an upload (each
+   acknowledged upload recorded at once; any failure after the first disclosure ends as stopped
+   after disclosure, never as an unexplained error).
 3. Owner decisions: every recorded permission ended on 2026-11-06 (renewing is the owner's call,
-   never extended because work took longer); continuing after a form change (D132).
+   never extended because work took longer); continuing after a form change (D132); a final click
+   the page's own checks block (`CLIENT_BLOCKED`, after `sending`).
 
 ## Research log (accessed 2026-11-06)
 
