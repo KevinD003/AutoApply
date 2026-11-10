@@ -5083,8 +5083,9 @@ audit-inventory and export-completeness guards are updated and pass.
     reused: each application sends its own shift. Editing the saved answer retires the approval of
     the application that used it and refuses to queue it; approved again, the new answer reaches the
     employer.
-- **Found, stated:** "Preferred shift" is refused by two wording rules, the schedule words (time) and
-  another (`E_WILLING`, about the employer); either alone keeps it out of the saved answers.
+- **Found, stated:** "Preferred shift" is refused three ways: on its label, by the schedule words
+  (time) and by `E_WILLING` (about the employer); on its choices, by the schedule words again
+  ("Nights", `bankscope.OPTIONS`). Any one alone keeps it out of the saved answers.
 - **Not changed:** product code, `SCHEMA_VERSION` (3), what is reused (the same question, help text
   and choices exactly).
 - **Not fixed, stated:**

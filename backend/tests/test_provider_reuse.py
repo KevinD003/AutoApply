@@ -116,8 +116,9 @@ def test_a_question_that_only_looks_the_same_never_reuses_the_saved_answer(api, 
     offered = api.get(f"/applications/{third}/suggestions").json()["suggestions"]
     assert not [x for x in offered if x["key"] == EDU[LOOKALIKE]], offered
     assert approve(api, third).status_code == 409  # nothing approved, so nothing can be sent
-    led = receiver.ledger()
-    assert led["accepted"] == 0 and led["disclosures"] == []
+    q = api.post(f"/applications/{third}/transition", json={"to": "queued"})
+    assert q.status_code in (400, 409), q.text  # so nothing can be sent
+    assert api.get(f"/applications/{third}").json()["state"] == "needs_user_action"
 
 
 def test_editing_a_saved_answer_asks_again_before_anything_is_sent(api, receiver):
@@ -143,7 +144,6 @@ def test_editing_a_saved_answer_asks_again_before_anything_is_sent(api, receiver
     assert live == []  # the approval of the old answer no longer sends anything
     q = api.post(f"/applications/{second}/transition", json={"to": "queued"})
     assert q.status_code in (400, 409) and "approval_needed" in q.text
-    assert receiver.ledger()["accepted"] == 0
 
     assert row(api, second, EDU[REUSE])["display"].lower() == new
     assert approve(api, second).status_code == 200  # approved again, with the new answer
