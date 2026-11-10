@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.core.db import SessionLocal, utcnow
 from app.modules.execution import runner
 from app.modules.execution import service as svc
+from app.modules.execution.adapters import fixture_ats
 from app.modules.execution.models import Evidence, ExecutionAttempt
 from tests.execution_harness import (
     Receiver,
@@ -23,7 +24,6 @@ from tests.execution_harness import (
     queue,
     run_worker_process,
 )
-from app.modules.execution.adapters import fixture_ats
 from tests.test_api_provider import TOKEN, api_application
 from tests.test_greenhouse_adapter import gh_application
 from tests.test_greenhouse_dom import v2_application
