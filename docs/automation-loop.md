@@ -147,7 +147,9 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   and section comboboxes filled as D108/D109 fill a dropdown (never typed into, their own list
   only, the frozen id, a react-select choice read from its single value); every section control
   is read back before the send gate; `EXTRACTION_VERSION` v6 retires greenhouse_dom and
-  greenhouse_live approvals once.
+  greenhouse_live approvals once. Its review's three findings fixed (a stale v5 pin, two checks
+  without a test, an overclaim), and a combobox's list is read once open, as real react-select
+  names it.
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
   Pausing there and later queuing one new attempt is a retry after `sending`, which CLAUDE.md
@@ -278,7 +280,9 @@ multi-page wizard stand-in. Later ranks:
 | D141: `pytest tests/test_section_widgets.py` (JUnit) | 8 passed |
 | D141: the new tests with the section, approval-binding and phone-companion suites at v6 (JUnit) | 118 passed |
 | D141 sabotage runs (three changes, each in turn) | the old typing filler restored: 3 fail; the section readback removed: 1; both id checks removed: 1 |
-| D141: every suite that loads the second Greenhouse-style fixture or binds an approval to an adapter version (JUnit) | to run |
+| D141: every suite that loads the second Greenhouse-style fixture or binds an approval to an adapter version (JUnit), on 4cf9efc | running |
+| D141 after the review: `pytest tests/test_section_widgets.py` (JUnit); then three sabotage runs (the list read before opening, the id check before the click, the check beyond the plan) | 10 passed; each fails its own test (1, 1, 1) |
+| D141 after the review: the section suites, the version pins (`test_approval_binding`, `test_greenhouse_controls`, `test_phone_companion`) and `test_form_change_loop` (10 files, JUnit) | running |
 
 ## Failed approaches and rejected designs
 

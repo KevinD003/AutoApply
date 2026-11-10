@@ -5299,12 +5299,13 @@ audit-inventory and export-completeness guards are updated and pass.
     never the browser's constant "on".
   - **Section comboboxes filled as D108/D109 fill a dropdown:** never typed into (the stand-in
     counts keys typed into a section combobox and posts the count); opened by a click on the
-    control, then on its `select__control` container; options read only from its own list
-    (`aria-controls` / `aria-owns`), a control that names none refused; exactly one option may
-    read the approved text; where an option exposes an id it must be the frozen one; the choice
-    is read back from `select__single-value` on a react-select-style control (no search text, no
-    chips), otherwise from the input, and where the control records an id it must be the frozen
-    one.
+    control, then on its `select__control` container; options read only from the list it names
+    as its own (`aria-controls` / `aria-owns`) once open, since the one real react-select recorded
+    named none until then (D130), a control that names none when open refused; exactly one
+    option may read the approved text; where an option exposes an id it must be the frozen one;
+    the choice is read back from `select__single-value` on a react-select-style control (no
+    search text, no chips), otherwise from the input, and where the control records an id it
+    must be the frozen one.
   - **Read back before the send gate:** every planned section control holds what was approved,
     every intentionally omitted one (a current role's end date) is still empty, and a row the
     page shows beyond the plan holds nothing; any mismatch abandons the attempt with nothing
@@ -5317,13 +5318,30 @@ audit-inventory and export-completeness guards are updated and pass.
   - **Shown on the receiver's ledger** (`tests/test_section_widgets.py`): a current role sends
     "current" and no end date; a past role its end date; each section adds and fills its own rows;
     nothing is typed; a react-select-style section sends the frozen ids; a choice the page ignores,
-    an option recording another id and an end date the page fills for a current role are never
-    submitted. Stand-in variants (`section_widget`): `react_select`, `ignores_choice`,
-    `wrong_value`, `prefill_end_date`, all FIXTURE ASSUMPTIONS.
+    a control that records another id after choosing, an option that exposes another id once
+    opened (never clicked), a row beyond the plan holding a value and an end date the page fills
+    for a current role are never submitted. Stand-in variants (`section_widget`): `react_select`
+    (its list named only while open), `ignores_choice`, `wrong_value`, `option_other_id`,
+    `extra_row`, `prefill_end_date`, all FIXTURE ASSUMPTIONS.
+  - **A refusal names the control, never the value:** a section that stops says which control and
+    why ("does not read back the approved value", "records another id"); before, a text field's
+    stop quoted what it read and what was approved into the attempt's recorded outcome.
 - **Not changed:** what a section resolves to (D120), the package content, `SCHEMA_VERSION` (3);
-  month options are matched by their text only (their ids on a real page are unknown).
+  month options are matched by their text only (their ids on a real page are unknown), so a month
+  control that records another id after choosing is not caught.
 - **Not fixed, stated:**
   - Real Greenhouse section pages are unobserved: whether their comboboxes are react-select, their
     ids, row indexing and Add another; a real destination still refuses a section package.
   - A school list that is a server-side search (`?term=`) is refused, since nothing is typed.
   - A section checkpoint still offers a per-application choice that does not exist (owner decision).
+  - Every widget variant is a stand-in shape; the only real react-select markup recorded is the
+    phone-country picker of one form (D130), not a section control.
+- **Review:** an adversarial review before merging (three reviewers, two skeptics per finding)
+  upheld three findings, all fixed: a version test still pinned the extraction at v5 and would
+  have failed in CI; the id check before the click and the check of rows beyond the plan had no
+  test that could fail without them (each now has a stand-in variant and a test, each shown to
+  fail when its check is removed); the evidence called the after-choosing check "an option
+  recording another id" although months are never checked by id (relabelled, stated above). A
+  refuted finding was acted on all the same: the stand-in's react-select named its list before
+  opening, which the one real react-select recorded did not; the list is now read once open, and
+  the stand-in names it only while open.

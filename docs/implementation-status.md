@@ -62,7 +62,10 @@ section readback (`execution/adapters/greenhouse_sections.py`, called from the
 every live `greenhouse_dom` and `greenhouse_live` approval once (no package hash changes;
 `SCHEMA_VERSION` stays 3). Fixture: the employment stand-in and the `section_widget` variants
 (FIXTURE ASSUMPTIONS). Decision and residuals in D141, evidence in `docs/evidence-matrix.md`.
-Nothing real was run.
+After its review a combobox's list is read once it is open (the one real react-select recorded
+names none before, D130), the id check before the click and the check of rows beyond the plan
+each have a test that fails without them, and a section's refusal names the control, never the
+value. Tests run are listed in `docs/automation-loop.md`. Nothing real was run.
 
 | Check (branch `section-widgets`, from D140's branch 08cd8bd) | Command | Result |
 |---|---|---|
