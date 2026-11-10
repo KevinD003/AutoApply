@@ -4956,3 +4956,58 @@ audit-inventory and export-completeness guards are updated and pass.
   - a revealed question the page requires pauses with nothing submitted, its key and label in
     nothing recorded. Trying again is refused until it is answered; then exactly one acceptance,
     with your answer.
+
+## D136 — A control NoEfforts cannot fill is refused when the form is read, never after you approve (2026-11-10)
+
+- **Why:** rank 5, first half, of the Greenhouse + Workday automation loop (`docs/automation-loop.md`;
+  acceptance item 6: "some types refused only after approval"). On Greenhouse's id-only pages (the
+  path `greenhouse_dom` and the pilot's `greenhouse_live` read and fill), reading the form accepted
+  controls the adapter then refused (main 53b28af):
+  1. a single choice on a native `<select>`, not the page's own dropdown (ARIA combobox): it was
+     read as a choice, but the adapter fills a choice only through the combobox (D108, D109). Every
+     attempt stopped before anything was entered: "the form has changed since you approved it (1
+     changed: widget)", a D132 pause. Reading the form again read it the same way, so there was no
+     way forward but applying on the employer's site, and NoEfforts did not say so;
+  2. a consent checkbox, or a list of several choices (Greenhouse's `multi_value_multi_select`) on a
+     native `<select multiple>`: read as answerable, and the approved answer was refused before
+     anything was entered (D116, "a question needs a kind of answer NoEfforts cannot fill on this
+     page type"), only after you had approved it.
+- **Decided:**
+  - **One list of what the adapter fills:** `DOM_FILLABLE` in `preparation/greenhouse_dom.py` (text,
+    email, phone, link, long text, number, a single choice and an upload). The adapter's `FILLABLE`
+    is the same object, so the two cannot drift apart.
+  - **Refused when the form is read:** any other control the page and the job data agree on, and a
+    single choice that is not a combobox, becomes a control NoEfforts cannot fill (`unsupported`),
+    with its reason: a native dropdown, a checkbox, a list of several choices, a set of options or a
+    date, each "(not supported yet)". Its options are dropped.
+  - **The rule for such a control applies, as before:** a required one is a checkpoint you cannot
+    answer here ("It is required, so apply on the employer's site"), so the application is never
+    approved; an optional one is left blank and the rest is sent.
+- **Not changed:**
+  - the adapter: what it fills and what it refuses are the same. Its D116 refusal and the "widget"
+    check stay, for forms read before this change. So `EXTRACTION_VERSION` stays `greenhouse-dom-v5`
+    and no approval is retired;
+  - a form read before this change keeps what it was read as until it is read again ("Read the form
+    again", D132, now ends the loop above);
+  - the package content's shape: `SCHEMA_VERSION` stays 3 (a control NoEfforts cannot fill already
+    carries its reason). A package for a form read again under this rule gets new content, so a new
+    version, and an approval of the previous version must be given again;
+  - a multi-choice combobox stays refused as before ("multi-choice dropdown");
+  - the first Greenhouse fixture's path (`greenhouse.py`, the generic adapter).
+- **Not fixed, stated:**
+  - Native dropdowns, checkboxes, lists of several choices, sets of options and dates are still never
+    filled on this path; a required one means applying on the employer's site. Filling them needs a
+    real page's markup observed first: the read-only runs (#4, #6, #9 to #11) saw only comboboxes.
+  - A consent checkbox maps only when its label is the field's own; a page with other wording is
+    refused as a whole when read (`controls_do_not_match`), as before.
+  - The native `<select>` and `<select multiple>` markup is a FIXTURE ASSUMPTION (mode
+    `gh2_native_select`, and markup added in the tests); no real Greenhouse page was seen with it.
+- **Tests** (`test_capture_refusals.py`, the receiver's ledger as the oracle):
+  - reading the form lets through exactly what the adapter fills (every field type, as a combobox and
+    not);
+  - a native dropdown, a list of several choices and a consent checkbox are refused when the form is
+    read;
+  - a required native dropdown is a checkpoint: no answer accepted, approval refused, nothing
+    disclosed;
+  - an optional native dropdown is left blank and the application is sent once. Before this change
+    the same attempt stopped as a form change ("widget"), with nothing disclosed.

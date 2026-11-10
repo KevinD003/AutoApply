@@ -173,7 +173,7 @@ BLOCK_PAGE = (
     "the employer's site showed a firewall block page instead of the form; NoEfforts does not "
     "work around it. Apply on the employer's site."
 )
-FILLABLE = {"text", "email", "tel", "url", "textarea", "number", "select", "file"}
+FILLABLE = dom.DOM_FILLABLE  # D136: one list, read at capture too
 NOT_FILLABLE = "a question needs a kind of answer NoEfforts cannot fill on this page type"
 CLIENT_BLOCKED = (
     "the page's own checks blocked the final click and nothing was sent (it listed what is "

@@ -111,8 +111,8 @@ Ranked slices. Each is shippable through its own PR, with the receiver ledger as
 | 1 | D132: a form change becomes a durable pause; "Questions needing your answer"; read the form again; answer; approve; one new attempt (gh2 and Workday-style stand-ins) | loop, tab, 2, 6, 14 | Merged (#40) |
 | 2 | Finish the reuse and suggestion guards: D115 veto, "use here only", Workday decline wordings, an error boundary | 4, 10, 3 | Merged (#41, D133): the saved side judged too, word-level vetoes over label and help, a rule floor under the model, "Use here only", the "wish to self-identify" declines, a screening job counted by the receiver, an error boundary. No recorded Workday source for a new decline wording; residuals in D133 |
 | 3 | Standing rule: notify and continue after the owner answers; respect revocation and pause; approval provenance | loop, 13, 2, 14 | Merged (#43, D134): the rule's approvals and attempts marked as its own; a pause stops what the rule queued (one a worker holds at its next step; one being sent is counted, never stopped) and retires the rule's approvals; a worker refuses the rule's attempt while it is switched off or paused; a revocation stands. Continuing after a form change needs the owner's decision |
-| 4 | Conditional and page-required questions on Greenhouse's id-only structure become answerable pauses; a click the page blocks is not terminal | 5, 2, 6 | First half: D135 on branch `conditional-pauses`: a typed question the page reveals is answerable (your answer or a profile fact, never a saved answer or a draft) and entered only when shown; a revealed one the page requires pauses after filling with nothing submitted; choices and uploads hidden at load still never filled. Second half (a click the page blocks is not terminal): unfinished |
-| 5 | Capture refuses what the DOM adapter cannot fill; disclosure evidence survives any failure after an upload | 6, 11, 1 | Unfinished |
+| 4 | Conditional and page-required questions on Greenhouse's id-only structure become answerable pauses; a click the page blocks is not terminal | 5, 2, 6 | First half merged (#44, D135): a typed question the page reveals is answerable (your answer or a profile fact, never a saved answer or a draft) and entered only when shown; a revealed one the page requires pauses after filling with nothing submitted; choices and uploads hidden at load still never filled. Second half (a click the page blocks is not terminal): needs the owner's decision, because it is found after `sending` began and CLAUDE.md forbids a retry after `sending`; today it ends `failed_terminal` (apply on the employer's site) |
+| 5 | Capture refuses what the DOM adapter cannot fill; disclosure evidence survives any failure after an upload | 6, 11, 1 | First half: D136 on branch `capture-refusals`: every control the DOM adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint and an optional one left blank, never after you approve. Second half (disclosure evidence survives any failure after an upload): unfinished |
 | 6 | Saved-answer reuse and unsafe-reuse refusal on Greenhouse- and Workday-shaped forms (ledger) | 3, 4, 8 | Unfinished |
 | 7 | EEOC, demographic and Workday self-identification end to end (opt-in, decline, scope, withdrawal) | 10, 4, 6 | Unfinished |
 | 8 | Structured sections reviewable and diffed; employment stand-in; section comboboxes react-select-safe | 7, 8 | Unfinished; real pages wait on the section observation |
@@ -131,6 +131,8 @@ Ranked slices. Each is shippable through its own PR, with the receiver ledger as
   - a read-only observation;
   - the user's own candidate sign-in.
 - D113 continuing after a pause needs the owner's decision.
+- A final click the page's own checks block (rank 4, second half) needs the owner's decision: a
+  retry after `sending`, which CLAUDE.md forbids.
 
 ## Provider evidence ladder
 
