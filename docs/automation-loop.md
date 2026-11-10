@@ -196,6 +196,10 @@ evidence of what was disclosed survives any failure after an upload. Later ranks
 | D135: every suite that loads the second Greenhouse-style fixture, with the pause, resolution, migration, export and audit suites (47 files, JUnit) | 1079 tests: 1078 passed, 1 failed (an existing test of the old wording for the hidden question, updated); then 22 passed |
 | D135 sabotage runs (each of eight changes removed in turn) | each fails its tests |
 | D135: `playwright test` conditional-pause, questions, journey and the gh2 submission (desktop and mobile, JUnit) | 10 passed |
+| D136: `pytest tests/test_capture_refusals.py` (JUnit) | 6 passed (5 before the optional dropdown's test was added) |
+| D136: every suite that loads the second Greenhouse-style fixture or reads a Greenhouse form (48 files, JUnit) | 1373 passed, 0 failures |
+| D136 sabotage runs (each of three changes removed in turn) | each fails its tests: 5, 4 and 1 of 6 |
+| D136 at its commit, after formatting: the new tests and `test_greenhouse_dom.py` (JUnit) | 65 passed |
 
 ## Failed approaches and rejected designs
 
