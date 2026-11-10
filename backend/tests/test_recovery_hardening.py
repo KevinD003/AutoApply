@@ -444,6 +444,7 @@ def test_the_send_lease_covers_the_adapters_wait_for_the_answer(api, receiver):
     postings = iter(range(2, 9))
 
     def sending_lease(watch) -> float:  # each on a posting of its own: they all stay sending
+        """The lease the send gate sets, in seconds from the moment the send began."""
         _, aid, gen = _claimed(api, receiver, url_suffix=f"?posting={next(postings)}")
         svc.gate_before_disclosure(uuid.UUID(aid), "w1", gen)
         if watch is None:
@@ -452,13 +453,13 @@ def test_the_send_lease_covers_the_adapters_wait_for_the_answer(api, receiver):
             svc.gate_before_send(uuid.UUID(aid), "w1", gen, watch)
         a = attempt(aid)
         assert a.state == "sending"
-        return (a.lease_expires_at - utcnow()).total_seconds()
+        return (a.lease_expires_at - a.send_started_at).total_seconds()
 
-    assert submit + 25 < sending_lease(None) <= submit + 30  # as before
-    assert REAL_WATCH + 25 < sending_lease(REAL_WATCH) <= REAL_WATCH + 30  # the real page's
-    assert submit + 25 < sending_lease(1) <= submit + 30  # never under the submit timeout
+    assert sending_lease(None) == submit + 30  # as before
+    assert sending_lease(REAL_WATCH) == REAL_WATCH + 30  # the real page's wait, and 30 s
+    assert sending_lease(submit - 1) == submit + 30  # never under the submit timeout
     cap = get_settings().attempt_after_send_seconds
-    assert cap + 25 < sending_lease(10_000) <= cap + 30  # bounded
+    assert cap > REAL_WATCH and sending_lease(10_000) == cap + 30  # bounded
     assert receiver.ledger()["accepted"] == 0
 
 
