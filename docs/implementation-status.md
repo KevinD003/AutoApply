@@ -70,8 +70,8 @@ building; decision, fixture assumptions and residuals in D139, evidence in
 | Each change removed in turn (5 cases) | one change at a time, the D139 tests and the selected cases of the two suites run, the file restored | the eager retirement removed: 9 fail; the gate's hash check removed: 2; self-identification run before "Don't disclose": 3; "I do not wish to answer" removed from the decline wordings: 2; the "names a category" rule removed: 1 |
 | The profile page | `npx playwright test e2e/self-identification.spec.ts` (desktop and mobile; `noefforts_e2e_test`) | exit 0; 6 passed; with the eager retirement removed, the new test fails on both projects (2 failed, 4 passed); after the review (its title corrected): 6 passed |
 | Frontend checks | `npx tsc --noEmit`, `npm run lint` | exit 0, exit 0 |
-| Every suite that touches self-identification, the profile, packages and approvals, or either fixture, with the documents suites (70 files) | `pytest` on the files in the run's list (JUnit) | running; recorded here when it ends |
-| Lint, format, the tests that read the documents (after the last edit) | `ruff check .`, `ruff format --check .`, `pytest tests/test_doc_references.py tests/test_audit_inventory.py tests/test_provider_contracts.py tests/test_package_contract.py` | exit 0 at 71b659d with these documents: JUnit 49 passed, 0 failures; to run again after the last edit |
+| Every suite that touches self-identification, the profile, packages and approvals, or either fixture, with the documents suites (70 files), on the code committed as 71b659d | `pytest` on the files in the run's list (JUnit) | exit 0; JUnit 2637 tests, 2637 passed, 0 failures (54 min 59 s) |
+| Lint, format, the tests that read the documents (after the last edit) | `ruff check .`, `ruff format --check .`, `pytest tests/test_doc_references.py tests/test_audit_inventory.py tests/test_provider_contracts.py tests/test_package_contract.py` | exit 0; ruff: all checks passed, 371 files already formatted; JUnit 49 passed, 0 failures |
 
 The full backend and e2e suites run in the pull request's CI.
 
