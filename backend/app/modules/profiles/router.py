@@ -75,10 +75,12 @@ def get_self_identification(user: User = Depends(current_user), db: Session = De
     return db.get(SelfIdentification, user.id) or s.SelfIdentificationOut()
 
 
-@router.put("/self-identification", response_model=s.SelfIdentificationOut)
+@router.put("/self-identification", response_model=s.SelfIdentificationSaved)
 def put_self_identification(
     body: s.SelfIdentificationIn, user: User = Depends(current_user), db: Session = Depends(get_db)
 ):
+    from app.modules.preparation import package as pk
+
     row = db.get(SelfIdentification, user.id)
     if row is None:
         row = SelfIdentification(user_id=user.id)
@@ -87,9 +89,13 @@ def put_self_identification(
     # The change only; never the values (they are the owner's demographic data).
     record(db, user.id, "self_identification.update", "self_identification", None,
            enabled=body.enabled, count=len(body.labels))  # fmt: skip
-    db.commit()
+    db.commit()  # saved before any application is locked, as a saved-answer edit does
+    # D139: an approval of what you withdrew or changed is retired now, not at the next read.
+    retired = pk.retire_after_self_identification(db, user.id)
     db.refresh(row)
-    return row
+    out = s.SelfIdentificationSaved.model_validate(row)
+    out.applications_to_approve_again = retired
+    return out
 
 
 @router.get("/history/{entity_id}")

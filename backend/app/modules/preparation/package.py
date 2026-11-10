@@ -718,6 +718,27 @@ def ensure_current(db: Session, app: Application) -> ApplicationPackage:
     return pkg
 
 
+def retire_after_self_identification(db: Session, user_id: uuid.UUID) -> int:
+    """D139: after the owner changes their self-identification (D122), rebuild each of their
+    applications that holds a live approval of a package with a sensitive answer, at once, as
+    an edit to a saved answer does (D78): an approval of what they withdrew or changed is
+    retired now and they are told, instead of only when the package is next read or a worker's
+    gate refuses it. Only such an answer can come from self-identification, so nothing else is
+    rebuilt. Commits per application; returns how many approvals this retired."""
+    retired = 0
+    for app in db.scalars(select(Application).where(Application.user_id == user_id)).all():
+        latest = latest_package(db, app.id)
+        if latest is None or active_approval(db, latest) is None:
+            continue
+        if not any(a.get("sensitive") for a in latest.content.get("answers", [])):
+            continue
+        ensure_current(db, app)
+        db.commit()
+        if active_approval(db, latest_package(db, app.id)) is None:
+            retired += 1
+    return retired
+
+
 def _settle_state(
     db: Session, app: Application, pkg: ApplicationPackage, changed: bool = False
 ) -> None:

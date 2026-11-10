@@ -522,7 +522,13 @@ function SelfIdentificationCard() {
     try {
       const s = await api("/profile/self-identification", { method: "PUT", json: { enabled, labels } });
       setText(s.labels.join("\n"));
-      setNotice("Saved.");
+      // D139: approvals of what you changed or withdrew are retired at once; say how many.
+      const n = s.applications_to_approve_again || 0;
+      setNotice(
+        n > 0
+          ? `Saved. ${n} approved application${n === 1 ? "" : "s"} changed and ${n === 1 ? "needs" : "need"} your approval again.`
+          : "Saved.",
+      );
     } catch (err) {
       setError(err);
     }

@@ -193,3 +193,8 @@ class SelfIdentificationIn(BaseModel):
 class SelfIdentificationOut(SelfIdentificationIn):
     model_config = ConfigDict(from_attributes=True)
     updated_at: datetime | None = None
+
+
+class SelfIdentificationSaved(SelfIdentificationOut):
+    # D139: approvals the change retired at once; those applications wait for you again.
+    applications_to_approve_again: int = 0

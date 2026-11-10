@@ -21,7 +21,7 @@ from app.modules.identity.models import User
 from app.modules.preparation import package as pk
 from app.modules.preparation.models import PackageApproval
 from tests.execution_harness import Receiver, pilot_on, queue, synthetic_candidate
-from tests.test_greenhouse_dom import v2_job
+from tests.test_greenhouse_dom import SCREEN_JOB, v2_job
 
 ANSWERS = {
     "preferred_name": {"text": "Sammy"},
@@ -418,3 +418,44 @@ def test_a_pause_never_touches_another_accounts_work(api, other_api, receiver):
     r = other_api.put("/auto-apply", json={"paused": True})
     assert r.json()["stopped"] == {"cancelled": 0, "stopped": 0, "in_flight": 0, "approvals": 0}
     assert attempt_row(att).state == "pending"
+
+
+@pytest.mark.parametrize("withdraw", [False, True], ids=["sent", "withdrawn_before_the_run"])
+def test_the_rule_sends_your_self_identification_and_withdrawing_it_stops_what_it_queued(
+    api, receiver, withdraw
+):
+    """D139 (D122, D133): with your self-identification on, the rule approves the screening job
+    once you have answered its other questions, and your gender reaches the employer as you
+    stated it (the receiver's ledger). Turned off after the rule queued the submission, the
+    approval is retired at once: the queued attempt is refused before any page is opened,
+    nothing reaches the employer, and the rule never tries that application again."""
+    pilot_on()
+    synthetic_candidate(api)
+    r = api.put("/profile/self-identification", json={"enabled": True, "labels": ["Male"]})
+    assert r.status_code == 200, r.text
+    job = v2_job(api, SCREEN_JOB)
+    assert tick() == 0 and events(job) == [("skipped", "open_questions")]
+    app_id = app_of(api, job)
+    answer(api, app_id)
+    for key in ("question_8111", "question_8112"):  # felony and sponsorship: yours to answer
+        r = api.put(f"/applications/{app_id}/answers", json={"key": key, "value": {"label": "No"}})
+        assert r.status_code == 200, r.text
+    r = api.put(
+        f"/applications/{app_id}/consents", json={"key": "question_8111", "choice": "disclose"}
+    )
+    assert r.status_code == 200, r.text
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert tick() == 1 and events(job)[-1] == ("approved_submit", "submission_queued")
+    aid = latest_attempt()
+    if not withdraw:
+        assert runner.run_attempt(aid, "w1") == "confirmed"
+        (acc,) = receiver.ledger()["acceptances"]
+        assert acc["fields"]["question_8113"] == "1"
+        return
+    r = api.put("/profile/self-identification", json={"enabled": False, "labels": ["Male"]})
+    assert r.status_code == 200 and r.json()["applications_to_approve_again"] == 1, r.text
+    assert runner.run_attempt(aid, "w1") == "ignored"
+    assert receiver.ledger()["accepted"] == 0
+    assert tick() == 0 and events(job)[-1] == ("skipped", "attempt_stopped")
+    assert receiver.ledger()["accepted"] == 0
