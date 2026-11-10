@@ -9,6 +9,21 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Saved answers on Greenhouse- and Workday-shaped forms (D138, 2026-11-10; local only)
+
+Nothing here ran against a real page or a real account. Branch `provider-reuse` (from D137's branch,
+035a085); fixtures and tests only. The second Greenhouse-style fixture's jobs 5020004-5020006 and
+the Workday-style mode `wd_bank_question` are FIXTURE ASSUMPTIONS. The receiver's ledger is the
+oracle for what reached the employer.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| A saved answer is reused on the next Greenhouse-style job asking the same question (another question id), and the employer receives it both times | `test_on_greenhouse_pages_a_saved_answer_reaches_the_next_application` | receiver ledger: 2 acceptances, the same option value |
+| A look-alike that names a country is neither reused nor suggested; nothing is approved until it is answered | `test_a_question_that_only_looks_the_same_never_reuses_the_saved_answer` | package, suggestions; receiver ledger: nothing |
+| Editing a saved answer retires the approval that used it and refuses to queue it; approved again, the new answer is sent | `test_editing_a_saved_answer_asks_again_before_anything_is_sent` | approvals; receiver ledger: the new option value |
+| On the Workday-style form, the education answer is reused and "Preferred shift" is never saved or reused | `test_on_workday_pages_a_saved_answer_is_reused_and_a_shift_never_is` | saved answers; receiver ledger: the same education, each its own shift |
+| Each test fails without what it checks | reuse switched off: 3 of 4 fail; the scope check switched off: the shift test; reuse keyed on the first 36 characters: the look-alike test | recorded in `docs/automation-loop.md` |
+
 ## What reached the employer stays recorded whatever fails after it (D137, 2026-11-10; local only)
 
 Nothing here ran against a real page or a real account. Branch `disclosure-evidence` (from D136's

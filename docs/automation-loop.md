@@ -29,7 +29,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D134 the standing rule respects your pause and revocation | merged (#43, 2e10418); its PR CI passed all four jobs on 118b4b9, and main CI #267 on 2e10418 |
 | D135 a question the page shows after an earlier answer | merged (#44, 53b28af); its PR CI passed all four jobs on 2d3c07c, and main CI #269 on 53b28af |
 | D136 a control NoEfforts cannot fill is refused when the form is read | merged (#45, 32c8f7c); its PR CI passed all four jobs on 9602bda |
-| D137 what reached the employer stays recorded whatever fails after it | branch `disclosure-evidence` (from D136's branch, 9602bda; `main` merged in after #45) and its pull request; not merged |
+| D137 what reached the employer stays recorded whatever fails after it | branch `disclosure-evidence` (from D136's branch, 9602bda; `main` merged in after #45), pull request #46; not merged |
+| D138 saved answers on Greenhouse- and Workday-shaped forms | branch `provider-reuse` (from D137's branch, 035a085); not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -47,12 +48,12 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 |---|---|---|---|
 | 1 | Known answer fills and survives readback | fx (gh2 stand-in) | fx, single-page approximation only |
 | 2 | New question → questions tab → saved → resumes | fx (gh2 by id and pilot stand-in), on `main` since D132 (#40) | fx (e2e), on `main` since D132 |
-| 3 | Future reuse | unit (resolver), generic form; D133 merged (#41): suggestions judge the saved side, "Use here only" | unit |
-| 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model | unit |
+| 3 | Future reuse | unit (resolver), generic form; D133 merged (#41): suggestions judge the saved side, "Use here only"; D138 (branch): a saved answer reaches the next gh2 job that asks the same question (receiver ledger) | D138 (branch): reused on the next posting (receiver ledger); single page |
+| 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 (branch): a gh2 look-alike naming a country is neither reused nor suggested | D138 (branch): "Preferred shift" never saved or reused |
 | 5 | Conditional question | fx on the v1 fixture; D135 merged (#44), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | absent (no branching fixture) |
 | 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger) | fx at capture |
 | 7 | Repeating records | fx education stand-in (D120); employment unit | absent |
-| 8 | Answer edits invalidate approvals | fx | fx (single page) |
+| 8 | Answer edits invalidate approvals | fx; D138 (branch): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger) | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; not run on gh2 | partial |
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify" |
 | 11 | Upload failure preserves evidence | fx for UploadFailed; D137 (branch): every disclosure is recorded as it is made, so an unexpected error or a killed worker after an upload keeps its evidence, and a failure during an upload counts the document as possibly received (generic form, gh2 by id, the API route; receiver ledger) | fx (single page; the same recorder) |
@@ -124,6 +125,11 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   the employer; a failure during an upload counts the document as possibly received; through the
   API, a document sent without an answer is recorded too. Attempts that disclosed anything are
   still abandoned and never retried.
+- **D138 (branch `provider-reuse`, not merged).** Rank 6, tests and fixtures only: a saved answer
+  reaches the next Greenhouse-style job that asks the same question, and the employer receives it;
+  a look-alike naming a country is neither reused nor suggested; on the Workday-style form the
+  education answer is reused and the shift never is; editing a saved answer retires the approval
+  that used it until it is approved again.
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
   Pausing there and later queuing one new attempt is a retry after `sending`, which CLAUDE.md
@@ -143,10 +149,9 @@ adapter cannot fill (**D136**, rank 5's first half, #45) are on `main`. Two rema
 owner's decision: the rule continuing after a form-change pause (rank 3), and a final click the
 page's own checks block (rank 4, second half: a retry after `sending`). **D137** (rank 5, second
 half, on its branch) keeps the evidence of what reached the employer whatever fails after it.
-Next, rank 6: saved-answer reuse, and unsafe reuse refused, on Greenhouse- and Workday-shaped
-forms with the receiver's ledger. Later ranks:
-- provider-shaped reuse tests;
-- EEOC/demographic end to end;
+**D138** (rank 6, on its branch) shows saved answers on Greenhouse- and Workday-shaped forms up to
+the employer. Next, rank 7: EEOC, demographic and Workday self-identification end to end. Later
+ranks:
 - reviewable sections;
 - the Workday multi-page wizard stand-in;
 - recovery hardening.
@@ -174,8 +179,11 @@ forms with the receiver's ledger. Later ranks:
   Locally: the new tests, their sabotage runs and every suite that touches the second
   Greenhouse-style fixture or reads a Greenhouse form (Tests run below).
 - **D137 (branch `disclosure-evidence`):** the new tests, their sabotage runs and every suite that
-  runs an attempt or uses an adapter, locally (Tests run below). The full suites run in its CI,
-  after D136 is merged and `main` merged in.
+  runs an attempt or uses an adapter, locally (Tests run below). The full suites run in its CI
+  (PR #46).
+- **D138 (branch `provider-reuse`):** the new tests, their sabotage runs and the suites that use the
+  fixtures it extends, locally (Tests run below). The full suites run in its CI, after D137 is merged
+  and `main` merged in.
 
 ## Tests run (this loop)
 
@@ -261,11 +269,12 @@ forms with the receiver's ledger. Later ranks:
 
 ## Exact next action
 
-1. D137 (branch `disclosure-evidence`, `main` merged in after D136): merge its pull request when its
-   four checks pass.
-2. Rank 6: saved-answer reuse and unsafe reuse refused on Greenhouse- and Workday-shaped forms,
-   with the receiver's ledger.
-3. Owner decisions: every recorded permission ended on 2026-11-06 (renewing is the owner's call,
+1. D137 (PR #46): merge it when its four checks pass.
+2. D138 (branch `provider-reuse`): merge `main` into it once D137 is merged, open its pull request,
+   merge it when its four checks pass.
+3. Rank 7: EEOC, demographic and Workday self-identification end to end (opt-in, decline, scope,
+   withdrawal), with the receiver's ledger.
+4. Owner decisions: every recorded permission ended on 2026-11-06 (renewing is the owner's call,
    never extended because work took longer); continuing after a form change (D132); a final click
    the page's own checks block (`CLIENT_BLOCKED`, after `sending`).
 

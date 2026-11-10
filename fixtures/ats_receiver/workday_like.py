@@ -50,6 +50,9 @@ POSTINGS = {
 EMPLOYER = {"examplehealth": "Example Health (fictional)",
             "riverclinic": "River Clinic (fictional)"}  # fmt: skip
 YES_NO = ("Yes", "No")
+# D138: mode wd_bank_question asks this reusable question too (required by the server then).
+EDUCATION = ("High school diploma", "Associate degree", "Bachelor's degree",
+             "Master's degree or higher", "Other")
 _REQ = re.compile(r"R-[0-9]{4,12}")
 FILE_FIELDS = ("resume", "cover_letter")
 
@@ -120,6 +123,11 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
               "</select>" if mode == "wd_location_cascade" else "")  # fmt: skip
     drift = (_yes_no("q.weekends", "Are you available to work weekends?", True)
              if mode == "wd_drift" else "")  # fmt: skip
+    education = ('<label for="education">Highest level of education completed</label>'
+                 '<select id="education" name="q.education" required>'
+                 '<option value="">Select One</option>'
+                 + "".join(f'<option value="{e}">{e}</option>' for e in EDUCATION)
+                 + "</select>" if mode == "wd_bank_question" else "")  # fmt: skip
     challenge = ('<div class="h-captcha" data-sitekey="fixture-not-a-key"></div>'
                  if mode == "wd_challenge" else "")  # fmt: skip
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
@@ -159,6 +167,7 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 <label for="shift">Preferred shift</label>
 <select id="shift" name="q.shift" required><option value="">Select One</option>
 <option value="Nights">Nights</option><option value="Days">Days</option></select>
+{education}
 {drift}
 </section>
 <section data-step="Voluntary Disclosures">
@@ -272,6 +281,8 @@ def mount(app, ledger, cfg, accept) -> None:
                     "q.licence_type", "q.shift", "terms_ack"]  # fmt: skip
         if mode == "wd_drift":
             required.append("q.weekends")
+        if mode == "wd_bank_question":
+            required.append("q.education")
         missing = [k for k in required if not fields.get(k)]
         if mode == "validation_fail" or missing:
             items = "".join(f"<li>{html.escape(m)}</li>" for m in missing or ["phone--number"])

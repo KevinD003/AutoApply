@@ -5060,3 +5060,39 @@ audit-inventory and export-completeness guards are updated and pass.
     never retried;
   - an error during an upload counts the document as possibly received, on a page and through the
     API.
+
+## D138 — Saved answers on Greenhouse- and Workday-shaped forms, shown up to the employer (2026-11-10)
+
+- **Why:** rank 6 of the Greenhouse + Workday automation loop (`docs/automation-loop.md`; acceptance
+  items 3, 4 and 8). Reuse of a saved answer was tested on the generic form and in the resolver;
+  refusing a similar but different question was tested in units. On Greenhouse- and
+  Workday-shaped forms nothing showed a saved answer reaching an employer, a look-alike refused,
+  or an edit to a saved answer stopping what had been approved with it. The second Greenhouse-style
+  fixture could not show it: each of its own questions is a fact, about the employer, or conditional,
+  so none can be saved.
+- **Decided:** no product code changes; fixtures and tests (`test_provider_reuse.py`, the receiver's
+  ledger as the oracle):
+  - **Fixtures (FIXTURE ASSUMPTIONS):** Greenhouse-style jobs 5020004 and 5020005 ask "Highest level
+    of education completed", each under its own question id, as each real job numbers its own; job
+    5020006 asks "Highest level of education completed in Canada". The Workday-style mode
+    `wd_bank_question` asks the same education question, required by the server.
+  - **Shown:** an answer saved on one Greenhouse-style job is reused on the next job that asks the
+    same question, and the employer receives it both times. The look-alike that names a country is
+    never reused, nor offered as a suggestion, and nothing can be approved until it is answered. On
+    the Workday-style form the education answer is reused, while "Preferred shift" is never saved or
+    reused: each application sends its own shift. Editing the saved answer retires the approval of
+    the application that used it and refuses to queue it; approved again, the new answer reaches the
+    employer.
+- **Found, stated:** "Preferred shift" is refused by two wording rules, the schedule words (time) and
+  another (`E_WILLING`, about the employer); either alone keeps it out of the saved answers.
+- **Not changed:** product code, `SCHEMA_VERSION` (3), what is reused (the same question, help text
+  and choices exactly).
+- **Not fixed, stated:**
+  - The jobs and the Workday mode are fixture assumptions; no real Greenhouse or Workday page was
+    observed asking them.
+  - Suggestions for reworded questions are shown only to refuse the look-alike here; their positive
+    path is D133's tests.
+  - The Workday-style form is one page; its several-page wizard is rank 9.
+- **Each test fails without what it checks:** reuse from saved answers switched off (3 of 4 fail);
+  the saved-answer scope check switched off (the shift test); reuse keyed on the first 36 characters of
+  the wording only (the look-alike test).
