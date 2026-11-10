@@ -44,8 +44,10 @@ then reproduced by setting the interval: a list flipping every 300 ms, read ever
 accepted). The probe's observer notes when the document last changed, by the page's clock, so
 "unchanged for 500 ms" no longer depends on how often the list is read. It is the whole
 document's record: a page that changes anything at all more often than that never settles, and
-is refused. Unchanged for that half second is not proof that the list cannot change later.
-Later changes are caught by:
+is refused. Where the observer has recorded nothing since before the action, the equal reads
+decide alone, as before D145: either nothing changed, or the page changes in a way the observer
+cannot see (options swapped by CSS alone, an observer the page has replaced). Unchanged for
+that half second is not proof that the list cannot change later. Later changes are caught by:
   * the list being read again, and required to be exactly the approved one, when an option is
     chosen (`select`);
   * the readback of every answer before the send gate (adapter);
