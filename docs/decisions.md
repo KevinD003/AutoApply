@@ -5123,5 +5123,10 @@ audit-inventory and export-completeness guards are updated and pass.
     path is D133's tests.
   - The Workday-style form is one page; its several-page wizard is rank 9.
 - **Each test fails without what it checks:** reuse from saved answers switched off (3 of 4 fail);
-  the saved-answer scope check switched off (the shift test); reuse keyed on the first 36 characters of
-  the wording only (the look-alike test).
+  the saved-answer scope check switched off (the shift test); all three of the shift's rules removed
+  (the shift test); reuse keyed on the first 36 characters of the wording only (the look-alike test).
+  Any one of the shift's three rules removed alone, nothing fails: the other two still refuse it.
+- **Review:** the adversarial review run with D137's first round (two skeptics per finding) upheld
+  two findings here, both fixed: two receiver-ledger checks in the look-alike and edit tests could
+  not fail, since nothing had been queued or run, and are replaced by the refusal to queue; and the
+  shift is refused three ways, not two.
