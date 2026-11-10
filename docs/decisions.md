@@ -5221,3 +5221,51 @@ audit-inventory and export-completeness guards are updated and pass.
   the attempt is told through the abandoned attempt's notice, not the profile page, as for any
   other change (D78, D134), and the rest restate stated residuals or ask for more than D139
   claims.
+
+## D140 — Education and work history reviewable and diffed; an edit to the record behind them retires its approvals at once (2026-11-10)
+
+- **Why:** rank 8 of the Greenhouse + Workday automation loop (`docs/automation-loop.md`;
+  acceptance items 7 and 8), first half. A read-only map (2026-11-10) found that the education
+  and employment rows a package sends (D120 structured sections, `content["sections"]`) were
+  never shown: the owner approved values they could not see. The version history summarised a
+  section change as "metadata changed", the diff left sections out and said "Nothing you would
+  see changed", and an edit to an education or employment record left an approval of the old
+  value live until something read the package or a worker's gate refused it.
+- **Decided:**
+  - **Reviewable.** The review page shows an "Education and work history" card built only from
+    the frozen `content.sections` of the version shown, never from the live profile: per row and
+    field (school, degree, discipline, start and end; employer, title, current role, start and
+    end), an intentionally omitted field said as not sent (a current role's end date), a section
+    with no approved record said as sending nothing.
+  - **Diffed.** `diff_contents` gains `sections`: per kind, rows by `record_id` (added, removed or
+    changed, with the changed fields' shown values before and after) and a `reordered` flag. The
+    change summary, and so the approval's invalidation reason, says "education changed" or
+    "employment changed". A package version without sections diffs to none.
+  - **Retired at once.** Adding, editing, approving or deleting an education or employment record
+    rebuilds, at once, each application holding a live approval of a package that carries a
+    section of that kind (`package.retire_after_section_record`, through the
+    `retire_stale_approvals` D139 now shares): the approval is retired, its reason names the
+    section, a queued application returns to awaiting approval and the notification feed says the
+    approval stopped applying. As in D139, the rebuild is a whole one (an approval already out of
+    date for another reason is retired too), and an attempt a worker holds is left to its gates,
+    which rebuild the package and refuse a changed one.
+  - **Shown on the receiver's ledger** (gh2's education stand-in, `gh2_sections`): an edit
+    retires the approval and refuses to queue; approved again, the employer receives the new
+    degree, once; an edit while a worker holds the attempt is stopped at the send gate and nothing
+    is submitted.
+  - **Pinned.** The package contract test records the section key paths under `SCHEMA_VERSION` 3.
+    They are the shape D120 (cont.) has written since the section was wired in: recording them
+    changes no package and no hash.
+- **Not changed:** what a section sends or how it is filled (D120), the package content shape,
+  `SCHEMA_VERSION` (3), the extraction version (`greenhouse-dom-v5`).
+- **Not fixed, stated (the second half of rank 8, D141 next, or residuals):**
+  - No employment stand-in: employment rows are proven in the resolver, the package, the diff
+    and on the review page, never in a browser or on a receiver's ledger.
+  - Section comboboxes are not react-select-safe: they type into the input and read back the
+    input's value (the defect D109 fixed for top-level dropdowns), and fall back to any option on
+    the page when the control names no list.
+  - Sections are not read back after filling, and rows beyond the plan are not checked.
+  - A section checkpoint's message offers a per-application choice that does not exist; which
+    records a section sends is the owner's profile, all approved records (an owner decision).
+  - Real Greenhouse section pages are unobserved: the stand-in, its ids and its comboboxes are
+    fixture assumptions, and a real destination still refuses a section package.

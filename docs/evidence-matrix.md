@@ -9,6 +9,27 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Education and work history reviewable and diffed (D140, 2026-11-10; local only)
+
+Nothing here ran against a real page or a real account. Branch `sections-review` (from D139's
+branch, 84af539). The education stand-in (`gh2_sections`) is a FIXTURE ASSUMPTION (D120); the
+receiver's ledger is the oracle for what reached the employer. API tests in
+`tests/test_sections_review.py` unless named otherwise.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| An education edit retires the approval at once; the reason and the notice name the section, never its values; queueing is refused | `test_an_education_edit_retires_the_approval_at_once_and_is_named_in_the_reason` | approvals; a new version built by the edit; history "education changed"; notification text; `approval_needed` |
+| A section change is shown by record and field | `test_a_section_change_is_shown_by_row_and_field` | `package/diff` `sections` |
+| An added and a removed record are shown | `test_an_added_and_a_removed_record_are_shown` | `package/diff` `sections` |
+| A current role's end date is shown as not sent; an employment edit retires the approval and is diffed | `test_a_current_role_shows_its_end_date_as_not_sent_and_a_change_to_it_is_diffed` | package; approvals; `package/diff` |
+| An edit to the other kind leaves an approval alone; another account's edit never touches yours; their diff of yours is 404 | `test_an_edit_to_the_other_kind_leaves_an_approval_alone`, `test_another_users_edit_never_touches_your_approval` | approvals, versions; 404 |
+| Versions without sections diff to none | `test_versions_without_sections_diff_to_no_sections` | `package/diff` |
+| On the education stand-in, an edit retires the approval; approved again, the new degree reaches the employer once | `test_greenhouse_sections_e2e.py::test_an_education_edit_retires_the_approval_and_the_new_value_is_sent` | `approval_needed`; receiver ledger: nothing, then `degree--0` "deg_mast", one acceptance |
+| An edit while a worker holds the attempt is stopped at the send gate | `test_greenhouse_sections_e2e.py::test_an_education_edit_while_a_worker_holds_the_attempt_stops_it_at_the_send_gate` | a real worker process paused before the send gate; `abandoned`; receiver ledger: nothing accepted |
+| The section shape is recorded under SCHEMA_VERSION 3 | `test_package_contract.py::test_the_package_shape_is_the_one_recorded_for_its_schema_version` | key paths of an education and an employment section |
+| The review page shows the education sent and, after an edit, the change by record and field | `e2e/sections-review.spec.ts` (desktop and mobile) | the page |
+| Each check fails without what it checks | the eager retirement removed: 2; the section diff removed: 3; the section summary removed: 1; the gate's hash check removed: 1 | recorded in `docs/automation-loop.md` |
+
 ## Your self-identification on Greenhouse- and Workday-shaped forms (D139, 2026-11-10; local only)
 
 Nothing here ran against a real page or a real account. Branch `self-id-ledger` (from D138's

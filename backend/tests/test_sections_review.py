@@ -131,6 +131,10 @@ def test_an_education_edit_retires_the_approval_at_once_and_is_named_in_the_reas
     assert latest["change_summary"] == ["education changed"]
     q = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
     assert q.status_code in (400, 409) and "approval_needed" in q.text, q.text
+    items = api.get("/notifications").json()["items"]
+    (notice,) = [i for i in items if i["kind"] == "approval_invalidated"]
+    assert notice["application_id"] == app_id and "education changed" in notice["text"]
+    assert "Master" not in notice["text"] and "Bachelor" not in notice["text"]  # never the values
 
 
 def test_a_section_change_is_shown_by_row_and_field(api):
