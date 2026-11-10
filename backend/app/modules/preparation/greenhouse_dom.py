@@ -52,7 +52,12 @@ from app.modules.preparation.forms import (
 # existing greenhouse_dom/greenhouse_live approvals are retired and must be given again. A worker
 # built before this -- one that would skip a section or not re-prove the phone's control -- can
 # never claim a package approved under it.
-EXTRACTION_VERSION = "greenhouse-dom-v5"
+# v6 (D141): the adapter fills a section combobox without typing, from its own list only, checks
+# the frozen option id and reads back a react-select-style choice from its single value, and reads
+# every section control back before the send gate. A v5 worker would type into it and read back
+# its input, which a react-select page leaves empty, so it can never claim a package approved
+# under v6.
+EXTRACTION_VERSION = "greenhouse-dom-v6"
 # D136: what the DOM adapter (execution/adapters/greenhouse_dom.py) fills, by field type; a choice
 # only as an ARIA combobox. Anything else is decided here, at capture, never after an approval:
 # a required one is a checkpoint (apply on the employer's site), an optional one stays blank.

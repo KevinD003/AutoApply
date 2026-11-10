@@ -899,6 +899,9 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 ok = loc.input_value() == (_text(v) if v else "")
             if not ok:
                 bad.append(a["key"])
+        # D141: every filled section control too, the omitted ones and rows beyond the plan.
+        for sec in self.content.get("sections") or []:
+            bad.extend(gsections.readback_section(page, gsections.plan_content_section(sec)))
         return bad
 
     # -- submit -----------------------------------------------------------------------------

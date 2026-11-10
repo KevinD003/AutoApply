@@ -9,6 +9,27 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## An employment stand-in, and section comboboxes safe on react-select pages (D141, 2026-11-10; local only)
+
+Nothing here ran against a real page or a real account. Branch `section-widgets` (from D140's
+branch, 08cd8bd). The employment section, its ids and every `section_widget` variant are FIXTURE
+ASSUMPTIONS. The receiver's ledger is the oracle. Tests in `tests/test_section_widgets.py`.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| A current role sends "current" and no end date, beside the education section | `test_a_current_role_sends_current_and_no_end_date` | receiver ledger: company, title, start month "1" and year, `current-role-0` "true", no end month or year; `school--0` |
+| A past role sends its end date | `test_a_past_role_sends_its_end_date` | receiver ledger: `current-role-0` "false", end month "11", year "2018" |
+| Each section adds and fills its own rows, newest first | `test_each_section_adds_and_fills_its_own_rows` | receiver ledger: two rows in each section, each from its own record |
+| Nothing is typed into a section combobox | `test_section_comboboxes_are_never_typed_into` | receiver ledger: the page's own typing counter "0" |
+| A react-select-style section, whose comboboxes name their list only while open (as the one real react-select recorded did, D130), is read from that list once open, read back from its single value and sends the frozen ids | `test_a_react_select_section_reads_back_from_its_single_value` | receiver ledger: school, degree, discipline ids; months |
+| A choice the page ignores is never submitted | `test_a_choice_the_page_ignores_is_never_submitted` | `abandoned`; receiver ledger: nothing accepted |
+| A control that records another id after choosing (an education combobox; months are matched by text only) is never submitted | `test_a_control_recording_another_id_after_choosing_is_refused` | `abandoned` ("after choosing"); receiver ledger: nothing accepted, no "zz" |
+| An option that exposes another id once its list opens is never clicked; the refusal names the control, never the value | `test_an_option_exposing_another_id_is_never_clicked` | `abandoned` ("school--0", "records another id", no school name); receiver ledger: nothing accepted |
+| A row the page shows beyond the plan must hold nothing | `test_a_row_the_page_shows_beyond_the_plan_must_hold_nothing` | `abandoned` ("did not keep their values"); receiver ledger: nothing accepted |
+| An end date the page fills for a current role is never submitted | `test_an_end_date_the_page_fills_for_a_current_role_is_refused` | `abandoned` ("did not keep their values"); receiver ledger: nothing accepted |
+| A v5 worker cannot claim a package approved at v6 | `test_greenhouse_sections_e2e.py::test_a_section_package_cannot_reach_a_section_blind_worker[greenhouse-dom-v5]`, `test_approval_binding.py` (v5 encountered) | `failed_safe`; receiver ledger empty; the approval retired, never renewed |
+| Each check fails without what it checks | the old typing filler restored: 3 fail; the section readback removed: 1; both id checks removed: 1; after the review, the list read before opening: 1 (the react-select test); the id check before the click removed: 1 (its own test); the check beyond the plan removed: 1 (its own test) | recorded in `docs/automation-loop.md` |
+
 ## Education and work history reviewable and diffed (D140, 2026-11-10; local only)
 
 Nothing here ran against a real page or a real account. Branch `sections-review` (from D139's

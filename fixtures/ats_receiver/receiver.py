@@ -168,7 +168,8 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                     "oauth_mode": None, "oauth_extra_scope": None, "oauth_email": None,
                     # the v2 approximation's per-mode settings, so none leaks into the next test
                     "dd": None, "delay_ms": 0, "locale_delay_ms": 0, "loc": None, "pc": None,
-                    "locale_origin": None, "locale_path": None, "locale_via": None})
+                    "locale_origin": None, "locale_path": None, "locale_via": None,
+                    "sections": None, "section_widget": None})
         return {"ok": True}
 
     @app.post("/_admin/inbox")

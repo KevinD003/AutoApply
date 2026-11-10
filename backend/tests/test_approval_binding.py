@@ -201,8 +201,9 @@ def test_an_approval_given_for_a_manual_handoff_never_runs_through_an_adapter(
 # case in test_greenhouse_sections_e2e.)
 # The extraction versions approvals were actually recorded under before the combined build:
 # v3 (main before D130) and v4 (main with D130; D120's own branch also called itself v4). The
-# combined build is v5 (preparation/greenhouse_dom.py), which neither carried.
-ENCOUNTERED = ("greenhouse-dom-v3", "greenhouse-dom-v4")
+# combined build is v5 (preparation/greenhouse_dom.py), which neither carried; D141's
+# react-select-safe section comboboxes are v6.
+ENCOUNTERED = ("greenhouse-dom-v3", "greenhouse-dom-v4", "greenhouse-dom-v5")
 PREFIX = {"greenhouse_dom": "greenhouse-dom-4+", "greenhouse_live": "greenhouse-live-2+"}
 
 
@@ -216,7 +217,7 @@ def test_an_approval_from_before_the_extraction_bump_is_retired_never_renewed(
     make = d104_live_application if adapter == "greenhouse_live" else d104_application
     app_id = make(api)
     assert approval_of(app_id).adapter == adapter
-    assert policy.ADAPTER_VERSIONS[adapter] == PREFIX[adapter] + "greenhouse-dom-v5"
+    assert policy.ADAPTER_VERSIONS[adapter] == PREFIX[adapter] + "greenhouse-dom-v6"
     before = api.get(f"/applications/{app_id}/package").json()["package"]
     set_approval(app_id, adapter_version=PREFIX[adapter] + prior)  # as recorded under `prior`
 

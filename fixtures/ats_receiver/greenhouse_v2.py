@@ -45,6 +45,10 @@ gh2_native_select (D136: question_8104 as a native <select>; gh2_native_select_o
 the same, asked as optional by the job data, the page and the server),
 gh2_eeo_required (D139: the screening job's Gender, question_8113, asked as required by the job
 data, the page and the server; a FIXTURE ASSUMPTION, never seen on a real page),
+gh2_sections (D120: an Education section; D141: cfg sections "education,employment" adds an
+Employment section, and cfg section_widget plain | react_select | ignores_choice | wrong_value |
+prefill_end_date | option_other_id | extra_row varies how its comboboxes behave; FIXTURE ASSUMPTIONS,
+never seen on a real page),
 gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS; for dd locale_gate also locale_origin,
 locale_path, locale_via; for dd open_beacon also beacon, beacon_via; for dd late_other_host
 other_origin), GET /locales/{lang}/{ns}.json (cfg locale_delay_ms; lang "moved"
@@ -113,18 +117,29 @@ SECTION_MONTHS = [(str(i), m) for i, m in enumerate(
      "September", "October", "November", "December"], start=1)]  # fmt: skip
 
 
-def _section_combo(cid, options):
+def _section_combo(cid, options, widget="plain"):
+    """A section combobox. D141 (FIXTURE ASSUMPTIONS): `widget` react_select renders it as a
+    react-select-style control (the choice shown in `select__single-value`, the input left
+    empty) that names its list in `aria-controls` only while it is open, as the one real
+    react-select recorded did (D130); the other widgets change only the page's script.
+    `data-fx-list` is the stand-in's own wiring, never read by NoEfforts."""
     lis = "".join(
         f'<li role="option" data-value="{v}" aria-selected="false">{html.escape(t)}</li>'
         for v, t in options
     )
-    return (f'<input type="text" id="{cid}" role="combobox" aria-controls="{cid}-listbox" '
-            f'aria-expanded="false" autocomplete="off">'
-            f'<ul id="{cid}-listbox" role="listbox" hidden>{lis}</ul>')  # fmt: skip
+    named = "" if widget == "react_select" else f'aria-controls="{cid}-listbox" '
+    box = (f'<input type="text" id="{cid}" role="combobox" {named}data-fx-list="{cid}-listbox" '
+           f'aria-expanded="false" autocomplete="off">')  # fmt: skip
+    if widget == "react_select":
+        box = (f'<div class="select__control"><div class="select__value-container">{box}'
+               "</div></div>")  # fmt: skip
+    return f'{box}<ul id="{cid}-listbox" role="listbox" hidden>{lis}</ul>'
 
 
-def _education_row(i):
-    c = _section_combo
+def _education_row(i, widget="plain"):
+    def c(cid, options):
+        return _section_combo(cid, options, widget)
+
     return (
         f'<div class="edu-row">'
         f'<label for="school--{i}">School</label>{c(f"school--{i}", SECTION_SCHOOLS)}'
@@ -138,43 +153,125 @@ def _education_row(i):
     )
 
 
-def _education_section():
+def _education_section(widget="plain"):
     return (f'<section id="education-section" data-gh2-section="education"><h2>Education</h2>'
-            f'<div id="edu-rows">{_education_row(0)}</div>'
+            f'<div id="edu-rows">{_education_row(0, widget)}</div>'
             f'<button type="button" id="edu-add">Add another</button></section>')  # fmt: skip
+
+
+# D141 (FIXTURE ASSUMPTION, built from the legacy bot's recorded ids, never observed on a real
+# page): an Employment section -- per-row ids company-name-N / title-N (text), start-date-month-N /
+# end-date-month-N (comboboxes), start-date-year-N / end-date-year-N (text) and current-role-N (a
+# checkbox), with its own "Add another". Mode gh2_sections renders it when cfg `sections` names it.
+def _employment_row(i, widget="plain"):
+    def c(cid):
+        return _section_combo(cid, SECTION_MONTHS, widget)
+
+    return (
+        f'<div class="emp-row">'
+        f'<label for="company-name-{i}">Company name</label><input type="text" id="company-name-{i}">'
+        f'<label for="title-{i}">Title</label><input type="text" id="title-{i}">'
+        f'<label for="start-date-month-{i}">Start month</label>{c(f"start-date-month-{i}")}'
+        f'<label for="start-date-year-{i}">Start year</label><input type="text" id="start-date-year-{i}">'
+        f'<label for="end-date-month-{i}">End month</label>{c(f"end-date-month-{i}")}'
+        f'<label for="end-date-year-{i}">End year</label><input type="text" id="end-date-year-{i}">'
+        f'<label><input type="checkbox" id="current-role-{i}"> I currently work here</label>'
+        f'</div>'
+    )
+
+
+def _employment_section(widget="plain"):
+    return (f'<section id="employment-section" data-gh2-section="employment"><h2>Employment</h2>'
+            f'<div id="emp-rows">{_employment_row(0, widget)}</div>'
+            f'<button type="button" id="emp-add">Add another</button></section>')  # fmt: skip
+
+
+def _sections(cfg) -> str:
+    kinds = [k.strip() for k in (cfg.get("sections") or "education").split(",") if k.strip()]
+    widget = cfg.get("section_widget") or "plain"
+    return ((_education_section(widget) if "education" in kinds else "")
+            + (_employment_section(widget) if "employment" in kinds else ""))  # fmt: skip
 
 
 # Add-another for the section: clone row 0's markup to the next index, clear it, and wire its
 # comboboxes (the page's main script wired only the row present at load).
 _SECTION_SCRIPT = """
 (() => {
-  const rows = document.getElementById('edu-rows');
+  const WIDGET = %WIDGET%;
+  window.__fxSectionTyped = 0;  // D141: keys typed into a section combobox (posted with the form)
+  const close = (cb, lb) => {
+    lb.hidden = true; cb.setAttribute('aria-expanded','false');
+    if (WIDGET === 'react_select') cb.removeAttribute('aria-controls');  // named only while open
+  };
+  const choose = (cb, lb, opt) => {
+    for (const o of lb.querySelectorAll('[role=option]')) o.setAttribute('aria-selected','false');
+    close(cb, lb);
+    if (WIDGET === 'ignores_choice') return;  // the page drops the choice
+    opt.setAttribute('aria-selected','true');
+    if (WIDGET === 'react_select') {  // the choice is shown beside an emptied input
+      let sv = cb.parentElement.querySelector('.select__single-value');
+      if (!sv) { sv = document.createElement('div'); sv.className = 'select__single-value';
+                 cb.parentElement.insertBefore(sv, cb); }
+      sv.textContent = opt.textContent; cb.value = ''; cb.dataset.value = opt.dataset.value;
+    } else {
+      cb.value = opt.textContent;
+      cb.dataset.value = WIDGET === 'wrong_value' ? 'zz' : opt.dataset.value;  // records another id
+    }
+    cb.dispatchEvent(new Event('change'));
+  };
   const wire = (root) => {
     for (const cb of root.querySelectorAll('input[role=combobox]')) {
-      const lb = document.getElementById(cb.getAttribute('aria-controls'));
+      const lb = document.getElementById(cb.dataset.fxList);
       if (!lb) continue;
-      cb.addEventListener('click', () => { lb.hidden = false; cb.setAttribute('aria-expanded','true'); });
+      const open = () => {
+        if (WIDGET === 'option_other_id' && cb.id === 'school--0') {  // re-keyed once opened
+          const o = lb.querySelector('[data-value="sch_state"]');
+          if (o) o.dataset.value = 'sch_other';
+        }
+        lb.hidden = false; cb.setAttribute('aria-expanded','true');
+        if (WIDGET === 'react_select') cb.setAttribute('aria-controls', lb.id);
+      };
+      cb.addEventListener('click', open);
+      const box = cb.closest('.select__control');
+      if (box) box.addEventListener('click', open);
+      cb.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') close(cb, lb);
+        else if (e.key.length === 1) window.__fxSectionTyped++;  // a character typed
+      });
       for (const opt of lb.querySelectorAll('[role=option]')) {
-        opt.addEventListener('click', () => {
-          for (const o of lb.querySelectorAll('[role=option]')) o.setAttribute('aria-selected','false');
-          opt.setAttribute('aria-selected','true');
-          cb.value = opt.textContent; cb.dataset.value = opt.dataset.value;
-          lb.hidden = true; cb.setAttribute('aria-expanded','false');
-          cb.dispatchEvent(new Event('change'));
-        });
+        opt.addEventListener('click', () => choose(cb, lb, opt));
       }
     }
   };
-  let n = 1;
-  document.getElementById('edu-add').addEventListener('click', () => {
-    const div = document.createElement('div');
-    div.innerHTML = rows.firstElementChild.outerHTML.replace(/--0/g, '--' + n);
-    const row = div.firstElementChild;
-    for (const o of row.querySelectorAll('[role=option]')) o.setAttribute('aria-selected','false');
-    for (const cb of row.querySelectorAll('input[role=combobox]')) { cb.value=''; delete cb.dataset.value; }
-    for (const inp of row.querySelectorAll('input:not([role=combobox])')) inp.value='';
-    rows.appendChild(row); wire(row); n++;
-  });
+  const adder = (rowsId, addId, re, repl) => {
+    const rows = document.getElementById(rowsId), add = document.getElementById(addId);
+    if (!rows || !add) return;
+    wire(rows.firstElementChild);
+    let n = 1;
+    add.addEventListener('click', () => {
+      const div = document.createElement('div');
+      div.innerHTML = rows.firstElementChild.outerHTML.replace(re, repl(n));
+      const row = div.firstElementChild;
+      for (const o of row.querySelectorAll('[role=option]')) o.setAttribute('aria-selected','false');
+      for (const sv of row.querySelectorAll('.select__single-value')) sv.remove();
+      for (const cb of row.querySelectorAll('input[role=combobox]')) { cb.value=''; delete cb.dataset.value; }
+      for (const inp of row.querySelectorAll('input:not([role=combobox])')) {
+        if (inp.type === 'checkbox') inp.checked = false; else inp.value = '';
+      }
+      rows.appendChild(row); wire(row); n++;
+    });
+  };
+  adder('edu-rows', 'edu-add', /--0/g, (n) => '--' + n);
+  adder('emp-rows', 'emp-add', /-0(?=["-])/g, (n) => '-' + n);
+  if (WIDGET === 'prefill_end_date') {  // the page fills row 0's end date itself
+    const m = document.getElementById('end-date-month-0');
+    const y = document.getElementById('end-date-year-0');
+    if (m && y) { m.value = 'January'; m.dataset.value = '1'; y.value = '2020'; }
+  }
+  if (WIDGET === 'extra_row') {  // the page shows a second education row already holding a year
+    const add = document.getElementById('edu-add');
+    if (add) { add.click(); const y = document.getElementById('start-year--1'); if (y) y.value = '2010'; }
+  }
 })();
 """
 AI_NOTICE = ("This employer may use automated tools to help review applications. "
@@ -584,6 +681,7 @@ _SCRIPT = """
 const form = document.getElementById('application-form');
 const uploads = {};
 for (const cb of document.querySelectorAll('input[role=combobox]')) {
+  if (cb.closest('[data-gh2-section]')) continue;  // D141: the section script wires its own
   const lb = document.getElementById(cb.getAttribute('aria-controls'));
   if (!lb) continue;  // a dropdown without a list in the page: its own script handles it
   cb.addEventListener('click', () => { lb.hidden = false; cb.setAttribute('aria-expanded', 'true'); });
@@ -637,9 +735,12 @@ if (!LIVE_LIKE) form.addEventListener('submit', async (e) => {
   const fields = {};
   for (const el of form.querySelectorAll('input[id], textarea[id]')) {
     if (el.type === 'file' || el.closest('[hidden]') || el.hidden) continue;
-    const v = el.getAttribute('role') === 'combobox' ? (el.dataset.value || '') : el.value;
+    let v = el.getAttribute('role') === 'combobox' ? (el.dataset.value || '') : el.value;
+    // D141: a section checkbox posts its state, never the browser's constant "on".
+    if (el.type === 'checkbox' && el.closest('[data-gh2-section]')) v = el.checked ? 'true' : 'false';
     if (v) fields[el.id] = v;
   }
+  if (window.__fxSectionTyped !== undefined) fields.fx_section_typed = String(window.__fxSectionTyped);
   if (window.__fxWrites) {  // D104: who wrote the location's hidden values (the ledger's oracle)
     fields.fx_hidden_writes_page = String(window.__fxWrites.page);
     fields.fx_hidden_writes_other = String(window.__fxWrites.other);
@@ -1335,8 +1436,8 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
         qs += f'<script>setTimeout(() => {{ location.href = "{base}?again=1"; }}, 200)</script>'
     if mode == "gh2_captcha":  # a bot-check widget on the form (static markup, nothing real)
         qs += '<div class="g-recaptcha" data-sitekey="fixture-not-real"></div>'
-    if mode == "gh2_sections":  # D120: a structured Education section (legacy-evidence DOM)
-        qs += _education_section()
+    if mode == "gh2_sections":  # D120/D141: structured sections (legacy-evidence DOM)
+        qs += _sections(cfg)
     if mode == "gh2_new_question":  # a visible question the job data does not list
         qs += ('<div class="field"><label for="question_8199">Years of experience</label>'
                '<input type="text" id="question_8199"></div>')
@@ -1358,7 +1459,9 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
                if mode == "gh2_live_like" else "")
             + ('<script src="https://assets.fixture-cdn.invalid/widget.js"></script>'
                if mode == "gh2_external_asset" else "")
-            + (f"<script>{_SECTION_SCRIPT}</script>" if mode == "gh2_sections" else ""))
+            + ("<script>" + _SECTION_SCRIPT.replace(
+                "%WIDGET%", json.dumps(cfg.get("section_widget") or "plain")) + "</script>"
+               if mode == "gh2_sections" else ""))
     return HTMLResponse(
         "<!doctype html><html><head><meta charset='utf-8'>"
         f"<title>{html.escape(j['title'])}</title></head><body data-gh2='form'>"
