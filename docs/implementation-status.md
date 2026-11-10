@@ -91,9 +91,11 @@ real was run.
 | The section stand-in end to end, with the two new ledger tests | `pytest tests/test_greenhouse_sections_e2e.py` (JUnit) | exit 0; 9 passed |
 | The package contract with section packages | `pytest tests/test_package_contract.py` (JUnit) | exit 0; 3 passed |
 | Each change removed in turn (4 cases) | one change at a time, the four files run, the file restored | the eager retirement removed: 2 fail; the section diff removed: 3; the section summary removed: 1; the gate's hash check removed: 1 |
-| The review page | `npx playwright test e2e/sections-review.spec.ts` (desktop and mobile; `noefforts_e2e_test`) | exit 0; 2 passed |
+| The review page | `npx playwright test e2e/sections-review.spec.ts` (desktop and mobile; `noefforts_e2e_test`) | exit 0; 2 passed; after the review, 2 passed |
+| After the review: the new route, scope and status tests | `pytest tests/test_sections_review.py tests/test_version_diff.py` (JUnit) | exit 0; 20 passed |
+| The review's fixes removed in turn (6 cases) | each route's hook alone, the account scope, the "needs you" status | each fails its test: create 2, update 1, approve 1, delete 1; scope 1; status 2 |
 | Frontend checks | `npx tsc --noEmit`, `npm run lint` | exit 0, exit 0 |
-| Every suite that touches sections, profiles, packages, approvals or diffs, with the standing-rule, mutation-table and document suites (55 files) | `pytest` on the files in the run's list (JUnit) | running; recorded here when it ends |
+| Every suite that touches sections, profiles, packages, approvals or diffs, with the standing-rule, mutation-table and document suites (55 files), on edb22b8 (the review's fixes, 9d0066d, ran in their own rows above) | `pytest` on the files in the run's list (JUnit) | exit 0; JUnit 3252 tests, 3252 passed, 0 failures (32 min 34 s) |
 | Lint, format, the tests that read the documents (after the last edit) | `ruff check .`, `ruff format --check .`, `pytest tests/test_doc_references.py tests/test_audit_inventory.py tests/test_provider_contracts.py tests/test_package_contract.py` | exit 0; ruff: all checks passed, 372 files formatted; JUnit 49 passed, 0 failures |
 
 The full backend and e2e suites run in the pull request's CI.

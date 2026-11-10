@@ -271,8 +271,9 @@ multi-page wizard stand-in. Later ranks:
 | D140: `pytest tests/test_greenhouse_sections_e2e.py` (JUnit) | 9 passed |
 | D140: `pytest tests/test_package_contract.py` with the section packages (JUnit) | 3 passed |
 | D140 sabotage runs (four changes, each in turn) | the eager retirement removed: 2 fail; the section diff removed: 3; the section summary removed: 1; the gate's hash check removed: 1 |
-| D140: `playwright test e2e/sections-review.spec.ts` (desktop and mobile) | 2 passed |
-| D140: every suite that touches sections, profiles, packages, approvals or diffs (55 files, JUnit) | running |
+| D140: `playwright test e2e/sections-review.spec.ts` (desktop and mobile) | 2 passed; after the review, 2 passed |
+| D140 after the review: `pytest tests/test_sections_review.py tests/test_version_diff.py` (JUnit); then six sabotage runs (each route's hook alone, the account scope, the "needs you" status) | 20 passed; each fails its test (1, 2, 1, 1, 1; 1; 2) |
+| D140: every suite that touches sections, profiles, packages, approvals or diffs (55 files, JUnit), on edb22b8 | 3252 passed, 0 failures |
 | D141: the existing section suites on the new stand-in, then with the new filler (JUnit) | 72 passed; 72 passed |
 | D141: `pytest tests/test_section_widgets.py` (JUnit) | 8 passed |
 | D141: the new tests with the section, approval-binding and phone-companion suites at v6 (JUnit) | 118 passed |

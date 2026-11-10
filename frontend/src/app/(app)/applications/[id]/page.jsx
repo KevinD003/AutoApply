@@ -655,6 +655,8 @@ function DiffToggle({ appId, from, to, label }) {
           {sections.map((sec) => (
             <li key={`section-${sec.kind}`}>
               <span className="font-medium">{SECTION_TITLE[sec.kind] ?? sec.kind}</span>
+              {sec.status === "needs_you" && <span>: now needs your input; nothing of it is sent until you resolve it</span>}
+              {sec.status === "resolved" && <span>: resolved; what it sends is shown above</span>}
               {sec.reordered && <span> (order changed)</span>}
               <ul className="ml-3">
                 {sec.rows.map((r) => (
