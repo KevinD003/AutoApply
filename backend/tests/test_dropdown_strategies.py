@@ -195,7 +195,7 @@ def test_settled_means_unchanged_by_the_pages_own_record(monkeypatch):
     for quiet, state in (
         ([200, 120, 280, 90, 260, 140], "partially_observed"),  # re-rendered between the reads
         ([10, 260, 499, 499, 499, 499], "partially_observed"),  # one millisecond short
-        ([10, 260, 510], "observed_sufficiently"),
+        ([10, 260, 500], "observed_sufficiently"),  # exactly the half second
         ([None, None, None], "observed_sufficiently"),  # nothing changed since the action
     ):
         got = dropdowns._observe(Page(quiet), "c", "click_control", 2)
