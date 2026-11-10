@@ -538,6 +538,12 @@ def test_a_next_is_never_clicked_twice(api, receiver, monkeypatch, variant):
     assert posts(led, "/apply") == 0 and led["accepted"] == 0
     a = attempt(aid)
     assert a.state == "abandoned"  # never rejected, confirmed or unknown
+    # D143: the stop says what was sent and what was never done; a Next that got no answer
+    # says the page may have been saved all the same (the ledger above shows it was).
+    assert "sent there with Next" in a.outcome_detail
+    assert "NoEfforts never made the final submit" in a.outcome_detail
+    unanswered = "does not know whether that page was saved" in a.outcome_detail
+    assert unanswered is (variant == "step_timeout")
     assert steps(aid) == ALL_STEPS[:3]
     ack = {"step_error": "error_shown", "step_timeout": "none", "late_question": "draft_saved"}
     assert [d for d in rows(aid, "disclosure") if d.get("kind") == "draft_page"][-1] == {
@@ -546,6 +552,33 @@ def test_a_next_is_never_clicked_twice(api, receiver, monkeypatch, variant):
         assert db.scalars(select(ApplicationPause).where(
             ApplicationPause.application_id == uuid.UUID(app_id))).all() == []  # fmt: skip
     assert all_retired_for_wizard(app_id)
+
+
+def test_a_next_whose_click_fails_says_the_page_may_have_been_saved():
+    """D143: a Next that fails in any other way than running out of time. Its values may have
+    been sent, so the stop says NoEfforts does not know, and carries the page's evidence."""
+    from types import SimpleNamespace
+
+    from playwright.sync_api import Error as PWError
+
+    from app.modules.execution.adapters.fixture_ats import StoppedAfterDisclosure
+    from app.modules.execution.adapters.workday import NEXT_INTERRUPTED, WorkdayFixtureAdapter
+
+    class Gone:  # a page that breaks at the click
+        def locator(self, _selector):
+            return self
+
+        def click(self, **_kw):
+            raise PWError("the page went away")
+
+    handed = []
+    stub = SimpleNamespace(_hand_over=lambda: handed.append(1), FORM="form", PAGE_KIND="k")
+    with pytest.raises(StoppedAfterDisclosure) as stopped:
+        WorkdayFixtureAdapter.click_next(stub, Gone(), 2, 1000)
+    assert handed == [1]  # marked as possibly sent before the click was made
+    assert str(stopped.value) == NEXT_INTERRUPTED
+    assert "does not know whether that page was saved" in NEXT_INTERRUPTED
+    assert stopped.value.disclosures == [{"kind": "draft_page", "page": 2, "ack": "none"}]
 
 
 @pytest.mark.parametrize("variant", ["next_submits", "already_applied_after_next"])

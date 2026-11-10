@@ -396,6 +396,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         if not (changed or new) and not self._dd_checked:
             # Only once, before the disclosure gate: open, read, close; nothing is selected.
             for f, cid in pending:
+                self._progress()  # D143: each dropdown may take seconds to open and settle
                 try:
                     self._dd[f.key] = dropdowns.verify(page, cid, f.options, self._stand_in)
                 except dropdowns.Refused as e:
@@ -606,6 +607,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         answers = sorted(self.content["answers"], key=lambda a: a["type"] != "file")
         uploaded = False
         for a in answers:
+            self._progress()
             if uploaded and a["type"] != "file":
                 uploaded = False
                 self._settle(page)
@@ -654,6 +656,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             return
         self._settle(page)
         for a in waiting:
+            self._progress()
             loc = _by_id(page, a["key"])
             if loc.count() != 1 or not loc.is_visible():
                 continue  # not asked: nothing is entered
@@ -866,6 +869,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         """Read what each control actually holds now; compare with the approved value."""
         bad = []
         for a in self.content["answers"]:
+            self._progress()
             t, v = a["type"], a["value"]
             if t == FieldType.unsupported.value:
                 continue
@@ -905,6 +909,14 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         return bad
 
     # -- submit -----------------------------------------------------------------------------
+    def send_watch_seconds(self, timeout_ms: int) -> int:
+        """D143: the click may take 10s, then the watch for its answer: on a real page at least
+        REAL_WAIT_MS (`_watch`), and half again, because the watch counts only its own waits,
+        not the page reads between them. The send lease covers this, so the sweeper does not
+        call the outcome unknown while the answer is still being watched for."""
+        wait_ms = timeout_ms if self._stand_in else max(timeout_ms, REAL_WAIT_MS)
+        return 10 + -(-wait_ms * 3 // 2000)
+
     def submit(self, page: Page, timeout_ms: int) -> Outcome:
         """Bound to this attempt: only the response to its own POST (`_ours`) counts, and
         acceptance also needs a confirmation on the same posting that was not there before the

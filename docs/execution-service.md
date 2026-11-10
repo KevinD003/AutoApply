@@ -57,7 +57,10 @@ production refuses execution entirely. Results by revision are in "Verification"
 
   Limits: one session per runner (`MAX_SESSIONS=1`), because sessions in one container share a
   user and are not isolated from each other. There is also a per-session time limit
-  (`BROWSER_MAX_SESSION_SECONDS`, default 600).
+  (`BROWSER_MAX_SESSION_SECONDS`, default 1500). It must stay above the attempt task's time limit
+  (D143, `attempt_time_limit_seconds`: the run budget, the waits after the click and the whole
+  wait for a verification code; 1380 s by default), or a run still waiting for a code loses its
+  browser before the wait ends.
 - **egress-proxy** (`app.modules.execution.sandbox.proxy_service`): the existing destination
   policy, applied per session:
   - exact host:port;

@@ -132,6 +132,7 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
         self._filled = True
         disclosures = []
         for a in self.content["answers"]:
+            self._progress()
             if a["value"] is None or a["type"] == FieldType.unsupported.value:
                 continue
             if a.get("condition"):
@@ -180,6 +181,7 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
         bad = []
         plain = []
         for a in self.content["answers"]:
+            self._progress()
             if a["type"] == FieldType.unsupported.value:
                 continue
             if a["type"] == "file":

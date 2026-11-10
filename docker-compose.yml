@@ -115,7 +115,10 @@ services:
       EGRESS_PROXY: http://egress-proxy:3128
       RUNNER_PUBLIC_HOST: browser-runner
       MAX_SESSIONS: "1"  # one browser per runner: sessions in one container share a user
-      MAX_SESSION_SECONDS: ${BROWSER_MAX_SESSION_SECONDS:-600}
+      # D143: above the attempt task's time limit (attempt_time_limit_seconds, 1380s by
+      # default), or a run waiting for a verification code loses its browser before the wait
+      # ends.
+      MAX_SESSION_SECONDS: ${BROWSER_MAX_SESSION_SECONDS:-1500}
     networks: [exec_control, exec_egress]
     user: "10002:10002"
     read_only: true

@@ -50,7 +50,7 @@ from app.modules.execution.adapters.greenhouse_dom import (
 from app.modules.execution.adapters.lever import LeverFixtureAdapter
 from app.modules.execution.adapters.workday import WorkdayFixtureAdapter
 from app.modules.execution.browser import IsolationUnavailable, browser_session
-from app.modules.execution.faults import fault
+from app.modules.execution.faults import fault, run_clock
 from app.modules.execution.models import ExecutionAttempt
 from app.modules.preparation import package as pk
 from app.modules.preparation import sending
@@ -199,9 +199,28 @@ def run_attempt(attempt_id: str, worker: str) -> str:
     fault("after_claim")
     s = get_settings()
     phase = "before_disclosure"
+    started = run_clock()
+    last_beat = [time.monotonic()]
+
+    def within_budget():
+        # D143: the run's own time limit, checked between steps and so never raised inside a
+        # browser wait. Past it the run stops as its phase says: before the final click that
+        # is always "nothing was submitted".
+        if run_clock() - started > s.attempt_run_budget_seconds:
+            raise RunBudgetExceeded()
 
     def beat():
+        within_budget()
         svc.heartbeat(aid, worker, gen)
+        last_beat[0] = time.monotonic()
+
+    def progress():
+        # D143: between fields. Renews the lease at most every quarter of it, so a long fill or
+        # readback is not taken for a lost worker; LostAuthority here (cancelled, swept, taken
+        # away) stops the worker between fields.
+        within_budget()
+        if time.monotonic() - last_beat[0] >= s.lease_seconds / 4:
+            beat()
 
     try:
         content, docs, adapter_name = _snapshot(aid)
@@ -216,6 +235,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                 return "failed_safe"
             return _run_api(aid, worker, gen, API_ADAPTERS[adapter_name](content, docs, str(aid)))
         adapter = ADAPTERS[adapter_name](content, docs)
+        adapter.on_progress = progress
         dest = content["destination"]
         if s.browser_isolation not in ("netns", "container") and s.env == "production":
             svc.fail_safe(aid, worker, gen, "browser network isolation is required")
@@ -355,14 +375,16 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             if _rehearsal(aid):
                 return _stop_rehearsal(aid, worker, gen)
             fault("before_send_gate")
+            within_budget()  # D143: a run past its budget never starts the send
+            submit_ms = s.submit_timeout_seconds * 1000
             try:
-                svc.gate_before_send(aid, worker, gen)
+                svc.gate_before_send(aid, worker, gen, adapter.send_watch_seconds(submit_ms))
             except svc.GateRefused as e:
                 svc.abandon(aid, worker, gen, str(e), code=e.code)
                 return "abandoned"
             phase = "after_send"
             fault("before_click")
-            out = adapter.submit(page, s.submit_timeout_seconds * 1000)
+            out = adapter.submit(page, submit_ms)
             fault("after_click")
             if out.kind == "otp":
                 return _verification_loop(aid, worker, gen, adapter, page, s)
@@ -379,7 +401,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             "attempt %s failed in phase %s (%s) at %s",
             aid, phase, type(e).__name__, _origin_frames(e),
         )  # fmt: skip
-        reason = f"internal error ({type(e).__name__})"
+        reason = _failure_reason(e)
         if phase == "before_disclosure":
             svc.fail_safe(aid, worker, gen, reason)
         elif phase == "after_disclosure":
@@ -387,6 +409,23 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         else:
             svc.unknown(aid, worker, gen, reason)
         return "error"
+
+
+TIME_LIMIT = "the run reached its time limit and was stopped"
+
+
+class RunBudgetExceeded(Exception):
+    """D143: the attempt took longer than its run budget (attempt_run_budget_seconds) to reach
+    the final click. Raised by the runner between steps, never inside a browser wait."""
+
+
+def _failure_reason(e: BaseException) -> str:
+    """D143: the run budget is said as what it is, not as an internal error. The outcome is the
+    one the phase gives any failure there (the budget is only checked before the send gate):
+    nothing is retried after disclosure."""
+    if isinstance(e, RunBudgetExceeded):
+        return TIME_LIMIT
+    return f"internal error ({type(e).__name__})"
 
 
 def _stop_rehearsal(aid, worker, gen) -> str:
@@ -404,7 +443,8 @@ def _stop_rehearsal(aid, worker, gen) -> str:
 
 NEXT_NOT_SAVED = {
     ACK_ERROR: "the employer's page showed an error after a page's Next",
-    ACK_NONE: "the employer's page did not answer a page's Next in time",
+    ACK_NONE: "the employer's page did not answer a page's Next in time, so NoEfforts does not "
+    "know whether that page was saved",
 }
 NOT_NEXT_PAGE = "the employer's form did not show the next page after a page's Next"
 LEFT_FORM = {
@@ -670,7 +710,7 @@ def _run_api(aid, worker, gen, adapter) -> str:
             "attempt %s failed in phase %s (%s) at %s",
             aid, phase, type(e).__name__, _origin_frames(e),
         )  # fmt: skip
-        reason = f"internal error ({type(e).__name__})"
+        reason = _failure_reason(e)
         if phase == "before_disclosure":
             svc.fail_safe(aid, worker, gen, reason)
         elif phase == "after_disclosure":
@@ -720,19 +760,21 @@ def _conclude(aid, worker, gen, adapter, page, out) -> str:
 
 def _verification_loop(aid, worker, gen, adapter, page, s) -> str:
     cp = svc.open_checkpoint(aid, worker, gen, "Enter the code the employer emailed you.")
+    fault("in_code_wait")
+    submit_ms = s.submit_timeout_seconds * 1000
     deadline = time.monotonic() + s.checkpoint_ttl_seconds
     while True:
         if time.monotonic() > deadline:
             svc.abandon(aid, worker, gen, "no code was entered in time")
             return "abandoned"
-        code, status = svc.take_code(cp, aid, worker, gen)
+        code, status = svc.take_code(cp, aid, worker, gen, adapter.send_watch_seconds(submit_ms))
         if status in ("expired", "failed"):
             svc.abandon(aid, worker, gen, f"verification {status}")
             return "abandoned"
         if code is None:
             time.sleep(0.3)
             continue
-        out = adapter.enter_code(page, code, s.submit_timeout_seconds * 1000)
+        out = adapter.enter_code(page, code, submit_ms)
         del code
         if out.kind == "wrong_code":
             if svc.code_result(cp, aid, worker, gen, accepted=False) == "failed":

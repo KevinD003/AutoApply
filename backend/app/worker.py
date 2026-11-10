@@ -12,7 +12,15 @@ Delivery settings (Celery 5.6.3, kombu 5.6.2, Redis transport, prefork pool):
                                    (NOEFFORTS_BROKER_VISIBILITY_TIMEOUT_SECONDS; tests only
                                    shorten it on a disposable broker);
   publish retry: 2 quick retries   then the relay leaves the outbox row for the next tick;
-  soft/hard time limits            240s / 300s per task.
+  soft/hard time limits            240s / 300s for every task but an attempt's, the soft
+                                   one set on each task (SOFT_LIMIT). An attempt's task
+                                   has one limit of its own and no soft limit (D143;
+                                   config: attempt_time_limit_seconds): its run budget,
+                                   the waits after the click and the whole wait for a
+                                   verification code, so a code typed late in its wait is
+                                   never cut off. It stays under the visibility timeout,
+                                   or a still-running task's message would be redelivered
+                                   (harmless: the claim refuses it).
 None of these settings makes an external submission idempotent. Duplicate deliveries are made
 harmless by the claim compare-and-swap; sends are never repeated by the queue (see
 app/modules/execution/service.py).
@@ -37,7 +45,8 @@ celery_app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=False,
     worker_prefetch_multiplier=1,
-    task_soft_time_limit=240,
+    # D143: no soft limit by default; every task but an attempt's sets SOFT_LIMIT itself (the
+    # pool arms a soft limit first whenever a task has one, and the attempt's must have none).
     task_time_limit=300,
     broker_transport_options={"visibility_timeout": settings.broker_visibility_timeout_seconds},
     # Publishing gives up quickly when the broker is down; the outbox row stays undispatched
@@ -94,21 +103,31 @@ def publish(topic: str, attempt_id: str) -> None:
     celery_app.send_task("noefforts.execute_attempt", args=[attempt_id])
 
 
-@celery_app.task(name="noefforts.execute_attempt")
+SOFT_LIMIT = 240  # seconds; every task but an attempt's
+
+
+# D143: an attempt's task has one time limit and no soft limit. A soft limit raises inside the
+# running task from a signal handler; measured with a real worker, one that lands inside a
+# browser wait leaves the browser unable to close, so the runner's own handler never runs and
+# the process hangs until the hard limit anyway. The run's time is bounded by the runner
+# itself, between steps (attempt_run_budget_seconds); at this limit the worker process is
+# ended, the message is acknowledged (never redelivered), and the sweeper decides from the
+# attempt's phase.
+@celery_app.task(name="noefforts.execute_attempt", time_limit=settings.attempt_time_limit_seconds)
 def execute_attempt(attempt_id: str) -> str:
     from app.modules.execution.runner import run_attempt
 
     return run_attempt(attempt_id, f"{WORKER_ID}-{uuid.uuid4().hex[:6]}")
 
 
-@celery_app.task(name="noefforts.relay_outbox")
+@celery_app.task(name="noefforts.relay_outbox", soft_time_limit=SOFT_LIMIT)
 def relay_outbox() -> int:
     from app.modules.execution.service import relay_outbox as relay
 
     return relay(publish)
 
 
-@celery_app.task(name="noefforts.sweep_attempts")
+@celery_app.task(name="noefforts.sweep_attempts", soft_time_limit=SOFT_LIMIT)
 def sweep_attempts() -> dict:
     from app.modules.execution.browser import cleanup_stale_workdirs
     from app.modules.execution.service import sweep
@@ -118,35 +137,35 @@ def sweep_attempts() -> dict:
     return out
 
 
-@celery_app.task(name="noefforts.check_discovery_watches")
+@celery_app.task(name="noefforts.check_discovery_watches", soft_time_limit=SOFT_LIMIT)
 def check_discovery_watches() -> int:
     from app.modules.discovery.service import check_due_watches
 
     return check_due_watches()
 
 
-@celery_app.task(name="noefforts.check_board_sources")
+@celery_app.task(name="noefforts.check_board_sources", soft_time_limit=SOFT_LIMIT)
 def check_board_sources() -> int:
     from app.modules.discovery.board_sync import check_due
 
     return check_due()
 
 
-@celery_app.task(name="noefforts.check_inbox")
+@celery_app.task(name="noefforts.check_inbox", soft_time_limit=SOFT_LIMIT)
 def check_inbox() -> dict:
     from app.modules.inbox.service import inbox_tick
 
     return inbox_tick()
 
 
-@celery_app.task(name="noefforts.email_tick")
+@celery_app.task(name="noefforts.email_tick", soft_time_limit=SOFT_LIMIT)
 def email_tick() -> dict:
     from app.modules.mail.service import tick
 
     return tick(WORKER_ID)
 
 
-@celery_app.task(name="noefforts.purge_expired_sessions")
+@celery_app.task(name="noefforts.purge_expired_sessions", soft_time_limit=SOFT_LIMIT)
 def purge_expired_sessions() -> int:
     with SessionLocal() as db:
         n = db.execute(delete(UserSession).where(UserSession.expires_at < utcnow())).rowcount
@@ -154,14 +173,14 @@ def purge_expired_sessions() -> int:
         return n
 
 
-@celery_app.task(name="noefforts.purge_expired_evidence")
+@celery_app.task(name="noefforts.purge_expired_evidence", soft_time_limit=SOFT_LIMIT)
 def purge_expired_evidence() -> int:
     from app.modules.execution.service import purge_expired_evidence as purge
 
     return purge()
 
 
-@celery_app.task(name="noefforts.auto_apply")
+@celery_app.task(name="noefforts.auto_apply", soft_time_limit=SOFT_LIMIT)
 def auto_apply() -> int:
     """D113: the owner's standing rule to apply automatically (autoapply/service.py)."""
     from app.modules.autoapply.service import tick

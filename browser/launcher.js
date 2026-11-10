@@ -31,7 +31,11 @@ const PUBLIC_HOST = process.env.RUNNER_PUBLIC_HOST || os.hostname();
 const MAX_SESSIONS = Number(process.env.MAX_SESSIONS || 1);
 const CONNECT_SECONDS = Number(process.env.CONNECT_SECONDS || 30);
 const DRIVER_VERSION = require(`${DRIVER}/package.json`).version;
-const MAX_SESSION_SECONDS = Number(process.env.MAX_SESSION_SECONDS || 600);
+// D143: longer than an attempt task's time limit (attempt_time_limit_seconds in
+// backend/app/core/config.py: the run budget, the waits after the click and the whole wait for
+// a verification code; 1380s by default), so a session is never closed under a run still
+// waiting for a code.
+const MAX_SESSION_SECONDS = Number(process.env.MAX_SESSION_SECONDS || 1500);
 const HOSTNAME_RE = /^[A-Za-z0-9.-]{1,253}$/;
 
 const sessions = new Map(); // id -> {server, timer, started, secret, connected, sockets}

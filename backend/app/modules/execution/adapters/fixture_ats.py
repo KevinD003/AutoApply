@@ -38,12 +38,22 @@ class ReportsDisclosures:
     Without a recorder (a direct call), the evidence is only returned, as before."""
 
     on_disclosure = None  # the runner's recorder, set for each attempt
+    on_progress = None  # D143: the runner's heartbeat, set for each attempt
 
     def _disclosed(self, d: dict) -> dict:
         if self.on_disclosure is not None:
             self.on_disclosure(d)
         fault("after_disclosure_recorded")
         return d
+
+    def _progress(self) -> None:
+        """D143: called between fields while filling and reading back. The runner renews the
+        attempt's lease from it (at most every quarter of a lease), so a long form is not taken
+        for a lost worker, and it raises LostAuthority there once the attempt was cancelled or
+        taken away, so the worker stops between fields, not only at the next gate."""
+        fault("between_fields")
+        if self.on_progress is not None:
+            self.on_progress()
 
 
 class FixtureAtsAdapter(ReportsDisclosures):
@@ -97,6 +107,7 @@ class FixtureAtsAdapter(ReportsDisclosures):
         to report as a mismatch, rather than crashing the attempt."""
         disclosures = []
         for a in self.content["answers"]:
+            self._progress()
             if a["value"] is None:
                 continue
             if a["type"] == "file":
@@ -184,6 +195,7 @@ class FixtureAtsAdapter(ReportsDisclosures):
         """Read the controls' actual values and compare with the approved package."""
         bad = []
         for a in self.content["answers"]:
+            self._progress()
             key, t, v = a["key"], a["type"], a["value"]
             loc = page.locator(_sel(key))
             if t == "file":
@@ -216,6 +228,11 @@ class FixtureAtsAdapter(ReportsDisclosures):
         return bad
 
     # -- submit -----------------------------------------------------------------------------
+    def send_watch_seconds(self, timeout_ms: int) -> int:
+        """D143: the longest this adapter waits for the answer to the final click, in seconds;
+        the send gate sizes the attempt's lease to it."""
+        return -(-timeout_ms // 1000)
+
     def submit(self, page: Page, timeout_ms: int) -> Outcome:
         button = page.locator("form#application button[type=submit]")
         return self._click_and_classify(page, button, timeout_ms)

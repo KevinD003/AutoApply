@@ -53,7 +53,9 @@ ALREADY_APPLIED = (
     "the employer's page says you have already applied for this job; NoEfforts entered "
     "nothing. Check with the employer."
 )
-NEXT_INTERRUPTED = "a page's Next did not complete"
+NEXT_INTERRUPTED = (
+    "a page's Next did not complete, so NoEfforts does not know whether that page was saved"
+)
 # D142: has the page answered page i's Next: no longer the form, or its status for page i
 # saved or showing an error. Reads attributes only, never the page's text.
 _NEXT_ANSWERED = """([i, attr]) => {

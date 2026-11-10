@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     checkpoint_ttl_seconds: int = 600
     submit_timeout_seconds: int = 30
     navigation_timeout_seconds: int = 20
+    # D143: how long an attempt's worker may take to reach the final click (opening the form,
+    # filling, reading back, the gates). The runner checks it between steps and, past it, stops
+    # before sending and says so. After the click the worker only waits, each wait with its own
+    # limit: for the click's answer, for a verification code (checkpoint_ttl_seconds) and for
+    # each code's answer.
+    attempt_run_budget_seconds: int = 420
+    # What those waits may take besides the wait for a code (the watch for the click's answer
+    # and for the last code's), with one step's overrun of the budget before the next check. It
+    # also bounds the watch a lease covers. The three together are the task's time limit
+    # (`attempt_time_limit_seconds`).
+    attempt_after_send_seconds: int = 360
     evidence_retention_days: int = 365
     # A rehearsal record older than this no longer counts (execution/rehearsal.py). Must be
     # between 1 and evidence_retention_days, or every check of it refuses.
@@ -272,6 +283,19 @@ class Settings(BaseSettings):
 
         parse_fixture_networks(v)  # raises for anything but a private test network
         return v
+
+    @property
+    def attempt_time_limit_seconds(self) -> int:
+        """D143: the worker process running an attempt is ended at this point, and the sweeper
+        then decides from the attempt's phase. The run budget, the waits after the click and
+        the whole wait for a verification code: a run within its own limits never reaches it.
+        It must stay under the broker's visibility timeout and under the browser runner's
+        session limit (BROWSER_MAX_SESSION_SECONDS)."""
+        return (
+            self.attempt_run_budget_seconds
+            + self.attempt_after_send_seconds
+            + self.checkpoint_ttl_seconds
+        )
 
 
 @lru_cache
