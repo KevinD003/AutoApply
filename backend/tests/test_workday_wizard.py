@@ -22,6 +22,7 @@ from sqlalchemy import select, update
 from app.core.config import get_settings
 from app.core.db import SessionLocal, utcnow
 from app.modules.applications.models import Application
+from app.modules.applications.states import AppState
 from app.modules.autoapply import service as autoapply
 from app.modules.execution import runner
 from app.modules.execution import service as svc
@@ -252,6 +253,13 @@ MUTATIONS = {
     # The pages are not numbered 1 to 5 in order.
     "page_gap": ('<section data-step="Voluntary Disclosures" data-wizard-page="3" hidden>',
                  '<section data-step="Voluntary Disclosures" data-wizard-page="7" hidden>'),
+    # The form says six pages; five are there (caught only if the count is read).
+    "page_count": ('data-wizard-pages="5"', 'data-wizard-pages="6"'),
+    # Pages 3 and 4 swapped: each page still has its Next (only the order catches it).
+    "page_order": (
+        '<section data-step="Voluntary Disclosures" data-wizard-page="3" hidden>',
+        '<section data-step="Voluntary Disclosures" data-wizard-page="4" hidden>',
+    ),
     # The submit button on page 4, none on the review page.
     "submit_not_last": (
         '<button type="submit" data-automation-id="bottom-navigation-next-button">Submit'
@@ -286,6 +294,10 @@ def test_a_malformed_wizard_is_a_checkpoint(receiver, mutation):
     old, new = MUTATIONS[mutation]
     assert html.count(old) == 1
     bad = html.replace(old, new)
+    if mutation == "page_order":  # ... and page 4 numbered 3
+        page4 = '<section data-step="Application Questions" data-wizard-page="4" hidden>'
+        assert bad.count(page4) == 1
+        bad = bad.replace(page4, page4.replace('"4"', '"3"'))
     if mutation == "submit_not_last":  # ... and put it on page 4, beside its Next
         page4 = '<section data-step="Application Questions" data-wizard-page="4" hidden>'
         assert bad.count(page4) == 1
@@ -628,6 +640,11 @@ def test_once_entered_it_never_runs_again(api, receiver, monkeypatch):
             svc.enqueue(db, app)
         assert e.value.code == CODE
         db.rollback()
+        # The standing rule's queueing calls this check itself (autoapply/service.py).
+        with pytest.raises(pk.ApprovalError) as e:
+            pk.require_valid_approval(db, app)
+        assert e.value.code == CODE
+        db.rollback()
     # 3. A pending attempt inserted by hand (simulated) is refused when a worker claims it.
     before = receiver.ledger()["requests"]
     with SessionLocal() as db:
@@ -643,6 +660,7 @@ def test_once_entered_it_never_runs_again(api, receiver, monkeypatch):
             path_ref=old.path_ref,
         )
         db.add(new)
+        db.get(Application, uuid.UUID(app_id)).state = AppState.queued
         db.commit()
         new_id = str(new.id)
     assert runner.run_attempt(new_id, "w2") == "ignored"
@@ -662,12 +680,12 @@ def test_another_account_on_the_same_posting_is_not_refused(api, other_api, rece
     monkeypatch.delenv("NOEFFORTS_FAULT")
     assert attempt(aid).disclosure_started_at is not None
     led = receiver.ledger()
-    # The same account, another posting: its own application is not refused.
-    second = workday_application(api, url=fresh_url(), title="Charge Nurse", approve=False)
-    assert approve(api, second).status_code == 200
     # Another account, the same posting: its own application is not refused.
     theirs = workday_application(other_api, url=url, approve=False)
     assert approve(other_api, theirs).status_code == 200
+    # The same account, another posting: its own application is not refused.
+    second = workday_application(api, url=fresh_url(), title="Charge Nurse", approve=False)
+    assert approve(api, second).status_code == 200
     # ... and it reaches nothing of the first account's.
     p = package(api, app_id)
     body = {"version": p["version"], "content_hash": p["content_hash"]}
