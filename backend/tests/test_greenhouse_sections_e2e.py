@@ -145,3 +145,54 @@ def test_a_real_destination_refuses_the_legacy_only_section(api, receiver, monke
     with SessionLocal() as db:
         detail = db.get(ExecutionAttempt, uuid.UUID(aid)).outcome_detail or ""
     assert "stand-in" in detail or "only" in detail
+
+
+def _edit_degree(api, degree: str) -> None:
+    """Edit the owner's State University record to another degree the form offers, and approve
+    the edit (an edit you make stays approved; approving again changes nothing more)."""
+    (rec,) = [
+        r for r in api.get("/profile/education").json() if r["institution"] == "State University"
+    ]
+    body = {k: rec[k] for k in ("institution", "field_of_study", "start_date", "end_date")}
+    r = api.put(f"/profile/education/{rec['id']}", json=body | {"degree": degree})
+    assert r.status_code == 200, r.text
+    assert api.post(f"/profile/education/{rec['id']}/approve").status_code == 200
+
+
+def test_an_education_edit_retires_the_approval_and_the_new_value_is_sent(api, receiver):
+    """D140 (acceptance item 8 for sections): the edit retires the approval at once and queueing
+    is refused; approved again, the employer receives the new degree, once."""
+    app_id = sections_application(api)
+    _edit_degree(api, "Master's Degree")
+    q = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
+    assert q.status_code in (400, 409) and "approval_needed" in q.text, q.text
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and led["disclosures"] == []
+    p = api.get(f"/applications/{app_id}/package").json()["package"]
+    assert p["content"]["sections"][0]["rows"][0]["fields"]["degree_id"]["display"] == (
+        "Master's Degree"
+    )
+    body = {"version": p["version"], "content_hash": p["content_hash"]}
+    assert api.post(f"/applications/{app_id}/package/approve", json=body).status_code == 200
+    assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
+    (acc,) = receiver.ledger()["acceptances"]
+    assert acc["fields"]["degree--0"] == "deg_mast"
+
+
+def test_an_education_edit_while_a_worker_holds_the_attempt_stops_it_at_the_send_gate(
+    api, receiver
+):
+    """D140: the worker owns the application while it fills, so the edit cannot rebuild it then;
+    the send gate rebuilds the package itself, sees the degree changed and abandons the attempt.
+    Nothing is submitted."""
+    from tests.execution_harness import attempt
+    from tests.test_execution_validation import blocked_worker, release, wait_for
+
+    app_id = sections_application(api)
+    aid = queue(api, app_id)
+    w, gate = blocked_worker(aid, "before_send_gate")
+    wait_for(lambda: attempt(aid).disclosure_started_at is not None)
+    _edit_degree(api, "Master's Degree")
+    assert release(w, gate) == "abandoned"
+    assert "changed after approval" in attempt(aid).outcome_detail
+    assert receiver.ledger()["accepted"] == 0

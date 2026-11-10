@@ -529,6 +529,8 @@ export default function ReviewPage() {
         </Card>
       ))}
 
+      {(c.sections ?? []).length > 0 && <SectionsCard sections={c.sections} />}
+
       <Card title="Version history">
         <ol className="space-y-1 text-sm">
           {view.history.map((h) => (
@@ -541,6 +543,56 @@ export default function ReviewPage() {
         </ol>
       </Card>
     </>
+  );
+}
+
+const SECTION_TITLE = { education: "Education", employment: "Work history" };
+const SECTION_FIELD = {
+  school_name_id: "School",
+  degree_id: "Degree",
+  discipline_id: "Discipline",
+  company_name: "Employer",
+  title: "Title",
+  current: "Current role",
+  start_date: "Start",
+  end_date: "End",
+};
+const ROW_CHANGE = { added: "added", removed: "removed", changed: "changed" };
+const sectionShown = (x) => (x === null ? "—" : x.status === "omitted" ? "not sent" : (x.display ?? "—"));
+
+/** D140: the education and work history this version sends, as frozen in the package (never read
+ * from your live profile), so you approve what you can see. */
+function SectionsCard({ sections }) {
+  return (
+    <Card title="Education and work history">
+      <p className="text-sm text-ink-muted">
+        What this version sends from your approved education and employment records. Change a record in your profile and the approval of
+        this version is retired; you approve again what it then sends.
+      </p>
+      {sections.map((s) => (
+        <div key={s.kind} className="mt-3" role="group" aria-label={SECTION_TITLE[s.kind] ?? s.kind}>
+          <h3 className="text-sm font-medium">{SECTION_TITLE[s.kind] ?? s.kind}</h3>
+          {s.rows.length === 0 ? (
+            <p className="text-sm text-ink-muted">Nothing is sent here: you have no approved {s.kind} record.</p>
+          ) : (
+            <ol className="mt-1 space-y-2">
+              {s.rows.map((r) => (
+                <li key={r.record_id} className="rounded-lg border border-hairline p-2 text-sm">
+                  <dl className="space-y-1">
+                    {Object.entries(r.fields).map(([name, f]) => (
+                      <div key={name} className="flex flex-wrap gap-x-3">
+                        <dt className="min-w-24 text-ink-muted">{SECTION_FIELD[name] ?? name}</dt>
+                        <dd>{f.status === "omitted" ? (name === "end_date" ? "Not sent (current role)" : "Not sent") : f.display}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      ))}
+    </Card>
   );
 }
 
@@ -568,7 +620,8 @@ function DiffToggle({ appId, from, to, label }) {
     setOpen(!open);
   }
   const shown = (x) => (x === null ? "—" : (x.display ?? (x.status === "blank_optional" ? "(left blank)" : "(no answer)")));
-  const empty = diff && !diff.answers.length && !diff.documents.length && !diff.consents.length && !diff.destination.length;
+  const sections = diff?.sections ?? [];
+  const empty = diff && !diff.answers.length && !diff.documents.length && !diff.consents.length && !diff.destination.length && !sections.length;
   return (
     <div className="mt-1">
       <button type="button" className="text-xs text-brand underline" aria-expanded={open} onClick={toggle}>
@@ -597,6 +650,21 @@ function DiffToggle({ appId, from, to, label }) {
           {diff.destination.map((d) => (
             <li key={d.field}>
               <span className="font-medium">Destination ({d.field.replace("_", " ")})</span>: {String(d.before ?? "—")} → {String(d.after ?? "—")}
+            </li>
+          ))}
+          {sections.map((sec) => (
+            <li key={`section-${sec.kind}`}>
+              <span className="font-medium">{SECTION_TITLE[sec.kind] ?? sec.kind}</span>
+              {sec.reordered && <span> (order changed)</span>}
+              <ul className="ml-3">
+                {sec.rows.map((r) => (
+                  <li key={r.record_id}>
+                    {r.label ?? "A record"} ({ROW_CHANGE[r.change] ?? r.change})
+                    {r.change === "changed" &&
+                      ": " + r.fields.map((f) => `${SECTION_FIELD[f.field] ?? f.field} ${sectionShown(f.before)} → ${sectionShown(f.after)}`).join("; ")}
+                  </li>
+                ))}
+              </ul>
             </li>
           ))}
         </ul>

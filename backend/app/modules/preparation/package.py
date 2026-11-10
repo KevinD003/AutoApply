@@ -546,6 +546,12 @@ def _summarize(old: dict | None, new: dict) -> list[str]:
                 out.append("answers changed: " + ", ".join(changed[:10]))
         elif old.get(s) != new.get(s):
             out.append(f"{s} changed")
+    # D140: a structured section (D120) is named by its kind, never "metadata changed".
+    before = {x["kind"]: x for x in old.get("sections") or []}
+    after = {x["kind"]: x for x in new.get("sections") or []}
+    for kind in sorted(before.keys() | after.keys()):
+        if before.get(kind) != after.get(kind):
+            out.append(f"{kind} changed")
     return out or ["metadata changed"]
 
 
@@ -612,7 +618,58 @@ def diff_contents(old: dict, new: dict) -> dict:
         if old["destination"].get(f) != new["destination"].get(f)
     ]
     return {"answers": answers, "documents": documents, "consents": consents,
-            "destination": destination}  # fmt: skip
+            "destination": destination, "sections": _diff_sections(old, new)}  # fmt: skip
+
+
+def _section_field(f: dict | None) -> dict | None:
+    return None if f is None else {"status": f.get("status"), "display": f.get("display")}
+
+
+def _row_label(row: dict) -> str | None:
+    """A human name for a frozen section row: its first shown value (the school or employer)."""
+    for f in (row.get("fields") or {}).values():
+        if f.get("display"):
+            return f["display"]
+    return None
+
+
+def _diff_sections(old: dict, new: dict) -> list[dict]:
+    """D140: what changed in each structured section (D120), by row (an education or employment
+    record) and field, in the values the review page shows. A row is added, removed or changed;
+    `reordered` says the rows kept their values but not their order. Versions without sections
+    (every package before D120's stand-in) diff to nothing here."""
+    before = {x["kind"]: x for x in old.get("sections") or []}
+    after = {x["kind"]: x for x in new.get("sections") or []}
+    out = []
+    for kind in sorted(before.keys() | after.keys()):
+        rows_b = {r["record_id"]: r for r in (before.get(kind) or {}).get("rows", [])}
+        rows_a = {r["record_id"]: r for r in (after.get(kind) or {}).get("rows", [])}
+        order = [r["record_id"] for r in (after.get(kind) or {}).get("rows", [])] + [
+            k for k in rows_b if k not in rows_a
+        ]
+        rows = []
+        for rid in order:
+            x, y = rows_b.get(rid), rows_a.get(rid)
+            fx, fy = (x or {}).get("fields") or {}, (y or {}).get("fields") or {}
+            fields = [
+                {
+                    "field": f,
+                    "before": _section_field(fx.get(f)),
+                    "after": _section_field(fy.get(f)),
+                }
+                for f in list(fy) + [f for f in fx if f not in fy]
+                if fx.get(f) != fy.get(f)
+            ]
+            if x is not None and y is not None and not fields:
+                continue
+            change = "added" if x is None else "removed" if y is None else "changed"
+            rows.append({"record_id": rid, "label": _row_label(y or x), "change": change,
+                         "fields": fields})  # fmt: skip
+        kept = [k for k in rows_b if k in rows_a]
+        reordered = kept != [k for k in rows_a if k in rows_b]
+        if rows or reordered:
+            out.append({"kind": kind, "rows": rows, "reordered": reordered})
+    return out
 
 
 def latest_package(db: Session, app_id: uuid.UUID) -> ApplicationPackage | None:
@@ -718,25 +775,42 @@ def ensure_current(db: Session, app: Application) -> ApplicationPackage:
     return pkg
 
 
-def retire_after_self_identification(db: Session, user_id: uuid.UUID) -> int:
-    """D139: after the owner changes their self-identification (D122), rebuild each of their
-    applications that holds a live approval of a package with a sensitive answer, at once, as
-    an edit to a saved answer does (D78): an approval of what they withdrew or changed is
-    retired now and they are told, instead of only when the package is next read or a worker's
-    gate refuses it. Only such an answer can come from self-identification, so nothing else is
-    rebuilt. Commits per application; returns how many approvals this retired."""
+def retire_stale_approvals(db: Session, user_id: uuid.UUID, could_change) -> int:
+    """Rebuild, at once, each of the owner's applications that holds a live approval of a package
+    `could_change(content)` says an edit may have changed, as an edit to a saved answer does (D78):
+    an approval of what changed is retired now and the owner is told, instead of only when the
+    package is next read or a worker's gate refuses it. The rebuild is a whole one, so an approval
+    already out of date for another reason is retired too (a gate would refuse it anyway). An
+    application whose attempt a worker holds is left to its gates (ensure_current). Commits per
+    application; returns how many approvals this retired."""
     retired = 0
     for app in db.scalars(select(Application).where(Application.user_id == user_id)).all():
         latest = latest_package(db, app.id)
         if latest is None or active_approval(db, latest) is None:
             continue
-        if not any(a.get("sensitive") for a in latest.content.get("answers", [])):
+        if not could_change(latest.content):
             continue
         ensure_current(db, app)
         db.commit()
         if active_approval(db, latest_package(db, app.id)) is None:
             retired += 1
     return retired
+
+
+def retire_after_self_identification(db: Session, user_id: uuid.UUID) -> int:
+    """D139: after the owner changes their self-identification (D122). Only a sensitive answer
+    can come from self-identification, so only a package with one is rebuilt."""
+    return retire_stale_approvals(
+        db, user_id, lambda c: any(a.get("sensitive") for a in c.get("answers", []))
+    )
+
+
+def retire_after_section_record(db: Session, user_id: uuid.UUID, kind: str) -> int:
+    """D140: after the owner adds, edits, approves or deletes an education or employment record.
+    Only a package that carries a section of that kind (D120) is built from those records."""
+    return retire_stale_approvals(
+        db, user_id, lambda c: any(x.get("kind") == kind for x in c.get("sections") or [])
+    )
 
 
 def _settle_state(

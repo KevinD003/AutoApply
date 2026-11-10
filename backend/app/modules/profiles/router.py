@@ -117,6 +117,14 @@ def _record_routes(
 ) -> None:
     """Register list/create/update/delete/approve routes for a user-owned fact table."""
 
+    def _after_commit(db: Session, user: User) -> None:
+        # D140: an education or employment record is what a structured section (D120) sends;
+        # an approval of the old value is retired now, not only at the next read or a gate.
+        if entity in ("education", "employment"):
+            from app.modules.preparation import package as pk
+
+            pk.retire_after_section_record(db, user.id, entity)
+
     def _get_owned(db: Session, user: User, item_id: uuid.UUID):
         obj = db.get(model, item_id)
         if obj is None or obj.user_id != user.id:
@@ -146,6 +154,8 @@ def _record_routes(
             raise conflict(f"{entity} already exists") from None
         record(db, user.id, f"{entity}.create", entity, obj.id)
         db.commit()
+        _after_commit(db, user)
+        db.refresh(obj)
         return obj
 
     @router.put(f"/{path}/{{item_id}}", response_model=schema_out, name=f"update_{entity}")
@@ -163,6 +173,8 @@ def _record_routes(
             db.rollback()
             raise conflict(f"{entity} already exists") from None
         db.commit()
+        _after_commit(db, user)
+        db.refresh(obj)
         return obj
 
     @router.post(
@@ -175,6 +187,8 @@ def _record_routes(
         obj.approval_status = Approval.approved
         record(db, user.id, f"{entity}.approve", entity, obj.id, version=obj.version)
         db.commit()
+        _after_commit(db, user)
+        db.refresh(obj)
         return obj
 
     @router.delete(
@@ -187,6 +201,7 @@ def _record_routes(
         db.delete(obj)
         record(db, user.id, f"{entity}.delete", entity, item_id)
         db.commit()
+        _after_commit(db, user)
 
 
 _record_routes(
