@@ -19,8 +19,9 @@ from urllib.parse import quote, urlsplit
 
 from app.core.config import get_settings
 from app.core.urlsafety import fixture_opener, is_fixture_origin
-from app.modules.execution.adapters.fixture_ats import Outcome, UploadFailed
+from app.modules.execution.adapters.fixture_ats import Outcome, ReportsDisclosures, UploadFailed
 from app.modules.execution.adapters.greenhouse import approved_fields
+from app.modules.execution.faults import fault
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation.forms import FieldType
 from app.modules.preparation.sending import sendable_view
@@ -42,7 +43,7 @@ def _sig(fields) -> dict:
     }
 
 
-class FakeApiAdapter:
+class FakeApiAdapter(ReportsDisclosures):
     name = "fake_api"
     confirmation_strength = "api_receipt"
 
@@ -123,19 +124,29 @@ class FakeApiAdapter:
 
     def upload(self, draft: str) -> list[dict]:
         """Each document's evidence says how the API acknowledged it: `digest_matched` (it
-        returned the digest of what was sent) or `not_kept`. Never its own document id."""
+        returned the digest of what was sent), `not_kept`, or `no_response` (D137: the request
+        failed on the way, so the document may have arrived). Never its own document id. Each
+        acknowledged one is reported at once (D137)."""
         out = []
         for d in self.content["documents"]:
             name, ctype, raw = self.documents[d["field"]]
-            status, data = self._call("POST", f"/fapi/v1/applications/{quote(draft)}/documents", {
-                "field": d["field"], "filename": name, "content_type": ctype,
-                "content_b64": base64.b64encode(raw).decode(),
-            })  # fmt: skip
             sent = {"field": d["field"], "sha256": d["sha256"], "route": "api"}
+            try:
+                status, data = self._call(
+                    "POST", f"/fapi/v1/applications/{quote(draft)}/documents", {
+                        "field": d["field"], "filename": name, "content_type": ctype,
+                        "content_b64": base64.b64encode(raw).decode(),
+                    })  # fmt: skip
+                fault("during_upload")
+            except ApiRefused:
+                raise  # refused before anything was sent
+            except Exception as e:  # noqa: BLE001 - the document may have arrived
+                raise UploadFailed("the API did not answer a document upload",
+                                   out + [sent | {"ack": "no_response"}]) from e  # fmt: skip
             if status != 200 or data.get("sha256") != d["sha256"]:
                 raise UploadFailed("the API did not keep a document intact",
                                    out + [sent | {"ack": "not_kept"}])  # fmt: skip
-            out.append(sent | {"ack": "digest_matched"})
+            out.append(self._disclosed(sent | {"ack": "digest_matched"}))
         return out
 
     # -- the final send ---------------------------------------------------------------------

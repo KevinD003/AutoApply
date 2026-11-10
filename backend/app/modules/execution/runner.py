@@ -282,13 +282,14 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                 return "failed_safe"
             phase = "after_disclosure"
             fault("after_disclosure_gate")
+            recorded = _record_as_made(aid, worker, gen, adapter)
             try:
                 disclosures = adapter.fill(page)
             except StoppedAfterDisclosure as e:  # an upload, or D104's location search
-                _record_disclosures(aid, worker, gen, e.disclosures)
+                _record_disclosures(aid, worker, gen, _not_yet(e.disclosures, recorded))
                 svc.abandon(aid, worker, gen, str(e))
                 return "abandoned"
-            for d in disclosures:
+            for d in _not_yet(disclosures, recorded):
                 svc.record_evidence(aid, worker, gen, "disclosure", d)
             mismatches = adapter.readback(page)
             # How many fields kept their values, never which (the posting's field keys).
@@ -396,6 +397,28 @@ def _stop(aid, worker, gen, reason: str, plain) -> None:
     plain(aid, worker, gen, str(reason))
 
 
+def _record_as_made(aid, worker, gen, adapter) -> list[dict]:
+    """D137: the adapter reports each disclosure the moment it makes it (an acknowledged upload,
+    a location search, a section control), and it is recorded at once, fenced by generation. So
+    a failure later in filling, or a worker lost mid-fill, never loses the evidence that it
+    reached the employer; a worker that lost its authority stops at its next disclosure (the
+    fence raises LostAuthority). Returns what was recorded, which is never recorded again."""
+    recorded: list[dict] = []
+
+    def record(d: dict) -> None:
+        svc.record_evidence(aid, worker, gen, "disclosure", d)
+        recorded.append(d)
+
+    adapter.on_disclosure = record
+    return recorded
+
+
+def _not_yet(disclosures: list[dict], recorded: list[dict]) -> list[dict]:
+    """The disclosures not already recorded as they were made (the same objects, not equal
+    ones: two uploads may carry the same evidence)."""
+    return [d for d in disclosures if not any(d is r for r in recorded)]
+
+
 def _record_disclosures(aid, worker, gen, disclosures: list[dict]) -> None:
     """Evidence of every disclosure made before filling stopped (an upload that failed, a
     location search that could not be completed), the last one included: data may have reached
@@ -475,14 +498,15 @@ def _run_api(aid, worker, gen, adapter) -> str:
             return "failed_safe"
         phase = "after_disclosure"
         fault("after_disclosure_gate")
+        recorded = _record_as_made(aid, worker, gen, adapter)
         try:
             draft = adapter.prepare()
             svc.record_evidence(aid, worker, gen, "disclosure",
                                 {"route": "api", "kind": "application_draft"})  # fmt: skip
-            for d in adapter.upload(draft):
+            for d in _not_yet(adapter.upload(draft), recorded):
                 svc.record_evidence(aid, worker, gen, "disclosure", d)
         except UploadFailed as e:
-            _record_disclosures(aid, worker, gen, e.disclosures)
+            _record_disclosures(aid, worker, gen, _not_yet(e.disclosures, recorded))
             svc.abandon(aid, worker, gen, str(e))
             return "abandoned"
         if _rehearsal(aid):

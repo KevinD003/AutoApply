@@ -9,6 +9,23 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## What reached the employer stays recorded whatever fails after it (D137, 2026-11-10; local only)
+
+Nothing here ran against a real page or a real account. Branch `disclosure-evidence` (from D136's
+branch, 9602bda). Failures are injected with `NOEFFORTS_FAULT` (test-only): `raise` an unexpected
+error, `exit` a killed worker. The receiver's ledger is the oracle for what reached the employer.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| A completed run records each disclosure once (recorded as made, never again after filling) | `test_a_completed_run_records_each_disclosure_once` | evidence rows |
+| An unexpected error after an upload keeps its evidence; the attempt is abandoned and never retried | `test_an_unexpected_error_after_an_upload_keeps_its_evidence` | receiver ledger: 1 upload, 0 accepted; evidence row |
+| A worker killed after an upload leaves its evidence; the sweeper abandons it, never retried | `test_a_worker_killed_after_an_upload_leaves_its_evidence` | receiver ledger; evidence row written before the exit |
+| An error during an upload counts the document as possibly received | `test_an_error_during_an_upload_counts_the_document_as_possibly_received` | evidence `ack` `none`; 0 accepted |
+| The same on Greenhouse's id-only page | `test_on_greenhouse_pages_an_error_after_an_upload_keeps_its_evidence` | receiver ledger: 1 upload |
+| Through the authorized API: an error after a document keeps its evidence | `test_through_the_api_an_error_after_a_document_keeps_its_evidence` | receiver ledger: the document arrived; evidence rows |
+| Through the API: a document sent with no answer counts as possibly received | `test_an_api_upload_without_an_answer_counts_as_possibly_received` | evidence `ack` `no_response`; receiver ledger: it arrived |
+| Each test fails without its change | the recorder not installed: 4 of 7 fail; an interrupted upload not converted: 1; the API's unanswered upload not converted: 1; recorded disclosures recorded again after filling: 1 | recorded in `docs/automation-loop.md` |
+
 ## A control NoEfforts cannot fill is refused when the form is read (D136, 2026-11-10; local only)
 
 Nothing here ran against a real page or a real account. Branch `capture-refusals` (from `main`

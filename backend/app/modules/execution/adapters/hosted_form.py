@@ -13,6 +13,7 @@ reads the page after the final click. Nothing here is a vendor's code or markup.
     after the final click is the subclass's to classify, and unknown by default, never resent.
 """
 
+from functools import partial
 from urllib.parse import urlsplit
 
 from playwright.sync_api import Error as PWError
@@ -29,6 +30,7 @@ from app.modules.execution.adapters.fixture_ats import (
     upload_evidence,
 )
 from app.modules.execution.adapters.greenhouse import BOT_CHECK_AFTER_CLICK, CHALLENGE_SELECTORS
+from app.modules.execution.faults import fault
 from app.modules.preparation.forms import FieldType
 
 BOT_CHECK = (
@@ -72,7 +74,8 @@ class HostedFormAdapter(FixtureAtsAdapter):
                    if a["value"] is not None and a["type"] != skip]  # fmt: skip
         for a in (a for a in answers if a["type"] == "file"):
             try:
-                disclosures.append(self._attach(page, a["key"]))
+                attach = partial(self._attach, page, a["key"])
+                disclosures.append(self._disclosed(self._upload(a["key"], attach)))
             except UploadFailed as e:
                 e.disclosures[:0] = disclosures  # the uploads before it were sent too
                 raise
@@ -93,6 +96,7 @@ class HostedFormAdapter(FixtureAtsAdapter):
         page.locator(f'{self.FORM} input[type=file][name="{key}"]').set_input_files(
             files=[{"name": name, "mimeType": ctype, "buffer": data}]
         )
+        fault("during_upload")
         try:
             page.wait_for_function(
                 "([sel, ok, err]) => { const s = document.querySelector(sel);"

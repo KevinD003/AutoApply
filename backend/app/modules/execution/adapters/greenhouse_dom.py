@@ -26,6 +26,7 @@ anything is entered. Synthetic coverage of these controls is not evidence that a
 """
 
 import re
+from functools import partial
 from urllib.parse import urljoin, urlsplit
 
 from playwright.sync_api import Error as PWError
@@ -54,6 +55,7 @@ from app.modules.execution.adapters.greenhouse import (
     CODE_ENTRY_UNKNOWN,
     approved_fields,
 )
+from app.modules.execution.faults import fault
 from app.modules.preparation import greenhouse_dom as dom
 from app.modules.preparation.forms import STAND_IN_WIDGETS, FieldType, shown_by_page
 
@@ -612,11 +614,12 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             if a.get("condition"):
                 continue  # D135: entered last, and only if the page shows it (_fill_shown_by_page)
             if a.get("widget") == "location_search":
-                disclosures.append(self._search_location(page, a, disclosures))
+                disclosures.append(self._disclosed(self._search_location(page, a, disclosures)))
                 continue
             if a["type"] == "file":
                 try:
-                    disclosures.append(self._attach(page, a))
+                    attach = partial(self._attach, page, a)
+                    disclosures.append(self._disclosed(self._upload(a["key"], attach)))
                 except UploadFailed as e:
                     e.disclosures[:0] = disclosures  # the uploads before it were sent too
                     raise
@@ -667,15 +670,18 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         a disclosure; a mid-fill stop keeps the disclosures already made and abandons the attempt,
         so nothing is reported as "nothing disclosed" once data has reached the form."""
         for sec in self.content.get("sections") or []:
+
+            def entered(en: dict, sec=sec) -> None:
+                # D137: each control is recorded as soon as it is entered, not after the section.
+                disclosures.append(self._disclosed(self._section_disclosure(sec, en)))
+
             try:
                 plan = gsections.plan_content_section(sec)
-                entered = gsections.apply_section_plan(page, plan, gsections.section_root(sec))
+                root = gsections.section_root(sec)
+                gsections.apply_section_plan(page, plan, root, on_entered=entered)
             except gsections.Refused as e:
-                made = list(disclosures) + [
-                    self._section_disclosure(sec, en) for en in getattr(e, "entered", []) or []
-                ]
-                raise StoppedAfterDisclosure(str(e), made) from e
-            disclosures.extend(self._section_disclosure(sec, en) for en in entered)
+                # What was entered before the refusal is already in `disclosures`.
+                raise StoppedAfterDisclosure(str(e), list(disclosures)) from e
 
     @staticmethod
     def _section_disclosure(sec: dict, entered: dict) -> dict:
@@ -835,6 +841,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         page.locator(f'input[type=file][id="{key}"]').set_input_files(
             files=[{"name": name, "mimeType": ctype, "buffer": data}]
         )
+        fault("during_upload")
         try:
             state = page.wait_for_function(_UPLOAD_STATE_JS, arg=[key, name]).json_value()
         except PWTimeout:
