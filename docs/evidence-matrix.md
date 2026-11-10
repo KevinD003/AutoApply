@@ -37,8 +37,8 @@ unless named otherwise.
 
 ## Saved answers on Greenhouse- and Workday-shaped forms (D138, 2026-11-10; local only)
 
-Nothing here ran against a real page or a real account. Branch `provider-reuse` (from D137's branch,
-035a085); fixtures and tests only. The second Greenhouse-style fixture's jobs 5020004-5020006 and
+Nothing here ran against a real page or a real account. Merged as #47 (a7f8742; built on branch
+`provider-reuse` from D137's branch, 035a085); fixtures and tests only. The second Greenhouse-style fixture's jobs 5020004-5020006 and
 the Workday-style mode `wd_bank_question` are FIXTURE ASSUMPTIONS. The receiver's ledger is the
 oracle for what reached the employer.
 
@@ -52,8 +52,8 @@ oracle for what reached the employer.
 
 ## What reached the employer stays recorded whatever fails after it (D137, 2026-11-10; local only)
 
-Nothing here ran against a real page or a real account. Branch `disclosure-evidence` (from D136's
-branch, 9602bda). Failures are injected with `NOEFFORTS_FAULT` (test-only): `raise` an unexpected
+Nothing here ran against a real page or a real account. Merged as #46 (e2fd286; built on branch
+`disclosure-evidence` from D136's branch, 9602bda). Failures are injected with `NOEFFORTS_FAULT` (test-only): `raise` an unexpected
 error, `exit` a killed worker. The receiver's ledger is the oracle for what reached the employer.
 
 | Requirement | Test | Oracle / evidence |
