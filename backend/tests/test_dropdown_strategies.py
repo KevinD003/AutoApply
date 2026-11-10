@@ -13,6 +13,7 @@ import pytest
 from app.modules.execution import runner
 from app.modules.execution.adapters import dropdowns
 from app.modules.execution.adapters import greenhouse_dom as gd_adapter
+from app.modules.preparation import gh_readonly as ro
 from app.modules.preparation import greenhouse_dom as dom
 from tests.conftest import CANARY_PORT
 from tests.execution_harness import Receiver, attempt, queue, synthetic_candidate
@@ -131,6 +132,86 @@ def test_unverifiable_dropdowns_stop_before_anything_is_disclosed(api, receiver,
     assert "dropdown" in detail and reason in detail, detail
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+# D145: how often the list is read must not decide whether it counts as settled. The stand-in's
+# `late_slow_changing` list is re-rendered every 300 ms, in alternating order. Read about every
+# 600 ms (a busy machine stretches the interval that far), every read used to see the same
+# order: at 590 ms it was refused for the wrong reason (judged settled, in the other order), and
+# at 610 ms it was accepted. 1200 ms: four re-renders between reads.
+@pytest.mark.parametrize("sample_ms", [590, 600, 610, 1200])
+def test_a_list_that_keeps_changing_is_refused_however_slowly_it_is_read(
+    api, receiver, monkeypatch, sample_ms
+):
+    monkeypatch.setattr(dropdowns, "SAMPLE_MS", sample_ms)
+    _, aid, result = run(api, receiver, dd="late_slow_changing")
+    assert result == "failed_safe", attempt(aid).outcome_detail
+    detail = attempt(aid).outcome_detail
+    assert "dropdown: its list could not be read completely" in detail, detail
+    assert "still_changing" in detail, detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+@pytest.mark.parametrize("dd,cfg", [("click_popup", {}), ("late_fetch", {"delay_ms": 1200})])
+def test_a_list_that_has_settled_is_accepted_when_read_slowly(api, receiver, monkeypatch, dd, cfg):
+    """D145: the other side. A slow reader still accepts a list that does not change: at once,
+    or once it has arrived and stayed the same."""
+    monkeypatch.setattr(dropdowns, "SAMPLE_MS", 600)
+    app_id, aid, result = run(api, receiver, dd=dd, **cfg)
+    assert result == "confirmed", attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["accepted"] == 1
+    sent = led["acceptances"][0]["fields"]
+    answers = {a["key"]: a["value"] for a in package(api, app_id)["answers"]}
+    for key in ("question_8101", "question_8102", "question_8104"):
+        assert sent[key] == answers[key]["option"], key
+
+
+def test_settled_means_unchanged_by_the_pages_own_record(monkeypatch):
+    """D145, the rule itself, without a browser: three equal reads are not enough while the page
+    reports a change in the last half second, whatever the reading interval; they are once it
+    reports none, or none at all since before the action."""
+
+    class Page:
+        """The probe's answers: closed before the action, then the open list at each read."""
+
+        def __init__(self, quiet):
+            self.quiet, self.reads = list(quiet), -1
+
+        def evaluate(self, script, arg=None):
+            if script is ro._PRE_JS:
+                return {}
+            self.reads += 1
+            if self.reads == 0:
+                return _probe(None, is_open=False)
+            return _probe(self.quiet[min(self.reads, len(self.quiet)) - 1])
+
+        def wait_for_timeout(self, ms): ...
+        def on(self, *a): ...
+        def remove_listener(self, *a): ...
+
+    monkeypatch.setattr(dropdowns, "_act", lambda *a: True)
+    for quiet, state in (
+        ([200, 120, 280, 90, 260, 140], "partially_observed"),  # re-rendered between the reads
+        ([10, 260, 499, 499, 499, 499], "partially_observed"),  # one millisecond short
+        ([10, 260, 510], "observed_sufficiently"),
+        ([None, None, None], "observed_sufficiently"),  # nothing changed since the action
+    ):
+        got = dropdowns._observe(Page(quiet), "c", "click_control", 2)
+        assert got["state"] == state, (quiet, got)
+
+
+def _probe(quiet_ms, is_open: bool = True) -> dict:
+    """What the page probe returns: a closed control, or its open list of two options with
+    nothing loading and the page's last change `quiet_ms` ago."""
+    return {
+        "expanded": "true" if is_open else "false", "wrapper_expanded": "absent",
+        "associated_visible": int(is_open), "new_popups": int(is_open),
+        "texts": ["Yes", "No"] if is_open else [], "elsewhere": 0, "hint_popups": 0,
+        "hint_options": 0, "added_visible": 2 * is_open, "busy": 0, "hint_loading": 0,
+        "setsize": None, "quiet_ms": quiet_ms, "mutations": 0,
+    }  # fmt: skip
 
 
 class _Canary(http.server.BaseHTTPRequestHandler):

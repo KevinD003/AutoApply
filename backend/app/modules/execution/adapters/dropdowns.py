@@ -32,11 +32,20 @@ Every strategy has been exercised only against local fixtures (FIXTURE ASSUMPTIO
 been seen working on a real page, and real destinations stay refused (`real_destinations`).
 
 Timing (D106). After one action, the list is read every SAMPLE_MS (250 ms). It counts as settled
-once nothing is loading, no data request is in flight, and STABLE_SAMPLES (3) consecutive reads
-are identical, so the same list was seen for at least 500 ms. It must settle within SETTLE_MS
-(1.5 s), or LATE_MS (5 s) on a local stand-in whose list arrives late; otherwise the dropdown is
-refused. Three equal reads show the list did not change during that half second. They are not
-proof that it cannot change later. Later changes are caught by:
+once nothing is loading, no data request is in flight, STABLE_SAMPLES (3) consecutive reads are
+identical, and the page itself has recorded no change for STABLE_MS (500 ms). It must settle
+within SETTLE_MS (1.5 s), or LATE_MS (5 s) on a local stand-in whose list arrives late;
+otherwise the dropdown is refused.
+
+Why the page's own record (D145). Equal reads alone say nothing about the time between them: a
+list re-rendered at a steady pace looks the same at every read once the reads fall in step with
+it, which happens when a busy machine stretches the interval (seen in a test run under load,
+then reproduced by setting the interval: a list flipping every 300 ms, read every 610 ms, was
+accepted). The probe's observer notes when the document last changed, by the page's clock, so
+"unchanged for 500 ms" no longer depends on how often the list is read. It is the whole
+document's record: a page that changes anything at all more often than that never settles, and
+is refused. Unchanged for that half second is not proof that the list cannot change later.
+Later changes are caught by:
   * the list being read again, and required to be exactly the approved one, when an option is
     chosen (`select`);
   * the readback of every answer before the send gate (adapter);
@@ -75,6 +84,9 @@ SETTLE_MS = 1500  # how long one action may take to show a stable list (polled)
 LATE_MS = 5000  # D104, stand-ins only: how long a list that is still loading may take
 STABLE_SAMPLES = 3  # the same list, read this many times in a row, counts as stable
 SAMPLE_MS = 250
+# D145: and the page's own record of its last change must be at least this old. A fixed time,
+# not a multiple of SAMPLE_MS: the point is that it does not depend on how the list is read.
+STABLE_MS = 500
 _ACTION_MS = 2000
 _DATA = frozenset({"xhr", "fetch", "eventsource", "websocket"})
 _FETCHED = frozenset({"xhr", "fetch"})  # what a late list may come from (D104), nothing else
@@ -203,8 +215,10 @@ def _data_refusal(page: Page, data: list, done: set, late: bool) -> str | None:
 def _observe(page: Page, cid: str, strategy: str, api_count: int, late: bool = False) -> dict:
     """One attempt: act, then poll the probes until the list is settled or the time is up.
     Settled: observed sufficiently (nothing loading, complete as far as can be told), no data
-    request in flight, and the same texts read STABLE_SAMPLES times in a row. `late` (a local
-    stand-in, D104): a list that is loading may take up to LATE_MS instead of SETTLE_MS."""
+    request in flight, the same texts read STABLE_SAMPLES times in a row, and no change recorded
+    by the page for STABLE_MS (D145: equal reads can fall in step with a list that keeps
+    changing). `late` (a local stand-in, D104): a list that is loading may take up to LATE_MS
+    instead of SETTLE_MS."""
     data: list = []
     done: set[int] = set()
 
@@ -242,6 +256,7 @@ def _observe(page: Page, cid: str, strategy: str, api_count: int, late: bool = F
                 and not pending
                 and len(seen) >= STABLE_SAMPLES
                 and all(x == seen[-1] for x in seen[-STABLE_SAMPLES:])
+                and (post["quiet_ms"] is None or post["quiet_ms"] >= STABLE_MS)
             )
             if settled:
                 break  # a refusal is reported after the whole window, as before D104
