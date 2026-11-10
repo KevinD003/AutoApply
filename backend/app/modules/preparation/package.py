@@ -633,15 +633,28 @@ def _row_label(row: dict) -> str | None:
     return None
 
 
+def _waits_for_you(content: dict, kind: str) -> bool:
+    """A section of this kind is a checkpoint in this version (D120): not frozen, so not sent."""
+    return any(k.startswith(f"section:{kind}") for k in content.get("unresolved") or [])
+
+
 def _diff_sections(old: dict, new: dict) -> list[dict]:
     """D140: what changed in each structured section (D120), by row (an education or employment
     record) and field, in the values the review page shows. A row is added, removed or changed;
-    `reordered` says the rows kept their values but not their order. Versions without sections
-    (every package before D120's stand-in) diff to nothing here."""
+    `reordered` says the rows kept their values but not their order. A section that became a
+    checkpoint (`status` "needs_you": nothing of it is sent until you resolve it) or stopped
+    being one ("resolved") is said as such, never as its records removed or added. Versions
+    without sections (every package before D120's stand-in) diff to nothing here."""
     before = {x["kind"]: x for x in old.get("sections") or []}
     after = {x["kind"]: x for x in new.get("sections") or []}
     out = []
     for kind in sorted(before.keys() | after.keys()):
+        if kind not in after and _waits_for_you(new, kind):
+            out.append({"kind": kind, "status": "needs_you", "rows": [], "reordered": False})
+            continue
+        if kind not in before and _waits_for_you(old, kind):
+            out.append({"kind": kind, "status": "resolved", "rows": [], "reordered": False})
+            continue
         rows_b = {r["record_id"]: r for r in (before.get(kind) or {}).get("rows", [])}
         rows_a = {r["record_id"]: r for r in (after.get(kind) or {}).get("rows", [])}
         order = [r["record_id"] for r in (after.get(kind) or {}).get("rows", [])] + [
@@ -668,7 +681,14 @@ def _diff_sections(old: dict, new: dict) -> list[dict]:
         kept = [k for k in rows_b if k in rows_a]
         reordered = kept != [k for k in rows_a if k in rows_b]
         if rows or reordered:
-            out.append({"kind": kind, "rows": rows, "reordered": reordered})
+            out.append({"kind": kind, "status": "changed", "rows": rows, "reordered": reordered})
+    for kind in sorted(
+        k
+        for k in {"education", "employment"} - before.keys() - after.keys()
+        if _waits_for_you(old, k) != _waits_for_you(new, k)
+    ):  # a checkpoint in one version only, frozen in neither: still not "nothing changed"
+        status = "needs_you" if _waits_for_you(new, kind) else "resolved"
+        out.append({"kind": kind, "status": status, "rows": [], "reordered": False})
     return out
 
 
@@ -806,8 +826,10 @@ def retire_after_self_identification(db: Session, user_id: uuid.UUID) -> int:
 
 
 def retire_after_section_record(db: Session, user_id: uuid.UUID, kind: str) -> int:
-    """D140: after the owner adds, edits, approves or deletes an education or employment record.
-    Only a package that carries a section of that kind (D120) is built from those records."""
+    """D140: after the owner adds, edits, approves or deletes an education or employment record,
+    rebuild each package that sends those records as a section of that kind (D120). A draft or a
+    generated document grounded on them is rebuilt when the package is next read, as before, and
+    the gates refuse a stale approval of it meanwhile."""
     return retire_stale_approvals(
         db, user_id, lambda c: any(x.get("kind") == kind for x in c.get("sections") or [])
     )

@@ -5269,3 +5269,14 @@ audit-inventory and export-completeness guards are updated and pass.
     records a section sends is the owner's profile, all approved records (an owner decision).
   - Real Greenhouse section pages are unobserved: the stand-in, its ids and its comboboxes are
     fixture assumptions, and a real destination still refuses a section package.
+  - A draft or a generated document grounded on an education or employment record is rebuilt when
+    its package is next read, as before; only a package that sends a section is rebuilt at once.
+- **Review:** an adversarial review before merging (three reviewers, two skeptics per finding)
+  raised ten findings and upheld three, all fixed: a section that became a question for you (an
+  edited degree the form does not offer), or stopped being one, was diffed as all its records
+  removed or added, or, from an empty section, as nothing you would see; the diff now says the
+  section needs you or is resolved. Each record route's retirement was proven only together with
+  an approve call; each route (add, edit, approve, delete) now has its own test that reads no
+  package first. The cross-tenant test could not fail; your package is now made stale first, so a
+  rebuild by another account's edit would retire it. Each of the six fails without what it
+  checks.

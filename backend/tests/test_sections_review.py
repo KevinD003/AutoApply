@@ -7,7 +7,9 @@ import uuid
 from sqlalchemy import select
 
 from app.core.db import SessionLocal
+from app.modules.applications.models import Application
 from app.modules.preparation.models import ApplicationPackage, PackageApproval
+from app.modules.profiles.models import Approval, CandidateProfile, EducationRecord
 from tests.test_preparation import setup_candidate
 
 EDU = {
@@ -149,6 +151,7 @@ def test_a_section_change_is_shown_by_row_and_field(api):
     assert d["sections"] == [
         {
             "kind": "education",
+            "status": "changed",
             "reordered": False,
             "rows": [
                 {
@@ -238,11 +241,117 @@ def test_versions_without_sections_diff_to_no_sections(api):
 
 
 def test_another_users_edit_never_touches_your_approval(api, other_api):
+    """Your approved package is made stale first, by a write no route rebuilds after (straight
+    into your profile), so a rebuild of your application would retire your approval: another
+    account's edit must not rebuild it. Read afterwards, it is retired: it really was stale."""
     setup_candidate(api)
     _education(api)
     app_id = _application(api, _form(EDU))
     _approve(api, app_id)
+    with SessionLocal() as db:
+        app = db.get(Application, uuid.UUID(app_id))
+        prof = db.scalar(select(CandidateProfile).where(CandidateProfile.user_id == app.user_id))
+        prof.given_name = "Samantha"
+        db.commit()
+    before = _versions(app_id)
     setup_candidate(other_api)
     _education(other_api, degree="Master's Degree")
-    assert len(_live(app_id)) == 1
+    assert len(_live(app_id)) == 1 and _versions(app_id) == before
     assert other_api.get(f"/applications/{app_id}/package/diff").status_code == 404
+    _package(api, app_id)  # your own read rebuilds it: the approval was stale
+    assert _live(app_id) == []
+
+
+# ------------------------------------------------------------------ each route retires on its own
+
+
+def _approved_edu_application(api) -> tuple[str, dict]:
+    setup_candidate(api)
+    rec = _education(api)
+    app_id = _application(api, _form(EDU))
+    _approve(api, app_id)
+    return app_id, rec
+
+
+def test_an_edit_alone_retires_the_approval(api):
+    """The edit route itself retires it: no approve call follows the edit (a record you edit
+    stays approved) and nothing reads the package before the check."""
+    app_id, rec = _approved_edu_application(api)
+    before = _versions(app_id)
+    body = {"institution": "State University", "degree": "Master's Degree",
+            "field_of_study": "Computer Science", "start_date": "2014-09-01",
+            "end_date": "2018-05-01"}  # fmt: skip
+    assert api.put(f"/profile/education/{rec['id']}", json=body).status_code == 200
+    assert _live(app_id) == [] and _versions(app_id) == before + 1
+
+
+def test_adding_a_record_alone_retires_the_approval(api):
+    app_id, _ = _approved_edu_application(api)
+    body = {"institution": "Metro College", "degree": "Master's Degree",
+            "field_of_study": "Computer Science", "start_date": "2019-09-01",
+            "end_date": "2021-06-01"}  # fmt: skip
+    assert api.post("/profile/education", json=body).status_code == 201
+    assert _live(app_id) == []
+
+
+def test_deleting_a_record_alone_retires_the_approval(api):
+    app_id, rec = _approved_edu_application(api)
+    assert api.delete(f"/profile/education/{rec['id']}").status_code == 204
+    assert _live(app_id) == []
+
+
+def test_approving_a_proposed_record_alone_retires_the_approval(api):
+    """A record you have not approved (as a resume parse proposes it) is never sent; approving it
+    adds it to what the section sends, so the approval of the version without it is retired."""
+    setup_candidate(api)
+    body = {"institution": "State University", "degree": "Bachelor's Degree",
+            "field_of_study": "Computer Science", "start_date": "2014-09-01",
+            "end_date": "2018-05-01"}  # fmt: skip
+    rid = api.post("/profile/education", json=body).json()["id"]
+    with SessionLocal() as db:
+        db.get(EducationRecord, uuid.UUID(rid)).approval_status = Approval.proposed
+        db.commit()
+    app_id = _application(api, _form(EDU))
+    p = _approve(api, app_id)
+    assert p["content"]["sections"][0]["rows"] == []  # nothing sent from a proposed record
+    assert api.post(f"/profile/education/{rid}/approve").status_code == 200
+    assert _live(app_id) == []
+
+
+# ------------------------------------------------------------------ a section that waits for you
+
+
+def test_a_section_that_becomes_a_question_for_you_is_said_so_never_as_records_removed(api):
+    app_id, rec = _approved_edu_application(api)
+    body = {"institution": "State University", "degree": "Doctorate (PhD)",
+            "field_of_study": "Computer Science", "start_date": "2014-09-01",
+            "end_date": "2018-05-01"}  # fmt: skip
+    assert api.put(f"/profile/education/{rec['id']}", json=body).status_code == 200
+    content = _package(api, app_id)["content"]
+    assert "sections" not in content  # the form offers no such degree: it waits for you
+    assert _diff(api, app_id)["sections"] == [
+        {"kind": "education", "status": "needs_you", "rows": [], "reordered": False}
+    ]
+    assert _live(app_id) == []
+    body["degree"] = "Master's Degree"
+    assert api.put(f"/profile/education/{rec['id']}", json=body).status_code == 200
+    _package(api, app_id)
+    assert _diff(api, app_id)["sections"] == [
+        {"kind": "education", "status": "resolved", "rows": [], "reordered": False}
+    ]
+
+
+def test_an_empty_section_that_becomes_a_question_for_you_is_a_visible_change(api):
+    """Approved with no education record (nothing is sent), then a record the form cannot
+    take is added: the diff says the section now waits for you, never "nothing changed"."""
+    setup_candidate(api)
+    app_id = _application(api, _form(EDU))
+    assert _approve(api, app_id)["content"]["sections"][0]["rows"] == []
+    body = {"institution": "Unlisted Institute", "degree": "Bachelor's Degree",
+            "field_of_study": "Computer Science", "start_date": "2014-09-01",
+            "end_date": "2018-05-01"}  # fmt: skip
+    assert api.post("/profile/education", json=body).status_code == 201
+    assert _live(app_id) == []
+    assert _diff(api, app_id)["sections"] == [
+        {"kind": "education", "status": "needs_you", "rows": [], "reordered": False}
+    ]
