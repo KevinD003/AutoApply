@@ -72,7 +72,8 @@ The full backend and e2e suites run in the pull request's CI. No frontend file c
 
 ## What reached the employer stays recorded whatever fails after it (D137, 2026-11-10; local only)
 
-Rank 5 of the automation loop, second half. The gap was mapped on D136's branch (9602bda, the same
+Rank 5 of the automation loop, second half; merged as #46 (e2fd286), its PR CI green on all four
+jobs (a9b6880, CI #276). The gap was mapped on D136's branch (9602bda, the same
 code as `main` 53b28af) before building; decision and residuals in D137, evidence in
 `docs/evidence-matrix.md`. Nothing real was run.
 

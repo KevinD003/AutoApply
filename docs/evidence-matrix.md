@@ -26,8 +26,8 @@ oracle for what reached the employer.
 
 ## What reached the employer stays recorded whatever fails after it (D137, 2026-11-10; local only)
 
-Nothing here ran against a real page or a real account. Branch `disclosure-evidence` (from D136's
-branch, 9602bda). Failures are injected with `NOEFFORTS_FAULT` (test-only): `raise` an unexpected
+Nothing here ran against a real page or a real account. Merged as #46 (e2fd286; built on branch
+`disclosure-evidence` from D136's branch, 9602bda). Failures are injected with `NOEFFORTS_FAULT` (test-only): `raise` an unexpected
 error, `exit` a killed worker. The receiver's ledger is the oracle for what reached the employer.
 
 | Requirement | Test | Oracle / evidence |

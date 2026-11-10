@@ -29,8 +29,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D134 the standing rule respects your pause and revocation | merged (#43, 2e10418); its PR CI passed all four jobs on 118b4b9, and main CI #267 on 2e10418 |
 | D135 a question the page shows after an earlier answer | merged (#44, 53b28af); its PR CI passed all four jobs on 2d3c07c, and main CI #269 on 53b28af |
 | D136 a control NoEfforts cannot fill is refused when the form is read | merged (#45, 32c8f7c); its PR CI passed all four jobs on 9602bda |
-| D137 what reached the employer stays recorded whatever fails after it | branch `disclosure-evidence` (from D136's branch, 9602bda; `main` merged in after #45), pull request #46; not merged |
-| D138 saved answers on Greenhouse- and Workday-shaped forms | branch `provider-reuse` (from D137's branch, 035a085); not merged |
+| D137 what reached the employer stays recorded whatever fails after it | merged (#46, e2fd286, tree as predicted); its PR CI passed all four jobs on a9b6880 (CI #276) |
+| D138 saved answers on Greenhouse- and Workday-shaped forms | branch `provider-reuse` (from D137's branch, 035a085; `main` merged in after #46, changing no file); its pull request; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -56,7 +56,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 8 | Answer edits invalidate approvals | fx; D138 (branch): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger) | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; not run on gh2 | partial |
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify" |
-| 11 | Upload failure preserves evidence | fx for UploadFailed; D137 (PR #46): every disclosure is recorded as it is made (receiver ledger): an unexpected error after an upload keeps its evidence (generic form, gh2 by id, the API route); a killed worker after an upload (generic form); a failure during an upload counts the document as possibly received (generic form, gh2 by id, the first Greenhouse-style page, the API route); a draft or document the API received and answered badly is recorded | fx; D137: a failure during an upload counts it as possibly received (Workday-style page) |
+| 11 | Upload failure preserves evidence | fx for UploadFailed; D137 merged (#46): every disclosure is recorded as it is made (receiver ledger): an unexpected error after an upload keeps its evidence (generic form, gh2 by id, the API route); a killed worker after an upload (generic form); a failure during an upload counts the document as possibly received (generic form, gh2 by id, the first Greenhouse-style page, the API route); a draft or document the API received and answered badly is recorded | fx; D137: a failure during an upload counts it as possibly received (Workday-style page) |
 | 12 | Uncertain send quarantined | fx | fx (final send only; each Next not modelled) |
 | 13 | Cancellation respected | fx on the generic form; D134 merged (#43), on the gh2 stand-in through the pilot (receiver ledger): a pause stops what the standing rule queued, your own queued work runs on, a revocation stands | partial |
 | 14 | Tenant isolation | fx (per-application routes) | partial (no Workday-shaped test) |
@@ -119,7 +119,7 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   one is left blank and the rest is sent. Before, a native dropdown stopped every attempt as a form
   change ("widget"), and reading the form again read it the same way; the others were refused only
   after approval.
-- **D137 (branch `disclosure-evidence`, not merged).** Rank 5, second half: each disclosure is
+- **D137 (PR #46, merged).** Rank 5, second half: each disclosure is
   recorded the moment it is made, fenced by generation, not after filling ends. An unexpected
   error or a killed worker after an upload no longer loses the evidence that the résumé reached
   the employer; a failure during an upload counts the document as possibly received; through the
@@ -148,7 +148,7 @@ after an earlier answer (**D135**, #44) and, when the form is read, the refusal 
 adapter cannot fill (**D136**, rank 5's first half, #45) are on `main`. Two remainders need the
 owner's decision: the rule continuing after a form-change pause (rank 3), and a final click the
 page's own checks block (rank 4, second half: a retry after `sending`). **D137** (rank 5, second
-half, on its branch) keeps the evidence of what reached the employer whatever fails after it.
+half, #46) keeps the evidence of what reached the employer whatever fails after it.
 **D138** (rank 6, on its branch) shows saved answers on Greenhouse- and Workday-shaped forms up to
 the employer. Next, rank 7: EEOC, demographic and Workday self-identification end to end. Later
 ranks:
@@ -178,12 +178,12 @@ ranks:
 - **D136:** merged (#45, 32c8f7c, tree as predicted); its PR CI passed all four jobs on 9602bda.
   Locally: the new tests, their sabotage runs and every suite that touches the second
   Greenhouse-style fixture or reads a Greenhouse form (Tests run below).
-- **D137 (branch `disclosure-evidence`):** the new tests, their sabotage runs and every suite that
-  runs an attempt or uses an adapter, locally (Tests run below). The full suites run in its CI
-  (PR #46).
+- **D137:** merged (#46, e2fd286, tree as predicted); its PR CI passed all four jobs on a9b6880
+  (CI #276), and on 929f94b, its last code commit (CI #275). Locally: the new tests, their sabotage
+  runs and every suite that runs an attempt or uses an adapter (Tests run below).
 - **D138 (branch `provider-reuse`):** the new tests, their sabotage runs and the suites that use the
-  fixtures it extends, locally (Tests run below). The full suites run in its CI, after D137 is merged
-  and `main` merged in.
+  fixtures it extends, locally (Tests run below). The full suites run in its CI (`main` with D137
+  merged in, changing no file).
 
 ## Tests run (this loop)
 
@@ -277,12 +277,11 @@ ranks:
 
 ## Exact next action
 
-1. D137 (PR #46): merge it when its four checks pass.
-2. D138 (branch `provider-reuse`): merge `main` into it once D137 is merged, open its pull request,
-   merge it when its four checks pass.
-3. Rank 7: EEOC, demographic and Workday self-identification end to end (opt-in, decline, scope,
+1. D138 (branch `provider-reuse`, `main` merged in after D137): merge its pull request when its four
+   checks pass.
+2. Rank 7: EEOC, demographic and Workday self-identification end to end (opt-in, decline, scope,
    withdrawal), with the receiver's ledger.
-4. Owner decisions: every recorded permission ended on 2026-11-06 (renewing is the owner's call,
+3. Owner decisions: every recorded permission ended on 2026-11-06 (renewing is the owner's call,
    never extended because work took longer); continuing after a form change (D132); a final click
    the page's own checks block (`CLIENT_BLOCKED`, after `sending`).
 
