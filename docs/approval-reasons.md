@@ -21,6 +21,8 @@ prerequisite has its codes in `docs/rehearsal-prerequisite.md`.
 | `revoke_in_flight` | The submission may already be in flight, so revoking cannot stop it. Wait for the outcome, or reconcile it. |
 | `form_recapture_needed` | The employer's form no longer matched the approved one when it ran. Read the form again under Questions, or choose "Try this version again" there; nothing can be approved until then. |
 | `form_change_unexplained` | Reading the employer's form again showed no difference NoEfforts can see (the page's own scripts may add it). Choose "Try this version again" under Questions, or apply on the employer's site. |
+| `wizard_draft_at_employer` | NoEfforts already entered this application on the employer's multi-page form, which may keep it as a draft or have received it. It never runs it again: finish it on the employer's site. |
+| `wizard_rehearsal_unsupported` | A rehearsal is not available on a multi-page form: the employer saves each page as you go. Approve it to submit, or apply on the employer's site. |
 
 ## Revoking while an attempt is in progress
 

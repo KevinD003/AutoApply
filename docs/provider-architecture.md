@@ -244,7 +244,7 @@ not implemented. **No cell is `live_fill` or `live_submit`.**
 | login_required *(trait)* | no | unknown | no | no | no | n/a | expected | unknown | n/a | no | no | no |
 | manual_verification_required *(trait)* | yes | unknown | unknown | no | n/a | n/a | expected | unknown | n/a | no | no | no |
 | CAPTCHA_possible *(trait)* | no | unknown | unknown | no | unknown | n/a | expected | expected | n/a | yes | yes | yes |
-| multi_step *(trait)* | no | unknown | no | no | no | n/a | expected | unknown | n/a | no | no | no |
+| multi_step *(trait)* | no | unknown | no | no | no | n/a | expected | unknown | n/a | no | no | yes |
 | location_picker | none | none | fixture | none | none | none | none | none | none | none | none | none |
 | custom_dropdown | none | none | fixture | none | observed (structure only) | none | none | none | none | none | none | none |
 | confirmation_detection | fixture | fixture | fixture | fixture | none | none | none | none | none | fixture | fixture | fixture |
