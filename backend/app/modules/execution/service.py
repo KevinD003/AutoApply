@@ -1272,7 +1272,11 @@ def cancel(db: Session, app: Application) -> str:
     application), so it is either before a gate (and stops it) or after it: after the
     disclosure gate it still cancels (the worker stops at its next step, but what it had
     already entered stays entered); after the send gate it is refused, since the submission
-    may be in flight."""
+    may be in flight. D142: on a multi-page form it is refused from the disclosure gate on
+    (`wizard_in_progress`): each page's Next may already be saved, or even received, at the
+    employer, and a cancel would end the attempt with nothing recorded of a Next in flight.
+    Revoking stops it instead: the attempt stays held, so its next step gate ends it with the
+    wizard outcome, and a Next in flight still reaches its quarantine."""
     att = _active_attempt(db, app.id)  # waits for a gate holding the attempt
     pk.lock_application(db, app.id)
     db.refresh(app)  # as locked: a copy loaded before the wait would fail its update (stale)
@@ -1293,6 +1297,13 @@ def cancel(db: Session, app: Application) -> str:
             "Submission may already be in flight; it cannot be cancelled. "
             "Wait for the outcome or reconcile."
         )
+    if (
+        att is not None
+        and att.state == S.claimed
+        and att.disclosure_started_at is not None
+        and _is_wizard(db, att)
+    ):
+        raise PermissionError(str(pk.refused("wizard_in_progress")))
     if att is not None:
         att.cancel_requested = True
         att.state, att.finished_at = S.cancelled, utcnow()

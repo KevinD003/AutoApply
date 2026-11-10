@@ -62,7 +62,10 @@ makes the page add a required q.weekend_nights to page 3); next_submits (the pag
 submits the application: accept() with the token's merged drafts, and a confirmation shown in
 place); already_applied_after_next (the page-1 Next is answered "already applied");
 parse_current_page (a resume upload fills the optional page-2 field exp.details);
-parse_saved_page (a resume upload overwrites three page-1 fields already saved).
+parse_saved_page (a resume upload overwrites three page-1 fields already saved); page_shift
+(D142 review: the work-eligibility question sits at the end of page 3 instead of the start of
+page 4, the document order unchanged); next_stays (D142 review: the page-2 draft is saved, but
+the page stays on page 2).
 """
 
 import asyncio
@@ -281,6 +284,10 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
     drift = (_yes_no("q.weekends", "Are you available to work weekends?", True)
              if variant == "drift" else "")  # fmt: skip
     late = _yes_no(LATE_QUESTION, "Are you available to work weekend nights?", True)
+    eligibility = _yes_no("q.work_eligibility",
+                          "Are you legally authorized to work in the United States?", True)
+    shifted = eligibility if variant == "page_shift" else ""  # end of page 3 (FA5)
+    on_page_4 = "" if variant == "page_shift" else eligibility
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
 <div data-wizard-progress>Page 1 of {len(WIZARD_PAGES)}</div>
@@ -319,10 +326,11 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 <option value="Decline">I do not wish to answer</option></select>
 <label><input type="checkbox" name="terms_ack" value="1" required> I have read and agree to
  the (fictional) terms and conditions.</label>
+{shifted}
 {_NEXT}
 </section>
 <section data-step="Application Questions" data-wizard-page="4" hidden>
-{_yes_no("q.work_eligibility", "Are you legally authorized to work in the United States?", True)}
+{on_page_4}
 {_yes_no("q.sponsorship", "Will you now or in the future require sponsorship for employment "
          "visa status in the United States?", True)}
 <fieldset required><legend>Which nursing licence do you hold?</legend>
@@ -413,6 +421,7 @@ for (const btn of form.querySelectorAll('[data-wizard-next]')) {{
       status.dataset.draftStatus = 'error';
       return;
     }}
+    if (j.stay) {{ status.dataset.draftStatus = 'saved'; return; }}
     if (j.reveal) {{
       const third = form.querySelector('section[data-wizard-page="3"]');
       third.insertBefore(document.getElementById('late-question').content.cloneNode(true),
@@ -536,6 +545,8 @@ def mount(app, ledger, cfg, accept) -> None:
         out = {"saved": True, "draft_id": f"WD-{digest}"}
         if variant == "late_question" and page == 2:
             out["reveal"] = LATE_QUESTION
+        if variant == "next_stays" and page == 2:
+            out["stay"] = True  # saved, but the page does not move on (FA5)
         return out
 
     @app.post("/workday/{tenant}/{req}/apply", response_class=HTMLResponse)

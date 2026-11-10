@@ -107,6 +107,10 @@ APPROVAL_REASONS = {
     "finish it on the employer's site.",
     "wizard_rehearsal_unsupported": "A rehearsal is not available on a multi-page form: the "
     "employer saves each page as you go. Approve it to submit, or apply on the employer's site.",
+    # D142 review: cancelling is refused once a multi-page form is being entered (a cancel).
+    "wizard_in_progress": "NoEfforts is entering this application on the employer's multi-page "
+    "form, and each page it already sent may be saved or received there, so cancelling cannot "
+    "undo it. Revoke the approval to stop it before the next page.",
 }
 
 
@@ -848,7 +852,14 @@ def retire_after_section_record(db: Session, user_id: uuid.UUID, kind: str) -> i
 def _settle_state(
     db: Session, app: Application, pkg: ApplicationPackage, changed: bool = False
 ) -> None:
-    """Move the application to the state the package implies, via legal system transitions."""
+    """Move the application to the state the package implies, via legal system transitions.
+    D142 review: never for an application NoEfforts entered on a multi-page form: it stays where
+    its stop left it (waiting for you, possibly submitted), never "Ready for your approval",
+    since it can never be approved or run again."""
+    from app.modules.execution import service as execution
+
+    if execution.wizard_entered(db, app):
+        return
     ready = not pkg.content["unresolved"] and not pkg.content["validation_errors"]
     paused = unresolved_pause(db, app.id) is not None
     if paused:

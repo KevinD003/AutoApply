@@ -11,6 +11,7 @@ never how a real Workday tenant behaves. Synthetic candidate data only; rows edi
 labelled simulated."""
 
 import json
+import re
 import time
 import uuid
 from datetime import timedelta
@@ -26,7 +27,7 @@ from app.modules.applications.states import AppState
 from app.modules.autoapply import service as autoapply
 from app.modules.execution import runner
 from app.modules.execution import service as svc
-from app.modules.execution.adapters.workday import ALREADY_APPLIED
+from app.modules.execution.adapters.workday import ALREADY_APPLIED, MULTI_STEP
 from app.modules.execution.models import (
     ApplicationPause,
     AttemptEvent,
@@ -36,12 +37,17 @@ from app.modules.execution.models import (
 from app.modules.identity.models import User
 from app.modules.preparation import package as pk
 from app.modules.preparation import workday
-from app.modules.preparation.forms import extract_form_schema, form_fingerprint
-from app.modules.preparation.models import ApprovalScope, PackageApproval
+from app.modules.preparation.forms import (
+    extract_form_schema,
+    field_fingerprint,
+    form_fingerprint,
+)
+from app.modules.preparation.models import ApprovalScope, JobForm, PackageApproval
 from tests.execution_harness import (
     BASE,
     Receiver,
     attempt,
+    prepared_application,
     queue,
     run_worker_process,
     synthetic_candidate,
@@ -278,6 +284,12 @@ MUTATIONS = {
         '<label for="vd_gender">Gender</label>',
         '<div data-step="Self Identify"></div><label for="vd_gender">Gender</label>',
     ),
+    # A question on the review page (only the "on an earlier page" half of rule 6 catches it).
+    "field_on_review": (
+        "<p>Review your application, then submit it.</p>",
+        '<p>Review your application, then submit it.</p><label for="rv_sign">Signature</label>'
+        '<input id="rv_sign" name="review.signature" type="text" required>',
+    ),
     # The several-pages marker of D88 beside the wizard's.
     "mixed_markers": (
         "<p>Apply Manually</p>",
@@ -433,8 +445,19 @@ def test_a_change_between_pages_stops_at_the_next_gate(api, receiver, change, po
         elif change == "profile_edit":
             _profile_edit(api)
         else:
-            r = api.post(f"/applications/{app_id}/transition", json={"to": "cancelled"})
-            assert r.status_code == 200, r.text
+            # Refused on both routes (the card's Cancel, the transition): nothing changes ...
+            for r in (
+                api.post(f"/applications/{app_id}/cancel"),
+                api.post(f"/applications/{app_id}/transition", json={"to": "cancelled"}),
+            ):
+                assert r.status_code == 409, r.text
+                assert "(reason: wizard_in_progress)" in r.json()["detail"]
+            a = attempt(aid)
+            assert a.state == "claimed" and not a.cancel_requested
+            assert app_state(api, app_id) == "running"
+            # ... and revoking is how it is stopped, at the next page's gate.
+            r = api.post(f"/applications/{app_id}/package/revoke")
+            assert r.status_code == 200 and r.json()["revoke_effect"] == "stopping", r.text
     finally:
         result = release(p, gate)
     led = receiver.ledger()
@@ -447,13 +470,12 @@ def test_a_change_between_pages_stops_at_the_next_gate(api, receiver, change, po
     else:
         assert draft_pages(led) == [1, 2, 3, 4]
     a = attempt(aid)
-    if change == "cancel":
-        assert result == "lost_authority" and a.state == "cancelled"
-        return
     assert result == "abandoned" and a.state == "abandoned"
     assert "multi-page form" in a.outcome_detail
     if change == "profile_edit":
-        assert all_retired_for_wizard(app_id)
+        assert all_retired_for_wizard(app_id)  # live until the gate: retired with the wizard's
+    else:  # revoked (also after the refused cancel): it keeps "Revoked by you"
+        assert {x.invalidation_reason for x in approvals(app_id)} == {pk.REVOKED_BY_YOU}
     assert all(x.invalidated_at is not None for x in approvals(app_id))
     r = approve(api, app_id)
     assert r.status_code == 409 and f"(reason: {CODE})" in r.json()["detail"]
@@ -633,8 +655,12 @@ def test_once_entered_it_never_runs_again(api, receiver, monkeypatch):
         db.commit()
     r = approve(api, app_id)
     assert r.status_code == 409 and f"(reason: {CODE})" in r.json()["detail"]
+    # The stop left it waiting for you, never "Ready for your approval" (D142 review), so the
+    # queue route refuses it as a transition; the queue check itself is called directly below
+    # (and through the route from failed_retryable in the quarantine tests).
+    assert _db_state(app_id) == "needs_user_action"
     r = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
-    assert r.status_code == 409 and f"(reason: {CODE})" in r.json()["detail"]
+    assert r.status_code == 400 and _db_state(app_id) == "needs_user_action"
     with SessionLocal() as db:
         app = db.get(Application, uuid.UUID(app_id))
         with pytest.raises(pk.ApprovalError) as e:
@@ -810,3 +836,171 @@ def test_the_step_gate_is_fenced_and_ordered(api, receiver):
     # Nothing but the captures reached the receiver.
     reqs = receiver.ledger()["requests"]
     assert reqs and all(q["method"] == "GET" and q["path"].endswith("/apply") for q in reqs)
+
+
+# ---------------------------------------------------------------------------- after the review
+# D142's adversarial review: a cancel during a wizard, the state after a stop, the per-page
+# fingerprint, a question on the review page and guards that had no test.
+
+
+def test_a_cancel_while_a_next_may_submit_is_refused_and_the_next_quarantined(api, receiver):
+    """The page-4 Next submits the application; a cancel then is refused (it would record nothing
+    of it), and the worker quarantines the attempt as it would without the cancel."""
+    receiver.config(idempotent=False)
+    app_id = wizard_application(api, receiver, "next_submits")
+    aid = queue(api, app_id)
+    p, gate = start_blocked_worker(aid, "w1", "after_next_ack_4")
+    try:
+        wait_for(lambda: reached(gate), timeout=90)
+        assert receiver.ledger()["accepted"] == 1  # the employer already holds it
+        r = api.post(f"/applications/{app_id}/cancel")
+        assert r.status_code == 409 and "(reason: wizard_in_progress)" in r.json()["detail"]
+        assert attempt(aid).state == "claimed"
+    finally:
+        result = release(p, gate)
+    assert result == "unknown"
+    led = receiver.ledger()
+    assert led["accepted"] == 1 and posts(led, "/apply") == 0
+    assert attempt(aid).state == "unknown"
+    assert outcome_event(aid).detail["reason_code"] == "wizard_possibly_submitted"
+    assert app_state(api, app_id) == "submitted_unconfirmed"
+
+
+def _db_state(app_id: str) -> str:
+    with SessionLocal() as db:
+        return db.get(Application, uuid.UUID(app_id)).state.value
+
+
+@pytest.mark.parametrize("stop", ["abandon", "sweep"])
+def test_a_stopped_wizard_stays_where_it_stopped(api, receiver, stop):
+    """Reading the package after a wizard stop never moves the application back to "Ready for
+    your approval", and the review page never lists it: it can never be approved again."""
+    if stop == "abandon":
+        app_id = wizard_application(api, receiver, "step_error")
+        aid = queue(api, app_id)
+        assert runner.run_attempt(aid, "w1") == "abandoned"
+    else:
+        app_id = wizard_application(api, receiver)
+        aid = queue(api, app_id)
+        p, gate = start_blocked_worker(aid, "w1", "before_next_gate_2")
+        try:
+            wait_for(lambda: reached(gate), timeout=60)
+            expire_lease(aid)
+            assert svc.sweep()["abandoned"] == 1
+        finally:
+            assert release(p, gate) == "lost_authority"
+    assert _db_state(app_id) == "needs_user_action"
+    assert api.get(f"/applications/{app_id}/package").status_code == 200
+    assert _db_state(app_id) == "needs_user_action"
+    listed = api.get("/review/packages").json()["items"]
+    assert app_id not in [i["application_id"] for i in listed]
+    assert _db_state(app_id) == "needs_user_action"
+
+
+ELIGIBILITY = re.compile(r"<fieldset required><legend>Are you legally authorized to work in the "
+                         r"United States\?</legend>.*?</fieldset>", re.S)  # fmt: skip
+PAGE_3_END = ('<button type="button" data-wizard-next>Save and Continue</button>\n</section>\n'
+              '<section data-step="Application Questions"')  # fmt: skip
+
+
+def test_a_question_moved_to_another_page_or_a_renamed_page_changes_the_fingerprint(receiver):
+    """Every question reads the same; only which page holds one, or a page's name, differs. Only
+    the fingerprint's wizard part can tell."""
+    html = wizard_html(receiver)
+    base = workday.extract_schema(html)
+    (question,) = ELIGIBILITY.findall(html)  # the first question of page 4 ...
+    assert html.count(PAGE_3_END) == 1
+    moved = html.replace(question, "").replace(PAGE_3_END, question + PAGE_3_END)  # ... page 3's
+    renamed = html.replace('data-step="Voluntary Disclosures"', 'data-step="Voluntary Self-ID"')
+    assert renamed != html
+    for changed in (moved, renamed):
+        schema = workday.extract_schema(changed)
+        assert schema.wizard is not None and "multi_step" not in {f.key for f in schema.fields}
+        assert [field_fingerprint(f) for f in schema.fields] == [
+            field_fingerprint(f) for f in base.fields]  # fmt: skip
+        assert form_fingerprint(schema) != form_fingerprint(base)
+    receiver.config(wizard="page_shift")  # the fixture's variant is that move
+    shifted = httpx.get(f"{BASE}/workday/{TENANT}/{REQ}/apply").text
+    assert form_fingerprint(workday.extract_schema(shifted)) == form_fingerprint(
+        workday.extract_schema(moved))  # fmt: skip
+
+
+def test_a_question_moved_to_another_page_after_approval_stops_before_disclosure(api, receiver):
+    app_id = wizard_application(api, receiver)
+    aid = queue(api, app_id)
+    receiver.config(wizard="page_shift")
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+    assert [q for q in led["requests"] if q["method"] == "POST"] == []
+    assert not [q for q in led["requests"] if "/apply/draft/" in q["path"]]
+    a = attempt(aid)
+    assert a.state == "failed_safe" and a.disclosure_started_at is None
+    with SessionLocal() as db:
+        pause = db.scalar(select(ApplicationPause).where(
+            ApplicationPause.application_id == uuid.UUID(app_id)))  # fmt: skip
+    assert pause is not None and pause.kind == "form_changed" and pause.status == "open"
+
+
+def test_a_next_that_does_not_show_the_next_page_stops_there(api, receiver):
+    app_id = wizard_application(api, receiver, "next_stays")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    led = receiver.ledger()
+    assert posts(led, "/apply/draft/2") == 1 and posts(led, "/apply/draft/3") == 0
+    assert posts(led, "/apply") == 0 and led["accepted"] == 0
+    a = attempt(aid)
+    assert runner.NOT_NEXT_PAGE in a.outcome_detail and "multi-page form" in a.outcome_detail
+    assert steps(aid) == ALL_STEPS[:3]  # page 3 was never authorized
+    assert [d for d in rows(aid, "disclosure") if d.get("kind") == "draft_page"][-1] == {
+        "kind": "draft_page", "page": 2, "ack": "draft_saved"}  # fmt: skip
+    assert all_retired_for_wizard(app_id)
+
+
+def test_a_manual_form_cannot_set_wizard(api, receiver):
+    job = api.post("/jobs", json={"title": "Manual wizard", "employer": "Example Health"})
+    job_id = job.json()["job"]["id"]
+    field = {"key": "nickname", "label": "Nickname", "type": "text", "step": "One"}
+    form = {"title": "Manual (fictional)", "fields": [field]}
+    wizard = form | {"wizard": {"pages": ["One", "Two"]}}
+    r = api.post(f"/jobs/{job_id}/form", json={"form": wizard})
+    assert r.status_code == 400 and "'wizard' is set by NoEfforts only" in r.json()["detail"]
+    assert api.post(f"/jobs/{job_id}/form", json={"form": form}).status_code == 201
+    assert receiver.ledger()["requests"] == []
+
+
+def test_a_wizard_package_on_another_adapter_is_refused_at_the_disclosure_gate(api, receiver):
+    app_id = prepared_application(api, receiver, approve=False)
+    with SessionLocal() as db:  # simulated: a stored wizard the manual form endpoint refuses
+        job_id = db.get(Application, uuid.UUID(app_id)).job_id
+        form = db.scalars(select(JobForm).where(JobForm.job_id == job_id)
+                          .order_by(JobForm.version.desc())).first()  # fmt: skip
+        form.schema = {**form.schema, "wizard": {"pages": ["One", "Review"]}}
+        db.commit()
+    assert "wizard" in package(api, app_id)["content"]
+    assert approve(api, app_id).status_code == 200
+    aid = queue(api, app_id)
+    assert attempt(aid).adapter == "fixture_ats"
+    gen = svc.claim(uuid.UUID(aid), "w1")
+    with pytest.raises(svc.GateRefused) as e:
+        svc.gate_before_disclosure(uuid.UUID(aid), "w1", gen)
+    assert e.value.code == "wizard_adapter"
+    assert attempt(aid).disclosure_started_at is None
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and [q for q in led["requests"] if q["method"] == "POST"] == []
+
+
+def test_a_single_page_package_meeting_a_wizard_stops_before_disclosure(api, receiver):
+    receiver.config(wizard=None)
+    app_id = workday_application(api, url=fresh_url())
+    assert "wizard" not in package(api, app_id)["content"]
+    aid = queue(api, app_id)
+    receiver.config(wizard="plain")
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and [q for q in led["requests"] if q["method"] == "POST"] == []
+    a = attempt(aid)
+    assert MULTI_STEP in a.outcome_detail and a.disclosure_started_at is None
+    with SessionLocal() as db:
+        assert db.scalars(select(ApplicationPause).where(
+            ApplicationPause.application_id == uuid.UUID(app_id))).all() == []  # fmt: skip

@@ -115,6 +115,8 @@ def _summary(db: Session, app: Application, job: Job, pkg) -> dict:
 def review_list(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """Your applications that could be approved now, each with its current package (rebuilt
     first if its inputs changed, as its own page does). Nothing is approved here."""
+    from app.modules.execution import service as execution
+
     rows = db.execute(
         select(Application, Job)
         .join(Job, Job.id == Application.job_id)
@@ -124,6 +126,8 @@ def review_list(user: User = Depends(current_user), db: Session = Depends(get_db
     items = []
     for app, job in rows:
         if ever_submitted(db, app):
+            continue
+        if execution.wizard_entered(db, app):  # D142 review: never approvable again
             continue
         try:
             pkg = pk.ensure_current(db, app)
