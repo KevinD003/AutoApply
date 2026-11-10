@@ -20,10 +20,12 @@ references an application (evidence, events) key-share locks the application too
 attempt: the same order. Paths that never lock an attempt (approve, revoke, answers, withdraw,
 evidence deletion) start at the application. A checkpoint row is locked only alone (the user
 entering a code; D143: the sweeper's pass over stale requests, which holds nothing else and so
-never waits on a worker) or while holding its attempt (the worker; D143: every outcome, and the
-sweeper recovering an attempt, which close its request). A form-change pause (D132) is written
-after the approvals, under the attempt and application locks (the worker), or under the
-application lock alone (reading the form again, approving, cancelling).
+never waits on a worker), while holding its attempt (the worker; D143: every outcome, and the
+sweeper recovering an attempt, which close its request), or after its application's key-share
+lock (D143: the mailbox entering a code, which then writes rows that key-share lock the
+application, and commits each code at once). A form-change pause (D132) is written after the
+approvals, under the attempt and application locks (the worker), or under the application lock
+alone (reading the form again, approving, cancelling).
 """
 
 import logging

@@ -203,17 +203,22 @@ sweeper (beat): expired leases → claimed & nothing disclosed: re-pend (≤2) |
 
 Time and leases (D143). The runner bounds its own run: `NOEFFORTS_ATTEMPT_RUN_BUDGET_SECONDS`
 (420) is how long an attempt may take to reach gate 2. The runner checks it between steps (at
-each heartbeat, between fields, and right before gate 2), never inside a browser wait; past it
+each heartbeat, between fields, before each document is handed over and each wizard page's
+Next, and right before gate 2), never inside a browser wait and never after gate 2; past it
 the run stops as its phase says and the final click is never made. The attempt's Celery task has
 one time limit and no soft limit: the budget, `NOEFFORTS_ATTEMPT_AFTER_SEND_SECONDS` (360) for
 the waits after the click, and the whole wait for a code (1380 s by default). At it the worker
 process is ended, and the sweeper decides from the attempt's phase. A soft limit is not used
 because one that lands inside a browser wait cannot be handled (measured: the browser can no
-longer be closed, so the handler never runs). A lease is renewed by each heartbeat, by recorded
-evidence and between fields while a form is filled and read back; the send lease covers the
-adapter's own wait for the click's answer, and taking a typed code extends the lease over the
-watch for that code's answer. No background heartbeat exists: a worker that stops making
-progress loses its lease.
+longer be closed, so the handler never runs). The browser runner's session and the egress
+proxy's session (1500 s each) outlast that limit. A lease is renewed by each heartbeat, by
+recorded evidence and between fields while a form is filled and read back (at most every
+quarter lease there). Before each document is handed over and before each wizard page's Next
+the heartbeat is made every time, so an attempt cancelled or taken over before that point
+hands over nothing more. The send lease covers the adapter's own wait for the click's answer
+(on the Greenhouse-style page that watch is ended by the clock its lease was sized to, not by
+the page's own timers), and taking a typed code extends the lease over the code step's watch.
+No background heartbeat exists: a worker that stops making progress loses its lease.
 
 Key properties and their limits are in the `service.py` docstring. In short: one active
 attempt per application (partial unique index); one worker per attempt can pass gate 2
@@ -261,8 +266,11 @@ application too; that happens after the attempt, in the same order. Paths that n
 attempt (approve, revoke, answers, consents, withdrawal, evidence deletion) start at the
 application. A checkpoint row is locked only alone (the user entering a code; D143: the
 sweeper's pass that closes stale requests, which holds nothing else and so never waits on a
-worker) or while its attempt is held (the worker; D143: every outcome, and the sweeper
-recovering an attempt, which close its request). Cancel locks the active attempt, then the
+worker), while its attempt is held (the worker; D143: every outcome, and the sweeper
+recovering an attempt, which close its request), or after its application's key-share lock
+(D143: the mailbox entering a code, which then writes rows that key-share lock the
+application; it commits each code at once, so the waiting worker never waits for the rest of
+the mailbox). Cancel locks the active attempt, then the
 application. Two locks
 are taken against the order, and only without waiting (NOWAIT), so they can never be part of
 a deadlock: cancel's look again, after the application lock, for an attempt queued while it
@@ -322,10 +330,12 @@ bound to user, application, attempt and round is opened. The code is stored only
 worker reads it, then erased. Wrong codes open a new round (max 3); old rounds are replays.
 The worker keeps its browser open while waiting, bounded by `NOEFFORTS_CHECKPOINT_TTL_SECONDS`.
 D143: the attempt's task may run for that whole wait (its time limit is the run budget, the
-waits after the click and this wait; no soft limit is raised inside it); a code the worker
-takes extends its lease over the watch for the employer's answer; and the request ends with its
-attempt: any outcome closes it and erases a code not yet read, the code endpoint refuses a
-request whose attempt no longer waits, and the sweeper closes stale ones.
+waits after the click and this wait; no soft limit is raised inside it); the wait is counted
+from the request, and a code accepted in its last moment is still entered (the worker looks
+for a code before it judges the wait over); a code the worker takes extends its lease over the
+watch for the employer's answer; and the request ends with its attempt: any outcome closes it
+and erases a code not yet read, the code endpoint refuses a request whose attempt no longer
+waits, and the sweeper closes stale ones.
 While a worker holds an attempt (claimed, sending, awaiting a code) only the execution service
 may change the application's state: package reads do not re-settle it and user transitions
 return 409 (`package.execution_owns_state`). Without this, the review page's package read

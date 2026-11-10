@@ -35,7 +35,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D140 education and work history reviewable and diffed; a record edit retires its approvals at once | merged (#49, 3df7d0d, tree as predicted); its PR CI passed all four jobs on 48fde99 |
 | D141 an employment stand-in; section comboboxes safe on react-select pages | merged (#50, 98fe380, tree as predicted); its PR CI passed all four jobs on 2ead6ff |
 | D142 a Workday-style multi-page wizard, filled forward only; never run again once entered | merged (#51, 25d04ea, tree as predicted); its PR CI passed all four jobs on 85e0213 |
-| D143 recovery hardening: a run budget, one task time limit and no soft limit, leases that follow progress, verification requests that end with their attempt | branch `recovery-hardening` (from D142's branch, 85e0213); not merged |
+| D143 recovery hardening: a run budget, one task time limit and no soft limit, leases that follow progress, verification requests that end with their attempt | branch `recovery-hardening` (from D142's branch, 85e0213, with `main` merged in); reviewed independently, its seven findings fixed (bb94e9f); not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -177,7 +177,16 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   - a cancel after entry and a stopped wizard say what happened ("sent there with Next", "never
     made the final submit", an unanswered Next "does not know whether that page was saved");
   - a worker killed at each point on the gh2 and Workday-style stand-ins is never run again
-    once data was entered; the browser runner's session limit is 1500 s.
+    once data was entered; the browser runner's session limit is 1500 s;
+  - its independent review found no path to a second submission, to a retry after disclosure
+    or sending, or to a wrong outcome, and seven things to change, all fixed: the egress
+    proxy's session (900 s) ended inside the longer code wait (now 1500 s); a cancelled attempt
+    could still hand over a document (the runner now checks before each document and each
+    Next, and the cancel text says what is guaranteed); the Greenhouse watch could outlast the
+    figure its lease was sized to (the clock ends it now); the mailbox filler took its locks
+    against the order outcomes use since this slice; a code accepted in the last moment of its
+    wait was erased unused; two test timings; a missing test that the budget never fires
+    after the send gate.
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
   Pausing there and later queuing one new attempt is a retry after `sending`, which CLAUDE.md
@@ -250,8 +259,12 @@ hold up the sweeper, the outbox relay and the mailbox reader.
   85e0213. Locally: the new tests, their sabotage runs and the regression set the build plan
   names (29 files before the review, 27 after it) (Tests run below).
 - **D143 (branch `recovery-hardening`):** the new tests, their sabotage runs, a real Celery
-  worker run to its time limit and the execution suites, locally (Tests run below). The full
-  suites run in its CI. `scripts/validate.sh all` was not run.
+  worker run to its time limit and the regression set before the review's fixes, locally
+  (Tests run below); the regression set on the fixed code was still running when this was
+  committed. The full suites run in its CI. `scripts/validate.sh all` was not run. Not tested:
+  the clock's bound on the code step's button wait, a worker process killed on
+  `greenhouse_live`, and the runner passing the Greenhouse code-step figure to the lease (the
+  figure and the passing are each tested, on different adapters).
 
 ## Tests run (this loop)
 
@@ -343,7 +356,13 @@ hold up the sweeper, the outbox relay and the mailbox reader.
 | D143: the 64 test files that run an attempt or touch what changed (every adapter suite, the execution, recovery, rehearsal, evidence, inbox, notification, deployment-configuration and container-runner suites, the Celery and broker-failure suites, `test_doc_references`, `test_audit_inventory`; JUnit), on a83b0ce | exit 0; 1539 passed, 0 failures (54 min) |
 | D143 on the merged head 3930850: `pytest tests/test_recovery_hardening.py tests/test_workday_wizard.py tests/test_code_wait_quarantine.py` (JUnit) | exit 0; 87 passed |
 | D143: a cancel while a form is filled, a test added after the runs above (`pytest tests/test_recovery_hardening.py -k cancel_`, JUnit) | exit 0; 3 passed |
-| D143 after the last edit: `ruff format .`, `ruff check .`, `ruff format --check .`; the tests that read the documents | ruff clean (375 files unchanged); 177 passed, 1 failed (the evidence matrix still cited a test removed with the soft-limit handling; its row removed); then exit 0, 178 passed |
+| D143 before the review: `ruff format .`, `ruff check .`, `ruff format --check .`; the tests that read the documents | ruff clean (375 files unchanged); 177 passed, 1 failed (the evidence matrix still cited a test removed with the soft-limit handling; its row removed); then exit 0, 178 passed |
+| D143: three earlier changes run again once the cancel-while-filling test existed (no progress hook, each cancel text), on 9c92e54 | each fails its test |
+| D143 review fixes: `pytest tests/test_recovery_hardening.py tests/test_inbox.py -k "outlast or never_stops_a_run or last_moment or hands_over_no_document or watch_ends_by_the_clock or send_lease or sweeper_closes_its_request or while_a_form_is_filled or typed_late"` (JUnit) | exit 0; 9 passed |
+| D143 review fixes: the code-wait, quarantine and sweeper tests in `test_recovery_hardening.py`, `test_code_wait_quarantine.py` and `test_execution_security.py` (`-k "last_moment or typed_late or then_ends_is_erased or only_while_its_attempt_waits or code_checkpoint or quarantine or unknown_result or sweeper"`, JUnit) | exit 0; 12 passed |
+| D143 review fixes removed in turn on bb94e9f (9 changes), then three earlier changes whose code or test the fixes touched | all 12 fail their test |
+| D143: the regression set again on the reviewed code (62 of the 64 files, without the two that read the documents; JUnit), on bb94e9f | started 18:33 UTC, still running when this was committed; result in the pull request, recorded here with the next change |
+| D143 after the last edit (the documents and one docstring): `ruff format .`, `ruff check .`, `ruff format --check .`; the tests that read the documents, `test_lock_order.py` and `test_inbox.py` (JUnit) | ruff clean (375 files unchanged); exit 0; 270 passed |
 
 ## Failed approaches and rejected designs
 
@@ -397,7 +416,8 @@ hold up the sweeper, the outbox relay and the mailbox reader.
 ## Exact next action
 
 1. D143 (branch `recovery-hardening`, `main` with D142 merged in): open its pull request,
-   merge it when its four checks pass.
+   merge it when its four checks pass, and record here the result of the regression run on
+   its reviewed code.
 2. Rank 11: attempts on a queue and worker of their own, so two attempts waiting for codes
    never hold up the sweeper, the outbox relay and the mailbox reader. Then ranks 12 and 13
    (`docs/remaining-work.md`).
