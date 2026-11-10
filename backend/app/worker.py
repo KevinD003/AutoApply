@@ -164,8 +164,10 @@ def execute_attempt(self, attempt_id: str, forwarded: bool = False) -> str:
 @celery_app.task(name="noefforts.relay_outbox", soft_time_limit=SOFT_LIMIT)
 def relay_outbox() -> int:
     from app.modules.execution.service import relay_outbox as relay
+    from app.modules.execution.service import republish_waiting
 
-    return relay(publish)
+    # D146: then, for an attempt still queued long after its message went out, once more.
+    return relay(publish) + republish_waiting(publish)
 
 
 @celery_app.task(name="noefforts.sweep_attempts", soft_time_limit=SOFT_LIMIT)

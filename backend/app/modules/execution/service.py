@@ -34,9 +34,9 @@ import uuid
 from datetime import timedelta
 from typing import NamedTuple
 
-from sqlalchemy import delete, func, or_, select, text, update
+from sqlalchemy import delete, exists, func, or_, select, text, update
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core import authorizations
 from app.core.config import get_settings
@@ -273,6 +273,60 @@ def relay_outbox(publish, limit: int = 50) -> int:
             m.dispatched_at = utcnow()
             m.last_error = None
             sent += 1
+        db.commit()
+    return sent
+
+
+def republish_waiting(publish, limit: int = 50) -> int:
+    """D146: publish again for an attempt still waiting to be taken, once its last publication
+    is older than `outbox_republish_seconds`. Nothing else sends a dispatched message a second
+    time: one lost with the broker's memory, or taken by a worker that stopped before starting
+    it, would leave its attempt queued (for good, or until the broker hands the message out
+    again an hour later).
+
+    Only an attempt the claim would still take: `pending`, no cancel requested, and nothing
+    entered yet (a `pending` attempt never has; the condition is here so that this path can
+    never run anything again after data was entered, whatever puts an attempt back in the
+    queue). One a worker holds, and one that ended, is never published here.
+
+    If the first message was not lost there are now two. The claim takes an attempt once; the
+    other delivery is ignored (`runner.run_attempt`). The attempt's newest message decides: one
+    not yet dispatched is the relay's, and one dispatched recently is waited for.
+
+    Safe to run concurrently (SKIP LOCKED: a second pass skips a message the first holds) and
+    repeatedly. Returns how many attempts were published again."""
+    cutoff = utcnow() - timedelta(seconds=get_settings().outbox_republish_seconds)
+    newer = aliased(OutboxMessage)
+    sent = 0
+    with SessionLocal() as db:
+        rows = db.scalars(
+            select(OutboxMessage)
+            .join(ExecutionAttempt, ExecutionAttempt.id == OutboxMessage.attempt_id)
+            .where(
+                OutboxMessage.dispatched_at < cutoff,
+                ExecutionAttempt.state == S.pending,
+                ExecutionAttempt.cancel_requested.is_(False),
+                ExecutionAttempt.disclosure_started_at.is_(None),
+                ~exists().where(
+                    newer.attempt_id == OutboxMessage.attempt_id,
+                    newer.created_at > OutboxMessage.created_at,
+                ),
+            )
+            .order_by(OutboxMessage.dispatched_at)
+            .limit(limit)
+            .with_for_update(of=OutboxMessage, skip_locked=True)
+        ).all()
+        for m in rows:
+            m.publish_attempts += 1
+            try:
+                publish(m.topic, str(m.attempt_id))  # ids only, never candidate data
+            except Exception as e:  # broker down: its age is unchanged, so the next pass tries
+                m.last_error = type(e).__name__  # the type only, as in relay_outbox
+                continue
+            m.dispatched_at = utcnow()
+            m.last_error = None
+            sent += 1
+            log.info("attempt %s: still queued; published again", m.attempt_id)
         db.commit()
     return sent
 

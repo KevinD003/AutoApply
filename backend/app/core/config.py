@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     # the redelivery test shortens it, for a disposable broker.
     broker_visibility_timeout_seconds: int = 3600
     outbox_relay_interval_seconds: float = 5.0
+    # D146: an attempt still waiting to be taken this long after its last publication is
+    # published again (its message may have been lost with the broker's memory, or be held by a
+    # worker that stopped before starting it). One whose message was not lost then has two, and
+    # the second delivery is ignored. At least 60: lower, every relay pass would publish again.
+    outbox_republish_seconds: int = Field(default=300, ge=60)
     # Browser network isolation: "netns" (default; required in production) runs Chromium in
     # its own network namespace whose only way out is the allow-listing egress proxy. "off" is
     # accepted only outside production, for machines without namespace support.
