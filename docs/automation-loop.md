@@ -60,7 +60,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger) | fx at capture |
 | 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger) | absent |
 | 8 | Answer edits invalidate approvals | fx; D138 merged (#47): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger); D140 merged (#49): an education or employment edit retires the approval at once; on the education stand-in, approved again, the new degree is sent, and an edit while a worker fills is stopped at the send gate (receiver ledger) | fx (single page) |
-| 9 | Recovery without duplicates | fx on the generic form; D143 (branch): on gh2 by id a worker killed before anything was sent is run again once, and one killed after entering data, at the send gate, around the final click or after the employer's receipt is never run again; a run past its budget stops before the final click (gh2 by id and the pilot stand-in; receiver ledger) | partial; D142 merged (#51): on the wizard stand-in a lost or killed worker leaves the record of each page's Next, is never taken over, and the application is never run again (receiver ledger); D143 (branch): the same kills on the single-page form and on the wizard's review page, and a wizard past its budget stops for good (receiver ledger) |
+| 9 | Recovery without duplicates | fx on the generic form; D143 (branch): on gh2 by id a worker killed before anything was sent is run again once, and one killed after entering data, at the send gate, around the final click or after the employer's receipt is never run again; a run past its budget stops before the final click (gh2 by id and the pilot stand-in; receiver ledger); D144 (branch): the sweeper runs on a worker of its own, so it is not held up by attempts waiting for codes (real workers, generic form; receiver ledger) | partial; D142 merged (#51): on the wizard stand-in a lost or killed worker leaves the record of each page's Next, is never taken over, and the application is never run again (receiver ledger); D143 (branch): the same kills on the single-page form and on the wizard's review page, and a wizard past its budget stops for good (receiver ledger) |
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus; D139 merged (#48): self-identification on gh2 (by id and pilot) up to the ledger: off or unmatched never sent, a label or a decline label sent, your per-application "Don't disclose" beats it, a required one without a match waits; a change retires its approvals at once (queued, held by a worker, under the standing rule: nothing withdrawn is sent) | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify"; D139 merged (#48): self-identification sent as each option's own value, each question only from the label naming its category, a bare "No" or two labels never used, a decline only where the choices name a category, a required gender without a match waits; withdrawal and change retire the approval (single page; the Workday decline wording is a fixture assumption) |
 | 11 | Upload failure preserves evidence | fx for UploadFailed; D137 merged (#46): every disclosure is recorded as it is made (receiver ledger): an unexpected error after an upload keeps its evidence (generic form, gh2 by id, the API route); a killed worker after an upload (generic form); a failure during an upload counts the document as possibly received (generic form, gh2 by id, the first Greenhouse-style page, the API route); a draft or document the API received and answered badly is recorded | fx; D137: a failure during an upload counts it as possibly received (Workday-style page); D142 merged (#51): each page's Next is recorded as disclosure evidence as it is made (wizard stand-in) |
 | 12 | Uncertain send quarantined | fx; D143 (branch): at the task's time limit the worker process is ended and the sweeper calls the outcome unknown (a real worker, generic form); the send lease covers the page's own wait for its answer; a code typed late in its wait is still answered under a lease (generic form); on gh2 by id a worker killed around the final click is quarantined (receiver ledger) | fx; D142 merged (#51): on the wizard stand-in, a Next after which the page shows a confirmation or "already applied" is quarantined in `submitted_unconfirmed`, as is an unknown final click; never run again (receiver ledger); D143 (branch): a worker killed around the final click on the single-page form, or before it on the wizard's review page, is quarantined and never run again (receiver ledger) |
@@ -281,6 +281,11 @@ hold up the sweeper, the outbox relay and the mailbox reader.
   the clock's bound on the code step's button wait, a worker process killed on
   `greenhouse_live`, and the runner passing the Greenhouse code-step figure to the lease (the
   figure and the passing are each tested, on different adapters).
+- **D144 (branch `attempt-queue`):** the new tests with real workers, their removal runs and
+  the suites that start workers, locally (Tests run below). The Compose layout (two workers,
+  the smoke test's ping, the new and the tightened scenario) cannot be started here: there is
+  no Docker daemon, so the `docker-smoke` and `execution-compose` jobs of its pull request are
+  its first and only run. `scripts/validate.sh all` was not run.
 
 ## Tests run (this loop)
 
@@ -379,6 +384,19 @@ hold up the sweeper, the outbox relay and the mailbox reader.
 | D143 review fixes removed in turn on bb94e9f (9 changes), then three earlier changes whose code or test the fixes touched | all 12 fail their test |
 | D143: the regression set again on the reviewed code (62 of the 64 files, without the two that read the documents; JUnit), on bb94e9f | started 18:33 UTC, still running when this was committed; result in the pull request, recorded here with the next change |
 | D143 after the last edit (the documents and one docstring): `ruff format .`, `ruff check .`, `ruff format --check .`; the tests that read the documents, `test_lock_order.py` and `test_inbox.py` (JUnit) | ruff clean (375 files unchanged); exit 0; 270 passed |
+| D143: the regression set on the reviewed code, finished after that commit (62 files, JUnit), on bb94e9f | exit 1; 1541 passed, 1 failed in 57 min: `test_dropdown_strategies.py`, the `late_slow_changing` case, refused for the wrong reason ("its options differ": the list had been judged settled), while two other test runs shared the machine |
+| D143: that failure's cause, without load (a temporary test, not committed): the same case with the adapter's reading interval set | 250 ms: refused as still changing; 590 ms: the same wrong reason; 610 ms: accepted and submitted (the approved option, read back); 600 and 900 ms: refused as still changing |
+| D143: the dropdown suite alone on the pull request's head (fa36039, JUnit) | exit 0; 43 passed |
+| D144: the Compose files after the split (`pytest tests/test_deployment_config.py`, JUnit) | exit 0; 17 passed |
+| D144: the smoke check on Celery's real reply (`-k smoke_check`, two real workers); `scripts/test_smoke_lib.sh` | exit 0, 1 passed; the script's 12 cases as expected |
+| D144: `pytest tests/test_attempt_queue.py` (JUnit), first full runs | 6 passed, 4 errors (the module's own fixture had the name of the suite's database cleanup and replaced it; renamed); 9 passed, 1 failed (an assertion that counted the test's own reading of the form); then exit 0, 10 passed |
+| D144: the baseline (a temporary test, not committed): one worker taking both queues, both processes held in the code wait, a sweep published | not received in 20 s; received 0.6 s after the first code was entered |
+| D144: the suites that start real workers or read the Compose files (5 files, JUnit) | exit 0; 38 passed |
+| D144: `pytest tests/test_recovery_hardening.py` (JUnit) | exit 0; 43 passed |
+| D144 removal runs on 7f53f71 (26 changes, each in turn) | all 26 fail their test |
+| D144: a probe outside the application, one process per case: two queues declared by name only, then each with its own exchange; a routed publish, a default one, one to exchange `celery` and key `celery` by name | by name only: 1 and 1, then 2 and 2; own exchange: 1 and 1, then 2 and 1 |
+| D144: the bindings test added; the by-name declaration against it | 3 passed; changed: 2 of the 3 fail |
+| D144 after the last edit: `ruff format .`, `ruff check .`, `ruff format --check .`; `scripts/test_smoke_lib.sh`; the tests that read the documents, `test_deployment_config.py` and `test_attempt_queue.py` (JUnit) | ruff clean (376 files unchanged); the script's 12 cases as expected; exit 0; 206 passed |
 
 ## Failed approaches and rejected designs
 
@@ -441,13 +459,14 @@ hold up the sweeper, the outbox relay and the mailbox reader.
 
 ## Exact next action
 
-1. D143 (branch `recovery-hardening`, `main` with D142 merged in): open its pull request,
-   merge it when its four checks pass, and record here the result of the regression run on
-   its reviewed code.
-2. Rank 11: attempts on a queue and worker of their own, so two attempts waiting for codes
-   never hold up the sweeper, the outbox relay and the mailbox reader. Then ranks 12 and 13
-   (`docs/remaining-work.md`).
-3. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
+1. D143 (pull request #52): merge it when its four checks pass.
+2. D144 (branch `attempt-queue`, on D143's branch): an independent review, then its pull
+   request once D143 is merged; its Compose layout is first run by that pull request's CI.
+3. Rank 14 (`docs/remaining-work.md`): a dropdown's list settled by the page's own record of
+   its last change, not by the reading interval. A defect found on the way, small, so before
+   ranks 12 and 13 (the Workday-style follow-up question and repeating records). Rank 15 (a
+   queued attempt whose message the broker lost) after those.
+4. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it
    sends since D133 (D139); every recorded permission ended on 2026-11-06 (renewing is the owner's call,

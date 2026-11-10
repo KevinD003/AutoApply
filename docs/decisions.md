@@ -5665,3 +5665,98 @@ audit-inventory and export-completeness guards are updated and pass.
   Each fix's test fails without it (nine more sabotage runs).
 - **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
   one: no state, permission or retry was added.
+
+## D144 — Attempts on a queue and a worker of their own; the schedule and the periodic tasks on another (2026-11-10)
+
+- **Context:** rank 11 of the automation loop (`docs/automation-loop.md`). Local stand-ins
+  only; nothing real was run. No state, transition, gate, permission or retry changes: this is
+  about which process runs what.
+- **Problem:** every task shared one Celery worker with two processes: attempts, and with them
+  the sweeper, the outbox relay, the mailbox reader, the standing rule, reminders and discovery.
+  Since D143 an attempt may keep its process for the whole wait for a verification code (its
+  task's limit is 1380 seconds; before, 300). Two attempts waiting for codes therefore held
+  both processes, and nothing else ran: no stopped attempt was recovered, nothing queued was
+  published, and the mailbox, which is what would enter those codes, was not read. With one
+  browser slot (the Compose stack) a second attempt instead held the second process for up to
+  40 seconds waiting for the slot, then failed safe.
+- **Measured before deciding (2026-11-10, real Celery prefork workers on this branch, the local
+  receiver asking for a code):**
+  - one worker, two processes, both queues, both processes held by attempts waiting for their
+    codes: a periodic task published then was not received for the 20 seconds it was watched, and was
+    received 0.6 seconds after the first code was entered (20.6 seconds after it was sent). It
+    would have waited as long as the codes did: up to ten minutes by default;
+  - Celery binds a queue declared without an exchange to the default exchange and routing key
+    (`celery/app/amqp.py`, `Queues._add`, read in the installed 5.6.3), together with the
+    default queue. A probe outside the application showed what that does and does not do:
+    Celery's own publishing addresses a queue directly (the anonymous exchange, the queue's
+    name as the key), so each message still reached one queue; a message published to the
+    default exchange and key by name reached both. With an exchange and key of its own for
+    each queue (what Celery gives a queue it creates itself) that message reached the default
+    queue only. Each queue is declared so;
+  - with one reserved task per process and late acknowledgement, a message beyond what the
+    worker's processes can run is not taken by it: it stays in the broker's list, visible, and
+    another worker or a later free process gets it.
+- **Decided:**
+  - **Two queues.** `noefforts.execute_attempt` is routed to `attempts`; every other task (all
+    of them periodic) to the default queue, `celery`. Both are declared, so a worker started
+    without `-Q` takes both, as before: local development, the tests and the e2e helper keep
+    their one command, with no separation.
+  - **Two workers in a deployment.** `docker-compose.yml`: `worker` takes only `attempts`, with
+    one process, because the browser runner has one slot; a second application waits in the
+    queue, unclaimed, instead of holding a process and failing after 40 seconds. `scheduler`
+    takes only the default queue and runs the schedule (beat). It is the API's environment and
+    nothing more: no browser runner token, no egress control socket, the application's network
+    only. The two overlays (the execution test, the pilot) give both the same settings.
+  - **An attempt is run from its own queue.** A message for it that arrives on any other queue
+    (one published before the queues existed, still waiting at an upgrade) is passed on to
+    `attempts` and acknowledged; nothing is claimed there. It is passed on once: a message
+    already passed on is run wherever it arrives, so a broker reporting the queue differently
+    could cost a hop, never a loop or a lost attempt. A task called directly (no delivery) runs.
+  - **The attempts' worker cleans its own host.** Before each attempt it removes the browser
+    directories of processes that no longer exist. The sweeper did that, on the host it ran
+    on; it may now run elsewhere, where it cannot see them.
+  - **The smoke test asks both workers by name** (`attempts@…`, `scheduler@…`), and the restore
+    and rollback steps stop both.
+  - **The owner's controls name both** (`docs/activation-status.md` §8): stopping everything is
+    `docker compose stop worker scheduler` (`worker` alone stops the applications; `scheduler`
+    is what queues for the standing rule and reads the mailbox), and a changed switch or
+    register needs both restarted.
+- **What this changes for an application:** nothing in what is sent or when it may be sent.
+  A second application queued while one runs now waits its turn (the Tracker says "queued")
+  where it used to fail after 40 seconds and had to be queued again. An attempt whose worker
+  was stopped is now recovered by the sweeper while that worker is still down.
+- **Not changed, not fixed:**
+  - The claim, both gates, the sweeper's rules, every state and text; `SCHEMA_VERSION`, every
+    adapter version; no migration.
+  - A worker taking both queues (development, an older Compose file) behaves as before D144:
+    its attempts can hold up its periodic tasks.
+  - A queued attempt whose message the broker loses stays queued until it is cancelled, as
+    before (nothing publishes a dispatched message again). The same holds if the broker fails
+    between a message being received on the wrong queue and its being passed on. An attempt now
+    waits in the broker for as long as the one before it runs, so this matters a little more
+    than it did; not built.
+  - While an application waits for the browser the Tracker says only "queued", not why.
+  - More than one attempt at a time needs more browser runners and as many worker processes;
+    not built, not tested.
+  - The scheduler's own tasks still share its two processes: a slow mailbox read or board
+    check can delay a sweep, each bounded by its 240-second limit.
+  - Rolling back to a version before this one must remove the `scheduler` container
+    (`--remove-orphans`, `docs/deployment.md` §7): left running beside an older worker it would
+    pass queued applications to a queue that worker does not read.
+  - The Compose layout itself is exercised only in CI (the `docker-smoke` and
+    `execution-compose` jobs): this sandbox has no Docker daemon.
+- **Tests:** `tests/test_attempt_queue.py` (11 cases: real Celery prefork workers on the run's
+  own Redis, the receiver's ledger as the oracle for what reached the employer), the Compose
+  files read in `tests/test_deployment_config.py` (two new tests, three widened), three new
+  cases in `scripts/test_smoke_lib.sh`, and, in CI only, one new Compose scenario and one
+  tightened (`compose_tests/run_execution_test.py`). Each of these was removed in turn (26
+  changes, one at a time on a committed tree) and its test failed: the route; each queue's own
+  exchange; the attempts' queue's declaration; the pass-on, its mark and its limit of one; a
+  direct call being run; the worker's own cleanup; in the Compose files each worker's queue,
+  the schedule in exactly one of them, one attempt process per browser slot, the scheduler
+  having neither the runner token nor the control socket, its start after the API, the
+  workers' names, both overlays' settings; the smoke check's names (also against Celery's real
+  reply) and the restore's stop. Not removable here: the two Compose scenarios, which only CI
+  runs. Runs are listed in `docs/automation-loop.md`.
+- **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
+  one.

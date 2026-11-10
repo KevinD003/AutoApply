@@ -221,11 +221,16 @@ def worker_check() -> dict:
 
 
 def active_queues() -> dict:
-    """D144: what each Celery worker that answers takes: {node name before the @: [queues]}."""
-    out = compose("exec", "-T", "worker", "celery", "-A", "app.worker", "inspect",
-                  "active_queues", "--json", "--timeout", "5")  # fmt: skip
-    nodes = json.loads(out.strip().splitlines()[-1])
-    return {node.split("@")[0]: sorted(q["name"] for q in qs) for node, qs in nodes.items()}
+    """D144: what each Celery worker that answers takes: {node name before the @: [queues]}.
+    Empty while none answers (the command then fails)."""
+    try:
+        out = compose("exec", "-T", "worker", "celery", "-A", "app.worker", "inspect",
+                      "active_queues", "--json", "--timeout", "5")  # fmt: skip
+    except RuntimeError:
+        return {}
+    reply = next((ln for ln in reversed(out.strip().splitlines()) if ln.startswith("{")), "{}")
+    return {node.split("@")[0]: sorted(q["name"] for q in qs)
+            for node, qs in json.loads(reply).items()}  # fmt: skip
 
 
 def waiting_in(queue_name: str) -> int:
@@ -756,25 +761,26 @@ def s_scheduler_runs_while_an_attempt_waits_for_its_code():
     check("queues: the first application waits for its code", bool(cp))
     if not cp:
         return
+    # Kept short: the first application's browser session has this stack's 45-second limit.
+    code = ledger_for(gh_slug)["challenges"][-1]["code"]
     queue(a, second)
     published = wait_for(lambda: waiting_in("attempts") == 1, 20, 0.5)
     check("queues: the scheduler published the second application while the worker was held",
           bool(published), waiting_in("attempts"))  # fmt: skip
-    time.sleep(4)  # were another process free to take it, it would have by now
+    time.sleep(2)  # were a process free to take it, it would have by now
     att2 = attempt(a, second)
     check("queues: the second application waits in the attempts' queue, unclaimed",
           bool(att2) and att2["state"] == "pending" and waiting_in("attempts") == 1,
           att2 and att2["state"])  # fmt: skip
-    recent = compose("logs", "--no-color", "--since", "15s", "scheduler")
-    check("queues: the scheduler ran its periodic tasks meanwhile",
+    a.ok("POST", f"/applications/{first}/checkpoints/{cp['id']}/code",
+         {"round": cp["round"], "code": code})  # fmt: skip
+    recent = compose("logs", "--no-color", "--since", "30s", "scheduler")
+    check("queues: the scheduler ran its periodic tasks while the worker was held",
           "Task noefforts.relay_outbox[" in recent, recent[-300:])  # fmt: skip
     ran = compose("logs", "--no-color", "worker")
     periodic = [t for t in ("relay_outbox", "sweep_attempts", "check_inbox", "auto_apply")
                 if f"Task noefforts.{t}[" in ran]  # fmt: skip
     check("queues: the worker ran no periodic task", periodic == [], periodic)
-    code = ledger_for(gh_slug)["challenges"][-1]["code"]
-    a.ok("POST", f"/applications/{first}/checkpoints/{cp['id']}/code",
-         {"round": cp["round"], "code": code})  # fmt: skip
     att1 = final_state(a, first)
     check("queues: the first application confirmed once its code was entered",
           att1 and att1["state"] == "confirmed", att1 and att1["state"])  # fmt: skip
