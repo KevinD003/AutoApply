@@ -243,7 +243,9 @@ reads the receiver's ledger and builds an application for that provider
   (S5, D62);
 - by workflow trait (S5, D62): `multi_step` anything but "no" or "not applicable" →
   `each_step_read_back_before_next` (today `greenhouse_hosted`, whose trait is "unknown": a
-  form that continues on another page stops before anything is disclosed).
+  form that continues on another page stops before anything is disclosed; and, since D142,
+  `fixture_workday`, whose trait is "yes": its multi-page wizard stand-in reads each page
+  back before its Next, `test_a_page_is_read_back_before_its_next`).
 
 The check is structural (the test exists, reads the ledger, names the provider or its builder),
 not semantic: what a mapped test asserts was checked by an adversarial review when it was mapped,

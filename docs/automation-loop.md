@@ -5,7 +5,7 @@ answers, credentials, employer-identifying evidence, raw pages or unredacted log
 canonical backlog is `docs/remaining-work.md` (its "Automation loop" section); decisions are in
 `docs/decisions.md`.
 
-**Updated:** 2026-11-09 (UTC).
+**Updated:** 2026-11-10 (UTC).
 
 ## Objective
 
@@ -34,6 +34,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D139 your self-identification on Greenhouse- and Workday-shaped forms; a change retires its approvals at once | branch `self-id-ledger` (from D138's branch, e3e584a); not merged |
 | D140 education and work history reviewable and diffed; a record edit retires its approvals at once | branch `sections-review` (from D139's branch, 84af539); not merged |
 | D141 an employment stand-in; section comboboxes safe on react-select pages | branch `section-widgets` (from D140's branch, 08cd8bd); not merged |
+| D142 a Workday-style multi-page wizard, filled forward only; never run again once entered | branch `workday-wizard` (from D141's branch, 2dfc956); not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -49,7 +50,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 
 | # | Workflow | Greenhouse | Workday |
 |---|---|---|---|
-| 1 | Known answer fills and survives readback | fx (gh2 stand-in) | fx, single-page approximation only |
+| 1 | Known answer fills and survives readback | fx (gh2 stand-in) | fx, single-page approximation; D142 (branch): the five-page wizard stand-in, each page read back before its Next, the unanswered fields included (receiver ledger) |
 | 2 | New question → questions tab → saved → resumes | fx (gh2 by id and pilot stand-in), on `main` since D132 (#40) | fx (e2e), on `main` since D132 |
 | 3 | Future reuse | unit (resolver), generic form; D133 merged (#41): suggestions judge the saved side, "Use here only"; D138 (branch): a saved answer reaches the next gh2 job that asks the same question (receiver ledger) | D138 (branch): reused on the next posting (receiver ledger); single page |
 | 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 (branch): a gh2 look-alike naming a country is neither reused nor suggested | D138 (branch): "Preferred shift" never saved or reused |
@@ -57,12 +58,12 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger) | fx at capture |
 | 7 | Repeating records | fx education stand-in (D120); D140 (branch): the rows sent shown on the review page and diffed by record and field; D141 (branch): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger) | absent |
 | 8 | Answer edits invalidate approvals | fx; D138 (branch): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger); D140 (branch): an education or employment edit retires the approval at once; on the education stand-in, approved again, the new degree is sent, and an edit while a worker fills is stopped at the send gate (receiver ledger) | fx (single page) |
-| 9 | Recovery without duplicates | fx on the generic form; not run on gh2 | partial |
+| 9 | Recovery without duplicates | fx on the generic form; not run on gh2 | partial; D142 (branch): on the wizard stand-in a lost or killed worker leaves the record of each page's Next, is never taken over, and the application is never run again (receiver ledger) |
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus; D139 (branch): self-identification on gh2 (by id and pilot) up to the ledger: off or unmatched never sent, a label or a decline label sent, your per-application "Don't disclose" beats it, a required one without a match waits; a change retires its approvals at once (queued, held by a worker, under the standing rule: nothing withdrawn is sent) | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify"; D139 (branch): self-identification sent as each option's own value, each question only from the label naming its category, a bare "No" or two labels never used, a decline only where the choices name a category, a required gender without a match waits; withdrawal and change retire the approval (single page; the Workday decline wording is a fixture assumption) |
-| 11 | Upload failure preserves evidence | fx for UploadFailed; D137 (PR #46): every disclosure is recorded as it is made (receiver ledger): an unexpected error after an upload keeps its evidence (generic form, gh2 by id, the API route); a killed worker after an upload (generic form); a failure during an upload counts the document as possibly received (generic form, gh2 by id, the first Greenhouse-style page, the API route); a draft or document the API received and answered badly is recorded | fx; D137: a failure during an upload counts it as possibly received (Workday-style page) |
-| 12 | Uncertain send quarantined | fx | fx (final send only; each Next not modelled) |
-| 13 | Cancellation respected | fx on the generic form; D134 merged (#43), on the gh2 stand-in through the pilot (receiver ledger): a pause stops what the standing rule queued, your own queued work runs on, a revocation stands | partial |
-| 14 | Tenant isolation | fx (per-application routes) | partial (no Workday-shaped test) |
+| 11 | Upload failure preserves evidence | fx for UploadFailed; D137 (PR #46): every disclosure is recorded as it is made (receiver ledger): an unexpected error after an upload keeps its evidence (generic form, gh2 by id, the API route); a killed worker after an upload (generic form); a failure during an upload counts the document as possibly received (generic form, gh2 by id, the first Greenhouse-style page, the API route); a draft or document the API received and answered badly is recorded | fx; D137: a failure during an upload counts it as possibly received (Workday-style page); D142 (branch): each page's Next is recorded as disclosure evidence as it is made (wizard stand-in) |
+| 12 | Uncertain send quarantined | fx | fx; D142 (branch): on the wizard stand-in, a Next after which the page shows a confirmation or "already applied" is quarantined in `submitted_unconfirmed`, as is an unknown final click; never run again (receiver ledger) |
+| 13 | Cancellation respected | fx on the generic form; D134 merged (#43), on the gh2 stand-in through the pilot (receiver ledger): a pause stops what the standing rule queued, your own queued work runs on, a revocation stands | partial; D142 (branch): a cancel, a revocation or a profile edit between wizard pages stops at the next page's gate (receiver ledger) |
+| 14 | Tenant isolation | fx (per-application routes) | D142 (branch): fx on the wizard stand-in: another account on the same posting is not refused and reaches nothing of the first (404) |
 | loop | Durable pause → answer → recheck → continue | fx, on `main` since D132 (#40): pause, read again, answer, one new run (receiver ledger) | fx (e2e), on `main` since D132 |
 | tab | "Questions needing your answer" | on `main` since D132 (#40) (`/questions`) | on `main` since D132 |
 
@@ -150,6 +151,14 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   greenhouse_live approvals once. Its review's three findings fixed (a stale v5 pin, two checks
   without a test, an overclaim), and a combobox's list is read once open, as real react-select
   names it.
+- **D142 (branch `workday-wizard`, not merged).** Rank 9: a Workday-style multi-page wizard
+  stand-in, filled forward only. A gate commits `step_authorized` before each page is filled and
+  before each Next; each page is read back, unanswered fields included, before its Next; a Next is
+  clicked once and its answer recorded. Anything unexpected after disclosure ends the attempt for
+  good (a Next that may have submitted is quarantined in `submitted_unconfirmed`), and approve,
+  queue, enqueue and claim refuse that application from then on (`wizard_draft_at_employer`).
+  Rehearsals and the standing rule are refused on a wizard; per-page pauses are not built
+  (continuing needs the owner). Adapter version `fixture-workday-2`.
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
   Pausing there and later queuing one new attempt is a retry after `sending`, which CLAUDE.md
@@ -173,11 +182,9 @@ half, on its branch) keeps the evidence of what reached the employer whatever fa
 the employer. **D139** (rank 7, on its branch) shows your self-identification there too, and a
 change to it retires its approvals at once. **D140** (rank 8, first half, on its branch) makes
 education and work history reviewable and diffed, and **D141** (rank 8, second half) adds an
-employment stand-in and react-select-safe section comboboxes. Next, rank 9: the Workday-style
-multi-page wizard stand-in. Later ranks:
-- reviewable sections;
-- the Workday multi-page wizard stand-in;
-- recovery hardening.
+employment stand-in and react-select-safe section comboboxes. **D142** (rank 9, on its
+branch) fills the Workday-style multi-page wizard stand-in forward only, a gate before every
+step, and never runs an application entered there again. Next, rank 10: recovery hardening.
 
 ## Unvalidated or partly validated changes
 
@@ -207,6 +214,10 @@ multi-page wizard stand-in. Later ranks:
 - **D138 (branch `provider-reuse`):** the new tests, their sabotage runs and the suites that use the
   fixtures it extends, locally (Tests run below). The full suites run in its CI, after D137 is merged
   and `main` merged in.
+- **D142 (branch `workday-wizard`):** the new tests, their sabotage runs and the regression
+  set the build plan names (29 files), locally (Tests run below). The full suites run in its
+  CI, after D141 is merged and `main` merged in. `scripts/validate.sh all` was not run (it
+  runs the whole backend and e2e suites).
 - **D141 (branch `section-widgets`):** the new tests, their sabotage runs and the suites that
   touch sections, the stand-in and the extraction version, locally (Tests run below). The full
   suites run in its CI, after D140 is merged and `main` merged in.
@@ -283,6 +294,16 @@ multi-page wizard stand-in. Later ranks:
 | D141: every suite that loads the second Greenhouse-style fixture or binds an approval to an adapter version (66 files, JUnit), on 4cf9efc | 1533 passed, 1 failed: `test_greenhouse_controls.py` still pinned the extraction at v5 (the review's blocker, fixed in 0a7875b; that file passes in the 274 below) |
 | D141 after the review: `pytest tests/test_section_widgets.py` (JUnit); then three sabotage runs (the list read before opening, the id check before the click, the check beyond the plan) | 10 passed; each fails its own test (1, 1, 1) |
 | D141 after the review: the section suites, the version pins (`test_approval_binding`, `test_greenhouse_controls`, `test_phone_companion`) and `test_form_change_loop` (10 files, JUnit), on 0a7875b | 274 passed, 0 failures |
+| D142: non-wizard fingerprints computed on 2dfc956 before any edit (the default Workday-style page, the generic form, `wd_self_identify`, `wd_multi_step`) | four values, unchanged after the build; the first two pinned in `test_non_wizard_fingerprints_are_unchanged` |
+| D142: `pytest tests/test_workday_wizard.py -x -k "capture or malformed or fingerprints or each_page_is_sent"` (JUnit), on c649dd4 with the build uncommitted | 4 passed, 1 failed (a test's mutation matched twice in the page); fixed: 9 passed |
+| D142: `pytest tests/test_workday_wizard.py` (JUnit) | 29 passed, 2 failed (two test bugs: the batch body lacked its scope; the other account's own capture was counted as the first account's request); fixed: 2 passed |
+| D142: `pytest tests/test_package_contract.py tests/test_provider_contracts.py tests/test_provider_admission.py tests/test_workday_adapter.py` (JUnit) | 232 passed |
+| D142 sabotage runs on fb26ad9 (42 changes, each in turn, each with its row's test) | 39 fail their test; 3 did not: the page-count rule and the page-order rule dropped (6 passed each), `require_valid_approval`'s check dropped (1 passed) |
+| D142: the tests strengthened (two capture cases, `require_valid_approval` called directly), `pytest tests/test_workday_wizard.py -k "malformed or once_entered or another_account"` (JUnit) | 10 passed |
+| D142 sabotage runs again on 655cce3 (the three missed, and three whose test changed) | each fails its test (1 of 8, 1 of 8, 1, 1, 1, 1) |
+| D142: the regression set (the 28 files the build plan names, with `test_doc_references.py`; JUnit), on 655cce3 with the two doc cells `test_lever.py` and `test_approval_reasons.py` read (committed as 3bc2179) | exit 0; 659 passed, 0 failures (21 min) |
+| D142 after the last edit: `ruff format .` (2 files), `ruff check .`, `ruff format --check .`; then `pytest tests/test_doc_references.py tests/test_approval_reasons.py tests/test_lever.py tests/test_audit_inventory.py tests/test_provider_admission.py tests/test_provider_contracts.py tests/test_workday_wizard.py` (JUnit) | ruff clean, 374 files formatted; 254 passed, 0 failures |
+| D142: the same document tests after the last row was written (`test_doc_references`, `test_approval_reasons`, `test_lever`, `test_audit_inventory`; JUnit) | exit 0; 24 passed |
 
 ## Failed approaches and rejected designs
 
@@ -337,9 +358,12 @@ multi-page wizard stand-in. Later ranks:
    request, merge it when its four checks pass.
 5. D141 (branch `section-widgets`): merge `main` into it once D140 is merged, open its pull
    request, merge it when its four checks pass.
-6. Rank 9: the Workday-style multi-page wizard stand-in (per-step disclosure gates, per-page
-   pauses).
-7. Owner decisions: the standing rule's consent text does not name self-identification, which it
+6. D142 (branch `workday-wizard`): merge `main` into it once D141 is merged, open its pull
+   request, merge it when its four checks pass.
+7. Rank 10: recovery hardening.
+8. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
+   submitting, a permission per page or one approval, and whether the standing rule may drive
+   one; the standing rule's consent text does not name self-identification, which it
    sends since D133 (D139); every recorded permission ended on 2026-11-06 (renewing is the owner's call,
    never extended because work took longer); continuing after a form change (D132); a final click
    the page's own checks block (`CLIENT_BLOCKED`, after `sending`).

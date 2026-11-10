@@ -141,9 +141,9 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         click was being made is StoppedAfterDisclosure: the page's values may have been sent."""
         self._hand_over()
         try:
-            page.locator(
-                f'{self.FORM} section[data-wizard-page="{i}"] [data-wizard-next]'
-            ).click(timeout=timeout_ms)
+            page.locator(f'{self.FORM} section[data-wizard-page="{i}"] [data-wizard-next]').click(
+                timeout=timeout_ms
+            )
             page.wait_for_function(_NEXT_ANSWERED, arg=[i, self.PAGE_KIND], timeout=timeout_ms)
             if self.body_kind(page) != "form":
                 return ACK_LEFT_FORM

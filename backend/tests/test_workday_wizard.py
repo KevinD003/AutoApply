@@ -251,8 +251,10 @@ MUTATIONS = {
         '<section data-step="My Information"',
     ),
     # The pages are not numbered 1 to 5 in order.
-    "page_gap": ('<section data-step="Voluntary Disclosures" data-wizard-page="3" hidden>',
-                 '<section data-step="Voluntary Disclosures" data-wizard-page="7" hidden>'),
+    "page_gap": (
+        '<section data-step="Voluntary Disclosures" data-wizard-page="3" hidden>',
+        '<section data-step="Voluntary Disclosures" data-wizard-page="7" hidden>',
+    ),
     # The form says six pages; five are there (caught only if the count is read).
     "page_count": ('data-wizard-pages="5"', 'data-wizard-pages="6"'),
     # Pages 3 and 4 swapped: each page still has its Next (only the order catches it).
@@ -262,8 +264,7 @@ MUTATIONS = {
     ),
     # The submit button on page 4, none on the review page.
     "submit_not_last": (
-        '<button type="submit" data-automation-id="bottom-navigation-next-button">Submit'
-        "</button>",
+        '<button type="submit" data-automation-id="bottom-navigation-next-button">Submit</button>',
         "",
     ),
     # Two Next buttons on page 2.
@@ -809,4 +810,3 @@ def test_the_step_gate_is_fenced_and_ordered(api, receiver):
     # Nothing but the captures reached the receiver.
     reqs = receiver.ledger()["requests"]
     assert reqs and all(q["method"] == "GET" and q["path"].endswith("/apply") for q in reqs)
-

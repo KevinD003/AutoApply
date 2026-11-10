@@ -5345,3 +5345,120 @@ audit-inventory and export-completeness guards are updated and pass.
   refuted finding was acted on all the same: the stand-in's react-select named its list before
   opening, which the one real react-select recorded did not; the list is now read once open, and
   the stand-in names it only while open.
+
+## D142 — A Workday-style multi-page wizard, filled forward only; an application entered on one is never run again (2026-11-10)
+
+- **Why:** rank 9 of the automation loop (`docs/automation-loop.md`; Workday acceptance items 1,
+  9, 11, 12, 13 and 14). Workday saves each page at the employer when the candidate selects Next
+  (`docs/research/workday.md`, quoted). Until now the Workday-style stand-in had one page, and an
+  application on several pages (`wd_multi_step`) stopped before anything was entered. A design
+  check (2026-11-10) found that every way to continue after a stop on a later page needs the
+  owner: a new attempt sends pages 1 to k again as a second application, reopening the draft
+  needs the candidate's own sign-in, and no state holds a browser open before the send gate. So
+  this slice moves forward only and never continues.
+- **Decided:**
+  - **A wizard stand-in** (`fixtures/ats_receiver/workday_like.py`, cfg `wizard`, separate from
+    `mode` so the outcome modes still combine with it). Every behaviour is a FIXTURE ASSUMPTION:
+    - FA1: the five pages are in one document; only the current one is shown.
+    - FA2: the documented-by-reader order (My Information, My Experience, Voluntary
+      Disclosures, Application Questions, Review); Review has no field and the only submit.
+    - FA3: a Next is a fetch that saves only its page (`POST /apply/draft/{page}`, a
+      `draft_page` row written before any check), with no navigation and no draft before the
+      first Next.
+    - FA4: the final POST is accepted only with drafts for pages 1 to 4.
+    - FA5: the variants `drift`, `already_applied`, `step_error`, `step_timeout`,
+      `late_question`, `next_submits`, `already_applied_after_next`, `parse_current_page` and
+      `parse_saved_page`; a confirmation or "already applied" page is rendered in place.
+  - **Capture.** `FormSchema.wizard` (the page names) is set only when the structure is exactly
+    what the executor drives: pages 1 to N in order with unique names, no step nested in a page,
+    one Next on each page before the last and none elsewhere, the only submit on the last page,
+    every question on an earlier page, and no D88 step marker. Anything else is the several-pages
+    checkpoint, so each field's `step` is exactly its page. The fingerprint adds the page names
+    and which question is on which page, only for a wizard; every other fingerprint is unchanged
+    (pinned by a test). A manual form cannot set `wizard`.
+  - **Package.** `wizard: {pages}` is written only for such a form. `SCHEMA_VERSION` stays 3,
+    deliberately: no form stored before D142 has a wizard, so no existing package's content or
+    hash changes (as D104's `widget` and D120's `sections`). The contract test records
+    `.wizard.pages[]` under version 3.
+  - **A gate before every step.** After the disclosure gate (which authorizes filling page 1),
+    for each page before Review:
+    - a gate before filling it (from page 2), then filling it, documents first;
+    - a readback of every page so far, unanswered fields included, recorded as evidence `step`
+      (`page`, `checked`, `mismatched`);
+    - a gate before its Next, then one click;
+    - the page's answer recorded at once as disclosure evidence (`draft_page`, the page, and
+      `draft_saved`, `error_shown`, `none` or `left_form`);
+    - then a check that the next page is shown and the form still matches.
+    `gate_before_step` holds the attempt lock and makes every check the other gates make
+    (authority, application state, live approval, rebuilt hash, execution method, destination
+    class, rehearsal prerequisite). It refuses a rehearsal and any step out of order, repeated or
+    skipped, then commits `step_authorized` before the action, so a worker lost after a click
+    leaves the record. It never stamps `disclosure_started_at` again and never counts against
+    the pilot's limit. On Review the existing single readback, recheck, send gate and one click
+    run unchanged.
+  - **Anything unexpected after disclosure ends the attempt for good.** An error, no answer in
+    time, a revealed question, a next page not shown, a readback mismatch, a gate refusal or a
+    crash abandons it. Its text says how many pages were saved with Next and that the employer
+    may keep a draft. Every live approval of the application is retired
+    (`wizard_draft_at_employer`). Never a pause, never a second click.
+  - **Quarantine.** A Next after which the page leaves the form (a confirmation, "already
+    applied") ends the attempt `unknown` (reason code `wizard_possibly_submitted`). The
+    application goes to `submitted_unconfirmed` through `needs_user_action` (the sweeper's own
+    transitions) and every approval is retired. The sweeper abandons a wizard attempt with a
+    warning that the employer may hold the application, retires its approvals and never
+    re-pends it.
+  - **Never run again.** Once an attempt of the application passed the disclosure gate on a
+    wizard package, these refuse it with `wizard_draft_at_employer`: approving (before the
+    shortcut that returns a live approval), `require_valid_approval` (the queue route and the
+    standing rule), `enqueue` and `claim`. The record is the attempt's disclosure stamp and its
+    immutable package, never evidence, so deleting the evidence changes nothing. It is scoped by
+    application and owner: another account on the same posting is not refused.
+  - **Refused, not decided:** a wizard rehearsal (approving one: `wizard_rehearsal_unsupported`;
+    the disclosure gate: `wizard_rehearsal`) and the standing rule on a wizard (claim, event
+    `claim_refused_rule_wizard`).
+  - **Guards for every adapter:** `fail_safe` never writes "Stopped before sending anything"
+    once the disclosure gate was passed; it abandons instead (no current path reaches it).
+    `pause_after_entry` refuses a wizard (defence only).
+  - **Adapter version `fixture-workday-2`, deliberately:** every live `fixture_workday` approval
+    (single-page ones too) is retired at queueing, and an attempt queued under version 1 is
+    refused at its gates.
+  - **Registry:** `fixture_workday`'s `multi_step` trait is "yes", and its scenario
+    `each_step_read_back_before_next` is `test_a_page_is_read_back_before_its_next`.
+- **Not changed:** the single-page Workday-style form and every existing mode (`wd_multi_step`
+  stays a checkpoint); `SCHEMA_VERSION` (3); `EXTRACTION_VERSION` (`html-v3`); every
+  non-wizard fingerprint and package hash; real Workday stays a manual handoff, blocked
+  externally.
+- **Not fixed, stated:**
+  - The FIXTURE ASSUMPTIONS above. On real Workday, later pages probably appear only after a
+    Next, so capture would not see their questions; and a draft may exist once My Information is
+    reached, before any Next.
+  - Never continued: after any wizard disclosure the only path is finishing on the employer's
+    site. This is the stricter branch of D132's open question, for wizard attempts only.
+  - A Next that silently posts to the submit address while the page stays the form is not
+    detected.
+  - An exception during a Next is recorded as a draft with ack `none`, and the attempt is
+    abandoned.
+  - A worker lost between seeing a confirmation and committing the quarantine is swept to
+    `abandoned`; its text warns that the employer may hold the application.
+  - A step quarantine has no `send_started_at`, so the inbox never proposes an email match for
+    it; the owner reconciles it by hand.
+  - "Never again" is per application: a second job row for the same posting, marked a different
+    role, runs again; deleting the account removes the record.
+  - Typing and autosave are not counted (D137).
+  - Branching follow-ups (item 5) and repeating My Experience records (item 7) are not built.
+  - Rehearsals are refused on wizards, so a real-destination wizard could never meet E6.
+  - One approval covers every page; it is re-checked at every gate, not given per page.
+  - The send gate does not itself check that every page's steps were authorized; the runner
+    reaches it only after the last page, and the stand-in refuses a submit without drafts 1 to 4.
+  - The version bump retires every live `fixture_workday` approval, single-page ones too.
+- **Tests:** `tests/test_workday_wizard.py` (17 rows, 33 cases), the receiver's ledger as the
+  oracle. Each check was removed in turn and its row's test failed; the first pass missed
+  three (the page-count rule, the page-order rule, `require_valid_approval`'s check), now
+  covered by two capture cases and a direct call. No adversarial review has been run on this
+  slice yet.
+- **Owner decisions unchanged (not built):** continuing a wizard after a stop (reopening the
+  draft needs the candidate's own sign-in); re-queueing under a kept approval (moot here: never
+  run again); rehearsing and then submitting on a wizard; a separate permission per page or one
+  approval (`docs/research/workday.md` and `docs/provider-architecture.md` disagree); whether the
+  standing rule may drive a wizard (refused at claim for now); whether every stop after data
+  entry should use the approval up for the other adapters (D132).
