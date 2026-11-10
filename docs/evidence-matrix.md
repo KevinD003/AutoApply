@@ -29,7 +29,7 @@ error, `exit` a killed worker. The receiver's ledger is the oracle for what reac
 ## A control NoEfforts cannot fill is refused when the form is read (D136, 2026-11-10; local only)
 
 Nothing here ran against a real page or a real account. Branch `capture-refusals` (from `main`
-53b28af). The second Greenhouse-style fixture is the stand-in: modes `gh2_native_select` and
+53b28af), merged as #45 (32c8f7c). The second Greenhouse-style fixture is the stand-in: modes `gh2_native_select` and
 `gh2_native_select_optional` render question_8104 as a native `<select>` (a FIXTURE ASSUMPTION), and
 the tests add a `<select multiple>` and a consent checkbox. The receiver's ledger is the oracle for
 what was submitted.

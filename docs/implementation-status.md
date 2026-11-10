@@ -85,7 +85,8 @@ real was run.
 | At the commit (f406fe8), after formatting | `pytest tests/test_capture_refusals.py tests/test_greenhouse_dom.py` (JUnit) | exit 0; JUnit 65 tests, 65 passed, 0 failures |
 | Lint, format, the tests that read the documents (after the last edit) | `ruff check .`, `ruff format --check .`, `pytest tests/test_doc_references.py tests/test_audit_inventory.py tests/test_provider_contracts.py tests/test_package_contract.py` | exit 0; ruff: all checks passed, 368 files already formatted; JUnit 49 passed, 0 failures |
 
-The full backend and e2e suites run in the pull request's CI. No frontend file changed.
+Merged as #45 (32c8f7c, tree as predicted); its CI passed all four jobs on 9602bda. No frontend file
+changed.
 
 ## A question the page shows after an earlier answer (D135, 2026-11-09; local only)
 
