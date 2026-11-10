@@ -1,8 +1,9 @@
 """Test-only fault injection. Ignored unless NOEFFORTS_ENV=test.
 
 NOEFFORTS_FAULT="point=action[,point=action]" with action `exit` (simulates SIGKILL: no
-cleanup, no commit), `sleep:<seconds>`, or `waitfile:<path>` (block until the file exists;
-`<path>.waiting` is created first, so a test can tell the worker really reached the point).
+cleanup, no commit), `raise` (an unexpected error at that point: RuntimeError), `sleep:<seconds>`,
+or `waitfile:<path>` (block until the file exists; `<path>.waiting` is created first, so a test
+can tell the worker really reached the point).
 """
 
 import os
@@ -21,6 +22,8 @@ def fault(point: str) -> None:
             continue
         if action == "exit":
             os._exit(137)
+        if action == "raise":
+            raise RuntimeError(f"injected fault at {point}")
         if action.startswith("sleep:"):
             time.sleep(float(action.split(":", 1)[1]))
         if action.startswith("waitfile:"):

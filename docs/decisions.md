@@ -5011,3 +5011,80 @@ audit-inventory and export-completeness guards are updated and pass.
     disclosed;
   - an optional native dropdown is left blank and the application is sent once. Before this change
     the same attempt stopped as a form change ("widget"), with nothing disclosed.
+
+## D137 — What reached the employer stays recorded whatever fails after it (2026-11-10)
+
+- **Why:** rank 5, second half, of the Greenhouse + Workday automation loop (`docs/automation-loop.md`;
+  acceptance item 11: "other exceptions lose it"). Until now (on D136's branch, 9602bda, as on
+  `main` 53b28af) the runner recorded what filling disclosed only after the adapter's `fill`
+  returned, or from the `StoppedAfterDisclosure` it raised. So:
+  1. any other failure after an upload (a timeout typing a later answer, a browser error) ended the
+     attempt `abandoned`, "internal error", with no record that the résumé had reached the employer;
+  2. a worker killed after an upload (out of memory, a lost machine) left nothing either: the
+     sweeper abandoned the attempt with `disclosure_started_at` set and no disclosure recorded;
+  3. a failure during an upload, other than its acknowledgement timing out, was "internal error"
+     too, with no record of the document;
+  4. through the authorized API, a network failure after a document was sent lost the record of
+     it and of every document before it.
+- **Decided:**
+  - **Recorded as made:** each disclosure is recorded the moment the adapter makes it: an
+    acknowledged upload, a section control once entered, a location search once it completes or
+    stops, a document the API acknowledged. The runner's recorder writes it, fenced by the
+    attempt's generation (`_record_as_made`); adapters report through `ReportsDisclosures`. What
+    was recorded is never recorded again (`_not_yet`, by identity, not by equal content).
+  - **A failure during an upload is that upload's failure:** from the moment a document is handed
+    to the page (`_hand_over`, just before `set_input_files`), or its request is sent to the API,
+    any failure before its acknowledgement records it as possibly received (`ack` `none` on a
+    page, `no_response` through the API) and stops the attempt as an upload failure ("a document
+    upload was interrupted", "the API did not answer a document upload"). That includes an API
+    answer that redirects: the request had arrived. A failure before the hand-over (an adapter or
+    package bug) stays the internal error it was, with nothing recorded; so does a refusal before
+    anything was sent (the API destination not enabled, no credentials, an address the fixture
+    check refuses, a refused connection).
+  - **The API's application draft too:** the answers it carries are recorded as possibly received
+    when its request fails after sending (`no_response`), or when the API answers that it did
+    not create it (`not_created`).
+  - **Diagnostics kept:** an upload stop that wraps another error logs that error's type and
+    where it was raised, never its message (as the runner's internal-error log does).
+  - **A worker that lost its authority stops at its next disclosure:** the fence refuses the
+    recording (`LostAuthority`), so it no longer fills on until its next fenced write.
+- **Not changed:**
+  - an attempt that disclosed anything still ends `abandoned` and is never retried (no retry after
+    `disclosure_started_at`);
+  - what is recorded: the same evidence, each disclosure once, in the same order, so rehearsal
+    evidence checks are unchanged;
+  - the package (`SCHEMA_VERSION` 3), the approvals, the gates, the fencing and the lock order.
+- **Not fixed, stated:**
+  - a worker killed while a disclosure is in flight records nothing for it: a document handed over
+    whose acknowledgement was not yet read (up to `navigation_timeout_seconds` on a page, up to
+    `api_timeout_seconds` through the API), a location search not yet complete. The same holds for
+    a worker whose lease lapses there: filling does not renew it, so the fence refuses the record.
+    The sweeper still abandons the attempt (`disclosure_started_at` is set), which is never
+    retried; only the receiver's ledger shows whether the document arrived. Recording a pending row
+    before the hand-over would change what evidence holds and its order, which this decision keeps;
+  - a failure inside the browser's hand-over itself (for example a missing or duplicated file
+    input) counts the document as possibly received, though it may not have been sent;
+  - a section control whose entry failed midway is not recorded: only entered ones are;
+  - typing an answer is not a disclosure in NoEfforts' evidence. A page that saves as you type
+    sends it anyway, which only the receiver's ledger counts (its autosave mode);
+  - the section path has no failure test of its own: its normal path is covered by the section
+    suites, and the recorder is the same.
+- **Tests** (`test_disclosure_evidence.py`, the receiver's ledger as the oracle; fault points
+  `after_disclosure_recorded` and `during_upload`, and the fault action `raise`, test-only):
+  - a completed run records each disclosure once;
+  - an unexpected error after an upload keeps its evidence on the generic form, on Greenhouse's
+    id-only page and through the API; the attempt is abandoned and never retried;
+  - a worker killed after an upload leaves its evidence; the sweeper abandons the attempt, which is
+    never retried;
+  - an error during an upload counts the document as possibly received on the generic form, on
+    Greenhouse's id-only page, on the Workday-style page and on the first Greenhouse-style page;
+  - a failure before the document is handed over stays an internal error, with nothing recorded;
+  - an upload stop logs its cause's type and place, never its message;
+  - through the API, only a refusal before anything was sent counts as never arrived;
+  - through the API, a draft or a document received and then answered with a redirect, and a draft
+    the API received but did not create, are recorded (the receiver's ledger shows each arrived).
+- **Review:** an adversarial review before merging (five reviewers, two skeptics per finding)
+  upheld eight minor findings and no blocker; the decided points above on the hand-over, the API
+  redirect and draft, the diagnostics, and the first item under "Not fixed, stated" come from it. A second round over those fixes (two reviewers, two skeptics
+  per finding) upheld three minor findings, fixed too: the log test now checks the cause's place, a
+  table test pins which API failures count as never arrived, and the validation is recorded.

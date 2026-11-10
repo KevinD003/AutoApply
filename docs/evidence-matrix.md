@@ -9,10 +9,32 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## What reached the employer stays recorded whatever fails after it (D137, 2026-11-10; local only)
+
+Nothing here ran against a real page or a real account. Branch `disclosure-evidence` (from D136's
+branch, 9602bda). Failures are injected with `NOEFFORTS_FAULT` (test-only): `raise` an unexpected
+error, `exit` a killed worker. The receiver's ledger is the oracle for what reached the employer.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| A completed run records each disclosure once (recorded as made, never again after filling) | `test_a_completed_run_records_each_disclosure_once` | evidence rows |
+| An unexpected error after an upload keeps its evidence; the attempt is abandoned and never retried | `test_an_unexpected_error_after_an_upload_keeps_its_evidence` | receiver ledger: 1 upload, 0 accepted; evidence row |
+| A worker killed after an upload leaves its evidence; the sweeper abandons it, never retried | `test_a_worker_killed_after_an_upload_leaves_its_evidence` | receiver ledger; evidence row written before the exit |
+| An error during an upload counts the document as possibly received | `test_an_error_during_an_upload_counts_the_document_as_possibly_received` | evidence `ack` `none`; 0 accepted |
+| The same on Greenhouse's id-only page | `test_on_greenhouse_pages_an_error_after_an_upload_keeps_its_evidence` | receiver ledger: 1 upload |
+| Through the authorized API: an error after a document keeps its evidence | `test_through_the_api_an_error_after_a_document_keeps_its_evidence` | receiver ledger: the document arrived; evidence rows |
+| Through the API: a document sent with no answer counts as possibly received | `test_an_api_upload_without_an_answer_counts_as_possibly_received` | evidence `ack` `no_response`; receiver ledger: it arrived |
+| An error during an upload counts it as possibly received on Greenhouse's id-only page, the Workday-style page and the first Greenhouse-style page | `test_on_each_page_adapter_an_error_during_an_upload_counts_it` | evidence `ack` `none`; 0 accepted |
+| A failure before the document is handed over stays an internal error, with nothing recorded | `test_a_failure_before_the_document_is_handed_over_stays_an_internal_error` | evidence: none; receiver ledger: nothing |
+| An upload stop logs its cause's type and place, never its message | `test_an_upload_stop_keeps_the_type_and_place_of_what_caused_it` | log record |
+| Through the API, only a refusal before anything was sent counts as never arrived (destination not enabled, no credentials, an address the fixture check refuses, a refused connection); a redirect, a reset, a timeout, a closed or broken answer may have arrived | `test_only_a_request_refused_before_sending_counts_as_never_arrived` | unit (`_may_have_arrived`) |
+| Through the API, a draft or a document received then answered with a redirect, and a draft received but not created, are recorded | `test_through_the_api_a_request_answered_badly_after_it_arrived_is_recorded` | evidence `no_response` / `not_created`; receiver ledger: each arrived |
+| Each test fails without its change | the recorder not installed: 4 of the first 7 fail; an interrupted upload not converted: 1; the API's unanswered upload not converted: 1; disclosures recorded again after filling: 1. Review fixes: a redirect treated as refused: 2; the uncreated draft unrecorded: 1; conversion before the hand-over: 1; the hand-over mark removed: 2 on the generic form, 1 each on the other three page adapters; the cause not logged: 1 | recorded in `docs/automation-loop.md` |
+
 ## A control NoEfforts cannot fill is refused when the form is read (D136, 2026-11-10; local only)
 
 Nothing here ran against a real page or a real account. Branch `capture-refusals` (from `main`
-53b28af). The second Greenhouse-style fixture is the stand-in: modes `gh2_native_select` and
+53b28af), merged as #45 (32c8f7c). The second Greenhouse-style fixture is the stand-in: modes `gh2_native_select` and
 `gh2_native_select_optional` render question_8104 as a native `<select>` (a FIXTURE ASSUMPTION), and
 the tests add a `<select multiple>` and a consent checkbox. The receiver's ledger is the oracle for
 what was submitted.

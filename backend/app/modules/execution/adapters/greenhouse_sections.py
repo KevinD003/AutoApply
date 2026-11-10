@@ -379,7 +379,7 @@ def _apply_op(page, op: FillOp, timeout_ms: int) -> None:
 
 
 def apply_section_plan(
-    page, plan: SectionPlan, section_root: str, *, timeout_ms: int = 3000
+    page, plan: SectionPlan, section_root: str, *, timeout_ms: int = 3000, on_entered=None
 ) -> list[dict]:
     """Fill a planned section on ``page``, reading back every control, and return a per-row/field
     record of what was entered (field names only -- never the applicant's values) for the attempt
@@ -397,6 +397,8 @@ def apply_section_plan(
             for op in row.ops:
                 _apply_op(page, op, timeout_ms)
                 entered.append({"row": row.row, "field": op.field})
+                if on_entered is not None:  # D137: reported as soon as it is entered
+                    on_entered(entered[-1])
     except SectionFillError as e:
         # Preserve what was already entered (disclosed on the form) so a mid-fill stop is never
         # reported as "nothing disclosed": the caller records these and abandons the attempt.

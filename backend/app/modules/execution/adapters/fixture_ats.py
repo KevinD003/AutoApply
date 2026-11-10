@@ -1,12 +1,14 @@
 """Adapter for the local synthetic ATS receiver (fixtures/ats_receiver). Fixture-only."""
 
 from dataclasses import dataclass
+from functools import partial
 from urllib.parse import urljoin, urlsplit
 
 from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PWTimeout
 
+from app.modules.execution.faults import fault
 from app.modules.preparation.forms import (
     BOT_CHECK_KEY,
     FormSchema,
@@ -28,7 +30,23 @@ def _sel(key: str) -> str:
     return f'[name="{key}"]'
 
 
-class FixtureAtsAdapter:
+class ReportsDisclosures:
+    """D137: an adapter reports each disclosure the moment it makes it. The runner sets
+    `on_disclosure` to its recorder (fenced by the attempt's generation), so neither a failure
+    later in filling nor a worker lost after it can lose the evidence that something reached the
+    employer (a worker killed while a disclosure is still in flight records nothing for it).
+    Without a recorder (a direct call), the evidence is only returned, as before."""
+
+    on_disclosure = None  # the runner's recorder, set for each attempt
+
+    def _disclosed(self, d: dict) -> dict:
+        if self.on_disclosure is not None:
+            self.on_disclosure(d)
+        fault("after_disclosure_recorded")
+        return d
+
+
+class FixtureAtsAdapter(ReportsDisclosures):
     name = "fixture_ats"
     confirmation_strength = "employer_receipt"
 
@@ -83,7 +101,7 @@ class FixtureAtsAdapter:
                 continue
             if a["type"] == "file":
                 try:
-                    disclosures.append(self._fill_one(page, a))
+                    disclosures.append(self._disclosed(self._fill_one(page, a)))
                 except UploadFailed as e:
                     e.disclosures[:0] = disclosures  # the uploads before it were sent too
                     raise
@@ -96,24 +114,51 @@ class FixtureAtsAdapter:
                 continue  # readback will flag this key
         return disclosures
 
+    def _upload(self, field: str, attach) -> dict:
+        """D137: one upload. `attach` sends it and returns its evidence, or raises UploadFailed.
+        Any other failure once the document was being handed to the page (`_hand_over`; a
+        browser error, a page that broke) is that upload's failure with no acknowledgement: the
+        document may have reached the employer. A failure before that point (an adapter or
+        package bug) is the internal error it was."""
+        self._handing_over = False
+        try:
+            return attach()
+        except UploadFailed:
+            raise
+        except Exception as e:
+            if not self._handing_over:
+                raise
+            sent = upload_evidence(self.content, field, ACK_NONE)
+            raise UploadFailed("a document upload was interrupted", [sent]) from e
+
+    def _hand_over(self) -> None:
+        """D137: called just before the document is handed to the page (set_input_files): from
+        here, whatever happens, it may have reached the employer."""
+        self._handing_over = True
+
+    def _attach_file(self, page: Page, key: str, loc) -> dict:
+        name, ctype, data = self.documents[key]
+        self._hand_over()
+        loc.set_input_files(files=[{"name": name, "mimeType": ctype, "buffer": data}])
+        fault("during_upload")
+        try:
+            page.wait_for_function(
+                "() => { const s = document.getElementById('upload-status');"
+                " return s && (s.dataset.uploadId || s.dataset.uploadError); }"
+            )
+        except PWTimeout:
+            sent = upload_evidence(self.content, key, ACK_NONE)
+            raise UploadFailed("a document upload was not acknowledged", [sent]) from None
+        if page.locator("#upload-status").get_attribute("data-upload-error"):
+            sent = upload_evidence(self.content, key, ACK_ERROR)
+            raise UploadFailed("a document upload failed", [sent])
+        return upload_evidence(self.content, key, ACK_SHOWN)
+
     def _fill_one(self, page: Page, a: dict) -> dict | None:
         v, key, t = a["value"], a["key"], a["type"]
         loc = page.locator(_sel(key))
         if t == "file":
-            name, ctype, data = self.documents[key]
-            loc.set_input_files(files=[{"name": name, "mimeType": ctype, "buffer": data}])
-            try:
-                page.wait_for_function(
-                    "() => { const s = document.getElementById('upload-status');"
-                    " return s && (s.dataset.uploadId || s.dataset.uploadError); }"
-                )
-            except PWTimeout:
-                sent = upload_evidence(self.content, key, ACK_NONE)
-                raise UploadFailed("a document upload was not acknowledged", [sent]) from None
-            if page.locator("#upload-status").get_attribute("data-upload-error"):
-                sent = upload_evidence(self.content, key, ACK_ERROR)
-                raise UploadFailed("a document upload failed", [sent])
-            return upload_evidence(self.content, key, ACK_SHOWN)
+            return self._upload(key, partial(self._attach_file, page, key, loc))
         elif t in ("radio",):
             page.locator(f'input[name="{key}"][value="{v["option"]}"]').check()
         elif t == "checkbox_group":

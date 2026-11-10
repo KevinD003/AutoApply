@@ -8,6 +8,7 @@ refused before disclosure (schema mismatch, CAPTCHA) or was already a checkpoint
 preparation (unsupported controls).
 """
 
+from functools import partial
 from urllib.parse import urljoin, urlsplit
 
 from playwright.sync_api import Error as PWError
@@ -25,6 +26,7 @@ from app.modules.execution.adapters.fixture_ats import (
     UploadFailed,
     upload_evidence,
 )
+from app.modules.execution.faults import fault
 from app.modules.preparation.forms import Condition, FieldType, FormField, Option
 from app.modules.preparation.greenhouse import comparable, rendered_schema
 
@@ -136,7 +138,8 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
                 page.locator(f'[name="{a["key"]}"]').first.wait_for(state="visible")
             if a["type"] == "file":
                 try:
-                    disclosures.append(self._attach(page, a))
+                    attach = partial(self._attach, page, a)
+                    disclosures.append(self._disclosed(self._upload(a["key"], attach)))
                 except UploadFailed as e:
                     e.disclosures[:0] = disclosures  # the uploads before it were sent too
                     raise
@@ -152,9 +155,11 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
     def _attach(self, page: Page, a: dict) -> dict:
         key = a["key"]
         name, ctype, data = self.documents[key]
+        self._hand_over()
         page.locator(f'input[type=file][name="{key}"]').set_input_files(
             files=[{"name": name, "mimeType": ctype, "buffer": data}]
         )
+        fault("during_upload")
         status = page.locator(f"#{key}-status")
         try:
             page.wait_for_function(
