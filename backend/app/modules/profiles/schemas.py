@@ -196,5 +196,6 @@ class SelfIdentificationOut(SelfIdentificationIn):
 
 
 class SelfIdentificationSaved(SelfIdentificationOut):
-    # D139: approvals the change retired at once; those applications wait for you again.
+    # D139: approvals the save retired at once by rebuilding the packages it could change
+    # (including one already out of date for another reason); those wait for you again.
     applications_to_approve_again: int = 0

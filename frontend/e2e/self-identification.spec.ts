@@ -81,7 +81,7 @@ test("a self-identification label with commas is saved and shown as one label", 
 // D139: opting in and withdrawing on the profile page. Turned off after you approved an
 // application it answered, the page says that application needs your approval again, and the
 // approval is retired at once: queueing it is refused until you approve it as it now stands.
-test("turning self-identification off after approving says which approval it retired", async ({ page }, info) => {
+test("turning self-identification off after approving says how many approvals it retired", async ({ page }, info) => {
   const email = `d139.${info.project.name}.${Date.now()}@example.com`;
   const reg = await page.request.post("/api/auth/register", { data: { email, password: "synthetic-password-1" } });
   expect(reg.status()).toBe(201);

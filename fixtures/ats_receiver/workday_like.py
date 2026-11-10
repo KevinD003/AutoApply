@@ -29,9 +29,12 @@ wd_verification (the final click is answered "verify your email"), wd_drift (a n
 question), wd_receipt_elsewhere (the confirmation is shown on another posting's page),
 wd_self_identify (D139: Voluntary Disclosures also asks veteran status and Hispanic or Latino
 origin, and a "Self Identify" section asks the disability question as three radios, all
-optional; the wordings follow the preparation fixture workday.html and the research proposal
-in docs/research/workday.md; wordings, values and placement are FIXTURE ASSUMPTIONS, no real
-Workday page was observed), wd_gender_required (D139: the
+optional; the step names, the gender options, "I am not a protected veteran" and the
+disability wordings follow the preparation fixture workday.html, the research proposal in
+docs/research/workday.md records an ethnicity question, veteran status and the disability
+form's three choices, and the Hispanic-or-Latino wording, "I am a protected veteran" and every
+value are this fixture's own: FIXTURE ASSUMPTIONS, no real Workday page was observed),
+wd_gender_required (D139: the
 gender question is required by the page and the server); and the
 shared modes validation_fail, error_before_accept, error_after_accept, drop_after_accept, delay,
 upload_fail and upload_fail_field. All tenants, postings and people are fictional.

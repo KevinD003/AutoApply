@@ -5149,10 +5149,13 @@ audit-inventory and export-completeness guards are updated and pass.
     saved answer does (D78): an approval of what changed is retired now, a queued application
     returns to awaiting approval, and the response says how many
     (`applications_to_approve_again`); the profile page says "N approved application(s) changed
-    and need your approval again". A change that alters nothing sent (a label no question on
-    the form matches) retires nothing. An application whose attempt a worker holds is not rebuilt
-    then (the worker owns its state); the gates rebuild the package themselves and refuse a
-    changed one, so nothing of what you withdrew is sent. `SCHEMA_VERSION` stays 3: the package
+    and need your approval again". The rebuild is a whole one: an approval whose package is
+    unchanged stays (a label no question on the form matches changes nothing sent), and one
+    already out of date for another reason (a profile edit made after approving, which does not
+    rebuild by itself) is retired by the same save, as a worker's gate would refuse it anyway;
+    the message counts both. An application whose attempt a worker holds is not rebuilt then (the
+    worker owns its state); the gates rebuild the package themselves and refuse a changed one, so
+    nothing of what you withdrew is sent from then on. `SCHEMA_VERSION` stays 3: the package
     content is unchanged.
   - **Shown on the receiver's ledger** (`tests/test_self_identification_ledger.py`; gh2 by id
     and through the pilot, and the Workday-style form):
@@ -5182,9 +5185,12 @@ audit-inventory and export-completeness guards are updated and pass.
   - **Fixtures (FIXTURE ASSUMPTIONS, never seen on a real page):** gh2 mode `gh2_eeo_required`
     (the screening job's Gender required by the job data, the page and the server); Workday-style
     modes `wd_self_identify` (veteran status and Hispanic or Latino origin under "Voluntary
-    Disclosures", the disability question as three radios under "Self Identify", all optional;
-    wordings from the preparation fixture `workday.html` and `docs/research/workday.md`) and
-    `wd_gender_required`.
+    Disclosures", the disability question as three radios under "Self Identify", all optional)
+    and `wd_gender_required`. The step names, the gender options, "I am not a protected veteran"
+    and the disability wordings follow the preparation fixture `workday.html`;
+    `docs/research/workday.md` records an ethnicity question, veteran status and the disability
+    form's three choices; the Hispanic-or-Latino wording, "I am a protected veteran" and every
+    value are this fixture's own.
 - **Not changed:** what your self-identification answers (D122, D131, D133), the precedence of a
   per-application choice, the standing rule's consent text, `SCHEMA_VERSION` (3).
 - **Not fixed, stated:**
@@ -5206,3 +5212,12 @@ audit-inventory and export-completeness guards are updated and pass.
     review page).
   - The Workday decline wording "I do not wish to answer" has no recorded public source; it is a
     fixture assumption.
+- **Review:** an adversarial review before merging (three reviewers, two skeptics per finding)
+  raised thirteen findings and upheld one, fixed: the decision said a save that changes nothing
+  sent retires nothing, but the rebuild is a whole one, so an approval already out of date for
+  another reason is retired by the same save; the text says so and a test pins it. The fixture's
+  account of where its Workday-style wordings come from is corrected too (the Hispanic-or-Latino
+  wording and "I am a protected veteran" are its own). The others were refuted: a worker holding
+  the attempt is told through the abandoned attempt's notice, not the profile page, as for any
+  other change (D78, D134), and the rest restate stated residuals or ask for more than D139
+  claims.

@@ -410,3 +410,27 @@ def test_on_workday_pages_a_required_gender_waits_for_you_and_dont_disclose_send
     assert approve(api, app_id).status_code == 200
     assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
     assert sent(receiver)["vd.gender"] == "Decline"
+
+
+def test_a_save_also_retires_an_approval_already_out_of_date_for_another_reason(api, receiver):
+    """The save rebuilds every package it could change, so an approval made stale by an edit that
+    does not rebuild by itself (your phone, changed after approving) is retired by the same save,
+    as a worker's gate would refuse it anyway; approved again, what is sent is what you now
+    have."""
+    self_id(api, ["Male"])
+    app_id = gh2_screening(api)
+    assert approve(api, app_id).status_code == 200
+    prof = api.get("/profile").json()
+    keep = ("full_name", "given_name", "family_name", "contact_email", "residence_country",
+            "residence_city", "links")  # fmt: skip
+    r = api.put("/profile", json={k: prof[k] for k in keep} | {"phone": "+1 555 0199"})
+    assert r.status_code == 200, r.text
+    assert len(live_approvals(app_id)) == 1  # the profile edit alone rebuilds nothing
+    assert self_id(api, ["Male"])["applications_to_approve_again"] == 1  # nothing about you changed
+    (reason,) = retired_reasons(app_id)
+    assert "phone" in reason and GENDER not in reason
+    nothing_sent(receiver)
+    assert approve(api, app_id).status_code == 200
+    assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
+    got = sent(receiver)
+    assert (got["phone"], got[GENDER]) == ("+1 555 0199", "1")
