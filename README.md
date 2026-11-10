@@ -53,6 +53,9 @@ supported for automatic submission. See
    ```bash
    cd backend && uv run celery -A app.worker worker --beat --loglevel=info
    ```
+   Started like this, one worker takes both queues: your applications and the scheduled jobs.
+   The Docker Compose stack runs them as two workers (`worker` and `scheduler`,
+   `docs/deployment.md`), so a scheduled job never waits behind an application.
 
 5. **Start the web app** (terminal 3):
    ```bash

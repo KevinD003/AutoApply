@@ -211,9 +211,9 @@ What happens with it:
 | You want to | Do | Takes effect |
 |---|---|---|
 | Stop one application | "Revoke approval" on its page, or "Cancel" in the Tracker | At the next gate, in the running worker: a queued attempt is cancelled; a running one stops before the next protected step (tested) |
-| Stop everything now | `docker compose stop worker` | Immediately: no further step is taken. An attempt that had passed the send gate becomes "submitted, unconfirmed", never retried |
-| Switch the pilot off | `NOEFFORTS_LIVE_GREENHOUSE_ENABLED=false`, then restart API and worker | At restart; a queued application then stops before anything is entered (tested) |
-| Withdraw a permission | Tell me. The register entry is removed by a reviewed change, then the API and worker are restarted | **At restart.** A running process keeps the register it imported, so stop the worker first if it must take effect now |
+| Stop everything now | `docker compose stop worker scheduler` | Immediately: no further step is taken. `worker` runs the applications; `scheduler` runs your standing rule and reads the mailbox, so stopping it too means nothing more is queued or read (D144). An attempt that had passed the send gate becomes "submitted, unconfirmed", never retried (it is marked so by `scheduler`, once the attempt's lease has run out: a few minutes at most, about ten if it was waiting for a verification code; with `scheduler` stopped too, when it next runs) |
+| Switch the pilot off | `NOEFFORTS_LIVE_GREENHOUSE_ENABLED=false`, then restart API, worker and scheduler | At restart; a queued application then stops before anything is entered (tested) |
+| Withdraw a permission | Tell me. The register entry is removed by a reviewed change, then the API, the worker and the scheduler are restarted | **At restart.** A running process keeps the register it imported, so stop the worker and the scheduler first if it must take effect now |
 | Let a permission lapse | Nothing: its end date | At the next protected step, in the running process (`covers` reads today's date each time; tested) |
 
 **Submitted, unconfirmed** means the final click happened but no confirmation was seen. The

@@ -74,17 +74,18 @@ NOT_PASSED = {
 def test_every_owner_setting_in_the_example_reaches_the_api_and_the_worker():
     """Compose reads .env only to fill in docker-compose.yml: a setting it does not name never
     reaches a container, so the documented switches (email, boards, drafting, discovery) would
-    stay off whatever .env says (found while checking D94)."""
+    stay off whatever .env says (found while checking D94). D144: the scheduler runs the
+    periodic tasks those switches turn on, so it gets every one of them too."""
     example = {k for k in checker().parse((ROOT / ".env.example").read_text())
                if k.startswith("NOEFFORTS_")}  # fmt: skip
     services = compose()["services"]
-    for name in ("backend", "worker"):
+    for name in ("backend", "worker", "scheduler"):
         env = services[name]["environment"]
         for key in sorted(example - set(NOT_PASSED)):
             assert key in env, (name, key)
             assert str(env[key]).startswith(f"${{{key}:-"), (name, key)  # from .env, or a default
+        assert "env_file" not in services[name], name
     assert set(NOT_PASSED) <= example
-    assert "env_file" not in services["backend"] and "env_file" not in services["worker"]
 
 
 def test_every_published_port_is_bound_to_this_machine_only():
@@ -101,7 +102,7 @@ def test_the_worker_and_web_app_start_only_once_the_api_is_healthy():
     services = compose()["services"]
     probe = " ".join(services["backend"]["healthcheck"]["test"])
     assert "/api/health" in probe and "ProxyHandler({})" in probe
-    for name in ("worker", "frontend"):
+    for name in ("worker", "scheduler", "frontend"):
         assert services[name]["depends_on"]["backend"] == {"condition": "service_healthy"}, name
     # Healthy implies migrated: the API starts only after `alembic upgrade head` succeeds.
     cmd = (ROOT / "backend" / "Dockerfile").read_text().splitlines()[-1]
@@ -233,14 +234,79 @@ def test_verify_local_reports_each_step_and_never_a_value(tmp_path):
         assert value not in out
 
 
+def _option(command: list[str], name: str) -> str | None:
+    """The value of a `--name=value` option of a Compose command, or None."""
+    values = [c.split("=", 1)[1] for c in command if c.startswith(f"--{name}=")]
+    assert len(values) <= 1, command
+    return values[0] if values else None
+
+
+def test_attempts_have_a_worker_of_their_own_and_the_schedule_runs_once():
+    """D144: two Celery workers. `worker` takes the attempts' queue and nothing else, with one
+    process per browser slot; `scheduler` takes the default queue, runs the schedule, and holds
+    neither the browser runner's token nor the egress control socket. Every queue the
+    application declares has exactly one worker, and the schedule exactly one."""
+    from app.worker import ATTEMPT_QUEUE, DEFAULT_QUEUE, celery_app
+
+    services = compose()["services"]
+    workers = {
+        name: s["command"] for name, s in services.items() if s.get("command", [""])[0] == "celery"
+    }
+    assert set(workers) == {"worker", "scheduler"}
+    for command in workers.values():
+        assert command[:4] == ["celery", "-A", "app.worker", "worker"], command
+    worker, scheduler = workers["worker"], workers["scheduler"]
+    taken = {"worker": _option(worker, "queues"), "scheduler": _option(scheduler, "queues")}
+    assert taken == {"worker": ATTEMPT_QUEUE, "scheduler": DEFAULT_QUEUE}
+    assert sorted(taken.values()) == sorted(q.name for q in celery_app.conf.task_queues)
+    assert "--beat" in scheduler and "--beat" not in worker
+    assert not any(c in ("-B", "-Q") or c.startswith("-Q") for c in worker + scheduler)
+    # One attempt process per browser slot: a second application waits in the queue for it.
+    slots = int(services["browser-runner"]["environment"]["MAX_SESSIONS"])
+    assert (int(_option(worker, "concurrency")), slots) == (1, 1)
+    assert int(_option(scheduler, "concurrency")) >= 1
+    # The names the smoke test's ping looks for (scripts/docker-smoke.sh).
+    assert _option(worker, "hostname") == "attempts@%h"
+    assert _option(scheduler, "hostname") == "scheduler@%h"
+    smoke = (ROOT / "scripts" / "docker-smoke.sh").read_text()
+    assert "wait_worker_ping 20 attempts scheduler" in smoke
+    assert "docker compose stop backend worker scheduler frontend" in smoke
+    # The scheduler is the API's environment and nothing more: no way to drive a browser.
+    assert services["scheduler"]["environment"] == services["backend"]["environment"]
+    browser_keys = [
+        k for k in services["scheduler"]["environment"] if "RUNNER" in k or "EGRESS" in k
+    ]
+    assert browser_keys == []
+    assert services["scheduler"]["volumes"] == ["storage:/data/storage"]
+    assert "networks" not in services["scheduler"]  # the application's network only
+    assert {k for k in services["worker"]["environment"] if "RUNNER" in k or "EGRESS" in k} == {
+        "NOEFFORTS_BROWSER_RUNNER_URL", "NOEFFORTS_BROWSER_RUNNER_TOKEN",
+        "NOEFFORTS_EGRESS_CONTROL_SOCKET", "NOEFFORTS_EGRESS_CONTROL_TOKEN",
+    }  # fmt: skip
+    assert services["worker"]["networks"] == ["default", "exec_control"]
+
+
+def test_the_execution_test_overlay_gives_both_workers_the_same_settings():
+    """D144: the relay's interval is read by the scheduler and the timeouts by the worker; the
+    two must agree on everything else (the mode, the fixture network, the code wait)."""
+    overlay = yaml.safe_load((ROOT / "docker-compose.execution-test.yml").read_text())
+    worker = dict(overlay["services"]["worker"]["environment"])
+    only_the_worker = worker.pop("NOEFFORTS_EXECUTION_TEST_DISABLE_INTERCEPTION")
+    assert only_the_worker == "${EXEC_TEST_DISABLE_INTERCEPTION:-false}"
+    assert overlay["services"]["scheduler"]["environment"] == worker
+    assert worker["NOEFFORTS_ENV"] == "test" and "NOEFFORTS_OUTBOX_RELAY_INTERVAL_SECONDS" in worker
+    assert set(overlay["services"]["scheduler"]) == {"environment"}
+
+
 def test_the_greenhouse_pilot_override_changes_only_what_it_says():
-    """D102: docker-compose.pilot.yml puts the API and worker in production mode and gives the
-    egress proxy, alone, an outbound network. The browser stays on its internal networks, the
-    pilot's switch and owner come from .env through the base file, and nothing else changes."""
+    """D102: docker-compose.pilot.yml puts the API, the worker and (D144) the scheduler in
+    production mode and gives the egress proxy, alone, an outbound network. The browser stays
+    on its internal networks, the pilot's switch and owner come from .env through the base
+    file, and nothing else changes."""
     base = compose()
     pilot = yaml.safe_load((ROOT / "docker-compose.pilot.yml").read_text())
-    assert set(pilot["services"]) == {"backend", "worker", "egress-proxy"}
-    for name in ("backend", "worker"):
+    assert set(pilot["services"]) == {"backend", "worker", "scheduler", "egress-proxy"}
+    for name in ("backend", "worker", "scheduler"):
         env = pilot["services"][name]["environment"]
         assert env == {"NOEFFORTS_ENV": "production",
                        "NOEFFORTS_LIVE_OWNER_EMAILS": "${NOEFFORTS_LIVE_OWNER_EMAILS:?name your "

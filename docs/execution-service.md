@@ -25,7 +25,12 @@ production refuses execution entirely. Results by revision are in "Verification"
 
 - **worker** (Celery): unchanged gates (approval, `disclosure_started_at`, `sending`, fencing by
   `generation`, no retry after an unknown final click). It has
-  `NOEFFORTS_BROWSER_ISOLATION=container`. For each attempt it:
+  `NOEFFORTS_BROWSER_ISOLATION=container`. Since D144 it takes only the attempts' queue, with
+  one process: the runner has one browser slot, so a second application waits in the queue
+  instead of holding a process. The schedule and every periodic task (the sweeper, the outbox
+  relay, the mailbox reader) run in a second Celery worker, **scheduler**, on the default
+  network only: it has no runner token and no control socket, and never drives a browser. For
+  each attempt the worker:
   1. checks the runner's `/health`: the sandbox self-check must have passed, and the runner's
      Playwright driver version must equal its own (otherwise it refuses with a message to
      rebuild the image);

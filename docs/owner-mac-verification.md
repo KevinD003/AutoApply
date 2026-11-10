@@ -28,7 +28,7 @@ The first run downloads and builds images, which can take 10–20 minutes. Later
 |---|---|
 | 1. `.env` | Reads `.env` and checks that the three secrets are set, long enough, not placeholders and not reused. Prints key names only. |
 | 2. Compose file | `docker compose config --quiet`: validates `docker-compose.yml` with your `.env`. Starts nothing. |
-| 3. Smoke test | Builds the images and starts a **separate, throwaway** project, `noefforts_smoke`, with its own volumes. It then checks the API, migrations, a synthetic sign-up, the web app, the worker, a restart, and a backup and restore. Finally it **removes that project and its volumes**. |
+| 3. Smoke test | Builds the images and starts a **separate, throwaway** project, `noefforts_smoke`, with its own volumes. It then checks the API, migrations, a synthetic sign-up, the web app, both workers (the one that runs applications and the scheduler), a restart, and a backup and restore. Finally it **removes that project and its volumes**. |
 
 It never reads or changes your own stack's data (its `pgdata` and `storage` volumes). It does not
 contact an employer, Freehire or an AI provider. It leaves the built images on your Mac:

@@ -23,7 +23,7 @@ cleanup() {
   rc=$?
   if [ "$rc" != 0 ]; then
     docker compose ps -a || true
-    docker compose logs --no-color --tail 150 worker browser-runner egress-proxy receiver || true
+    docker compose logs --no-color --tail 150 worker scheduler browser-runner egress-proxy receiver || true
     docker compose logs --no-color --tail 60 backend postgres || true
     # Repeat the scenario results last, so they are easy to find below the logs.
     [ -f "$RESULTS" ] && grep -E '^(PASS|FAIL|---) |"checks"' "$RESULTS" || true

@@ -40,4 +40,12 @@ expect fail "docker itself failing" env PATH="$tmp/bin:$PATH" bash -c "source '$
 # Docker or broker is needed.
 expect pass "worker answers pong" bash -c "source '$here/smoke_lib.sh'; WORKER_PING='echo pong'; WORKER_PING_SLEEP=0; wait_worker_ping 3 >/dev/null"
 expect fail "worker never answers, bounded" bash -c "source '$here/smoke_lib.sh'; WORKER_PING='echo Error: No nodes replied'; WORKER_PING_SLEEP=0; wait_worker_ping 2 >/dev/null"
+# D144: two workers, by name. Both must answer in one reply; one of them alone is a failure, and
+# so is a node whose name only ends with the wanted one.
+printf -- '->  attempts@a1: OK\n        pong\n->  scheduler@b2: OK\n        pong\n' >"$tmp/both"
+printf -- '->  attempts@a1: OK\n        pong\n' >"$tmp/one"
+printf -- '->  attempts@a1: OK\n        pong\n->  notscheduler@b2: OK\n        pong\n' >"$tmp/other-name"
+expect pass "both named workers answer" bash -c "source '$here/smoke_lib.sh'; WORKER_PING='cat $tmp/both'; WORKER_PING_SLEEP=0; wait_worker_ping 2 attempts scheduler >/dev/null"
+expect fail "only the attempts worker answers" bash -c "source '$here/smoke_lib.sh'; WORKER_PING='cat $tmp/one'; WORKER_PING_SLEEP=0; wait_worker_ping 2 attempts scheduler >/dev/null"
+expect fail "a different node name does not count" bash -c "source '$here/smoke_lib.sh'; WORKER_PING='cat $tmp/other-name'; WORKER_PING_SLEEP=0; wait_worker_ping 2 attempts scheduler >/dev/null"
 exit $fails

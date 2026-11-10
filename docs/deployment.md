@@ -5,7 +5,7 @@ Docker Compose stack. It is for one person on their own machine; it is not a pro
 deployment (no TLS, no public address, no managed secrets).
 
 **Verified so far:** the stack is built and started on every push in GitHub Actions (Linux
-runners): the `docker-smoke` job (API, migrations, sign-up, web app, worker, restart, and the
+runners): the `docker-smoke` job (API, migrations, sign-up, web app, both workers, restart, and the
 backup and restore commands of sections 5 and 7) and the `execution-compose` job (browser
 execution in its isolated containers against the synthetic receiver). On 2026-10-29 the cloud
 sandbox validated the Compose file and the secret checks with the Docker CLI (`docker compose
@@ -20,13 +20,21 @@ on the owner's Mac yet;** section 9 is how to do that.
 | `postgres` | the database (volume `pgdata`) | 127.0.0.1:5432 |
 | `redis` | the job broker | 127.0.0.1:6379 |
 | `backend` | the API; applies database migrations every time it starts | 127.0.0.1:8000 |
-| `worker` | background jobs (Celery with its scheduler); starts once the API is healthy | — |
+| `worker` | runs your applications (attempts) and nothing else: one at a time, one browser; starts once the API is healthy | — |
+| `scheduler` | every other background job, on its schedule: recovery of stopped attempts, the queue relay, the mailbox, reminders, discovery; starts once the API is healthy | — |
 | `browser-runner` | the isolated browser, on internal networks only | — |
 | `egress-proxy` | the browser's only way out; no outbound network in this file | — |
 | `frontend` | the web app; starts once the API is healthy | 127.0.0.1:3000 |
 
 Every port is bound to 127.0.0.1, so nothing is reachable from another machine. Uploaded files
 live in the `storage` volume.
+
+Two workers, on purpose (D144). An application being sent may keep its worker for a long time:
+when the employer emails a verification code, it waits for you to enter it (ten minutes by
+default). `worker` therefore does only that, and `scheduler` does everything else, so the
+mailbox is still read, stopped attempts are still recovered and queued applications are still
+published while one waits. A second application queued meanwhile waits its turn: there is one
+browser. `scheduler` has neither the browser runner's token nor the egress control socket.
 
 ## 2. Secrets and settings
 
@@ -117,11 +125,11 @@ Then open http://localhost:3000 and create an account.
 ```bash
 curl -fsS http://127.0.0.1:8000/api/health                       # {"status":"ok"}: API and database
 docker compose exec -T backend alembic current                   # ends with "(head)": schema current
-docker compose exec -T worker celery -A app.worker inspect ping   # "pong": worker on the broker
+docker compose exec -T worker celery -A app.worker inspect ping   # "pong" twice: attempts@… and scheduler@… on the broker
 docker compose ps                                                # every service "running"; backend "healthy"
 ```
 
-Logs: `docker compose logs --tail 100 backend worker`. They are written to carry no applicant
+Logs: `docker compose logs --tail 100 backend worker scheduler`. They are written to carry no applicant
 data (type-only error logging, route templates only), but treat them as private anyway.
 
 ## 5. Back up
@@ -149,13 +157,17 @@ docker compose up -d --build  # the API applies new migrations as it starts
 # 2. check (section 4)
 ```
 
+Upgrading from a version with one worker (before D144): `up -d --build` starts `scheduler` and
+restarts `worker` with its new role. An application queued but not yet started at that moment is
+passed on to the new worker; nothing needs doing by hand.
+
 ## 7. Roll back
 
 Restoring the backup taken before the upgrade is the supported rollback: it brings the code,
 the schema and the data back together. Anything done after that backup is lost.
 
 ```bash
-docker compose stop backend worker frontend       # nothing writes while you restore
+docker compose stop backend worker scheduler frontend   # nothing writes while you restore
 git checkout <the commit you ran before>
 docker compose build
 docker compose up -d postgres redis
@@ -164,8 +176,13 @@ docker compose exec -T postgres createdb -U postgres noefforts
 docker compose exec -T postgres pg_restore -U postgres -d noefforts --no-owner < backups/noefforts-<stamp>.dump
 docker compose run --rm --no-deps -T backend \
   sh -c 'find /data/storage -mindepth 1 -delete && tar xzf - -C /data/storage' < backups/storage-<stamp>.tgz
-docker compose up -d
+docker compose up -d --remove-orphans
 ```
+
+`--remove-orphans` matters when the older version had fewer services: rolling back to before
+D144, `scheduler` no longer exists in the file, and a leftover one must not keep running next
+to the older `worker` (it would take queued applications off the old queue and pass them to a
+queue the older worker does not read).
 
 The database is dropped and recreated rather than restored over (`pg_restore --clean` would
 leave tables that only the newer version had, and the older version's migrations would then

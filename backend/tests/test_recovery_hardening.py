@@ -20,7 +20,6 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
-import redis
 
 from app.core.config import Settings, get_settings
 from app.core.db import SessionLocal, utcnow
@@ -245,10 +244,9 @@ def test_at_the_time_limit_the_worker_process_is_ended_and_the_sweeper_decides(
     process is ended at the limit, the message is not redelivered, and the sweeper calls the
     outcome unknown. Nothing is ever sent again."""
     from app.worker import publish
-    from tests.test_celery_execution import Worker, claims, wait_state
+    from tests.test_celery_execution import Worker, claims, clean_broker, queued, wait_state
 
-    broker = redis.Redis.from_url(get_settings().redis_url)
-    broker.delete("celery", "unacked", "unacked_index")
+    broker = clean_broker()
     app_id = prepared_application(api, receiver)
     aid = queue(api, app_id)
     monkeypatch.setenv("NOEFFORTS_ATTEMPT_RUN_BUDGET_SECONDS", "30")
@@ -260,7 +258,7 @@ def test_at_the_time_limit_the_worker_process_is_ended_and_the_sweeper_decides(
         wait_state(aid, {"sending"})
         w.wait_log("Hard time limit (32s) exceeded", 90)
         time.sleep(4)  # if Celery were to redeliver or run it again, it would do so now
-        assert broker.llen("celery") == 0 and broker.hlen("unacked") == 0
+        assert queued(broker) == {"celery": 0, "attempts": 0} and broker.hlen("unacked") == 0
     finally:
         w.stop()
     assert "Soft time limit" not in w.text()

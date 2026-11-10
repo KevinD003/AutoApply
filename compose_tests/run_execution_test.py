@@ -220,6 +220,19 @@ def worker_check() -> dict:
     return json.loads(out.strip().splitlines()[-1])
 
 
+def active_queues() -> dict:
+    """D144: what each Celery worker that answers takes: {node name before the @: [queues]}."""
+    out = compose("exec", "-T", "worker", "celery", "-A", "app.worker", "inspect",
+                  "active_queues", "--json", "--timeout", "5")  # fmt: skip
+    nodes = json.loads(out.strip().splitlines()[-1])
+    return {node.split("@")[0]: sorted(q["name"] for q in qs) for node, qs in nodes.items()}
+
+
+def waiting_in(queue_name: str) -> int:
+    """Messages waiting in a queue (a Redis list of that name)."""
+    return int(compose("exec", "-T", "redis", "redis-cli", "llen", queue_name).strip())
+
+
 # -- candidate and applications ---------------------------------------------------------------
 def candidate() -> Api:
     a = Api()
@@ -716,6 +729,65 @@ def s_greenhouse_security_code_flow():
           not [t for t in tmp if t.startswith("playwright")], tmp)  # fmt: skip
 
 
+def s_scheduler_runs_while_an_attempt_waits_for_its_code():
+    """D144: the worker takes only attempts and has one process, here held by an application
+    waiting for its emailed code. The scheduler keeps running the periodic tasks: it publishes a
+    second application, which then waits in the attempts' queue, unclaimed. Once the code is
+    entered both are submitted, once each."""
+    expected = {"attempts": ["attempts"], "scheduler": ["celery"]}
+    wait_for(lambda: active_queues() == expected, 60, 3)
+    takes = active_queues()
+    check("queues: the worker takes only attempts, the scheduler only the default queue",
+          takes == expected, takes)  # fmt: skip
+    receiver("config", {"mode": "gh_security_code"})
+    gh_slug, slug = "gh-examplehealth-4012001", f"queued-{uuid.uuid4().hex[:6]}"
+    before = ledger_for(gh_slug)["accepted"]
+    a = candidate()
+    first = greenhouse_app(a)
+    second = generic_app(a, slug)  # prepared now: only its queueing falls inside the wait
+    queue(a, first)
+    cp = wait_for(
+        lambda: (
+            (x := attempt(a, first))
+            and next((c for c in x["checkpoints"] if c["status"] == "open"), None)
+        ),
+        120,
+    )
+    check("queues: the first application waits for its code", bool(cp))
+    if not cp:
+        return
+    queue(a, second)
+    published = wait_for(lambda: waiting_in("attempts") == 1, 20, 0.5)
+    check("queues: the scheduler published the second application while the worker was held",
+          bool(published), waiting_in("attempts"))  # fmt: skip
+    time.sleep(4)  # were another process free to take it, it would have by now
+    att2 = attempt(a, second)
+    check("queues: the second application waits in the attempts' queue, unclaimed",
+          bool(att2) and att2["state"] == "pending" and waiting_in("attempts") == 1,
+          att2 and att2["state"])  # fmt: skip
+    recent = compose("logs", "--no-color", "--since", "15s", "scheduler")
+    check("queues: the scheduler ran its periodic tasks meanwhile",
+          "Task noefforts.relay_outbox[" in recent, recent[-300:])  # fmt: skip
+    ran = compose("logs", "--no-color", "worker")
+    periodic = [t for t in ("relay_outbox", "sweep_attempts", "check_inbox", "auto_apply")
+                if f"Task noefforts.{t}[" in ran]  # fmt: skip
+    check("queues: the worker ran no periodic task", periodic == [], periodic)
+    code = ledger_for(gh_slug)["challenges"][-1]["code"]
+    a.ok("POST", f"/applications/{first}/checkpoints/{cp['id']}/code",
+         {"round": cp["round"], "code": code})  # fmt: skip
+    att1 = final_state(a, first)
+    check("queues: the first application confirmed once its code was entered",
+          att1 and att1["state"] == "confirmed", att1 and att1["state"])  # fmt: skip
+    att2 = final_state(a, second)
+    check("queues: the second application then ran and was confirmed",
+          att2 and att2["state"] == "confirmed", att2 and att2["state"])  # fmt: skip
+    counts = (ledger_for(gh_slug)["accepted"] - before, ledger_for(slug)["accepted"])
+    check("queues: the receiver counted one acceptance for each", counts == (1, 1), counts)
+    check("queues: nothing left waiting in either queue",
+          (waiting_in("attempts"), waiting_in("celery")) == (0, 0))  # fmt: skip
+    receiver("config", {"mode": "normal"})
+
+
 def s_hostile_page():
     before = canary_hits()
     receiver("config", {"mode": "hostile", "canary": "http://canary:8798"})
@@ -820,11 +892,16 @@ def s_worker_killed_mid_submit():
     compose("kill", "worker")
     closed = wait_for(lambda: runner_health()[1].get("sessions") == 0, 20, 0.5)
     check("worker loss: runner closed the orphaned browser within 20 s", bool(closed), runner_health())
-    compose("up", "-d", "--no-deps", "worker")
+    # D144: the sweeper runs in the scheduler, so the attempt is recovered while the worker is
+    # still down (before, nothing was swept until a worker ran again).
     att = final_state(a, app_id, timeout=180)
-    check("worker loss: swept to 'unknown' after the lease, not retried",
+    check("worker loss: swept to 'unknown' after the lease, the worker still down, not retried",
           att and att["state"] == "unknown" and att["retry_count"] == 0,
           att and (att["state"], att["outcome"]))  # fmt: skip
+    running = compose("ps", "--status", "running", "--format", "{{.Service}}").split()
+    check("worker loss: the worker was down while the scheduler swept",
+          "worker" not in running and "scheduler" in running, running)  # fmt: skip
+    compose("up", "-d", "--no-deps", "worker")
     check("worker loss: application quarantined as submitted_unconfirmed",
           a.ok("GET", f"/applications/{app_id}")["state"] == "submitted_unconfirmed")
     n = ledger_for(slug)["accepted"]
@@ -924,6 +1001,7 @@ SCENARIOS = [
     s_readonly_b3_dependency_policy_in_container,
     s_readonly_widget_inspection_in_container,
     s_greenhouse_security_code_flow,
+    s_scheduler_runs_while_an_attempt_waits_for_its_code,
     s_hostile_page,
     s_infrastructure_only_egress,
     s_unknown_then_duplicate_delivery,

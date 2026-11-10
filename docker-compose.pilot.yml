@@ -2,8 +2,8 @@
 #
 #   docker compose -f docker-compose.yml -f docker-compose.pilot.yml up -d
 #
-# The only changes: the API and worker run in production mode (the pilot itself is switched on
-# in .env: NOEFFORTS_LIVE_GREENHOUSE_ENABLED=true, for the account in
+# The only changes: the API, the worker and the scheduler run in production mode (the pilot
+# itself is switched on in .env: NOEFFORTS_LIVE_GREENHOUSE_ENABLED=true, for the account in
 # NOEFFORTS_LIVE_OWNER_EMAILS), and the egress proxy gets an outbound network so
 # the isolated browser can reach exactly the one board host of its session (public addresses
 # only, plus Greenhouse's static scripts and stylesheets). The browser container stays on its
@@ -18,6 +18,8 @@ services:
   backend:
     environment: *pilot-env
   worker:
+    environment: *pilot-env
+  scheduler:
     environment: *pilot-env
   egress-proxy:
     networks: [exec_egress, egress_out]

@@ -98,7 +98,8 @@ uv run python -m app.modules.discovery.watch list --email <your login>
 uv run python -m app.modules.discovery.watch stop --id <watch id>
 ```
 
-- The worker (`celery -A app.worker worker --beat`) must run, with the settings of "Live read"
+- The worker that runs the schedule must run (`celery -A app.worker worker --beat`; in the
+  Docker Compose stack it is the `scheduler` service, D144), with the settings of "Live read"
   above. Every 10 s it checks each watch that is due: newest postings first, at most two
   requests, stopping at a posting it already has. New ones are added to your jobs, credited
   "via freehire.me".

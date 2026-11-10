@@ -94,9 +94,16 @@ services:
       start_period: 60s
       retries: 24
 
+  # D144: two Celery workers. `worker` runs attempts and nothing else: its own queue, one
+  # process per browser slot (browser-runner below: one runner, MAX_SESSIONS=1), so a second
+  # application waits in the queue for the slot instead of holding a process. An attempt may
+  # keep its process for the whole wait for a verification code. `scheduler` runs the schedule
+  # (beat) and every periodic task (the sweeper, the outbox relay, the mailbox reader and the
+  # rest), and never an attempt, so none of them waits behind one. It holds neither the
+  # runner's token nor the egress control socket.
   worker:
     build: ./backend
-    command: ["celery", "-A", "app.worker", "worker", "--beat", "--loglevel=info", "--concurrency=2"]
+    command: ["celery", "-A", "app.worker", "worker", "--loglevel=info", "--queues=attempts", "--concurrency=1", "--hostname=attempts@%h"]
     environment:
       <<: *backend-env
       NOEFFORTS_BROWSER_RUNNER_URL: http://browser-runner:9330
@@ -105,6 +112,14 @@ services:
       NOEFFORTS_EGRESS_CONTROL_TOKEN: ${EGRESS_CONTROL_TOKEN:?set EGRESS_CONTROL_TOKEN in .env}
     volumes: [storage:/data/storage, egress_control:/run/egress-control:ro]
     networks: [default, exec_control]
+    depends_on:
+      backend: { condition: service_healthy }  # never on a database still being migrated
+
+  scheduler:
+    build: ./backend
+    command: ["celery", "-A", "app.worker", "worker", "--beat", "--loglevel=info", "--queues=celery", "--concurrency=2", "--hostname=scheduler@%h"]
+    environment: *backend-env
+    volumes: [storage:/data/storage]
     depends_on:
       backend: { condition: service_healthy }  # never on a database still being migrated
 
