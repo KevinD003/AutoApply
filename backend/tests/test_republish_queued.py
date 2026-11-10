@@ -271,6 +271,38 @@ def test_an_attempt_whose_message_was_lost_is_sent_once_it_is_published_again(ap
     assert receiver.ledger()["accepted"] == 1 and claims(aid) == 1
 
 
+def test_an_attempt_whose_worker_died_before_claiming_it_is_published_again(api, receiver):
+    """The worker's process dies after it received the message and before it claimed the
+    attempt (here it is told to, at that point). Celery acknowledges the message of a lost
+    process, so the broker has nothing left to hand out again, ever; and the attempt was never
+    claimed, so the sweeper has nothing to recover. Published again after the wait, another
+    worker runs it, once."""
+    from app.worker import publish
+
+    aid = queued_and_published(api, receiver, publish)
+    r = broker()
+    dying = Worker(fault="before_claim=exit", queues="attempts", concurrency=1)
+    try:
+        end = time.monotonic() + 60
+        while queued(r)["attempts"] or r.hlen("unacked"):  # taken, then acknowledged
+            assert time.monotonic() < end, dying.text()[-2000:]
+            time.sleep(0.2)
+    finally:
+        dying.stop()
+    assert attempt(aid).state == "pending" and claims(aid) == 0
+    swept = svc.sweep(publish_new=False)
+    assert (swept["repended"], swept["abandoned"], swept["unknown"], swept["failed"]) == (0,) * 4
+    assert receiver.ledger()["accepted"] == 0
+    age(aid, WAIT + 5)
+    assert svc.republish_waiting(publish) == 1
+    w = Worker(queues="attempts", concurrency=1)
+    try:
+        assert wait_state(aid, ENDED) == "confirmed"
+    finally:
+        w.stop()
+    assert receiver.ledger()["accepted"] == 1 and claims(aid) == 1
+
+
 def test_an_attempt_whose_message_was_not_lost_is_still_sent_once(api, receiver):
     """Published again while its first message is still in the queue: two messages, one claim,
     one submission. The receiver would accept a second one (it is told not to recognise a

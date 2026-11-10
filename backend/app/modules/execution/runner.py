@@ -192,6 +192,7 @@ def _rehearsal(attempt_id) -> bool:
 
 def run_attempt(attempt_id: str, worker: str) -> str:
     aid = uuid.UUID(attempt_id)
+    fault("before_claim")
     gen = svc.claim(aid, worker)
     if gen is None:
         log.info("attempt %s: delivery ignored (already claimed, finished or not eligible)", aid)
