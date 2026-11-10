@@ -141,6 +141,9 @@ def attach_form(
             if any(f.widget for f in schema.fields):
                 # D104: set only by the Greenhouse capture of a local stand-in, never by hand.
                 raise bad_request("Could not read the form: 'widget' is set by NoEfforts only")
+            if schema.wizard is not None:
+                # D142: set only by the Workday-style capture of the stand-in's wizard.
+                raise bad_request("Could not read the form: 'wizard' is set by NoEfforts only")
     except KeyError:
         raise bad_request("Unknown fixture") from None
     except (ExtractionError, ValidationError) as e:
