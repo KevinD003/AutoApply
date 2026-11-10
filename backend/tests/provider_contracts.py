@@ -259,6 +259,9 @@ SCENARIO_TESTS: dict[tuple[str, str], str] = {
     ("fixture_workday", "reconcile_never_resends"): _RECONCILE,
     ("fixture_workday", "confirmation_bound_to_attempt"):
         f"{_WD}::test_confirmation_bound_to_attempt",
+    # D142: the stand-in's multi-page wizard (multi_step "yes").
+    ("fixture_workday", "each_step_read_back_before_next"):
+        "tests/test_workday_wizard.py::test_a_page_is_read_back_before_its_next",
 }  # fmt: skip
 # What a scenario test must name to exercise its provider: its builder, or the provider itself.
 BUILDERS = {
