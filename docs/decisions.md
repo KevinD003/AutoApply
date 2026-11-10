@@ -5080,11 +5080,14 @@ audit-inventory and export-completeness guards are updated and pass.
     Greenhouse's id-only page, on the Workday-style page and on the first Greenhouse-style page;
   - a failure before the document is handed over stays an internal error, with nothing recorded;
   - an upload stop logs its cause's type and place, never its message;
+  - through the API, only a refusal before anything was sent counts as never arrived;
   - through the API, a draft or a document received and then answered with a redirect, and a draft
     the API received but did not create, are recorded (the receiver's ledger shows each arrived).
 - **Review:** an adversarial review before merging (five reviewers, two skeptics per finding)
   upheld eight minor findings and no blocker; the decided points above on the hand-over, the API
-  redirect and draft, the diagnostics, and the first item under "Not fixed, stated" come from it.
+  redirect and draft, the diagnostics, and the first item under "Not fixed, stated" come from it. A second round over those fixes (two reviewers, two skeptics
+  per finding) upheld three minor findings, fixed too: the log test now checks the cause's place, a
+  table test pins which API failures count as never arrived, and the validation is recorded.
 
 ## D138 — Saved answers on Greenhouse- and Workday-shaped forms, shown up to the employer (2026-11-10)
 

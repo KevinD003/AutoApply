@@ -4,8 +4,10 @@ fenced by the attempt's generation, not after filling ends; a failure during an 
 that document as possibly received. Faults use NOEFFORTS_FAULT (honoured only in tests). What
 reached the employer is read from the receiver's own ledger; local fixtures only."""
 
+import http.client
 import json
 import time
+import urllib.error
 import uuid
 from datetime import timedelta
 
@@ -14,9 +16,10 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.db import SessionLocal, utcnow
+from app.core.urlsafety import UnsafeURL
 from app.modules.execution import runner
 from app.modules.execution import service as svc
-from app.modules.execution.adapters import fixture_ats
+from app.modules.execution.adapters import fake_api, fixture_ats
 from app.modules.execution.models import Evidence, ExecutionAttempt
 from tests.execution_harness import (
     Receiver,
@@ -241,6 +244,8 @@ def test_an_upload_stop_keeps_the_type_and_place_of_what_caused_it(
         r.getMessage() for r in caplog.records if "stopped after disclosure by" in r.getMessage()
     ]
     assert "RuntimeError" in line and "injected fault" not in line  # the type, never the message
+    # ... and where: the fault raised in faults.py, inside the generic form's upload.
+    assert "faults.py:" in line and ":fault" in line and "fixture_ats.py:" in line
 
 
 @pytest.mark.parametrize(
@@ -271,3 +276,24 @@ def test_through_the_api_a_request_answered_badly_after_it_arrived_is_recorded(
     kinds = sorted(d["kind"] for d in led["disclosures"])
     assert kinds == ["api_draft"] + ["upload"] * documents  # it did arrive: rightly recorded
     assert led["accepted"] == 0
+
+
+@pytest.mark.parametrize(
+    ("error", "arrived"),
+    [
+        (fake_api.ApiRefused("the API destination is not enabled"), False),
+        (fake_api.ApiRefused("API credentials are not configured"), False),
+        (UnsafeURL("not a local test fixture origin"), False),
+        (urllib.error.URLError(ConnectionRefusedError(111, "refused")), False),
+        (fake_api._Redirected("the API redirected (HTTP 307); not followed"), True),
+        (urllib.error.URLError(ConnectionResetError(104, "reset")), True),
+        (TimeoutError("timed out"), True),
+        (http.client.RemoteDisconnected("closed"), True),
+        (json.JSONDecodeError("Expecting value", "x", 0), True),
+    ],
+    ids=lambda v: type(v).__name__ if isinstance(v, BaseException) else str(v),
+)
+def test_only_a_request_refused_before_sending_counts_as_never_arrived(error, arrived):
+    """D137: what the API route records as possibly received. A refusal before anything was
+    sent stays a refusal (nothing recorded); anything after sending may have arrived."""
+    assert fake_api._may_have_arrived(error) is arrived

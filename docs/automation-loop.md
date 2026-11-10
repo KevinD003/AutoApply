@@ -224,6 +224,10 @@ ranks:
 | D137 sabotage runs (each of four changes removed in turn) | each fails its tests: 4, 1, 1 and 1 of 7 |
 | D137: every suite that runs an attempt or uses an adapter, with the Celery and broker-failure suites (63 files, JUnit) | 1500 passed, 0 failures |
 | D137 at its commit: the new tests, upload evidence, sections end to end and rehearsal (JUnit) | 31 passed |
+| D137 after both review rounds: `pytest tests/test_disclosure_evidence.py` (JUnit) | 24 passed |
+| D137 review-fix sabotage runs (each of eight changes removed in turn) | each fails its tests: 2, 1, 1, 1, 1, 1 and 1 of 15; 2 of 24 |
+| D137 after both review rounds: the same 63 files (JUnit) | 1508 passed, 0 failures |
+| D137 at 929f94b: the new tests, upload evidence, the API route, sections end to end and rehearsal (JUnit) | 64 passed |
 
 ## Failed approaches and rejected designs
 
