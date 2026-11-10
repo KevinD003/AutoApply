@@ -65,8 +65,8 @@ Nothing real was run.
 | The new tests | `pytest tests/test_provider_reuse.py` (disposable database, JUnit) | exit 0; 4 passed (before and after the review's fixes) |
 | Each check removed in turn, at bfba231 (7 cases) | one change at a time, the 4 tests run, the file restored | reuse from saved answers switched off: 3 of 4 fail; the saved-answer scope check switched off: 1 (the shift test); all three of the shift's rules removed: 1 (the shift test); reuse keyed on the first 36 characters of the wording: 1 (the look-alike test); any one of the shift's three rules removed alone: 0, as D138 states |
 | The suites that use the fixtures it extends, before the review (8 files) | `pytest` on the bank, Greenhouse DOM and live, Workday, answer-brain, API-provider and bank-edit suites with the new tests (JUnit) | exit 0; JUnit 1325 tests, 1325 passed, 0 failures |
-| Every suite that loads the Greenhouse-style id-only or Workday-style fixture, with the bank, answer-brain, bank-edit and document suites, at bfba231 (44 files) | `pytest` on the files in the run's list (JUnit) | running; recorded here when it ends |
-| Lint, format, the tests that read the documents (after the last edit) | `ruff check .`, `ruff format --check .`, `pytest tests/test_doc_references.py tests/test_audit_inventory.py tests/test_provider_contracts.py tests/test_package_contract.py` | not yet run after this edit |
+| Every suite that loads the Greenhouse-style id-only or Workday-style fixture, with the bank, answer-brain, bank-edit and document suites, at bfba231 (44 files) | `pytest` on the files in the run's list (JUnit) | exit 0; JUnit 2210 tests, 2210 passed, 0 failures (41 min 44 s) |
+| Lint, format, the tests that read the documents (after the last edit) | `ruff check .`, `ruff format --check .`, `pytest tests/test_doc_references.py tests/test_audit_inventory.py tests/test_provider_contracts.py tests/test_package_contract.py` | exit 0; ruff: all checks passed, 370 files already formatted; JUnit 49 passed, 0 failures |
 
 The full backend and e2e suites run in the pull request's CI. No frontend file changed.
 
