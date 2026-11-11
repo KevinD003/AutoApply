@@ -405,8 +405,8 @@ def test_an_attempt_whose_message_was_not_lost_is_still_sent_once(api, receiver)
 def test_an_attempt_put_back_in_the_queue_can_still_be_revoked(api, receiver):
     """The sweeper puts back an attempt whose worker stopped before entering anything; its
     application still shows running. Revoking the approval stops it at once, as for any queued
-    attempt, and the application waits for you (D146 review: revoking it used to fail with an
-    error, and nothing was revoked)."""
+    attempt, and the application waits for a new approval (D146 review: revoking it used to
+    fail with an error, nothing was revoked, and the attempt would have run later)."""
     from app.modules.applications.models import Application
 
     app_id = prepared_application(api, receiver)
@@ -418,6 +418,6 @@ def test_an_attempt_put_back_in_the_queue_can_still_be_revoked(api, receiver):
     assert r.status_code == 200 and r.json()["revoke_effect"] == "cancelled", r.text
     assert attempt(aid).state == "cancelled"
     with SessionLocal() as db:
-        assert db.get(Application, uuid.UUID(app_id)).state == "needs_user_action"
+        assert db.get(Application, uuid.UUID(app_id)).state == "awaiting_approval"
     assert svc.claim(uuid.UUID(aid), "w2") is None and claims(aid) == 1
     assert receiver.ledger()["accepted"] == 0

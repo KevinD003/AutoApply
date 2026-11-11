@@ -1456,7 +1456,8 @@ def stop_for_revoke(db: Session, app: Application) -> str:
     send gate the submission may be in flight: revoking is refused. "none": no attempt.
     An attempt the sweeper put back in the queue (its worker stopped before entering anything)
     is pending while its application still shows running: it is cancelled the same way, and
-    the application waits for you (D146 review: it used to fail, and nothing was revoked)."""
+    the application moves as for a refused claim (D146 review: it used to fail, nothing was
+    revoked, and the attempt would have run later)."""
     att = _active_attempt(db, app.id)  # waits for a gate holding the attempt
     pk.lock_application(db, app.id)
     db.refresh(app)
