@@ -179,11 +179,15 @@ def test_a_list_that_has_settled_is_accepted_when_read_slowly(api, receiver, mon
 def test_a_page_that_keeps_changing_elsewhere_does_not_hold_up_a_settled_list(
     api, receiver, tick_ms
 ):
-    """D145: only changes to a list count. Something else on the page changes every 300 ms, or
-    every 600 ms: each dropdown's list is still read as settled, at the check and at the
-    choice, and the application is submitted with the approved options. (On the whole
-    document's record the 300 ms page would never settle. The 600 ms one would, in a stand-in's
-    longer window: the next test gives it a real page's.)"""
+    """D145: the page's record of changes to a list does not count changes elsewhere. Something
+    else on the page changes every 300 ms, or every 600 ms: in a stand-in's window each
+    dropdown's list is still read as settled, at the check and at the choice, and the
+    application is submitted with the approved options. (On the whole document's record the
+    300 ms page would never settle. The classification's own check of the whole document is
+    unchanged: a read within 150 ms of any change still waits, so a page changing something
+    every 250 to 300 ms can still have a list refused in a real page's shorter window,
+    depending on the reading pace, as before D145. The next test gives the 600 ms page a real
+    page's window.)"""
     app_id, aid, result = run(api, receiver, dd="click_popup", dd_tick_ms=tick_ms)
     assert result == "confirmed", attempt(aid).outcome_detail
     _approved_options_sent(api, receiver, app_id)
@@ -336,6 +340,19 @@ def test_a_control_that_is_gone_before_the_action_is_refused():
 
     with pytest.raises(dropdowns.Refused, match="the control disappeared"):
         dropdowns._observe(Gone(), "c", "click_control", 2)
+
+
+def test_a_control_absent_only_when_the_observer_is_installed_is_refused():
+    """The narrower race (D145 review): the control is absent at the instant the observer is
+    installed and back for every read after it. The reads would then see an earlier dropdown's
+    record, old and quiet, and take the list as settled; the control is refused instead."""
+
+    class Flickers(_ProbePage):
+        def evaluate(self, script, arg=None):
+            return None if script is ro._PRE_JS else super().evaluate(script, arg)
+
+    with pytest.raises(dropdowns.Refused, match="the control disappeared"):
+        dropdowns._observe(Flickers([5000]), "c", "click_control", 2)
 
 
 class _Canary(http.server.BaseHTTPRequestHandler):

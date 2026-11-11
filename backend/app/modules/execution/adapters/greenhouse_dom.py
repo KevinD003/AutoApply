@@ -798,8 +798,11 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             # D145: the page's own record of changes to a list, as for a dropdown (the probe's
             # observer, which only reads): "exactly one suggestion" is judged on a list the
             # page has not changed for STABLE_MS, not on reads that may have fallen in step.
-            if page.evaluate(ro._PRE_JS, key) is None:  # the control is gone: nothing typed
-                raise LocationStopped(LOCATION_FAILED, list(before))
+            try:  # before anything is typed: a stop here records no disclosure (D145 review)
+                if page.evaluate(ro._PRE_JS, key) is None:  # the control is gone
+                    raise LocationStopped(LOCATION_FAILED, list(before))
+            except PWError:
+                raise LocationStopped(LOCATION_FAILED, list(before)) from None
             # One input event with the whole approved text: what the page's search receives.
             page.locator(f'[id="{key}"]').fill(text, timeout=dropdowns._ACTION_MS)
             seen, waited, got = [], 0, None
