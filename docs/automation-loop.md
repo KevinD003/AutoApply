@@ -39,7 +39,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D144 attempts on a queue and a worker of their own; the schedule and the periodic tasks on another | merged (#53, 099642c, tree as predicted); its PR CI passed all four jobs on e40ee72, the Compose layout's first run |
 | D145 a dropdown's list settled by the page's own record of its last change to a list | merged (#54, 45c8229, tree as predicted); its PR CI passed all four jobs on 9315953 |
 | D146 an attempt still waiting to be taken is published again | merged (#55, 688c776, tree as predicted); its PR CI passed all four jobs on e1fb40a |
-| D147 a restored database comes up held, and nothing it restored runs | branch `restore-hold` (D146's branch merged in); reviewed twice; not merged |
+| D147 a restored database comes up held, and nothing it restored runs | merged (#56, b7f6c45, tree as predicted); its PR CI passed all four jobs on f102f50, the Docker smoke test's real dump and restore with the guide's checks among them |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -261,7 +261,7 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     step was rewritten. It also found that revoking an attempt the sweeper put back failed
     (there before D146): fixed, with a test.
 
-- **D147 (branch `restore-hold`, not merged).** Rank 20, a restored database comes up held:
+- **D147 (merged, #56).** Rank 20, a restored database comes up held:
   - the hazard D146's review found: a restored database cannot know what happened after its
     backup, and since D146 an application it shows as queued is published again and run, even
     if it was sent after the backup; one it shows as approved could be queued again, and the
@@ -314,7 +314,7 @@ waiting for codes never hold up the sweeper, the outbox relay and the mailbox re
 **D145** (rank 14, #54) settles a dropdown's list by the page's own record of its
 last change to a list, and **D146** (rank 15, #55) publishes again an attempt still
 waiting to be taken: two defects found on the way. Its review found that a restored database
-would then run again what it shows as queued: **D147** (rank 20, on its branch) makes a
+would then run again what it shows as queued: **D147** (rank 20, #56) makes a
 restored database come up held and end, without running it, everything it shows as queued
 or in progress. Next, ranks 12 and 13 (the Workday-style follow-up question and repeating
 records).
@@ -394,10 +394,11 @@ records).
   would publish that attempt again; only the rule is tested), and a broker that hangs instead
   of refusing.
 
-- **D147 (branch `restore-hold`):** the new tests (one with a real worker and broker, one with
+- **D147:** merged (#56, b7f6c45, tree as predicted). Locally: the new tests (one with a real
+  worker and broker, one with
   a real copy of a migrated database), the removal runs and the regression set, locally (Tests
   run below). The real dump and restore, and the guide's check, run only in CI
-  (`scripts/docker-smoke.sh`). Not tested: a restore NoEfforts cannot recognize (by design:
+  (`scripts/docker-smoke.sh`), and passed there on f102f50 (#56). Not tested: a restore NoEfforts cannot recognize (by design:
   the guide's check and `--force`), a PostgreSQL major upgrade or a move to another server
   (treated as a restore), the web app's display of the new feed item (its label only), a
   rollback across versions, two schedulers resolving at once on separate hosts (one advisory

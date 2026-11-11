@@ -43,7 +43,7 @@ file is named.
 | A restore NoEfforts cannot recognize; the command line | `test_force_resolves_a_database_restored_another_way` | `restore-resolve` without a restore: "not held"; with `--force`: what was queued is ended; `restore-status` shows it |
 | `--force` holds the database before anything else | `test_force_holds_the_database_before_anything_else` | a pass that stops before ending anything leaves the database held (its stamp of no database); the next pass resolves it |
 | A real worker never runs what a restored database queued | `test_a_worker_never_runs_what_a_restored_database_queued` | a real Celery worker takes the message while the database is held: refused; resolved, the attempt is over; receiver ledger: nothing |
-| A real dump and restore in the Compose stack, the guide's checks | `scripts/docker-smoke.sh` (CI only) | after the guide's restore, the app alone shows the database held; with the rest started, the scheduler resolves it (`restore-status`: not held, a `restored_at`). Recorded when the pull request's run has passed |
+| A real dump and restore in the Compose stack, the guide's checks | `scripts/docker-smoke.sh` (CI only) | after the guide's restore, the app alone shows the database held; with the rest started, the scheduler resolves it (`restore-status`: not held, a `restored_at`). Passed in the pull request's CI on f102f50 (#56) |
 | The stamp names no account | `tests/test_account.py` (the export decision) | the table is left out of the account export, with why; no account's rows name it |
 | Each part is needed | 39 changes, each in turn (D147 in `docs/decisions.md`) | each fails a test |
 
