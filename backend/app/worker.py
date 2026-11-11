@@ -36,6 +36,7 @@ is run from its own queue: a message for it that arrives on any other queue (one
 before this routing existed) is passed on to ATTEMPT_QUEUE, once, instead of being run there.
 """
 
+import logging
 import socket
 import uuid
 
@@ -51,6 +52,7 @@ from app.core.log_safety import install_worker_filters
 from app.modules.identity.models import UserSession
 
 settings = get_settings()
+log = logging.getLogger("noefforts.worker")
 DEFAULT_QUEUE = "celery"  # the schedule's tasks (Celery's own default name, kept)
 ATTEMPT_QUEUE = "attempts"  # D144: noefforts.execute_attempt, and nothing else
 celery_app = Celery("noefforts", broker=settings.redis_url, backend=None)
@@ -155,9 +157,15 @@ def execute_attempt(self, attempt_id: str, forwarded: bool = False) -> str:
     from app.modules.execution.browser import cleanup_stale_workdirs
     from app.modules.execution.runner import run_attempt
 
-    # D144: this host's own leftovers (a hard-killed worker's browser directories). The sweeper
-    # removes them too, but it may now run on another host, where it cannot see them.
-    cleanup_stale_workdirs()
+    # D144: this host's own leftovers (a hard-killed worker's browser directories; they exist
+    # only where the browser runs inside the worker, `browser_isolation=netns`). The sweeper
+    # removes them too, but it may now run on another host, where it cannot see them. It never
+    # decides whether the attempt runs: a task that failed here would be acknowledged with the
+    # attempt never claimed, and nothing would take it up again.
+    try:
+        cleanup_stale_workdirs()
+    except Exception as e:  # noqa: BLE001
+        log.warning("stale browser directories not removed (%s)", type(e).__name__)
     return run_attempt(attempt_id, f"{WORKER_ID}-{uuid.uuid4().hex[:6]}")
 
 

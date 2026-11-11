@@ -202,7 +202,15 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   - a message for an attempt on another queue (one waiting at an upgrade) is passed on once
     and never run there; a worker started without `-Q` still takes both (development, tests);
   - the smoke test asks both workers by name; the deployment guide and the owner's stop
-    controls name both (`docker compose stop worker scheduler` stops everything).
+    controls name both;
+  - an independent review (read-only, on 4788880) found no blocker. Fixed or recorded from
+    it: the mailbox guide mounted the token into `worker`, and the mailbox is now read by
+    `scheduler`; queued applications now wait in the broker while the worker is busy or
+    stopped, and `docker compose down` discards them (rank 15 is the fix); the cleanup before
+    the claim could fail the task and strand its attempt (guarded, tested); a Compose check
+    that would fail now and then; and the owner's "stop everything now", which named
+    `docker compose stop`: measured, a worker told to stop finishes and submits the
+    application in progress, so the table names `docker compose kill` now.
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
   Pausing there and later queuing one new attempt is a retry after `sending`, which CLAUDE.md
@@ -228,11 +236,14 @@ change to it retires its approvals at once. **D140** (rank 8, first half, #49) m
 education and work history reviewable and diffed, and **D141** (rank 8, second half, #50) adds an
 employment stand-in and react-select-safe section comboboxes. **D142** (rank 9, #51) fills
 the Workday-style multi-page wizard stand-in forward only, a gate before every
-step, and never runs an application entered there again. **D143** (rank 10, on its branch)
+step, and never runs an application entered there again. **D143** (rank 10, #52)
 hardens recovery: a run budget the runner checks itself, one task time limit and no soft limit,
-leases that follow progress, and verification requests that end with their attempt. Next,
-rank 11: attempts on a queue and worker of their own, so two attempts waiting for codes never
-hold up the sweeper, the outbox relay and the mailbox reader.
+leases that follow progress, and verification requests that end with their attempt. **D144**
+(rank 11, on its branch) gives attempts a queue and a worker of their own, so two attempts
+waiting for codes never hold up the sweeper, the outbox relay and the mailbox reader. Next,
+two small defects found on the way: rank 14 (a dropdown's list settled by the page's own
+record) and rank 15 (a queued attempt whose message was lost is published again), then ranks
+12 and 13 (the Workday-style follow-up question and repeating records).
 
 ## Unvalidated or partly validated changes
 
@@ -287,7 +298,9 @@ hold up the sweeper, the outbox relay and the mailbox reader.
   the suites that start workers, locally (Tests run below). The Compose layout (two workers,
   the smoke test's ping, the new and the tightened scenario) cannot be started here: there is
   no Docker daemon, so the `docker-smoke` and `execution-compose` jobs of its pull request are
-  its first and only run. `scripts/validate.sh all` was not run.
+  its first and only run. `scripts/validate.sh all` was not run. Not tested: a stop request in
+  Docker itself (the worker's reaction to the signal was measured without Docker; the ten
+  seconds are Docker's default); the pass-on's own publish failing; a rollback across versions.
 
 ## Tests run (this loop)
 
@@ -400,6 +413,13 @@ hold up the sweeper, the outbox relay and the mailbox reader.
 | D144: a probe outside the application, one process per case: two queues declared by name only, then each with its own exchange; a routed publish, a default one, one to exchange `celery` and key `celery` by name | by name only: 1 and 1, then 2 and 2; own exchange: 1 and 1, then 2 and 1 |
 | D144: the bindings test added; the by-name declaration against it | 3 passed; changed: 2 of the 3 fail |
 | D144 after the last edit: `ruff format .`, `ruff check .`, `ruff format --check .`; `scripts/test_smoke_lib.sh`; the tests that read the documents, `test_deployment_config.py` and `test_attempt_queue.py` (JUnit) | ruff clean (376 files unchanged); the script's 12 cases as expected; exit 0; 206 passed |
+| D144, independent review (read-only, on 4788880; nothing run) | no blocker; seven findings, each checked against the code, fixed or recorded (D144) |
+| D144: what a stop request does to an application in progress (a temporary test, not committed; a real worker; the signal `docker compose stop` sends first), before the send gate and before the final click | both times still running 3 s later, then `confirmed`, receiver accepted 1; the worker exited after it |
+| D144: a private `redis-server` 7.0.15, default settings: two items pushed, the stop signal, a restart | a snapshot saved before exiting; 2 items after the restart |
+| D144, the review's fixes: the tests that need no real worker (three files, `-k` as in `docs/implementation-status.md`; JUnit) | exit 0; 24 passed |
+| D144, the review's code fixes removed in turn on f62e72d (3 changes) | all 3 fail their test |
+| D144, the review's fixes: the suites that start real workers, `test_browser_isolation.py` and `test_recovery_hardening.py` (7 files, JUnit), on f62e72d | exit 0; 102 passed |
+| D144 after the review's last edit: `ruff format .`, `ruff check .`, `ruff format --check .`; `scripts/test_smoke_lib.sh`; the tests that read the documents, `test_deployment_config.py` and `test_attempt_queue.py` (JUnit) | ruff clean (376 files unchanged); the script's 12 cases as expected; exit 0; 208 passed |
 
 ## Failed approaches and rejected designs
 
@@ -462,12 +482,13 @@ hold up the sweeper, the outbox relay and the mailbox reader.
 
 ## Exact next action
 
-1. D144 (branch `attempt-queue`, `main` with D143 merged in): an independent review, then
-   its pull request; its Compose layout is first run by that pull request's CI.
+1. D144 (branch `attempt-queue`, `main` with D143 merged in), reviewed: its pull request; its
+   Compose layout is first run by that pull request's CI.
 2. Rank 14 (`docs/remaining-work.md`): a dropdown's list settled by the page's own record of
-   its last change, not by the reading interval. A defect found on the way, small, so before
-   ranks 12 and 13 (the Workday-style follow-up question and repeating records). Rank 15 (a
-   queued attempt whose message the broker lost) after those.
+   its last change, not by the reading interval. Then rank 15 (a queued attempt whose message
+   was lost is published again), which D144 makes more pressing. Both are small defects found
+   on the way, so before ranks 12 and 13 (the Workday-style follow-up question and repeating
+   records). Rank 16 (a stop request honoured before the next step) after those.
 3. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it

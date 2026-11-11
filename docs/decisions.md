@@ -5714,13 +5714,17 @@ audit-inventory and export-completeness guards are updated and pass.
     could cost a hop, never a loop or a lost attempt. A task called directly (no delivery) runs.
   - **The attempts' worker cleans its own host.** Before each attempt it removes the browser
     directories of processes that no longer exist. The sweeper did that, on the host it ran
-    on; it may now run elsewhere, where it cannot see them.
+    on; it may now run elsewhere, where it cannot see them. Such directories exist only where
+    the browser runs inside the worker (`browser_isolation=netns`); the Compose stack runs it
+    in its own service, so there the cleanup finds nothing. It never decides whether the
+    attempt runs: if it fails, that is logged (the error's type) and the attempt runs.
   - **The smoke test asks both workers by name** (`attempts@…`, `scheduler@…`), and the restore
     and rollback steps stop both.
-  - **The owner's controls name both** (`docs/activation-status.md` §8): stopping everything is
-    `docker compose stop worker scheduler` (`worker` alone stops the applications; `scheduler`
-    is what queues for the standing rule and reads the mailbox), and a changed switch or
-    register needs both restarted.
+  - **The owner's controls name both** (`docs/activation-status.md` §8): stopping everything
+    now is `docker compose kill worker scheduler` (`worker` alone ends the applications;
+    `scheduler` is what queues for the standing rule and reads the mailbox), and a changed
+    switch or register needs both restarted. Until the review below that row said `stop`, as
+    it had since D106; see "A stop request" under what is not fixed.
 - **What this changes for an application:** nothing in what is sent or when it may be sent.
   A second application queued while one runs now waits its turn (the Tracker says "queued")
   where it used to fail after 40 seconds and had to be queued again. An attempt whose worker
@@ -5730,11 +5734,24 @@ audit-inventory and export-completeness guards are updated and pass.
     adapter version; no migration.
   - A worker taking both queues (development, an older Compose file) behaves as before D144:
     its attempts can hold up its periodic tasks.
-  - A queued attempt whose message the broker loses stays queued until it is cancelled, as
-    before (nothing publishes a dispatched message again). The same holds if the broker fails
-    between a message being received on the wrong queue and its being passed on. An attempt now
-    waits in the broker for as long as the one before it runs, so this matters a little more
-    than it did; not built.
+  - **A queued attempt whose message is lost stays queued until it is cancelled**, as before
+    (nothing publishes a dispatched message again), and more is exposed to that than before.
+    The relay now runs in `scheduler`, so queued applications go on being handed to the broker
+    while `worker` is busy (one application may hold it for 23 minutes) or stopped, and wait
+    there; before D144 the relay stopped with the worker and they waited in the database.
+    `docker compose down` discards what the broker holds (it has no named volume); a broker
+    that is killed, or a power loss, loses what was queued since its last snapshot. The same
+    end awaits an attempt whose task fails after its message was received and before it was
+    claimed: the pass-on's own publish, were the broker to fail just then. The deployment guide
+    (§8) says what to do (cancel in the Tracker, approve again). Publishing a waiting attempt
+    again is rank 15, built next as a slice of its own; not here.
+  - **A stop request is not immediate.** `docker compose stop` asks a service to finish and
+    ends it ten seconds later. Measured on 2026-11-11 with a real worker: told to stop while an
+    application was before its send gate, and while one was before its final click, the worker
+    finished and submitted both (the receiver accepted each), then exited. The owner's table
+    promised "immediately" for `stop` since D106; it now names `docker compose kill`, which is
+    what the tests of a killed worker cover. A stop request honoured before the next protected
+    step is not built (rank 16).
   - While an application waits for the browser the Tracker says only "queued", not why.
   - More than one attempt at a time needs more browser runners and as many worker processes;
     not built, not tested.
@@ -5742,10 +5759,13 @@ audit-inventory and export-completeness guards are updated and pass.
     check can delay a sweep, each bounded by its 240-second limit.
   - Rolling back to a version before this one must remove the `scheduler` container
     (`--remove-orphans`, `docs/deployment.md` §7): left running beside an older worker it would
-    pass queued applications to a queue that worker does not read.
+    pass queued applications to a queue that worker does not read. What still waits in the
+    attempts' queue is not read by the older worker either; an application that was queued
+    when the backup was taken stays queued until it is cancelled. The smoke test restores onto
+    the same version: a rollback across versions is not exercised anywhere.
   - The Compose layout itself is exercised only in CI (the `docker-smoke` and
     `execution-compose` jobs): this sandbox has no Docker daemon.
-- **Tests:** `tests/test_attempt_queue.py` (11 cases: real Celery prefork workers on the run's
+- **Tests:** `tests/test_attempt_queue.py` (13 cases: real Celery prefork workers on the run's
   own Redis, the receiver's ledger as the oracle for what reached the employer), the Compose
   files read in `tests/test_deployment_config.py` (two new tests, three widened), three new
   cases in `scripts/test_smoke_lib.sh`, and, in CI only, one new Compose scenario and one
@@ -5758,5 +5778,37 @@ audit-inventory and export-completeness guards are updated and pass.
   workers' names, both overlays' settings; the smoke check's names (also against Celery's real
   reply) and the restore's stop. Not removable here: the two Compose scenarios, which only CI
   runs. Runs are listed in `docs/automation-loop.md`.
+- **Independent review (2026-11-10 and 11; a separate reviewer reading the change at 4788880,
+  changing and running nothing):** no blocker, and nothing in the files only CI runs that
+  would fail there for certain. Seven findings; each was checked against the code before
+  anything was changed.
+  1. *Queued applications now wait in the broker while the worker is busy or stopped, and
+     `docker compose down` discards them.* True: before D144 the relay stopped with the
+     worker. Said in the deployment guide (§8) and above; the fix is rank 15.
+  2. *The mailbox guide mounted the token into `worker`; the mailbox is now read by
+     `scheduler`.* True, and in exactly that setup it would have undone what D144 is for: no
+     code entered, the mailbox still shown as connected. The guide names `backend` and
+     `scheduler` (it said `api`, a service that does not exist), and the upgrade note says so.
+  3. *The cleanup ran unguarded before the claim* (found here too, separately): a directory
+     vanishing between its two looks failed the task, which acknowledges the message with
+     nothing claimed. The task now logs a failed cleanup and runs the attempt, and the cleanup
+     skips a directory that is gone; two tests, each failing without its fix.
+  4. *A Compose check required the default queue to be empty while the schedule feeds it every
+     second.* True; only the attempts' queue is checked.
+  5. *The new Compose scenario uses more of the stand-in stack's 45-second browser session
+     than the one it copies.* Plausible and not measurable here; its one deliberate wait is a
+     second now, not two.
+  6. *Statements the code did not support:* the smoke test's restore did not end as the
+     guide's does (it does now; the guide says no rollback across versions is exercised);
+     "API and worker" where the scheduler belongs (three places); the rollback note; and the
+     owner's stop row ("A stop request" above).
+  7. *Test gaps:* a failure before the claim (tested now for the cleanup; the pass-on's own
+     publish failing is described above and not tested); the cleanup tests used the machine's
+     temporary directory, where another run's worker could interfere (their own now); the
+     browser probe did not name `scheduler` among the hosts it must not reach (it does).
+
+  Left as it is: the guide's "verified … both workers" is true only once this change's own CI
+  has passed; it is merged only then.
 - **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
-  one.
+  one. One instruction to the owner changed: to stop everything now, `docker compose kill
+  worker scheduler` (`docs/activation-status.md` §8).

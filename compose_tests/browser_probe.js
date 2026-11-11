@@ -41,7 +41,7 @@ async function openPorts(host) {
 (async () => {
   const targets = [["postgres", 5432], ["redis", 6379], ["backend", 8000], ["frontend", 3000],
     ["receiver", 8799], ["canary", 8798], ["169.254.169.254", 80], ["1.1.1.1", 443],
-    ["worker", 8000], ["egress-proxy", 3128]];
+    ["worker", 8000], ["scheduler", 8000], ["egress-proxy", 3128]];
   const reach = {};
   for (const [h, p] of targets) reach[`${h}:${p}`] = await tcp(h, p);
   // A name lookup outside the stack would be a side channel (DNS exfiltration) even without
