@@ -307,6 +307,8 @@ separately, and record any server-side draft. D142: the Workday-style stand-in's
 7. Terms-and-conditions acknowledgement: a legal attestation, only the user ticks it.
 8. Search-as-you-type controls (school, skills) and custom dropdowns without evidence: unsupported.
 9. Branching questions that appear after an answer: re-extract, and stop if not understood.
+   D148 (stand-in only): one already in the page, hidden inside it at load, is read as one the
+   page shows by its own logic and entered only when shown; one a script adds is still a stop.
 10. A per-step validation error after data was sent: classify rejected or unknown; never resend.
 11. Any CAPTCHA or security prompt: hand off.
 12. A possible duplicate (same email and requisition, or an existing account with an application).

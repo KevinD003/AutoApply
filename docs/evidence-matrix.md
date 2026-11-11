@@ -9,6 +9,52 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A Workday-style follow-up question, entered only when the page shows it (D148, 2026-11-11; local only)
+
+Nothing here ran against a real page or a real account, and no real Workday follow-up question
+was observed. Branch `wizard-follow-up` (from D147's branch). The question and when it is shown
+are the stand-in's FIXTURE ASSUMPTION FA6 (`fixtures/ats_receiver/workday_like.py`). The
+receiver's ledger is the oracle for everything said to have reached the employer: its
+`draft_page` rows (a wizard page's Next) and its acceptances. The rows marked "a page set in the
+browser" drive the adapter on a page set in Chromium, with no receiver. Tests in
+`tests/test_workday_follow_up.py`.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| Capture marks a control hidden at load inside its page, by any of the markup signals, and nothing else | `test_capture_marks_a_question_hidden_inside_its_page` (8 cases) | `hidden`, `aria-hidden="true"`, `display: none`, `visibility: hidden !important` on a wrapper, and `hidden` on the control itself: `Condition(UNKNOWN_TRIGGER)`; a hidden sibling closed before it, `display: block` and `aria-hidden="false"`: no condition; the trigger never marked |
+| A checkpoint stays one; a hidden choice is marked (and never filled) | `test_capture_never_marks_a_checkpoint_and_marks_a_hidden_choice` | a hidden picker stays unsupported with no condition; a hidden radio group carries the condition |
+| A hidden file input, and a group with one option hidden, are never marked | `test_capture_never_marks_a_file_input_or_a_group_partly_shown` | the file input and the group carry no condition |
+| Only the application form, and only below it | `test_capture_reads_only_the_application_form` | a hidden wrapper around the whole form, and hidden controls of the same names outside it (a template, outside the form), mark nothing |
+| A wizard page hidden at load marks none of its questions | `test_a_wizard_page_hidden_at_load_marks_none_of_its_questions` | of every question on pages 2 to 4, only the follow-up carries the condition, on its page, optional |
+| Only you answer it, never saved for reuse | `test_it_is_yours_to_answer_and_never_saved_for_reuse` | blank and optional, open to your answer, neither bankable nor draftable, explained as shown by the page |
+| Required in the markup, it waits for your answer | `test_one_required_in_the_markup_waits_for_your_answer` | unresolved, approval refused; answered, nothing unresolved |
+| Shown, it is entered on its page and sent | `test_shown_it_is_entered_on_its_page_and_sent` | receiver ledger: drafts for pages 1 to 4, page 4's with the answer; the acceptance has it; every page read back with no mismatch; the check after the last Next matched |
+| Not shown, it is never entered or waited for | `test_not_shown_it_is_never_entered_or_waited_for` (answered or not) | Days chosen: page 4's draft and the acceptance hold it empty; confirmed |
+| Shown, optional and unanswered, it stays empty | `test_shown_optional_and_unanswered_it_stays_empty` | page 4's draft and the acceptance hold it empty; confirmed |
+| Shown, required and unanswered: the wizard page's Next is never clicked | `test_shown_required_and_unanswered_stops_before_its_next` | `abandoned` with the conditional-required text, naming no question; receiver ledger: drafts for pages 1 to 3 only, no POST to draft 4 or the submit; a gate before page 4's fill and none before its Next; no pause |
+| Required only once shown, and answered: still the approved form | `test_required_once_shown_and_answered_it_is_sent` | page 4's draft and the acceptance have the answer; confirmed |
+| Required in the markup and answered, but not shown | `test_required_in_the_markup_and_answered_is_entered_only_when_shown` | page 4's draft and the acceptance hold it empty; confirmed |
+| One the page now requires, approved optional: nothing is entered | `test_one_the_page_now_requires_stops_before_anything_is_entered` (wizard, single page) | `failed_safe` with an open form-change pause; receiver ledger: no disclosure, no acceptance; nothing entered |
+| One the page removes instead of hiding stops the attempt | `test_one_the_page_removes_instead_of_hiding_stops_the_attempt` (wizard, single page) | `abandoned`; receiver ledger: no submit; on the wizard drafts for pages 1 to 3 only, no POST to draft 4, the follow-up text |
+| One the page requires while hidden stops the attempt | `test_one_the_page_requires_while_hidden_stops_the_attempt` (wizard, single page) | `abandoned` with the "left empty" text; receiver ledger: no submit; on the wizard drafts for pages 1 to 3 only |
+| The same shape, shown, is sent | `test_one_the_page_requires_while_hidden_is_sent_once_shown` | the acceptance has the answer; confirmed |
+| An approval from before D148 pauses; a fresh read marks the question | `test_an_approval_from_before_d148_pauses_and_a_fresh_read_marks_it` | the capture simulated without the condition: `failed_safe`, receiver ledger empty; reading the form again ends the pause, and the package's row carries the condition |
+| A single page: shown, entered and sent | `test_single_page_shown_it_is_entered_and_sent` | the acceptance has the answer |
+| A single page: not shown, never waited for | `test_single_page_not_shown_it_is_never_waited_for` | the acceptance holds it empty; confirmed |
+| A single page: shown, required and unanswered pauses for your answer | `test_single_page_shown_required_and_unanswered_pauses_for_your_answer` | receiver ledger: no submit, no acceptance; an open `conditional_required` pause counting 1; the attempt entered data and never reached the send gate; the question now asks for your answer |
+| After filling, what the page shows is what was entered | `test_after_filling_what_the_page_shows_is_what_was_entered` (8 cases, a page set in the browser) | entered then hidden, or shown and answered but not entered: a stop; shown, required, unanswered and typed: `ConditionalRequired(1)`; a shown required choice: a stop that sends you to the employer's site; hidden, required and empty: a stop; shown optional unanswered, hidden and not entered, shown and entered: nothing |
+| Before filling, a shown one is left to the fill | `test_before_filling_a_shown_one_is_left_to_the_fill` (a page set in the browser) | at open, no finding; once filled, the same page is one |
+| A question hidden once answers were entered is the page's reaction | `test_a_question_the_page_hides_once_answers_were_entered_is_its_reaction` (a page set in the browser) | visible when approved, hidden now: before filling a changed form, after filling none |
+| The live form, shown or hidden; required compared before entry, the page's reaction after; its wording counts | `test_the_live_form_reads_as_approved_shown_or_hidden_and_once_filled_required_or_not` (a page set in the browser) | shown now: matches; required before entry: `FormChanged`; after entry: matches; reworded: `FormChanged` |
+| A removed one never waited for at readback | `test_readback_never_waits_for_a_question_the_page_removed` (a page set in the browser) | not entered: nothing to read; entered: did not keep its value; under 5 s |
+| Before a wizard page's Next, a removed or reworded one stops it | `test_before_a_wizard_page_s_next_a_removed_or_reworded_one_stops_it` (a page set in the browser) | removed: the follow-up stop; reworded while shown, optional and empty: "the form has changed"; as approved: nothing |
+| A wizard rechecks what its filled pages left empty | `test_a_wizard_rechecks_what_its_filled_pages_left_empty` (a page set in the browser) | another page filled: nothing; its own page filled, then required while empty: the "left empty" stop |
+| A shown one that cannot be typed into is never waited for | `test_a_shown_one_that_cannot_be_typed_into_is_never_waited_for` (a page set in the browser) | disabled: not entered, under 5 s; the check after filling stops it |
+| The readback catches a value the page put in one not entered | `test_readback_catches_a_value_the_page_put_in_one_not_entered` (a page set in the browser) | the follow-up reported |
+| An approved value for a hidden choice is refused before anything is entered | `test_an_approved_answer_to_a_choice_the_page_shows_by_itself_is_refused` (a page set in the browser) | refused, as D135; with no value: nothing |
+| Pages without such a question read as before | `tests/test_workday_wizard.py` (`test_non_wizard_fingerprints_are_unchanged`) and the suites the change touches | the default page's pinned fingerprint unchanged; the suites the change touches passed: 234 tests before the reviews, 302 after the first, 312 on 67e382f |
+| Each part is needed | 23 changes on 9c3bf1c, 30 on 4f90edc and 38 on 67e382f, each in turn (D148 in `docs/decisions.md`); one of the 38 (controls outside the form) failed a test only once its test covered a visible control of the same name outside the form (a9f4222) | each fails a test |
+
 ## A restored database comes up held, and nothing it restored runs (D147, 2026-11-11; local only)
 
 Nothing here ran against a real page or a real account. Branch `restore-hold` (from D146's

@@ -6363,3 +6363,153 @@ audit-inventory and export-completeness guards are updated and pass.
 - **Review:** two independent reviews (read-only). The first (on fcfa4f5) found no code blocker and one in the guide (a restore onto another server is not recognized whatever the commands), plus: a stamp the new server wrote first could hide the restore; what was queued ended as stopped before sending; the resumed rule could continue a restored application; `--force` held nothing until its first commit; approvals given while held were retired with a false reason. All fixed (e365797). The second (on e365797) found a blocker for CI (the stamp table had no account-export decision), and that the sweeper, cancelling, revoking and pausing could end what the backup shows in progress as stopped before resolution, and that a rehearsal's application escaped the quarantine: fixed (a6c1444). The rest of both reviews is recorded above.
 - **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
   one.
+
+## D148 — A Workday-style follow-up question: answered when the form is read, entered only when the page shows it (2026-11-11)
+
+- **Context:** rank 12 of the automation loop (item 5 for Workday). Local stand-ins only; nothing
+  real was run, and no real Workday follow-up question was observed. Documentation read by the
+  loop's research reader says follow-ups hang off a single-select answer, up to six levels
+  (docs/research/workday.md). No migration, no new state, no new reason code or text the
+  approvals use.
+- **Problem:**
+  - On the Workday-style stand-in, a question the page shows only after an earlier answer was
+    read as an ordinary question. A saved answer or a draft could answer it, though it may mean
+    something else after the answer that reveals it (D135's reason on Greenhouse).
+  - Filling then waited for the page to show it. When the page did not (another answer was
+    chosen), the wait ran out after data had been entered: the attempt ended as an internal
+    error, on a wizard with its earlier pages saved at the employer. This was untested.
+  - Nothing compared what the page showed after filling with what was entered.
+- **Decided:**
+  - **Capture marks it** (preparation/workday.py). A control of the application form is hidden
+    at load inside its page when it, or an element between it and the form, carries `hidden`,
+    `aria-hidden="true"` or an inline `display: none` or `visibility: hidden`. Such a control is
+    a question the page shows by its own logic, after an answer NoEfforts cannot name:
+    `Condition(UNKNOWN_TRIGGER)`, as D135 reads Greenhouse's.
+    - The markup is read on the generic extractor's own tree and its own choice of form: a
+      control outside that form (another form, a template) never marks one of its questions,
+      and what hides the whole form says nothing about one question.
+    - A wizard page's own `hidden` (every page but the first) says nothing about its questions.
+    - A checkpoint (a picker, a custom control) stays what it is, and so does a file input (a
+      page commonly hides its native one behind a button of its own; an upload never needs
+      it shown).
+    - A group (radios, checkboxes) is marked only when every control of it is hidden.
+    - The markup is read, never run: a question a stylesheet class or a script hides is not
+      seen, as before.
+  - **Answering is D135's, unchanged.** A typed one is answered only by you, for this
+    application, or by an approved profile fact. It is never answered from a saved answer or
+    a draft, and never saved for reuse.
+    - Required in the markup, it waits for your answer before approval.
+    - Optional, it stays blank unless you answer it.
+    - Any other kind (a choice) is never filled. A required one means applying on the
+      employer's site. An approved value for one (which nothing can produce today) is
+      refused before anything is entered, as D135 refuses it.
+  - **Filling** (execution/adapters/workday.py, on a single page and on each wizard page):
+    every other answer first, then each such question, and only if the page shows it then.
+    - One the page does not show is never touched or waited for, and the readback requires it
+      empty; one the page removed is never waited for either (entered, it did not keep its
+      value).
+    - An approved answer to a question the page never shows is not entered: the page never
+      asked it.
+    - Whether the page shows it is read by the same locator that fills it; one shown that
+      cannot be typed into (disabled) is never waited for, and the check after filling stops
+      the attempt.
+  - **After filling, what the page shows is what was entered.** This is checked before a wizard
+    page's Next (before its gate) and, on a single page, in the check after filling:
+    - shown but not entered although an answer was approved, or entered and no longer shown:
+      the attempt stops;
+    - shown, required by the page, with no approved answer you could give: on a single page
+      the application pauses so you can answer it (D135's `conditional_required` pause). On a
+      wizard the attempt ends there and that page's Next is never clicked: a wizard never
+      pauses (D142), and its earlier pages are saved at the employer, as after any stop;
+    - shown and required, but not typed text (so never yours to answer here): the attempt
+      stops, and you apply on the employer's site;
+    - not shown, and so empty, but still required by the page: the attempt stops, as the
+      page's own checks would refuse the application;
+    - removed by the page: a changed form, and the attempt stops (on a wizard, before that
+      page's Next);
+    - shown and optional, with no answer: it stays empty.
+
+    On a wizard the live form is also compared with the approved one before each Next, not only
+    after it, and after each Next and before the send gate the follow-ups its filled pages left
+    empty are read again: one the page now requires stops the attempt, before a final click the
+    page's own checks would refuse (an unknown outcome).
+  - **The live form, compared with the approved one:**
+    - such a question reads as approved whether it is shown or not;
+    - before anything is entered, what the page requires is compared as approved: a follow-up
+      it now requires that was approved optional and empty is a changed form, and the
+      application pauses before anything is entered (D132), as a fresh read shows it;
+    - once answers were entered, whether the page requires such a question, and any other
+      question it hides, is its reaction to them, never a changed form (D132);
+    - its wording, type, options and page are compared as before.
+  - **Before anything is entered, a question shown or hidden differently from the approved form
+    is a changed form (D132's pause), never a plain stop.** Capture reads the markup, so reading
+    the form again shows a change in it (and turns an approval given before this decision into
+    one that knows the question); a difference only a script makes ends that read
+    "unexplained", D132's state for it. On Workday-style pages this narrows D132's "a listed
+    control a script shows, hides or requires stays a plain stop": they pause, as they already
+    did for a requirement a script sets.
+  - **No adapter version change (`fixture-workday-2`), and `SCHEMA_VERSION` (3) unchanged,
+    deliberately.**
+    - A page with no such question reads, fills and checks as before. Its package keeps its
+      exact content (the default page's fingerprint, pinned by
+      `test_non_wizard_fingerprints_are_unchanged`, is unchanged).
+    - A page with one now reads with the condition, which is part of the form's fingerprint
+      (as for D135). An approval given before this change no longer matches the live form, and
+      pauses before anything is entered; reading the form again marks the question (tested).
+      An approval given after it no longer matches a form read by the code before it, so a
+      rollback pauses before anything is entered too.
+    - Once answers were entered, a question the page hides reads as before this decision, when
+      hidden-ness was not read at all.
+    - So no approval means anything else than before, and no live approval needs retiring
+      (D145's reasoning).
+  - **The stand-in** (FA6, a FIXTURE ASSUMPTION in fixtures/ats_receiver/workday_like.py):
+    - the question: page 4 of the wizard, and the single page, carry "Which nights of the week
+      can you work?" in a hidden wrapper of its own, after "Preferred shift";
+    - the page's script shows it when Nights is chosen, and hides and empties it otherwise;
+    - three shapes: optional; `required` in the markup at load (once a shift is chosen,
+      required only while shown); and marked required only once shown;
+    - a Next saves it with its page (empty while hidden), and the final POST requires it only
+      when it is shown and required.
+  - **Reviewed independently, twice.**
+    - The first review (on 9c3bf1c) found one blocker: before anything was entered, a
+      follow-up's requirement was read as approved, so one the page newly required in its
+      markup passed the check before disclosure, and the attempt stopped only after entering
+      data (a single page) or saving three pages at the employer (a wizard). It also found that
+      a hidden follow-up the page kept requiring was never checked (the page's own checks would
+      refuse the final click: an unknown outcome), that capture read hidden-ness over the whole
+      document, that the readback could wait for a follow-up the page removed, and that
+      visibility was found by another locator than filling. All fixed (4f90edc), each with a
+      test. Its suggestion to make a difference only in hidden-ness a plain stop was declined
+      (above); its other points are recorded below.
+    - While it ran I found that a question visible when approved and hidden by the page after
+      answers were entered read as a changed form: now the page's reaction (f65c551).
+    - The second review (on 4f90edc) found no blocker. It found that a follow-up a wizard page
+      removed let that page's Next go out, that a requirement added to an already-sent page
+      ended at a refused final click, that a shown follow-up that cannot be typed into was
+      waited for, and that capture marked a hidden file input (it would have blocked approval
+      of a required résumé) and a group with one option hidden. All fixed (67e382f), each with
+      a test; its other points are recorded below.
+- **Not changed:** every existing mode and variant; the single page and wizard paths for pages
+  without such a question; D135 on Greenhouse.
+- **Not built, stated:**
+  - A question a page's script adds after an answer (not in the document at load) is still
+    found only by the check after a Next, and ends the attempt (`late_question`, D142).
+  - A question hidden by a stylesheet class, or by a script, is an ordinary question, as before.
+    Filling it on a page that does not show it still waits and ends as an internal error.
+  - A question shown after a delay (a request first): filling does not wait for the page to
+    settle. An answered one shown late is not entered, and the check after filling stops the
+    attempt (safe). A required one shown after that check would make the page's own checks
+    refuse the final click, which ends as an unknown outcome: checking the form's own validity
+    before the send gate would turn that into a stop with nothing sent (proposed, not built).
+  - What the page requires is read from its markup (`required`, `aria-required`), as the form
+    is: a question marked required only by a label's asterisk is optional to NoEfforts.
+  - A follow-up on an earlier wizard page that a later page's answer reveals: its page was saved
+    without it; the checks before each Next look at that page only.
+  - Markup a browser nests differently from the extractor (a self-closed `<div/>`, an unclosed
+    `<p>`) can read differently at capture and on the live page: before anything is entered that
+    is a changed form (its read may end "unexplained"); after, the page's reaction.
+  - A page that removes a follow-up instead of hiding it stops the attempt, even when it did
+    not ask it (a changed form, failing closed).
+  - Several levels of follow-ups: each level is read the same way, but only one level is tested.
+  - Real Workday pages are unobserved.
+- **Evidence (local only):** 49 tests in `tests/test_workday_follow_up.py`: 21 through the runner against the stand-in (the receiver's ledger the oracle), 17 driving the adapter on a page set in Chromium, 11 reading capture alone; the suites the change touches, 312 passed on 67e382f; removal checks: 23 changes on 9c3bf1c, 30 on 4f90edc and 38 on 67e382f, each failing a test (one only once its test was made stricter, a9f4222); the regression set (73 files): 1901 passed on f65c551 and exit 0; 1918 passed in 64 min on 67e382f; ruff clean.
