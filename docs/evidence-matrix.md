@@ -9,6 +9,44 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A restored database comes up held, and nothing it restored runs (D147, 2026-11-11; local only)
+
+Nothing here ran against a real page or a real account. Branch `restore-hold` (from D146's
+branch). A restore is made here by giving the database's stamp another database's identity,
+which is what a restore leaves behind; one test makes a real copy of a migrated database
+(`CREATE DATABASE ... TEMPLATE`), and the Compose smoke test (CI only, not run locally) a real
+dump and restore. The receiver's ledger is the oracle for everything said to have reached the
+employer. Every form is a local stand-in. Tests in `tests/test_restore_hold.py` unless another
+file is named.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| A database stamps itself with its own identity and is not held | `test_a_database_stamps_itself_and_is_not_held` | one stamp, the database's own oid and its cluster's identifier; resolving does nothing |
+| A copy of a migrated database is held; the original is not; the downgrade refuses while held | `tests/test_migrations.py`: `test_d147_the_stamp_is_the_databases_own_and_a_copy_of_it_is_held` | the upgrade stamps the database it runs in; a real copy of it (another database, the same rows) is held, the original is not; with another database's stamp the downgrade raises; without it, the table is dropped |
+| A database with no stamp is not held | `test_a_database_with_no_stamp_is_not_held` | a queued attempt is claimed as usual |
+| A restore onto another server is held, though its oid is the same | `test_a_restore_onto_another_server_is_held_though_its_oid_is_the_same` | with another cluster's identifier and this database's oid, the claim refuses; resolving ends the queued attempt and keeps only this database's stamp. (Two new clusters gave their first database the same oid, 16384, measured outside the tests) |
+| A stamp the new server wrote first does not hide the restore | `test_a_stamp_the_new_server_wrote_first_does_not_hide_the_restore` | this database's stamp and the backup's side by side: held, the claim refuses; resolved, only this database's is left |
+| Held, nothing is claimed, queued or approved | `test_a_restored_database_takes_nothing_and_queues_nothing` | the claim refuses, a delivery is ignored, the attempt stays queued; queueing another application and approving a third are refused (409, `restored_backup_held`); receiver ledger: nothing |
+| The standing rule does nothing while held, and leaves to you what began before the restore | `test_the_standing_rule_does_nothing_while_held` | its tick approves and queues nothing; resolved, it is paused; resumed, it skips the application with `restored_from_backup` and approves nothing |
+| What was queued is quarantined, never run; an approval of an application not queued is retired too | `test_resolving_ends_what_was_queued_and_never_runs_it` | the attempt `unknown` with its explanation, its application `submitted_unconfirmed`; both applications' approvals retired (`restored_from_backup`, audited); its unpublished message never published; the relay and the republishing pass publish nothing; receiver ledger: nothing |
+| Each state in progress quarantined, never back in the queue | `test_resolving_quarantines_each_state_in_progress` (4 cases) | taken before anything was entered, entered, sending, waiting for a code: `unknown` with the phase's explanation, the application `submitted_unconfirmed`, the cancel requested, the claim refuses each; receiver ledger: nothing |
+| A rehearsal in progress quarantined too | `test_a_rehearsal_in_progress_is_quarantined_too` (2 cases) | queued and entered: `unknown`, the application `submitted_unconfirmed` (the submission after a rehearsal may have been sent); the claim refuses each; receiver ledger: nothing |
+| A verification request ends with its attempt | `test_a_request_for_a_code_ends_with_its_attempt` | a request holding a code: `expired`, its code erased |
+| An application in a state the restore does not expect | `test_an_application_in_a_state_it_does_not_expect_is_left_as_it_is` | its attempt ended `unknown`, the application not moved, the pass finished |
+| The sweeper leaves a held database to the resolver | `test_the_sweeper_leaves_a_restored_database_to_the_resolver` | an entered attempt with an expired lease: the sweep does nothing while held; resolved, `unknown` and quarantined |
+| Cancelling, revoking and pausing wait for the resolver | `test_cancelling_revoking_and_pausing_wait_for_the_resolver` | cancel and revoke refused (409, `restored_backup_held`); pausing pauses and leaves the rule's attempt and approval alone; resolved, quarantined |
+| Every account's rule paused, with its reason; every account told | `test_resolving_pauses_every_rule_and_tells_every_account` | the rule that was on is paused (1), audited with `restored_from_backup`; both accounts' feeds have the restore item, needing action; an account made after the restore has none |
+| The relay's task, and the relay command, resolve a restore first | `test_the_relay_task_resolves_a_restore_before_it_publishes`, `test_the_relay_command_resolves_a_restore_first` | nothing published, the attempt ended; a newer queued application is then published |
+| A pass that stops half way is finished by the next, keeping its counts | `test_a_pass_that_stops_half_way_is_finished_by_the_next` | stopped after the first account's rule was paused: still held, the attempt ended, one pause counted; the next pass finishes with both pauses counted |
+| A second resolver finds it resolved under the lock | `test_a_resolver_that_finds_it_resolved_under_the_lock_does_nothing` | an attempt queued after the resolution stays queued, its approval live |
+| One resolver at a time | `test_one_resolver_at_a_time` | with the lock held elsewhere, a pass returns `busy`, the relay's task publishes nothing, the claim refuses, `restore-resolve` exits 1; then it resolves |
+| A restore NoEfforts cannot recognize; the command line | `test_force_resolves_a_database_restored_another_way` | `restore-resolve` without a restore: "not held"; with `--force`: what was queued is ended; `restore-status` shows it |
+| `--force` holds the database before anything else | `test_force_holds_the_database_before_anything_else` | a pass that stops before ending anything leaves the database held (its stamp of no database); the next pass resolves it |
+| A real worker never runs what a restored database queued | `test_a_worker_never_runs_what_a_restored_database_queued` | a real Celery worker takes the message while the database is held: refused; resolved, the attempt is over; receiver ledger: nothing |
+| A real dump and restore in the Compose stack, the guide's checks | `scripts/docker-smoke.sh` (CI only) | after the guide's restore, the app alone shows the database held; with the rest started, the scheduler resolves it (`restore-status`: not held, a `restored_at`). Recorded when the pull request's run has passed |
+| The stamp names no account | `tests/test_account.py` (the export decision) | the table is left out of the account export, with why; no account's rows name it |
+| Each part is needed | 39 changes, each in turn (D147 in `docs/decisions.md`) | each fails a test |
+
 ## An attempt still waiting to be taken is published again (D146, 2026-11-11; local only)
 
 Nothing here ran against a real page or a real account. Branch `republish-queued` (from D145's

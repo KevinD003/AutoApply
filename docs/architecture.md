@@ -243,7 +243,18 @@ claimed the attempt. So the relay's task also publishes again, every `outbox_rep
 and nothing entered. Extra messages end at the claim, which takes an attempt only while it is
 `pending` and has entered nothing. Nothing a worker holds is published again: that attempt is
 the sweeper's, by the rules above. A restored database is the exception: what it shows as
-queued may already have run (`docs/deployment.md` §7).
+queued may already have run, so it is held first (below).
+
+Restores (D147). A database restored from a backup cannot know what ran after the backup, and
+D146 would publish again what it shows as queued. It carries stamps of identity, keyed by the
+oid PostgreSQL gave the database and its server's cluster identifier; a restore brings back the
+backup's stamp, into a new database with another oid, onto another server with another cluster.
+While any stamp names another database, the claim refuses every attempt, nothing is queued,
+approved, cancelled or revoked, the standing rule and the sweeper do nothing; the relay's task
+first ends everything still active as an unknown outcome (its application
+`submitted_unconfirmed`), retires every approval and pauses every standing rule, then removes
+the other stamps (`execution/restore.py`). The rule then leaves to its owner every application that began
+before the restore.
 
 Key properties and their limits are in the `service.py` docstring. In short: one active
 attempt per application (partial unique index); one worker per attempt can pass gate 2

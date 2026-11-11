@@ -39,6 +39,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D144 attempts on a queue and a worker of their own; the schedule and the periodic tasks on another | merged (#53, 099642c, tree as predicted); its PR CI passed all four jobs on e40ee72, the Compose layout's first run |
 | D145 a dropdown's list settled by the page's own record of its last change to a list | merged (#54, 45c8229, tree as predicted); its PR CI passed all four jobs on 9315953 |
 | D146 an attempt still waiting to be taken is published again | branch `republish-queued` (D145's branch merged in, then `main` with #54); reviewed; not merged |
+| D147 a restored database comes up held, and nothing it restored runs | branch `restore-hold` (D146's branch merged in); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -260,6 +261,26 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     step was rewritten. It also found that revoking an attempt the sweeper put back failed
     (there before D146): fixed, with a test.
 
+- **D147 (branch `restore-hold`, not merged).** Rank 20, a restored database comes up held:
+  - the hazard D146's review found: a restored database cannot know what happened after its
+    backup, and since D146 an application it shows as queued is published again and run, even
+    if it was sent after the backup; one it shows as approved could be queued again, and the
+    standing rule could continue an application it had already submitted;
+  - the database carries stamps of identity: the oid PostgreSQL gave it and its server's
+    cluster identifier (every new cluster gives its first database the same oid, measured). A
+    restore brings back another's. While a stamp names another database, the claim refuses
+    every attempt, queueing and approving are refused and the standing rule does nothing;
+  - the scheduler resolves it by itself before publishing anything: every attempt still active
+    ended as an unknown outcome (a rehearsal too: the submission after it may have been sent),
+    its application `submitted_unconfirmed` for you to reconcile, every live approval retired,
+    every account's standing rule paused, every account told; the rule then leaves to you every
+    application that began before the restore. Until then the sweeper does nothing, and
+    cancelling and revoking are refused, pausing only pauses: each would have recorded nothing
+    sent for what may have been;
+  - the guide checks after every restore (`restore-status` must show it held), `--force` for
+    what NoEfforts cannot recognize; a rollback to a version before D147 keeps the step by hand;
+  - two independent reviews: the first found the guide's case list unsafe and five weaknesses (rework e365797); the second found the stamp table's missing export decision (CI) and that the sweeper, cancelling, revoking and pausing could escape the quarantine (a6c1444).
+
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
   Pausing there and later queuing one new attempt is a retry after `sending`, which CLAUDE.md
@@ -293,8 +314,10 @@ waiting for codes never hold up the sweeper, the outbox relay and the mailbox re
 **D145** (rank 14, #54) settles a dropdown's list by the page's own record of its
 last change to a list, and **D146** (rank 15, on its branch) publishes again an attempt still
 waiting to be taken: two defects found on the way. Its review found that a restored database
-would then run again what it shows as queued, so rank 20 (a restore that holds itself) comes
-next, then ranks 12 and 13 (the Workday-style follow-up question and repeating records).
+would then run again what it shows as queued: **D147** (rank 20, on its branch) makes a
+restored database come up held and end, without running it, everything it shows as queued
+or in progress. Next, ranks 12 and 13 (the Workday-style follow-up question and repeating
+records).
 
 ## Unvalidated or partly validated changes
 
@@ -369,6 +392,15 @@ next, then ranks 12 and 13 (the Workday-style follow-up question and repeating r
   a message there), a restore (ranked slice 20), the pass-on's own publish failing (the same rule
   would publish that attempt again; only the rule is tested), and a broker that hangs instead
   of refusing.
+
+- **D147 (branch `restore-hold`):** the new tests (one with a real worker and broker, one with
+  a real copy of a migrated database), the removal runs and the regression set, locally (Tests
+  run below). The real dump and restore, and the guide's check, run only in CI
+  (`scripts/docker-smoke.sh`). Not tested: a restore NoEfforts cannot recognize (by design:
+  the guide's check and `--force`), a PostgreSQL major upgrade or a move to another server
+  (treated as a restore), the web app's display of the new feed item (its label only), a
+  rollback across versions, two schedulers resolving at once on separate hosts (one advisory
+  lock; tested with two connections), and anything real.
 
 ## Tests run (this loop)
 
@@ -510,6 +542,24 @@ next, then ranks 12 and 13 (the Workday-style follow-up question and repeating r
 | D146: the regression set, the only test run on the machine (64 files, JUnit), on f3cd566 | exit 0; 1590 passed in 63 min |
 | D146 after its second review: `pytest tests/test_republish_queued.py` (JUnit) on cc836b5, then the revoke fix undone and its test run | exit 0; 25 passed (16 and 9); with the revoke fix undone its test fails (a 500) |
 | D146 after the last edit: `ruff format .`, `ruff check .`, `ruff format --check .`; the tests that read the documents and `test_deployment_config.py` (JUnit) | ruff clean (377 files unchanged); exit 0; 195 passed |
+| D147, the new tests and the migration's: `pytest tests/test_restore_hold.py` and the migration's test (JUnit), on c9eaf56 (D146's branch merged in) | exit 0; 16 passed |
+| D147, the files the change touches: `pytest` on `test_migrations.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_doc_references.py`, `test_notifications.py`, `test_auto_apply.py`, `test_republish_queued.py`, `test_test_isolation.py`, `test_deployment_config.py` (JUnit), on c9eaf56 | exit 1; 105 passed, 1 failed: the feed's scoping test counts the feed's queries, and the restore item adds one. The test was corrected (the count, and what that query is), committed as 08b0237; then `tests/test_notifications.py`: exit 0, 12 passed |
+| D147, each part changed in turn: 17 changes, one at a time on 08b0237, the named tests run, the file restored | all 17 fail a test |
+| D147, an oid is not enough across servers (a measurement): two throwaway clusters (`initdb` in the scratchpad, a private port), a database created first in each | both databases had oid 16384; the clusters' identifiers differed. Hence the cluster's identifier in the stamp (fcfa4f5) |
+| D147, after the cluster's identifier and the relay's check: `pytest tests/test_restore_hold.py tests/test_notifications.py` and the migration's test (JUnit), on the tree committed a minute later as fcfa4f5 | exit 0; 29 passed (16, 12 and 1) |
+| D147, each part changed in turn, again: 22 changes, one at a time on fcfa4f5 (the 17, three with moved targets, and five new) | all 22 fail a test (a first start stopped at the script's own check, before any change: one target had moved) |
+| D147, the regression set on fcfa4f5: `pytest` on 67 files (D146's 64, `test_restore_hold.py`, `test_migrations.py`, `test_audit_inventory.py`; JUnit) | stopped by me after the independent review, before it finished: the rework below superseded that tree; its databases dropped |
+| D147, the rework after the review, while it was written: `pytest tests/test_restore_hold.py tests/test_notifications.py`, the migration's test, `test_applications.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_code_wait_quarantine.py` (JUnit) | exit 1; 72 passed, 2 failed, both from the rework: the held test approved an application after the restore, which is now refused (it is prepared before the restore now), and the audit inventory needs the restore's pause in a row of its own |
+| D147, the same, after both corrections: `pytest tests/test_restore_hold.py tests/test_audit_inventory.py tests/test_auto_apply.py tests/test_republish_queued.py`, then the document tests (`test_audit_inventory.py`, `test_doc_references.py`, `test_approval_reasons.py`; JUnit) | exit 1; 58 passed, 1 failed (the inventory: a row per key set); then, with the second row, exit 0; 12 passed |
+| D147, the reworked tests: `pytest tests/test_restore_hold.py`, the migration's test, `tests/test_deployment_config.py` (JUnit), on the tree committed a minute later as e365797 | exit 0; 40 passed (22, 1 and 17) |
+| D147, each part changed in turn, after the rework: 31 changes, one at a time on e365797 | 30 of 31 fail a test; the 31st (the standing rule's own check) failed once its test required the rule to do nothing at all (6064a83) |
+| D147, the rework's test of the standing rule made stricter: the rule's test, then its own check removed (JUnit), on 6064a83 | exit 0, 1 passed; with the check removed, it fails |
+| D147, the regression set on 6064a83: the same 67 files (JUnit) | stopped by me after the second review, a few minutes in: its fixes superseded that tree; its databases dropped |
+| D147, the second review's blocker reproduced: the review's static comparison of every table with the export's decisions, read on e365797 | `instance_stamp` the only table without one (`tests/test_account.py` was not in any earlier run) |
+| D147, after the second review's fixes: `pytest tests/test_restore_hold.py tests/test_account.py tests/test_applications.py tests/test_approval_reasons.py tests/test_audit_inventory.py tests/test_doc_references.py tests/test_auto_apply.py tests/test_republish_queued.py tests/test_notifications.py` and the migration's test (JUnit), on the tree committed a minute later as a6c1444 | exit 0; 127 passed (26, 16, 24, 9, 2, 1, 20, 16, 12 and 1) |
+| D147, each part changed in turn, after the second review: 39 changes, one at a time on a6c1444 | all 39 fail a test |
+| D147, the regression set, the only test run on the machine: `pytest` on 67 files (D146's 64, `test_restore_hold.py`, `test_migrations.py`, `test_audit_inventory.py`; JUnit), on c0dd87b (with D146's branch as it now stands merged in) | exit 0; 1637 passed in 62 min |
+| D147, after the last edit: `ruff format .`, `ruff check .`, `ruff format --check .`; the tests that read the documents and the account export's (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`; JUnit); the frontend's `npx tsc --noEmit` and `npm run lint` | ruff clean (380 files unchanged); exit 0, 45 passed; `tsc` and lint exit 0 |
 
 ## Failed approaches and rejected designs
 
@@ -571,6 +621,30 @@ next, then ranks 12 and 13 (the Workday-style follow-up question and repeating r
   ends at the claim. Recorded as a limit (about 285 a day per attempt while the worker is
   stopped). Not built.
 
+- **Recognizing a restore by the database's oid alone, or by the cluster's identifier alone**
+  (D147). The guide's restore on the same server changes only the oid; a restore onto another
+  server can keep it (two new clusters gave their first database the same oid, 16384) and
+  changes only the cluster's identifier. Both are stamped.
+- **One stamp row with a fixed key** (D147, the first version). A stamp the new server wrote
+  for itself before the backup's arrived (a backend that migrated the empty database first, a
+  scheduler left running) won, and the restore went unrecognized; found by the review. Stamps
+  are keyed by identity now.
+- **Ending what was queued as "stopped before sending anything"** (D147, the first version).
+  It may have run and been sent after the backup; approved again, it would have been sent with
+  no reconciliation, and the resumed standing rule could have approved it by itself. Found by
+  the review: it is quarantined as an unknown outcome now.
+- **Refusing every request while held** (D147). The owner needs the app to see what was
+  restored; refused are what could send (the claim, queueing, approving, the standing rule)
+  and what would record nothing sent for what the backup shows in progress (cancelling,
+  revoking; pausing only pauses, and the sweeper waits).
+- **Ending a rehearsal in progress as the sweeper would** (D147, before the second review). A
+  rehearsal never submits, but the submission that follows it may have been sent after the
+  backup, and its application would have waited for approval again: quarantined too now.
+- **`--single-transaction` for the guide's `pg_restore`** (suggested by D147's review). A restore
+  that fails part way would then leave nothing instead of a partial database. Not changed:
+  CI's smoke test runs the guide's commands and this one could not be tried locally, and the
+  guide's check finds a restore whose stamp did not load.
+
 ## Blockers (external; each blocks one action, not the local work)
 
 - **Recorded permissions end 2026-11-06:** the Greenhouse pilot (read, open, disclose, submit; 5
@@ -601,9 +675,9 @@ next, then ranks 12 and 13 (the Workday-style follow-up question and repeating r
 
 ## Exact next action
 
-1. D146 (branch `republish-queued`, rank 15): its pull request (D145 merged as #54), then
-   rank 20 (a restored database comes up held), built on branch `restore-hold` from it, so
-   that `main` carries the restore step of the deployment guide only briefly. Then ranks 12
+1. D146 (branch `republish-queued`, rank 15): its pull request (#55); then
+   D147 (branch `restore-hold`, rank 20): its pull request once D146's is merged, so that
+   `main` carries the deployment guide's restore step by hand only briefly. Then ranks 12
    and 13 (the Workday-style follow-up question and repeating records), rank 16 (a stop
    request honoured before the next step) and ranks 17 to 19 (the dropdown rule's
    neighbours).

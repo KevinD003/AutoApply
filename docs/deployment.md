@@ -171,6 +171,20 @@ published within five minutes of the new `scheduler` starting. If its approval s
 then runs; otherwise it ends without being sent and waits for you. If it must not run, open it
 and press Cancel in its Submission card before you upgrade.
 
+Upgrading to a version with D147: its migration stamps the database with its own identity
+(its oid and its server's cluster identifier), which is how a later restore is recognized
+(section 7). A backup taken before this upgrade has no stamp, so a restore of it is not
+recognized; section 7's check finds that, and says what to do.
+
+Upgrading PostgreSQL itself to a new major version (`pg_upgrade`, or a dump and reload), a
+move to another server by a dump and reload, or a dump and reload for any other reason changes
+that identity, so a version with D147 treats the database as restored: it ends what was in
+progress (each waits for you as an unknown outcome), retires every approval, pauses automatic
+applying and tells every account that the server was restored from a backup. Automatic
+applying then leaves to you every application that existed before. Do these with nothing
+queued or in progress, then approve again and resume automatic applying. (A move that copies
+the server's files keeps the identity, and is not treated as a restore.)
+
 ## 7. Roll back
 
 Read this section to the end before you start: the `git checkout` below replaces this guide
@@ -194,15 +208,30 @@ docker compose up -d backend frontend     # the app alone: nothing is run or que
 
 **Before you start the workers** (after every restore, and every rollback whatever version it
 goes back to). The restored database knows nothing of what happened after the backup was
-taken: an application it shows as queued or running may have been sent since. Since D146 the
-scheduler publishes again an application that is still queued, and puts back in the queue one
-shown as running whose worker had stopped before entering anything; messages for them may also
-still wait in the broker, which a restore does not empty and an older worker reads as well. So,
-with only `backend` and `frontend` up:
+taken: an application it shows as queued or running may have been sent since, and one it
+shows as approved may have been queued and sent since. Messages for them may still wait in
+the broker, which a restore does not empty and an older worker reads as well. With only
+`backend` and `frontend` up, ask the version you are running what it knows:
 
-1. In the Tracker, pause "Automatically submit applications".
-2. Open every application shown as Queued or Running and press Cancel in its Submission card.
-3. Compare what the Tracker shows with the confirmation emails you received after the backup.
+```bash
+docker compose exec -T backend python -m app.modules.execution.cli restore-status
+```
+
+- **It shows `"held": true`:** this version (D147 or later) recognized the restore. Until the
+  scheduler has dealt with it, nothing is approved, queued, cancelled, revoked or run, and
+  pausing automatic applying only pauses it: leave the applications alone until then. Once
+  started, the scheduler ends, without running them, the applications the backup shows as
+  queued or in progress (each then waits for you as an unknown outcome), retires every
+  approval, pauses automatic applying, and says so in every account's notifications.
+- **It shows `"held": false` and no `"restored_at"` from today:** this version did not
+  recognize the restore: a restore into the same database (`pg_restore --clean`), a copy of
+  the server's files (its volume, a snapshot, a physical backup, a promoted replica), or a
+  backup taken before D147. Treat it as restored before anything else, then check again (it
+  must now show a `"restored_at"` from now):
+  `docker compose exec -T backend python -m app.modules.execution.cli restore-resolve --force`
+- **It prints nothing:** this version is older than D147 and does none of this. Pause
+  "Automatically submit applications" in the Tracker, then open every application shown as
+  Queued or Running and press Cancel in its Submission card.
 
 Then start the rest:
 
@@ -210,25 +239,36 @@ Then start the rest:
 docker compose up -d --remove-orphans
 ```
 
-Resume automatic applying only after that comparison: the restored database does not know what
-it applied to after the backup, and it could apply to the same job again. Nothing does this for
-you yet (ranked slice 20 in `docs/remaining-work.md`).
+With D147 or later, run `restore-status` once more within a minute: it must show `"held":
+false` and a `"restored_at"` from now. If it still shows the database held, the scheduler
+cannot resolve it: its log (`docker compose logs scheduler`) names the error's type, and
+nothing runs until it is resolved.
+
+Whatever the version, before you approve or queue anything again, compare what the Tracker
+shows with the confirmation emails you received after the backup, and record on each
+application what you find: reconcile one waiting as an unknown outcome ("It was received" or
+"It was not received"), record one you find sent with "I applied myself" where the Tracker
+offers it, and never approve one you find sent. Resume automatic applying only after that: the
+restored database does not know what it applied to after the backup, and it could apply to the
+same job again. (A version with D147 leaves to you every application that began before the
+restore; a new one for the same job is the risk.)
 
 `--remove-orphans` matters when the older version had fewer services: rolling back to before
 D144, `scheduler` no longer exists in the file, and a leftover one must not keep running next
 to the older `worker` (it would take queued applications off the old queue and pass them to a
 queue the older worker does not read). Anything still waiting in the newer version's own queue
 is not read by the older worker either. After the restore most of it names applications the
-backup does not have; for the rest, take the step above before starting the workers, whatever
-version you roll back to.
+backup does not have; for the rest, see the step above (a version before D147 needs it done by
+hand).
 
 The database is dropped and recreated rather than restored over (`pg_restore --clean` would
 leave tables that only the newer version had, and the older version's migrations would then
 fail). The CI smoke test runs these same commands on a throwaway stack: it backs up, creates a
 second account, restores, and checks that the first account's session works and the second
 account no longer exists. It restores onto the same version, so no leftover service exists
-there and a rollback across versions is not exercised. It queues nothing, so it starts every
-service at once and does not show the step between the two starts.
+there and a rollback across versions is not exercised. It starts the app alone first and checks
+that the restored database shows as held, then starts the rest and waits for the scheduler to
+deal with the restore (`restore-status`). It queues nothing, so nothing is ended.
 
 `alembic downgrade` exists for each migration, but some refuse while data depends on the newer
 schema (for example, the C18/L2 downgrade refuses while a generated document awaits
