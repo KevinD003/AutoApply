@@ -70,6 +70,15 @@ docker compose exec -T postgres createdb -U postgres noefforts
 docker compose exec -T postgres pg_restore -U postgres -d noefforts --no-owner <"$bk/db.dump"
 docker compose run --rm --no-deps -T backend \
   sh -c 'find /data/storage -mindepth 1 -delete && tar xzf - -C /data/storage' <"$bk/storage.tgz"
+# The guide's two starts (section 7): the app alone, its check, then the rest. D147: the restored
+# database must show as held (its stamp is the backed-up database's) before the workers start.
+docker compose up -d backend frontend
+wait_http http://127.0.0.1:8000/api/health 60
+held=$(docker compose exec -T backend python -m app.modules.execution.cli restore-status)
+case "$held" in
+  *'"held": true'*) ;;
+  *) echo "the restore was not recognized before the workers started: $held"; exit 1 ;;
+esac
 docker compose up -d --remove-orphans
 wait_http http://127.0.0.1:8000/api/health 60
 expect_contains "session after restore" "$email" -b /tmp/smoke-cookies \
@@ -78,7 +87,19 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json
   -d "{\"email\":\"$later\",\"password\":\"synthetic-password-2\"}" \
   http://127.0.0.1:8000/api/auth/login)
 test "$code" = "401" || { echo "account made after the backup still logs in ($code)"; exit 1; }
+# D147: the restored database knows it was restored (its stamp is the backed-up database's), and
+# the scheduler resolves that by itself before anything runs: wait for it, then check it is done.
+restored=""
+for _ in $(seq 1 30); do
+  restored=$(docker compose exec -T backend python -m app.modules.execution.cli restore-status)
+  case "$restored" in *'"resolved_at"'*) break ;; esac
+  sleep 2
+done
+case "$restored" in
+  *'"held": false'*'"resolved_at"'*) ;;
+  *) echo "the restore was not found and resolved: $restored"; exit 1 ;;
+esac
 expect_running_services
 rm -rf "$bk"
-echo "Backup and restore OK (state from before the backup, nothing after it)"
+echo "Backup and restore OK (state from before the backup, nothing after it; the restore resolved)"
 echo "DOCKER SMOKE PASSED"

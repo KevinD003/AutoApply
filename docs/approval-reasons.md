@@ -25,6 +25,7 @@ prerequisite has its codes in `docs/rehearsal-prerequisite.md`.
 | `wizard_draft_at_employer` | NoEfforts already entered this application on the employer's multi-page form, which may keep it as a draft or have received it. It never runs it again: finish it on the employer's site. |
 | `wizard_rehearsal_unsupported` | A rehearsal is not available on a multi-page form: the employer saves each page as you go. Approve it to submit, or apply on the employer's site. |
 | `wizard_in_progress` | NoEfforts is entering this application on the employer's multi-page form, and each page it already sent may be saved or received there, so cancelling cannot undo it. Revoke the approval to stop it before the next page. |
+| `restored_backup_held` | This server's database was restored from a backup, and NoEfforts has not yet ended what the backup showed as queued or in progress. Nothing can be approved, queued, cancelled or revoked until it has; the scheduler does it within seconds of starting. |
 
 ## Revoking while an attempt is in progress
 

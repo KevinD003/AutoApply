@@ -30,7 +30,7 @@ from app.modules.applications.models import Application
 from app.modules.applications.states import AppState
 from app.modules.autoapply.models import AutoApplyEvent
 from app.modules.discovery.models import BoardSource, DiscoveredJob
-from app.modules.execution import rehearsal
+from app.modules.execution import rehearsal, restore
 from app.modules.execution.models import (
     PAUSE_UNRESOLVED,
     ApplicationPause,
@@ -41,6 +41,7 @@ from app.modules.execution.models import (
 )
 from app.modules.execution.service import RETIRED
 from app.modules.followups import service as followups
+from app.modules.identity.models import User
 from app.modules.jobs.models import Job
 from app.modules.notifications.models import NotificationRead
 from app.modules.preparation.models import ApprovalScope, PackageApproval
@@ -342,6 +343,32 @@ def _inbox(db: Session, user_id) -> list[dict]:
     return out
 
 
+# D147: what a restore of the server's database did, for every account that existed then.
+_RESTORE_TEXT = (
+    "This server's database was restored from a backup, so nothing done after that backup is "
+    "recorded here. The applications the backup showed as queued or in progress were ended "
+    "without being run; each may have been sent after the backup, so each waits for you as an "
+    "unknown outcome. Every approval was retired and automatic applying paused, and it leaves to "
+    "you every application that began before the restore. Before you approve, queue or resume "
+    "anything, check your email and the employers' sites for applications sent after the "
+    "backup, and record on each application what you find."
+)
+
+
+def _restore(db: Session, user_id) -> list[dict]:
+    at = restore.restored_at(db)  # the last restore resolved on this database
+    if at is None:
+        return []
+    created = db.scalar(select(User.created_at).where(User.id == user_id))
+    if created is not None and created > at:
+        return []  # an account made after the restore was resolved lost nothing to it
+    item = _item(f"restore:{at.isoformat()}", "restored_backup", at, None,
+                 "This server was restored from a backup", _RESTORE_TEXT, needs_action=True,
+                 link="/tracker")  # fmt: skip
+    item["job"] = None
+    return [item]
+
+
 def feed(db: Session, user_id, now: datetime | None = None) -> list[dict]:
     """Every notification of the account, newest first, each with its read mark and the job
     it concerns. Scoped to the account in every query."""
@@ -356,6 +383,7 @@ def feed(db: Session, user_id, now: datetime | None = None) -> list[dict]:
         + _boards(db, user_id, now)
         + _auto_apply(db, user_id)
         + _inbox(db, user_id)
+        + _restore(db, user_id)
     )
     read = set(
         db.scalars(select(NotificationRead.item_key).where(NotificationRead.user_id == user_id))

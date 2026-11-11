@@ -7,6 +7,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -296,3 +297,25 @@ class RehearsalRecord(Base):
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_reason: Mapped[str | None] = mapped_column(String(30))
+
+
+class InstanceStamp(Base):
+    """D147: which database this is. A restored database cannot know what happened after its
+    backup was taken, so it has to know that it was restored. A stamp names the database it was
+    written in: the oid PostgreSQL gave it and the system identifier of its server's cluster
+    (made by `initdb`). A restore into a new database on the same server (the deployment guide's
+    §7) changes the oid; a restore onto another server changes the cluster's identifier, while the
+    oid may well repeat (every new cluster gives its first database the same one: 16384,
+    measured). The backup's stamp is restored with the rest. A database is held while any stamp
+    names another (`execution.restore`); the identity is the key, so a stamp this database wrote
+    for itself before the backup's arrived never hides the backup's. Its own stamp keeps the last
+    restore resolved here."""
+
+    __tablename__ = "instance_stamp"
+
+    db_oid: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    cluster_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    stamped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # The last restore found and resolved here, and what resolving it did (counts only).
+    restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    restore_summary: Mapped[dict | None] = mapped_column(JSON)

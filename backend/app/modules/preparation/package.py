@@ -111,6 +111,12 @@ APPROVAL_REASONS = {
     "wizard_in_progress": "NoEfforts is entering this application on the employer's multi-page "
     "form, and each page it already sent may be saved or received there, so cancelling cannot "
     "undo it. Revoke the approval to stop it before the next page.",
+    # D147: the database was restored from a backup, and what it showed as queued or in progress
+    # is not ended yet (the scheduler does it within seconds of starting).
+    "restored_backup_held": "This server's database was restored from a backup, and NoEfforts "
+    "has not yet ended what the backup showed as queued or in progress. Nothing can be approved, "
+    "queued, cancelled or revoked until it has; the scheduler does it within seconds of "
+    "starting.",
 }
 
 
@@ -927,6 +933,10 @@ def approve(
     # NoEfforts entered on a multi-page form is never run again; a rehearsal of one is refused.
     if execution.wizard_entered(db, app):
         raise refused("wizard_draft_at_employer")
+    # D147: nothing is approved while a restore is unresolved: resolving retires every approval
+    # as one given before the backup, which one given now would not be.
+    if execution.restore.held(db):
+        raise refused("restored_backup_held")
     if scope == ApprovalScope.disclose_only and "wizard" in pkg.content:
         raise refused("wizard_rehearsal_unsupported")
     if pkg.version != version or pkg.content_hash != expected_hash:

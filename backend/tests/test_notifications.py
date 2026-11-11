@@ -254,5 +254,9 @@ def test_every_query_of_the_feed_is_scoped_to_the_account():
     # D115 automatic-applying query. Email status tracking adds the _inbox producer's own
     # account-scoped query (InboxEvent.user_id == user_id). D132 adds three, each filtered by the
     # account: the pauses, the paused attempts left out of the attempt items, and the attempts
-    # that end an automatic-applying item.
-    assert src.count("select(") == 12 and src.count("user_id == user_id") == 14
+    # that end an automatic-applying item. D147 adds one, the account's own creation time, by its
+    # own id; the restore it is compared with is read from the database's own stamp
+    # (`restore.restored_at`), which holds no account's data.
+    assert src.count("select(") == 13 and src.count("user_id == user_id") == 14
+    assert "select(User.created_at).where(User.id == user_id)" in src
+    assert "at = restore.restored_at(db)" in src

@@ -79,7 +79,15 @@ TRANSITIONS: dict[AppState, dict[AppState, set[Actor]]] = {
         S.expired: {SY},
         S.submitted_unconfirmed: {U},
     },
-    S.queued: {S.running: {W}, S.cancelled: {U}, S.expired: {SY}, S.awaiting_approval: {SY}},
+    S.queued: {
+        S.running: {W},
+        S.cancelled: {U},
+        S.expired: {SY},
+        S.awaiting_approval: {SY},
+        # SY: a database restored from a backup taken while it was queued: it may have been sent
+        # after the backup, an unknown outcome (D147, execution.restore).
+        S.submitted_unconfirmed: {SY},
+    },
     S.running: {
         # SY: the sweeper acts for a worker that died (lease expired).
         S.needs_user_action: {W, SY},
@@ -87,6 +95,7 @@ TRANSITIONS: dict[AppState, dict[AppState, set[Actor]]] = {
         S.failed_retryable: {W, SY},
         S.failed_terminal: {W},
         S.cancelled: {U},
+        S.submitted_unconfirmed: {SY},  # D147: restored from a backup taken while it ran
     },
     S.needs_user_action: {
         S.running: {U, W},

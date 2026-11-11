@@ -6228,3 +6228,138 @@ audit-inventory and export-completeness guards are updated and pass.
   Runs are listed in `docs/automation-loop.md`.
 - **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
   one.
+
+## D147 — A database restored from a backup comes up held, and nothing it restored runs (2026-11-11)
+
+- **Context:** rank 20 of the automation loop, found by D146's review. Local stand-ins only;
+  nothing real was run. A new table and its migration; no new attempt state, no retry, no gate
+  or permission change. The application state machine gains the system's move to
+  `submitted_unconfirmed` from `queued` and `running`; only the restore makes it (a
+  convention: nothing else calls it).
+- **Problem:** a restored database cannot know what happened after its backup was taken.
+  - An application it shows as queued, or in progress, may have been sent since. Since D146
+    a queued one is published again by itself, so it would be sent a second time within
+    minutes of the workers starting. Narrower ways to the same existed before: a message not
+    yet published when the backup was taken, and an attempt taken before disclosure, which
+    the sweeper puts back in the queue.
+  - An application it shows as approved and not queued may have been queued and sent since,
+    and its approval (72 hours) would let it be queued again.
+  - The standing rule does not know what it did after the backup: it could continue an
+    application it had already submitted (a rehearsal before the backup, the submission
+    after), or apply to the same job again.
+  - D146 gave the deployment guide's restore a step for the owner to take by hand; nothing
+    did it otherwise.
+- **Decided:**
+  - **The database knows it was restored.** It carries stamps of identity
+    (`instance_stamp`): a stamp names the database it was written in by the oid PostgreSQL
+    gave it and the system identifier of its server's cluster, which together are its key. The
+    migration writes this database's stamp, and so does the relay's task if it has none. A
+    restore brings back the backup's stamp: into a new database on the same server, as §7
+    makes it (dropdb, createdb, pg_restore), with another oid; onto another server, with
+    another cluster. The oid alone would not do there: every new cluster gives its first
+    database the same oid (16384, measured on two). The database is *held* while any stamp
+    names another database, so a stamp the new server wrote for itself before the backup's
+    arrived (a backend that migrated the empty database first, a scheduler left running)
+    never hides it.
+  - **Held, nothing runs and nothing is queued or approved, and what the backup shows in
+    progress is left to the resolver.** The claim refuses every attempt, whatever delivers its
+    message; queueing, approving, cancelling and revoking are refused
+    (`restored_backup_held`); the standing rule does nothing, and pausing it only pauses it;
+    the sweeper does nothing. Each of the last three would otherwise end an attempt the backup
+    shows in progress as stopped before anything was sent, and it would escape the
+    quarantine below.
+  - **The scheduler resolves it by itself, within seconds of starting**, in its relay task
+    before anything is published (also `python -m app.modules.execution.cli relay` and
+    `restore-resolve`):
+    1. every attempt still active is ended, never to run. It may have run, and been sent,
+       after the backup (a rehearsal never submits, but the submission that follows one may
+       have been sent), so it ends with an unknown outcome and its application goes to
+       `submitted_unconfirmed`, quarantined as an unknown outcome after the final click is:
+       you reconcile it (D53). Its verification requests take no code and keep none. Messages
+       not yet published never will be. Every live approval of every account is retired
+       (`restored_from_backup`);
+    2. every account's standing rule is paused (audited with `reason_code`
+       `restored_from_backup`), each account in its own transaction with its count;
+    3. the stamps of other databases are removed and the restore is recorded on this
+       database's own (`restore-status`).
+
+    One resolver at a time (a database lock held for the three steps; a pass that finds it
+    taken publishes nothing, and `restore-resolve` exits 1). Each step is its own transaction
+    and can be repeated: a pass that stops half way leaves the database held, and the next
+    one finishes it, keeping the counts. `--force` (for a restore NoEfforts cannot
+    recognize) commits a stamp of no database first, so the database is held from that moment
+    whatever happens next.
+  - **The standing rule leaves to you every application that began before the restore**
+    (`restored_from_backup`), whatever its state: what happened to it after the backup is
+    unknown.
+  - **Every account is told.** Its notification feed has one item ("This server was
+    restored from a backup": what was ended and why, and to check its email and the
+    employers' sites, recording on each application what it finds, before approving, queueing
+    or resuming anything), beside the item of each attempt ended ("Outcome unknown"). An
+    account made after the restore was resolved is told nothing.
+  - **The guide checks instead of reasoning about cases.** §7 starts the app alone after a
+    restore and runs `restore-status`: it must show the database held. If it does not (a
+    restore NoEfforts cannot recognize), `restore-resolve --force` before starting the rest;
+    if the command prints nothing, the version is older than D147 and the step by hand (D146's)
+    is needed. Once the rest is started, it must show the restore resolved. The Compose smoke
+    test makes the same checks in CI.
+- **What this changes for the owner:** after a restore, nothing that was queued or in progress
+  at the backup runs; each such application waits for you as an unknown outcome; every
+  approval must be given again; automatic applying must be resumed, and it leaves to you
+  every application that began before the restore.
+- **Not changed, not fixed:**
+  - **Restores NoEfforts cannot recognize:** into the same database (`pg_restore --clean`
+    into the database the backup came from: the same oid and cluster), a copy of the
+    server's own files (its volume, a snapshot, a physical backup, a promoted replica, which
+    may also lack the last transactions, or a cloned server image: they copy the cluster's
+    identifier and the oid too), and a backup taken before D147 (no stamp; its upgrade stamps
+    it). The guide's check finds each of them, and `--force` resolves it.
+  - **Held without a restore** (fail-safe): a PostgreSQL major upgrade by `pg_upgrade` or by
+    dump and reload, a move to another server by dump and reload, a dump and reload to change
+    the encoding. Each changes the identity, so the server ends what was in progress,
+    retires every approval, pauses every rule and tells every account it was restored, and
+    the standing rule then leaves to their owners every application that existed. The guide
+    says to do these with nothing in progress, and what follows. (A move that copies the
+    server's files keeps the identity.)
+  - **A rollback to a version before D147** runs older code, which knows nothing of the
+    stamps: the step by hand (D146's) is still needed there, and §7 keeps it.
+  - **What was sent after the backup is recorded nowhere here.** The owner checks before
+    approving anything again, and records what they find. The standing rule, once resumed,
+    may apply to a job it applied to after the backup: the database does not know of it.
+  - **Limits counted from restored rows are loosened** by whatever happened after the
+    backup: the pilot permission's attempts used, the rule's daily cap.
+  - **Over-quarantine:** an attempt the claim could never have taken (its approval expired,
+    or a cancel requested) is quarantined too, and the owner reconciles it.
+  - **A quarantined application looks submitted elsewhere:** the follow-up reminder counts
+    from the restore (its drafted message names the restore's date as the application's),
+    the reminder outlasts "It was not received", and the application counts as having reached
+    submission.
+  - **`--force` while the scheduler runs:** a sweep already past its own check may end an
+    attempt as stopped before the forced hold reaches it. The guide runs `--force` before
+    starting the rest.
+  - The rule compares an application's creation time, written by the old server's clock,
+    with the restore's, written by the new one's: a skew larger than the time between the
+    backup and the restore is not considered.
+  - **Between the API starting and the scheduler's first pass** (seconds), approving and
+    queueing are refused with their reason; while the scheduler is not running, the database
+    stays held.
+  - A failure in step 1 (an attempt whose application cannot be moved) repeats on every pass
+    and is logged by its type only; `restore-status` does not show it. An application in a
+    state the restore does not expect is left in it, with a warning, its attempt ended.
+  - D134's `stop_for_pause` locks attempts without an order (there before D147).
+  - The stamps are read on every claim, queueing, approval, cancel, revoke, pause, sweep,
+    relay pass and tick of the standing rule, once per job the rule examines, and once per
+    feed request (one small query each).
+  - Not considered: on one server, an oid used again for another database only after
+    PostgreSQL's oid counter has wrapped around (four billion objects); across servers, two
+    clusters with the same identifier (it is made from the time of `initdb`, to the
+    microsecond, and its process id), cloned images aside.
+  - No banner in the web app beyond the feed's item; approving and queueing show the refusal.
+  - `SCHEMA_VERSION`, every adapter version: unchanged. One migration (`d147a0c2e5f1`):
+    creates the table and stamps the database; downgrade drops it, and refuses while the
+    database is held.
+- **Tests:** 26 in `tests/test_restore_hold.py` (one with a real Celery worker on the run's own Redis), the migration's in `tests/test_migrations.py`, the export decision in `tests/test_account.py` and the feed's scoping test in `tests/test_notifications.py`; the receiver's ledger is the oracle for anything said to reach an employer. The Compose smoke test (CI only) makes a real dump and restore and checks the guide's two `restore-status` readings.
+- **Removal checks:** 17 changes on 08b0237 and 22 on fcfa4f5 (the first versions); after the first review's rework, 31 on e365797 (30 failed a test; the 31st, the standing rule's own check, did once its test required the rule to do nothing at all, 6064a83); after the second review's fixes, all 39 fail a test.
+- **Review:** two independent reviews (read-only). The first (on fcfa4f5) found no code blocker and one in the guide (a restore onto another server is not recognized whatever the commands), plus: a stamp the new server wrote first could hide the restore; what was queued ended as stopped before sending; the resumed rule could continue a restored application; `--force` held nothing until its first commit; approvals given while held were retired with a false reason. All fixed (e365797). The second (on e365797) found a blocker for CI (the stamp table had no account-export decision), and that the sweeper, cancelling, revoking and pausing could end what the backup shows in progress as stopped before resolution, and that a rehearsal's application escaped the quarantine: fixed (a6c1444). The rest of both reviews is recorded above.
+- **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
+  one.

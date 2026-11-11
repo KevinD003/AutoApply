@@ -12,6 +12,8 @@
    generated document awaits acceptance
 10. L4: drafting_consents and drafting_usage added, deleted with the user, dropped on downgrade
 11. D97: every drafting amount gets its basis; a provider error recorded at 0 regains its worst case
+12. D147: the upgrade stamps the database it runs in; a copy of it (a restore into a new
+    database) carries the stamp and is held; downgrade drops the stamp
 """
 
 import hashlib
@@ -22,6 +24,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
 
 from tests import isolation
 
@@ -789,3 +792,44 @@ def test_d97_gives_every_drafting_amount_its_basis(disposable):
         )
         assert c.execute(text("select count(*) from drafting_usage")).scalar() == 5
     assert "cost_basis" not in cols and "price_version" not in cols and "cost_usd" in cols
+
+
+def test_d147_the_stamp_is_the_databases_own_and_a_copy_of_it_is_held(disposable):
+    """The upgrade stamps the database it runs in with that database's oid and its cluster's
+    identifier. A copy of the database (CREATE DATABASE ... TEMPLATE: the same rows in another
+    database, which is what a restore into a new database leaves) carries the stamp, so it is
+    held; the original is not. The downgrade refuses while the database is held."""
+    from app.modules.execution import restore
+
+    command.upgrade(_cfg(), "head")
+    own = "SELECT oid FROM pg_database WHERE datname = current_database()"
+    cluster = "SELECT system_identifier FROM pg_control_system()"
+    with disposable.connect() as c:
+        assert c.execute(text("SELECT db_oid, cluster_id FROM instance_stamp")).all() == [
+            (c.execute(text(own)).scalar(), c.execute(text(cluster)).scalar())
+        ]
+    with Session(disposable) as db:
+        assert restore.held(db) is False
+    disposable.dispose()  # nothing may be connected to the database copied
+    copy = create_engine(isolation.recreate_sibling(TEST_DB, "restored", template="schema"))
+    try:
+        with Session(copy) as db:
+            assert restore.held(db) is True
+            stamped = db.execute(text("SELECT db_oid FROM instance_stamp")).scalar()
+            assert stamped != db.execute(text(own)).scalar()
+        with Session(disposable) as db:
+            assert restore.held(db) is False  # the original is still itself
+    finally:
+        copy.dispose()
+        isolation.drop_sibling(TEST_DB, "restored")
+    # The downgrade refuses while the database is held: it would drop the only record of it.
+    with disposable.begin() as c:
+        c.execute(text("INSERT INTO instance_stamp (db_oid, cluster_id, stamped_at) "
+                       "VALUES (-1, -1, now())"))  # fmt: skip
+    with pytest.raises(RuntimeError, match="restored from a backup"):
+        command.downgrade(_cfg(), "c4e8f2a19d35")
+    with disposable.begin() as c:
+        c.execute(text("DELETE FROM instance_stamp WHERE db_oid = -1"))
+    command.downgrade(_cfg(), "c4e8f2a19d35")
+    with disposable.connect() as c:
+        assert c.execute(text("SELECT to_regclass('instance_stamp')")).scalar() is None

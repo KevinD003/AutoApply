@@ -35,6 +35,8 @@ EXCLUDED_TABLES = {
     "discovery_backoffs": "a timer that spaces out requests to a source; nothing about you",
     "oauth_flows": "short-lived, single-use OAuth state for an in-progress Gmail connect (D128); "
     "a transient nonce and PKCE verifier, not account data, and consumed or expired within minutes",
+    "instance_stamp": "which database this server's is, to recognize a restore from a backup "
+    "(D147); nothing about any account",
 }
 
 # Columns left out of exported tables, with why.
