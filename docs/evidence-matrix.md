@@ -9,6 +9,21 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A dropdown's list settled by the page's own record of its last change (D145, 2026-11-11; local only)
+
+Nothing here ran against a real page or a real account. Branch `dropdown-settle` (from D144's
+branch). Every form is a local stand-in (FIXTURE ASSUMPTIONS), and the receiver's ledger is the
+oracle for everything said to have reached the employer. Tests in
+`tests/test_dropdown_strategies.py`.
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| A list that keeps being re-rendered is refused however slowly it is read, before anything is disclosed | `test_a_list_that_keeps_changing_is_refused_however_slowly_it_is_read` (the reading interval set to 590, 600, 610 and 1200 ms) | the stand-in list re-rendered every 300 ms: the attempt `failed_safe`, "its list could not be read completely", `still_changing`; receiver ledger: no disclosure, nothing accepted. Before D145 (measured): refused for another reason at 590 ms, accepted at 610 ms |
+| A list that has settled is still accepted when read slowly | `test_a_list_that_has_settled_is_accepted_when_read_slowly` (a list shown at once; one that arrives after 1.2 s and stays) | read every 600 ms: `confirmed`; receiver ledger: one acceptance, each of the three dropdowns carrying its approved option |
+| Settled means unchanged for half a second by the page's own record | `test_settled_means_unchanged_by_the_pages_own_record` | the engine on a stand-in for the page's probe (no browser): three identical reads are not settled while changes keep coming, nor at 499 ms; they are at 500 ms, and where the page recorded no change since before the action |
+| Every earlier dropdown case holds | the file's other 43 cases | the whole file: 50 passed |
+| Each part of the rule is needed | six changes, each in turn (D145 in `docs/decisions.md`) | each fails a test |
+
 ## Attempts on a queue and a worker of their own (D144, 2026-11-10; local only)
 
 Nothing here ran against a real page or a real account. Branch `attempt-queue` (from D143's
@@ -16,7 +31,8 @@ branch, fa36039). Real Celery prefork workers on the run's own Redis; the receiv
 the oracle for everything said to have reached the employer. Every form is a local stand-in.
 Tests in `tests/test_attempt_queue.py` unless another file is named. The Compose layout itself
 runs only in CI (the `docker-smoke` and `execution-compose` jobs): this sandbox has no Docker
-daemon, so the rows that name a Compose scenario are evidence only once that job has passed.
+daemon, so the rows that name a Compose scenario rest on that job, which passed on the pull
+request (#53, on e40ee72).
 
 | Requirement | Test | Oracle / evidence |
 |---|---|---|
