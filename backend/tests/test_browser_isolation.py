@@ -208,16 +208,19 @@ def test_isolation_failure_refuses_instead_of_browsing_unrestricted(
     assert led["disclosures"] == [] and led["accepted"] == 0
 
 
-def test_stale_workdirs_of_dead_workers_are_removed():
+def test_stale_workdirs_of_dead_workers_are_removed(tmp_path, monkeypatch):
     from app.modules.execution.browser import WORKDIR_PREFIX, cleanup_stale_workdirs
 
+    # A temporary directory of the test's own: since D144 every attempt cleans the machine's,
+    # so another run's worker could remove `gone` first.
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     dead = subprocess.Popen(["true"])
     dead.wait()
     gone = tempfile.mkdtemp(prefix=f"{WORKDIR_PREFIX}{dead.pid}-")
     live = tempfile.mkdtemp(prefix=f"{WORKDIR_PREFIX}{os.getpid()}-")
     odd = tempfile.mkdtemp(prefix=f"{WORKDIR_PREFIX}sibling-")
     try:
-        assert cleanup_stale_workdirs() >= 1
+        assert cleanup_stale_workdirs() == 1
         assert not os.path.exists(gone)
         assert os.path.exists(live) and os.path.exists(odd)
     finally:

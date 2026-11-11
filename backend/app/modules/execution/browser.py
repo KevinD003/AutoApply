@@ -370,7 +370,10 @@ def cleanup_stale_workdirs() -> int:
             continue
         pid = name[len(WORKDIR_PREFIX) :].split("-", 1)[0]
         path = os.path.join(base, name)
-        if not pid.isdigit() or not os.path.isdir(path) or os.stat(path).st_uid != os.getuid():
+        try:
+            if not pid.isdigit() or not os.path.isdir(path) or os.stat(path).st_uid != os.getuid():
+                continue
+        except OSError:  # gone between the two looks: its own process, or another cleanup
             continue
         try:
             os.kill(int(pid), 0)

@@ -29,14 +29,40 @@ def receiver():
 @pytest.fixture(autouse=True)
 def _clean_broker(receiver):
     receiver.reset()
+    clean_broker()
+
+
+QUEUES = ("celery", "attempts")  # D144: the default queue and the attempts' own
+
+
+def clean_broker() -> redis.Redis:
     r = redis.Redis.from_url(get_settings().redis_url)
-    r.delete("celery", "unacked", "unacked_index")
+    r.delete(*QUEUES, "unacked", "unacked_index")
+    return r
+
+
+def queued(r: redis.Redis) -> dict[str, int]:
+    """Messages waiting in each queue (a Redis list per queue)."""
+    return {q: r.llen(q) for q in QUEUES}
 
 
 class Worker:
-    def __init__(self, fault: str = "", name: str = "w"):
+    """A real worker process. `queues`: what it takes ("attempts", "celery"); None takes both,
+    as a worker started without -Q does. `node`: its exact node name before the @ (else a
+    unique one). `env`: settings for this process only."""
+
+    def __init__(
+        self,
+        fault: str = "",
+        name: str = "w",
+        *,
+        queues: str | None = None,
+        concurrency: int = 2,
+        node: str | None = None,
+        **env: str,
+    ):
         self.log = tempfile.mktemp(prefix="celery-", suffix=".log")
-        env = os.environ | {"NOEFFORTS_FAULT": fault, "PYTHONPATH": str(BACKEND)}
+        env = os.environ | {"NOEFFORTS_FAULT": fault, "PYTHONPATH": str(BACKEND)} | env
         self.p = subprocess.Popen(
             [
                 sys.executable,
@@ -48,13 +74,14 @@ class Worker:
                 "-P",
                 "prefork",
                 "-c",
-                "2",
+                str(concurrency),
                 "--loglevel=INFO",
                 "-n",
-                f"{name}-{uuid.uuid4().hex[:6]}@%h",
+                f"{node or f'{name}-{uuid.uuid4().hex[:6]}'}@%h",
                 "--without-gossip",
                 "--without-mingle",
                 "--without-heartbeat",
+                *(["-Q", queues] if queues else []),
             ],
             cwd=BACKEND,
             env=env,
@@ -130,7 +157,7 @@ def test_worker_process_death_at_send_is_not_redelivered(api, receiver):
         w.wait_log("WorkerLostError", 60)
         time.sleep(4)  # if Celery were to redeliver, it would do so now
         r = redis.Redis.from_url(get_settings().redis_url)
-        assert r.llen("celery") == 0 and r.hlen("unacked") == 0
+        assert queued(r) == {"celery": 0, "attempts": 0} and r.hlen("unacked") == 0
     finally:
         w.stop()
     assert claims(aid) == 1

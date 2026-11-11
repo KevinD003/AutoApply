@@ -25,7 +25,12 @@ production refuses execution entirely. Results by revision are in "Verification"
 
 - **worker** (Celery): unchanged gates (approval, `disclosure_started_at`, `sending`, fencing by
   `generation`, no retry after an unknown final click). It has
-  `NOEFFORTS_BROWSER_ISOLATION=container`. For each attempt it:
+  `NOEFFORTS_BROWSER_ISOLATION=container`. Since D144 it takes only the attempts' queue, with
+  one process: the runner has one browser slot, so a second application waits in the queue
+  instead of holding a process. The schedule and every periodic task (the sweeper, the outbox
+  relay, the mailbox reader) run in a second Celery worker, **scheduler**, on the default
+  network only: it has no runner token and no control socket, and never drives a browser. For
+  each attempt the worker:
   1. checks the runner's `/health`: the sandbox self-check must have passed, and the runner's
      Playwright driver version must equal its own (otherwise it refuses with a message to
      rebuild the image);
@@ -99,8 +104,8 @@ policy already covered by the netns tests.
 | environment | `RUNNER_TOKEN`, proxy address, limits | `EGRESS_CONTROL_TOKEN`, proxy port, socket path, TTL |
 
 `BROWSER_RUNNER_TOKEN`, `EGRESS_CONTROL_TOKEN` and `AUDIT_REF_KEY` (the audit reference key,
-given to the backend and worker only) are required: Compose refuses to start without them
-(`${VAR:?}`). The runner's environment contains its own token, which is used only
+given to the backend, the worker and the scheduler only) are required: Compose refuses to start
+without them (`${VAR:?}`). The runner's environment contains its own token, which is used only
 to authenticate the worker. Chromium processes are started with a minimal environment.
 
 ## Running it
@@ -127,9 +132,9 @@ What the script does:
 
 The test override adds the receiver and a canary on an internal `fixtures` network, with no
 published ports. The host reaches the receiver's admin API only through `docker compose exec`.
-It also runs the API and the worker with `NOEFFORTS_ENV=test` (fixture origins are honoured in
-no other environment, D86), pins `fixtures` to `10.231.47.0/24`, and names that subnet as the
-test network on the API and worker (`NOEFFORTS_FIXTURE_NETWORKS`) and on the egress proxy
+It also runs the API, the worker and the scheduler with `NOEFFORTS_ENV=test` (fixture origins
+are honoured in no other environment, D86), pins `fixtures` to `10.231.47.0/24`, and names that
+subnet as the test network on all three (`NOEFFORTS_FIXTURE_NETWORKS`) and on the egress proxy
 (`EGRESS_FIXTURE_NETWORKS`): `receiver` is accepted only while every address it resolves to,
 and the address each connection reaches, is in that subnet.
 
@@ -142,11 +147,12 @@ and the address each connection reaches, is in that subnet.
 | `s_browser_container_probe` | inside the runner, as its user: uid, capability sets, `NoNewPrivs`, seccomp, credential-like env names, app/storage/.env/docker socket/secrets/control-socket paths, writability, external DNS, TCP reach to postgres/redis/API/web/worker/receiver/canary/metadata/internet; **all 65535 TCP ports of the proxy (only 3128 may accept)** |
 | `s_probe_detects_an_insecure_configuration` | control for the probe: the same image run deliberately insecure (fake DB URL and control token in env, a mounted fake secret, on the app network) — the probe must flag all three |
 | `s_greenhouse_security_code_flow` | preparation + approval → queue → isolated browser → approved upload (digest = approved document) → security-code checkpoint (code read from the receiver's ledger) → final submit → `confirmed`; receiver acceptances +1; evidence with retention dates; the code and the three service tokens absent from every service's logs; evidence deletion; no open sessions; no leftover browser profile |
+| `s_scheduler_runs_while_an_attempt_waits_for_its_code` | D144: each Celery worker takes only its own queue (`inspect active_queues`); with the worker's one process held by an application waiting for its code, the scheduler publishes a second application, which waits in the attempts' queue, unclaimed; the scheduler's log shows its periodic tasks meanwhile and the worker's shows none; once the code is entered both are confirmed, one acceptance each, and both queues are empty |
 | `s_hostile_page` | page tries other hosts, the canary, metadata, redirects to the canary: still confirmed; canary 0 hits; blocked requests recorded |
 | `s_infrastructure_only_egress` | worker recreated with in-process interception off (`NOEFFORTS_EXECUTION_TEST_DISABLE_INTERCEPTION`, refused outside development/test): hostile page still confirmed, 0 requests blocked in-process, canary 0 hits, proxy denied the canary |
 | `s_unknown_then_duplicate_delivery` | accepted but unanswered → `unknown` / `submitted_unconfirmed`; a second `execute_attempt` delivery is ignored; still exactly 1 acceptance |
 | `s_runner_lost_during_submission` | runner container killed during `sending` → `unknown`, never resent; at most 1 acceptance; runner restarts healthy |
-| `s_worker_killed_mid_submit` | worker container killed during `sending` → runner closes the orphaned browser within 20 s; attempt swept to `unknown` after the lease, `retry_count` 0; `submitted_unconfirmed`; at most 1 acceptance |
+| `s_worker_killed_mid_submit` | worker container killed during `sending` → runner closes the orphaned browser within 20 s; attempt swept to `unknown` after the lease, `retry_count` 0, while the worker is still down (D144: the sweeper runs in the scheduler); `submitted_unconfirmed`; at most 1 acceptance |
 | `s_control_plane_separation` | the worker manages its own session over the socket (token still required); with real session credentials the browser container is refused (403) for `egress-proxy:3129`, `egress-proxy:3128`, `127.0.0.1:3128`, `localhost:3129`, `worker:8000` and absolute-URL GETs to the proxy itself (positive control: the session's destination gives 200); sensitivity control: a deliberately exposed listener on the proxy container is found by the same scan; after `docker compose restart egress-proxy` only 3128 is open and an approved run is still confirmed |
 | `s_runner_restart_recovery` | open runner session → `docker compose restart browser-runner` → old endpoint and secret refused, old runner session unknown, old proxy session deleted by cleanup, `/tmp` clean, a new attempt confirmed |
 | `s_runner_unavailable` | runner stopped → `failed_safe`, 0 disclosures |

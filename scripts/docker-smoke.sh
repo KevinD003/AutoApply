@@ -41,11 +41,12 @@ expect_contains "API through the web app" "$email" -b /tmp/smoke-cookies \
   http://127.0.0.1:3000/api/auth/me
 echo "Web app serves pages and proxies the API"
 
-# The worker's control-plane (pidbox) consumer binds a moment after startup, so a single ping can
-# be published before the bind and be lost; wait for the worker the same bounded way we wait for the
-# HTTP services (never unbounded, and still fails if the worker is truly unreachable).
-ping=$(wait_worker_ping 20) || { echo "worker ping failed after waiting: $ping"; exit 1; }
-echo "Worker registered with the broker"
+# A worker's control-plane (pidbox) consumer binds a moment after startup, so a single ping can
+# be published before the bind and be lost; wait for the workers the same bounded way we wait for
+# the HTTP services (never unbounded, and still fails if a worker is truly unreachable). D144:
+# both must answer, the attempts worker and the scheduler.
+ping=$(wait_worker_ping 20 attempts scheduler) || { echo "worker ping failed after waiting: $ping"; exit 1; }
+echo "Worker registered with the broker (the attempts worker and the scheduler)"
 
 docker compose restart backend
 wait_http http://127.0.0.1:8000/api/health 60
@@ -63,13 +64,13 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json
   -d "{\"email\":\"$later\",\"password\":\"synthetic-password-2\"}" \
   http://127.0.0.1:8000/api/auth/register)
 test "$code" = "201" || { echo "second register returned $code"; exit 1; }
-docker compose stop backend worker frontend
+docker compose stop backend worker scheduler frontend
 docker compose exec -T postgres dropdb -U postgres --force noefforts
 docker compose exec -T postgres createdb -U postgres noefforts
 docker compose exec -T postgres pg_restore -U postgres -d noefforts --no-owner <"$bk/db.dump"
 docker compose run --rm --no-deps -T backend \
   sh -c 'find /data/storage -mindepth 1 -delete && tar xzf - -C /data/storage' <"$bk/storage.tgz"
-docker compose up -d
+docker compose up -d --remove-orphans
 wait_http http://127.0.0.1:8000/api/health 60
 expect_contains "session after restore" "$email" -b /tmp/smoke-cookies \
   http://127.0.0.1:8000/api/auth/me

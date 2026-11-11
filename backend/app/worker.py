@@ -24,13 +24,25 @@ Delivery settings (Celery 5.6.3, kombu 5.6.2, Redis transport, prefork pool):
 None of these settings makes an external submission idempotent. Duplicate deliveries are made
 harmless by the claim compare-and-swap; sends are never repeated by the queue (see
 app/modules/execution/service.py).
+
+Queues (D144). An attempt's task goes to a queue of its own (ATTEMPT_QUEUE); every other task,
+all of them periodic, goes to the default queue. An attempt may hold its process for the
+whole wait for a verification code (D143), so a deployment runs two workers: one that takes
+only attempts, with one process per browser slot, and one that runs the schedule and the
+periodic tasks (docker-compose.yml: `worker` and `scheduler`). The sweeper, the outbox relay
+and the mailbox reader then never wait behind an attempt. A worker started without `-Q` takes
+both queues (local development, tests): it works, with no such separation. An attempt's task
+is run from its own queue: a message for it that arrives on any other queue (one published
+before this routing existed) is passed on to ATTEMPT_QUEUE, once, instead of being run there.
 """
 
+import logging
 import socket
 import uuid
 
 from celery import Celery
 from celery.signals import after_setup_logger, after_setup_task_logger
+from kombu import Exchange, Queue
 from sqlalchemy import delete
 
 import app.models  # noqa: F401  (register every table before any task runs)
@@ -40,8 +52,23 @@ from app.core.log_safety import install_worker_filters
 from app.modules.identity.models import UserSession
 
 settings = get_settings()
+log = logging.getLogger("noefforts.worker")
+DEFAULT_QUEUE = "celery"  # the schedule's tasks (Celery's own default name, kept)
+ATTEMPT_QUEUE = "attempts"  # D144: noefforts.execute_attempt, and nothing else
 celery_app = Celery("noefforts", broker=settings.redis_url, backend=None)
 celery_app.conf.update(
+    # D144: both queues are declared, so a worker started without -Q takes both; a deployment
+    # gives each queue its own worker (see the module docstring). Each queue has an exchange
+    # and routing key of its own name, as a queue Celery creates itself has. Declared by name
+    # only, both would be bound to the default exchange under one key: Celery's own publishing
+    # addresses a queue directly and would not notice, but a message published to that
+    # exchange and key would reach both queues (measured).
+    task_default_queue=DEFAULT_QUEUE,
+    task_queues=tuple(
+        Queue(name, Exchange(name, type="direct"), routing_key=name)
+        for name in (DEFAULT_QUEUE, ATTEMPT_QUEUE)
+    ),
+    task_routes={"noefforts.execute_attempt": {"queue": ATTEMPT_QUEUE}},
     task_acks_late=True,
     task_reject_on_worker_lost=False,
     worker_prefetch_multiplier=1,
@@ -97,10 +124,11 @@ after_setup_task_logger.connect(lambda **_: install_worker_filters(), weak=False
 WORKER_ID = f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
 
 
-def publish(topic: str, attempt_id: str) -> None:
+def publish(topic: str, attempt_id: str, **kwargs) -> None:
+    """To the attempts' queue: the task's route (task_routes) decides, here as everywhere."""
     if topic != "execute_attempt":
         raise ValueError(f"unknown topic {topic}")
-    celery_app.send_task("noefforts.execute_attempt", args=[attempt_id])
+    celery_app.send_task("noefforts.execute_attempt", args=[attempt_id], kwargs=kwargs)
 
 
 SOFT_LIMIT = 240  # seconds; every task but an attempt's
@@ -113,10 +141,31 @@ SOFT_LIMIT = 240  # seconds; every task but an attempt's
 # itself, between steps (attempt_run_budget_seconds); at this limit the worker process is
 # ended, the message is acknowledged (never redelivered), and the sweeper decides from the
 # attempt's phase.
-@celery_app.task(name="noefforts.execute_attempt", time_limit=settings.attempt_time_limit_seconds)
-def execute_attempt(attempt_id: str) -> str:
+@celery_app.task(
+    name="noefforts.execute_attempt", bind=True, time_limit=settings.attempt_time_limit_seconds
+)
+def execute_attempt(self, attempt_id: str, forwarded: bool = False) -> str:
+    # D144: only ever run from the attempts' own queue. A message that arrived on another one
+    # (published before the routing existed, or by anything that names the wrong queue) is
+    # passed on and acknowledged: nothing was claimed, and the claim ignores a duplicate. It
+    # is passed on once: a message already passed on is run wherever it arrives, so a broker
+    # that reported the queue differently could cost a hop but never a loop or a lost attempt.
+    arrived_on = (self.request.delivery_info or {}).get("routing_key")
+    if arrived_on not in (None, ATTEMPT_QUEUE) and not forwarded:
+        publish("execute_attempt", attempt_id, forwarded=True)
+        return "forwarded"
+    from app.modules.execution.browser import cleanup_stale_workdirs
     from app.modules.execution.runner import run_attempt
 
+    # D144: this host's own leftovers (a hard-killed worker's browser directories; they exist
+    # only where the browser runs inside the worker, `browser_isolation=netns`). The sweeper
+    # removes them too, but it may now run on another host, where it cannot see them. It never
+    # decides whether the attempt runs: a task that failed here would be acknowledged with the
+    # attempt never claimed, and nothing would take it up again.
+    try:
+        cleanup_stale_workdirs()
+    except Exception as e:  # noqa: BLE001
+        log.warning("stale browser directories not removed (%s)", type(e).__name__)
     return run_attempt(attempt_id, f"{WORKER_ID}-{uuid.uuid4().hex[:6]}")
 
 

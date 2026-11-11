@@ -31,7 +31,11 @@ Next.js frontend ──rewrite──▶ FastAPI backend ──▶ PostgreSQL (du
 - **Database**: PostgreSQL via SQLAlchemy 2 and Alembic migrations. All state that matters
   (applications, events, approvals later) is in Postgres; Redis only carries task messages.
 - **Worker**: Celery with Redis broker, `acks_late`, prefetch 1, a hard time limit. Phase A has a
-  housekeeping task only; application execution arrives in Phase C.
+  housekeeping task only; application execution arrives in Phase C. Since D144 there are two
+  queues and, in a deployment, two workers: an attempt's task has a queue of its own
+  (`attempts`) and a worker that takes nothing else, one process per browser slot; every other
+  task is periodic, goes to the default queue and runs on the `scheduler` worker with the
+  schedule (beat). A worker started without `-Q` takes both queues (development, tests).
 - **Storage**: `Storage` protocol with a local-filesystem backend. Keys are random UUIDs, never
   user filenames. An S3/MinIO backend can implement the same three methods.
 
@@ -219,6 +223,18 @@ hands over nothing more. The send lease covers the adapter's own wait for the cl
 (on the Greenhouse-style page that watch is ended by the clock its lease was sized to, not by
 the page's own timers), and taking a typed code extends the lease over the code step's watch.
 No background heartbeat exists: a worker that stops making progress loses its lease.
+
+Queues (D144). An attempt may keep its worker process for the whole wait for a code, so its
+task (`noefforts.execute_attempt`) is published to a queue of its own, and the periodic tasks
+(the sweeper, the outbox relay, the mailbox reader, the standing rule, reminders, discovery)
+to the default queue. `docker-compose.yml` runs one worker for each: `worker` (attempts only,
+one process: one browser slot) and `scheduler` (the schedule and the periodic tasks; it holds
+neither the browser runner's token nor the egress control socket). So recovery, publishing
+and the mailbox never wait behind an attempt, and a second application waits in the queue,
+unclaimed, for the browser. An attempt's task is only run from its own queue: a message for
+it on any other queue (one published before the queues existed) is passed on once, never run
+there. This is an arrangement of processes, not a new guarantee: the claim, the gates and the
+sweeper are unchanged, and a single worker taking both queues behaves as before D144.
 
 Key properties and their limits are in the `service.py` docstring. In short: one active
 attempt per application (partial unique index); one worker per attempt can pass gate 2

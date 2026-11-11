@@ -11,6 +11,16 @@
 # checked against it (loopback aside). `receiver` is the one name a fixture origin may use
 # (urlsafety.FIXTURE_SERVICE_HOSTS); a bare name resolving anywhere else is refused.
 x-fixture-network: &fixture-network "10.231.47.0/24"
+# D144: the same settings for the worker (attempts) and the scheduler (the schedule and the
+# periodic tasks): the relay's interval is the scheduler's, the timeouts are the worker's, and
+# the two must agree on the rest.
+x-worker-test-env: &worker-test-env
+  NOEFFORTS_ENV: test
+  NOEFFORTS_FIXTURE_NETWORKS: '["10.231.47.0/24"]'
+  NOEFFORTS_SUBMIT_TIMEOUT_SECONDS: "10"
+  NOEFFORTS_CHECKPOINT_TTL_SECONDS: "120"
+  NOEFFORTS_OUTBOX_RELAY_INTERVAL_SECONDS: "1"
+  NOEFFORTS_NAVIGATION_TIMEOUT_SECONDS: "60"
 
 services:
   receiver:
@@ -44,14 +54,12 @@ services:
 
   worker:
     environment:
-      NOEFFORTS_ENV: test
-      NOEFFORTS_FIXTURE_NETWORKS: '["10.231.47.0/24"]'
-      NOEFFORTS_SUBMIT_TIMEOUT_SECONDS: "10"
-      NOEFFORTS_CHECKPOINT_TTL_SECONDS: "120"
-      NOEFFORTS_OUTBOX_RELAY_INTERVAL_SECONDS: "1"
-      NOEFFORTS_NAVIGATION_TIMEOUT_SECONDS: "60"
+      <<: *worker-test-env
       # Off unless a scenario recreates the worker with it on (infrastructure-only egress test).
       NOEFFORTS_EXECUTION_TEST_DISABLE_INTERCEPTION: ${EXEC_TEST_DISABLE_INTERCEPTION:-false}
+
+  scheduler:
+    environment: *worker-test-env
 
 networks:
   fixtures:
