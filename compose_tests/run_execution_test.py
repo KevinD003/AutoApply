@@ -371,7 +371,8 @@ def s_browser_container_probe():
     closed = {k: v for k, v in p["reach"].items() if k != "egress-proxy:3128"}
     check("probe: no external name resolution (no DNS side channel)",
           not p["external_dns"].startswith("resolved"), p["external_dns"])  # fmt: skip
-    check("probe: database, broker, API, web, worker, receiver, canary, metadata, internet unreachable",
+    check("probe: database, broker, API, web, worker, scheduler, receiver, canary, metadata, "
+          "internet unreachable",
           all(v != "open" for v in closed.values()), closed)  # fmt: skip
     check("probe: of all 65535 TCP ports on the egress proxy, only 3128 accepts a connection",
           p["reach"]["egress-proxy:3128"] == "open" and p["proxy_open_ports"] == [3128],
@@ -767,7 +768,7 @@ def s_scheduler_runs_while_an_attempt_waits_for_its_code():
     published = wait_for(lambda: waiting_in("attempts") == 1, 20, 0.5)
     check("queues: the scheduler published the second application while the worker was held",
           bool(published), waiting_in("attempts"))  # fmt: skip
-    time.sleep(2)  # were a process free to take it, it would have by now
+    time.sleep(1)  # were a process free to take it, it would have at once
     att2 = attempt(a, second)
     check("queues: the second application waits in the attempts' queue, unclaimed",
           bool(att2) and att2["state"] == "pending" and waiting_in("attempts") == 1,
@@ -789,8 +790,9 @@ def s_scheduler_runs_while_an_attempt_waits_for_its_code():
           att2 and att2["state"] == "confirmed", att2 and att2["state"])  # fmt: skip
     counts = (ledger_for(gh_slug)["accepted"] - before, ledger_for(slug)["accepted"])
     check("queues: the receiver counted one acceptance for each", counts == (1, 1), counts)
-    check("queues: nothing left waiting in either queue",
-          (waiting_in("attempts"), waiting_in("celery")) == (0, 0))  # fmt: skip
+    # Only the attempts' queue: the schedule feeds the default one every second in this stack.
+    left = waiting_in("attempts")
+    check("queues: nothing left waiting in the attempts' queue", left == 0, left)
     receiver("config", {"mode": "normal"})
 
 

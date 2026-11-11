@@ -43,7 +43,7 @@ required; `docker-compose.yml` refuses to start without them (`${VAR:?…}`):
 
 | Key | Used by | Rule |
 |---|---|---|
-| `AUDIT_REF_KEY` | API and worker: keys the audit references (`audit/service.py`) | at least 32 characters; the API refuses to start without it, and production refuses a key starting `test-only` |
+| `AUDIT_REF_KEY` | API, worker and scheduler: keys the audit references (`audit/service.py`) | at least 32 characters; the API refuses to start without it, and production refuses a key starting `test-only` |
 | `BROWSER_RUNNER_TOKEN` | worker ↔ browser-runner | at least 24 characters; replace the example placeholder |
 | `EGRESS_CONTROL_TOKEN` | worker ↔ egress proxy control socket | at least 24 characters; different from the runner token |
 
@@ -52,7 +52,8 @@ acceptable only because the port is bound to 127.0.0.1.
 
 `.env` is git-ignored: never commit it. The API reads its own settings as `NOEFFORTS_*`
 environment variables (`backend/app/core/config.py`). Compose reads `.env` only to fill in
-`docker-compose.yml`, so a setting reaches the API and the worker only if that file names it:
+`docker-compose.yml`, so a setting reaches the API, the worker and the scheduler only if that
+file names it:
 every `NOEFFORTS_*` setting in `.env.example` is named there, except the few Compose sets itself
 (database, broker, storage, CORS, browser isolation); `test_deployment_config.py` checks this.
 (Before D95 the email, discovery, drafting and session settings were not passed on, so setting
@@ -159,7 +160,10 @@ docker compose up -d --build  # the API applies new migrations as it starts
 
 Upgrading from a version with one worker (before D144): `up -d --build` starts `scheduler` and
 restarts `worker` with its new role. An application queued but not yet started at that moment is
-passed on to the new worker; nothing needs doing by hand.
+passed on to the new worker. One thing may need doing by hand: a `docker-compose.override.yml`
+of your own that names `worker` for something the periodic tasks use must name `scheduler` now.
+The case known is the mailbox token of `docs/inbox.md`: mounted into `worker` only, the mailbox
+still shows as connected and no verification code is entered.
 
 ## 7. Roll back
 
@@ -182,13 +186,17 @@ docker compose up -d --remove-orphans
 `--remove-orphans` matters when the older version had fewer services: rolling back to before
 D144, `scheduler` no longer exists in the file, and a leftover one must not keep running next
 to the older `worker` (it would take queued applications off the old queue and pass them to a
-queue the older worker does not read).
+queue the older worker does not read). Anything still waiting in the newer version's own queue
+is not read by the older worker either. After the restore most of it names applications the
+backup does not have; an application that was queued when the backup was taken stays "queued"
+until you cancel it in the Tracker and approve it again.
 
 The database is dropped and recreated rather than restored over (`pg_restore --clean` would
 leave tables that only the newer version had, and the older version's migrations would then
 fail). The CI smoke test runs these same commands on a throwaway stack: it backs up, creates a
 second account, restores, and checks that the first account's session works and the second
-account no longer exists.
+account no longer exists. It restores onto the same version, so no leftover service exists
+there and a rollback across versions is not exercised.
 
 `alembic downgrade` exists for each migration, but some refuse while data depends on the newer
 schema (for example, the C18/L2 downgrade refuses while a generated document awaits
@@ -201,6 +209,21 @@ docker compose stop           # keeps all data
 docker compose down           # removes containers, keeps the pgdata and storage volumes
 docker compose down -v        # ALSO DELETES YOUR DATA (database and documents)
 ```
+
+`down` also discards what is waiting in the broker (`redis` keeps nothing in a named volume): an
+application that was queued and not yet started. Since D144 that can be more than a moment's
+worth: the scheduler goes on handing queued applications to the broker while `worker` is busy
+or stopped. After the next `up`, such an application stays "queued" and is not run; cancel it in
+the Tracker and approve it again. `stop` and an upgrade (`up -d --build`) keep the broker's
+container: Redis writes what waits in it to that container's disk when it is asked to stop, and
+reads it back when it starts. If the broker is killed, or the machine loses power, what was
+queued since its last snapshot (up to an hour before) is lost the same way. Publishing a
+waiting application again by itself is not built (rank 15 in `docs/remaining-work.md`).
+
+`stop` asks each service to finish and ends it ten seconds later. An application in progress
+goes on during those seconds and can still be submitted in them (measured: a worker told to
+stop finished the application it was running). To stop applications at once, use
+`docker compose kill worker` (`docs/activation-status.md` §8).
 
 ## 9. Verify (safe, throwaway)
 

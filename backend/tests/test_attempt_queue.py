@@ -280,13 +280,16 @@ def _dead_pid() -> int:
     return p.pid
 
 
-def test_an_attempts_worker_removes_its_own_hosts_stale_browser_directories():
+def test_an_attempts_worker_removes_its_own_hosts_stale_browser_directories(tmp_path, monkeypatch):
     """A hard-killed worker's browser directory. The sweeper removes those too, but it may run
     on another host, where it cannot see them: the attempts' worker cleans up before each run.
-    A live process's directory is never touched."""
+    A live process's directory is never touched. (A temporary directory of the test's own: the
+    machine's is shared with every other run's workers, whose cleanup would race this one.)"""
     from app.worker import execute_attempt
 
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     base = tempfile.gettempdir()
+    assert base == str(tmp_path)
     stale = os.path.join(base, f"{WORKDIR_PREFIX}{_dead_pid()}-stale")
     live = os.path.join(base, f"{WORKDIR_PREFIX}{os.getpid()}-live")
     os.mkdir(stale)
@@ -298,6 +301,50 @@ def test_an_attempts_worker_removes_its_own_hosts_stale_browser_directories():
         for d in (stale, live):
             if os.path.isdir(d):
                 os.rmdir(d)
+
+
+def test_a_cleanup_that_fails_does_not_stop_the_attempt(monkeypatch, caplog):
+    """Housekeeping never decides whether an application runs. Were the task to fail before
+    the claim, its message would be acknowledged with the attempt never claimed, and nothing
+    would take it up again. The failure is logged by its type only (its text names a path)."""
+    from app import worker
+    from app.modules.execution import browser, runner
+
+    def broken():
+        raise PermissionError("[Errno 13] Permission denied: '/tmp/ne-browser-123-secret'")
+
+    ran = []
+    monkeypatch.setattr(browser, "cleanup_stale_workdirs", broken)
+    monkeypatch.setattr(runner, "run_attempt", lambda aid, who: ran.append(aid) or "ran")
+    aid = str(uuid.uuid4())
+    with caplog.at_level("WARNING", logger="noefforts.worker"):
+        assert worker.execute_attempt(aid) == "ran"
+    assert ran == [aid]
+    assert "PermissionError" in caplog.text and "ne-browser-123" not in caplog.text
+
+
+def test_a_directory_that_vanishes_under_the_cleanup_is_not_an_error(tmp_path, monkeypatch):
+    """Two cleanups can now run at once on one host (the sweeper's, an attempt's), and an
+    attempt removes its own directory when it ends. One that is gone between the cleanup's two
+    looks at it is skipped; the others are still handled."""
+    from app.modules.execution import browser
+
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    vanishing = tmp_path / f"{WORKDIR_PREFIX}{_dead_pid()}-vanishing"
+    stale = tmp_path / f"{WORKDIR_PREFIX}{_dead_pid()}-stale"
+    vanishing.mkdir()
+    stale.mkdir()
+    real_isdir = os.path.isdir
+
+    def isdir(path):
+        if str(path) == str(vanishing) and vanishing.exists():
+            vanishing.rmdir()  # a directory at this look, gone before the next
+            return True
+        return real_isdir(path)
+
+    monkeypatch.setattr(browser.os.path, "isdir", isdir)
+    assert browser.cleanup_stale_workdirs() == 1
+    assert not stale.exists() and not vanishing.exists()
 
 
 # ------------------------------------------------------------------- the deployment's check

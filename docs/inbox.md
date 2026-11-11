@@ -77,10 +77,13 @@ never the text, the subject, the sender's name or a code. Your Gmail token stays
    never printed.
 4. In `.env`: `NOEFFORTS_INBOX_ENABLED=true`, `NOEFFORTS_INBOX_OWNER_EMAILS=["you@…"]` (your
    NoEfforts account's email) and `NOEFFORTS_INBOX_TOKEN_FILE` set to the token's path. With
-   Docker Compose, mount the token read-only into the `api` and `worker` services in a
+   Docker Compose, mount the token read-only into the `backend` and `scheduler` services in a
    `docker-compose.override.yml` of your own, for example
    `- ~/.noefforts/inbox-token.json:/run/secrets/inbox-token.json:ro`, and set
-   `NOEFFORTS_INBOX_TOKEN_FILE=/run/secrets/inbox-token.json`.
+   `NOEFFORTS_INBOX_TOKEN_FILE=/run/secrets/inbox-token.json`. `scheduler` is the service that
+   reads the mailbox (since D144; before, `worker` did, and an override written then must
+   name `scheduler` now). Without the file there, Account still shows the mailbox as connected
+   and no code is entered.
 5. Restart, then turn each use on in Account.
 
 ## Disconnect
