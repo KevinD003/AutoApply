@@ -5812,3 +5812,232 @@ audit-inventory and export-completeness guards are updated and pass.
 - **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
   one. One instruction to the owner changed: to stop everything now, `docker compose kill
   worker scheduler` (`docs/activation-status.md` §8).
+
+## D145 — A dropdown's list counts as settled only when the page itself has recorded no change to a list for half a second, besides three equal reads (2026-11-11)
+
+- **Context:** rank 14 of the automation loop (`docs/automation-loop.md`). Local stand-ins
+  only; nothing real was run. No state, transition, gate, permission or retry changes.
+- **Problem:** found by D143's regression run, on a machine shared with two other test runs:
+  the stand-in list that is re-rendered every 300 ms (`late_slow_changing`) was once judged
+  settled. The adapter read a list every 250 ms and called it settled after three identical
+  reads. Identical reads say nothing about the time between them: when a busy machine
+  stretches the interval to about twice the re-render's period, every read sees the same
+  order.
+- **Measured before deciding (2026-11-10, without load, the reading interval set by hand; a
+  temporary test, not committed):** 250 ms: refused as still changing. 590 ms: refused for the
+  wrong reason (judged settled, in the other order, so "its options differ"). 610 ms: judged
+  settled every time it was tried. The first time the application was then submitted (the
+  approved option was the one chosen and read back); in three later runs the attempt ended
+  `abandoned` at the readback, with two, two and one answers not kept. The check accepted
+  every time; what followed varied. 600 and 900 ms: refused as still changing.
+- **Built twice.** The first version (up to e81bfeb) used the time the probe already kept: of
+  the last change anywhere in the document. An independent review (below) showed by
+  arithmetic that this did more than its record said: on a page that changes anything,
+  anywhere, every 500 to 750 ms a dropdown's check would pass only now and then, each opening
+  at its own moment, so a check could pass and the choice then fail after data had been
+  entered. The record was narrowed to changes that touch a list, and the rule rebuilt on it.
+- **Decided:** a list is settled when, besides the three identical reads with nothing loading
+  and no data request in flight, **the page's own record of the last change to a list is at
+  least half a second old** (`STABLE_MS`, 500 ms), **or the page has recorded no such change
+  since before the action**. The half second is a fixed time, not a number of reads.
+  - **The record** is kept by the observer the probe already installed (a `MutationObserver`
+    on the document, installed before the action, read by the page's clock). It now keeps
+    two times: of the last change anywhere, as before (only the classification's 150 ms check
+    reads it), and of the last change that touched a list.
+  - **A change touches a list** when it happened inside an option or a popup; when it added
+    or removed an element that is, or holds, one; or when it changed an attribute of an
+    element that is, or holds, one (which can show or hide a list). Options and popups are
+    found by the marks the probe already reads them by: their roles, and class names that
+    hint at a menu, dropdown, popover, listbox or option. More than 200 changes delivered at
+    once are not looked at one by one and count as the list's.
+  - **Where it applies:** both uses of a dropdown's list (the check before anything is
+    disclosed, and the reading again when an option is chosen) and **the location search**
+    (stand-ins only): its suggestions count as settled, and "exactly one suggestion with the
+    approved text" is judged, only on a list the page has not changed for half a second.
+- **What this changes for an application:**
+  - A list whose changes come less than half a second apart is refused however slowly it is
+    read: at the check, before anything is entered.
+  - Changes elsewhere on the page do not count in the new record. The classification's own
+    check of the whole document is unchanged, though: a read within 150 ms of any change on
+    the page cannot settle, at the check or at the choice. So a page that changes something
+    every 250 to 300 ms can still have a list refused in a real page's 1.5-second window,
+    depending on how the reads fall against its timer: the same dependence on the reading
+    pace that D145 removes for the list. By the second review's arithmetic, with the engine's
+    own code: a change every 300 ms and reads 254 to 300 ms apart, 4% to 50% of openings
+    refused; every 250 ms, up to 55%; every 600 ms, none. It has been so since D106, and D145
+    neither fixes it nor makes it worse (rank 19). A refusal at a check comes before anything
+    is entered; one at a choice stops the attempt after data was entered, before sending.
+  - A list that stops changing settles at the same read as before on every stand-in: the
+    three equal reads already span half a second. The margin is the overhead of two reads,
+    because the half second equals exactly two reading intervals; where it is lost the list
+    settles one read later, or is refused if that was the window's last read.
+  - **It does not only refuse more.** By waiting where the old rule stopped, the engine can
+    read on to a later list: one that was different at its third equal read and became the
+    approved list afterwards was refused before ("its options differ") and can be accepted
+    now, if a change touched it in between. What is accepted is still exactly the approved
+    list, three reads equal, unchanged by the page's record for half a second.
+  - **A list that starts changing only after the check** is not chosen from: the choice waits
+    out its window, the rest of the form is still filled, the readback finds the answer
+    missing and the attempt stops before the send gate. That stop comes after disclosure
+    (what was entered and uploaded by then has reached the employer's page), and the attempt
+    is not run again, under the standing rule either.
+  - **Suggestions that keep changing** less than half a second apart never count as exactly
+    one: the location search stops the attempt, after the approved text was typed (it is
+    counted as disclosed). An error from the page before anything is typed now stops it
+    without counting the text as disclosed (the second review's finding).
+  - The refusal says which half failed: `list_changed_recently` when the reads were equal and
+    only the page's record said no, `still_changing_or_loading` otherwise.
+  - A control that is absent at the instant the observer is installed is refused ("the
+    control disappeared"), even if it is back for the reads after it. Otherwise the engine
+    would go on with whatever an earlier dropdown left recorded: a narrow race, closed
+    because the record now decides.
+- **Limits (not fixed):**
+  - **Gaps of half a second.** A list is refused only while its changes come less than half a
+    second apart. One that pauses that long between changes, also after several quick ones,
+    can be read as settled in a pause if three reads there are equal. For slow changes this
+    is as before.
+  - **A page whose own timers stall** for that long did not change in that time: its list can
+    be read as settled between two late re-renders. This is also how the tests of the
+    re-rendered list can still fail on a machine busy enough to hold the page's timers back
+    by about 300 ms (the review's arithmetic; not measured).
+  - **No record.** Where the record holds no change touching a list since before the action,
+    the equal reads decide alone, as before: nothing changed, or the page changes it in a way
+    the record does not count. A change to a style sheet that shows, hides or reorders
+    options (the observer sees it and does not take it for the list's), options shown through
+    a shadow root, a change of which popup the control points to (`aria-controls`,
+    `aria-owns`, `aria-activedescendant` on a control that holds no list), or a page that
+    replaced the record. A list inside a shadow root or a frame is not read at all: it is
+    refused as unreadable.
+  - **Marks, not knowledge.** What is a list is decided by roles and class names. A change
+    inside anything so marked counts as the list's (a navigation menu, a dialog widget, a
+    field whose class says "optional"), so does an attribute change on anything that holds a
+    list, the document's body included, and so does any batch of more than 200 changes.
+    Where such changes come less than half a second apart, every dropdown waits and is
+    refused, and so is the location search, which runs after disclosure (new with D145;
+    stand-ins only). Where they start only after a check, the choice fails after data was
+    entered. Where they come 500 to 750 ms apart, a check passes now and then and a choice
+    may then fail: the first version's lottery, on marked changes only.
+  - **The observer's cost** is not measured. It looks at each change of a batch (at most 200)
+    against the marks; one change that adds or removes a large part of the page, or frequent
+    attribute changes on the body, can cost close to a scan of the document each time. The
+    boundary of 200 is not tested.
+  - **Bounds counted in reads.** The windows (1.5 seconds, 5 on a stand-in) are numbers of
+    reads, not times by the clock, so a slow reader waits longer. The stand-in whose list
+    arrives after 7 seconds, "never in time", would be accepted where a read took 389 ms on
+    average through three checks and three choices (the review's arithmetic; not seen). Not
+    changed here.
+  - **The read-only survey** (`gh_readonly`, the inspection of a real board) keeps its own
+    test: the number of options at its last two reads, and 150 ms without a change anywhere.
+    It neither uses nor publishes the new record. Its window on paths B and C (1500 ms) was
+    set equal to the adapter's on purpose (a test holds the equality), so that the survey
+    shows what the adapter would accept; since D145 the adapter asks for more than the survey
+    shows. Run #11's "read 11 lists completely", on which the readiness text for dropdowns
+    rests, was judged by the survey's test: no past run shows whether a real page meets the
+    new condition, and no later one will until the survey publishes it (one yes or no per
+    dropdown: no change to a list for half a second at the last read; in the backlog). The
+    survey fills nothing and feeds nothing that fills or sends.
+  - **Other choices.** A section's combobox (D141) reads its list once, with no test of
+    settling at all: the weakest of the three paths, unchanged here (in the backlog). A
+    combobox whose options are in the page when it loads is chosen from without reading a
+    list.
+  - **No adapter version change** (`greenhouse_dom` stays at 4, the form reading at v6), as
+    for D108 and D109, which also changed how a list is opened and judged. It is not true
+    that nothing is chosen differently: an option is no longer chosen from a list that is
+    still changing, and a list may be read on to (above). Approvals stay valid. Rehearsal
+    records keep counting although they were earned under the weaker test, so a first real
+    submission can stop at a dropdown its rehearsal passed. `SCHEMA_VERSION` unchanged; no
+    migration.
+  - **The observer can outlive a failed action.** Where an action ends in an error the engine
+    returns without disconnecting it; it stays until the next dropdown or the location
+    search replaces or disconnects it, or the page closes. It only records. As before.
+  - **The location search after its last read.** The click finds the suggestion again by its
+    position and checks only its text, so a second place of that name that appears or moves
+    in the moment between the last read and the click is not noticed; the readback compares
+    only with what the page then set (stand-ins only).
+  - **Never seen on a real page.** Every dropdown strategy remains a fixture assumption; real
+    destinations stay refused. Whether a real page changes its open list, or what holds it,
+    more often than every half second (an animation, a highlight that moves by itself) is
+    not known: such a page would be refused at the check, before anything is entered.
+- **Tests:** `tests/test_dropdown_strategies.py` (14 new cases, 57 in all) and
+  `tests/test_greenhouse_controls.py` (4 new, 57 in all). The receiver's ledger is the oracle
+  wherever something is said to have reached the employer.
+  - The re-rendered list is refused, and nothing is disclosed, with the reading interval set
+    to 590, 600, 610 and 1200 ms.
+  - A list that does not change, and one that arrives after 1.2 seconds and stays, are
+    accepted and submitted when read every 600 ms, each dropdown with its approved option.
+  - With an element outside every list changing every 300 ms, and every 600 ms, the
+    application is submitted with its approved options; and with the 600 ms page given the
+    1.5 seconds of a real page instead of a stand-in's 5, the same.
+  - A list stable at its check and re-rendered from its second opening: the attempt ends
+    `abandoned`, "did not keep their values", nothing accepted, disclosures recorded.
+  - The observer itself, in a real browser on the stand-in page with one list open. Not the
+    list's: an element arriving elsewhere, its text, an attribute of it. The list's: text
+    inside an option, an attribute of one, a child of the list, an attribute of the body, an
+    element holding an option arriving, the list removed, and 250 changes at once.
+  - The rule on a stand-in for the page's probe (no browser): three identical reads are not
+    settled while the record stays recent, nor at 499 ms (`list_changed_recently`); they are
+    at 500 ms, with no record at all, and with the list's record old while the whole page's
+    is 200 ms old.
+  - Three equal reads are still needed: with no record, a list is settled at its third read
+    and not before, and reads that differ in turn are never settled. (D104 added
+    `late_slow_changing` to hold this half of the rule; since D145 the page's record refuses
+    that list by itself, so this case holds it now.)
+  - A control gone when the observer is installed is refused, both when it stays gone and
+    when it is back for every read after that instant (the second is the case the new guard
+    alone catches).
+  - The location search: an error from the page while the observer is installed, before
+    anything is typed, stops it with only the earlier disclosures recorded.
+  - The location search: with suggestions shown in turn, every 300 ms, as one "Springfield"
+    and as the two of that name, read every 250 and every 600 ms, on both structures: the
+    attempt ends `abandoned` with no settled list; one upload and the search text counted as
+    disclosed, nothing accepted.
+  - Two of these hold behaviour the equal reads give by themselves at the default pace (reads
+    250 ms apart never see a list alternating every 300 ms the same three times): the list
+    that starts changing after its check, and the location search read every 250 ms. They
+    hold what happens at the choice and in the location search, not the new record.
+- **Removal checks:** 18 changes, each in turn on a committed tree (fe9582c), and each failed
+  a test; then 2 more for the second review's fixes.
+  - The rule: removed; its time set to nothing; more than, instead of at least, half a second;
+    a page with no record refused (the two cases on the stand-in for the probe fail and the
+    file's other 54 pass: no stand-in leaves a list's record empty); a time longer than any
+    wait; the classification's 150 ms taken for it; the whole page's record again; the equal
+    reads no longer needed; a missing control let through; one word for every refusal.
+  - The observer: every change taken for a list's; none; a change inside a list not counted;
+    an arriving or leaving list not counted; an attribute of a holder not counted; a burst
+    looked at one by one.
+  - The location search: without the record; without its observer.
+  - What they also show: without the rule the 590 and 610 ms cases fail and the 600 and
+    1200 ms ones still pass (the refusal there comes from the classification's own check).
+    With the whole page's record again, the 300 ms page fails and the 600 ms one still passes
+    within a stand-in's window; the case that gives it a real page's window was added after
+    these runs (a080d3d) and failed in 6 of 6 runs with that record put back. The six runs
+    are not independent draws (their times fall in two clusters), so they show the case
+    catches that record on this machine at this pace, not how often it would.
+  - The second review's fixes, each undone in turn on ae54f21: only the observer's guard removed (a control absent only when the observer is installed is then taken with an earlier dropdown's record), and the location search's error before typing counted as disclosed again. Each failed its test.
+- **Reviews (independent, read-only; nothing run by the reviewer):**
+  - **Of the first version (15c5e36):** no blocker, and no way found for the new condition to
+    let something be sent that should not be. Ten findings. Acted on: the rule rebuilt on a
+    narrower record (its statements "as before" and "only refuses more" did not hold for the
+    whole document's record, shown by arithmetic); the location search brought under the
+    record (binding the click to the suggestion's text did not protect the judgement "exactly
+    one"); tests for the three equal reads and for a list that starts changing after its
+    check; a refusal word of its own; the control that is gone when the observer is
+    installed. Recorded above as limits: gaps of half a second, stalled timers as a way the
+    tests can fail, bounds counted in reads, the survey's weaker test and what run #11 does
+    and does not show, section comboboxes, the version and the rehearsal records, the
+    observer outliving a failed action. Corrected in the records: which tree each run was on,
+    what "accepted at 610 ms" was seen to mean, and this entry's title (three reads are still
+    needed, and the windows are counted in reads).
+  - **Of the rework (a080d3d):** no blocker; nothing found that lets a value be chosen,
+    entered or sent that should not be, and no retry added. Of the first review's ten
+    findings most are met; the rest are recorded above. Acted on: a test for the narrower
+    race (a control absent only when the observer is installed), which the earlier test did
+    not hold; the location search's error before typing no longer counts the text as
+    disclosed. Corrected in the records: changes elsewhere still count through the
+    classification's 150 ms check (rank 19), what the record does not count, what marked
+    changes do after a check and in the location search, the location search after its last
+    read, the observer's cost, two tests that do not depend on the record, which tree two
+    runs were on, and what the six runs with the whole page's record show.
+  Runs are listed in `docs/automation-loop.md`.
+- **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
+  one.

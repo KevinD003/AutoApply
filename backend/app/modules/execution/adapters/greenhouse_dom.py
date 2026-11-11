@@ -57,6 +57,7 @@ from app.modules.execution.adapters.greenhouse import (
     approved_fields,
 )
 from app.modules.execution.faults import fault
+from app.modules.preparation import gh_readonly as ro
 from app.modules.preparation import greenhouse_dom as dom
 from app.modules.preparation.forms import STAND_IN_WIDGETS, FieldType, shown_by_page
 
@@ -210,8 +211,10 @@ _LOC_LIST_JS = (
     + """
   const lb = el && document.getElementById(el.getAttribute('aria-controls') || '');
   if (!lb || lb.getAttribute('role') !== 'listbox') return null;
+  const m = window.__neMut;  // D145: the probe's record of the last change to a list
   return {open: vis(lb),
           busy: lb.getAttribute('aria-busy') === 'true' || !!lb.querySelector('[role=progressbar]'),
+          list_quiet_ms: m && m.list ? Math.round(performance.now() - m.list) : null,
           texts: Array.from(lb.querySelectorAll('[role=option]')).filter(vis)
             .map((o) => o.textContent)}; }"""
 )
@@ -792,6 +795,14 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         page.on("requestfinished", on_done)
         page.on("requestfailed", on_done)
         try:
+            # D145: the page's own record of changes to a list, as for a dropdown (the probe's
+            # observer, which only reads): "exactly one suggestion" is judged on a list the
+            # page has not changed for STABLE_MS, not on reads that may have fallen in step.
+            try:  # before anything is typed: a stop here records no disclosure (D145 review)
+                if page.evaluate(ro._PRE_JS, key) is None:  # the control is gone
+                    raise LocationStopped(LOCATION_FAILED, list(before))
+            except PWError:
+                raise LocationStopped(LOCATION_FAILED, list(before)) from None
             # One input event with the whole approved text: what the page's search receives.
             page.locator(f'[id="{key}"]').fill(text, timeout=dropdowns._ACTION_MS)
             seen, waited, got = [], 0, None
@@ -803,8 +814,10 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                     raise stop(LOCATION_NO_LIST)
                 seen.append([_place(t) for t in got["texts"]])
                 n = dropdowns.STABLE_SAMPLES
+                quiet = got["list_quiet_ms"]
                 if (got["open"] and not got["busy"] and all(i in done for i in data)
-                        and len(seen) >= n and all(x == seen[-1] for x in seen[-n:])):  # fmt: skip
+                        and len(seen) >= n and all(x == seen[-1] for x in seen[-n:])
+                        and (quiet is None or quiet >= dropdowns.STABLE_MS)):  # fmt: skip
                     break
             else:
                 raise stop(LOCATION_NO_LIST)
@@ -834,6 +847,10 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             page.remove_listener("request", on_request)
             page.remove_listener("requestfinished", on_done)
             page.remove_listener("requestfailed", on_done)
+            try:
+                page.evaluate(ro._END_PROBE_JS)  # the observer is not left on the page
+            except PWError:
+                pass
 
     def _location_readback(self, page: Page, a: dict) -> bool:
         """The approved location is still shown, and the hidden values are still the ones the

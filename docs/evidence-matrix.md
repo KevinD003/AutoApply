@@ -9,6 +9,29 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A dropdown's list settled by the page's own record of its last change to a list (D145, 2026-11-11; local only)
+
+Nothing here ran against a real page or a real account. Branch `dropdown-settle`. Every form is
+a local stand-in (FIXTURE ASSUMPTIONS), and the receiver's ledger is the oracle for everything
+said to have reached the employer. Tests in `tests/test_dropdown_strategies.py` unless another
+file is named. What the rule does not cover is listed in D145 (`docs/decisions.md`).
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| A list that keeps being re-rendered is refused however slowly it is read, before anything is disclosed | `test_a_list_that_keeps_changing_is_refused_however_slowly_it_is_read` (the reading interval set to 590, 600, 610 and 1200 ms) | the stand-in list re-rendered every 300 ms: the attempt `failed_safe`, "its list could not be read completely", `still_changing` or `list_changed_recently`; receiver ledger: no disclosure, nothing accepted. Before D145 (measured): refused for another reason at 590 ms, judged settled at 610 ms |
+| A list that has settled is still accepted when read slowly | `test_a_list_that_has_settled_is_accepted_when_read_slowly` (a list shown at once; one that arrives after 1.2 s and stays) | read every 600 ms: `confirmed`; receiver ledger: one acceptance, each of the three dropdowns carrying its approved option |
+| A page that keeps changing elsewhere does not hold up a settled list | `test_a_page_that_keeps_changing_elsewhere_does_not_hold_up_a_settled_list` (an element outside every list changing every 300 ms, and every 600 ms) | `confirmed`; receiver ledger: one acceptance, each of the three dropdowns carrying its approved option. In a stand-in's window: the classification's own 150 ms check still counts changes anywhere, and a page changing something every 250 to 300 ms can have a list refused in a real page's window (D145; rank 19) |
+| The same within a real page's window | `test_a_page_busy_elsewhere_passes_every_check_in_a_real_pages_window` (the stand-in given the 1.5 s a real page gets; an element outside every list changing every 600 ms) | `confirmed`; receiver ledger: one acceptance, each of the three dropdowns carrying its approved option. With the whole page's record put back (D145's first version): `failed_safe` at a check in 6 of 6 runs |
+| A list that starts changing after its check is not chosen from, and nothing is sent | `test_a_list_that_starts_changing_after_the_check_stops_the_attempt_before_sending` (each list stable at its first opening, re-rendered every 300 ms from its second) | `abandoned`, "did not keep their values"; receiver ledger: nothing accepted, and disclosures (this stop comes after data was entered) |
+| What the page's record takes for a change to a list | `test_the_pages_record_tells_a_change_to_a_list_from_a_change_elsewhere` | a real browser on the stand-in page with one list open, a fresh record before each change. Not the list's: an element arriving elsewhere, its text, an attribute of it. The list's: text inside an option, an attribute of one, a child of the list, an attribute of the body (which holds it), an element holding an option arriving, the list removed, and 250 changes at once |
+| Settled means unchanged for half a second by that record | `test_settled_means_unchanged_by_the_pages_own_record` | the engine on a stand-in for the page's probe (no browser): three identical reads are not settled while the record stays recent, nor at 499 ms (`list_changed_recently`); they are at 500 ms, with no record at all, and with the list's record old while the whole page's is 200 ms old |
+| Three equal reads are still needed | `test_three_equal_reads_are_still_needed` | the same stand-in, no record: settled at the third read and not before; reads that differ in turn are never settled (`still_changing_or_loading`, after the window's six reads) |
+| A control that is gone when the observer is installed is refused | `test_a_control_that_is_gone_before_the_action_is_refused`; `test_a_control_absent_only_when_the_observer_is_installed_is_refused` | `Refused`, "the control disappeared": when it stays gone, and when it is back for every read after that instant with an earlier dropdown's quiet record (which would otherwise be taken as settled) |
+| Suggestions that keep changing never count as exactly one | `tests/test_greenhouse_controls.py`: `test_suggestions_that_keep_changing_never_count_as_exactly_one` (both structures; read every 250 and every 600 ms) | the stand-in's suggestions shown in turn, every 300 ms, as one "Springfield" and as the two of that name: `abandoned`, no settled list; receiver ledger: nothing accepted, one upload and the search text counted as disclosed |
+| An error from the page before the location is typed records no disclosure of it | `tests/test_greenhouse_controls.py`: `test_a_page_error_before_typing_records_no_location_disclosure` | the adapter on a page that fails while the observer is installed: `LocationStopped`, "the location search could not be completed", with only the earlier disclosures |
+| Every earlier dropdown and control case holds | the two files' other 96 cases | both files whole on ae54f21: 58 and 58 passed |
+| Each part of the rule is needed | 18 changes, each in turn, then 2 more for the second review's fixes (D145 in `docs/decisions.md`) | each fails a test |
+
 ## Attempts on a queue and a worker of their own (D144, 2026-11-10; local only)
 
 Nothing here ran against a real page or a real account. Branch `attempt-queue` (from D143's
@@ -16,7 +39,8 @@ branch, fa36039). Real Celery prefork workers on the run's own Redis; the receiv
 the oracle for everything said to have reached the employer. Every form is a local stand-in.
 Tests in `tests/test_attempt_queue.py` unless another file is named. The Compose layout itself
 runs only in CI (the `docker-smoke` and `execution-compose` jobs): this sandbox has no Docker
-daemon, so the rows that name a Compose scenario are evidence only once that job has passed.
+daemon, so the rows that name a Compose scenario rest on that job, which passed on the pull
+request (#53, on e40ee72).
 
 | Requirement | Test | Oracle / evidence |
 |---|---|---|

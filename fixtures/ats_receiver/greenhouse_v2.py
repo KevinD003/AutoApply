@@ -1093,10 +1093,18 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 #   late_differ     the endpoint answers with one option more
 #   late_never      the endpoint does not answer within the wait
 #   late_changing   the options keep being re-rendered, in alternating order, every 60 ms
-#   late_slow_changing  the same every 300 ms: quiet between changes, so only reading the list
-#                   several times in a row shows it never settles
+#   late_slow_changing  the same every 300 ms: the whole page is quiet for more than 150 ms
+#                   between changes. Since D145 the page's own record of changes to a list
+#                   refuses it however it is read; before, only three reads in a row did, and
+#                   only at the adapter's own pace
 #   late_partial    one option, and the list stays busy
 #   late_post       the options are requested with a POST
+# D145:
+#   changing_on_reopen  as click_popup the first time a list is opened (the check before
+#                   anything is entered); every later time the options keep being re-rendered,
+#                   in alternating order, every 300 ms (the choice, after data was entered)
+#   cfg dd_tick_ms  with any mode: an element that is no part of any list changes its text
+#                   every that many milliseconds (a page that is busy elsewhere)
 #   late_other_host the options are requested (GET) from another host, cfg other_origin (D111,
 #                   after run #11's `u3`: a required dropdown that opened while a data request
 #                   to another Greenhouse host was refused; what that request was for is not
@@ -1104,9 +1112,24 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 _DD_JS = """
 (() => {
   const DD = %DD%, DELAY = %DELAY%, BASE = %BASE%, LOCALE = %LOCALE%, VIA = %VIA%;
-  const BEACON = %BEACON%, BEACON_VIA = %BEACON_VIA%, OTHER = %OTHER%;
+  const BEACON = %BEACON%, BEACON_VIA = %BEACON_VIA%, OTHER = %OTHER%, TICK = %TICK%;
   const open = new Map();
+  const opened = new Map();   // how many times each control's list has been opened (D145)
   let seq = 0;
+  if (TICK > 0) {   // D145: a change every TICK ms that touches no list
+    const t = document.createElement('p');
+    t.id = 'fx-ticker'; t.textContent = '0';
+    document.body.append(t);
+    let n = 0;
+    setInterval(() => { t.textContent = String(++n); }, TICK);
+  }
+  const keepFlipping = (cb, p, got, ms) => {
+    let flip = false;
+    const iv = setInterval(() => {
+      if (!p.isConnected) { clearInterval(iv); return; }
+      flip = !flip; p.replaceChildren(); render(cb, p, flip ? got.slice().reverse() : got);
+    }, ms);
+  };
   const choose = (cb, o) => {
     if (DD === 'ignores_choice') { hide(cb); return; }
     if (['react_select', 'react_locale', 'container_only', 'container_noisy'].includes(DD)) {   // the input keeps only
@@ -1148,6 +1171,8 @@ _DD_JS = """
     open.set(cb, p);
     cb.setAttribute('aria-expanded', 'true'); cb.setAttribute('aria-controls', p.id);
     const pairs = JSON.parse(cb.dataset.options);
+    const nth = (opened.get(cb) || 0) + 1;
+    opened.set(cb, nth);
     if (DD === 'delayed') {
       p.setAttribute('aria-busy', 'true');
       setTimeout(() => { render(cb, p, pairs); p.removeAttribute('aria-busy'); }, DELAY);
@@ -1169,16 +1194,13 @@ _DD_JS = """
           if (DD === 'late_partial') { render(cb, p, got.slice(0, 1)); return; }
           render(cb, p, got); p.removeAttribute('aria-busy');
           if (DD === 'late_changing' || DD === 'late_slow_changing') {
-            let flip = false;
-            const iv = setInterval(() => {
-              if (!p.isConnected) { clearInterval(iv); return; }
-              flip = !flip; p.replaceChildren(); render(cb, p, flip ? got.slice().reverse() : got);
-            }, DD === 'late_changing' ? 60 : 300);
+            keepFlipping(cb, p, got, DD === 'late_changing' ? 60 : 300);
           }
         }, DELAY);
       }).catch(() => {});
     } else {
       render(cb, p, pairs);
+      if (DD === 'changing_on_reopen' && nth > 1) keepFlipping(cb, p, pairs, 300);
       if (DD === 'open_beacon' && BEACON) {   // opening also POSTs to another origin (D108)
         if (BEACON_VIA === 'sendbeacon') navigator.sendBeacon(BEACON, 'opened');
         else fetch(BEACON, {method: 'POST', body: 'opened', mode: 'no-cors'}).catch(() => {});
@@ -1295,6 +1317,8 @@ _DD_JS = """
 # counted: the page's own, and any other (sent with the application, for the tests' oracle).
 #   (none)                the normal behaviour
 #   two / none            two suggestions exactly "Springfield" / none exactly it
+#   two_in_turn           D145: the suggestions keep being re-rendered every 300 ms, in turn
+#                         one "Springfield" and both: no settled list ever shows exactly one
 #   ignores               clicking a suggestion closes the list and sets nothing
 #   label_only            clicking shows the label but never sets the hidden values
 #   prefill               the location and its hidden values are set at load
@@ -1341,8 +1365,7 @@ _LOC_JS = """
     const bar = document.createElement('li');
     bar.setAttribute('role', 'progressbar'); bar.textContent = 'Searching';
     lb.append(bar);
-    fetch(BASE + '/places?q=' + encodeURIComponent(q)).then((r) => r.json()).then((items) => {
-      if (my !== seq) return;
+    const list = (items) => {
       lb.replaceChildren();
       items.forEach((it, i) => {
         const li = document.createElement('li');
@@ -1353,7 +1376,18 @@ _LOC_JS = """
         li.addEventListener('click', () => choose(li));
         lb.append(li);
       });
+    };
+    fetch(BASE + '/places?q=' + encodeURIComponent(q)).then((r) => r.json()).then((items) => {
+      if (my !== seq) return;
+      list(V === 'two_in_turn' ? items.slice(0, 1) : items);
       lb.removeAttribute('aria-busy');
+      if (V === 'two_in_turn') {
+        let both = false;
+        const iv = setInterval(() => {
+          if (my !== seq || lb.hidden) { clearInterval(iv); return; }
+          both = !both; list(both ? items : items.slice(0, 1));
+        }, 300);
+      }
     }).catch(() => { lb.removeAttribute('aria-busy'); });
   });
   if (V === 'prefill') autofill();
@@ -1395,6 +1429,7 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
                .replace("%BEACON%", json.dumps(cfg.get("beacon") or ""))
                .replace("%BEACON_VIA%", json.dumps(cfg.get("beacon_via") or "fetch"))
                .replace("%OTHER%", json.dumps(cfg.get("other_origin") or ""))
+               .replace("%TICK%", str(int(cfg.get("dd_tick_ms") or 0)))
                .replace("%BASE%", json.dumps(base)) + "</script>")
     if mode in ("gh2_widgets", "gh2_widget_variants"):
         # FIXTURE ASSUMPTIONS: two standalone labelled comboboxes not in the job data (one
@@ -1535,8 +1570,8 @@ def mount(app, ledger, cfg, accept) -> None:
                    ("location_search", f"gh2-{board}-{job_id}", json.dumps({"q": q}),
                     time.time()))
         loc = cfg.get("loc")
-        if loc in ("two", "none"):
-            return JSONResponse(PLACES_TWO if loc == "two" else PLACES_NONE)
+        if loc in ("two", "two_in_turn", "none"):
+            return JSONResponse(PLACES_NONE if loc == "none" else PLACES_TWO)
         want = " ".join(q.split()).casefold()
         return JSONResponse([p for p in PLACES if p["label"].casefold().startswith(want)]
                             if want else [])

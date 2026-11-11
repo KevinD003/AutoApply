@@ -1973,7 +1973,10 @@ _STATE_JS = """() => {
 
 # Structural probes for one widget action. They read the page only (no events are dispatched)
 # and leave nothing behind but a MutationObserver that is disconnected after the widget. Texts
-# of option-like elements are compared inside the worker and never leave it.
+# of option-like elements are compared inside the worker and never leave it. The observer keeps
+# two times: of the document's last change (`quiet_ms`, read by `classify_open`) and, D145, of
+# the last change that touched a list (`list_quiet_ms`, read by the adapter's dropdown engine
+# only; the survey below neither uses nor publishes it).
 _OPTION_ROLES = ("[role=option],[role=menuitem],[role=menuitemradio],[role=menuitemcheckbox],"
                  "[role=treeitem],[role=gridcell]")  # fmt: skip
 _POPUP_ROLES = "[role=listbox],[role=menu],[role=grid],[role=tree],[role=dialog]"
@@ -1999,14 +2002,34 @@ _PRE_JS = (
   if (!el) return null;
   const sel = [OPT, POP, HINT_POP, HINT_OPT, BUSY, HINT_BUSY, '[role=alert]'].join(',');
   window.__neBefore = new Set(all(sel).filter(vis));
-  window.__neMut = {n: 0, last: 0, added: []};
+  window.__neMut = {n: 0, last: 0, list: 0, added: []};
   if (window.__neObs) window.__neObs.disconnect();
+  // D145: which changes touch a list (an option or a popup, by the same marks the probe reads
+  // them by): one inside such an element, one that adds or removes such an element, and an
+  // attribute change on an element holding one (which can show or hide it). A batch too large
+  // to look at one by one counts as the list's.
+  const LIST = [OPT, POP, HINT_POP, HINT_OPT].join(',');
+  const inList = (n) => {
+    const e = n && (n.nodeType === 1 ? n : n.parentElement);
+    return !!(e && e.closest(LIST));
+  };
+  const holdsList = (n) => !!(n && n.nodeType === 1 && (n.matches(LIST) || n.querySelector(LIST)));
   window.__neObs = new MutationObserver((ms) => {
     const m = window.__neMut;
     m.n += ms.length; m.last = performance.now();
-    for (const r of ms) for (const a of r.addedNodes) {
-      if (a.nodeType === 1 && m.added.length < 500) m.added.push(a);
+    let list = ms.length > 200;
+    for (const r of ms) {
+      for (const a of r.addedNodes) {
+        if (a.nodeType === 1 && m.added.length < 500) m.added.push(a);
+      }
+      if (list) continue;
+      if (inList(r.target)) list = true;
+      else if (r.type === 'childList') {
+        list = Array.from(r.addedNodes).some(holdsList)
+          || Array.from(r.removedNodes).some(holdsList);
+      } else if (r.type === 'attributes') list = holdsList(r.target);
     }
+    if (list) m.list = m.last;
   });
   window.__neObs.observe(document.documentElement,
                          {subtree: true, childList: true, attributes: true, characterData: true});
@@ -2062,7 +2085,7 @@ _PROBE_JS = (
   const sizes = opts.map((o) => parseInt(o.getAttribute('aria-setsize'), 10)).filter((n) => n > 0);
   const scope = assocVis.concat(newPops);
   const active = document.activeElement;
-  const now = performance.now(), m = window.__neMut || {n: 0, last: 0, added: []};
+  const now = performance.now(), m = window.__neMut || {n: 0, last: 0, list: 0, added: []};
   return {
     expanded: exp(el), wrapper_expanded: wrap && wrap !== el ? exp(wrap) : 'absent',
     reference: ref, associated: assoc.length, associated_visible: assocVis.length,
@@ -2077,6 +2100,7 @@ _PROBE_JS = (
     alerts: all('[role=alert]').filter(isNew).length,
     focus: active === el || el.contains(active) || !!(wrap && wrap.contains(active)),
     mutations: m.n, quiet_ms: m.last ? Math.round(now - m.last) : null,
+    list_quiet_ms: m.list ? Math.round(now - m.list) : null,
     added_visible: m.added.filter((a) => a.isConnected && vis(a)).length,
   };
 }"""

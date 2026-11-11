@@ -251,7 +251,9 @@ ADAPTER_VERSIONS: dict[str, str] = {
     # 3: dropdowns without a list at load are handled by explicit, evidence-checked strategies
     # (adapters/dropdowns.py), verified before disclosure.
     # 4 (D104): on local stand-ins, the phone country picker, the location search and dropdown
-    # lists that arrive late; a list needs STABLE_SAMPLES equal reads everywhere.
+    # lists that arrive late; a list needs STABLE_SAMPLES equal reads everywhere. D145 adds the
+    # page's own record of the last change to a list, with no new version: no approval is for
+    # anything else than before (D145 says what the stricter reading can and cannot change).
     "greenhouse_dom": f"greenhouse-dom-4+{gdom.EXTRACTION_VERSION}",
     # D102: the same rules on a real board host, from a form captured as `greenhouse_live`.
     # 2 (D104): greenhouse_dom's version 4; its stand-in controls are refused on a real host.
