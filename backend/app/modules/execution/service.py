@@ -1415,7 +1415,11 @@ def cancel(db: Session, app: Application) -> str:
     (`wizard_in_progress`): each page's Next may already be saved, or even received, at the
     employer, and a cancel would end the attempt with nothing recorded of a Next in flight.
     Revoking stops it instead: the attempt stays held, so its next step gate ends it with the
-    wizard outcome, and a Next in flight still reaches its quarantine."""
+    wizard outcome, and a Next in flight still reaches its quarantine. D147: refused while the
+    database is held after a restore (what it shows in progress is the resolver's to end, as an
+    unknown outcome, never as cancelled before anything was submitted)."""
+    if restore.held(db):
+        raise PermissionError(str(pk.refused("restored_backup_held")))
     att = _active_attempt(db, app.id)  # waits for a gate holding the attempt
     pk.lock_application(db, app.id)
     db.refresh(app)  # as locked: a copy loaded before the wait would fail its update (stale)
@@ -1467,7 +1471,10 @@ def stop_for_revoke(db: Session, app: Application) -> str:
     An attempt the sweeper put back in the queue (its worker stopped before entering anything)
     is pending while its application still shows running: it is cancelled the same way, and
     the application moves as for a refused claim (D146 review: it used to fail, nothing was
-    revoked, and the attempt would have run later)."""
+    revoked, and the attempt would have run later). D147: refused while the database is held
+    after a restore, as cancelling is."""
+    if restore.held(db):
+        raise pk.refused("restored_backup_held")
     att = _active_attempt(db, app.id)  # waits for a gate holding the attempt
     pk.lock_application(db, app.id)
     db.refresh(app)
@@ -1528,9 +1535,13 @@ def stop_for_pause(db: Session, user_id) -> dict:
 def sweep(publish_new: bool = True) -> dict:
     """Recover attempts whose worker vanished. Never takes over a possibly-submitting attempt.
     Each attempt is recovered in its own savepoint: one that cannot be (counted in `errors`)
-    stays as it was for the next sweep and never stops the others."""
+    stays as it was for the next sweep and never stops the others. D147: nothing while the
+    database is held after a restore: what it restored is the resolver's to end, as an unknown
+    outcome (an attempt the sweeper ended first would escape that quarantine)."""
     out = {"repended": 0, "abandoned": 0, "unknown": 0, "failed": 0, "errors": 0}
     with SessionLocal() as db:
+        if restore.held(db):
+            return out | {"checkpoints_closed": 0, "held": True}
         stale = db.scalars(
             select(ExecutionAttempt)
             .where(

@@ -276,7 +276,7 @@ def msgs(aid: str) -> list[OutboxMessage]:
 @pytest.mark.parametrize(
     "was,app_before,entered,phase",
     [
-        ("claimed", "running", False, "queued"),
+        ("claimed", "running", False, "started"),
         ("claimed", "running", True, "entering"),
         ("sending", "submitting", True, "sending"),
         ("awaiting_code", "needs_user_action", True, "sending"),
@@ -307,17 +307,13 @@ def test_resolving_quarantines_each_state_in_progress(api, receiver, was, app_be
 
 
 @pytest.mark.parametrize(
-    "was,app_before,entered,state,app_after",
-    [
-        ("pending", "queued", False, "failed_safe", "awaiting_approval"),
-        ("claimed", "running", True, "abandoned", "needs_user_action"),
-    ],
+    "was,app_before,entered,phase",
+    [("pending", "queued", False, "queued"), ("claimed", "running", True, "entering")],
 )
-def test_a_rehearsal_in_progress_is_ended_as_the_sweeper_would(
-    api, receiver, was, app_before, entered, state, app_after
-):
-    """A rehearsal never submits, so nothing it was doing can have been sent: it is ended as
-    the sweeper ends one whose worker is gone, never run again."""
+def test_a_rehearsal_in_progress_is_quarantined_too(api, receiver, was, app_before, entered,
+                                                    phase):  # fmt: skip
+    """A rehearsal never submits, but the submission that follows it may have been sent after
+    the backup: its application is quarantined as an unknown outcome like any other."""
     from app.core.db import utcnow
     from app.modules.preparation.models import ApprovalScope
 
@@ -333,10 +329,48 @@ def test_a_rehearsal_in_progress_is_ended_as_the_sweeper_would(
     restored()
     assert restore.resolve()["ended"] == {was: 1}
     att = attempt(aid)
-    assert (att.state, att.outcome_detail) == (state, restore.REHEARSAL_ENDED)
-    assert app_state(app_id) == app_after
+    assert (att.state, att.outcome_detail) == ("unknown", restore.ENDED[phase])
+    assert app_state(app_id) == "submitted_unconfirmed"
     assert svc.claim(uuid.UUID(aid), "w1") is None
     nothing_reached_the_employer(receiver)
+
+
+def test_a_request_for_a_code_ends_with_its_attempt(api, receiver):
+    """An attempt the backup shows waiting for a verification code: its request takes no code
+    and keeps none once the attempt is ended."""
+    from app.core.db import utcnow
+    from app.modules.execution.models import Checkpoint
+
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    set_attempt(aid, state="awaiting_code", generation=1, lease_owner="gone",
+                lease_expires_at=utcnow(), disclosure_started_at=utcnow())  # fmt: skip
+    set_app(app_id, "needs_user_action")
+    att = attempt(aid)
+    with SessionLocal() as db:
+        db.add(Checkpoint(attempt_id=att.id, application_id=att.application_id,
+                          user_id=att.user_id, status="submitted", code="123456",
+                          expires_at=utcnow()))  # fmt: skip
+        db.commit()
+    restored()
+    restore.resolve()
+    with SessionLocal() as db:
+        (cp,) = db.scalars(select(Checkpoint).where(Checkpoint.attempt_id == att.id)).all()
+    assert (cp.status, cp.code) == ("expired", None)
+    assert app_state(app_id) == "submitted_unconfirmed"
+
+
+def test_an_application_in_a_state_it_does_not_expect_is_left_as_it_is(api, receiver):
+    """Its attempt is still ended, never run; the application is not moved where no move is
+    allowed, and the pass finishes."""
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    set_app(app_id, "awaiting_approval")  # not a state a queued attempt leaves it in
+    restored()
+    done = restore.resolve()
+    assert done["ended"] == {"pending": 1} and done["resolved_at"]
+    assert attempt(aid).state == "unknown" and app_state(app_id) == "awaiting_approval"
+    assert not held()
 
 
 def test_resolving_pauses_every_rule_and_tells_every_account(api, other_api, receiver):
@@ -364,6 +398,45 @@ def test_resolving_pauses_every_rule_and_tells_every_account(api, other_api, rec
     later.register(email="later.synthetic@example.com")
     assert not [i for i in later.get("/notifications").json()["items"]
                 if i["kind"] == "restored_backup"]  # fmt: skip
+
+
+def test_the_sweeper_leaves_a_restored_database_to_the_resolver(api, receiver):
+    """What the backup shows in progress has an expired lease: the sweeper would end it as
+    stopped (and it would then escape the quarantine). While held, it does nothing."""
+    from app.core.db import utcnow
+
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    set_attempt(aid, state="claimed", generation=1, lease_owner="gone",
+                lease_expires_at=utcnow(), disclosure_started_at=utcnow())  # fmt: skip
+    set_app(app_id, "running")
+    restored()
+    out = svc.sweep()
+    assert out["held"] is True and out["abandoned"] == 0
+    assert attempt(aid).state == "claimed"
+    assert restore.resolve()["ended"] == {"claimed": 1}
+    assert attempt(aid).state == "unknown" and app_state(app_id) == "submitted_unconfirmed"
+
+
+def test_cancelling_revoking_and_pausing_wait_for_the_resolver(api, receiver):
+    """Each would record that nothing was sent; while held, cancelling and revoking are
+    refused, and pausing only pauses. Resolved, the attempt is quarantined."""
+    owner = api.get("/auth/me").json()["user_id"]
+    with SessionLocal() as db:
+        db.add(AutoApplyPrefs(user_id=uuid.UUID(owner), paused=False))
+        db.commit()
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    set_attempt(aid, queued_by_rule=True)
+    restored()
+    for path in (f"/applications/{app_id}/cancel", f"/applications/{app_id}/package/revoke"):
+        r = api.post(path)
+        assert r.status_code == 409 and "(reason: restored_backup_held)" in r.text, (path, r.text)
+    r = api.put("/auto-apply", json={"paused": True})
+    assert r.status_code == 200, r.text
+    assert attempt(aid).state == "pending" and len(live_approvals(app_id)) == 1
+    assert restore.resolve()["ended"] == {"pending": 1}
+    assert attempt(aid).state == "unknown" and app_state(app_id) == "submitted_unconfirmed"
 
 
 def test_the_relay_task_resolves_a_restore_before_it_publishes(api, receiver, monkeypatch):

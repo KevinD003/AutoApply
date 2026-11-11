@@ -130,7 +130,9 @@ def set_paused(db: Session, user_id, value: bool, reason_code: str | None = None
     """Pause or resume the account's rule. D134: pausing also stops what the rule queued that
     has not started sending (execution.service.stop_for_pause) and retires the approvals it
     gave; it returns what it stopped. `reason_code`: a pause NoEfforts made, not the account
-    (D147: `restored_from_backup`), recorded with it."""
+    (D147: `restored_from_backup`), recorded with it. D147: while the database is held after a
+    restore it only pauses: what the rule queued is the resolver's to end, as an unknown
+    outcome, and every approval is retired then."""
     from app.modules.execution.service import stop_for_pause
     from app.modules.preparation import package as pk
 
@@ -145,7 +147,10 @@ def set_paused(db: Session, user_id, value: bool, reason_code: str | None = None
         record(db, user_id, "auto_apply.resumed", "user", user_id)
         return None
     db.flush()
-    stopped = stop_for_pause(db, user_id) | {"approvals": pk.retire_rule_approvals(db, user_id)}
+    if restore.held(db):  # D147: what the backup shows in progress is the resolver's to end
+        stopped = {"cancelled": 0, "stopped": 0, "in_flight": 0, "approvals": 0}
+    else:
+        stopped = stop_for_pause(db, user_id) | {"approvals": pk.retire_rule_approvals(db, user_id)}
     counts = {k: stopped[k] for k in ("cancelled", "stopped", "in_flight", "approvals")}
     if reason_code:  # D147: NoEfforts paused it, not the account
         record(db, user_id, "auto_apply.paused", "user", user_id, cancelled=counts["cancelled"],

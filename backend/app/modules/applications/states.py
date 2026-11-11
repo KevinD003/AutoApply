@@ -109,12 +109,7 @@ TRANSITIONS: dict[AppState, dict[AppState, set[Actor]]] = {
         S.cancelled: {U},
         S.expired: {SY},
     },
-    S.ready_to_submit: {
-        S.submitting: {W},
-        S.needs_user_action: {W},
-        S.cancelled: {U},
-        S.submitted_unconfirmed: {SY},  # D147: restored from a backup taken at this point
-    },
+    S.ready_to_submit: {S.submitting: {W}, S.needs_user_action: {W}, S.cancelled: {U}},
     S.submitting: {
         S.submitted_confirmed: {W},  # only execution.service.confirmed(): its attempt's receipt
         S.submitted_unconfirmed: {W, SY},

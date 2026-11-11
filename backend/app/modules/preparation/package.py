@@ -114,8 +114,9 @@ APPROVAL_REASONS = {
     # D147: the database was restored from a backup, and what it showed as queued or in progress
     # is not ended yet (the scheduler does it within seconds of starting).
     "restored_backup_held": "This server's database was restored from a backup, and NoEfforts "
-    "has not yet ended what the backup showed as queued or in progress. Nothing can be approved "
-    "or queued until it has; the scheduler does it within seconds of starting.",
+    "has not yet ended what the backup showed as queued or in progress. Nothing can be approved, "
+    "queued, cancelled or revoked until it has; the scheduler does it within seconds of "
+    "starting.",
 }
 
 

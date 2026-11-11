@@ -78,14 +78,21 @@ def unzip(data: bytes) -> dict[str, bytes]:
         return {n: z.read(n) for n in z.namelist()}
 
 
+# Tables that name no account at all: the server's own (D147: which database this is).
+NO_ACCOUNT = {"instance_stamp"}
+
+
 def naming(user_id: uuid.UUID) -> dict[str, int]:
     """Rows that name the account, in every table: by user_id, through a parent that has one,
     and the users row itself. Tables reached only through a parent are listed in PARENT, plus
-    the outbox (through its attempt)."""
+    the outbox (through its attempt). The server's own tables (NO_ACCOUNT) name no account."""
     out = {}
     parents = export.PARENT | {"outbox_messages": ("attempt_id", "execution_attempts")}
     with SessionLocal() as db:
         for t in Base.metadata.sorted_tables:
+            if t.name in NO_ACCOUNT:
+                assert "user_id" not in t.c, t.name
+                continue
             if t.name == "users":
                 q = select(func.count()).select_from(t).where(t.c.id == user_id)
             elif "user_id" in t.c:

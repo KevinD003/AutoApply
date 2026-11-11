@@ -19,11 +19,13 @@ names another database, the database is *held*:
     starting, before it publishes anything; while another resolver is at work, it publishes
     nothing.
 
-Resolving it never runs anything. Every attempt still active is ended, and its outcome after
-the backup is unknown: it may have run and been sent since. So it ends `unknown` and its
-application `submitted_unconfirmed`, quarantined as an unknown outcome after the final click is,
-for the owner to reconcile; a rehearsal, which never submits, ends as the sweeper would end it
-(`failed_safe` before anything was entered, `abandoned` after). Every live approval is retired,
+Resolving it never runs anything. Every attempt still active is ended, and what became of its
+application after the backup is unknown: it may have run and been sent since (after a rehearsal,
+by the submission that followed it). So it ends `unknown` and its application
+`submitted_unconfirmed`, quarantined as an unknown outcome after the final click is, for the
+owner to reconcile. Until then the sweeper does nothing, and cancelling, revoking and pausing do
+not end what the backup shows in progress (each would record that nothing was sent). Every live
+approval is retired,
 so nothing is sent again on a decision made before the backup; every account's standing rule is
 paused, and it leaves every application made before the restore to its owner
 (`autoapply.service`). Each account's feed says so (`notifications`). Only then are the stamps
@@ -83,23 +85,20 @@ _RESTORED_AT = text(
 
 _WHEN = {
     "queued": "while this application was queued",
+    "started": "while this application was being started, before anything was entered",
     "entering": "while this application was being entered on the employer's page",
     "sending": "while this application was being sent",
 }
+# The feed adds what to do (notifications._UNKNOWN_NOTE): check, then record what happened.
 ENDED = {
     phase: "This server's database was restored from a backup taken "
     + when
-    + ". It may have been sent after that backup: NoEfforts cannot tell, and it is never sent "
-    "again automatically. Check with the employer and your email, then record what happened."
+    + ". It may have been sent after that backup: NoEfforts cannot tell."
     for phase, when in _WHEN.items()
 }
-REHEARSAL_ENDED = (
-    "This server's database was restored from a backup taken during this rehearsal. A rehearsal "
-    "never submits; NoEfforts did not run it again."
-)
-# The application states a quarantined attempt can leave its application in (the sweeper's and
-# the claim's own, and the system's move for a restore: applications.states).
-_QUARANTINABLE = ("queued", "running", "ready_to_submit", "submitting", "needs_user_action")
+# The application states an attempt still active can leave its application in, and the
+# system's moves from them for a restore (applications.states).
+_QUARANTINABLE = ("queued", "running", "submitting", "needs_user_action")
 
 
 def _state(db: Session) -> tuple[int, int, bool, bool]:
@@ -213,13 +212,6 @@ def _resolve(force: bool) -> dict | None:
     return summary
 
 
-def _is_rehearsal(db: Session, att: ExecutionAttempt) -> bool:
-    from app.modules.preparation.models import ApprovalScope, PackageApproval
-
-    appr = db.get(PackageApproval, att.approval_id) if att.approval_id else None
-    return appr is not None and appr.scope == ApprovalScope.disclose_only
-
-
 def _end_active(db: Session) -> tuple[dict, int]:
     """End every attempt still active, under the cancel lock order (each attempt, then its
     application; attempts in order of their ids), never to run again; retire every live
@@ -247,25 +239,21 @@ def _end_active(db: Session) -> tuple[dict, int]:
             continue  # it finished while this waited
         att.lease_owner, att.lease_expires_at, att.finished_at = None, None, utcnow()
         att.cancel_requested = True  # a worker still holding it stops at its next step
-        sending = was in (S.sending, S.awaiting_code)
-        if _is_rehearsal(db, att) and not sending:  # a rehearsal never submits
-            if att.disclosure_started_at is not None:
-                att.state, att.outcome_detail = S.abandoned, REHEARSAL_ENDED
-                if app.state == AppState.running:
-                    svc._app_to(db, app, AppState.needs_user_action, Actor.system,
-                                REHEARSAL_ENDED)  # fmt: skip
-            else:
-                att.state, att.outcome_detail = S.failed_safe, REHEARSAL_ENDED
-                svc._claim_refused(db, app, REHEARSAL_ENDED)
-        else:  # it may have run, and been sent, after the backup: an unknown outcome
-            phase = "sending" if sending else "entering" if att.disclosure_started_at else "queued"
-            att.state, att.outcome_detail = S.unknown, ENDED[phase]
-            svc.close_checkpoints(db, att.id)
-            if app.state in _QUARANTINABLE:
-                svc._app_to(db, app, AppState.submitted_unconfirmed, Actor.system, ENDED[phase])
-            else:
-                log.warning("restore: an attempt's application was left in its state (%s)",
-                            app.state)  # fmt: skip
+        if was in (S.sending, S.awaiting_code):
+            phase = "sending"
+        elif att.disclosure_started_at is not None:
+            phase = "entering"
+        else:
+            phase = "started" if was == S.claimed else "queued"
+        # It, or what followed it (a submission after a rehearsal), may have been sent after the
+        # backup: an unknown outcome, whatever it was doing.
+        att.state, att.outcome_detail = S.unknown, ENDED[phase]
+        svc.close_checkpoints(db, att.id)
+        if app.state in _QUARANTINABLE:
+            svc._app_to(db, app, AppState.submitted_unconfirmed, Actor.system, ENDED[phase])
+        else:
+            log.warning("restore: an attempt's application was left in its state (%s)",
+                        app.state)  # fmt: skip
         svc.event(db, att, "restore_ended", was=str(was))
         ended[str(was)] = ended.get(str(was), 0) + 1
     if ids:  # what the relay has not published yet is never published: nothing is to run
