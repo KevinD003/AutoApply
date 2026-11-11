@@ -70,6 +70,15 @@ docker compose exec -T postgres createdb -U postgres noefforts
 docker compose exec -T postgres pg_restore -U postgres -d noefforts --no-owner <"$bk/db.dump"
 docker compose run --rm --no-deps -T backend \
   sh -c 'find /data/storage -mindepth 1 -delete && tar xzf - -C /data/storage' <"$bk/storage.tgz"
+# The guide's two starts (section 7): the app alone, its check, then the rest. D147: the restored
+# database must show as held (its stamp is the backed-up database's) before the workers start.
+docker compose up -d backend frontend
+wait_http http://127.0.0.1:8000/api/health 60
+held=$(docker compose exec -T backend python -m app.modules.execution.cli restore-status)
+case "$held" in
+  *'"held": true'*) ;;
+  *) echo "the restore was not recognized before the workers started: $held"; exit 1 ;;
+esac
 docker compose up -d --remove-orphans
 wait_http http://127.0.0.1:8000/api/health 60
 expect_contains "session after restore" "$email" -b /tmp/smoke-cookies \

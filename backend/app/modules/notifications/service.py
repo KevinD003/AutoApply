@@ -37,7 +37,6 @@ from app.modules.execution.models import (
     AttemptState,
     Checkpoint,
     ExecutionAttempt,
-    InstanceStamp,
     RehearsalRecord,
 )
 from app.modules.execution.service import RETIRED
@@ -347,23 +346,25 @@ def _inbox(db: Session, user_id) -> list[dict]:
 # D147: what a restore of the server's database did, for every account that existed then.
 _RESTORE_TEXT = (
     "This server's database was restored from a backup, so nothing done after that backup is "
-    "recorded here. NoEfforts ended, without running them, the applications the backup showed "
-    "as queued or in progress, retired every approval and paused automatic applying. Before you "
-    "approve or resume anything, check your email and the employers' sites for applications "
-    "sent after the backup."
+    "recorded here. The applications the backup showed as queued or in progress were ended "
+    "without being run; each may have been sent after the backup, so each waits for you as an "
+    "unknown outcome. Every approval was retired and automatic applying paused, and it leaves to "
+    "you every application that began before the restore. Before you approve, queue or resume "
+    "anything, check your email and the employers' sites for applications sent after the "
+    "backup, and record on each application what you find."
 )
 
 
 def _restore(db: Session, user_id) -> list[dict]:
-    stamp = db.get(InstanceStamp, restore.STAMP_ID)
-    if stamp is None or stamp.restored_at is None:
+    at = restore.restored_at(db)  # the last restore resolved on this database
+    if at is None:
         return []
     created = db.scalar(select(User.created_at).where(User.id == user_id))
-    if created is not None and created > stamp.restored_at:
-        return []  # an account made after the restore lost nothing to it
-    item = _item(f"restore:{stamp.restored_at.isoformat()}", "restored_backup", stamp.restored_at,
-                 None, "This server was restored from a backup", _RESTORE_TEXT,
-                 needs_action=True, link="/tracker")  # fmt: skip
+    if created is not None and created > at:
+        return []  # an account made after the restore was resolved lost nothing to it
+    item = _item(f"restore:{at.isoformat()}", "restored_backup", at, None,
+                 "This server was restored from a backup", _RESTORE_TEXT, needs_action=True,
+                 link="/tracker")  # fmt: skip
     item["job"] = None
     return [item]
 

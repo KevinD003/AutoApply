@@ -798,7 +798,7 @@ def test_d147_the_stamp_is_the_databases_own_and_a_copy_of_it_is_held(disposable
     """The upgrade stamps the database it runs in with that database's oid and its cluster's
     identifier. A copy of the database (CREATE DATABASE ... TEMPLATE: the same rows in another
     database, which is what a restore into a new database leaves) carries the stamp, so it is
-    held; the original is not."""
+    held; the original is not. The downgrade refuses while the database is held."""
     from app.modules.execution import restore
 
     command.upgrade(_cfg(), "head")
@@ -822,6 +822,14 @@ def test_d147_the_stamp_is_the_databases_own_and_a_copy_of_it_is_held(disposable
     finally:
         copy.dispose()
         isolation.drop_sibling(TEST_DB, "restored")
+    # The downgrade refuses while the database is held: it would drop the only record of it.
+    with disposable.begin() as c:
+        c.execute(text("INSERT INTO instance_stamp (db_oid, cluster_id, stamped_at) "
+                       "VALUES (-1, -1, now())"))  # fmt: skip
+    with pytest.raises(RuntimeError, match="restored from a backup"):
+        command.downgrade(_cfg(), "c4e8f2a19d35")
+    with disposable.begin() as c:
+        c.execute(text("DELETE FROM instance_stamp WHERE db_oid = -1"))
     command.downgrade(_cfg(), "c4e8f2a19d35")
     with disposable.connect() as c:
         assert c.execute(text("SELECT to_regclass('instance_stamp')")).scalar() is None

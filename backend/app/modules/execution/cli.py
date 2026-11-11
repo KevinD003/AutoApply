@@ -3,8 +3,9 @@
 
 D147: `restore-status` prints whether the database is held as restored, and the last restore
 resolved; `restore-resolve` resolves a hold now (the scheduler does it by itself within
-seconds); `--force` treats the database as restored whatever its stamp says, for a restore made
-another way than the deployment guide's §7 (`pg_restore --clean`, a copy of the volume)."""
+seconds), and exits 1 when another resolver is at work; `--force` treats the database as
+restored whatever its stamps say, for a restore it cannot recognize (into the same database, a
+copy of the server's files, a backup taken before D147: the deployment guide's §7)."""
 
 import json
 import socket
@@ -25,13 +26,19 @@ def main(argv: list[str]) -> int:
     elif cmd == "relay":
         from app.worker import publish
 
-        # What the periodic task does: new messages, then those waiting too long (D146).
-        print(service.relay_outbox(publish) + service.republish_waiting(publish))
+        # What the periodic task does: a restore first (D147; nothing while another resolver is
+        # at work), then new messages, then those waiting too long (D146).
+        if restore.resolve() == {"busy": True}:
+            print(0)
+        else:
+            print(service.relay_outbox(publish) + service.republish_waiting(publish))
     elif cmd == "restore-status":
         print(json.dumps(restore.status(), sort_keys=True))
     elif cmd == "restore-resolve":
         done = restore.resolve(force="--force" in argv[1:])
         print(json.dumps(done, sort_keys=True) if done else "not held")
+        if done == {"busy": True}:
+            return 1  # nothing was resolved: try again
     else:
         print(f"unknown command: {cmd}", file=sys.stderr)
         return 2

@@ -3,38 +3,48 @@
 A restored database cannot know what happened after its backup was taken: an application it
 shows as queued, or in progress, may have been sent since, and one it shows as approved may
 have been queued and sent since. Since D146 a queued attempt is published again by itself, so
-it would be sent a second time. The database therefore carries a stamp of its own identity
-(`InstanceStamp`: the oid PostgreSQL gave the database the stamp was written in, and the system
-identifier of its server's cluster). A restore keeps the stamp: into a new database on the same
-server, as the deployment guide's §7 does it (dropdb, createdb, pg_restore), it changes the oid;
-onto another server, the cluster (where the oid may repeat). While they differ the database is
-*held*:
+it would be sent a second time. The database therefore carries stamps of identity
+(`InstanceStamp`, keyed by the oid PostgreSQL gave the database a stamp was written in and the
+system identifier of its server's cluster). A restore brings back the backup's stamp: into a new
+database on the same server, as the deployment guide's §7 does it (dropdb, createdb,
+pg_restore), with another oid; onto another server, with another cluster (where the oid may
+repeat). A stamp the new server writes for itself before the backup's arrives (a scheduler left
+running, a backend that migrated the empty database first) does not hide it: while any stamp
+names another database, the database is *held*:
 
-  * no attempt is claimed (`service.claim`) and nothing is queued (`service.enqueue`);
+  * no attempt is claimed (`service.claim`), nothing is queued (`service.enqueue`) or approved
+    (`package.approve`);
   * the standing rule does nothing (`autoapply.service.tick`);
   * the relay's task first resolves the hold (`resolve`), within seconds of the scheduler
-    starting, before it publishes anything.
+    starting, before it publishes anything; while another resolver is at work, it publishes
+    nothing.
 
-Resolving it never runs anything. Every attempt still active is ended: one that was queued, or
-taken before anything was entered, `failed_safe`; one that had entered data, `abandoned`; one
-past the send gate, `unknown` (its application `submitted_unconfirmed`, as the sweeper does).
-Every live approval is retired, so nothing is sent again on a decision made before the backup;
-every account's standing rule is paused. Each account's feed says so (`notifications`). Only
-then is the stamp made this database's. Each step is its own transaction and can be repeated: a
-pass that stops half way leaves the database held, and the next pass finishes it.
+Resolving it never runs anything. Every attempt still active is ended, and its outcome after
+the backup is unknown: it may have run and been sent since. So it ends `unknown` and its
+application `submitted_unconfirmed`, quarantined as an unknown outcome after the final click is,
+for the owner to reconcile; a rehearsal, which never submits, ends as the sweeper would end it
+(`failed_safe` before anything was entered, `abandoned` after). Every live approval is retired,
+so nothing is sent again on a decision made before the backup; every account's standing rule is
+paused, and it leaves every application made before the restore to its owner
+(`autoapply.service`). Each account's feed says so (`notifications`). Only then are the stamps
+of other databases removed. Each step is its own transaction and can be repeated: a pass that
+stops half way leaves the database held, and the next pass finishes it.
 
-What it cannot see: a restore into the same database (`pg_restore --clean` into it), a copy
-of the server's own files (its volume, a snapshot, a physical backup: the cluster's identifier
-and the oid are copied too), and a backup taken before D147 (it has no stamp; its upgrade
-stamps it). `resolve(force=True)` (the CLI's `restore-resolve --force`) treats the database as
-restored whatever its stamp says. And no restore can show what was sent after its backup: the
+What it cannot see: a restore into the same database (`pg_restore --clean` into it), a copy of
+the server's own files (its volume, a snapshot, a physical backup, a promoted replica, a cloned
+server image: the cluster's identifier and the oid are copied too), and a backup taken before
+D147 (it has no stamp; its upgrade stamps it). `resolve(force=True)` (the CLI's
+`restore-resolve --force`) treats the database as restored whatever its stamps say: it holds the
+database at once, then resolves. And no restore can show what was sent after its backup: the
 owner checks that before approving or resuming anything.
 """
 
 import copy
 import logging
+from datetime import datetime
 
-from sqlalchemy import or_, select, text, update
+from sqlalchemy import delete, or_, select, text, tuple_, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal, engine, utcnow
@@ -48,73 +58,106 @@ from app.modules.execution.models import (
 
 log = logging.getLogger("noefforts.execution.restore")
 S = AttemptState
-STAMP_ID = 1
+FORCED = (-1, -1)  # the identity of no database: `--force` holds the database with it
 _LOCK = 7_402_147  # one resolver at a time (a pg advisory lock held for all three steps)
 
-ENDED_QUEUED = (
-    "This server's database was restored from a backup taken while this application was "
-    "queued. It may have been sent after that backup: NoEfforts cannot tell, so it ran nothing. "
-    "Check with the employer before you approve it again."
+# This database's identity, and whether any stamp names another (held) or this one (own).
+_STATE = text(
+    "SELECT d.oid::bigint, c.system_identifier, "
+    "EXISTS (SELECT 1 FROM instance_stamp s WHERE (s.db_oid, s.cluster_id) "
+    "<> (d.oid::bigint, c.system_identifier)), "
+    "EXISTS (SELECT 1 FROM instance_stamp s WHERE (s.db_oid, s.cluster_id) "
+    "= (d.oid::bigint, c.system_identifier)) "
+    "FROM pg_database d, pg_control_system() c WHERE d.datname = current_database()"
 )
-ENDED_ENTERED = (
-    "This server's database was restored from a backup taken while this application was being "
-    "entered on the employer's page. What happened after that backup is not recorded here: "
-    "NoEfforts will not run it again. Check with the employer."
+_HELD = text(
+    "SELECT EXISTS (SELECT 1 FROM instance_stamp s, pg_database d, pg_control_system() c "
+    "WHERE d.datname = current_database() "
+    "AND (s.db_oid, s.cluster_id) <> (d.oid::bigint, c.system_identifier))"
 )
-ENDED_SENDING = (
-    "This server's database was restored from a backup taken while this application was being "
-    "sent. Its outcome is unknown, and it is never sent again automatically: check with the "
-    "employer, then record what happened."
+_RESTORED_AT = text(
+    "SELECT s.restored_at FROM instance_stamp s, pg_database d, pg_control_system() c "
+    "WHERE d.datname = current_database() "
+    "AND s.db_oid = d.oid::bigint AND s.cluster_id = c.system_identifier"
 )
 
+_WHEN = {
+    "queued": "while this application was queued",
+    "entering": "while this application was being entered on the employer's page",
+    "sending": "while this application was being sent",
+}
+ENDED = {
+    phase: "This server's database was restored from a backup taken "
+    + when
+    + ". It may have been sent after that backup: NoEfforts cannot tell, and it is never sent "
+    "again automatically. Check with the employer and your email, then record what happened."
+    for phase, when in _WHEN.items()
+}
+REHEARSAL_ENDED = (
+    "This server's database was restored from a backup taken during this rehearsal. A rehearsal "
+    "never submits; NoEfforts did not run it again."
+)
+# The application states a quarantined attempt can leave its application in (the sweeper's and
+# the claim's own, and the system's move for a restore: applications.states).
+_QUARANTINABLE = ("queued", "running", "ready_to_submit", "submitting", "needs_user_action")
 
-def _identity(db: Session) -> tuple[int, int]:
-    """This database's oid and its cluster's system identifier (readable by every role)."""
-    oid, cluster = db.execute(
-        text(
-            "SELECT d.oid::bigint, c.system_identifier FROM pg_database d, pg_control_system() c "
-            "WHERE d.datname = current_database()"
-        )
-    ).one()
-    return oid, cluster
+
+def _state(db: Session) -> tuple[int, int, bool, bool]:
+    oid, cluster, is_held, own = db.execute(_STATE).one()
+    return oid, cluster, bool(is_held), bool(own)
 
 
 def held(db: Session) -> bool:
-    """True while this database carries another database's stamp: it was restored and the
+    """True while any stamp names another database: it was restored (or `--force`d) and the
     restore is not resolved yet. No stamp at all is not held (a database stamps itself when its
     upgrade runs, and `resolve` stamps one that has none)."""
-    row = db.execute(
-        text(
-            "SELECT s.db_oid, s.cluster_id, d.oid::bigint, c.system_identifier "
-            "FROM instance_stamp s JOIN pg_database d ON d.datname = current_database() "
-            "CROSS JOIN pg_control_system() c WHERE s.id = :id"
-        ),
-        {"id": STAMP_ID},
-    ).first()
-    return row is not None and (row[0], row[1]) != (row[2], row[3])
+    return bool(db.scalar(_HELD))
+
+
+def restored_at(db: Session) -> datetime | None:
+    """When the last restore of this database was resolved (its own stamp), or None."""
+    return db.scalar(_RESTORED_AT)
+
+
+def _own(db: Session, oid: int, cluster: int) -> InstanceStamp | None:
+    return db.get(InstanceStamp, (oid, cluster))
+
+
+def _stamp_own(db: Session, oid: int, cluster: int) -> None:
+    db.execute(
+        insert(InstanceStamp)
+        .values(db_oid=oid, cluster_id=cluster, stamped_at=utcnow())
+        .on_conflict_do_nothing()
+    )
 
 
 def status() -> dict:
     """What the CLI prints: whether the database is held, and the last restore resolved."""
     with SessionLocal() as db:
-        stamp = db.get(InstanceStamp, STAMP_ID)
+        oid, cluster, is_held, _ = _state(db)
+        own = _own(db, oid, cluster)
         return {
-            "held": held(db),
-            "stamped": stamp is not None,
-            "restored_at": stamp.restored_at.isoformat() if stamp and stamp.restored_at else None,
-            "summary": stamp.restore_summary if stamp else None,
+            "held": is_held,
+            "stamped": own is not None,
+            "restored_at": own.restored_at.isoformat() if own and own.restored_at else None,
+            "summary": own.restore_summary if own else None,
         }
 
 
 def resolve(force: bool = False) -> dict | None:
     """Resolve a hold (see the module's docstring). Returns what resolving did; None when the
-    database was not held (a database with no stamp is stamped); {"busy": True} when another
-    resolver is at work (the database stays held meanwhile, so nothing runs). `force`: resolve
-    it as a restore whatever its stamp says (the owner restored it another way)."""
+    database was not held (a database with no stamp of its own is stamped); {"busy": True}
+    when another resolver is at work (the database stays held meanwhile, so nothing runs).
+    `force`: resolve it as a restore whatever its stamps say (the owner restored it another
+    way); the hold is committed before anything else, so nothing is taken meanwhile."""
     if not force:
         with SessionLocal() as db:
-            if db.get(InstanceStamp, STAMP_ID) is not None and not held(db):
-                return None  # this database's own stamp: the common case, every relay pass
+            oid, cluster, is_held, own = _state(db)
+            if not is_held:  # the common case, every relay pass
+                if not own:
+                    _stamp_own(db, oid, cluster)
+                    db.commit()
+                return None
     with engine.connect() as lock:  # one resolver at a time, for all three steps
         if not lock.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": _LOCK}).scalar():
             return {"busy": True}
@@ -126,19 +169,21 @@ def resolve(force: bool = False) -> dict | None:
 
 def _resolve(force: bool) -> dict | None:
     with SessionLocal() as db:
-        stamp = db.get(InstanceStamp, STAMP_ID)
-        oid, cluster = _identity(db)
-        if stamp is None and not force:
-            db.add(InstanceStamp(id=STAMP_ID, db_oid=oid, cluster_id=cluster))
+        if force:  # held from here, whatever happens next: the stamp of no database
+            db.execute(
+                insert(InstanceStamp)
+                .values(db_oid=FORCED[0], cluster_id=FORCED[1], stamped_at=utcnow())
+                .on_conflict_do_nothing()
+            )
             db.commit()
+        oid, cluster, is_held, own = _state(db)  # again, under the lock
+        if not is_held:  # resolved meanwhile by another pass, or never held
+            if not own:
+                _stamp_own(db, oid, cluster)
+                db.commit()
             return None
-        if stamp is not None and (stamp.db_oid, stamp.cluster_id) == (oid, cluster) and not force:
-            return None
-        if stamp is None:
-            stamp = InstanceStamp(id=STAMP_ID, db_oid=-1, cluster_id=cluster)
-            db.add(stamp)
-        if force:
-            stamp.db_oid = -1  # held from here until the last step, whatever happens between
+        _stamp_own(db, oid, cluster)
+        stamp = _own(db, oid, cluster)
         summary = copy.deepcopy(stamp.restore_summary or {})
         if not summary or summary.get("resolved_at"):  # a new restore (or the first)
             summary = {"found_at": utcnow().isoformat(), "ended": {}, "approvals": 0, "paused": 0}
@@ -150,24 +195,35 @@ def _resolve(force: bool) -> dict | None:
         stamp.restore_summary = summary
         db.commit()  # 1: what was active is ended, every live approval retired; still held
 
-    paused = _pause_rules()  # 2: each account's rule, in its own transaction; still held
+    _pause_rules(oid, cluster)  # 2: each account's rule, in its own transaction; still held
 
     with SessionLocal() as db:
-        stamp = db.get(InstanceStamp, STAMP_ID)
+        stamp = _own(db, oid, cluster)
         summary = copy.deepcopy(stamp.restore_summary)
-        summary["paused"] += paused
         summary["resolved_at"] = utcnow().isoformat()
         stamp.restore_summary = summary
-        stamp.db_oid, stamp.cluster_id = _identity(db)
-        stamp.restored_at, stamp.stamped_at = utcnow(), utcnow()
-        db.commit()  # 3: the stamp is this database's: no longer held
+        stamp.restored_at = stamp.stamped_at = utcnow()
+        db.execute(
+            delete(InstanceStamp).where(
+                tuple_(InstanceStamp.db_oid, InstanceStamp.cluster_id) != (oid, cluster)
+            )
+        )
+        db.commit()  # 3: only this database's own stamp is left: no longer held
     log.warning("restore resolved: %s", summary)
     return summary
 
 
+def _is_rehearsal(db: Session, att: ExecutionAttempt) -> bool:
+    from app.modules.preparation.models import ApprovalScope, PackageApproval
+
+    appr = db.get(PackageApproval, att.approval_id) if att.approval_id else None
+    return appr is not None and appr.scope == ApprovalScope.disclose_only
+
+
 def _end_active(db: Session) -> tuple[dict, int]:
     """End every attempt still active, under the cancel lock order (each attempt, then its
-    application), never to run again; retire every live approval. Counts only."""
+    application; attempts in order of their ids), never to run again; retire every live
+    approval. Counts only."""
     from app.modules.applications.states import Actor, AppState
     from app.modules.audit.service import record
     from app.modules.execution import service as svc
@@ -175,7 +231,11 @@ def _end_active(db: Session) -> tuple[dict, int]:
     from app.modules.preparation.models import PackageApproval
 
     ended: dict[str, int] = {}
-    ids = db.scalars(select(ExecutionAttempt.id).where(ExecutionAttempt.state.in_(ACTIVE))).all()
+    ids = db.scalars(
+        select(ExecutionAttempt.id)
+        .where(ExecutionAttempt.state.in_(ACTIVE))
+        .order_by(ExecutionAttempt.id)
+    ).all()
     for att_id in ids:
         att = db.scalar(
             select(ExecutionAttempt).where(ExecutionAttempt.id == att_id).with_for_update()
@@ -187,17 +247,25 @@ def _end_active(db: Session) -> tuple[dict, int]:
             continue  # it finished while this waited
         att.lease_owner, att.lease_expires_at, att.finished_at = None, None, utcnow()
         att.cancel_requested = True  # a worker still holding it stops at its next step
-        if was in (S.sending, S.awaiting_code):
-            att.state, att.outcome_detail = S.unknown, ENDED_SENDING
+        sending = was in (S.sending, S.awaiting_code)
+        if _is_rehearsal(db, att) and not sending:  # a rehearsal never submits
+            if att.disclosure_started_at is not None:
+                att.state, att.outcome_detail = S.abandoned, REHEARSAL_ENDED
+                if app.state == AppState.running:
+                    svc._app_to(db, app, AppState.needs_user_action, Actor.system,
+                                REHEARSAL_ENDED)  # fmt: skip
+            else:
+                att.state, att.outcome_detail = S.failed_safe, REHEARSAL_ENDED
+                svc._claim_refused(db, app, REHEARSAL_ENDED)
+        else:  # it may have run, and been sent, after the backup: an unknown outcome
+            phase = "sending" if sending else "entering" if att.disclosure_started_at else "queued"
+            att.state, att.outcome_detail = S.unknown, ENDED[phase]
             svc.close_checkpoints(db, att.id)
-            if app.state in (AppState.submitting, AppState.needs_user_action):
-                svc._app_to(db, app, AppState.submitted_unconfirmed, Actor.system, ENDED_SENDING)
-        elif att.disclosure_started_at is not None:
-            att.state, att.outcome_detail = S.abandoned, ENDED_ENTERED
-            svc._app_to(db, app, AppState.needs_user_action, Actor.system, ENDED_ENTERED)
-        else:  # queued, or taken before anything was entered
-            att.state, att.outcome_detail = S.failed_safe, ENDED_QUEUED
-            svc._claim_refused(db, app, ENDED_QUEUED)
+            if app.state in _QUARANTINABLE:
+                svc._app_to(db, app, AppState.submitted_unconfirmed, Actor.system, ENDED[phase])
+            else:
+                log.warning("restore: an attempt's application was left in its state (%s)",
+                            app.state)  # fmt: skip
         svc.event(db, att, "restore_ended", was=str(was))
         ended[str(was)] = ended.get(str(was), 0) + 1
     if ids:  # what the relay has not published yet is never published: nothing is to run
@@ -213,6 +281,7 @@ def _end_active(db: Session) -> tuple[dict, int]:
             PackageApproval.invalidated_at.is_(None),
             or_(PackageApproval.expires_at.is_(None), PackageApproval.expires_at > now),
         )
+        .order_by(PackageApproval.id)
         .with_for_update()
     ).all()
     for appr in live:
@@ -225,22 +294,24 @@ def _end_active(db: Session) -> tuple[dict, int]:
     return ended, len(live)
 
 
-def _pause_rules() -> int:
+def _pause_rules(oid: int, cluster: int) -> None:
     """Pause every account's standing rule that is not paused: a restored database does not
     know what the rule applied to after the backup, so it could apply to the same job again.
-    Each account in its own transaction (the rule's own lock order); how many were paused."""
+    Each account in its own transaction (the rule's own lock order), its count with it, so a
+    pass that stops half way keeps the count of those it paused."""
     from app.modules.autoapply import service as auto
     from app.modules.identity.models import User
 
-    n = 0
     with SessionLocal() as db:
-        ids = db.scalars(select(User.id)).all()
+        ids = db.scalars(select(User.id).order_by(User.id)).all()
     for uid in ids:
         with SessionLocal() as db:
             user = db.get(User, uid)
             if user is None or auto.paused(db, user):
                 continue
-            auto.set_paused(db, uid, True)
+            auto.set_paused(db, uid, True, reason_code="restored_from_backup")
+            stamp = _own(db, oid, cluster)
+            summary = copy.deepcopy(stamp.restore_summary)
+            summary["paused"] += 1
+            stamp.restore_summary = summary
             db.commit()
-            n += 1
-    return n

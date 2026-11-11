@@ -74,6 +74,10 @@ REASONS = {
     # D134: an application whose approval you revoked is yours from then on.
     "owner_revoked": "You revoked this application's approval; automatic applying leaves it "
     "to you.",
+    # D147: the server was restored from a backup after this application began; what happened
+    # to it after that backup is not recorded here, so only you can continue it.
+    "restored_from_backup": "This server was restored from a backup after this application "
+    "began; automatic applying leaves it to you.",
     "approval_refused": "NoEfforts could not approve this package automatically.",
     "queue_refused": "The approved package could not be queued.",
 }
@@ -122,10 +126,11 @@ def _hold(db: Session, user_id, exclusive: bool = False) -> None:
     db.execute(text(f"SELECT {fn}(:c, :k)"), {"c": _RULE_LOCK, "k": key})
 
 
-def set_paused(db: Session, user_id, value: bool) -> dict | None:
+def set_paused(db: Session, user_id, value: bool, reason_code: str | None = None) -> dict | None:
     """Pause or resume the account's rule. D134: pausing also stops what the rule queued that
     has not started sending (execution.service.stop_for_pause) and retires the approvals it
-    gave; it returns what it stopped."""
+    gave; it returns what it stopped. `reason_code`: a pause NoEfforts made, not the account
+    (D147: `restored_from_backup`), recorded with it."""
     from app.modules.execution.service import stop_for_pause
     from app.modules.preparation import package as pk
 
@@ -141,9 +146,15 @@ def set_paused(db: Session, user_id, value: bool) -> dict | None:
         return None
     db.flush()
     stopped = stop_for_pause(db, user_id) | {"approvals": pk.retire_rule_approvals(db, user_id)}
-    record(db, user_id, "auto_apply.paused", "user", user_id, cancelled=stopped["cancelled"],
-           stopped=stopped["stopped"], in_flight=stopped["in_flight"],
-           approvals=stopped["approvals"])  # fmt: skip
+    counts = {k: stopped[k] for k in ("cancelled", "stopped", "in_flight", "approvals")}
+    if reason_code:  # D147: NoEfforts paused it, not the account
+        record(db, user_id, "auto_apply.paused", "user", user_id, cancelled=counts["cancelled"],
+               stopped=counts["stopped"], in_flight=counts["in_flight"],
+               approvals=counts["approvals"], reason_code=reason_code)  # fmt: skip
+    else:
+        record(db, user_id, "auto_apply.paused", "user", user_id, cancelled=counts["cancelled"],
+               stopped=counts["stopped"], in_flight=counts["in_flight"],
+               approvals=counts["approvals"])  # fmt: skip
     return stopped
 
 
@@ -331,6 +342,10 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
             return None
         if _owner_revoked(db, app):
             _note(db, user.id, job, app, "skipped", "owner_revoked")
+            return None
+        restored = restore.restored_at(db)
+        if restored is not None and app.created_at < restored:  # D147: began before a restore
+            _note(db, user.id, job, app, "skipped", "restored_from_backup")
             return None
         att = _latest_attempt(db, app)
         if att is not None and att.state in HELD:
