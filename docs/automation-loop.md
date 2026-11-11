@@ -5,7 +5,7 @@ answers, credentials, employer-identifying evidence, raw pages or unredacted log
 canonical backlog is `docs/remaining-work.md` (its "Automation loop" section); decisions are in
 `docs/decisions.md`.
 
-**Updated:** 2026-11-10 (UTC).
+**Updated:** 2026-11-11 (UTC).
 
 ## Objective
 
@@ -37,7 +37,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D142 a Workday-style multi-page wizard, filled forward only; never run again once entered | merged (#51, 25d04ea, tree as predicted); its PR CI passed all four jobs on 85e0213 |
 | D143 recovery hardening: a run budget, one task time limit and no soft limit, leases that follow progress, verification requests that end with their attempt | merged (#52, 9346c8e, tree as predicted); its PR CI passed all four jobs on fa36039 |
 | D144 attempts on a queue and a worker of their own; the schedule and the periodic tasks on another | merged (#53, 099642c, tree as predicted); its PR CI passed all four jobs on e40ee72, the Compose layout's first run |
-| D145 a dropdown's list settled by the page's own record of its last change | branch `dropdown-settle` (from D144's branch, with `main` merged in); not merged |
+| D145 a dropdown's list settled by the page's own record of its last change to a list | branch `dropdown-settle` (`main` with D144 merged in); reviewed, rebuilt on a narrower record and reviewed again; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -58,7 +58,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 3 | Future reuse | unit (resolver), generic form; D133 merged (#41): suggestions judge the saved side, "Use here only"; D138 merged (#47): a saved answer reaches the next gh2 job that asks the same question (receiver ledger) | D138 merged (#47): reused on the next posting (receiver ledger); single page |
 | 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 merged (#47): a gh2 look-alike naming a country is neither reused nor suggested | D138 merged (#47): "Preferred shift" never saved or reused |
 | 5 | Conditional question | fx on the v1 fixture; D135 merged (#44), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | absent (no branching fixture) |
-| 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger); D145 (branch): a dropdown whose list keeps being re-rendered is refused however slowly it is read (the page's own record of its last change), before anything is entered (gh2 stand-in; receiver ledger) | fx at capture |
+| 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger); D145 (branch): a dropdown whose list keeps being re-rendered is refused however slowly it is read (the page's own record of its last change to a list), before anything is entered, and a location search whose suggestions keep changing chooses no place (gh2 stand-ins; receiver ledger) | fx at capture |
 | 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger) | absent |
 | 8 | Answer edits invalidate approvals | fx; D138 merged (#47): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger); D140 merged (#49): an education or employment edit retires the approval at once; on the education stand-in, approved again, the new degree is sent, and an edit while a worker fills is stopped at the send gate (receiver ledger) | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; D143 merged (#52): on gh2 by id a worker killed before anything was sent is run again once, and one killed after entering data, at the send gate, around the final click or after the employer's receipt is never run again; a run past its budget stops before the final click (gh2 by id and the pilot stand-in; receiver ledger); D144 merged (#53): the sweeper runs on a worker of its own, so it is not held up by attempts waiting for codes (real workers, generic form; receiver ledger) | partial; D142 merged (#51): on the wizard stand-in a lost or killed worker leaves the record of each page's Next, is never taken over, and the application is never run again (receiver ledger); D143 merged (#52): the same kills on the single-page form and on the wizard's review page, and a wizard past its budget stops for good (receiver ledger) |
@@ -213,17 +213,29 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     `docker compose stop`: measured, a worker told to stop finishes and submits the
     application in progress, so the table names `docker compose kill` now.
 - **D145 (branch `dropdown-settle`, not merged).** Rank 14, a dropdown's list settled by the
-  page's own record of its last change:
+  page's own record of its last change to a list:
   - found by D143's regression run under load, then reproduced without it: three identical
     reads fall in step with a list re-rendered every 300 ms once the reading interval reaches
-    about 600 ms (at 610 ms the list was accepted and the application submitted);
-  - a list now also needs the page's own record of its last change (the probe's observer) to
-    be half a second old, a fixed time: one that keeps changing faster is refused however
-    slowly it is read, before anything is entered, and one that has settled is still accepted
-    when read slowly;
-  - it is the whole document's record, so every dropdown is refused on a page that changes
-    anything that often; the read-only survey and the location search keep their own tests
-    (D145 says why); no adapter version changes.
+    about 600 ms (at 610 ms the list was judged settled every time, and once the application
+    was then submitted);
+  - a list now also needs the page's own record of the last change to a list (the probe's
+    observer) to be half a second old, a fixed time, or absent: one whose changes come faster
+    is refused however slowly it is read, before anything is entered; a settled one is still
+    accepted when read slowly; changes elsewhere on the page do not count;
+  - the location search takes its suggestions as settled by the same record, so "exactly one
+    suggestion" is judged on a list the page has not changed for half a second;
+  - built twice: first on the whole document's record. An independent review (read-only, on
+    15c5e36) found no blocker and showed that a page busy elsewhere would then pass a check
+    only now and then, so the record was narrowed. From the same review: a test of its own for
+    the three equal reads, one for a list that starts changing after its check, a refusal word
+    of its own, a control gone when the observer is installed, and the limits said as they are;
+  - a second independent review (read-only, on a080d3d) found no blocker. Acted on: a test for
+    the narrower race the new guard closes, and the location search's error before typing no
+    longer counts the text as disclosed. Recorded: changes elsewhere still count through the
+    classification's 150 ms check (since D106; rank 19), and what the record does not count;
+  - the read-only survey keeps its own, weaker test and publishes nothing of the new record
+    (rank 18); a section's combobox still reads its list once (rank 17); no adapter version
+    changes, and a rehearsal earned under the weaker test still counts (D145).
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
   Pausing there and later queuing one new attempt is a retry after `sending`, which CLAUDE.md
@@ -255,7 +267,7 @@ leases that follow progress, and verification requests that end with their attem
 (rank 11, #53) gives attempts a queue and a worker of their own, so two attempts
 waiting for codes never hold up the sweeper, the outbox relay and the mailbox reader.
 **D145** (rank 14, on its branch) settles a dropdown's list by the page's own record of its
-last change, a defect found on the way. Next, another such: rank 15 (a queued attempt whose
+last change to a list, a defect found on the way. Next, another such: rank 15 (a queued attempt whose
 message was lost is published again), then ranks 12 and 13 (the Workday-style follow-up
 question and repeating records).
 
@@ -316,11 +328,14 @@ question and repeating records).
   its first run, and both passed. `scripts/validate.sh all` was not run. Not tested: a stop request in
   Docker itself (the worker's reaction to the signal was measured without Docker; the ten
   seconds are Docker's default); the pass-on's own publish failing; a rollback across versions.
-- **D145 (branch `dropdown-settle`):** the new cases, the whole dropdown file, six removal
-  runs and the regression set, locally (Tests run below). `scripts/validate.sh all` was not
-  run. Not tested: a page whose list changes while its record stays empty (options swapped by
-  CSS alone, an observer the page has replaced: the three reads decide alone there), a page
-  whose own timers stall, and anything on a real page.
+- **D145 (branch `dropdown-settle`):** the new cases, both files, 18 removal runs
+  and the regression set, locally (Tests run below). `scripts/validate.sh all` was not run.
+  Not tested: a list whose changes come half a second or more apart, a page whose own timers
+  stall, a list that changes while its record stays empty (a style sheet's change, options
+  through a shadow root), a page busy elsewhere every 250 to 300 ms in a real page's window
+  (the classification's 150 ms check, rank 19), a change between the location search's last
+  read and its click, the observer's cost on a large page, what a real react-select list does
+  while it is open, and anything on a real page.
 
 ## Tests run (this loop)
 
@@ -441,12 +456,20 @@ question and repeating records).
 | D144, the review's fixes: the suites that start real workers, `test_browser_isolation.py` and `test_recovery_hardening.py` (7 files, JUnit), on f62e72d | exit 0; 102 passed |
 | D144 after the review's last edit: `ruff format .`, `ruff check .`, `ruff format --check .`; `scripts/test_smoke_lib.sh`; the tests that read the documents, `test_deployment_config.py` and `test_attempt_queue.py` (JUnit) | ruff clean (376 files unchanged); the script's 12 cases as expected; exit 0; 208 passed |
 | D144's pull request (#53): CI on e40ee72 | all four jobs passed (`docker-smoke` in 3 min, `execution-compose` in 8 min, `frontend` in 14 min, `backend` in 72 min): the first run of the two-worker Compose layout; merged as 099642c, tree 33b8b0d as predicted |
-| D145: the seven new cases with the rule removed, before it was committed (`pytest tests/test_dropdown_strategies.py -k "however_slowly or accepted_when_read_slowly or pages_own_record"`, JUnit) | 3 failed (the 590 and 610 ms cases and the rule's own test), 4 passed |
-| D145: the seven new cases, on e81bfeb (JUnit) | exit 0; 7 passed |
-| D145: `pytest tests/test_dropdown_strategies.py` on e81bfeb (JUnit) | exit 0; 50 passed |
-| D145 removal runs on e81bfeb (6 changes, each in turn) | all 6 fail a test; with a page that records nothing refused, 49 of the file's 50 still pass |
-| D145: the regression set alone on the machine (63 files, JUnit), on 15c5e36 | exit 0; 1564 passed in 55 min |
-| D145 after the last edit: `ruff format .`, `ruff check .`, `ruff format --check .`; the tests that read the documents and `test_dropdown_strategies.py` (JUnit) | ruff clean (376 files unchanged); exit 0; 228 passed |
+| D145, first version (the whole document's record; superseded): the seven cases with the rule removed, before it was committed (`pytest tests/test_dropdown_strategies.py -k "however_slowly or accepted_when_read_slowly or pages_own_record"`, JUnit) | 3 failed (the 590 and 610 ms cases and the rule's own test), 4 passed |
+| D145, first version: the seven cases, on the tree committed seconds later as e81bfeb (JUnit) | exit 0; 7 passed |
+| D145, first version: `pytest tests/test_dropdown_strategies.py` on e81bfeb (JUnit) | exit 0; 50 passed |
+| D145, first version: removal runs on e81bfeb (6 changes, each in turn) | all 6 fail a test; with a page that records nothing refused, 49 of the file's 50 still pass |
+| D145, first version: the regression set (63 files, JUnit), on 15c5e36; the only test run on the machine, with the reviewer's read-only commands during part of it | exit 0; 1564 passed in 55 min |
+| D145, first version, after its last edit: `ruff format .`, `ruff check .`, `ruff format --check .`; the tests that read the documents and `test_dropdown_strategies.py` (JUnit) | ruff clean (376 files unchanged); exit 0; 228 passed |
+| D145 rework (the record of changes to a list): `pytest tests/test_dropdown_strategies.py tests/test_greenhouse_controls.py` (JUnit), on the tree committed seconds later as 76da079 | exit 0; 112 passed (55 and 57) |
+| D145 rework: the observer's own test in a real browser, then it with the three cases on a stand-in for the probe (`-k pages_record_tells`, then `-k "pages_record_tells or pages_own_record or three_equal or gone_before"`; JUnit), on the tree committed a second later as fe9582c | exit 0; 1 passed, then 4 passed |
+| D145 rework: removal runs on fe9582c (18 changes, each in turn) | all 18 fail a test; with a page that records no change to a list refused, the two cases on a stand-in for the probe fail and the dropdown file's other 54 pass (no stand-in leaves that record empty) |
+| D145 rework: the case that gives the busy page a real page's window, with its two neighbours (`-k "changing_elsewhere or real_pages_window"`; JUnit); then alone, six times, with the whole page's record put back (the file restored after, identical); committed as a080d3d about two minutes later | exit 0, 3 passed; with that record: failed in 6 of 6 runs |
+| D145 rework: the regression set, the only test run on the machine (63 files, JUnit), on a080d3d | exit 0; 1575 passed in 59 min |
+| D145, the second review's fixes: `pytest tests/test_dropdown_strategies.py tests/test_greenhouse_controls.py` (JUnit), on ae54f21 | exit 0; 116 passed (58 and 58) |
+| D145, the second review's fixes, removal runs on ae54f21 (2 changes) | both fail their test |
+| D145 rework, after the last edit: `ruff format .`, `ruff check .`, `ruff format --check .`; the tests that read the documents (JUnit) | ruff clean (376 files unchanged); exit 0; 178 passed |
 
 ## Failed approaches and rejected designs
 
@@ -485,8 +508,17 @@ question and repeating records).
 - **A heartbeat in the page, so that a stalled page cannot look quiet** (D145). It would leave
   a timer of ours running in the employer's page; the probes only read. A page whose own
   timers stall did not change in that time, and D145 says so as a limit.
-- **Narrowing the record to the list's own part of the page** (D145). It would refuse less on
-  a busy page, and needs the structure of real pages to be right; there is none to go by.
+- **The whole document's record as the rule** (D145, its first version). Built, reviewed and
+  dropped. On a page that changes anything, anywhere, every 500 to 750 ms a check would pass
+  only now and then, each opening at its own moment, so a check could pass and the choice then
+  fail after data had been entered (the review's arithmetic: with one change every 600 ms, 64%
+  of openings settle within the real window). The record was narrowed to changes that touch a
+  list, found by the marks the probe already reads lists by.
+- **A new adapter version for the stricter rule** (D145). Every live approval of the
+  Greenhouse adapter would stop matching, for a rule that decides only whether a list is read:
+  an approval is for the same options, entered the same way. D108 and D109 changed how a list
+  is opened and judged without one. Kept at 4; what that leaves is recorded (a rehearsal
+  earned under the weaker test still counts).
 
 ## Blockers (external; each blocks one action, not the local work)
 
@@ -518,12 +550,12 @@ question and repeating records).
 
 ## Exact next action
 
-1. D145 (branch `dropdown-settle`, rank 14, `main` with D144 merged in): an independent
-   review, then its pull request. Then rank 15 (a queued attempt whose message was lost is
-   published again), which D144 makes more pressing: built on branch `republish-queued`, to be
-   recorded and reviewed. Both are small defects found on the way, so before ranks 12 and 13
-   (the Workday-style follow-up question and repeating records). Rank 16 (a stop request
-   honoured before the next step) after those.
+1. D145 (branch `dropdown-settle`, rank 14, `main` with D144 merged in): its pull request.
+   Then rank 15 (a queued attempt whose message was lost is published again), which D144 makes
+   more pressing: built on branch `republish-queued` and reviewed, its records to be written.
+   Both are small defects found on the way, so before ranks 12 and 13 (the Workday-style
+   follow-up question and repeating records). Rank 16 (a stop request honoured before the next
+   step) and ranks 17 to 19 (the dropdown rule's neighbours) after those.
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it
