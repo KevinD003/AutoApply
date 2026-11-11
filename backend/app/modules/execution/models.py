@@ -302,14 +302,18 @@ class RehearsalRecord(Base):
 class InstanceStamp(Base):
     """D147: which database this is. A restored database cannot know what happened after its
     backup was taken, so it has to know that it was restored: `db_oid` is the oid PostgreSQL
-    gave the database the stamp was written in. A restore into a new database (the deployment
-    guide's §7) changes the oid and keeps the stamp, so the two differ until the restore is
-    resolved (`execution.restore`). One row (`id` 1)."""
+    gave the database the stamp was written in, and `cluster_id` the system identifier of its
+    server's cluster (made by `initdb`). A restore into a new database on the same server (the
+    deployment guide's §7) changes the oid; a restore onto another server changes the cluster's
+    identifier, while the oid may well repeat (every new cluster gives its first database the
+    same one: 16384, measured). The stamp is restored with the rest, so it differs until the
+    restore is resolved (`execution.restore`). One row (`id` 1)."""
 
     __tablename__ = "instance_stamp"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     db_oid: Mapped[int] = mapped_column(BigInteger)
+    cluster_id: Mapped[int] = mapped_column(BigInteger)
     stamped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     # The last restore found and resolved here, and what resolving it did (counts only).
     restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -181,8 +181,10 @@ def relay_outbox() -> int:
     from app.modules.execution.service import republish_waiting
 
     # D147: first, a database restored from a backup: what it shows as queued or in progress
-    # is ended before anything is published (and nothing is claimed until then).
-    restore.resolve()
+    # is ended before anything is published (and nothing is claimed until then). While another
+    # resolver is at work, the database is still held: nothing is published this pass.
+    if restore.resolve() == {"busy": True}:
+        return 0
     # D146: then, for an attempt still queued long after its message went out, once more.
     return relay(publish) + republish_waiting(publish)
 

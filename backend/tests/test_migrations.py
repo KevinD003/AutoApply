@@ -795,16 +795,18 @@ def test_d97_gives_every_drafting_amount_its_basis(disposable):
 
 
 def test_d147_the_stamp_is_the_databases_own_and_a_copy_of_it_is_held(disposable):
-    """The upgrade stamps the database it runs in with that database's oid. A copy of the
-    database (CREATE DATABASE ... TEMPLATE: the same rows in another database, which is what a
-    restore into a new database leaves) carries the stamp, so it is held; the original is not."""
+    """The upgrade stamps the database it runs in with that database's oid and its cluster's
+    identifier. A copy of the database (CREATE DATABASE ... TEMPLATE: the same rows in another
+    database, which is what a restore into a new database leaves) carries the stamp, so it is
+    held; the original is not."""
     from app.modules.execution import restore
 
     command.upgrade(_cfg(), "head")
     own = "SELECT oid FROM pg_database WHERE datname = current_database()"
+    cluster = "SELECT system_identifier FROM pg_control_system()"
     with disposable.connect() as c:
-        assert c.execute(text("SELECT db_oid FROM instance_stamp")).scalars().all() == [
-            c.execute(text(own)).scalar()
+        assert c.execute(text("SELECT db_oid, cluster_id FROM instance_stamp")).all() == [
+            (c.execute(text(own)).scalar(), c.execute(text(cluster)).scalar())
         ]
     with Session(disposable) as db:
         assert restore.held(db) is False

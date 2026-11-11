@@ -4,9 +4,11 @@ A restored database cannot know what happened after its backup was taken: an app
 shows as queued, or in progress, may have been sent since, and one it shows as approved may
 have been queued and sent since. Since D146 a queued attempt is published again by itself, so
 it would be sent a second time. The database therefore carries a stamp of its own identity
-(`InstanceStamp`: the oid PostgreSQL gave the database the stamp was written in). A restore into
-a new database, as the deployment guide's §7 does it (dropdb, createdb, pg_restore), keeps the
-stamp and changes the oid. While the two differ the database is *held*:
+(`InstanceStamp`: the oid PostgreSQL gave the database the stamp was written in, and the system
+identifier of its server's cluster). A restore keeps the stamp: into a new database on the same
+server, as the deployment guide's §7 does it (dropdb, createdb, pg_restore), it changes the oid;
+onto another server, the cluster (where the oid may repeat). While they differ the database is
+*held*:
 
   * no attempt is claimed (`service.claim`) and nothing is queued (`service.enqueue`);
   * the standing rule does nothing (`autoapply.service.tick`);
@@ -21,8 +23,9 @@ every account's standing rule is paused. Each account's feed says so (`notificat
 then is the stamp made this database's. Each step is its own transaction and can be repeated: a
 pass that stops half way leaves the database held, and the next pass finishes it.
 
-What it cannot see: a restore that keeps the database (`pg_restore --clean` into it, a copy of
-its files, a volume snapshot), and a backup taken before D147 (it has no stamp; its upgrade
+What it cannot see: a restore into the same database (`pg_restore --clean` into it), a copy
+of the server's own files (its volume, a snapshot, a physical backup: the cluster's identifier
+and the oid are copied too), and a backup taken before D147 (it has no stamp; its upgrade
 stamps it). `resolve(force=True)` (the CLI's `restore-resolve --force`) treats the database as
 restored whatever its stamp says. And no restore can show what was sent after its backup: the
 owner checks that before approving or resuming anything.
@@ -65,8 +68,15 @@ ENDED_SENDING = (
 )
 
 
-def _oid(db: Session) -> int:
-    return db.scalar(text("SELECT oid::bigint FROM pg_database WHERE datname = current_database()"))
+def _identity(db: Session) -> tuple[int, int]:
+    """This database's oid and its cluster's system identifier (readable by every role)."""
+    oid, cluster = db.execute(
+        text(
+            "SELECT d.oid::bigint, c.system_identifier FROM pg_database d, pg_control_system() c "
+            "WHERE d.datname = current_database()"
+        )
+    ).one()
+    return oid, cluster
 
 
 def held(db: Session) -> bool:
@@ -75,12 +85,13 @@ def held(db: Session) -> bool:
     upgrade runs, and `resolve` stamps one that has none)."""
     row = db.execute(
         text(
-            "SELECT s.db_oid, d.oid::bigint FROM instance_stamp s "
-            "JOIN pg_database d ON d.datname = current_database() WHERE s.id = :id"
+            "SELECT s.db_oid, s.cluster_id, d.oid::bigint, c.system_identifier "
+            "FROM instance_stamp s JOIN pg_database d ON d.datname = current_database() "
+            "CROSS JOIN pg_control_system() c WHERE s.id = :id"
         ),
         {"id": STAMP_ID},
     ).first()
-    return row is not None and row[0] != row[1]
+    return row is not None and (row[0], row[1]) != (row[2], row[3])
 
 
 def status() -> dict:
@@ -116,15 +127,15 @@ def resolve(force: bool = False) -> dict | None:
 def _resolve(force: bool) -> dict | None:
     with SessionLocal() as db:
         stamp = db.get(InstanceStamp, STAMP_ID)
-        oid = _oid(db)
+        oid, cluster = _identity(db)
         if stamp is None and not force:
-            db.add(InstanceStamp(id=STAMP_ID, db_oid=oid))
+            db.add(InstanceStamp(id=STAMP_ID, db_oid=oid, cluster_id=cluster))
             db.commit()
             return None
-        if stamp is not None and stamp.db_oid == oid and not force:
+        if stamp is not None and (stamp.db_oid, stamp.cluster_id) == (oid, cluster) and not force:
             return None
         if stamp is None:
-            stamp = InstanceStamp(id=STAMP_ID, db_oid=-1)
+            stamp = InstanceStamp(id=STAMP_ID, db_oid=-1, cluster_id=cluster)
             db.add(stamp)
         if force:
             stamp.db_oid = -1  # held from here until the last step, whatever happens between
@@ -147,7 +158,8 @@ def _resolve(force: bool) -> dict | None:
         summary["paused"] += paused
         summary["resolved_at"] = utcnow().isoformat()
         stamp.restore_summary = summary
-        stamp.restored_at, stamp.db_oid, stamp.stamped_at = utcnow(), _oid(db), utcnow()
+        stamp.db_oid, stamp.cluster_id = _identity(db)
+        stamp.restored_at, stamp.stamped_at = utcnow(), utcnow()
         db.commit()  # 3: the stamp is this database's: no longer held
     log.warning("restore resolved: %s", summary)
     return summary

@@ -47,11 +47,18 @@ def _reset(receiver):
     clean_broker()
 
 
-def restored() -> None:
-    """As a restore into a new database leaves it: the stamp is another database's."""
+def restored(onto_another_server: bool = False) -> None:
+    """As a restore leaves the database: the stamp is another database's. Into a new database
+    on this server, another oid; onto another server, another cluster, and the same oid (as two
+    new clusters give their first database)."""
     restore.resolve()  # stamps the database (the per-test cleanup removes every row)
     with SessionLocal() as db:
-        db.execute(update(InstanceStamp).values(db_oid=InstanceStamp.db_oid + 1))
+        moved = (
+            {"cluster_id": InstanceStamp.cluster_id + 1}
+            if onto_another_server
+            else {"db_oid": InstanceStamp.db_oid + 1}
+        )
+        db.execute(update(InstanceStamp).values(**moved))
         db.commit()
 
 
@@ -105,7 +112,9 @@ def test_a_database_stamps_itself_and_is_not_held():
     assert restore.resolve() is None  # the per-test cleanup removed the stamp: written again
     with SessionLocal() as db:
         own = db.scalar(text("SELECT oid FROM pg_database WHERE datname = current_database()"))
-        assert db.get(InstanceStamp, restore.STAMP_ID).db_oid == own
+        cluster = db.scalar(text("SELECT system_identifier FROM pg_control_system()"))
+        stamp = db.get(InstanceStamp, restore.STAMP_ID)
+        assert (stamp.db_oid, stamp.cluster_id) == (own, cluster)
         assert restore.held(db) is False
     assert restore.resolve() is None  # its own stamp: nothing to do
     assert restore.status() == {"held": False, "stamped": True, "restored_at": None,
@@ -120,6 +129,26 @@ def test_a_database_with_no_stamp_is_not_held(api, receiver):
         assert db.get(InstanceStamp, restore.STAMP_ID) is None
         assert restore.held(db) is False
     assert svc.claim(uuid.UUID(aid), "w1") == 1
+
+
+def test_a_restore_onto_another_server_is_held_though_its_oid_is_the_same(api, receiver):
+    """Every new cluster gives its first database the same oid (16384, measured on two), so a
+    backup restored onto another server can have its old oid again: the cluster's identifier
+    tells them apart. Resolved, the stamp is this server's."""
+    aid = queue(api, prepared_application(api, receiver))
+    restored(onto_another_server=True)
+    with SessionLocal() as db:
+        stamp = db.get(InstanceStamp, restore.STAMP_ID)
+        own = db.scalar(text("SELECT oid FROM pg_database WHERE datname = current_database()"))
+        assert stamp.db_oid == own  # the oid alone would not tell
+        assert restore.held(db) is True
+    assert svc.claim(uuid.UUID(aid), "w1") is None
+    summary = restore.resolve()
+    assert summary["ended"] == {"pending": 1}
+    with SessionLocal() as db:
+        assert restore.held(db) is False
+    assert restore.resolve() is None
+    nothing_reached_the_employer(receiver)
 
 
 # --------------------------------------------------------------------------- held
@@ -292,17 +321,22 @@ def test_a_pass_that_stops_half_way_is_finished_by_the_next(api, receiver, monke
     assert restore.resolve() is None
 
 
-def test_one_resolver_at_a_time(api, receiver):
+def test_one_resolver_at_a_time(api, receiver, monkeypatch):
     """A pass that finds another resolver at work does nothing and says so; the database stays
-    held meanwhile, so nothing runs. The next pass resolves it."""
+    held meanwhile, so nothing runs, and the relay's task publishes nothing. The next pass
+    resolves it."""
+    from app import worker
     from app.core.db import engine
 
-    aid = queue(api, prepared_application(api, receiver))
+    out = Published()
+    monkeypatch.setattr(worker, "publish", out)
+    aid = queue(api, prepared_application(api, receiver))  # its message not published yet
     restored()
     with engine.connect() as other:
         other.execute(text("SELECT pg_advisory_lock(:k)"), {"k": restore._LOCK})
         try:
             assert restore.resolve() == {"busy": True}
+            assert worker.relay_outbox() == 0 and out.sent == []
             assert held() and attempt(aid).state == "pending"
             assert svc.claim(uuid.UUID(aid), "w1") is None
         finally:
@@ -311,8 +345,9 @@ def test_one_resolver_at_a_time(api, receiver):
 
 
 def test_force_resolves_a_database_restored_another_way(api, receiver, capsys):
-    """A restore that keeps the database (pg_restore --clean, a copy of its volume) keeps its
-    oid too, so the stamp cannot tell; `restore-resolve --force` treats it as restored."""
+    """A restore into the same database (pg_restore --clean) or a copy of the server's files
+    keeps its oid and its cluster too, so the stamp cannot tell; `restore-resolve --force`
+    treats it as restored."""
     aid = queue(api, prepared_application(api, receiver))
     assert cli.main(["restore-resolve"]) == 0
     assert capsys.readouterr().out.strip() == "not held"
