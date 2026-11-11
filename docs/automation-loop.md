@@ -298,7 +298,9 @@ record) and rank 15 (a queued attempt whose message was lost is published again)
   the suites that start workers, locally (Tests run below). The Compose layout (two workers,
   the smoke test's ping, the new and the tightened scenario) cannot be started here: there is
   no Docker daemon, so the `docker-smoke` and `execution-compose` jobs of its pull request are
-  its first and only run. `scripts/validate.sh all` was not run.
+  its first and only run. `scripts/validate.sh all` was not run. Not tested: a stop request in
+  Docker itself (the worker's reaction to the signal was measured without Docker; the ten
+  seconds are Docker's default); the pass-on's own publish failing; a rollback across versions.
 
 ## Tests run (this loop)
 
@@ -415,6 +417,9 @@ record) and rank 15 (a queued attempt whose message was lost is published again)
 | D144: what a stop request does to an application in progress (a temporary test, not committed; a real worker; the signal `docker compose stop` sends first), before the send gate and before the final click | both times still running 3 s later, then `confirmed`, receiver accepted 1; the worker exited after it |
 | D144: a private `redis-server` 7.0.15, default settings: two items pushed, the stop signal, a restart | a snapshot saved before exiting; 2 items after the restart |
 | D144, the review's fixes: the tests that need no real worker (three files, `-k` as in `docs/implementation-status.md`; JUnit) | exit 0; 24 passed |
+| D144, the review's code fixes removed in turn on f62e72d (3 changes) | all 3 fail their test |
+| D144, the review's fixes: the suites that start real workers, `test_browser_isolation.py` and `test_recovery_hardening.py` (7 files, JUnit), on f62e72d | exit 0; 102 passed |
+| D144 after the review's last edit: `ruff format .`, `ruff check .`, `ruff format --check .`; `scripts/test_smoke_lib.sh`; the tests that read the documents, `test_deployment_config.py` and `test_attempt_queue.py` (JUnit) | ruff clean (376 files unchanged); the script's 12 cases as expected; exit 0; 208 passed |
 
 ## Failed approaches and rejected designs
 
