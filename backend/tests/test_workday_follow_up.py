@@ -144,6 +144,19 @@ def test_capture_never_marks_a_checkpoint_and_marks_a_hidden_choice():
     assert fields["q.w"].type == FieldType.radio and fields["q.w"].condition.model_dump() == UNKNOWN
 
 
+def test_capture_never_marks_a_file_input_or_a_group_partly_shown():
+    """A page commonly hides its native file input behind a button of its own (an upload never
+    needs it shown); a group with one option hidden is still asked."""
+    follow = ('<label for="cv">Resume</label><input id="cv" name="cv" type="file" hidden>'
+              '<fieldset><legend>Weekends too?</legend>'
+              '<label><input type="radio" name="q.w" value="Yes"> Yes</label>'
+              '<label hidden><input type="radio" name="q.w" value="No"> No</label>'
+              "</fieldset>")  # fmt: skip
+    fields = {f.key: f for f in workday.extract_schema(FORM.format(follow=follow)).fields}
+    assert fields["cv"].type == FieldType.file and fields["cv"].condition is None
+    assert fields["q.w"].condition is None
+
+
 def test_capture_reads_only_the_application_form():
     """Hidden-ness is read between a control and its form: a hidden wrapper around the whole
     form, and a hidden control of the same name outside it (a template, outside the form), mark
@@ -285,6 +298,43 @@ def test_one_the_page_now_requires_stops_before_anything_is_entered(api, receive
         pause = db.scalar(select(ApplicationPause).where(
             ApplicationPause.application_id == uuid.UUID(app_id)))  # fmt: skip
         assert (pause.kind, pause.status) == ("form_changed", "open")
+
+
+@pytest.mark.parametrize("single", [False, True], ids=["wizard", "single-page"])
+def test_one_the_page_removes_instead_of_hiding_stops_the_attempt(api, receiver, single):
+    """Days removes the follow-up from the page: a changed form. On a wizard its page's Next is
+    never clicked; on a single page nothing is submitted."""
+    app_id = follow_up_application(api, receiver, "follow_up_removed", shift="Days",
+                                   single=single)  # fmt: skip
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    led = receiver.ledger()
+    assert posts(led, "/apply") == 0 and led["accepted"] == 0
+    if not single:
+        assert draft_pages(led) == [1, 2, 3] and posts(led, "/draft/4") == 0
+        assert FOLLOW_UP_CHANGED in attempt(aid).outcome_detail
+
+
+@pytest.mark.parametrize("single", [False, True], ids=["wizard", "single-page"])
+def test_one_the_page_requires_while_hidden_stops_the_attempt(api, receiver, single):
+    """The page keeps `required` on the follow-up it does not show (Days): its own checks would
+    refuse the application, so the attempt stops (a wizard before page 4's Next) with nothing
+    submitted, never at a final click that would be refused."""
+    app_id = follow_up_application(api, receiver, "follow_up_required_kept", shift="Days",
+                                   single=single, detail="Friday")  # fmt: skip
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    led = receiver.ledger()
+    assert posts(led, "/apply") == 0 and led["accepted"] == 0
+    assert FOLLOW_UP_HIDDEN_REQUIRED in attempt(aid).outcome_detail
+    if not single:
+        assert draft_pages(led) == [1, 2, 3] and posts(led, "/draft/4") == 0
+
+
+def test_one_the_page_requires_while_hidden_is_sent_once_shown(api, receiver):
+    app_id = follow_up_application(api, receiver, "follow_up_required_kept", detail="Friday")
+    assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
+    assert receiver.ledger()["acceptances"][0]["fields"][FOLLOW_UP] == "Friday"
 
 
 def test_an_approval_from_before_d148_pauses_and_a_fresh_read_marks_it(api, receiver,
@@ -475,8 +525,9 @@ def test_the_live_form_reads_as_approved_shown_or_hidden_and_once_filled_require
     assert isinstance(adapter.schema_matches(page), FormChanged)  # required before entry
     adapter._filled, adapter._entered = True, {"q.d"}
     assert adapter.schema_matches(page) is None  # once filled, the page's reaction
+    adapter._filled, adapter._entered = False, set()
     page.set_content(PAGE.format(d=" hidden", w=" hidden").replace("Which nights?", "Which days?"))
-    assert adapter.schema_matches(page) is not None  # its wording still has to match
+    assert isinstance(adapter.schema_matches(page), FormChanged)  # its wording still counts
 
 
 def test_readback_never_waits_for_a_question_the_page_removed(page):
@@ -491,6 +542,62 @@ def test_readback_never_waits_for_a_question_the_page_removed(page):
     adapter._entered = {"q.d"}
     assert adapter.readback(page) == ["q.d"]  # entered: it did not keep its value
     assert time.monotonic() - started < 5  # never waited for (a wait lasts 30 s here)
+
+
+def _wizard(adapter: WorkdayFixtureAdapter) -> WorkdayFixtureAdapter:
+    adapter.content = {**adapter.content, "wizard": {"pages": ["Application Questions", "Review"]}}
+    return adapter
+
+
+def test_before_a_wizard_page_s_next_a_removed_or_reworded_one_stops_it(page):
+    """Before a page's Next: a follow-up the page removed is a changed form, and so is one it
+    rewords (the live form is compared with the approved one before the Next, not only after)."""
+    adapter = _wizard(_adapter([_answer("q.d", "text", None), _answer("q.w", "radio", None)],
+                               HIDDEN))  # fmt: skip
+    adapter._filled = True
+    page.set_content(
+        PAGE.format(d=" hidden", w=" hidden").replace(
+            '<label for="d">Which nights?</label><input id="d" name="q.d" type="text" hidden>', ""
+        )
+    )
+    assert adapter.page_follow_ups(page, 1) == FOLLOW_UP_CHANGED
+    page.set_content(PAGE.format(d="", w=" hidden").replace("Which nights?", "Which days?"))
+    reason = adapter.page_follow_ups(page, 1)  # shown, optional and empty: only the wording
+    assert reason is not None and reason.startswith("the form has changed")
+    page.set_content(PAGE.format(d="", w=" hidden"))
+    assert adapter.page_follow_ups(page, 1) is None
+
+
+def test_a_wizard_rechecks_what_its_filled_pages_left_empty(page):
+    """After a Next and before the send gate: a follow-up on a page already filled and left
+    empty that the page now requires stops the attempt (the final click would be refused)."""
+    answers = [_answer("q.d", "text", None), _answer("q.w", "radio", None)]
+    adapter = _wizard(_adapter(answers, HIDDEN))
+    adapter._filled = True  # another page filled, not this one
+    page.set_content(PAGE.format(d=" hidden required", w=" hidden"))
+    assert adapter.schema_matches(page) is None
+    adapter = _wizard(_adapter(answers, HIDDEN))
+    page.set_content(HIDDEN)
+    adapter.fill(page)  # its page filled: nothing entered, the follow-up not shown
+    page.set_content(PAGE.format(d=" hidden required", w=" hidden"))
+    assert adapter.schema_matches(page) == FOLLOW_UP_HIDDEN_REQUIRED
+    page.set_content(HIDDEN)
+    assert adapter.schema_matches(page) is None
+
+
+def test_a_shown_one_that_cannot_be_typed_into_is_never_waited_for(page):
+    page.set_content(PAGE.format(d=" disabled", w=" hidden"))
+    adapter = _adapter([TEXT, _answer("q.w", "radio", None)], HIDDEN)
+    started = time.monotonic()
+    adapter.fill(page)
+    assert time.monotonic() - started < 5 and adapter._entered == set()
+    assert adapter.follow_ups(page, adapter.content["answers"]) == FOLLOW_UP_CHANGED
+
+
+def test_readback_catches_a_value_the_page_put_in_one_not_entered(page):
+    page.set_content(PAGE.format(d=' hidden value="Auto"', w=" hidden"))
+    adapter = _adapter([TEXT, _answer("q.w", "radio", None)], HIDDEN)
+    assert adapter.readback(page) == ["q.d"]
 
 
 def test_an_approved_answer_to_a_choice_the_page_shows_by_itself_is_refused(page):

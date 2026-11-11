@@ -61,11 +61,14 @@ tenant:
        the start, on its page, inside a wrapper of its own that is `hidden` (never the page's
        section); the page's script shows it when "Preferred shift" is Nights, and hides and
        empties it otherwise. A Next saves it with the rest of its page, empty while hidden; the
-       final POST requires it only when it is shown and required. Its three shapes:
-       follow_up (optional), follow_up_required (`required` in the markup at load, hidden;
-       once a shift is chosen, required only while shown) and follow_up_revealed_required
-       (optional in the markup, marked required once shown). No real Workday follow-up was observed (docs/research/workday.md: they hang off
-       a single-select answer).
+       final POST requires it only when it is shown and required. Its shapes: follow_up
+       (optional), follow_up_required (`required` in the markup at load, hidden; once a shift
+       is chosen, required only while shown), follow_up_revealed_required (optional in the
+       markup, marked required once shown), follow_up_required_kept (`required` in the
+       markup, never dropped, so a page that does not show it requires it all the same) and
+       follow_up_removed (optional; the page removes it instead of hiding it). No real
+       Workday follow-up was observed (docs/research/workday.md: they hang off a
+       single-select answer).
 cfg["wizard"] values: plain; drift (a required q.weekends on page 4 at load); already_applied
 (shown at open instead of the form); step_error (the page-2 draft is answered 422 with errors);
 step_timeout (the page-2 draft reply waits cfg["delay_s"]); late_question (the page-2 reply
@@ -76,8 +79,8 @@ parse_current_page (a resume upload fills the optional page-2 field exp.details)
 parse_saved_page (a resume upload overwrites three page-1 fields already saved); page_shift
 (D142 review: the work-eligibility question sits at the end of page 3 instead of the start of
 page 4, the document order unchanged); next_stays (D142 review: the page-2 draft is saved, but
-the page stays on page 2); follow_up, follow_up_required, follow_up_revealed_required (D148,
-FA6: a follow-up question on page 4).
+the page stays on page 2); follow_up, follow_up_required, follow_up_revealed_required,
+follow_up_required_kept, follow_up_removed (D148, FA6: a follow-up question on page 4).
 """
 
 import asyncio
@@ -105,17 +108,21 @@ EDUCATION = ("High school diploma", "Associate degree", "Bachelor's degree",
 _REQ = re.compile(r"R-[0-9]{4,12}")
 FILE_FIELDS = ("resume", "cover_letter")
 # D148, FA6: the follow-up question, and its shapes: (required in the markup at load, required
-# by the page once shown). A wizard variant names a shape; a single-page mode is "wd_" + one.
+# by the page only while shown, removed instead of hidden). A wizard variant names a shape; a
+# single-page mode is "wd_" + one.
 FOLLOW_UP = "q.nights_detail"
-FOLLOW_UPS = {"follow_up": (False, False), "follow_up_required": (True, True),
-              "follow_up_revealed_required": (False, True)}  # fmt: skip
+FOLLOW_UPS = {"follow_up": (False, False, False), "follow_up_required": (True, True, False),
+              "follow_up_revealed_required": (False, True, False),
+              "follow_up_required_kept": (True, False, False),
+              "follow_up_removed": (False, False, True)}  # fmt: skip
 
 
-def _follow_up(shape: tuple[bool, bool] | None) -> tuple[str, str]:
+def _follow_up(shape: tuple[bool, bool, bool] | None) -> tuple[str, str]:
     """FA6: the follow-up's markup (after "Preferred shift") and the script that shows it."""
     if shape is None:
         return "", ""
-    at_load, once_shown = shape
+    at_load, once_shown, removed = shape
+    gone = "followUp.remove();" if removed else "detail.value = '';"
     markup = ('<div id="nights-follow-up" hidden><label for="nights_detail">Which nights of '
               f'the week can you work?</label><input id="nights_detail" name="{FOLLOW_UP}" '
               f'type="text"{" required" if at_load else ""}></div>')  # fmt: skip
@@ -126,12 +133,12 @@ const detail = followUp.querySelector('input');
 shift.addEventListener('change', () => {{
   const shown = shift.value === 'Nights';
   followUp.hidden = !shown;{" detail.required = shown;" if once_shown else ""}
-  if (!shown) detail.value = '';
+  if (!shown) {gone}
 }});"""
     return markup, script
 
 
-def _follow_up_required(shape: tuple[bool, bool] | None, fields: dict) -> bool:
+def _follow_up_required(shape: tuple[bool, bool, bool] | None, fields: dict) -> bool:
     """FA6: the final POST requires the follow-up only when it is shown and required."""
     return bool(shape and shape[1] and fields.get("q.shift") == "Nights")
 

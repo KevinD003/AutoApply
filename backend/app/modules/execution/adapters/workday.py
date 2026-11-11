@@ -89,8 +89,8 @@ FOLLOW_UP_NOT_FILLED = (
     "NoEfforts answers (only typed text is): apply on the employer's site"
 )
 FOLLOW_UP_HIDDEN_REQUIRED = (
-    "the page requires a question it shows only after an earlier answer, without showing it, so "
-    "its own checks would refuse the application: apply on the employer's site"
+    "the page requires a question it shows only after an earlier answer, and it was left empty, "
+    "so its own checks would refuse the application: apply on the employer's site"
 )
 UNSEEN_LOGIC = "an answer depends on page logic NoEfforts cannot see"  # as D135's
 VERIFICATION_AFTER_CLICK = (
@@ -122,6 +122,8 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         }
         self._entered: set[str] = set()
         self._filled = False
+        self._step = {a["key"]: a.get("step") for a in self.content["answers"]}
+        self._filled_steps: set[str | None] = set()  # the pages filled so far (a wizard's)
 
     def form_url(self) -> str:
         return workday.form_url(self.content["destination"]["url"])
@@ -173,8 +175,22 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
                     return UNSEEN_LOGIC
             return None
         if self.content.get("wizard"):
-            return None
+            return self._left_empty_but_required(page)
         return self.follow_ups(page, self.content["answers"])
+
+    def _left_empty_but_required(self, page: Page) -> str | None:
+        """A wizard once filled (after each Next, and before the send gate): a question the page
+        shows by its own logic, on a page already filled and left empty there, that the page
+        now requires (an answer on a later page, or a page's reply, can make it so): its own
+        checks would refuse the application."""
+        keys = [k for k in self._shown_by_page
+                if k not in self._entered and self._step.get(k) in self._filled_steps]  # fmt: skip
+        if not keys:
+            return None
+        live = {f.key: f for f in workday.extract_schema(page.content()).fields}
+        if any(k in live and live[k].required for k in keys):
+            return FOLLOW_UP_HIDDEN_REQUIRED
+        return None
 
     # -- D148: questions the page shows by its own logic ------------------------------------
     def fill(self, page: Page) -> list[dict]:
@@ -183,6 +199,7 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         other answers, only if it is shown. One it does not show is never touched or waited
         for: the readback requires it empty."""
         self._filled = True
+        self._filled_steps.update(a.get("step") for a in self.content["answers"])
         plain = [a for a in self.content["answers"] if a["key"] not in self._shown_by_page]
         disclosures = self._with_answers(plain, lambda: HostedFormAdapter.fill(self, page))
         for a in self.content["answers"]:
@@ -191,6 +208,8 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
             self._progress()
             if not self._shown(page, a["key"]):
                 continue  # not asked: nothing is entered
+            if not self._editable(page, a["key"]):
+                continue  # shown but not editable: never waited for (the check after stops)
             try:
                 self._fill_one(page, a)
             except PWTimeout:
@@ -205,6 +224,11 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         and the readback find it (anywhere on the page, by its name)."""
         loc = page.locator(_sel(key))
         return any(loc.nth(j).is_visible() for j in range(loc.count()))
+
+    def _editable(self, page: Page, key: str) -> bool:
+        """One control, which can be typed into now (filling would otherwise wait for it)."""
+        loc = page.locator(_sel(key))
+        return loc.count() == 1 and loc.is_editable()
 
     def readback(self, page: Page) -> list[str]:
         """HostedFormAdapter.readback, where a question the page shows by its own logic that was
@@ -231,8 +255,10 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         one shown that the page requires with no approved answer, which you can answer
         (`ConditionalRequired`, counted) or not (FOLLOW_UP_NOT_FILLED); one not shown, and so
         empty, that the page still requires: its own checks would refuse the application
-        (FOLLOW_UP_HIDDEN_REQUIRED). A shown optional one with no answer stays empty, as
-        approved. What the page requires is read from its markup, as the form is read."""
+        (FOLLOW_UP_HIDDEN_REQUIRED). One the page removed is a changed form (FOLLOW_UP_CHANGED):
+        on a wizard, its page's Next is never clicked. A shown optional one with no answer stays
+        empty, as approved. What the page requires is read from its markup, as the form is
+        read."""
         live: dict | None = None
 
         def page_requires(key: str) -> bool | None:  # None: the page no longer has it
@@ -247,6 +273,8 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
             if key not in self._shown_by_page:
                 continue
             self._progress()
+            if not page.locator(_sel(key)).count():
+                return FOLLOW_UP_CHANGED  # the page removed it: not the approved form
             entered, shown = key in self._entered, self._shown(page, key)
             if not shown and not entered:
                 if page_requires(key):
@@ -295,8 +323,9 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
 
     def page_follow_ups(self, page: Page, i: int) -> str | None:
         """D148: before page i's Next, its questions the page shows by its own logic
-        (`follow_ups`), as a reason to stop or None. Never a pause on a wizard (D142)."""
-        reason = self.follow_ups(page, self.page_answers(i))
+        (`follow_ups`), then the live form against the approved one (`schema_matches`, as after
+        the Next), as a reason to stop or None. Never a pause on a wizard (D142)."""
+        reason = self.follow_ups(page, self.page_answers(i)) or self.schema_matches(page)
         return str(reason) if reason else None
 
     def body_kind(self, page: Page) -> str | None:

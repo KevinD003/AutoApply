@@ -72,7 +72,9 @@ _HIDING_STYLE = re.compile(
     r"(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)\s*(?:!\s*important\s*)?(?:;|$)",
     re.IGNORECASE,
 )
-_NOT_QUESTIONS = {"hidden", "submit", "button", "reset", "image"}  # input types, as forms.py
+# Input types that are not questions (as forms.py), and a file input: a page commonly hides
+# its native file input behind a button of its own, and an upload never needs it shown.
+_NOT_MARKED = {"hidden", "submit", "button", "reset", "image", "file"}
 
 
 def _hides(a: dict[str, str]) -> bool:
@@ -85,29 +87,29 @@ def _hides(a: dict[str, str]) -> bool:
 
 
 def _hidden_in_page(html: str) -> set[str]:
-    """D148: the names of the application form's controls hidden at load inside their page: the
-    control, or an element between it and the form, is hidden by its own markup (`_hides`).
-    Read on the generic extractor's own tree and its choice of form, so a control outside that
-    form (another form, a template) never marks one of its questions."""
+    """D148: the names of the application form's questions hidden at load inside their page:
+    every control of the name (each radio of a group) is hidden, by its own markup or an
+    element's between it and the form (`_hides`). Read on the generic extractor's own tree and
+    its choice of form, so a control outside that form (another form, a template) never marks
+    one of its questions. A file input is never marked (`_NOT_MARKED`)."""
     b = _TreeBuilder()
     b.feed(html)
     nodes = list(b.root.walk())
     form = _application_form(nodes)
-    out: set[str] = set()
+    seen: dict[str, list[bool]] = {}
     for n in nodes:
         name = n.attrs.get("name")
         if n.tag not in ("input", "select", "textarea") or not name:
             continue
-        if n.tag == "input" and n.attrs.get("type", "text").lower() in _NOT_QUESTIONS:
+        if n.tag == "input" and n.attrs.get("type", "text").lower() in _NOT_MARKED:
             continue
         chain = [n, *n.ancestors()]
         if form is not None:
             if form not in chain:
                 continue  # outside the application form: not one of its questions
             chain = chain[: chain.index(form)]
-        if any(_hides(a.attrs) for a in chain):
-            out.add(name)
-    return out
+        seen.setdefault(name, []).append(any(_hides(a.attrs) for a in chain))
+    return {name for name, hidden in seen.items() if all(hidden)}
 
 
 MULTI_STEP_REASON = (
