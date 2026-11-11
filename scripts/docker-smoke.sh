@@ -78,7 +78,19 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json
   -d "{\"email\":\"$later\",\"password\":\"synthetic-password-2\"}" \
   http://127.0.0.1:8000/api/auth/login)
 test "$code" = "401" || { echo "account made after the backup still logs in ($code)"; exit 1; }
+# D147: the restored database knows it was restored (its stamp is the backed-up database's), and
+# the scheduler resolves that by itself before anything runs: wait for it, then check it is done.
+restored=""
+for _ in $(seq 1 30); do
+  restored=$(docker compose exec -T backend python -m app.modules.execution.cli restore-status)
+  case "$restored" in *'"resolved_at"'*) break ;; esac
+  sleep 2
+done
+case "$restored" in
+  *'"held": false'*'"resolved_at"'*) ;;
+  *) echo "the restore was not found and resolved: $restored"; exit 1 ;;
+esac
 expect_running_services
 rm -rf "$bk"
-echo "Backup and restore OK (state from before the backup, nothing after it)"
+echo "Backup and restore OK (state from before the backup, nothing after it; the restore resolved)"
 echo "DOCKER SMOKE PASSED"

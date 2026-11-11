@@ -7,6 +7,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -296,3 +297,20 @@ class RehearsalRecord(Base):
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_reason: Mapped[str | None] = mapped_column(String(30))
+
+
+class InstanceStamp(Base):
+    """D147: which database this is. A restored database cannot know what happened after its
+    backup was taken, so it has to know that it was restored: `db_oid` is the oid PostgreSQL
+    gave the database the stamp was written in. A restore into a new database (the deployment
+    guide's §7) changes the oid and keeps the stamp, so the two differ until the restore is
+    resolved (`execution.restore`). One row (`id` 1)."""
+
+    __tablename__ = "instance_stamp"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    db_oid: Mapped[int] = mapped_column(BigInteger)
+    stamped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # The last restore found and resolved here, and what resolving it did (counts only).
+    restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    restore_summary: Mapped[dict | None] = mapped_column(JSON)

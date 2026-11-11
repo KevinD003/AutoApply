@@ -149,11 +149,14 @@ def sibling(url: str, purpose: str) -> str:
     return u.set(database=name).render_as_string(hide_password=False)
 
 
-def recreate_sibling(url: str, purpose: str) -> str:
+def recreate_sibling(url: str, purpose: str, template: str | None = None) -> str:
     """Drop (only if it is this run's) and create the sibling database; returns its URL. Run as the
-    test role, which owns what it creates."""
+    test role, which owns what it creates. `template` (D147): the purpose of another of this run's
+    siblings to copy (CREATE DATABASE ... TEMPLATE; nothing may be connected to it), as a restore
+    into a new database leaves it: the same rows, another database."""
     target = sibling(url, purpose)
     name = make_url(target).database
+    source = make_url(sibling(url, template)).database if template else None
     with _connect(url) as c:
         run = run_of(c)
         existing = c.execute(text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": name})
@@ -161,7 +164,10 @@ def recreate_sibling(url: str, purpose: str) -> str:
             if _db_mark(c, name) != mark_for(run):
                 raise Refused(f"{name!r} exists and is not this run's")
             _drop(c, name)
-        c.execute(text(f'CREATE DATABASE "{name}"'))
+        if source is not None and _db_mark(c, source) != mark_for(run):
+            raise Refused(f"{source!r} is not this run's")
+        copy = f' TEMPLATE "{source}"' if source else ""
+        c.execute(text(f'CREATE DATABASE "{name}"{copy}'))
         c.execute(text(f"COMMENT ON DATABASE \"{name}\" IS '{mark_for(run)}'"))
     return target
 

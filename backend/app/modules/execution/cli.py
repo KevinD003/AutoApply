@@ -1,11 +1,18 @@
-"""Operational/test entry points: `python -m app.modules.execution.cli run|sweep|relay`."""
+"""Operational/test entry points:
+`python -m app.modules.execution.cli run|sweep|relay|restore-status|restore-resolve [--force]`.
 
+D147: `restore-status` prints whether the database is held as restored, and the last restore
+resolved; `restore-resolve` resolves a hold now (the scheduler does it by itself within
+seconds); `--force` treats the database as restored whatever its stamp says, for a restore made
+another way than the deployment guide's §7 (`pg_restore --clean`, a copy of the volume)."""
+
+import json
 import socket
 import sys
 import uuid
 
 import app.models  # noqa: F401  (register every table)
-from app.modules.execution import runner, service
+from app.modules.execution import restore, runner, service
 
 
 def main(argv: list[str]) -> int:
@@ -20,6 +27,14 @@ def main(argv: list[str]) -> int:
 
         # What the periodic task does: new messages, then those waiting too long (D146).
         print(service.relay_outbox(publish) + service.republish_waiting(publish))
+    elif cmd == "restore-status":
+        print(json.dumps(restore.status(), sort_keys=True))
+    elif cmd == "restore-resolve":
+        done = restore.resolve(force="--force" in argv[1:])
+        print(json.dumps(done, sort_keys=True) if done else "not held")
+    else:
+        print(f"unknown command: {cmd}", file=sys.stderr)
+        return 2
     return 0
 
 

@@ -37,7 +37,7 @@ from app.modules.applications.service import transition
 from app.modules.applications.states import Actor, AppState
 from app.modules.audit.service import record
 from app.modules.autoapply.models import AutoApplyEvent, AutoApplyPrefs
-from app.modules.execution import live
+from app.modules.execution import live, restore
 from app.modules.execution.models import AttemptState, ExecutionAttempt
 from app.modules.identity.models import User
 from app.modules.jobs.models import Job, JobStatus
@@ -445,6 +445,8 @@ def tick(now: datetime | None = None) -> int:
     owners = {e.strip().lower() for e in s.live_owner_emails if e.strip()}
     total = 0
     with SessionLocal() as db:
+        if restore.held(db):  # D147: restored from a backup: the relay ends what it restored
+            return 0
         if s.all_accounts:  # D114: every account; each acts only if not paused (its choice)
             users = db.scalars(select(User)).all()
         else:

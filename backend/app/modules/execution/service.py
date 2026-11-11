@@ -45,7 +45,7 @@ from app.modules.applications.models import Application
 from app.modules.applications.service import transition
 from app.modules.applications.states import Actor, AppState
 from app.modules.audit.service import record
-from app.modules.execution import live, rehearsal
+from app.modules.execution import live, rehearsal, restore
 from app.modules.execution.models import (
     ACTIVE,
     PAUSE_UNRESOLVED,
@@ -101,6 +101,8 @@ def _app_to(db, app: Application, target: AppState, actor: Actor, reason: str) -
 
 
 def enqueue(db: Session, app: Application) -> ExecutionAttempt:
+    if restore.held(db):  # D147: restored, and what it restored is not ended yet
+        raise pk.refused("restored_backup_held")
     if wizard_entered(db, app):  # D142: first, before anything about the approval
         raise pk.refused("wizard_draft_at_employer")
     pkg = pk.latest_package(db, app.id)
@@ -352,6 +354,9 @@ def claim(attempt_id: uuid.UUID, worker: str) -> int | None:
     for one attempt now possible, the rule also stands here, where every delivery ends."""
     lease = timedelta(seconds=get_settings().lease_seconds)
     with SessionLocal() as db:
+        if restore.held(db):  # D147: restored, not resolved yet: nothing it shows runs
+            log.warning("attempt %s: not claimed: the database was restored", attempt_id)
+            return None
         app_id = db.scalar(
             select(ExecutionAttempt.application_id).where(ExecutionAttempt.id == attempt_id)
         )
@@ -1151,6 +1156,11 @@ def retire_live_approvals(db: Session, application_id, reason: str) -> int:
 REHEARSAL_DONE = "Rehearsal finished: the form was filled and checked, and nothing was submitted."
 # Why an outcome retired its approval (`_finish(retire=...)`), shown on the review page.
 RETIRED = {
+    # D147: a restore retires every live approval: the restored database cannot know what was
+    # sent after its backup, so nothing is sent again on a decision made before it.
+    "restored_from_backup": "Given before the backup this server was restored from. Anything "
+    "sent after that backup is not recorded here: check with the employer, then approve again "
+    "if it still needs sending.",
     "rehearsal_completed": "Used by a rehearsal: the form was filled and checked, and nothing "
     "was submitted. Approve again to submit, or to rehearse again.",
     # D15: after an unknown outcome the user said was not received, sending it again is a new

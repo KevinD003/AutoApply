@@ -111,6 +111,11 @@ APPROVAL_REASONS = {
     "wizard_in_progress": "NoEfforts is entering this application on the employer's multi-page "
     "form, and each page it already sent may be saved or received there, so cancelling cannot "
     "undo it. Revoke the approval to stop it before the next page.",
+    # D147: the database was restored from a backup, and what it showed as queued or in progress
+    # is not ended yet (the scheduler does it within seconds of starting).
+    "restored_backup_held": "This server's database was restored from a backup, and NoEfforts "
+    "has not yet ended what the backup showed as queued or in progress. Nothing can be queued "
+    "until it has; the scheduler does it within seconds of starting.",
 }
 
 

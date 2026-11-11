@@ -21,6 +21,7 @@ const KIND = {
   auto_apply_questions: { label: "Your answers needed", tone: "amber" },
   form_changed: { label: "Form changed", tone: "amber" },
   email_update: { label: "Email update", tone: "amber" },
+  restored_backup: { label: "Restored from a backup", tone: "red" },
 };
 
 export default function NotificationsPage() {

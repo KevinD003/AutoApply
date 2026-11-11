@@ -30,17 +30,19 @@ from app.modules.applications.models import Application
 from app.modules.applications.states import AppState
 from app.modules.autoapply.models import AutoApplyEvent
 from app.modules.discovery.models import BoardSource, DiscoveredJob
-from app.modules.execution import rehearsal
+from app.modules.execution import rehearsal, restore
 from app.modules.execution.models import (
     PAUSE_UNRESOLVED,
     ApplicationPause,
     AttemptState,
     Checkpoint,
     ExecutionAttempt,
+    InstanceStamp,
     RehearsalRecord,
 )
 from app.modules.execution.service import RETIRED
 from app.modules.followups import service as followups
+from app.modules.identity.models import User
 from app.modules.jobs.models import Job
 from app.modules.notifications.models import NotificationRead
 from app.modules.preparation.models import ApprovalScope, PackageApproval
@@ -342,6 +344,30 @@ def _inbox(db: Session, user_id) -> list[dict]:
     return out
 
 
+# D147: what a restore of the server's database did, for every account that existed then.
+_RESTORE_TEXT = (
+    "This server's database was restored from a backup, so nothing done after that backup is "
+    "recorded here. NoEfforts ended, without running them, the applications the backup showed "
+    "as queued or in progress, retired every approval and paused automatic applying. Before you "
+    "approve or resume anything, check your email and the employers' sites for applications "
+    "sent after the backup."
+)
+
+
+def _restore(db: Session, user_id) -> list[dict]:
+    stamp = db.get(InstanceStamp, restore.STAMP_ID)
+    if stamp is None or stamp.restored_at is None:
+        return []
+    created = db.scalar(select(User.created_at).where(User.id == user_id))
+    if created is not None and created > stamp.restored_at:
+        return []  # an account made after the restore lost nothing to it
+    item = _item(f"restore:{stamp.restored_at.isoformat()}", "restored_backup", stamp.restored_at,
+                 None, "This server was restored from a backup", _RESTORE_TEXT,
+                 needs_action=True, link="/tracker")  # fmt: skip
+    item["job"] = None
+    return [item]
+
+
 def feed(db: Session, user_id, now: datetime | None = None) -> list[dict]:
     """Every notification of the account, newest first, each with its read mark and the job
     it concerns. Scoped to the account in every query."""
@@ -356,6 +382,7 @@ def feed(db: Session, user_id, now: datetime | None = None) -> list[dict]:
         + _boards(db, user_id, now)
         + _auto_apply(db, user_id)
         + _inbox(db, user_id)
+        + _restore(db, user_id)
     )
     read = set(
         db.scalars(select(NotificationRead.item_key).where(NotificationRead.user_id == user_id))

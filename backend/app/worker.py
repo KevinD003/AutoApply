@@ -174,9 +174,13 @@ def execute_attempt(self, attempt_id: str, forwarded: bool = False) -> str:
 
 @celery_app.task(name="noefforts.relay_outbox", soft_time_limit=SOFT_LIMIT)
 def relay_outbox() -> int:
+    from app.modules.execution import restore
     from app.modules.execution.service import relay_outbox as relay
     from app.modules.execution.service import republish_waiting
 
+    # D147: first, a database restored from a backup: what it shows as queued or in progress
+    # is ended before anything is published (and nothing is claimed until then).
+    restore.resolve()
     # D146: then, for an attempt still queued long after its message went out, once more.
     return relay(publish) + republish_waiting(publish)
 
