@@ -161,7 +161,7 @@ def execute_attempt(self, attempt_id: str, forwarded: bool = False) -> str:
     # only where the browser runs inside the worker, `browser_isolation=netns`). The sweeper
     # removes them too, but it may now run on another host, where it cannot see them. It never
     # decides whether the attempt runs: a task that failed here would be acknowledged with the
-    # attempt never claimed, and nothing would take it up again.
+    # attempt never claimed, which would then wait to be published again (D146: five minutes).
     try:
         cleanup_stale_workdirs()
     except Exception as e:  # noqa: BLE001
