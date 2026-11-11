@@ -427,10 +427,12 @@ def test_a_location_that_is_not_exactly_one_suggestion_set_by_the_page_stops_the
 def test_suggestions_that_keep_changing_never_count_as_exactly_one(
     api, receiver, make, monkeypatch, sample_ms
 ):
-    """D145: the suggestions keep being re-rendered, in turn one "Springfield" and the two of
-    that name. Read every 600 ms the reads fall in step, and each shows the same list; the
-    page's own record of changes to a list says it has not settled. No place is chosen: which
-    of two places of one name was meant is never decided by the moment of a read."""
+    """D145: the suggestions keep being re-rendered every 300 ms, in turn one "Springfield" and
+    the two of that name. Read every 600 ms the reads fall in step, and each shows the same
+    list; the page's own record of changes to a list says it has not settled. No place is
+    chosen. (Read every 250 ms the reads differ, so the equal reads refuse it too. Suggestions
+    that change half a second or more apart can still be read as settled between two changes,
+    and a change after the last read is not seen: D145's limits.)"""
     monkeypatch.setattr(dropdowns, "SAMPLE_MS", sample_ms)
     receiver.config(mode="gh2_loc_search", loc="two_in_turn")
     aid = queue(api, make(api, job=LOC_JOB))
@@ -558,3 +560,30 @@ def test_only_forms_with_these_controls_carry_a_widget_so_schema_version_stays(a
     assert (route["route"], route["provider"]) == ("browser", "greenhouse_dom")
     # v6 (D130, D120, then D141) is the extraction behind adapter_version, never package content.
     assert gh.EXTRACTION_VERSION == "greenhouse-v1" and dom.EXTRACTION_VERSION.endswith("-v6")
+
+
+def test_a_page_error_before_typing_records_no_location_disclosure():
+    """D145 review: the observer is installed before anything is typed. If the page fails
+    there (it navigated away, it closed), nothing was typed, so the stop records only what was
+    disclosed before it, never the search text."""
+    from playwright.sync_api import Error as PWError
+
+    from app.modules.preparation import gh_readonly as ro
+
+    class Fails:
+        def evaluate(self, script, arg=None):
+            if script is ro._PRE_JS:
+                raise PWError("Target page, context or browser has been closed")
+            if script is adapter._LOC_STATE_JS:
+                return {"text": "", "structured": {}}
+            return None
+
+        def on(self, *a): ...
+        def remove_listener(self, *a): ...
+
+    a = adapter.GreenhouseDomAdapter({"answers": [], "documents": []}, {})
+    before = [{"field": "resume", "disclosed": "upload"}]
+    answer = {"key": "candidate_location", "value": {"text": "Springfield"}}
+    with pytest.raises(adapter.LocationStopped) as e:
+        a._search_location(Fails(), answer, before)
+    assert str(e.value) == adapter.LOCATION_FAILED and e.value.disclosures == before

@@ -165,7 +165,16 @@ of your own that names `worker` for something the periodic tasks use must name `
 The case known is the mailbox token of `docs/inbox.md`: mounted into `worker` only, the mailbox
 still shows as connected and no verification code is entered.
 
+Upgrading to a version with D146: an application stuck as queued since an earlier version lost
+its message, or shown as running after its worker stopped before entering anything, is
+published within five minutes of the new `scheduler` starting. If its approval still stands it
+then runs; otherwise it ends without being sent and waits for you. If it must not run, open it
+and press Cancel in its Submission card before you upgrade.
+
 ## 7. Roll back
+
+Read this section to the end before you start: the `git checkout` below replaces this guide
+with the older version's, which may not have the step after the restore.
 
 Restoring the backup taken before the upgrade is the supported rollback: it brings the code,
 the schema and the data back together. Anything done after that backup is lost.
@@ -180,23 +189,46 @@ docker compose exec -T postgres createdb -U postgres noefforts
 docker compose exec -T postgres pg_restore -U postgres -d noefforts --no-owner < backups/noefforts-<stamp>.dump
 docker compose run --rm --no-deps -T backend \
   sh -c 'find /data/storage -mindepth 1 -delete && tar xzf - -C /data/storage' < backups/storage-<stamp>.tgz
+docker compose up -d backend frontend     # the app alone: nothing is run or queued yet
+```
+
+**Before you start the workers** (after every restore, and every rollback whatever version it
+goes back to). The restored database knows nothing of what happened after the backup was
+taken: an application it shows as queued or running may have been sent since. Since D146 the
+scheduler publishes again an application that is still queued, and puts back in the queue one
+shown as running whose worker had stopped before entering anything; messages for them may also
+still wait in the broker, which a restore does not empty and an older worker reads as well. So,
+with only `backend` and `frontend` up:
+
+1. In the Tracker, pause "Automatically submit applications".
+2. Open every application shown as Queued or Running and press Cancel in its Submission card.
+3. Compare what the Tracker shows with the confirmation emails you received after the backup.
+
+Then start the rest:
+
+```bash
 docker compose up -d --remove-orphans
 ```
+
+Resume automatic applying only after that comparison: the restored database does not know what
+it applied to after the backup, and it could apply to the same job again. Nothing does this for
+you yet (ranked slice 20 in `docs/remaining-work.md`).
 
 `--remove-orphans` matters when the older version had fewer services: rolling back to before
 D144, `scheduler` no longer exists in the file, and a leftover one must not keep running next
 to the older `worker` (it would take queued applications off the old queue and pass them to a
 queue the older worker does not read). Anything still waiting in the newer version's own queue
 is not read by the older worker either. After the restore most of it names applications the
-backup does not have; an application that was queued when the backup was taken stays "queued"
-until you cancel it in the Tracker and approve it again.
+backup does not have; for the rest, take the step above before starting the workers, whatever
+version you roll back to.
 
 The database is dropped and recreated rather than restored over (`pg_restore --clean` would
 leave tables that only the newer version had, and the older version's migrations would then
 fail). The CI smoke test runs these same commands on a throwaway stack: it backs up, creates a
 second account, restores, and checks that the first account's session works and the second
 account no longer exists. It restores onto the same version, so no leftover service exists
-there and a rollback across versions is not exercised.
+there and a rollback across versions is not exercised. It queues nothing, so it starts every
+service at once and does not show the step between the two starts.
 
 `alembic downgrade` exists for each migration, but some refuse while data depends on the newer
 schema (for example, the C18/L2 downgrade refuses while a generated document awaits
@@ -210,15 +242,18 @@ docker compose down           # removes containers, keeps the pgdata and storage
 docker compose down -v        # ALSO DELETES YOUR DATA (database and documents)
 ```
 
-`down` also discards what is waiting in the broker (`redis` keeps nothing in a named volume): an
-application that was queued and not yet started. Since D144 that can be more than a moment's
-worth: the scheduler goes on handing queued applications to the broker while `worker` is busy
-or stopped. After the next `up`, such an application stays "queued" and is not run; cancel it in
-the Tracker and approve it again. `stop` and an upgrade (`up -d --build`) keep the broker's
-container: Redis writes what waits in it to that container's disk when it is asked to stop, and
-reads it back when it starts. If the broker is killed, or the machine loses power, what was
-queued since its last snapshot (up to an hour before) is lost the same way. Publishing a
-waiting application again by itself is not built (rank 15 in `docs/remaining-work.md`).
+`down` also discards what is waiting in the broker (`redis` keeps nothing in a named volume):
+the messages of applications that were queued and not yet started. Since D144 that can be more
+than a moment's worth: the scheduler goes on handing queued applications to the broker while
+`worker` is busy or stopped. The applications are not lost with their messages (D146): one
+that is still queued five minutes after its message went out is published again by the
+scheduler, and again every five minutes while it waits. After the next `up` it is taken up
+within about five minutes, once `worker` is free, if its approval still stands. `stop` and an
+upgrade (`up -d --build`) keep the broker's container: Redis writes what waits in it to that
+container's disk when it is asked to stop, and reads it back when it starts. If the broker is
+killed, or the machine loses power, what was queued since its last snapshot is published again
+the same way. While `worker` is stopped the messages add up in the broker (12 an hour for each
+waiting application); all but one are ignored when they are taken.
 
 `stop` asks each service to finish and ends it ten seconds later. An application in progress
 goes on during those seconds and can still be submitted in them (measured: a worker told to

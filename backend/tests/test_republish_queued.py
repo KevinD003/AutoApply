@@ -1,8 +1,9 @@
 """D146: an attempt still waiting to be taken long after its message went out is published
 again. A message can be lost with the broker's memory, or be held by a worker that stopped
 before starting it; nothing else sent it a second time, so the application stayed "queued".
-Only an attempt the claim would still take is published again, so this path can never run
-anything a second time after data was entered or sent.
+Only an attempt the claim would still take is published again, and the claim itself
+refuses one that entered data: however many messages there are, nothing runs a second time
+after data was entered or sent.
 
 The rule itself is tested against the database with a recording `publish`. The three
 end-to-end cases use a real Celery worker on the run's own Redis, and the receiver's ledger as
@@ -233,8 +234,8 @@ def test_a_claim_does_not_wait_for_a_pass_that_is_publishing(api, receiver):
 
 
 def test_the_wait_is_the_setting(api, receiver, monkeypatch):
-    """Not a figure in the code: with the setting at fifteen minutes, an attempt five minutes
-    old is not published again, and one fifteen minutes old is."""
+    """Not a figure in the code: with the setting at fifteen minutes, an attempt whose message
+    is six minutes old is not published again, and one sixteen minutes old is."""
     out = Published()
     aid = queued_and_published(api, receiver, out)
     monkeypatch.setattr(get_settings(), "outbox_republish_seconds", 900)
@@ -399,3 +400,24 @@ def test_an_attempt_whose_message_was_not_lost_is_still_sent_once(api, receiver)
         w.stop()
     assert queued(broker()) == {"celery": 0, "attempts": 0}
     assert receiver.ledger()["accepted"] == 1 and claims(aid) == 1
+
+
+def test_an_attempt_put_back_in_the_queue_can_still_be_revoked(api, receiver):
+    """The sweeper puts back an attempt whose worker stopped before entering anything; its
+    application still shows running. Revoking the approval stops it at once, as for any queued
+    attempt, and the application waits for a new approval (D146 review: revoking it used to
+    fail with an error, nothing was revoked, and the attempt would have run later)."""
+    from app.modules.applications.models import Application
+
+    app_id = prepared_application(api, receiver)
+    aid = queue(api, app_id)
+    assert svc.claim(uuid.UUID(aid), "w1") == 1  # the application now shows running
+    set_attempt(aid, lease_expires_at=utcnow() - timedelta(seconds=1))  # its worker is gone
+    assert svc.sweep()["repended"] == 1 and attempt(aid).state == "pending"
+    r = api.post(f"/applications/{app_id}/package/revoke")
+    assert r.status_code == 200 and r.json()["revoke_effect"] == "cancelled", r.text
+    assert attempt(aid).state == "cancelled"
+    with SessionLocal() as db:
+        assert db.get(Application, uuid.UUID(app_id)).state == "awaiting_approval"
+    assert svc.claim(uuid.UUID(aid), "w2") is None and claims(aid) == 1
+    assert receiver.ledger()["accepted"] == 0

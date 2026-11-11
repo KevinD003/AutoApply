@@ -9,20 +9,57 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
-## A dropdown's list settled by the page's own record of its last change (D145, 2026-11-11; local only)
+## An attempt still waiting to be taken is published again (D146, 2026-11-11; local only)
 
-Nothing here ran against a real page or a real account. Branch `dropdown-settle` (from D144's
-branch). Every form is a local stand-in (FIXTURE ASSUMPTIONS), and the receiver's ledger is the
-oracle for everything said to have reached the employer. Tests in
-`tests/test_dropdown_strategies.py`.
+Nothing here ran against a real page or a real account. Branch `republish-queued` (from D145's
+branch). The rule is tested against the database with a `publish` that only records. The three
+end-to-end rows use a real Celery prefork worker on the run's own Redis, and the receiver's
+ledger is the oracle for everything said to have reached the employer. Every form is a local
+stand-in. Tests in `tests/test_republish_queued.py`. What the rule leaves open, a restored
+database first, is in D146 (`docs/decisions.md`).
 
 | Requirement | Test | Oracle / evidence |
 |---|---|---|
-| A list that keeps being re-rendered is refused however slowly it is read, before anything is disclosed | `test_a_list_that_keeps_changing_is_refused_however_slowly_it_is_read` (the reading interval set to 590, 600, 610 and 1200 ms) | the stand-in list re-rendered every 300 ms: the attempt `failed_safe`, "its list could not be read completely", `still_changing`; receiver ledger: no disclosure, nothing accepted. Before D145 (measured): refused for another reason at 590 ms, accepted at 610 ms |
+| An attempt still queued is published again once its message is old, and not before | `test_an_attempt_still_queued_is_published_again_once_its_message_is_old` | its message made to look a minute short of the wait: nothing; 5 s past it: published again, to the same task, the id only; the message's time and count updated; nothing again straight after; the attempt still `pending`, generation 0, never claimed |
+| Only an attempt the claim would still take is published again | `test_only_an_attempt_the_claim_would_still_take_is_published_again` | the same old message with the attempt put in each of the ten other states, then with a cancel requested, then with a disclosure recorded: never published; back as it was queued: published |
+| The attempt's newest message decides | `test_the_attempts_newest_message_decides` | a second message not yet dispatched: nothing (the relay publishes it); dispatched a moment ago: nothing; both old: one publication, recorded on the newer message |
+| A broker that is down ends the pass and leaves the rest for the next | `test_a_broker_that_is_down_leaves_it_for_the_next_pass` | two old attempts and a `publish` that raises with a URL in its text: the longest-waiting one tried and no other, nothing counted, its age unchanged, only the error's type stored; the next pass publishes both |
+| Two passes at once publish it once | `test_two_passes_at_once_publish_it_once` | a second pass run while the first is inside its publish: it skips the message and publishes nothing |
+| A claim does not wait for a pass | `test_a_claim_does_not_wait_for_a_pass_that_is_publishing` | a worker's claim made from inside the pass's own publish returns before the pass ends (it was given 20 s), generation 1 |
+| An attempt put back in the queue can still be revoked | `test_an_attempt_put_back_in_the_queue_can_still_be_revoked` | claimed, its worker gone, put back by a sweep (its application still running): revoking returns `cancelled`, the attempt is cancelled, the application waits for a new approval, a later claim does nothing (before the fix: a 500, nothing revoked, the attempt still pending); receiver ledger: nothing accepted |
+| The wait is the setting | `test_the_wait_is_the_setting` | with the setting at 900 s, a message six minutes old is not published again; one sixteen minutes old is |
+| Extra messages never add a run | `test_extra_messages_never_add_a_run` | a message added every time the attempt is queued, the worker lost each time before entering anything: claimed once when queued and once for each time the sweeper puts it back (three in all), every other delivery refused, then `failed_safe` (claims made directly; no worker runs) |
+| An attempt that entered data is never claimed | `test_an_attempt_that_entered_data_is_never_claimed` | a queued attempt given a disclosure time by hand: the claim returns nothing and changes nothing; without it, the same attempt is claimed |
+| The longest wait first, and no more than the limit | `test_the_oldest_wait_first_and_no_more_than_the_limit` | two old attempts and a limit of one: the older, then the newer, then nothing |
+| The relay's own task does it | `test_the_relay_task_publishes_again_too` | the task run directly with a recording `publish`: 1, then 0, and once the message is old, 1; the task is in the schedule |
+| The wait is five minutes and cannot be set below one | `test_the_wait_is_five_minutes_and_cannot_be_set_below_one` | the setting's default is 300; 60 is accepted and 59 refused when the settings are built |
+| A message the broker lost: the application is submitted once it is published again | `test_an_attempt_whose_message_was_lost_is_sent_once_it_is_published_again` | the broker's lists emptied after the relay; with a worker running the attempt is still `pending`, unclaimed, 3 s later; published again after the wait: `confirmed`, one claim; receiver ledger: accepted 1 |
+| A worker process lost before it claimed: the same | `test_an_attempt_whose_worker_died_before_claiming_it_is_published_again` | a worker told to exit before the claim: the message taken and acknowledged (queue 0, unacknowledged 0), the attempt `pending` with no claim, a sweep recovers nothing, receiver accepted 0; published again and run by another worker: `confirmed`, one claim, accepted 1 |
+| A message that was not lost is still sent once | `test_an_attempt_whose_message_was_not_lost_is_still_sent_once` | published again while the first message still waits: two messages; a worker: `confirmed`, "delivery ignored" in its log, one claim; the receiver, told to accept a repeat, counted 1 |
+| Each part of the rule is needed | 21 changes, each in turn (D146 in `docs/decisions.md`) | each fails a test |
+
+## A dropdown's list settled by the page's own record of its last change to a list (D145, 2026-11-11; local only)
+
+Nothing here ran against a real page or a real account. Branch `dropdown-settle`. Every form is
+a local stand-in (FIXTURE ASSUMPTIONS), and the receiver's ledger is the oracle for everything
+said to have reached the employer. Tests in `tests/test_dropdown_strategies.py` unless another
+file is named. What the rule does not cover is listed in D145 (`docs/decisions.md`).
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| A list that keeps being re-rendered is refused however slowly it is read, before anything is disclosed | `test_a_list_that_keeps_changing_is_refused_however_slowly_it_is_read` (the reading interval set to 590, 600, 610 and 1200 ms) | the stand-in list re-rendered every 300 ms: the attempt `failed_safe`, "its list could not be read completely", `still_changing` or `list_changed_recently`; receiver ledger: no disclosure, nothing accepted. Before D145 (measured): refused for another reason at 590 ms, judged settled at 610 ms |
 | A list that has settled is still accepted when read slowly | `test_a_list_that_has_settled_is_accepted_when_read_slowly` (a list shown at once; one that arrives after 1.2 s and stays) | read every 600 ms: `confirmed`; receiver ledger: one acceptance, each of the three dropdowns carrying its approved option |
-| Settled means unchanged for half a second by the page's own record | `test_settled_means_unchanged_by_the_pages_own_record` | the engine on a stand-in for the page's probe (no browser): three identical reads are not settled while changes keep coming, nor at 499 ms; they are at 500 ms, and where the page recorded no change since before the action |
-| Every earlier dropdown case holds | the file's other 43 cases | the whole file: 50 passed |
-| Each part of the rule is needed | six changes, each in turn (D145 in `docs/decisions.md`) | each fails a test |
+| A page that keeps changing elsewhere does not hold up a settled list | `test_a_page_that_keeps_changing_elsewhere_does_not_hold_up_a_settled_list` (an element outside every list changing every 300 ms, and every 600 ms) | `confirmed`; receiver ledger: one acceptance, each of the three dropdowns carrying its approved option. In a stand-in's window: the classification's own 150 ms check still counts changes anywhere, and a page changing something every 250 to 300 ms can have a list refused in a real page's window (D145; rank 19) |
+| The same within a real page's window | `test_a_page_busy_elsewhere_passes_every_check_in_a_real_pages_window` (the stand-in given the 1.5 s a real page gets; an element outside every list changing every 600 ms) | `confirmed`; receiver ledger: one acceptance, each of the three dropdowns carrying its approved option. With the whole page's record put back (D145's first version): `failed_safe` at a check in 6 of 6 runs |
+| A list that starts changing after its check is not chosen from, and nothing is sent | `test_a_list_that_starts_changing_after_the_check_stops_the_attempt_before_sending` (each list stable at its first opening, re-rendered every 300 ms from its second) | `abandoned`, "did not keep their values"; receiver ledger: nothing accepted, and disclosures (this stop comes after data was entered) |
+| What the page's record takes for a change to a list | `test_the_pages_record_tells_a_change_to_a_list_from_a_change_elsewhere` | a real browser on the stand-in page with one list open, a fresh record before each change. Not the list's: an element arriving elsewhere, its text, an attribute of it. The list's: text inside an option, an attribute of one, a child of the list, an attribute of the body (which holds it), an element holding an option arriving, the list removed, and 250 changes at once |
+| Settled means unchanged for half a second by that record | `test_settled_means_unchanged_by_the_pages_own_record` | the engine on a stand-in for the page's probe (no browser): three identical reads are not settled while the record stays recent, nor at 499 ms (`list_changed_recently`); they are at 500 ms, with no record at all, and with the list's record old while the whole page's is 200 ms old |
+| Three equal reads are still needed | `test_three_equal_reads_are_still_needed` | the same stand-in, no record: settled at the third read and not before; reads that differ in turn are never settled (`still_changing_or_loading`, after the window's six reads) |
+| A control that is gone when the observer is installed is refused | `test_a_control_that_is_gone_before_the_action_is_refused`; `test_a_control_absent_only_when_the_observer_is_installed_is_refused` | `Refused`, "the control disappeared": when it stays gone, and when it is back for every read after that instant with an earlier dropdown's quiet record (which would otherwise be taken as settled) |
+| Suggestions that keep changing never count as exactly one | `tests/test_greenhouse_controls.py`: `test_suggestions_that_keep_changing_never_count_as_exactly_one` (both structures; read every 250 and every 600 ms) | the stand-in's suggestions shown in turn, every 300 ms, as one "Springfield" and as the two of that name: `abandoned`, no settled list; receiver ledger: nothing accepted, one upload and the search text counted as disclosed |
+| An error from the page before the location is typed records no disclosure of it | `tests/test_greenhouse_controls.py`: `test_a_page_error_before_typing_records_no_location_disclosure` | the adapter on a page that fails while the observer is installed: `LocationStopped`, "the location search could not be completed", with only the earlier disclosures |
+| Every earlier dropdown and control case holds | the two files' other 96 cases | both files whole on ae54f21: 58 and 58 passed |
+| Each part of the rule is needed | 18 changes, each in turn, then 2 more for the second review's fixes (D145 in `docs/decisions.md`) | each fails a test |
 
 ## Attempts on a queue and a worker of their own (D144, 2026-11-10; local only)
 

@@ -5813,7 +5813,7 @@ audit-inventory and export-completeness guards are updated and pass.
   one. One instruction to the owner changed: to stop everything now, `docker compose kill
   worker scheduler` (`docs/activation-status.md` §8).
 
-## D145 — A dropdown's list counts as settled by the page's own record of its last change, not by how often it is read (2026-11-11)
+## D145 — A dropdown's list counts as settled only when the page itself has recorded no change to a list for half a second, besides three equal reads (2026-11-11)
 
 - **Context:** rank 14 of the automation loop (`docs/automation-loop.md`). Local stand-ins
   only; nothing real was run. No state, transition, gate, permission or retry changes.
@@ -5825,71 +5825,406 @@ audit-inventory and export-completeness guards are updated and pass.
   order.
 - **Measured before deciding (2026-11-10, without load, the reading interval set by hand; a
   temporary test, not committed):** 250 ms: refused as still changing. 590 ms: refused for the
-  wrong reason (judged settled, in the other order, so "its options differ"). 610 ms: accepted
-  and submitted (the approved option was the one chosen and read back). 600 and 900 ms: refused
-  as still changing.
+  wrong reason (judged settled, in the other order, so "its options differ"). 610 ms: judged
+  settled every time it was tried. The first time the application was then submitted (the
+  approved option was the one chosen and read back); in three later runs the attempt ended
+  `abandoned` at the readback, with two, two and one answers not kept. The check accepted
+  every time; what followed varied. 600 and 900 ms: refused as still changing.
+- **Built twice.** The first version (up to e81bfeb) used the time the probe already kept: of
+  the last change anywhere in the document. An independent review (below) showed by
+  arithmetic that this did more than its record said: on a page that changes anything,
+  anywhere, every 500 to 750 ms a dropdown's check would pass only now and then, each opening
+  at its own moment, so a check could pass and the choice then fail after data had been
+  entered. The record was narrowed to changes that touch a list, and the rule rebuilt on it.
 - **Decided:** a list is settled when, besides the three identical reads with nothing loading
-  and no data request in flight, **the page's own record of its last change is at least half a
-  second old** (`STABLE_MS`, 500 ms). The record is the one the probe already kept (a
-  `MutationObserver` on the document, installed before the action, read by the page's clock,
-  disconnected after the dropdown); until now only its last 150 ms were consulted, by the
-  classification both the survey and the adapter use. The half second is a fixed time, not a
-  number of reads. Both uses of a list follow the rule: the check before anything is
-  disclosed, and the reading again when an option is chosen.
-- **What this changes for an application:** nothing where a list stops changing: it settles on
-  the same read as before. A list that keeps changing more often than every half second is
-  refused however slowly it is read, before anything is entered. So is every dropdown on a
-  page that changes anything, anywhere in the document, that often (before: more often than
-  every 150 ms). If a page only starts doing so after the first check, the option is not
-  chosen, its readback fails and the attempt stops before the send gate, as for any answer
-  that could not be entered.
-- **Not changed, not fixed:**
-  - **The whole document, not the list alone.** Narrowing the record to the list would refuse
-    less, and needs the structure of real pages to be right; there is none to go by. Refusing
-    more is the safe side.
-  - **A page that records nothing.** Where the observer saw no change at all since before the
-    action, the three reads decide alone, as before: either nothing changed, or the page
-    changes in a way the observer cannot see (options swapped by CSS alone, an observer the
-    page has replaced). The rule is a guard against timing, not against a page that hides its
-    changes; that is what the exact list at the moment of choosing and the readback are for.
-  - **A list that changes less often than every half second** can still be read as settled
-    between two changes, as before; so can one on a page whose own timers stall for that long
-    (it did not change in that time). The later checks are unchanged: the list read again and
-    required to be exactly the approved one when an option is chosen, every answer read back
-    before the send gate, the form compared before the disclosure gate.
+  and no data request in flight, **the page's own record of the last change to a list is at
+  least half a second old** (`STABLE_MS`, 500 ms), **or the page has recorded no such change
+  since before the action**. The half second is a fixed time, not a number of reads.
+  - **The record** is kept by the observer the probe already installed (a `MutationObserver`
+    on the document, installed before the action, read by the page's clock). It now keeps
+    two times: of the last change anywhere, as before (only the classification's 150 ms check
+    reads it), and of the last change that touched a list.
+  - **A change touches a list** when it happened inside an option or a popup; when it added
+    or removed an element that is, or holds, one; or when it changed an attribute of an
+    element that is, or holds, one (which can show or hide a list). Options and popups are
+    found by the marks the probe already reads them by: their roles, and class names that
+    hint at a menu, dropdown, popover, listbox or option. More than 200 changes delivered at
+    once are not looked at one by one and count as the list's.
+  - **Where it applies:** both uses of a dropdown's list (the check before anything is
+    disclosed, and the reading again when an option is chosen) and **the location search**
+    (stand-ins only): its suggestions count as settled, and "exactly one suggestion with the
+    approved text" is judged, only on a list the page has not changed for half a second.
+- **What this changes for an application:**
+  - A list whose changes come less than half a second apart is refused however slowly it is
+    read: at the check, before anything is entered.
+  - Changes elsewhere on the page do not count in the new record. The classification's own
+    check of the whole document is unchanged, though: a read within 150 ms of any change on
+    the page cannot settle, at the check or at the choice. So a page that changes something
+    every 250 to 300 ms can still have a list refused in a real page's 1.5-second window,
+    depending on how the reads fall against its timer: the same dependence on the reading
+    pace that D145 removes for the list. By the second review's arithmetic, with the engine's
+    own code: a change every 300 ms and reads 254 to 300 ms apart, 4% to 50% of openings
+    refused; every 250 ms, up to 55%; every 600 ms, none. It has been so since D106, and D145
+    neither fixes it nor makes it worse (rank 19). A refusal at a check comes before anything
+    is entered; one at a choice stops the attempt after data was entered, before sending.
+  - A list that stops changing settles at the same read as before on every stand-in: the
+    three equal reads already span half a second. The margin is the overhead of two reads,
+    because the half second equals exactly two reading intervals; where it is lost the list
+    settles one read later, or is refused if that was the window's last read.
+  - **It does not only refuse more.** By waiting where the old rule stopped, the engine can
+    read on to a later list: one that was different at its third equal read and became the
+    approved list afterwards was refused before ("its options differ") and can be accepted
+    now, if a change touched it in between. What is accepted is still exactly the approved
+    list, three reads equal, unchanged by the page's record for half a second.
+  - **A list that starts changing only after the check** is not chosen from: the choice waits
+    out its window, the rest of the form is still filled, the readback finds the answer
+    missing and the attempt stops before the send gate. That stop comes after disclosure
+    (what was entered and uploaded by then has reached the employer's page), and the attempt
+    is not run again, under the standing rule either.
+  - **Suggestions that keep changing** less than half a second apart never count as exactly
+    one: the location search stops the attempt, after the approved text was typed (it is
+    counted as disclosed). An error from the page before anything is typed now stops it
+    without counting the text as disclosed (the second review's finding).
+  - The refusal says which half failed: `list_changed_recently` when the reads were equal and
+    only the page's record said no, `still_changing_or_loading` otherwise.
+  - A control that is absent at the instant the observer is installed is refused ("the
+    control disappeared"), even if it is back for the reads after it. Otherwise the engine
+    would go on with whatever an earlier dropdown left recorded: a narrow race, closed
+    because the record now decides.
+- **Limits (not fixed):**
+  - **Gaps of half a second.** A list is refused only while its changes come less than half a
+    second apart. One that pauses that long between changes, also after several quick ones,
+    can be read as settled in a pause if three reads there are equal. For slow changes this
+    is as before.
+  - **A page whose own timers stall** for that long did not change in that time: its list can
+    be read as settled between two late re-renders. This is also how the tests of the
+    re-rendered list can still fail on a machine busy enough to hold the page's timers back
+    by about 300 ms (the review's arithmetic; not measured).
+  - **No record.** Where the record holds no change touching a list since before the action,
+    the equal reads decide alone, as before: nothing changed, or the page changes it in a way
+    the record does not count. A change to a style sheet that shows, hides or reorders
+    options (the observer sees it and does not take it for the list's), options shown through
+    a shadow root, a change of which popup the control points to (`aria-controls`,
+    `aria-owns`, `aria-activedescendant` on a control that holds no list), or a page that
+    replaced the record. A list inside a shadow root or a frame is not read at all: it is
+    refused as unreadable.
+  - **Marks, not knowledge.** What is a list is decided by roles and class names. A change
+    inside anything so marked counts as the list's (a navigation menu, a dialog widget, a
+    field whose class says "optional"), so does an attribute change on anything that holds a
+    list, the document's body included, and so does any batch of more than 200 changes.
+    Where such changes come less than half a second apart, every dropdown waits and is
+    refused, and so is the location search, which runs after disclosure (new with D145;
+    stand-ins only). Where they start only after a check, the choice fails after data was
+    entered. Where they come 500 to 750 ms apart, a check passes now and then and a choice
+    may then fail: the first version's lottery, on marked changes only.
+  - **The observer's cost** is not measured. It looks at each change of a batch (at most 200)
+    against the marks; one change that adds or removes a large part of the page, or frequent
+    attribute changes on the body, can cost close to a scan of the document each time. The
+    boundary of 200 is not tested.
+  - **Bounds counted in reads.** The windows (1.5 seconds, 5 on a stand-in) are numbers of
+    reads, not times by the clock, so a slow reader waits longer. The stand-in whose list
+    arrives after 7 seconds, "never in time", would be accepted where a read took 389 ms on
+    average through three checks and three choices (the review's arithmetic; not seen). Not
+    changed here.
   - **The read-only survey** (`gh_readonly`, the inspection of a real board) keeps its own
-    test: the number of options at its last two reads and 150 ms without a change. Its whole
-    window is 600 ms by default, too short for this rule, and it reports what it saw; it fills
-    nothing. A
-    list that keeps its length while its options change can still be reported there as
-    observed sufficiently.
-  - **The location search** (stand-ins only) still takes its suggestions as settled after
-    three identical reads. Its choice is bound to the suggestion's exact text at the click and
-    to what the page then shows, so a list still changing cannot make it choose another place;
-    and the rule there would stop an attempt after the approved text was typed, where the
-    dropdown rule stops before anything is entered.
-  - **Other choices.** A combobox whose options are in the page when it loads, and a
-    section's combobox (D141), are chosen from without this engine's reading of a list; they
-    are unchanged.
-  - **No adapter version change** (`greenhouse_dom` stays at 4, the form reading at v6):
-    nothing is entered, chosen, read back or sent differently, so approvals and rehearsal
-    records stay valid. `SCHEMA_VERSION` unchanged; no migration.
+    test: the number of options at its last two reads, and 150 ms without a change anywhere.
+    It neither uses nor publishes the new record. Its window on paths B and C (1500 ms) was
+    set equal to the adapter's on purpose (a test holds the equality), so that the survey
+    shows what the adapter would accept; since D145 the adapter asks for more than the survey
+    shows. Run #11's "read 11 lists completely", on which the readiness text for dropdowns
+    rests, was judged by the survey's test: no past run shows whether a real page meets the
+    new condition, and no later one will until the survey publishes it (one yes or no per
+    dropdown: no change to a list for half a second at the last read; in the backlog). The
+    survey fills nothing and feeds nothing that fills or sends.
+  - **Other choices.** A section's combobox (D141) reads its list once, with no test of
+    settling at all: the weakest of the three paths, unchanged here (in the backlog). A
+    combobox whose options are in the page when it loads is chosen from without reading a
+    list.
+  - **No adapter version change** (`greenhouse_dom` stays at 4, the form reading at v6), as
+    for D108 and D109, which also changed how a list is opened and judged. It is not true
+    that nothing is chosen differently: an option is no longer chosen from a list that is
+    still changing, and a list may be read on to (above). Approvals stay valid. Rehearsal
+    records keep counting although they were earned under the weaker test, so a first real
+    submission can stop at a dropdown its rehearsal passed. `SCHEMA_VERSION` unchanged; no
+    migration.
+  - **The observer can outlive a failed action.** Where an action ends in an error the engine
+    returns without disconnecting it; it stays until the next dropdown or the location
+    search replaces or disconnects it, or the page closes. It only records. As before.
+  - **The location search after its last read.** The click finds the suggestion again by its
+    position and checks only its text, so a second place of that name that appears or moves
+    in the moment between the last read and the click is not noticed; the readback compares
+    only with what the page then set (stand-ins only).
   - **Never seen on a real page.** Every dropdown strategy remains a fixture assumption; real
-    destinations stay refused.
-- **Tests:** `tests/test_dropdown_strategies.py`, seven new cases. The re-rendered list is
-  refused as still changing with the reading interval set to 590, 600, 610 and 1200 ms, and
-  nothing is disclosed (the receiver's ledger). A list that does not change, and one that
-  arrives after 1.2 seconds and then stays, are accepted and submitted when read every 600 ms
-  (the receiver's ledger: the approved option of each dropdown). The rule itself, on a stand-in
-  for the page's probe: three identical reads are not settled while changes keep coming or at
-  499 ms; they are at 500 ms, and where the page recorded no change at all. Six changes were
-  then made in turn on a committed tree (e81bfeb), and each failed a test: the rule removed
-  (the 590 and 610 ms cases and the rule's own test); its time set to nothing (the same
-  three); more than, instead of at least, half a second (the rule's test); a page that
-  recorded nothing refused (the rule's test alone, of the file's 50: no stand-in dropdown
-  leaves the record empty, so only that test exercises it); a time longer than any window (the
-  list that arrives late, and the rule's test); the classification's 150 ms taken for the rule
-  (the 590 and 610 ms cases and the rule's test). Runs are listed in
-  `docs/automation-loop.md`.
+    destinations stay refused. Whether a real page changes its open list, or what holds it,
+    more often than every half second (an animation, a highlight that moves by itself) is
+    not known: such a page would be refused at the check, before anything is entered.
+- **Tests:** `tests/test_dropdown_strategies.py` (14 new cases, 57 in all) and
+  `tests/test_greenhouse_controls.py` (4 new, 57 in all). The receiver's ledger is the oracle
+  wherever something is said to have reached the employer.
+  - The re-rendered list is refused, and nothing is disclosed, with the reading interval set
+    to 590, 600, 610 and 1200 ms.
+  - A list that does not change, and one that arrives after 1.2 seconds and stays, are
+    accepted and submitted when read every 600 ms, each dropdown with its approved option.
+  - With an element outside every list changing every 300 ms, and every 600 ms, the
+    application is submitted with its approved options; and with the 600 ms page given the
+    1.5 seconds of a real page instead of a stand-in's 5, the same.
+  - A list stable at its check and re-rendered from its second opening: the attempt ends
+    `abandoned`, "did not keep their values", nothing accepted, disclosures recorded.
+  - The observer itself, in a real browser on the stand-in page with one list open. Not the
+    list's: an element arriving elsewhere, its text, an attribute of it. The list's: text
+    inside an option, an attribute of one, a child of the list, an attribute of the body, an
+    element holding an option arriving, the list removed, and 250 changes at once.
+  - The rule on a stand-in for the page's probe (no browser): three identical reads are not
+    settled while the record stays recent, nor at 499 ms (`list_changed_recently`); they are
+    at 500 ms, with no record at all, and with the list's record old while the whole page's
+    is 200 ms old.
+  - Three equal reads are still needed: with no record, a list is settled at its third read
+    and not before, and reads that differ in turn are never settled. (D104 added
+    `late_slow_changing` to hold this half of the rule; since D145 the page's record refuses
+    that list by itself, so this case holds it now.)
+  - A control gone when the observer is installed is refused, both when it stays gone and
+    when it is back for every read after that instant (the second is the case the new guard
+    alone catches).
+  - The location search: an error from the page while the observer is installed, before
+    anything is typed, stops it with only the earlier disclosures recorded.
+  - The location search: with suggestions shown in turn, every 300 ms, as one "Springfield"
+    and as the two of that name, read every 250 and every 600 ms, on both structures: the
+    attempt ends `abandoned` with no settled list; one upload and the search text counted as
+    disclosed, nothing accepted.
+  - Two of these hold behaviour the equal reads give by themselves at the default pace (reads
+    250 ms apart never see a list alternating every 300 ms the same three times): the list
+    that starts changing after its check, and the location search read every 250 ms. They
+    hold what happens at the choice and in the location search, not the new record.
+- **Removal checks:** 18 changes, each in turn on a committed tree (fe9582c), and each failed
+  a test; then 2 more for the second review's fixes.
+  - The rule: removed; its time set to nothing; more than, instead of at least, half a second;
+    a page with no record refused (the two cases on the stand-in for the probe fail and the
+    file's other 54 pass: no stand-in leaves a list's record empty); a time longer than any
+    wait; the classification's 150 ms taken for it; the whole page's record again; the equal
+    reads no longer needed; a missing control let through; one word for every refusal.
+  - The observer: every change taken for a list's; none; a change inside a list not counted;
+    an arriving or leaving list not counted; an attribute of a holder not counted; a burst
+    looked at one by one.
+  - The location search: without the record; without its observer.
+  - What they also show: without the rule the 590 and 610 ms cases fail and the 600 and
+    1200 ms ones still pass (the refusal there comes from the classification's own check).
+    With the whole page's record again, the 300 ms page fails and the 600 ms one still passes
+    within a stand-in's window; the case that gives it a real page's window was added after
+    these runs (a080d3d) and failed in 6 of 6 runs with that record put back. The six runs
+    are not independent draws (their times fall in two clusters), so they show the case
+    catches that record on this machine at this pace, not how often it would.
+  - The second review's fixes, each undone in turn on ae54f21: only the observer's guard removed (a control absent only when the observer is installed is then taken with an earlier dropdown's record), and the location search's error before typing counted as disclosed again. Each failed its test.
+- **Reviews (independent, read-only; nothing run by the reviewer):**
+  - **Of the first version (15c5e36):** no blocker, and no way found for the new condition to
+    let something be sent that should not be. Ten findings. Acted on: the rule rebuilt on a
+    narrower record (its statements "as before" and "only refuses more" did not hold for the
+    whole document's record, shown by arithmetic); the location search brought under the
+    record (binding the click to the suggestion's text did not protect the judgement "exactly
+    one"); tests for the three equal reads and for a list that starts changing after its
+    check; a refusal word of its own; the control that is gone when the observer is
+    installed. Recorded above as limits: gaps of half a second, stalled timers as a way the
+    tests can fail, bounds counted in reads, the survey's weaker test and what run #11 does
+    and does not show, section comboboxes, the version and the rehearsal records, the
+    observer outliving a failed action. Corrected in the records: which tree each run was on,
+    what "accepted at 610 ms" was seen to mean, and this entry's title (three reads are still
+    needed, and the windows are counted in reads).
+  - **Of the rework (a080d3d):** no blocker; nothing found that lets a value be chosen,
+    entered or sent that should not be, and no retry added. Of the first review's ten
+    findings most are met; the rest are recorded above. Acted on: a test for the narrower
+    race (a control absent only when the observer is installed), which the earlier test did
+    not hold; the location search's error before typing no longer counts the text as
+    disclosed. Corrected in the records: changes elsewhere still count through the
+    classification's 150 ms check (rank 19), what the record does not count, what marked
+    changes do after a check and in the location search, the location search after its last
+    read, the observer's cost, two tests that do not depend on the record, which tree two
+    runs were on, and what the six runs with the whole page's record show.
+  Runs are listed in `docs/automation-loop.md`.
+- **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
+  one.
+
+## D146 — An attempt still waiting to be taken is published again (2026-11-11)
+
+- **Context:** rank 15 of the automation loop (`docs/automation-loop.md`). Local stand-ins
+  only; nothing real was run. No new state, transition or permission; the claim's
+  compare-and-swap gains one condition, and revoking an attempt the sweeper put back in the
+  queue no longer fails (below). Not a retry: only an attempt no worker holds, which has
+  entered nothing, is published again, and nothing is added after `disclosure_started_at` or
+  `sending`.
+- **Problem:** the relay published an attempt's message once and marked it dispatched; nothing
+  published it a second time. If that message never led to a claim, the attempt stayed
+  `pending` (the Tracker: "queued") until the owner cancelled it, and the application could
+  not be queued again meanwhile. Three ways there:
+  - the broker lost the message: `docker compose down` (the broker keeps nothing in a named
+    volume), or a broker killed, or a power loss, since its last snapshot;
+  - the worker's process was lost after it received the message and before it claimed the
+    attempt. Celery acknowledges the message of a lost process (by this project's setting: the
+    sweeper, not a redelivery, decides what becomes of an attempt), and the sweeper recovers
+    only attempts that were claimed;
+  - the task failed before the claim (the pass-on's own publish, D144).
+
+  D144 made the first more likely: the scheduler goes on handing queued applications to the
+  broker while the worker is busy or stopped, where before they waited in the database.
+- **Measured (2026-11-11; a real Celery worker on the run's own Redis; the first halves of the
+  new end-to-end tests):**
+  - the message removed from the broker before any worker took it: with a worker running, the
+    attempt stayed `pending`, unclaimed, for the three seconds it was watched; nothing would
+    ever have taken it. This holds without the change;
+  - a worker process told to exit after receiving the message and before the claim (through a
+    fault point added before the claim for this, honoured in tests only): the message was
+    taken and acknowledged (nothing left in the queue, nothing unacknowledged), the attempt
+    was still `pending` with no claim, and a sweep recovered nothing.
+- **Decided:**
+  - **The relay's task publishes a waiting attempt again.** After the new messages, it takes
+    every attempt that is still `pending`, with no cancel requested and nothing entered, whose
+    newest message went out more than `outbox_republish_seconds` ago (300 by default; a value
+    under 60 is refused at start), and publishes it again. The publication is recorded on
+    that message (its time, its count), so the next one is as long a wait again. It repeats,
+    without a limit, for as long as the attempt waits.
+  - **Only what the claim would still take.** An attempt a worker holds, and one that ended
+    in any way, is never published here. One that a worker claimed and lost before anything
+    was entered, and that the sweeper put back in the queue, is published like any other: no
+    worker holds it.
+  - **The claim itself refuses an attempt that entered data.** Its compare-and-swap now also
+    requires that nothing was disclosed. Nothing puts such an attempt back in the queue today
+    (the sweeper checks before it does); the condition is in the claim so that no message,
+    however it came to exist, can start an attempt after data was entered.
+  - **A second message is harmless.** If the first was not lost there are now two. The claim
+    takes an attempt once (it changes `pending` to `claimed` only if it still is `pending`),
+    and the other delivery is ignored. The outbox always relied on that: a crash between
+    publishing and marking dispatched already caused a second delivery. However many messages
+    exist, an attempt is claimed once for each time it is in the queue: once, and once more
+    for each time the sweeper returns it there, which is bounded.
+  - **Only the messages are locked, never the attempt.** A claim, a cancel or a revocation
+    does not wait for a pass, even while the pass is publishing. A second pass skips the
+    messages the first holds.
+  - **A broker that is down** ends the pass at its first failed publish. That message's age
+    stays as it was, so the next pass tries again. Only the error's type is kept (its text can
+    quote the broker's URL).
+- **What this changes for an application:** one that would have stayed "queued" for good is
+  taken up within about five minutes, once the scheduler and the worker run, the worker is
+  free and the approval still stands. One that waits its turn behind another for more than
+  five minutes gets a second message (after 23 minutes, a fifth); each extra one is ignored
+  when it is taken.
+- **What the owner must know (changed by this, not fixed by it):**
+  - **A restored database runs what it shows as queued.** After a restore, an attempt the
+    backup shows as queued is published again and, if its approval still stands, run. If it
+    had already run after the backup was taken, the application is submitted a second time:
+    the restored database cannot know. Before, such an attempt stayed "queued" until it was
+    cancelled, because its message had been used up. Two narrower ways to the same existed
+    already (a message not yet dispatched when the backup was taken; an attempt claimed and
+    not yet disclosing, which the sweeper puts back in the queue), and an attempt the sweeper
+    had put back before the backup shows as running while it waits. This change widens them
+    from seconds to the whole wait in the queue, and its extra messages can still wait in the
+    broker, which a restore does not empty and an older worker reads as well: so it holds
+    for every rollback, whatever version it goes back to. The deployment guide's §7 now
+    says so and adds a step before the workers start: pause automatic applying, open every
+    application shown as Queued or Running and press Cancel on it, compare with the
+    confirmation emails received after the backup, then start `worker` and `scheduler`, and
+    resume automatic applying only after that comparison. A restore that holds everything
+    by itself is the next slice (ranked slice 20). Exposure today: stand-ins only; every real
+    destination is refused, and the pilot's permission ended on 2026-11-06.
+  - **The upgrade itself.** An application stuck as queued since an earlier lost message, or
+    shown as running after its worker stopped before entering anything, is published within
+    five minutes of the new scheduler starting. If its approval still stands it runs;
+    otherwise it ends `failed_safe` and waits for you. The guide used to say such an
+    application "is not run"; its §6 now carries the note.
+  - **After "stop everything now"** (`docker compose kill worker scheduler`), what is queued
+    runs when the worker is started again, as before; that now includes an application whose
+    message was lost. Cancel or revoke first what must not run (`docs/activation-status.md`
+    §8).
+- **Revoking an attempt the sweeper put back** (found by the second review, there before
+  D146). Its application still shows running, and revoking moved it to awaiting approval,
+  which the state machine does not allow from running: the request failed and nothing was
+  revoked, so the attempt would run later (reproduced before the fix: a 500, the attempt
+  still pending). Revoking now moves the application as a refused claim does; with its
+  answers complete it then waits for a new approval, as after any revoke.
+- **Not changed, not fixed:**
+  - Nothing that was started is touched: an attempt a worker claimed is the sweeper's, as
+    before.
+  - **No bound on publications.** The wait is fixed, with no back-off and no cap. While the
+    worker is stopped, every waiting attempt gets a message each five minutes: 12 an hour,
+    about 285 a day, all waiting in the broker. An attempt whose delivery always dies before
+    the claim is published every five minutes for good. Each extra message costs, when it is
+    taken, the check for stale browser directories and a claim that changes nothing.
+  - **Locks.** Up to 50 message rows stay locked from the select to the commit after the last
+    publish: milliseconds with a healthy broker; with the broker gone, as long as one failed
+    publish takes (the library tries the connection three times). A broker that accepts the
+    connection and never answers (a paused container) holds a publish until the task's soft
+    limit, 240 seconds, since the transport sets no timeout of its own: the rows stay locked
+    that long (read, not measured). Only an account deletion waits for those rows.
+  - **Two passes at once** rest on the database's default isolation (read committed), which
+    the session does not set itself: a message the first pass has just published is not
+    returned to the second. The attempt's state and "no newer message" are as the select saw
+    them; the claim decides.
+  - **The query's cost** grows with the outbox table, which is never purged. Negligible for
+    one owner; no plan was inspected.
+  - The Tracker still says only "queued": not why, nor that the attempt was published again.
+  - `docker compose down` still discards what the broker holds. What changes is that an
+    application queued and not started is published again afterwards (the deployment guide's
+    §8 now says so, instead of "cancel it and approve it again").
+  - A version rolled back to before this one publishes nothing again.
+  - Not exercised in the Compose stack: none of its files change, and the relay's task is the
+    one it always ran. The tests use real workers and a real broker, outside Docker.
+  - `SCHEMA_VERSION`, every adapter version: unchanged. No migration (the message's columns
+    were all there).
+- **Tests:** `tests/test_republish_queued.py`, 16 cases.
+  - Twelve hold the rule to the database with a `publish` that only records: published again
+    after the wait and not before, then waited for again; never for an attempt in any other
+    state, with a cancel requested, or with anything entered; the newest message decides; a
+    broker that is down ends the pass at the first failure and leaves the rest for the next;
+    two passes at once; a claim made while a pass is publishing does not wait for it; the wait
+    is the setting, not a figure in the code; however many messages there are, an attempt is
+    claimed once each time it is in the queue (three times in all, then `failed_safe`); the
+    claim refuses a queued attempt with a disclosure recorded; the longest wait first and no
+    more than the limit; the relay's own task; the setting's default and floor.
+  - Three run a real Celery worker on the run's own Redis, with the receiver's ledger as the
+    oracle: the message removed from the broker; a worker process lost between receiving the
+    message and the claim (through the fault point before the claim); and a message that was
+    not lost, where two messages end in one claim and one acceptance although the receiver was
+    told to accept a repeat.
+  - One holds the revoke: an attempt the sweeper put back is cancelled by revoking its
+    approval, its application waits for a new approval, a later claim does nothing, and
+    nothing reached the receiver.
+- **Removal checks:** 21 changes, each in turn on a committed tree (f3cd566), the
+  file's tests run, the file restored; all 21 fail a test (a first attempt on the same tree was refused before any test ran: the database server had stopped with a restart of the session's machine; rerun once it was started). Then the revoke fix undone:
+  its test fails (revoking returns a 500 again).
+  - The rule: the task no longer publishing again; any state published; one with a cancel
+    requested; one that had entered data; every old message instead of the newest; no wait;
+    the publication not recorded; a broker failure counted as published; the pass going on
+    after a failure; the error's text kept; no lock at all; a second pass waiting instead of
+    skipping; the attempt locked too; the newest first; no limit; no floor on the setting;
+    another default; publications not counted; a figure in place of the setting.
+  - Elsewhere: the claim taking an attempt that entered data; no fault point before the claim.
+- **Review (independent, read-only, on c3f9c00; no test run by the reviewer):** no way found
+  for a second message to run an attempt twice: every delivery ends at the claim, the claim
+  takes only `pending`, and nothing returns an attempt to `pending` after `disclosure_started_at`
+  or `sending`. Nine findings.
+  - **The restore** (above): recorded, the deployment guide's §7 given its step, and a restore
+    that holds everything by itself is the next slice (ranked slice 20).
+  - Acted on in the code: the claim refuses an attempt that entered data (the docstring had
+    credited the select with that); a pass ends at its first failed publish; tests for the
+    lock taken on the messages only, for the setting off its default, and for extra messages
+    never adding a run; the removal check that had been described as "a second pass waits"
+    but removed the lock altogether is now three checks (no lock, a waiting lock, the attempt
+    locked too); the margin of five seconds in one test is now sixty.
+  - Corrected in the records: "only an attempt no worker has claimed" (one the sweeper put
+    back after a claim is published too); "publishes once more" (it repeats, without a
+    limit); "the measurements hold without the change" (the second needs the fault point);
+    "within about five minutes of the scheduler running" (and the worker, free, with the
+    approval standing); the cost of an extra message; and stale sentences in the worker's
+    docstring, the message's docstring, the command-line `relay` and the setting's comment.
+  - Recorded as limits: no bound on publications; locks held across a failing publish; the
+    default isolation two passes rely on; the query's cost on an outbox that is never purged.
+  - **The second review** (independent, read-only, on f3cd566; no test run): no code blocker;
+    no path found by which an attempt runs twice, runs after data was entered or sent, or
+    runs after it was cancelled, revoked, paused or superseded, and the pass cannot take part
+    in a deadlock. The restore step of §7 was not sufficient as drafted: it named only queued
+    applications (running ones are put back in the queue too), sent the owner to the Tracker
+    for a Cancel that is on the application's page, sat inside a command block that would be
+    pasted past it, did not say when to resume automatic applying, and told the owner a
+    rollback to a version before D146 was safe (an older worker reads the broker's extra
+    messages). All corrected above. Also: the revoke fix and its test, the hanging broker,
+    and wording in the records, the worker's docstring and the tests' docstrings.
+  Runs are listed in `docs/automation-loop.md`.
 - **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
   one.
