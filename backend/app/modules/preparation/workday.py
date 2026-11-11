@@ -25,6 +25,14 @@ page, one Next on each page before the last and none elsewhere, the only submit 
 page, every question on a page before it, and no other step marker. Anything else is the
 several-pages checkpoint above (fail closed), so each field's `step` is exactly its page.
 
+D148: a question hidden at load inside its page (an element of its own, below the page's
+section, or below the form on a single page, is `hidden`, `aria-hidden="true"` or styled
+`display: none` / `visibility: hidden`) is one the page shows by its own logic, after an answer
+NoEfforts cannot name: `Condition(UNKNOWN_TRIGGER)`, as D135 reads Greenhouse's. A typed one is
+answered only by you or an approved profile fact and entered only if the page shows it
+(execution/adapters/workday.py); any other is never filled. A wizard page's own `hidden` (every
+page but the first, FA1) says nothing about its questions.
+
 A parsed resume that fills fields after an upload is caught at execution by the readback of
 every field NoEfforts leaves unanswered (`hosted_form.HostedFormAdapter`)."""
 
@@ -35,6 +43,8 @@ from urllib.parse import urlsplit
 
 from app.modules.preparation.forms import (
     _VOID,
+    UNKNOWN_TRIGGER,
+    Condition,
     FieldType,
     FormField,
     FormSchema,
@@ -54,6 +64,22 @@ WIZARD_SELECTOR = ", ".join(f"[{m}]" for m in WIZARD_MARKERS)
 _NO_STEP = {"bot_check", MULTI_STEP_KEY, PREFILLED_KEY}  # checkpoints added here, not questions
 _STEP_OF = re.compile(r"\bof\s+(\d+)\b", re.IGNORECASE)
 _TEXT_TYPES = {"text", "email", "tel", "url", "number", "date", ""}
+# D148: what hides an element in raw HTML (no script or stylesheet is run or read).
+_HIDING_STYLE = re.compile(
+    r"(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)\s*(?:!\s*important\s*)?(?:;|$)",
+    re.IGNORECASE,
+)
+_NOT_QUESTIONS = {"hidden", "submit", "button", "reset", "image"}  # input types, as forms.py
+
+
+def _hides(a: dict[str, str]) -> bool:
+    """D148: the element is hidden at load by its own markup. A wizard page's section is not
+    counted: its `hidden` is the page's (FA1), never its questions'."""
+    if "data-wizard-page" in a:
+        return False
+    return ("hidden" in a or a.get("aria-hidden", "").strip().lower() == "true"
+            or bool(_HIDING_STYLE.search(a.get("style", ""))))  # fmt: skip
+
 
 MULTI_STEP_REASON = (
     "an application on several pages: each page sends its answers to the employer on its own, "
@@ -107,7 +133,7 @@ def form_url(url: str) -> str:
 
 class _Scan(HTMLParser):
     """What the generic extractor does not look at: step markers, values present at load,
-    dependent location lists."""
+    dependent location lists and (D148) the controls hidden at load inside their page."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -126,10 +152,12 @@ class _Scan(HTMLParser):
         self.nexts_outside = 0
         self.submits: list[str | None] = []  # the page each submit button is on (None: none)
         self.nested_steps = 0  # a data-step inside a wizard page
-        self._stack: list[tuple[str, str | None]] = []  # (tag, wizard page) of open elements
+        # (tag, wizard page, hidden at load: it or an open ancestor) of open elements
+        self._stack: list[tuple[str, str | None, bool]] = []
+        self.hidden_in_page: set[str] = set()  # D148: names of controls hidden at load
 
     def _page(self) -> str | None:
-        return next((p for _, p in reversed(self._stack) if p is not None), None)
+        return next((p for _, p, _ in reversed(self._stack) if p is not None), None)
 
     def handle_starttag(self, tag, attrs):
         a = {k: (v or "") for k, v in attrs}
@@ -154,8 +182,18 @@ class _Scan(HTMLParser):
             self.wizard_sections.append((page, a.get("data-step", "")))
             if current is not None:
                 self.nested_steps += 1  # a page inside a page
+        hidden = _hides(a) or bool(self._stack and self._stack[-1][2])
+        if (
+            hidden
+            and a.get("name")
+            and (
+                tag in ("select", "textarea")
+                or (tag == "input" and a.get("type", "text").lower() not in _NOT_QUESTIONS)
+            )
+        ):
+            self.hidden_in_page.add(a["name"])
         if tag not in _VOID:
-            self._stack.append((tag, page))
+            self._stack.append((tag, page, hidden))
         if "data-workday-progress" in a:
             self._in_progress = True
         if a.get("data-automation-id") == "pageFooterNextButton":
@@ -251,6 +289,10 @@ def extract_schema(html: str) -> FormSchema:
     for f in schema.fields:
         if f.key in scan.cascade:
             f.unsupported_reason = CASCADE_REASON
+        if (f.key in scan.hidden_in_page and f.type != FieldType.unsupported
+                and f.condition is None):  # fmt: skip
+            # D148: shown by the page's own logic, after an answer NoEfforts cannot name.
+            f.condition = Condition(key=UNKNOWN_TRIGGER, any_of=["?"])
     wizard_refused = False
     if scan.wizard_seen:
         if _wizard_problem(scan, schema) is None:

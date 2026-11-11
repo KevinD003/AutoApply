@@ -22,8 +22,21 @@ fixtures/ats_receiver/workday_like.py) is driven one page at a time by the runne
 first), `readback_through` reads back every page so far (the unanswered fields included), and
 `click_next` clicks that page's Next exactly once and reports how the page answered, as a fixed
 value. Nothing here clicks twice, waits for a second answer or goes back a page. An "already
-applied" page at open stops before anything is entered."""
+applied" page at open stops before anything is entered.
 
+D148: a question the page shows after an earlier answer, by its own logic (captured hidden inside
+its page: `Condition(UNKNOWN_TRIGGER)`, preparation/workday.py), on a single page or a wizard's.
+`fill` enters it after the page's other answers, and only if the page shows it then; never
+waits for one it does not show. The readback requires one not entered to be empty. After filling
+(`follow_ups`), what the page shows must be what was entered: a question shown but not entered
+when an answer was approved, or entered but no longer shown, stops the attempt; one shown with no
+approved answer that the page requires stops it too (a single page pauses so you can answer it,
+D135; a wizard page never pauses, D142, and its Next is never clicked); a shown optional one with
+no answer stays empty. Whether such a question is shown, and whether the page then requires it,
+is the page's reaction to the answers: the live form is compared with the approved one without
+them (`extract`)."""
+
+from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PWTimeout
 
@@ -32,6 +45,7 @@ from app.modules.execution.adapters.fixture_ats import (
     ACK_ERROR,
     ACK_LEFT_FORM,
     ACK_NONE,
+    ConditionalRequired,
     Outcome,
     StoppedAfterDisclosure,
     draft_evidence,
@@ -39,7 +53,7 @@ from app.modules.execution.adapters.fixture_ats import (
 from app.modules.execution.adapters.greenhouse import CHALLENGE_SELECTORS
 from app.modules.execution.adapters.hosted_form import BOT_CHECK, HostedFormAdapter
 from app.modules.preparation import workday
-from app.modules.preparation.forms import FormSchema
+from app.modules.preparation.forms import UNKNOWN_TRIGGER, Condition, FormSchema, shown_by_page
 
 ACCOUNT_REQUIRED = (
     "the employer's page asks you to sign in or create an account; NoEfforts never creates "
@@ -64,6 +78,15 @@ _NEXT_ANSWERED = """([i, attr]) => {
   return !!s && s.dataset.draftPage === String(i)
     && (s.dataset.draftStatus === 'saved' || s.dataset.draftStatus === 'error');
 }"""
+# D148: a question the page shows by its own logic, after filling (`follow_ups`).
+FOLLOW_UP_CHANGED = (
+    "a question the page shows after an earlier answer was shown or hidden differently from when "
+    "the answers were entered"
+)
+FOLLOW_UP_NOT_FILLED = (
+    "the page showed a question after your earlier answers and requires it, and it is not one "
+    "NoEfforts answers (only typed text is): apply on the employer's site"
+)
 VERIFICATION_AFTER_CLICK = (
     "after the final click the employer's page asked you to verify your email. NoEfforts does "
     "not read your email or enter codes for this form, so it does not know whether your "
@@ -82,11 +105,32 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
     STATUS_ERROR = "attachmentError"
     HANDLE_SUFFIX = "_attachment"
 
+    def __init__(self, content: dict, documents: dict[str, tuple[str, str, bytes]]):
+        super().__init__(content, documents)
+        # D148: the questions the page shows by its own logic, each with its requirement as
+        # approved, and the ones entered because the page showed them when they were filled.
+        self._shown_by_page = {
+            a["key"]: a["required"]
+            for a in self.content["answers"]
+            if (a.get("condition") or {}).get("key") == UNKNOWN_TRIGGER
+        }
+        self._entered: set[str] = set()
+        self._filled = False
+
     def form_url(self) -> str:
         return workday.form_url(self.content["destination"]["url"])
 
     def extract(self, page: Page) -> FormSchema:
-        return workday.extract_schema(page.content())  # as captured: its checkpoints included
+        """As captured: its checkpoints included. D148: a question the page shows by its own
+        logic reads as approved whether it is shown or not, and whether the page requires it
+        then or not: that is the page's reaction to the answers, which `follow_ups` checks.
+        Everything else about it (wording, type, options, page) is compared as before."""
+        live = workday.extract_schema(page.content())
+        for f in live.fields:
+            if f.key in self._shown_by_page:
+                f.condition = Condition(key=UNKNOWN_TRIGGER, any_of=["?"])
+                f.required = self._shown_by_page[f.key]
+        return live
 
     def blocked_reason(self, page: Page) -> str | None:
         # D142: before the form is read (an "already applied" page has none to read).
@@ -99,6 +143,82 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         if page.locator(workday.WIZARD_SELECTOR).count() and not self.content.get("wizard"):
             return MULTI_STEP  # D142: a wizard where a single page was approved
         return BOT_CHECK if page.locator(CHALLENGE_SELECTORS).count() else None
+
+    def schema_matches(self, page: Page):
+        """HostedFormAdapter's checks; then, after a single page is filled, its questions the
+        page shows by its own logic (`follow_ups`). A wizard checks those page by page, before
+        each Next (`page_follow_ups`)."""
+        reason = super().schema_matches(page)
+        if reason or not self._filled or self.content.get("wizard"):
+            return reason
+        return self.follow_ups(page, self.content["answers"])
+
+    # -- D148: questions the page shows by its own logic ------------------------------------
+    def fill(self, page: Page) -> list[dict]:
+        """Documents first, then every other answered control (HostedFormAdapter.fill); then each
+        typed question the page shows by its own logic, now that the page has reacted to the
+        other answers, only if it is shown. One it does not show is never touched or waited
+        for: the readback requires it empty."""
+        self._filled = True
+        plain = [a for a in self.content["answers"] if a["key"] not in self._shown_by_page]
+        disclosures = self._with_answers(plain, lambda: HostedFormAdapter.fill(self, page))
+        for a in self.content["answers"]:
+            if a["value"] is None or not shown_by_page(a.get("condition") or {}, a["type"]):
+                continue
+            self._progress()
+            if not self._shown(page, a["key"]):
+                continue  # not asked: nothing is entered
+            try:
+                self._fill_one(page, a)
+            except PWTimeout:
+                raise
+            except PWError:
+                continue  # the readback and the check after filling report it
+            self._entered.add(a["key"])
+        return disclosures
+
+    def _shown(self, page: Page, key: str) -> bool:
+        """The page shows this question now: one of its controls is visible."""
+        loc = page.locator(f'{self.FORM} [name="{key}"]')
+        return any(loc.nth(j).is_visible() for j in range(loc.count()))
+
+    def readback(self, page: Page) -> list[str]:
+        """HostedFormAdapter.readback, where a question the page shows by its own logic that was
+        not entered (not shown when its page was filled) must still be empty."""
+        view = [a if a["key"] not in self._shown_by_page or a["key"] in self._entered
+                else {**a, "value": None} for a in self.content["answers"]]  # fmt: skip
+        return self._with_answers(view, lambda: HostedFormAdapter.readback(self, page))
+
+    def follow_ups(self, page: Page, answers: list[dict]):
+        """After filling, of these answers, the questions the page shows by its own logic: what
+        the page shows must be what was entered. None, or why not: one shown but not entered
+        although an answer was approved, or entered but no longer shown (FOLLOW_UP_CHANGED);
+        one shown that the page requires with no approved answer, which you can answer
+        (`ConditionalRequired`, counted) or not (FOLLOW_UP_NOT_FILLED). A shown optional one
+        with no answer stays empty, as approved."""
+        live: dict | None = None
+        not_filled = required = 0
+        for a in answers:
+            key = a["key"]
+            if key not in self._shown_by_page:
+                continue
+            self._progress()
+            entered = key in self._entered
+            if self._shown(page, key) == entered:
+                continue
+            if entered or a["value"] is not None:
+                return FOLLOW_UP_CHANGED
+            if live is None:
+                live = {f.key: f for f in workday.extract_schema(page.content()).fields}
+            if key in live and not live[key].required:
+                continue
+            if shown_by_page(a.get("condition") or {}, a["type"]):
+                required += 1
+            else:
+                not_filled += 1
+        if not_filled:
+            return FOLLOW_UP_NOT_FILLED
+        return ConditionalRequired(required) if required else None
 
     # -- D142: a multi-page wizard, one page at a time ---------------------------------------
     def page_answers(self, *pages: int) -> list[dict]:
@@ -116,14 +236,20 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
             self.content = full
 
     def fill_page(self, page: Page, i: int) -> list[dict]:
-        """Fill page i only, documents first (HostedFormAdapter.fill); its uploads' evidence."""
-        return self._with_answers(self.page_answers(i), lambda: HostedFormAdapter.fill(self, page))
+        """Fill page i only, documents first (`fill`); its uploads' evidence."""
+        return self._with_answers(self.page_answers(i), lambda: self.fill(page))
 
     def readback_through(self, page: Page, i: int) -> list[str]:
         """Read back pages 1 to i, every field on them, the unanswered ones included: a value a
         page changed after it was saved (a parsed resume) is never sent on."""
         pages = range(1, i + 1)
         return self._with_answers(self.page_answers(*pages), lambda: self.readback(page))
+
+    def page_follow_ups(self, page: Page, i: int) -> str | None:
+        """D148: before page i's Next, its questions the page shows by its own logic
+        (`follow_ups`), as a reason to stop or None. Never a pause on a wizard (D142)."""
+        reason = self.follow_ups(page, self.page_answers(i))
+        return str(reason) if reason else None
 
     def body_kind(self, page: Page) -> str | None:
         return page.locator("body").get_attribute(self.PAGE_KIND)

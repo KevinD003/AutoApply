@@ -35,7 +35,9 @@ docs/research/workday.md records an ethnicity question, veteran status and the d
 form's three choices, and the Hispanic-or-Latino wording, "I am a protected veteran" and every
 value are this fixture's own: FIXTURE ASSUMPTIONS, no real Workday page was observed),
 wd_gender_required (D139: the
-gender question is required by the page and the server); and the
+gender question is required by the page and the server); wd_follow_up,
+wd_follow_up_required and wd_follow_up_revealed_required (D148: the follow-up question of FA6
+below, on this single page); and the
 shared modes validation_fail, error_before_accept, error_after_accept, drop_after_accept, delay,
 upload_fail and upload_fail_field. All tenants, postings and people are fictional.
 
@@ -54,7 +56,16 @@ tenant:
        inputs excluded, their hidden handles included) as a draft; there is no draft before the
        first Next; the draft row is written before any check, as an upload's is;
   FA4  the final POST /apply is accepted only when the form token has drafts for pages 1 to 4;
-  FA5  the variants below, with a confirmation or "already applied" page rendered in place.
+  FA5  the variants below, with a confirmation or "already applied" page rendered in place;
+  FA6  (D148) a follow-up question the page shows after an answer is in the GET document from
+       the start, on its page, inside a wrapper of its own that is `hidden` (never the page's
+       section); the page's script shows it when "Preferred shift" is Nights, and hides and
+       empties it otherwise. A Next saves it with the rest of its page, empty while hidden; the
+       final POST requires it only when it is shown and required. Its three shapes:
+       follow_up (optional), follow_up_required (`required` in the markup, dropped while
+       hidden) and follow_up_revealed_required (optional in the markup, marked required once
+       shown). No real Workday follow-up was observed (docs/research/workday.md: they hang off
+       a single-select answer).
 cfg["wizard"] values: plain; drift (a required q.weekends on page 4 at load); already_applied
 (shown at open instead of the form); step_error (the page-2 draft is answered 422 with errors);
 step_timeout (the page-2 draft reply waits cfg["delay_s"]); late_question (the page-2 reply
@@ -65,7 +76,8 @@ parse_current_page (a resume upload fills the optional page-2 field exp.details)
 parse_saved_page (a resume upload overwrites three page-1 fields already saved); page_shift
 (D142 review: the work-eligibility question sits at the end of page 3 instead of the start of
 page 4, the document order unchanged); next_stays (D142 review: the page-2 draft is saved, but
-the page stays on page 2).
+the page stays on page 2); follow_up, follow_up_required, follow_up_revealed_required (D148,
+FA6: a follow-up question on page 4).
 """
 
 import asyncio
@@ -92,6 +104,36 @@ EDUCATION = ("High school diploma", "Associate degree", "Bachelor's degree",
              "Master's degree or higher", "Other")
 _REQ = re.compile(r"R-[0-9]{4,12}")
 FILE_FIELDS = ("resume", "cover_letter")
+# D148, FA6: the follow-up question, and its shapes: (required in the markup at load, required
+# by the page once shown). A wizard variant names a shape; a single-page mode is "wd_" + one.
+FOLLOW_UP = "q.nights_detail"
+FOLLOW_UPS = {"follow_up": (False, False), "follow_up_required": (True, True),
+              "follow_up_revealed_required": (False, True)}  # fmt: skip
+
+
+def _follow_up(shape: tuple[bool, bool] | None) -> tuple[str, str]:
+    """FA6: the follow-up's markup (after "Preferred shift") and the script that shows it."""
+    if shape is None:
+        return "", ""
+    at_load, once_shown = shape
+    markup = ('<div id="nights-follow-up" hidden><label for="nights_detail">Which nights of '
+              f'the week can you work?</label><input id="nights_detail" name="{FOLLOW_UP}" '
+              f'type="text"{" required" if at_load else ""}></div>')  # fmt: skip
+    script = f"""
+const shift = document.getElementById('shift');
+const followUp = document.getElementById('nights-follow-up');
+const detail = followUp.querySelector('input');
+shift.addEventListener('change', () => {{
+  const shown = shift.value === 'Nights';
+  followUp.hidden = !shown;{" detail.required = shown;" if once_shown else ""}
+  if (!shown) detail.value = '';
+}});"""
+    return markup, script
+
+
+def _follow_up_required(shape: tuple[bool, bool] | None, fields: dict) -> bool:
+    """FA6: the final POST requires the follow-up only when it is shown and required."""
+    return bool(shape and shape[1] and fields.get("q.shift") == "Nights")
 
 
 def _title(tenant: str, req: str) -> str | None:
@@ -187,6 +229,7 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
     gender_required = " required" if mode == "wd_gender_required" else ""
     challenge = ('<div class="h-captcha" data-sitekey="fixture-not-a-key"></div>'
                  if mode == "wd_challenge" else "")  # fmt: skip
+    follow_up, follow_up_js = _follow_up(FOLLOW_UPS.get(mode.removeprefix("wd_")))
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
 {progress}
@@ -224,6 +267,7 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 <label for="shift">Preferred shift</label>
 <select id="shift" name="q.shift" required><option value="">Select One</option>
 <option value="Nights">Nights</option><option value="Days">Days</option></select>
+{follow_up}
 {education}
 {drift}
 </section>
@@ -263,7 +307,7 @@ for (const input of document.querySelectorAll('input[type=file][data-wd-file]'))
       }}
     }} catch (e) {{ st.textContent = 'Upload failed'; st.dataset.attachmentError = '1'; }}
   }});
-}}
+}}{follow_up_js}
 </script>"""
     return _page(f"{title} — {employer}", body, "form")
 
@@ -287,6 +331,7 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
     eligibility = _yes_no("q.work_eligibility",
                           "Are you legally authorized to work in the United States?", True)
     shifted = eligibility if variant == "page_shift" else ""  # end of page 3 (FA5)
+    follow_up, follow_up_js = _follow_up(FOLLOW_UPS.get(variant))  # D148, FA6
     on_page_4 = "" if variant == "page_shift" else eligibility
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
@@ -340,6 +385,7 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 <label for="shift">Preferred shift</label>
 <select id="shift" name="q.shift" required><option value="">Select One</option>
 <option value="Nights">Nights</option><option value="Days">Days</option></select>
+{follow_up}
 {drift}
 {_NEXT}
 </section>
@@ -433,7 +479,7 @@ for (const btn of form.querySelectorAll('[data-wizard-next]')) {{
     progress.textContent = `Page ${{i + 1}} of ${{pages}}`;
     status.dataset.draftStatus = 'saved';
   }});
-}}
+}}{follow_up_js}
 </script>"""
     return _page(f"{title} — {employer}", body, "form")
 
@@ -577,6 +623,8 @@ def mount(app, ledger, cfg, accept) -> None:
             required.append("q.weekends")
         if wizard == "late_question":
             required.append(LATE_QUESTION)
+        if _follow_up_required(FOLLOW_UPS.get(wizard or mode.removeprefix("wd_")), fields):
+            required.append(FOLLOW_UP)  # D148, FA6
         missing = [k for k in required if not fields.get(k)]
         if wizard:  # D142, FA4: every page before Review was saved under this form token
             saved = {d["page"] for d in drafted_pages(slug, token)}
