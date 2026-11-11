@@ -37,8 +37,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D142 a Workday-style multi-page wizard, filled forward only; never run again once entered | merged (#51, 25d04ea, tree as predicted); its PR CI passed all four jobs on 85e0213 |
 | D143 recovery hardening: a run budget, one task time limit and no soft limit, leases that follow progress, verification requests that end with their attempt | merged (#52, 9346c8e, tree as predicted); its PR CI passed all four jobs on fa36039 |
 | D144 attempts on a queue and a worker of their own; the schedule and the periodic tasks on another | merged (#53, 099642c, tree as predicted); its PR CI passed all four jobs on e40ee72, the Compose layout's first run |
-| D145 a dropdown's list settled by the page's own record of its last change to a list | branch `dropdown-settle` (`main` with D144 merged in); reviewed, rebuilt on a narrower record and reviewed again; not merged |
-| D146 an attempt still waiting to be taken is published again | branch `republish-queued` (D145's branch merged in); reviewed; not merged |
+| D145 a dropdown's list settled by the page's own record of its last change to a list | merged (#54, 45c8229, tree as predicted); its PR CI passed all four jobs on 9315953 |
+| D146 an attempt still waiting to be taken is published again | branch `republish-queued` (D145's branch merged in, then `main` with #54); reviewed; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -213,7 +213,7 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     that would fail now and then; and the owner's "stop everything now", which named
     `docker compose stop`: measured, a worker told to stop finishes and submits the
     application in progress, so the table names `docker compose kill` now.
-- **D145 (branch `dropdown-settle`, not merged).** Rank 14, a dropdown's list settled by the
+- **D145 (merged, #54).** Rank 14, a dropdown's list settled by the
   page's own record of its last change to a list:
   - found by D143's regression run under load, then reproduced without it: three identical
     reads fall in step with a list re-rendered every 300 ms once the reading interval reaches
@@ -290,7 +290,7 @@ hardens recovery: a run budget the runner checks itself, one task time limit and
 leases that follow progress, and verification requests that end with their attempt. **D144**
 (rank 11, #53) gives attempts a queue and a worker of their own, so two attempts
 waiting for codes never hold up the sweeper, the outbox relay and the mailbox reader.
-**D145** (rank 14, on its branch) settles a dropdown's list by the page's own record of its
+**D145** (rank 14, #54) settles a dropdown's list by the page's own record of its
 last change to a list, and **D146** (rank 15, on its branch) publishes again an attempt still
 waiting to be taken: two defects found on the way. Its review found that a restored database
 would then run again what it shows as queued, so rank 20 (a restore that holds itself) comes
@@ -353,8 +353,9 @@ next, then ranks 12 and 13 (the Workday-style follow-up question and repeating r
   its first run, and both passed. `scripts/validate.sh all` was not run. Not tested: a stop request in
   Docker itself (the worker's reaction to the signal was measured without Docker; the ten
   seconds are Docker's default); the pass-on's own publish failing; a rollback across versions.
-- **D145 (branch `dropdown-settle`):** the new cases, both files, 18 removal runs
-  and the regression set, locally (Tests run below). `scripts/validate.sh all` was not run.
+- **D145:** merged (#54, 45c8229, tree as predicted); its PR CI passed all four jobs on
+  9315953. Locally: the new cases, both files, 18 removal runs and the regression set
+  (Tests run below). `scripts/validate.sh all` was not run.
   Not tested: a list whose changes come half a second or more apart, a page whose own timers
   stall, a list that changes while its record stays empty (a style sheet's change, options
   through a shadow root), a page busy elsewhere every 250 to 300 ms in a real page's window
@@ -600,7 +601,7 @@ next, then ranks 12 and 13 (the Workday-style follow-up question and repeating r
 
 ## Exact next action
 
-1. D146 (branch `republish-queued`, rank 15): its pull request once D145's is merged, then
+1. D146 (branch `republish-queued`, rank 15): its pull request (D145 merged as #54), then
    rank 20 (a restored database comes up held), built on branch `restore-hold` from it, so
    that `main` carries the restore step of the deployment guide only briefly. Then ranks 12
    and 13 (the Workday-style follow-up question and repeating records), rank 16 (a stop
