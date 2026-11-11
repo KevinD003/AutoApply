@@ -370,10 +370,23 @@ def test_before_filling_a_shown_one_is_left_to_the_fill(page):
     """At open nothing is entered yet: a follow-up the page already shows is entered by the fill,
     not a finding. Once filled, the same page is one."""
     page.set_content(PAGE.format(d="", w=" hidden"))
-    adapter = _adapter([TEXT], HIDDEN)
+    adapter = _adapter([TEXT, _answer("q.w", "radio", None)], HIDDEN)  # every question read
     assert adapter.schema_matches(page) is None
     adapter._filled = True
     assert adapter.schema_matches(page) == FOLLOW_UP_CHANGED
+
+
+def test_a_question_the_page_hides_once_answers_were_entered_is_its_reaction(page):
+    """Visible when approved, hidden now: before anything is entered, the form has changed (a
+    fresh read shows it, D132); once answers were entered, it is the page's reaction to them."""
+    shown = PAGE.format(d="", w="")
+    plain = [{**_answer("q.d", "text", None), "condition": None},
+             {**_answer("q.w", "radio", None), "condition": None}]  # fmt: skip
+    adapter = _adapter(plain, shown)
+    page.set_content(PAGE.format(d=" hidden", w=""))
+    assert adapter.schema_matches(page)  # before filling: the form has changed
+    adapter._filled = True
+    assert adapter.schema_matches(page) is None
 
 
 def test_the_live_form_reads_as_approved_shown_or_hidden_required_or_not(page):

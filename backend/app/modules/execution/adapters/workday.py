@@ -124,12 +124,16 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         """As captured: its checkpoints included. D148: a question the page shows by its own
         logic reads as approved whether it is shown or not, and whether the page requires it
         then or not: that is the page's reaction to the answers, which `follow_ups` checks.
-        Everything else about it (wording, type, options, page) is compared as before."""
+        Once answers were entered, any other question the page hides is its reaction to them
+        too, never a changed form (D132); before, the form has changed, as a fresh read shows.
+        Everything else (wording, type, options, page) is compared as before."""
         live = workday.extract_schema(page.content())
         for f in live.fields:
             if f.key in self._shown_by_page:
                 f.condition = Condition(key=UNKNOWN_TRIGGER, any_of=["?"])
                 f.required = self._shown_by_page[f.key]
+            elif self._filled and f.condition is not None and f.condition.key == UNKNOWN_TRIGGER:
+                f.condition = None  # hidden by the page after answers were entered
         return live
 
     def blocked_reason(self, page: Page) -> str | None:
