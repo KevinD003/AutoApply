@@ -1453,7 +1453,10 @@ def stop_for_revoke(db: Session, app: Application) -> str:
     attempt, then the application). An attempt no worker has taken yet is cancelled at once,
     and the application waits for an approval again ("cancelled"). One a worker holds before
     the send gate is left to the gates, which refuse a revoked approval ("stopping"). After the
-    send gate the submission may be in flight: revoking is refused. "none": no attempt."""
+    send gate the submission may be in flight: revoking is refused. "none": no attempt.
+    An attempt the sweeper put back in the queue (its worker stopped before entering anything)
+    is pending while its application still shows running: it is cancelled the same way, and
+    the application waits for you (D146 review: it used to fail, and nothing was revoked)."""
     att = _active_attempt(db, app.id)  # waits for a gate holding the attempt
     pk.lock_application(db, app.id)
     db.refresh(app)
@@ -1467,7 +1470,7 @@ def stop_for_revoke(db: Session, app: Application) -> str:
     att.state, att.finished_at = S.cancelled, utcnow()
     att.outcome_detail = "Approval revoked before a worker picked this up; nothing was sent."
     event(db, att, "cancelled")
-    _app_to(db, app, AppState.awaiting_approval, Actor.system, "Approval revoked")
+    _claim_refused(db, app, "Approval revoked")  # queued: approval again; running: you
     return "cancelled"
 
 

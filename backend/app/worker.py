@@ -1,8 +1,10 @@
 """Celery worker. Durable state lives in PostgreSQL; Redis only carries attempt ids.
 
 Delivery settings (Celery 5.6.3, kombu 5.6.2, Redis transport, prefork pool):
-  task_acks_late=True              ack after the task returns, so a crash mid-task does not
-                                   silently drop a delivery that never started work;
+  task_acks_late=True              ack after the task returns; a task that raises is
+                                   acknowledged too, and so is the message of a lost process
+                                   (below): what never reached a claim is published again by
+                                   the relay (D146, service.republish_waiting);
   task_reject_on_worker_lost=False if the worker *process* dies, the message is acknowledged,
                                    not redelivered. Recovery is the sweeper's job, driven by
                                    database leases, so a killed worker never causes Celery to
