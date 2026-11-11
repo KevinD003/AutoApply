@@ -5812,3 +5812,84 @@ audit-inventory and export-completeness guards are updated and pass.
 - **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
   one. One instruction to the owner changed: to stop everything now, `docker compose kill
   worker scheduler` (`docs/activation-status.md` §8).
+
+## D145 — A dropdown's list counts as settled by the page's own record of its last change, not by how often it is read (2026-11-11)
+
+- **Context:** rank 14 of the automation loop (`docs/automation-loop.md`). Local stand-ins
+  only; nothing real was run. No state, transition, gate, permission or retry changes.
+- **Problem:** found by D143's regression run, on a machine shared with two other test runs:
+  the stand-in list that is re-rendered every 300 ms (`late_slow_changing`) was once judged
+  settled. The adapter read a list every 250 ms and called it settled after three identical
+  reads. Identical reads say nothing about the time between them: when a busy machine
+  stretches the interval to about twice the re-render's period, every read sees the same
+  order.
+- **Measured before deciding (2026-11-10, without load, the reading interval set by hand; a
+  temporary test, not committed):** 250 ms: refused as still changing. 590 ms: refused for the
+  wrong reason (judged settled, in the other order, so "its options differ"). 610 ms: accepted
+  and submitted (the approved option was the one chosen and read back). 600 and 900 ms: refused
+  as still changing.
+- **Decided:** a list is settled when, besides the three identical reads with nothing loading
+  and no data request in flight, **the page's own record of its last change is at least half a
+  second old** (`STABLE_MS`, 500 ms). The record is the one the probe already kept (a
+  `MutationObserver` on the document, installed before the action, read by the page's clock,
+  disconnected after the dropdown); until now only its last 150 ms were consulted, by the
+  classification both the survey and the adapter use. The half second is a fixed time, not a
+  number of reads. Both uses of a list follow the rule: the check before anything is
+  disclosed, and the reading again when an option is chosen.
+- **What this changes for an application:** nothing where a list stops changing: it settles on
+  the same read as before. A list that keeps changing more often than every half second is
+  refused however slowly it is read, before anything is entered. So is every dropdown on a
+  page that changes anything, anywhere in the document, that often (before: more often than
+  every 150 ms). If a page only starts doing so after the first check, the option is not
+  chosen, its readback fails and the attempt stops before the send gate, as for any answer
+  that could not be entered.
+- **Not changed, not fixed:**
+  - **The whole document, not the list alone.** Narrowing the record to the list would refuse
+    less, and needs the structure of real pages to be right; there is none to go by. Refusing
+    more is the safe side.
+  - **A page that records nothing.** Where the observer saw no change at all since before the
+    action, the three reads decide alone, as before: either nothing changed, or the page
+    changes in a way the observer cannot see (options swapped by CSS alone, an observer the
+    page has replaced). The rule is a guard against timing, not against a page that hides its
+    changes; that is what the exact list at the moment of choosing and the readback are for.
+  - **A list that changes less often than every half second** can still be read as settled
+    between two changes, as before; so can one on a page whose own timers stall for that long
+    (it did not change in that time). The later checks are unchanged: the list read again and
+    required to be exactly the approved one when an option is chosen, every answer read back
+    before the send gate, the form compared before the disclosure gate.
+  - **The read-only survey** (`gh_readonly`, the inspection of a real board) keeps its own
+    test: the number of options at its last two reads and 150 ms without a change. Its whole
+    window is 600 ms by default, too short for this rule, and it reports what it saw; it fills
+    nothing. A
+    list that keeps its length while its options change can still be reported there as
+    observed sufficiently.
+  - **The location search** (stand-ins only) still takes its suggestions as settled after
+    three identical reads. Its choice is bound to the suggestion's exact text at the click and
+    to what the page then shows, so a list still changing cannot make it choose another place;
+    and the rule there would stop an attempt after the approved text was typed, where the
+    dropdown rule stops before anything is entered.
+  - **Other choices.** A combobox whose options are in the page when it loads, and a
+    section's combobox (D141), are chosen from without this engine's reading of a list; they
+    are unchanged.
+  - **No adapter version change** (`greenhouse_dom` stays at 4, the form reading at v6):
+    nothing is entered, chosen, read back or sent differently, so approvals and rehearsal
+    records stay valid. `SCHEMA_VERSION` unchanged; no migration.
+  - **Never seen on a real page.** Every dropdown strategy remains a fixture assumption; real
+    destinations stay refused.
+- **Tests:** `tests/test_dropdown_strategies.py`, seven new cases. The re-rendered list is
+  refused as still changing with the reading interval set to 590, 600, 610 and 1200 ms, and
+  nothing is disclosed (the receiver's ledger). A list that does not change, and one that
+  arrives after 1.2 seconds and then stays, are accepted and submitted when read every 600 ms
+  (the receiver's ledger: the approved option of each dropdown). The rule itself, on a stand-in
+  for the page's probe: three identical reads are not settled while changes keep coming or at
+  499 ms; they are at 500 ms, and where the page recorded no change at all. Six changes were
+  then made in turn on a committed tree (e81bfeb), and each failed a test: the rule removed
+  (the 590 and 610 ms cases and the rule's own test); its time set to nothing (the same
+  three); more than, instead of at least, half a second (the rule's test); a page that
+  recorded nothing refused (the rule's test alone, of the file's 50: no stand-in dropdown
+  leaves the record empty, so only that test exercises it); a time longer than any window (the
+  list that arrives late, and the rule's test); the classification's 150 ms taken for the rule
+  (the 590 and 610 ms cases and the rule's test). Runs are listed in
+  `docs/automation-loop.md`.
+- **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
+  one.
