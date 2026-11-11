@@ -25,13 +25,14 @@ page, one Next on each page before the last and none elsewhere, the only submit 
 page, every question on a page before it, and no other step marker. Anything else is the
 several-pages checkpoint above (fail closed), so each field's `step` is exactly its page.
 
-D148: a question hidden at load inside its page (an element of its own, below the page's
-section, or below the form on a single page, is `hidden`, `aria-hidden="true"` or styled
-`display: none` / `visibility: hidden`) is one the page shows by its own logic, after an answer
-NoEfforts cannot name: `Condition(UNKNOWN_TRIGGER)`, as D135 reads Greenhouse's. A typed one is
-answered only by you or an approved profile fact and entered only if the page shows it
+D148: a question of the application form hidden at load inside its page (the control, or an
+element between it and the form, is `hidden`, `aria-hidden="true"` or styled `display: none` /
+`visibility: hidden`) is one the page shows by its own logic, after an answer NoEfforts cannot
+name: `Condition(UNKNOWN_TRIGGER)`, as D135 reads Greenhouse's. A typed one is answered only by
+you or an approved profile fact and entered only if the page shows it
 (execution/adapters/workday.py); any other is never filled. A wizard page's own `hidden` (every
-page but the first, FA1) says nothing about its questions.
+page but the first, FA1) says nothing about its questions. The markup is read as the generic
+extractor parses it, never run.
 
 A parsed resume that fills fields after an upload is caught at execution by the readback of
 every field NoEfforts leaves unanswered (`hosted_form.HostedFormAdapter`)."""
@@ -49,6 +50,8 @@ from app.modules.preparation.forms import (
     FormField,
     FormSchema,
     WizardSpec,
+    _application_form,
+    _TreeBuilder,
     extract_form_schema,
 )
 
@@ -79,6 +82,32 @@ def _hides(a: dict[str, str]) -> bool:
         return False
     return ("hidden" in a or a.get("aria-hidden", "").strip().lower() == "true"
             or bool(_HIDING_STYLE.search(a.get("style", ""))))  # fmt: skip
+
+
+def _hidden_in_page(html: str) -> set[str]:
+    """D148: the names of the application form's controls hidden at load inside their page: the
+    control, or an element between it and the form, is hidden by its own markup (`_hides`).
+    Read on the generic extractor's own tree and its choice of form, so a control outside that
+    form (another form, a template) never marks one of its questions."""
+    b = _TreeBuilder()
+    b.feed(html)
+    nodes = list(b.root.walk())
+    form = _application_form(nodes)
+    out: set[str] = set()
+    for n in nodes:
+        name = n.attrs.get("name")
+        if n.tag not in ("input", "select", "textarea") or not name:
+            continue
+        if n.tag == "input" and n.attrs.get("type", "text").lower() in _NOT_QUESTIONS:
+            continue
+        chain = [n, *n.ancestors()]
+        if form is not None:
+            if form not in chain:
+                continue  # outside the application form: not one of its questions
+            chain = chain[: chain.index(form)]
+        if any(_hides(a.attrs) for a in chain):
+            out.add(name)
+    return out
 
 
 MULTI_STEP_REASON = (
@@ -133,7 +162,7 @@ def form_url(url: str) -> str:
 
 class _Scan(HTMLParser):
     """What the generic extractor does not look at: step markers, values present at load,
-    dependent location lists and (D148) the controls hidden at load inside their page."""
+    dependent location lists."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -152,12 +181,10 @@ class _Scan(HTMLParser):
         self.nexts_outside = 0
         self.submits: list[str | None] = []  # the page each submit button is on (None: none)
         self.nested_steps = 0  # a data-step inside a wizard page
-        # (tag, wizard page, hidden at load: it or an open ancestor) of open elements
-        self._stack: list[tuple[str, str | None, bool]] = []
-        self.hidden_in_page: set[str] = set()  # D148: names of controls hidden at load
+        self._stack: list[tuple[str, str | None]] = []  # (tag, wizard page) of open elements
 
     def _page(self) -> str | None:
-        return next((p for _, p, _ in reversed(self._stack) if p is not None), None)
+        return next((p for _, p in reversed(self._stack) if p is not None), None)
 
     def handle_starttag(self, tag, attrs):
         a = {k: (v or "") for k, v in attrs}
@@ -182,18 +209,8 @@ class _Scan(HTMLParser):
             self.wizard_sections.append((page, a.get("data-step", "")))
             if current is not None:
                 self.nested_steps += 1  # a page inside a page
-        hidden = _hides(a) or bool(self._stack and self._stack[-1][2])
-        if (
-            hidden
-            and a.get("name")
-            and (
-                tag in ("select", "textarea")
-                or (tag == "input" and a.get("type", "text").lower() not in _NOT_QUESTIONS)
-            )
-        ):
-            self.hidden_in_page.add(a["name"])
         if tag not in _VOID:
-            self._stack.append((tag, page, hidden))
+            self._stack.append((tag, page))
         if "data-workday-progress" in a:
             self._in_progress = True
         if a.get("data-automation-id") == "pageFooterNextButton":
@@ -286,11 +303,11 @@ def extract_schema(html: str) -> FormSchema:
     scan.feed(html)
     schema = extract_form_schema(_CASCADE.sub(_as_picker, html), challenges=True)
     keys = {f.key for f in schema.fields}
+    hidden = _hidden_in_page(html)
     for f in schema.fields:
         if f.key in scan.cascade:
             f.unsupported_reason = CASCADE_REASON
-        if (f.key in scan.hidden_in_page and f.type != FieldType.unsupported
-                and f.condition is None):  # fmt: skip
+        if f.key in hidden and f.type != FieldType.unsupported and f.condition is None:
             # D148: shown by the page's own logic, after an answer NoEfforts cannot name.
             f.condition = Condition(key=UNKNOWN_TRIGGER, any_of=["?"])
     wizard_refused = False

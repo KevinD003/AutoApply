@@ -48,6 +48,7 @@ from app.modules.execution.adapters.fixture_ats import (
     ConditionalRequired,
     Outcome,
     StoppedAfterDisclosure,
+    _sel,
     draft_evidence,
 )
 from app.modules.execution.adapters.greenhouse import CHALLENGE_SELECTORS
@@ -87,6 +88,11 @@ FOLLOW_UP_NOT_FILLED = (
     "the page showed a question after your earlier answers and requires it, and it is not one "
     "NoEfforts answers (only typed text is): apply on the employer's site"
 )
+FOLLOW_UP_HIDDEN_REQUIRED = (
+    "the page requires a question it shows only after an earlier answer, without showing it, so "
+    "its own checks would refuse the application: apply on the employer's site"
+)
+UNSEEN_LOGIC = "an answer depends on page logic NoEfforts cannot see"  # as D135's
 VERIFICATION_AFTER_CLICK = (
     "after the final click the employer's page asked you to verify your email. NoEfforts does "
     "not read your email or enter codes for this form, so it does not know whether your "
@@ -122,16 +128,19 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
 
     def extract(self, page: Page) -> FormSchema:
         """As captured: its checkpoints included. D148: a question the page shows by its own
-        logic reads as approved whether it is shown or not, and whether the page requires it
-        then or not: that is the page's reaction to the answers, which `follow_ups` checks.
-        Once answers were entered, any other question the page hides is its reaction to them
-        too, never a changed form (D132); before, the form has changed, as a fresh read shows.
-        Everything else (wording, type, options, page) is compared as before."""
+        logic reads as approved whether it is shown or not. Once answers were entered, whether
+        the page requires it is its reaction to them too (`follow_ups` checks it), and so is any
+        other question the page hides: never a changed form (D132). Before, what the page
+        requires, and which other questions it hides, are compared as before: a fresh read of
+        the form shows a change in its markup (D132's pause; one only a script makes ends the
+        read "unexplained"). Everything else (wording, type, options, page) is compared as
+        before."""
         live = workday.extract_schema(page.content())
         for f in live.fields:
             if f.key in self._shown_by_page:
                 f.condition = Condition(key=UNKNOWN_TRIGGER, any_of=["?"])
-                f.required = self._shown_by_page[f.key]
+                if self._filled:
+                    f.required = self._shown_by_page[f.key]
             elif self._filled and f.condition is not None and f.condition.key == UNKNOWN_TRIGGER:
                 f.condition = None  # hidden by the page after answers were entered
         return live
@@ -151,10 +160,20 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
     def schema_matches(self, page: Page):
         """HostedFormAdapter's checks; then, after a single page is filled, its questions the
         page shows by its own logic (`follow_ups`). A wizard checks those page by page, before
-        each Next (`page_follow_ups`)."""
+        each Next (`page_follow_ups`). Before anything is entered, as D135: an approved answer
+        to such a question that is not typed text is refused (none can be approved today)."""
         reason = super().schema_matches(page)
-        if reason or not self._filled or self.content.get("wizard"):
+        if reason:
             return reason
+        if not self._filled:
+            for a in self.content["answers"]:
+                cond = a.get("condition") or {}
+                if (a["key"] in self._shown_by_page and a["value"] is not None
+                        and not shown_by_page(cond, a["type"])):  # fmt: skip
+                    return UNSEEN_LOGIC
+            return None
+        if self.content.get("wizard"):
+            return None
         return self.follow_ups(page, self.content["answers"])
 
     # -- D148: questions the page shows by its own logic ------------------------------------
@@ -182,39 +201,62 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         return disclosures
 
     def _shown(self, page: Page, key: str) -> bool:
-        """The page shows this question now: one of its controls is visible."""
-        loc = page.locator(f'{self.FORM} [name="{key}"]')
+        """The page shows this question now: one of its controls is visible. Found as filling
+        and the readback find it (anywhere on the page, by its name)."""
+        loc = page.locator(_sel(key))
         return any(loc.nth(j).is_visible() for j in range(loc.count()))
 
     def readback(self, page: Page) -> list[str]:
         """HostedFormAdapter.readback, where a question the page shows by its own logic that was
-        not entered (not shown when its page was filled) must still be empty."""
-        view = [a if a["key"] not in self._shown_by_page or a["key"] in self._entered
-                else {**a, "value": None} for a in self.content["answers"]]  # fmt: skip
-        return self._with_answers(view, lambda: HostedFormAdapter.readback(self, page))
+        not entered (not shown when its page was filled) must still be empty. One the page no
+        longer has is never waited for: entered, it did not keep its value; not entered, there
+        is nothing to read (the check after filling finds the form changed)."""
+        bad, view = [], []
+        for a in self.content["answers"]:
+            key = a["key"]
+            if key in self._shown_by_page:
+                if not page.locator(_sel(key)).count():
+                    if key in self._entered:
+                        bad.append(key)
+                    continue
+                if key not in self._entered:
+                    a = {**a, "value": None}
+            view.append(a)
+        return bad + self._with_answers(view, lambda: HostedFormAdapter.readback(self, page))
 
     def follow_ups(self, page: Page, answers: list[dict]):
         """After filling, of these answers, the questions the page shows by its own logic: what
         the page shows must be what was entered. None, or why not: one shown but not entered
         although an answer was approved, or entered but no longer shown (FOLLOW_UP_CHANGED);
         one shown that the page requires with no approved answer, which you can answer
-        (`ConditionalRequired`, counted) or not (FOLLOW_UP_NOT_FILLED). A shown optional one
-        with no answer stays empty, as approved."""
+        (`ConditionalRequired`, counted) or not (FOLLOW_UP_NOT_FILLED); one not shown, and so
+        empty, that the page still requires: its own checks would refuse the application
+        (FOLLOW_UP_HIDDEN_REQUIRED). A shown optional one with no answer stays empty, as
+        approved. What the page requires is read from its markup, as the form is read."""
         live: dict | None = None
-        not_filled = required = 0
+
+        def page_requires(key: str) -> bool | None:  # None: the page no longer has it
+            nonlocal live
+            if live is None:
+                live = {f.key: f for f in workday.extract_schema(page.content()).fields}
+            return live[key].required if key in live else None
+
+        not_filled = required = hidden_required = 0
         for a in answers:
             key = a["key"]
             if key not in self._shown_by_page:
                 continue
             self._progress()
-            entered = key in self._entered
-            if self._shown(page, key) == entered:
+            entered, shown = key in self._entered, self._shown(page, key)
+            if not shown and not entered:
+                if page_requires(key):
+                    hidden_required += 1
+                continue
+            if shown == entered:
                 continue
             if entered or a["value"] is not None:
                 return FOLLOW_UP_CHANGED
-            if live is None:
-                live = {f.key: f for f in workday.extract_schema(page.content()).fields}
-            if key in live and not live[key].required:
+            if page_requires(key) is False:
                 continue
             if shown_by_page(a.get("condition") or {}, a["type"]):
                 required += 1
@@ -222,6 +264,8 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
                 not_filled += 1
         if not_filled:
             return FOLLOW_UP_NOT_FILLED
+        if hidden_required:
+            return FOLLOW_UP_HIDDEN_REQUIRED
         return ConditionalRequired(required) if required else None
 
     # -- D142: a multi-page wizard, one page at a time ---------------------------------------

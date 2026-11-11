@@ -62,9 +62,9 @@ tenant:
        section); the page's script shows it when "Preferred shift" is Nights, and hides and
        empties it otherwise. A Next saves it with the rest of its page, empty while hidden; the
        final POST requires it only when it is shown and required. Its three shapes:
-       follow_up (optional), follow_up_required (`required` in the markup, dropped while
-       hidden) and follow_up_revealed_required (optional in the markup, marked required once
-       shown). No real Workday follow-up was observed (docs/research/workday.md: they hang off
+       follow_up (optional), follow_up_required (`required` in the markup at load, hidden;
+       once a shift is chosen, required only while shown) and follow_up_revealed_required
+       (optional in the markup, marked required once shown). No real Workday follow-up was observed (docs/research/workday.md: they hang off
        a single-select answer).
 cfg["wizard"] values: plain; drift (a required q.weekends on page 4 at load); already_applied
 (shown at open instead of the form); step_error (the page-2 draft is answered 422 with errors);

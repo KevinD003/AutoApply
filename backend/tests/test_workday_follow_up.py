@@ -9,6 +9,7 @@ wizard page's Next) and its acceptances, never NoEfforts' tables. Passing here s
 compatibility only, never how a real Workday tenant behaves (no real follow-up was observed).
 Synthetic candidate data only."""
 
+import time
 import uuid
 
 import pytest
@@ -16,10 +17,16 @@ from sqlalchemy import select
 
 from app.core.db import SessionLocal
 from app.modules.execution import runner
-from app.modules.execution.adapters.fixture_ats import CONDITIONAL_REQUIRED, ConditionalRequired
+from app.modules.execution.adapters.fixture_ats import (
+    CONDITIONAL_REQUIRED,
+    ConditionalRequired,
+    FormChanged,
+)
 from app.modules.execution.adapters.workday import (
     FOLLOW_UP_CHANGED,
+    FOLLOW_UP_HIDDEN_REQUIRED,
     FOLLOW_UP_NOT_FILLED,
+    UNSEEN_LOGIC,
     WorkdayFixtureAdapter,
 )
 from app.modules.execution.models import ApplicationPause
@@ -137,6 +144,18 @@ def test_capture_never_marks_a_checkpoint_and_marks_a_hidden_choice():
     assert fields["q.w"].type == FieldType.radio and fields["q.w"].condition.model_dump() == UNKNOWN
 
 
+def test_capture_reads_only_the_application_form():
+    """Hidden-ness is read between a control and its form: a hidden wrapper around the whole
+    form, and a hidden control of the same name outside it (a template, outside the form), mark
+    none of its questions."""
+    html = (f"<div hidden>{FORM.format(follow=DETAIL)}</div>"
+            '<template><div hidden><select name="q.shift"></select></div></template>'
+            '<div hidden><input name="q.d" type="text"></div>')  # fmt: skip
+    fields = workday.extract_schema(html).fields
+    assert {f.key for f in fields} == {"q.shift", "q.d"}
+    assert all(f.condition is None for f in fields)
+
+
 def test_a_wizard_page_hidden_at_load_marks_none_of_its_questions(api, receiver):
     """Pages 2 to 5 are hidden at load (FA1); only the follow-up's own wrapper says anything."""
     receiver.config(wizard="follow_up")
@@ -247,6 +266,57 @@ def test_required_in_the_markup_and_answered_is_entered_only_when_shown(api, rec
     assert page_4(led)[FOLLOW_UP] == "" and led["acceptances"][0]["fields"][FOLLOW_UP] == ""
 
 
+@pytest.mark.parametrize("single", [False, True], ids=["wizard", "single-page"])
+def test_one_the_page_now_requires_stops_before_anything_is_entered(api, receiver, single):
+    """Approved optional and unanswered; the page now marks it required in its markup. Before
+    anything is entered that is a changed form (D132's pause: a fresh read shows it), never the
+    page's reaction to answers: nothing reaches the employer."""
+    app_id = follow_up_application(api, receiver, "follow_up", single=single)
+    if single:
+        receiver.config(mode="wd_follow_up_required")
+    else:
+        receiver.config(wizard="follow_up_required")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+    assert attempt(aid).disclosure_started_at is None
+    with SessionLocal() as db:
+        pause = db.scalar(select(ApplicationPause).where(
+            ApplicationPause.application_id == uuid.UUID(app_id)))  # fmt: skip
+        assert (pause.kind, pause.status) == ("form_changed", "open")
+
+
+def test_an_approval_from_before_d148_pauses_and_a_fresh_read_marks_it(api, receiver,
+                                                                         monkeypatch):  # fmt: skip
+    """An approval given before the follow-up was read as one (simulated: the capture without
+    its condition) no longer matches the live form: a pause before anything is entered; reading
+    the form again finds the condition, which ends the pause."""
+    real = workday.extract_schema
+
+    def before_d148(html):
+        schema = real(html)
+        for f in schema.fields:
+            f.condition = None
+        return schema
+
+    monkeypatch.setattr(workday, "extract_schema", before_d148)
+    app_id = follow_up_application(api, receiver, "follow_up")
+    monkeypatch.undo()
+    assert "condition" not in row(api, app_id)
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+    r = api.post(f"/applications/{app_id}/form/recapture")
+    assert r.status_code == 200, r.text
+    with SessionLocal() as db:
+        pause = db.scalar(select(ApplicationPause).where(
+            ApplicationPause.application_id == uuid.UUID(app_id)))  # fmt: skip
+        assert pause.status not in ("open", "unexplained")
+    assert row(api, app_id)["condition"] == UNKNOWN
+
+
 # ---------------------------------------------------------------------------- the single page
 
 
@@ -349,6 +419,14 @@ AFTER_FILLING = [
     ),
     ("shown, optional, unanswered", "", " hidden", [_answer("q.d", "text", None)], set(), None),
     ("hidden, not entered", " hidden", " hidden", [TEXT], set(), None),
+    (
+        "hidden, required, not entered",
+        " hidden required",
+        " hidden",
+        [_answer("q.d", "text", None)],
+        set(),
+        FOLLOW_UP_HIDDEN_REQUIRED,
+    ),
     ("shown and entered", "", " hidden", [TEXT], {"q.d"}, None),
 ]
 
@@ -389,9 +467,37 @@ def test_a_question_the_page_hides_once_answers_were_entered_is_its_reaction(pag
     assert adapter.schema_matches(page) is None
 
 
-def test_the_live_form_reads_as_approved_shown_or_hidden_required_or_not(page):
-    page.set_content(PAGE.format(d=" required", w=""))
+def test_the_live_form_reads_as_approved_shown_or_hidden_and_once_filled_required_or_not(page):
     adapter = _adapter([TEXT, _answer("q.w", "radio", None)], HIDDEN)
-    assert adapter.schema_matches(page) is None  # shown and required now, hidden when approved
+    page.set_content(PAGE.format(d="", w=""))
+    assert adapter.schema_matches(page) is None  # shown now, hidden when approved
+    page.set_content(PAGE.format(d=" required", w=""))
+    assert isinstance(adapter.schema_matches(page), FormChanged)  # required before entry
+    adapter._filled, adapter._entered = True, {"q.d"}
+    assert adapter.schema_matches(page) is None  # once filled, the page's reaction
     page.set_content(PAGE.format(d=" hidden", w=" hidden").replace("Which nights?", "Which days?"))
     assert adapter.schema_matches(page) is not None  # its wording still has to match
+
+
+def test_readback_never_waits_for_a_question_the_page_removed(page):
+    page.set_content(
+        PAGE.format(d=" hidden", w=" hidden").replace(
+            '<label for="d">Which nights?</label><input id="d" name="q.d" type="text" hidden>', ""
+        )
+    )
+    adapter = _adapter([TEXT], HIDDEN)
+    started = time.monotonic()
+    assert adapter.readback(page) == []  # not entered: nothing to read
+    adapter._entered = {"q.d"}
+    assert adapter.readback(page) == ["q.d"]  # entered: it did not keep its value
+    assert time.monotonic() - started < 5  # never waited for (a wait lasts 30 s here)
+
+
+def test_an_approved_answer_to_a_choice_the_page_shows_by_itself_is_refused(page):
+    """As D135: a choice the page shows by its own logic is never filled; an approved value for
+    one (which nothing can approve today) is refused before anything is entered."""
+    page.set_content(HIDDEN)
+    adapter = _adapter([TEXT, _answer("q.w", "radio", {"option": "Yes"})], HIDDEN)
+    assert adapter.schema_matches(page) == UNSEEN_LOGIC
+    adapter = _adapter([TEXT, _answer("q.w", "radio", None)], HIDDEN)
+    assert adapter.schema_matches(page) is None
