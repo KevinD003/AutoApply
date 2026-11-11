@@ -38,7 +38,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D143 recovery hardening: a run budget, one task time limit and no soft limit, leases that follow progress, verification requests that end with their attempt | merged (#52, 9346c8e, tree as predicted); its PR CI passed all four jobs on fa36039 |
 | D144 attempts on a queue and a worker of their own; the schedule and the periodic tasks on another | merged (#53, 099642c, tree as predicted); its PR CI passed all four jobs on e40ee72, the Compose layout's first run |
 | D145 a dropdown's list settled by the page's own record of its last change to a list | merged (#54, 45c8229, tree as predicted); its PR CI passed all four jobs on 9315953 |
-| D146 an attempt still waiting to be taken is published again | branch `republish-queued` (D145's branch merged in, then `main` with #54); reviewed; not merged |
+| D146 an attempt still waiting to be taken is published again | merged (#55, 688c776, tree as predicted); its PR CI passed all four jobs on e1fb40a |
 | D147 a restored database comes up held, and nothing it restored runs | branch `restore-hold` (D146's branch merged in); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
@@ -238,7 +238,7 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   - the read-only survey keeps its own, weaker test and publishes nothing of the new record
     (rank 18); a section's combobox still reads its list once (rank 17); no adapter version
     changes, and a rehearsal earned under the weaker test still counts (D145).
-- **D146 (branch `republish-queued`, not merged).** Rank 15, an attempt still waiting to be
+- **D146 (merged, #55).** Rank 15, an attempt still waiting to be
   taken is published again:
   - three ways an attempt stayed "queued" for good: the broker lost its message (`docker
     compose down`, a crash); a worker process died after receiving the message and before the
@@ -312,7 +312,7 @@ leases that follow progress, and verification requests that end with their attem
 (rank 11, #53) gives attempts a queue and a worker of their own, so two attempts
 waiting for codes never hold up the sweeper, the outbox relay and the mailbox reader.
 **D145** (rank 14, #54) settles a dropdown's list by the page's own record of its
-last change to a list, and **D146** (rank 15, on its branch) publishes again an attempt still
+last change to a list, and **D146** (rank 15, #55) publishes again an attempt still
 waiting to be taken: two defects found on the way. Its review found that a restored database
 would then run again what it shows as queued: **D147** (rank 20, on its branch) makes a
 restored database come up held and end, without running it, everything it shows as queued
@@ -386,7 +386,8 @@ records).
   read and its click, the observer's cost on a large page, what a real react-select list does
   while it is open, and anything on a real page.
 
-- **D146 (branch `republish-queued`):** the new tests (three with a real worker and broker),
+- **D146:** merged (#55, 688c776, tree as predicted); its PR CI passed all four jobs on
+  e1fb40a. Locally: the new tests (three with a real worker and broker),
   the removal runs and the regression set, locally (Tests run below). `scripts/validate.sh
   all` was not run. Not tested: the Compose stack (none of its files change; no scenario loses
   a message there), a restore (ranked slice 20), the pass-on's own publish failing (the same rule
@@ -675,8 +676,7 @@ records).
 
 ## Exact next action
 
-1. D146 (branch `republish-queued`, rank 15): its pull request (#55); then
-   D147 (branch `restore-hold`, rank 20): its pull request once D146's is merged, so that
+1. D147 (branch `restore-hold`, rank 20): its pull request (D146 merged as #55), so that
    `main` carries the deployment guide's restore step by hand only briefly. Then ranks 12
    and 13 (the Workday-style follow-up question and repeating records), rank 16 (a stop
    request honoured before the next step) and ranks 17 to 19 (the dropdown rule's
