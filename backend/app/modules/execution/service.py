@@ -284,17 +284,23 @@ def republish_waiting(publish, limit: int = 50) -> int:
     it, would leave its attempt queued (for good, or until the broker hands the message out
     again an hour later).
 
-    Only an attempt the claim would still take: `pending`, no cancel requested, and nothing
-    entered yet (a `pending` attempt never has; the condition is here so that this path can
-    never run anything again after data was entered, whatever puts an attempt back in the
-    queue). One a worker holds, and one that ended, is never published here.
+    Only an attempt the claim would still take: `pending`, no cancel requested, nothing
+    entered. One a worker holds, and one that ended, is never published here. That an attempt
+    which entered data is never run again is not this function's doing: the sweeper never puts
+    one back in the queue, and the claim itself refuses one (`claim`). This select only keeps
+    such an attempt from being published.
 
-    If the first message was not lost there are now two. The claim takes an attempt once; the
-    other delivery is ignored (`runner.run_attempt`). The attempt's newest message decides: one
-    not yet dispatched is the relay's, and one dispatched recently is waited for.
+    It repeats: an attempt still waiting gets another message each time that wait has passed
+    since its last one, with no limit (D146 says what that costs). If a message was not lost
+    there are then several. The claim takes an attempt once; every other delivery is ignored
+    (`runner.run_attempt`). The attempt's newest message decides: one not yet dispatched is the
+    relay's, and one dispatched recently is waited for.
 
-    Safe to run concurrently (SKIP LOCKED: a second pass skips a message the first holds) and
-    repeatedly. Returns how many attempts were published again."""
+    Only the messages are locked, never the attempt (`of=OutboxMessage`): a claim, a cancel or
+    a revocation does not wait for a pass, even while it is talking to the broker. A second
+    pass skips a message the first holds (SKIP LOCKED). The pass ends at the first failed
+    publish: the broker is down, and each further try would hold its message longer. Returns
+    how many attempts were published again."""
     cutoff = utcnow() - timedelta(seconds=get_settings().outbox_republish_seconds)
     newer = aliased(OutboxMessage)
     sent = 0
@@ -322,7 +328,7 @@ def republish_waiting(publish, limit: int = 50) -> int:
                 publish(m.topic, str(m.attempt_id))  # ids only, never candidate data
             except Exception as e:  # broker down: its age is unchanged, so the next pass tries
                 m.last_error = type(e).__name__  # the type only, as in relay_outbox
-                continue
+                break
             m.dispatched_at = utcnow()
             m.last_error = None
             sent += 1
@@ -339,7 +345,11 @@ def claim(attempt_id: uuid.UUID, worker: str) -> int | None:
     """Atomically take a pending attempt. Returns the new generation, or None if another
     delivery already claimed it (duplicate deliveries are ignored here). Locks the attempt (the
     compare-and-swap), then the application, in the global lock order; the approval is checked
-    under the application lock, so a revocation or cancel committed first is seen."""
+    under the application lock, so a revocation or cancel committed first is seen.
+
+    D146: an attempt that has entered data is never taken, whatever its state says. None is
+    ever `pending` (the sweeper puts back only one that entered nothing); with several messages
+    for one attempt now possible, the rule also stands here, where every delivery ends."""
     lease = timedelta(seconds=get_settings().lease_seconds)
     with SessionLocal() as db:
         app_id = db.scalar(
@@ -354,6 +364,7 @@ def claim(attempt_id: uuid.UUID, worker: str) -> int | None:
                 ExecutionAttempt.id == attempt_id,
                 ExecutionAttempt.state == S.pending,
                 ExecutionAttempt.cancel_requested.is_(False),
+                ExecutionAttempt.disclosure_started_at.is_(None),
             )
             .values(
                 state=S.claimed,

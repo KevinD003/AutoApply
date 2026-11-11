@@ -4,9 +4,9 @@ before starting it; nothing else sent it a second time, so the application staye
 Only an attempt the claim would still take is published again, so this path can never run
 anything a second time after data was entered or sent.
 
-The rule itself is tested against the database with a recording `publish`. The two end-to-end
-cases use a real Celery worker on the run's own Redis, and the receiver's ledger as the oracle
-for what reached the employer. Every form is a local stand-in; synthetic data only."""
+The rule itself is tested against the database with a recording `publish`. The three
+end-to-end cases use a real Celery worker on the run's own Redis, and the receiver's ledger as
+the oracle for what reached the employer. Every form is a local stand-in; synthetic data only."""
 
 import threading
 import time
@@ -105,7 +105,7 @@ def test_an_attempt_still_queued_is_published_again_once_its_message_is_old(api,
     out = Published()
     aid = queued_and_published(api, receiver, out)
     assert svc.republish_waiting(out) == 0  # it went out a moment ago
-    age(aid, WAIT - 5)
+    age(aid, WAIT - 60)
     assert svc.republish_waiting(out) == 0
     age(aid, WAIT + 5)
     assert svc.republish_waiting(out) == 1
@@ -163,19 +163,27 @@ def test_the_attempts_newest_message_decides(api, receiver):
 
 def test_a_broker_that_is_down_leaves_it_for_the_next_pass(api, receiver):
     """Its age is unchanged, so the next pass tries again; only the error's type is kept (its
-    text can quote the broker's URL, credentials included)."""
+    text can quote the broker's URL, credentials included). The pass ends at the first failure:
+    with the broker down, a second try would only hold its message longer."""
     out = Published()
     aid = queued_and_published(api, receiver, out)
-    age(aid, WAIT + 5)
+    other = queue(api, prepared_application(api, receiver, url_suffix="?posting=2"))
+    assert svc.relay_outbox(out) == 1
+    age(aid, WAIT + 50)
+    age(other, WAIT + 5)
+    tried = []
 
     def down(topic, attempt_id):
+        tried.append(attempt_id)
         raise ConnectionError("redis://user:not-a-real-secret@broker:6379/0 refused")
 
     assert svc.republish_waiting(down) == 0
+    assert tried == [aid]  # the longest-waiting one, and no other after it failed
     (m,) = messages(aid)
     assert m.last_error == "ConnectionError" and m.publish_attempts == 2
     assert utcnow() - m.dispatched_at > timedelta(seconds=WAIT)
-    assert svc.republish_waiting(out) == 1
+    assert messages(other)[0].publish_attempts == 1
+    assert svc.republish_waiting(out) == 2
     (m,) = messages(aid)
     assert m.last_error is None and m.publish_attempts == 3
 
@@ -203,6 +211,74 @@ def test_two_passes_at_once_publish_it_once(api, receiver):
     assert results == [1] and slow_sent == [aid]
     assert out.sent == [("execute_attempt", aid)]  # the relay's only
     assert svc.republish_waiting(out) == 0  # and the first pass's publication is waited for
+
+
+def test_a_claim_does_not_wait_for_a_pass_that_is_publishing(api, receiver):
+    """Only the messages are locked, never the attempt: while a pass is talking to the broker
+    about an attempt, a worker's claim of it goes through at once (a cancel and a revocation
+    take the same lock, and would wait the same way)."""
+    out = Published()
+    aid = queued_and_published(api, receiver, out)
+    age(aid, WAIT + 5)
+    claimed = []
+
+    def publish_while_a_worker_claims(topic, attempt_id):
+        t = threading.Thread(target=lambda: claimed.append(svc.claim(uuid.UUID(attempt_id), "w1")))
+        t.start()
+        t.join(20)
+        assert not t.is_alive(), "the claim waited for the pass"
+
+    assert svc.republish_waiting(publish_while_a_worker_claims) == 1
+    assert claimed == [1] and attempt(aid).state == "claimed"
+
+
+def test_the_wait_is_the_setting(api, receiver, monkeypatch):
+    """Not a figure in the code: with the setting at fifteen minutes, an attempt five minutes
+    old is not published again, and one fifteen minutes old is."""
+    out = Published()
+    aid = queued_and_published(api, receiver, out)
+    monkeypatch.setattr(get_settings(), "outbox_republish_seconds", 900)
+    age(aid, WAIT + 60)
+    assert svc.republish_waiting(out) == 0
+    age(aid, 900 + 60)
+    assert svc.republish_waiting(out) == 1
+
+
+def test_extra_messages_never_add_a_run(api, receiver):
+    """However many messages an attempt has, it is claimed once each time it is queued: when it
+    is queued, and each time the sweeper puts it back because its worker stopped before
+    entering anything (twice at most). Every other delivery is ignored, and a held attempt is
+    never published."""
+    out = Published()
+    aid = queued_and_published(api, receiver, out)
+    retries = get_settings().max_safe_retries
+    taken = []
+    for n in range(retries + 2):
+        age(aid, WAIT + 5)
+        svc.republish_waiting(out)  # one more message whenever it is queued
+        taken.append(svc.claim(uuid.UUID(aid), f"w{n}"))
+        assert svc.claim(uuid.UUID(aid), "another delivery") is None
+        age(aid, WAIT + 5)
+        assert svc.republish_waiting(out) == 0  # a worker holds it, or it has ended
+        set_attempt(aid, lease_expires_at=utcnow() - timedelta(seconds=1))  # the worker is gone
+        svc.sweep()
+        svc.relay_outbox(out)
+    assert taken == [*range(1, retries + 2), None]
+    assert attempt(aid).state == "failed_safe" and claims(aid) == retries + 1
+    assert receiver.ledger()["accepted"] == 0
+
+
+def test_an_attempt_that_entered_data_is_never_claimed(api, receiver):
+    """What everything here rests on, held by the claim itself: a queued attempt with a
+    disclosure recorded (no code path makes one) is not taken by any delivery."""
+    out = Published()
+    aid = queued_and_published(api, receiver, out)
+    set_attempt(aid, disclosure_started_at=utcnow())
+    assert svc.claim(uuid.UUID(aid), "w1") is None
+    att = attempt(aid)
+    assert (att.state, att.generation) == ("pending", 0) and claims(aid) == 0
+    set_attempt(aid, disclosure_started_at=None)
+    assert svc.claim(uuid.UUID(aid), "w1") == 1  # the same attempt, as it was queued
 
 
 def test_the_oldest_wait_first_and_no_more_than_the_limit(api, receiver):
@@ -283,8 +359,9 @@ def test_an_attempt_whose_worker_died_before_claiming_it_is_published_again(api,
     r = broker()
     dying = Worker(fault="before_claim=exit", queues="attempts", concurrency=1)
     try:
+        dying.wait_log("Task noefforts.execute_attempt[", 60)  # received: held, unacknowledged
         end = time.monotonic() + 60
-        while queued(r)["attempts"] or r.hlen("unacked"):  # taken, then acknowledged
+        while queued(r)["attempts"] or r.hlen("unacked"):  # then acknowledged
             assert time.monotonic() < end, dying.text()[-2000:]
             time.sleep(0.2)
     finally:

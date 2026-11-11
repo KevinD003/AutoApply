@@ -6,7 +6,10 @@ Delivery settings (Celery 5.6.3, kombu 5.6.2, Redis transport, prefork pool):
   task_reject_on_worker_lost=False if the worker *process* dies, the message is acknowledged,
                                    not redelivered. Recovery is the sweeper's job, driven by
                                    database leases, so a killed worker never causes Celery to
-                                   re-run a task that may have reached the submit click;
+                                   re-run a task that may have reached the submit click. An
+                                   attempt whose process died before it claimed anything has
+                                   no lease: it is still queued, and the relay publishes it
+                                   again (D146, service.republish_waiting);
   worker_prefetch_multiplier=1     one reserved task per process;
   visibility_timeout=3600          Redis redelivers unacknowledged messages after an hour
                                    (NOEFFORTS_BROKER_VISIBILITY_TIMEOUT_SECONDS; tests only
