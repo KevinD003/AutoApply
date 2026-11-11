@@ -10,14 +10,16 @@ import time
 
 import pytest
 
+from app.core.config import get_settings
 from app.modules.execution import runner
 from app.modules.execution.adapters import dropdowns
 from app.modules.execution.adapters import greenhouse_dom as gd_adapter
+from app.modules.execution.browser import browser_session
 from app.modules.preparation import gh_readonly as ro
 from app.modules.preparation import greenhouse_dom as dom
 from tests.conftest import CANARY_PORT
-from tests.execution_harness import Receiver, attempt, queue, synthetic_candidate
-from tests.test_greenhouse_dom import v2_application, v2_job
+from tests.execution_harness import BASE, Receiver, attempt, queue, synthetic_candidate
+from tests.test_greenhouse_dom import BOARD, JOB, v2_application, v2_job
 
 
 @pytest.fixture(scope="module")
@@ -138,7 +140,8 @@ def test_unverifiable_dropdowns_stop_before_anything_is_disclosed(api, receiver,
 # `late_slow_changing` list is re-rendered every 300 ms, in alternating order. Read about every
 # 600 ms (a busy machine stretches the interval that far), every read used to see the same
 # order: at 590 ms it was refused for the wrong reason (judged settled, in the other order), and
-# at 610 ms it was accepted. 1200 ms: four re-renders between reads.
+# at 610 ms it was accepted. 1200 ms: four re-renders between reads. Which of the two words
+# the refusal carries depends on the moment of the last read; both say the list is not settled.
 @pytest.mark.parametrize("sample_ms", [590, 600, 610, 1200])
 def test_a_list_that_keeps_changing_is_refused_however_slowly_it_is_read(
     api, receiver, monkeypatch, sample_ms
@@ -148,9 +151,18 @@ def test_a_list_that_keeps_changing_is_refused_however_slowly_it_is_read(
     assert result == "failed_safe", attempt(aid).outcome_detail
     detail = attempt(aid).outcome_detail
     assert "dropdown: its list could not be read completely" in detail, detail
-    assert "still_changing" in detail, detail
+    assert "still_changing" in detail or "list_changed_recently" in detail, detail
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+def _approved_options_sent(api, receiver, app_id) -> None:
+    led = receiver.ledger()
+    assert led["accepted"] == 1
+    sent = led["acceptances"][0]["fields"]
+    answers = {a["key"]: a["value"] for a in package(api, app_id)["answers"]}
+    for key in ("question_8101", "question_8102", "question_8104"):
+        assert sent[key] == answers[key]["option"], key
 
 
 @pytest.mark.parametrize("dd,cfg", [("click_popup", {}), ("late_fetch", {"delay_ms": 1200})])
@@ -160,58 +172,170 @@ def test_a_list_that_has_settled_is_accepted_when_read_slowly(api, receiver, mon
     monkeypatch.setattr(dropdowns, "SAMPLE_MS", 600)
     app_id, aid, result = run(api, receiver, dd=dd, **cfg)
     assert result == "confirmed", attempt(aid).outcome_detail
+    _approved_options_sent(api, receiver, app_id)
+
+
+@pytest.mark.parametrize("tick_ms", [300, 600])
+def test_a_page_that_keeps_changing_elsewhere_does_not_hold_up_a_settled_list(
+    api, receiver, tick_ms
+):
+    """D145: only changes to a list count. Something else on the page changes every 300 ms, or
+    every 600 ms: each dropdown's list is still read as settled, at the check and at the
+    choice, and the application is submitted with the approved options. (On the whole
+    document's record the 300 ms page would never settle. The 600 ms one would, in a stand-in's
+    longer window: the next test gives it a real page's.)"""
+    app_id, aid, result = run(api, receiver, dd="click_popup", dd_tick_ms=tick_ms)
+    assert result == "confirmed", attempt(aid).outcome_detail
+    _approved_options_sent(api, receiver, app_id)
+
+
+def test_a_page_busy_elsewhere_passes_every_check_in_a_real_pages_window(
+    api, receiver, monkeypatch
+):
+    """D145 was first built on the whole document's record. With something else changing every
+    600 ms, an opening then settled only if its moment was right: 64% of them within the 1.5
+    seconds a real page gets (the review's arithmetic), so a check could pass and the choice
+    fail after data had been entered. A stand-in's own window (5 seconds) hides that, so this
+    one is given a real page's: the three checks and the three choices all pass, and the
+    application is submitted with the approved options."""
+    monkeypatch.setattr(dropdowns, "LATE_MS", dropdowns.SETTLE_MS)
+    app_id, aid, result = run(api, receiver, dd="click_popup", dd_tick_ms=600)
+    assert result == "confirmed", attempt(aid).outcome_detail
+    _approved_options_sent(api, receiver, app_id)
+
+
+def test_a_list_that_starts_changing_after_the_check_stops_the_attempt_before_sending(
+    api, receiver
+):
+    """D145: each list is stable when it is checked, before anything is entered, and keeps
+    being re-rendered from its second opening, which is the choice. The choice is not made (its
+    list never settles), the readback finds the dropdowns unanswered, and the attempt stops
+    after data was entered and before the send gate. Nothing is submitted."""
+    _, aid, result = run(api, receiver, dd="changing_on_reopen")
+    assert result == "abandoned", attempt(aid).outcome_detail
+    assert "did not keep their values" in attempt(aid).outcome_detail
     led = receiver.ledger()
-    assert led["accepted"] == 1
-    sent = led["acceptances"][0]["fields"]
-    answers = {a["key"]: a["value"] for a in package(api, app_id)["answers"]}
-    for key in ("question_8101", "question_8102", "question_8104"):
-        assert sent[key] == answers[key]["option"], key
+    assert led["accepted"] == 0 and led["disclosures"] != []
 
 
-def test_settled_means_unchanged_by_the_pages_own_record(monkeypatch):
-    """D145, the rule itself, without a browser: three equal reads are not enough while the page
-    reports a change in the last half second, whatever the reading interval; they are once it
-    reports none, or none at all since before the action."""
+def test_the_pages_record_tells_a_change_to_a_list_from_a_change_elsewhere(receiver):
+    """D145, the observer itself, in a real browser on the stand-in page with one list open:
+    what it takes for a change to a list (and so holds a list back from counting as settled),
+    and what it does not."""
+    receiver.config(mode="gh2_dd", dd="click_popup")
+    cid = "question_8101"
+    with browser_session(BASE, 8000, isolation=get_settings().browser_isolation,
+                         allow_private_destination=True) as (page, _log):  # fmt: skip
+        page.goto(f"{BASE}/gh2/{BOARD}/jobs/{JOB}")
+        page.locator(f'[id="{cid}"]').click()
+        assert page.evaluate(ro._PROBE_JS, cid)["texts"], "the list did not open"
 
-    class Page:
-        """The probe's answers: closed before the action, then the open list at each read."""
+        def touched(js: str) -> bool:
+            assert page.evaluate(ro._PRE_JS, cid) is not None  # a fresh record
+            page.evaluate(js)
+            return page.evaluate(ro._PROBE_JS, cid)["list_quiet_ms"] is not None
 
-        def __init__(self, quiet):
-            self.quiet, self.reads = list(quiet), -1
-
-        def evaluate(self, script, arg=None):
-            if script is ro._PRE_JS:
-                return {}
-            self.reads += 1
-            if self.reads == 0:
-                return _probe(None, is_open=False)
-            return _probe(self.quiet[min(self.reads, len(self.quiet)) - 1])
-
-        def wait_for_timeout(self, ms): ...
-        def on(self, *a): ...
-        def remove_listener(self, *a): ...
-
-    monkeypatch.setattr(dropdowns, "_act", lambda *a: True)
-    for quiet, state in (
-        ([200, 120, 280, 90, 260, 140], "partially_observed"),  # re-rendered between the reads
-        ([10, 260, 499, 499, 499, 499], "partially_observed"),  # one millisecond short
-        ([10, 260, 500], "observed_sufficiently"),  # exactly the half second
-        ([None, None, None], "observed_sufficiently"),  # nothing changed since the action
-    ):
-        got = dropdowns._observe(Page(quiet), "c", "click_control", 2)
-        assert got["state"] == state, (quiet, got)
+        note = "document.getElementById('fx-note')"
+        option, listbox = "document.querySelector('[role=option]')", "[role=listbox]"
+        # Elsewhere on the page: an element arrives, its text changes, an attribute of it.
+        assert not touched("const n = document.createElement('p'); n.id = 'fx-note';"
+                           " n.textContent = 'a'; document.body.append(n)")  # fmt: skip
+        assert not touched(f"{note}.textContent = 'b'")
+        assert not touched(f"{note}.setAttribute('data-x', '1')")
+        # A list: text inside an option, an attribute of one, a child of the list, an attribute
+        # of an element holding it, an element holding an option arriving, the list going.
+        assert touched(f"{option}.firstChild.data += '!'")
+        assert touched(f"{option}.setAttribute('data-x', '1')")
+        assert touched(f"document.querySelector('{listbox}').append(document.createElement('li'))")
+        assert touched("document.body.toggleAttribute('data-x')")
+        holder = "const u = document.createElement('div'); u.innerHTML = '<i role=option>x</i>';"
+        assert touched(holder + " document.body.append(u)")
+        assert touched(f"document.querySelector('{listbox}').remove()")
+        # More changes at once than are looked at one by one: taken for the list's.
+        assert touched(f"for (let i = 0; i < 250; i++) {note}.setAttribute('data-n', String(i))")
 
 
-def _probe(quiet_ms, is_open: bool = True) -> dict:
-    """What the page probe returns: a closed control, or its open list of two options with
-    nothing loading and the page's last change `quiet_ms` ago."""
+class _ProbePage:
+    """The probe's answers without a browser: closed before the action, then the open list at
+    each read, with the page's record of the last change to a list (`list_quiet`), of the last
+    change anywhere (`quiet`) and the option texts read."""
+
+    def __init__(self, list_quiet, *, quiet=None, texts=None):
+        self.list_quiet, self.quiet, self.texts, self.reads = list(list_quiet), quiet, texts, -1
+
+    def evaluate(self, script, arg=None):
+        if script is ro._PRE_JS:
+            return {}
+        self.reads += 1
+        if self.reads == 0:
+            return _probe(None, is_open=False)
+        i = self.reads - 1  # past the end of either list, its last entry goes on
+        texts = self.texts[min(i, len(self.texts) - 1)] if self.texts else ["Yes", "No"]
+        list_quiet = self.list_quiet[min(i, len(self.list_quiet) - 1)]
+        return _probe(list_quiet, quiet_ms=self.quiet, texts=texts)
+
+    def wait_for_timeout(self, ms): ...
+    def on(self, *a): ...
+    def remove_listener(self, *a): ...
+
+
+def _probe(list_quiet_ms, *, quiet_ms=None, texts=("Yes", "No"), is_open: bool = True) -> dict:
+    """What the page probe returns: a closed control, or its open list with nothing loading."""
+    whole = list_quiet_ms if quiet_ms is None else quiet_ms
     return {
         "expanded": "true" if is_open else "false", "wrapper_expanded": "absent",
         "associated_visible": int(is_open), "new_popups": int(is_open),
-        "texts": ["Yes", "No"] if is_open else [], "elsewhere": 0, "hint_popups": 0,
+        "texts": list(texts) if is_open else [], "elsewhere": 0, "hint_popups": 0,
         "hint_options": 0, "added_visible": 2 * is_open, "busy": 0, "hint_loading": 0,
-        "setsize": None, "quiet_ms": quiet_ms, "mutations": 0,
+        "setsize": None, "quiet_ms": whole, "list_quiet_ms": list_quiet_ms, "mutations": 0,
     }  # fmt: skip
+
+
+def test_settled_means_unchanged_by_the_pages_own_record(monkeypatch):
+    """D145, the rule itself, on a stand-in for the page's probe: three equal reads are not
+    enough while the page reports a change to a list in the last half second, whatever the
+    reading interval; they are once it reports none for that long, or none at all since before
+    the action. A change elsewhere on the page, however recent the classification allows, does
+    not count."""
+    monkeypatch.setattr(dropdowns, "_act", lambda *a: True)
+    for list_quiet, quiet, state, word in (
+        ([200, 120, 280, 90, 260, 140], None, "partially_observed", None),  # re-rendered
+        ([10, 260, 499, 499, 499, 499], None, "partially_observed", "list_changed_recently"),
+        ([10, 260, 500], None, "observed_sufficiently", None),  # exactly the half second
+        ([None, None, None], None, "observed_sufficiently", None),  # no change to a list
+        ([600, 850, 1100], 200, "observed_sufficiently", None),  # the page is busy elsewhere
+    ):
+        got = dropdowns._observe(_ProbePage(list_quiet, quiet=quiet), "c", "click_control", 2)
+        assert got["state"] == state, (list_quiet, got)
+        if word:
+            assert got["partial"][-1] == word, got
+
+
+def test_three_equal_reads_are_still_needed(monkeypatch):
+    """The older half of the rule (D106), which the page's record does not replace: with no
+    change to a list recorded at all, a list is settled at its third equal read and not before,
+    and one whose reads differ in turn is never settled."""
+    monkeypatch.setattr(dropdowns, "_act", lambda *a: True)
+    page = _ProbePage([None])
+    assert dropdowns._observe(page, "c", "click_control", 2)["state"] == "observed_sufficiently"
+    assert page.reads == dropdowns.STABLE_SAMPLES == 3
+    in_turn = _ProbePage([None], texts=[["Yes", "No"], ["No", "Yes"]] * 3)
+    got = dropdowns._observe(in_turn, "c", "click_control", 2)
+    assert got["state"] == "partially_observed", got
+    assert got["partial"][-1] == "still_changing_or_loading", got
+    assert in_turn.reads == dropdowns.SETTLE_MS // dropdowns.SAMPLE_MS
+
+
+def test_a_control_that_is_gone_before_the_action_is_refused():
+    """Without the control the probe installs no observer, and whatever an earlier dropdown
+    left recorded would be read as this one's."""
+
+    class Gone:
+        def evaluate(self, script, arg=None):
+            return None
+
+    with pytest.raises(dropdowns.Refused, match="the control disappeared"):
+        dropdowns._observe(Gone(), "c", "click_control", 2)
 
 
 class _Canary(http.server.BaseHTTPRequestHandler):
