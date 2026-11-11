@@ -9,6 +9,35 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## An attempt still waiting to be taken is published again (D146, 2026-11-11; local only)
+
+Nothing here ran against a real page or a real account. Branch `republish-queued` (from D145's
+branch). The rule is tested against the database with a `publish` that only records. The three
+end-to-end rows use a real Celery prefork worker on the run's own Redis, and the receiver's
+ledger is the oracle for everything said to have reached the employer. Every form is a local
+stand-in. Tests in `tests/test_republish_queued.py`. What the rule leaves open, a restored
+database first, is in D146 (`docs/decisions.md`).
+
+| Requirement | Test | Oracle / evidence |
+|---|---|---|
+| An attempt still queued is published again once its message is old, and not before | `test_an_attempt_still_queued_is_published_again_once_its_message_is_old` | its message made to look a minute short of the wait: nothing; 5 s past it: published again, to the same task, the id only; the message's time and count updated; nothing again straight after; the attempt still `pending`, generation 0, never claimed |
+| Only an attempt the claim would still take is published again | `test_only_an_attempt_the_claim_would_still_take_is_published_again` | the same old message with the attempt put in each of the ten other states, then with a cancel requested, then with a disclosure recorded: never published; back as it was queued: published |
+| The attempt's newest message decides | `test_the_attempts_newest_message_decides` | a second message not yet dispatched: nothing (the relay publishes it); dispatched a moment ago: nothing; both old: one publication, recorded on the newer message |
+| A broker that is down ends the pass and leaves the rest for the next | `test_a_broker_that_is_down_leaves_it_for_the_next_pass` | two old attempts and a `publish` that raises with a URL in its text: the longest-waiting one tried and no other, nothing counted, its age unchanged, only the error's type stored; the next pass publishes both |
+| Two passes at once publish it once | `test_two_passes_at_once_publish_it_once` | a second pass run while the first is inside its publish: it skips the message and publishes nothing |
+| A claim does not wait for a pass | `test_a_claim_does_not_wait_for_a_pass_that_is_publishing` | a worker's claim made from inside the pass's own publish returns before the pass ends (it was given 20 s), generation 1 |
+| An attempt put back in the queue can still be revoked | `test_an_attempt_put_back_in_the_queue_can_still_be_revoked` | claimed, its worker gone, put back by a sweep (its application still running): revoking returns `cancelled`, the attempt is cancelled, the application waits for a new approval, a later claim does nothing (before the fix: a 500, nothing revoked, the attempt still pending); receiver ledger: nothing accepted |
+| The wait is the setting | `test_the_wait_is_the_setting` | with the setting at 900 s, a message six minutes old is not published again; one sixteen minutes old is |
+| Extra messages never add a run | `test_extra_messages_never_add_a_run` | a message added every time the attempt is queued, the worker lost each time before entering anything: claimed once when queued and once for each time the sweeper puts it back (three in all), every other delivery refused, then `failed_safe` (claims made directly; no worker runs) |
+| An attempt that entered data is never claimed | `test_an_attempt_that_entered_data_is_never_claimed` | a queued attempt given a disclosure time by hand: the claim returns nothing and changes nothing; without it, the same attempt is claimed |
+| The longest wait first, and no more than the limit | `test_the_oldest_wait_first_and_no_more_than_the_limit` | two old attempts and a limit of one: the older, then the newer, then nothing |
+| The relay's own task does it | `test_the_relay_task_publishes_again_too` | the task run directly with a recording `publish`: 1, then 0, and once the message is old, 1; the task is in the schedule |
+| The wait is five minutes and cannot be set below one | `test_the_wait_is_five_minutes_and_cannot_be_set_below_one` | the setting's default is 300; 60 is accepted and 59 refused when the settings are built |
+| A message the broker lost: the application is submitted once it is published again | `test_an_attempt_whose_message_was_lost_is_sent_once_it_is_published_again` | the broker's lists emptied after the relay; with a worker running the attempt is still `pending`, unclaimed, 3 s later; published again after the wait: `confirmed`, one claim; receiver ledger: accepted 1 |
+| A worker process lost before it claimed: the same | `test_an_attempt_whose_worker_died_before_claiming_it_is_published_again` | a worker told to exit before the claim: the message taken and acknowledged (queue 0, unacknowledged 0), the attempt `pending` with no claim, a sweep recovers nothing, receiver accepted 0; published again and run by another worker: `confirmed`, one claim, accepted 1 |
+| A message that was not lost is still sent once | `test_an_attempt_whose_message_was_not_lost_is_still_sent_once` | published again while the first message still waits: two messages; a worker: `confirmed`, "delivery ignored" in its log, one claim; the receiver, told to accept a repeat, counted 1 |
+| Each part of the rule is needed | 21 changes, each in turn (D146 in `docs/decisions.md`) | each fails a test |
+
 ## A dropdown's list settled by the page's own record of its last change to a list (D145, 2026-11-11; local only)
 
 Nothing here ran against a real page or a real account. Branch `dropdown-settle`. Every form is

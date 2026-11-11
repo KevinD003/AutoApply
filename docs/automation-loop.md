@@ -38,6 +38,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D143 recovery hardening: a run budget, one task time limit and no soft limit, leases that follow progress, verification requests that end with their attempt | merged (#52, 9346c8e, tree as predicted); its PR CI passed all four jobs on fa36039 |
 | D144 attempts on a queue and a worker of their own; the schedule and the periodic tasks on another | merged (#53, 099642c, tree as predicted); its PR CI passed all four jobs on e40ee72, the Compose layout's first run |
 | D145 a dropdown's list settled by the page's own record of its last change to a list | branch `dropdown-settle` (`main` with D144 merged in); reviewed, rebuilt on a narrower record and reviewed again; not merged |
+| D146 an attempt still waiting to be taken is published again | branch `republish-queued` (D145's branch merged in); reviewed; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -236,6 +237,29 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   - the read-only survey keeps its own, weaker test and publishes nothing of the new record
     (rank 18); a section's combobox still reads its list once (rank 17); no adapter version
     changes, and a rehearsal earned under the weaker test still counts (D145).
+- **D146 (branch `republish-queued`, not merged).** Rank 15, an attempt still waiting to be
+  taken is published again:
+  - three ways an attempt stayed "queued" for good: the broker lost its message (`docker
+    compose down`, a crash); a worker process died after receiving the message and before the
+    claim (Celery acknowledges it, and the sweeper recovers only claimed attempts: shown with
+    a real worker); a task that failed before the claim. D144 made the first more likely;
+  - the relay's task now publishes again, every five minutes and without a limit, for an
+    attempt still `pending` (no cancel requested, nothing entered), and the claim itself now
+    refuses an attempt that entered data;
+  - a second message for an attempt whose first was not lost ends at the claim (shown with a
+    real worker and a receiver told to accept a repeat: one acceptance);
+  - an independent review (read-only, on c3f9c00) found no way for a second message to run an
+    attempt twice, and one real hazard: **after a database restore, what the backup shows as
+    queued is published again and run, even if it already ran after the backup**. Recorded,
+    the deployment guide's restore given a step between starting the app and starting the
+    workers, and ranked slice 20 (a restore that holds everything by itself) put next. Its other
+    findings fixed or recorded (D146);
+  - a second review (read-only, on f3cd566) found no code blocker and that the restore step
+    as drafted missed applications shown as running, pointed to the wrong page for Cancel,
+    could be pasted past, and wrongly called a rollback to a version before D146 safe: the
+    step was rewritten. It also found that revoking an attempt the sweeper put back failed
+    (there before D146): fixed, with a test.
+
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
   Pausing there and later queuing one new attempt is a retry after `sending`, which CLAUDE.md
@@ -267,9 +291,10 @@ leases that follow progress, and verification requests that end with their attem
 (rank 11, #53) gives attempts a queue and a worker of their own, so two attempts
 waiting for codes never hold up the sweeper, the outbox relay and the mailbox reader.
 **D145** (rank 14, on its branch) settles a dropdown's list by the page's own record of its
-last change to a list, a defect found on the way. Next, another such: rank 15 (a queued attempt whose
-message was lost is published again), then ranks 12 and 13 (the Workday-style follow-up
-question and repeating records).
+last change to a list, and **D146** (rank 15, on its branch) publishes again an attempt still
+waiting to be taken: two defects found on the way. Its review found that a restored database
+would then run again what it shows as queued, so rank 20 (a restore that holds itself) comes
+next, then ranks 12 and 13 (the Workday-style follow-up question and repeating records).
 
 ## Unvalidated or partly validated changes
 
@@ -336,6 +361,13 @@ question and repeating records).
   (the classification's 150 ms check, rank 19), a change between the location search's last
   read and its click, the observer's cost on a large page, what a real react-select list does
   while it is open, and anything on a real page.
+
+- **D146 (branch `republish-queued`):** the new tests (three with a real worker and broker),
+  the removal runs and the regression set, locally (Tests run below). `scripts/validate.sh
+  all` was not run. Not tested: the Compose stack (none of its files change; no scenario loses
+  a message there), a restore (ranked slice 20), the pass-on's own publish failing (the same rule
+  would publish that attempt again; only the rule is tested), and a broker that hangs instead
+  of refusing.
 
 ## Tests run (this loop)
 
@@ -470,6 +502,13 @@ question and repeating records).
 | D145, the second review's fixes: `pytest tests/test_dropdown_strategies.py tests/test_greenhouse_controls.py` (JUnit), on ae54f21 | exit 0; 116 passed (58 and 58) |
 | D145, the second review's fixes, removal runs on ae54f21 (2 changes) | both fail their test |
 | D145 rework, after the last edit: `ruff format .`, `ruff check .`, `ruff format --check .`; the tests that read the documents (JUnit) | ruff clean (376 files unchanged); exit 0; 178 passed |
+| D146: `pytest tests/test_republish_queued.py` (JUnit), on the tree committed as 41e1d6d | exit 0; 11 passed |
+| D146 removal runs on 41e1d6d (15 changes, each in turn) | all 15 fail a test |
+| D146 after its review: `pytest tests/test_republish_queued.py` (JUnit), on the tree committed as 7424916 | exit 0; 15 passed |
+| D146 after its review: removal runs on f3cd566 (21 changes, each in turn) | all 21 fail a test (a first attempt on the same tree was refused before any test ran: the database server had stopped with a restart of the session's machine; rerun once it was started) |
+| D146: the regression set, the only test run on the machine (64 files, JUnit), on f3cd566 | exit 0; 1590 passed in 63 min |
+| D146 after its second review: `pytest tests/test_republish_queued.py` (JUnit) on cc836b5, then the revoke fix undone and its test run | exit 0; 25 passed (16 and 9); with the revoke fix undone its test fails (a 500) |
+| D146 after the last edit: `ruff format .`, `ruff check .`, `ruff format --check .`; the tests that read the documents and `test_deployment_config.py` (JUnit) | ruff clean (377 files unchanged); exit 0; 195 passed |
 
 ## Failed approaches and rejected designs
 
@@ -520,6 +559,17 @@ question and repeating records).
   is opened and judged without one. Kept at 4; what that leaves is recorded (a rehearsal
   earned under the weaker test still counts).
 
+- **Looking in the broker for an attempt's message before publishing it again** (D146). It
+  would spare the extra message of an attempt only waiting its turn. It is particular to one
+  broker, and a message a worker holds sits in another structure. Not built.
+- **A named volume for the broker** (suggested by D144's review for `docker compose down`). It
+  keeps what waits across `down`; it does nothing for a crash, a lost worker process or a task
+  that fails before the claim. Publishing again covers all of them. Not added.
+- **A growing wait, or a cap, between publications** (D146). Fewer extra messages behind a
+  long wait or a stopped worker; a fixed five minutes is easier to state, and an extra message
+  ends at the claim. Recorded as a limit (about 285 a day per attempt while the worker is
+  stopped). Not built.
+
 ## Blockers (external; each blocks one action, not the local work)
 
 - **Recorded permissions end 2026-11-06:** the Greenhouse pilot (read, open, disclose, submit; 5
@@ -550,12 +600,12 @@ question and repeating records).
 
 ## Exact next action
 
-1. D145 (branch `dropdown-settle`, rank 14, `main` with D144 merged in): its pull request.
-   Then rank 15 (a queued attempt whose message was lost is published again), which D144 makes
-   more pressing: built on branch `republish-queued` and reviewed, its records to be written.
-   Both are small defects found on the way, so before ranks 12 and 13 (the Workday-style
-   follow-up question and repeating records). Rank 16 (a stop request honoured before the next
-   step) and ranks 17 to 19 (the dropdown rule's neighbours) after those.
+1. D146 (branch `republish-queued`, rank 15): its pull request once D145's is merged, then
+   rank 20 (a restored database comes up held), built on branch `restore-hold` from it, so
+   that `main` carries the restore step of the deployment guide only briefly. Then ranks 12
+   and 13 (the Workday-style follow-up question and repeating records), rank 16 (a stop
+   request honoured before the next step) and ranks 17 to 19 (the dropdown rule's
+   neighbours).
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it
