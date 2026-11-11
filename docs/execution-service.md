@@ -104,8 +104,8 @@ policy already covered by the netns tests.
 | environment | `RUNNER_TOKEN`, proxy address, limits | `EGRESS_CONTROL_TOKEN`, proxy port, socket path, TTL |
 
 `BROWSER_RUNNER_TOKEN`, `EGRESS_CONTROL_TOKEN` and `AUDIT_REF_KEY` (the audit reference key,
-given to the backend and worker only) are required: Compose refuses to start without them
-(`${VAR:?}`). The runner's environment contains its own token, which is used only
+given to the backend, the worker and the scheduler only) are required: Compose refuses to start
+without them (`${VAR:?}`). The runner's environment contains its own token, which is used only
 to authenticate the worker. Chromium processes are started with a minimal environment.
 
 ## Running it
@@ -132,9 +132,9 @@ What the script does:
 
 The test override adds the receiver and a canary on an internal `fixtures` network, with no
 published ports. The host reaches the receiver's admin API only through `docker compose exec`.
-It also runs the API and the worker with `NOEFFORTS_ENV=test` (fixture origins are honoured in
-no other environment, D86), pins `fixtures` to `10.231.47.0/24`, and names that subnet as the
-test network on the API and worker (`NOEFFORTS_FIXTURE_NETWORKS`) and on the egress proxy
+It also runs the API, the worker and the scheduler with `NOEFFORTS_ENV=test` (fixture origins
+are honoured in no other environment, D86), pins `fixtures` to `10.231.47.0/24`, and names that
+subnet as the test network on all three (`NOEFFORTS_FIXTURE_NETWORKS`) and on the egress proxy
 (`EGRESS_FIXTURE_NETWORKS`): `receiver` is accepted only while every address it resolves to,
 and the address each connection reaches, is in that subnet.
 

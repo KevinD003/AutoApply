@@ -70,7 +70,7 @@ docker compose exec -T postgres createdb -U postgres noefforts
 docker compose exec -T postgres pg_restore -U postgres -d noefforts --no-owner <"$bk/db.dump"
 docker compose run --rm --no-deps -T backend \
   sh -c 'find /data/storage -mindepth 1 -delete && tar xzf - -C /data/storage' <"$bk/storage.tgz"
-docker compose up -d
+docker compose up -d --remove-orphans
 wait_http http://127.0.0.1:8000/api/health 60
 expect_contains "session after restore" "$email" -b /tmp/smoke-cookies \
   http://127.0.0.1:8000/api/auth/me
