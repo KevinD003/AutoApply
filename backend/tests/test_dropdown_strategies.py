@@ -10,14 +10,16 @@ import time
 
 import pytest
 
+from app.core.config import get_settings
 from app.modules.execution import runner
 from app.modules.execution.adapters import dropdowns
 from app.modules.execution.adapters import greenhouse_dom as gd_adapter
+from app.modules.execution.browser import browser_session
 from app.modules.preparation import gh_readonly as ro
 from app.modules.preparation import greenhouse_dom as dom
 from tests.conftest import CANARY_PORT
-from tests.execution_harness import Receiver, attempt, queue, synthetic_candidate
-from tests.test_greenhouse_dom import v2_application, v2_job
+from tests.execution_harness import BASE, Receiver, attempt, queue, synthetic_candidate
+from tests.test_greenhouse_dom import BOARD, JOB, v2_application, v2_job
 
 
 @pytest.fixture(scope="module")
@@ -198,6 +200,43 @@ def test_a_list_that_starts_changing_after_the_check_stops_the_attempt_before_se
     assert "did not keep their values" in attempt(aid).outcome_detail
     led = receiver.ledger()
     assert led["accepted"] == 0 and led["disclosures"] != []
+
+
+def test_the_pages_record_tells_a_change_to_a_list_from_a_change_elsewhere(receiver):
+    """D145, the observer itself, in a real browser on the stand-in page with one list open:
+    what it takes for a change to a list (and so holds a list back from counting as settled),
+    and what it does not."""
+    receiver.config(mode="gh2_dd", dd="click_popup")
+    cid = "question_8101"
+    with browser_session(BASE, 8000, isolation=get_settings().browser_isolation,
+                         allow_private_destination=True) as (page, _log):  # fmt: skip
+        page.goto(f"{BASE}/gh2/{BOARD}/jobs/{JOB}")
+        page.locator(f'[id="{cid}"]').click()
+        assert page.evaluate(ro._PROBE_JS, cid)["texts"], "the list did not open"
+
+        def touched(js: str) -> bool:
+            assert page.evaluate(ro._PRE_JS, cid) is not None  # a fresh record
+            page.evaluate(js)
+            return page.evaluate(ro._PROBE_JS, cid)["list_quiet_ms"] is not None
+
+        note = "document.getElementById('fx-note')"
+        option, listbox = "document.querySelector('[role=option]')", "[role=listbox]"
+        # Elsewhere on the page: an element arrives, its text changes, an attribute of it.
+        assert not touched("const n = document.createElement('p'); n.id = 'fx-note';"
+                           " n.textContent = 'a'; document.body.append(n)")  # fmt: skip
+        assert not touched(f"{note}.textContent = 'b'")
+        assert not touched(f"{note}.setAttribute('data-x', '1')")
+        # A list: text inside an option, an attribute of one, a child of the list, an attribute
+        # of an element holding it, an element holding an option arriving, the list going.
+        assert touched(f"{option}.firstChild.data += '!'")
+        assert touched(f"{option}.setAttribute('data-x', '1')")
+        assert touched(f"document.querySelector('{listbox}').append(document.createElement('li'))")
+        assert touched("document.body.toggleAttribute('data-x')")
+        holder = "const u = document.createElement('div'); u.innerHTML = '<i role=option>x</i>';"
+        assert touched(holder + " document.body.append(u)")
+        assert touched(f"document.querySelector('{listbox}').remove()")
+        # More changes at once than are looked at one by one: taken for the list's.
+        assert touched(f"for (let i = 0; i < 250; i++) {note}.setAttribute('data-n', String(i))")
 
 
 class _ProbePage:
