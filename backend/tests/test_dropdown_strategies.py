@@ -179,11 +179,27 @@ def test_a_list_that_has_settled_is_accepted_when_read_slowly(api, receiver, mon
 def test_a_page_that_keeps_changing_elsewhere_does_not_hold_up_a_settled_list(
     api, receiver, tick_ms
 ):
-    """D145: only changes to a list count. Something else on the page changes every 300 ms (or
-    600 ms, where a rule on the whole document would let the check pass now and then, and a
-    choice fail after data was entered): each dropdown's list is still read as settled, at the
-    check and at the choice, and the application is submitted with the approved options."""
+    """D145: only changes to a list count. Something else on the page changes every 300 ms, or
+    every 600 ms: each dropdown's list is still read as settled, at the check and at the
+    choice, and the application is submitted with the approved options. (On the whole
+    document's record the 300 ms page would never settle. The 600 ms one would, in a stand-in's
+    longer window: the next test gives it a real page's.)"""
     app_id, aid, result = run(api, receiver, dd="click_popup", dd_tick_ms=tick_ms)
+    assert result == "confirmed", attempt(aid).outcome_detail
+    _approved_options_sent(api, receiver, app_id)
+
+
+def test_a_page_busy_elsewhere_passes_every_check_in_a_real_pages_window(
+    api, receiver, monkeypatch
+):
+    """D145 was first built on the whole document's record. With something else changing every
+    600 ms, an opening then settled only if its moment was right: 64% of them within the 1.5
+    seconds a real page gets (the review's arithmetic), so a check could pass and the choice
+    fail after data had been entered. A stand-in's own window (5 seconds) hides that, so this
+    one is given a real page's: the three checks and the three choices all pass, and the
+    application is submitted with the approved options."""
+    monkeypatch.setattr(dropdowns, "LATE_MS", dropdowns.SETTLE_MS)
+    app_id, aid, result = run(api, receiver, dd="click_popup", dd_tick_ms=600)
     assert result == "confirmed", attempt(aid).outcome_detail
     _approved_options_sent(api, receiver, app_id)
 
