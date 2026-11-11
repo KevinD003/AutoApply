@@ -167,6 +167,10 @@ def test_capture_reads_only_the_application_form():
     fields = workday.extract_schema(html).fields
     assert {f.key for f in fields} == {"q.shift", "q.d"}
     assert all(f.condition is None for f in fields)
+    # A visible control of the same name outside the form never unmarks a hidden one inside it.
+    html = FORM.format(follow=f"<div hidden>{DETAIL}</div>") + '<input name="q.d" type="text">'
+    fields = {f.key: f for f in workday.extract_schema(html).fields}
+    assert fields["q.d"].condition.model_dump() == UNKNOWN
 
 
 def test_a_wizard_page_hidden_at_load_marks_none_of_its_questions(api, receiver):
