@@ -34,6 +34,16 @@ you or an approved profile fact and entered only if the page shows it
 page but the first, FA1) says nothing about its questions. The markup is read as the generic
 extractor parses it, never run.
 
+D149: the stand-in's Work Experience section (FIXTURE ASSUMPTION FA7 in
+fixtures/ats_receiver/workday_like.py) is read as an employment section, D120's rows filled from
+your approved work history: `SectionSpec(kind="employment")` with its page and whether the page
+requires an entry, and its entries' controls are not questions of their own. Only that exact
+structure is read (`_work_section`): one section with an id and one "Add" button, entries built
+from a template outside the form whose controls are exactly the ones NoEfforts fills (title,
+company, current, from, to) and two it leaves empty (location, description, never required), and
+no value in any entry at load. Anything else about work history is one required checkpoint
+(`WORK_KEY`): apply on the employer's site, never a guess and never left out silently.
+
 A parsed resume that fills fields after an upload is caught at execution by the readback of
 every field NoEfforts leaves unanswered (`hosted_form.HostedFormAdapter`)."""
 
@@ -49,8 +59,10 @@ from app.modules.preparation.forms import (
     FieldType,
     FormField,
     FormSchema,
+    SectionSpec,
     WizardSpec,
     _application_form,
+    _Node,
     _TreeBuilder,
     extract_form_schema,
 )
@@ -59,12 +71,13 @@ _FIXTURE = re.compile(r"^/workday/(?P<tenant>[a-z0-9-]{1,64})/(?P<req>R-[0-9]{4,
 _REAL_HOST = re.compile(r"^[a-z0-9-]+\.(?:wd\d+\.myworkdayjobs\.com|myworkdaysite\.com)$")
 _REAL_REQ = re.compile(r"_(?P<req>[A-Z]*-?\d[\w-]*)/?$", re.IGNORECASE)
 MULTI_STEP_KEY, PREFILLED_KEY = "multi_step", "prefilled_values"
+WORK_KEY = "work_experience"  # D149: work history NoEfforts cannot fill exactly as it is
 STEP_SELECTOR = "[data-workday-progress], [data-automation-id=pageFooterNextButton]"
 # D142: the stand-in wizard's markers (any one of them makes the page a wizard to check).
 WIZARD_MARKERS = ("data-wizard-pages", "data-wizard-page", "data-wizard-next",
                   "data-wizard-progress")  # fmt: skip
 WIZARD_SELECTOR = ", ".join(f"[{m}]" for m in WIZARD_MARKERS)
-_NO_STEP = {"bot_check", MULTI_STEP_KEY, PREFILLED_KEY}  # checkpoints added here, not questions
+_NO_STEP = {"bot_check", MULTI_STEP_KEY, PREFILLED_KEY, WORK_KEY}  # checkpoints added here
 _STEP_OF = re.compile(r"\bof\s+(\d+)\b", re.IGNORECASE)
 _TEXT_TYPES = {"text", "email", "tel", "url", "number", "date", ""}
 # D148: what hides an element in raw HTML (no script or stylesheet is run or read).
@@ -110,6 +123,101 @@ def _hidden_in_page(html: str) -> set[str]:
             chain = chain[: chain.index(form)]
         seen.setdefault(name, []).append(any(_hides(a.attrs) for a in chain))
     return {name for name, hidden in seen.items() if all(hidden)}
+
+
+# D149: the Work Experience section (FA7). An entry's controls, by the last part of their name
+# (work[i].<part>): (tag, input type, filled by NoEfforts). One not filled is never required.
+_WORK_NAME = re.compile(r"^work\[(\d+|__i__)\]\.([a-z_]+)$")
+_WORK_CONTROLS = {
+    "title": ("input", "text", True),
+    "company": ("input", "text", True),
+    "location": ("input", "text", False),
+    "current": ("input", "checkbox", True),
+    "from": ("input", "text", True),
+    "to": ("input", "text", True),
+    "description": ("textarea", None, False),
+}
+_ADD = re.compile(r"^add(?: another)?$", re.IGNORECASE)
+_ROOT_ID = re.compile(r"^[A-Za-z][\w-]*$")
+WORK_REASON = (
+    "a work history section NoEfforts cannot fill exactly as it is (an entry asks something "
+    "NoEfforts does not fill, already holds a value, or cannot be added): apply on the "
+    "employer's site"
+)
+
+
+def _work_control_ok(n: _Node, index: str) -> bool:
+    """One control of an entry (the template's index `__i__`, or an entry's own): a part NoEfforts
+    knows, of its kind, holding nothing, and never required when NoEfforts leaves it empty."""
+    m = _WORK_NAME.match(n.attrs.get("name", ""))
+    if not m or m[1] != index or m[2] not in _WORK_CONTROLS:
+        return False
+    tag, kind, filled = _WORK_CONTROLS[m[2]]
+    if n.tag != tag or (kind and n.attrs.get("type", "text").lower() != kind):
+        return False
+    if (n.attrs.get("value") and kind != "checkbox") or "checked" in n.attrs or n.all_text():
+        return False  # a value at load is never trusted (as PREFILLED_KEY)
+    required = "required" in n.attrs or n.attrs.get("aria-required", "").lower() == "true"
+    return filled or not required
+
+
+def _entry_ok(controls: list[_Node], index: str) -> bool:
+    """An entry's controls: each one known (`_work_control_ok`), each part once, and every part
+    NoEfforts fills present."""
+    parts = [_WORK_NAME.match(n.attrs.get("name", ""))[2] for n in controls
+             if _WORK_NAME.match(n.attrs.get("name", ""))]  # fmt: skip
+    return (
+        all(_work_control_ok(n, index) for n in controls)
+        and len(parts) == len(set(parts)) == len(controls)
+        and {p for p, (_, _, filled) in _WORK_CONTROLS.items() if filled} <= set(parts)
+    )
+
+
+def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
+    """D149: the Work Experience section (FA7) as an employment section, or whether the page
+    has work history NoEfforts cannot fill exactly (True: `WORK_KEY`'s checkpoint). (None,
+    False): no work history at all. Read on the generic extractor's own tree and form."""
+    b = _TreeBuilder()
+    b.feed(html)
+    nodes = list(b.root.walk())
+    form = _application_form(nodes)
+    inside = [n for n in nodes if form is None or n is form or form in n.ancestors()]
+    controls = [n for n in inside if n.tag in ("input", "select", "textarea")
+                and _WORK_NAME.match(n.attrs.get("name", ""))]  # fmt: skip
+    sections = [n for n in inside if n.attrs.get("data-wd-section") == "work"]
+    if not sections:
+        return None, bool(controls)  # entries outside any section: never guessed
+    root = sections[0]
+    adds = [n for n in root.walk() if n.tag == "button" and _ADD.match(n.all_text())]
+    tid = root.attrs.get("data-wd-entry-template", "")
+    templates = [n for n in nodes if n.tag == "template" and tid and n.attrs.get("id") == tid]
+    if (
+        len(sections) != 1
+        or not _ROOT_ID.match(root.attrs.get("id", ""))
+        or len(adds) != 1
+        or adds[0].attrs.get("type", "submit").lower() != "button"
+        or len(templates) != 1
+        or (form is not None and form in templates[0].ancestors())
+        or any(root not in n.ancestors() for n in controls)
+    ):
+        return None, True
+    entry = [n for n in templates[0].walk() if n.tag in ("input", "select", "textarea")]
+    if not _entry_ok(entry, "__i__"):
+        return None, True
+    by_index: dict[str, list[_Node]] = {}
+    for n in controls:  # entries already on the page: empty ones only, numbered 0, 1, ...
+        by_index.setdefault(_WORK_NAME.match(n.attrs["name"])[1], []).append(n)
+    if sorted(by_index, key=int) != [str(i) for i in range(len(by_index))] or not all(
+        _entry_ok(c, i) for i, c in by_index.items()
+    ):
+        return None, True
+    page = next((a for a in root.ancestors() if "data-wizard-page" in a.attrs), None)
+    return SectionSpec(
+        kind="employment",
+        root=f"#{root.attrs['id']}",
+        step=(page.attrs.get("data-step") or None) if page is not None else None,
+        required=root.attrs.get("aria-required", "").lower() == "true",
+    ), False
 
 
 MULTI_STEP_REASON = (
@@ -304,6 +412,9 @@ def extract_schema(html: str) -> FormSchema:
     scan = _Scan()
     scan.feed(html)
     schema = extract_form_schema(_CASCADE.sub(_as_picker, html), challenges=True)
+    # D149: an entry's controls are the section's, never questions of their own.
+    work, work_problem = _work_section(html)
+    schema.fields = [f for f in schema.fields if not _WORK_NAME.match(f.key)]
     keys = {f.key for f in schema.fields}
     hidden = _hidden_in_page(html)
     for f in schema.fields:
@@ -318,6 +429,14 @@ def extract_schema(html: str) -> FormSchema:
             schema.wizard = WizardSpec(pages=[step for _, step in scan.wizard_sections])
         else:
             wizard_refused = True
+    if work is not None:  # D149: on a wizard's page before its review page, or on a single page
+        pages = schema.wizard.pages[:-1] if schema.wizard else []
+        if (work.step in pages) if schema.wizard else work.step is None:
+            schema.sections = [*schema.sections, work]
+        else:
+            work_problem = True
+    if work_problem and WORK_KEY not in keys:
+        schema.fields.append(_checkpoint(WORK_KEY, "Work Experience", WORK_REASON))
     if (scan.steps > 1 or scan.next_button or wizard_refused) and MULTI_STEP_KEY not in keys:
         schema.fields.append(
             _checkpoint(MULTI_STEP_KEY, "An application on several pages", MULTI_STEP_REASON)
