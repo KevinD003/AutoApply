@@ -213,7 +213,9 @@ def test_the_standing_rule_does_nothing_while_held(api, receiver, monkeypatch):
     receiver.config(mode="normal")
     job, app_id = ready(api)
     restored()
+    before = events(job)
     assert auto.tick() == 0
+    assert events(job) == before  # it did nothing at all, not even a refused approval noted
     assert live_approvals(app_id) == [] and not attempts_of(app_id)
     assert restore.resolve() is not None
     assert auto.tick() == 0  # the restore paused it
