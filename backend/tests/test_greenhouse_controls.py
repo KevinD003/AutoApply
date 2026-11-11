@@ -422,6 +422,24 @@ def test_a_location_that_is_not_exactly_one_suggestion_set_by_the_page_stops_the
     assert receiver.ledger()["disclosures"] == led["disclosures"]
 
 
+@pytest.mark.parametrize("sample_ms", [250, 600])
+@MAKE
+def test_suggestions_that_keep_changing_never_count_as_exactly_one(
+    api, receiver, make, monkeypatch, sample_ms
+):
+    """D145: the suggestions keep being re-rendered, in turn one "Springfield" and the two of
+    that name. Read every 600 ms the reads fall in step, and each shows the same list; the
+    page's own record of changes to a list says it has not settled. No place is chosen: which
+    of two places of one name was meant is never decided by the moment of a read."""
+    monkeypatch.setattr(dropdowns, "SAMPLE_MS", sample_ms)
+    receiver.config(mode="gh2_loc_search", loc="two_in_turn")
+    aid = queue(api, make(api, job=LOC_JOB))
+    assert runner.run_attempt(aid, "w1") == "abandoned", attempt(aid).outcome_detail
+    assert adapter.LOCATION_NO_LIST in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and kinds(led) == {"upload": 1, "location_search": 1}
+
+
 @pytest.mark.parametrize(
     "loc,expected,disclosed",
     [
