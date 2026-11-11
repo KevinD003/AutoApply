@@ -6041,3 +6041,190 @@ audit-inventory and export-completeness guards are updated and pass.
   Runs are listed in `docs/automation-loop.md`.
 - **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
   one.
+
+## D146 — An attempt still waiting to be taken is published again (2026-11-11)
+
+- **Context:** rank 15 of the automation loop (`docs/automation-loop.md`). Local stand-ins
+  only; nothing real was run. No new state, transition or permission; the claim's
+  compare-and-swap gains one condition, and revoking an attempt the sweeper put back in the
+  queue no longer fails (below). Not a retry: only an attempt no worker holds, which has
+  entered nothing, is published again, and nothing is added after `disclosure_started_at` or
+  `sending`.
+- **Problem:** the relay published an attempt's message once and marked it dispatched; nothing
+  published it a second time. If that message never led to a claim, the attempt stayed
+  `pending` (the Tracker: "queued") until the owner cancelled it, and the application could
+  not be queued again meanwhile. Three ways there:
+  - the broker lost the message: `docker compose down` (the broker keeps nothing in a named
+    volume), or a broker killed, or a power loss, since its last snapshot;
+  - the worker's process was lost after it received the message and before it claimed the
+    attempt. Celery acknowledges the message of a lost process (by this project's setting: the
+    sweeper, not a redelivery, decides what becomes of an attempt), and the sweeper recovers
+    only attempts that were claimed;
+  - the task failed before the claim (the pass-on's own publish, D144).
+
+  D144 made the first more likely: the scheduler goes on handing queued applications to the
+  broker while the worker is busy or stopped, where before they waited in the database.
+- **Measured (2026-11-11; a real Celery worker on the run's own Redis; the first halves of the
+  new end-to-end tests):**
+  - the message removed from the broker before any worker took it: with a worker running, the
+    attempt stayed `pending`, unclaimed, for the three seconds it was watched; nothing would
+    ever have taken it. This holds without the change;
+  - a worker process told to exit after receiving the message and before the claim (through a
+    fault point added before the claim for this, honoured in tests only): the message was
+    taken and acknowledged (nothing left in the queue, nothing unacknowledged), the attempt
+    was still `pending` with no claim, and a sweep recovered nothing.
+- **Decided:**
+  - **The relay's task publishes a waiting attempt again.** After the new messages, it takes
+    every attempt that is still `pending`, with no cancel requested and nothing entered, whose
+    newest message went out more than `outbox_republish_seconds` ago (300 by default; a value
+    under 60 is refused at start), and publishes it again. The publication is recorded on
+    that message (its time, its count), so the next one is as long a wait again. It repeats,
+    without a limit, for as long as the attempt waits.
+  - **Only what the claim would still take.** An attempt a worker holds, and one that ended
+    in any way, is never published here. One that a worker claimed and lost before anything
+    was entered, and that the sweeper put back in the queue, is published like any other: no
+    worker holds it.
+  - **The claim itself refuses an attempt that entered data.** Its compare-and-swap now also
+    requires that nothing was disclosed. Nothing puts such an attempt back in the queue today
+    (the sweeper checks before it does); the condition is in the claim so that no message,
+    however it came to exist, can start an attempt after data was entered.
+  - **A second message is harmless.** If the first was not lost there are now two. The claim
+    takes an attempt once (it changes `pending` to `claimed` only if it still is `pending`),
+    and the other delivery is ignored. The outbox always relied on that: a crash between
+    publishing and marking dispatched already caused a second delivery. However many messages
+    exist, an attempt is claimed once for each time it is in the queue: once, and once more
+    for each time the sweeper returns it there, which is bounded.
+  - **Only the messages are locked, never the attempt.** A claim, a cancel or a revocation
+    does not wait for a pass, even while the pass is publishing. A second pass skips the
+    messages the first holds.
+  - **A broker that is down** ends the pass at its first failed publish. That message's age
+    stays as it was, so the next pass tries again. Only the error's type is kept (its text can
+    quote the broker's URL).
+- **What this changes for an application:** one that would have stayed "queued" for good is
+  taken up within about five minutes, once the scheduler and the worker run, the worker is
+  free and the approval still stands. One that waits its turn behind another for more than
+  five minutes gets a second message (after 23 minutes, a fifth); each extra one is ignored
+  when it is taken.
+- **What the owner must know (changed by this, not fixed by it):**
+  - **A restored database runs what it shows as queued.** After a restore, an attempt the
+    backup shows as queued is published again and, if its approval still stands, run. If it
+    had already run after the backup was taken, the application is submitted a second time:
+    the restored database cannot know. Before, such an attempt stayed "queued" until it was
+    cancelled, because its message had been used up. Two narrower ways to the same existed
+    already (a message not yet dispatched when the backup was taken; an attempt claimed and
+    not yet disclosing, which the sweeper puts back in the queue), and an attempt the sweeper
+    had put back before the backup shows as running while it waits. This change widens them
+    from seconds to the whole wait in the queue, and its extra messages can still wait in the
+    broker, which a restore does not empty and an older worker reads as well: so it holds
+    for every rollback, whatever version it goes back to. The deployment guide's §7 now
+    says so and adds a step before the workers start: pause automatic applying, open every
+    application shown as Queued or Running and press Cancel on it, compare with the
+    confirmation emails received after the backup, then start `worker` and `scheduler`, and
+    resume automatic applying only after that comparison. A restore that holds everything
+    by itself is the next slice (ranked slice 20). Exposure today: stand-ins only; every real
+    destination is refused, and the pilot's permission ended on 2026-11-06.
+  - **The upgrade itself.** An application stuck as queued since an earlier lost message, or
+    shown as running after its worker stopped before entering anything, is published within
+    five minutes of the new scheduler starting. If its approval still stands it runs;
+    otherwise it ends `failed_safe` and waits for you. The guide used to say such an
+    application "is not run"; its §6 now carries the note.
+  - **After "stop everything now"** (`docker compose kill worker scheduler`), what is queued
+    runs when the worker is started again, as before; that now includes an application whose
+    message was lost. Cancel or revoke first what must not run (`docs/activation-status.md`
+    §8).
+- **Revoking an attempt the sweeper put back** (found by the second review, there before
+  D146). Its application still shows running, and revoking moved it to awaiting approval,
+  which the state machine does not allow from running: the request failed and nothing was
+  revoked, so the attempt would run later (reproduced before the fix: a 500, the attempt
+  still pending). Revoking now moves the application as a refused claim does; with its
+  answers complete it then waits for a new approval, as after any revoke.
+- **Not changed, not fixed:**
+  - Nothing that was started is touched: an attempt a worker claimed is the sweeper's, as
+    before.
+  - **No bound on publications.** The wait is fixed, with no back-off and no cap. While the
+    worker is stopped, every waiting attempt gets a message each five minutes: 12 an hour,
+    about 285 a day, all waiting in the broker. An attempt whose delivery always dies before
+    the claim is published every five minutes for good. Each extra message costs, when it is
+    taken, the check for stale browser directories and a claim that changes nothing.
+  - **Locks.** Up to 50 message rows stay locked from the select to the commit after the last
+    publish: milliseconds with a healthy broker; with the broker gone, as long as one failed
+    publish takes (the library tries the connection three times). A broker that accepts the
+    connection and never answers (a paused container) holds a publish until the task's soft
+    limit, 240 seconds, since the transport sets no timeout of its own: the rows stay locked
+    that long (read, not measured). Only an account deletion waits for those rows.
+  - **Two passes at once** rest on the database's default isolation (read committed), which
+    the session does not set itself: a message the first pass has just published is not
+    returned to the second. The attempt's state and "no newer message" are as the select saw
+    them; the claim decides.
+  - **The query's cost** grows with the outbox table, which is never purged. Negligible for
+    one owner; no plan was inspected.
+  - The Tracker still says only "queued": not why, nor that the attempt was published again.
+  - `docker compose down` still discards what the broker holds. What changes is that an
+    application queued and not started is published again afterwards (the deployment guide's
+    §8 now says so, instead of "cancel it and approve it again").
+  - A version rolled back to before this one publishes nothing again.
+  - Not exercised in the Compose stack: none of its files change, and the relay's task is the
+    one it always ran. The tests use real workers and a real broker, outside Docker.
+  - `SCHEMA_VERSION`, every adapter version: unchanged. No migration (the message's columns
+    were all there).
+- **Tests:** `tests/test_republish_queued.py`, 16 cases.
+  - Twelve hold the rule to the database with a `publish` that only records: published again
+    after the wait and not before, then waited for again; never for an attempt in any other
+    state, with a cancel requested, or with anything entered; the newest message decides; a
+    broker that is down ends the pass at the first failure and leaves the rest for the next;
+    two passes at once; a claim made while a pass is publishing does not wait for it; the wait
+    is the setting, not a figure in the code; however many messages there are, an attempt is
+    claimed once each time it is in the queue (three times in all, then `failed_safe`); the
+    claim refuses a queued attempt with a disclosure recorded; the longest wait first and no
+    more than the limit; the relay's own task; the setting's default and floor.
+  - Three run a real Celery worker on the run's own Redis, with the receiver's ledger as the
+    oracle: the message removed from the broker; a worker process lost between receiving the
+    message and the claim (through the fault point before the claim); and a message that was
+    not lost, where two messages end in one claim and one acceptance although the receiver was
+    told to accept a repeat.
+  - One holds the revoke: an attempt the sweeper put back is cancelled by revoking its
+    approval, its application waits for a new approval, a later claim does nothing, and
+    nothing reached the receiver.
+- **Removal checks:** 21 changes, each in turn on a committed tree (f3cd566), the
+  file's tests run, the file restored; all 21 fail a test (a first attempt on the same tree was refused before any test ran: the database server had stopped with a restart of the session's machine; rerun once it was started). Then the revoke fix undone:
+  its test fails (revoking returns a 500 again).
+  - The rule: the task no longer publishing again; any state published; one with a cancel
+    requested; one that had entered data; every old message instead of the newest; no wait;
+    the publication not recorded; a broker failure counted as published; the pass going on
+    after a failure; the error's text kept; no lock at all; a second pass waiting instead of
+    skipping; the attempt locked too; the newest first; no limit; no floor on the setting;
+    another default; publications not counted; a figure in place of the setting.
+  - Elsewhere: the claim taking an attempt that entered data; no fault point before the claim.
+- **Review (independent, read-only, on c3f9c00; no test run by the reviewer):** no way found
+  for a second message to run an attempt twice: every delivery ends at the claim, the claim
+  takes only `pending`, and nothing returns an attempt to `pending` after `disclosure_started_at`
+  or `sending`. Nine findings.
+  - **The restore** (above): recorded, the deployment guide's §7 given its step, and a restore
+    that holds everything by itself is the next slice (ranked slice 20).
+  - Acted on in the code: the claim refuses an attempt that entered data (the docstring had
+    credited the select with that); a pass ends at its first failed publish; tests for the
+    lock taken on the messages only, for the setting off its default, and for extra messages
+    never adding a run; the removal check that had been described as "a second pass waits"
+    but removed the lock altogether is now three checks (no lock, a waiting lock, the attempt
+    locked too); the margin of five seconds in one test is now sixty.
+  - Corrected in the records: "only an attempt no worker has claimed" (one the sweeper put
+    back after a claim is published too); "publishes once more" (it repeats, without a
+    limit); "the measurements hold without the change" (the second needs the fault point);
+    "within about five minutes of the scheduler running" (and the worker, free, with the
+    approval standing); the cost of an extra message; and stale sentences in the worker's
+    docstring, the message's docstring, the command-line `relay` and the setting's comment.
+  - Recorded as limits: no bound on publications; locks held across a failing publish; the
+    default isolation two passes rely on; the query's cost on an outbox that is never purged.
+  - **The second review** (independent, read-only, on f3cd566; no test run): no code blocker;
+    no path found by which an attempt runs twice, runs after data was entered or sent, or
+    runs after it was cancelled, revoked, paused or superseded, and the pass cannot take part
+    in a deadlock. The restore step of §7 was not sufficient as drafted: it named only queued
+    applications (running ones are put back in the queue too), sent the owner to the Tracker
+    for a Cancel that is on the application's page, sat inside a command block that would be
+    pasted past it, did not say when to resume automatic applying, and told the owner a
+    rollback to a version before D146 was safe (an older worker reads the broker's extra
+    messages). All corrected above. Also: the revoke fix and its test, the hanging broker,
+    and wording in the records, the worker's docstring and the tests' docstrings.
+  Runs are listed in `docs/automation-loop.md`.
+- **Owner decisions unchanged (not built):** as D142 lists them. Nothing here asks for a new
+  one.

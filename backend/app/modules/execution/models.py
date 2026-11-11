@@ -124,7 +124,9 @@ class AttemptEvent(Base):
 class OutboxMessage(Base):
     """Transactional outbox: written in the same transaction as the attempt, published later.
     A crash between publish and marking dispatched causes a duplicate delivery, which the
-    claim compare-and-swap ignores."""
+    claim compare-and-swap ignores. D146: `dispatched_at` is the time of the last publication
+    and `publish_attempts` counts them all: an attempt still waiting to be taken is published
+    again from its newest message (`service.republish_waiting`)."""
 
     __tablename__ = "outbox_messages"
 

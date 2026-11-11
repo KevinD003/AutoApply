@@ -18,7 +18,8 @@ def main(argv: list[str]) -> int:
     elif cmd == "relay":
         from app.worker import publish
 
-        print(service.relay_outbox(publish))
+        # What the periodic task does: new messages, then those waiting too long (D146).
+        print(service.relay_outbox(publish) + service.republish_waiting(publish))
     return 0
 
 

@@ -305,8 +305,9 @@ def test_an_attempts_worker_removes_its_own_hosts_stale_browser_directories(tmp_
 
 def test_a_cleanup_that_fails_does_not_stop_the_attempt(monkeypatch, caplog):
     """Housekeeping never decides whether an application runs. Were the task to fail before
-    the claim, its message would be acknowledged with the attempt never claimed, and nothing
-    would take it up again. The failure is logged by its type only (its text names a path)."""
+    the claim, its message would be acknowledged with the attempt never claimed, and the
+    application would wait five minutes to be published again (D146). The failure is logged by
+    its type only (its text names a path)."""
     from app import worker
     from app.modules.execution import browser, runner
 

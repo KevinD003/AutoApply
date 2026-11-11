@@ -1,12 +1,17 @@
 """Celery worker. Durable state lives in PostgreSQL; Redis only carries attempt ids.
 
 Delivery settings (Celery 5.6.3, kombu 5.6.2, Redis transport, prefork pool):
-  task_acks_late=True              ack after the task returns, so a crash mid-task does not
-                                   silently drop a delivery that never started work;
+  task_acks_late=True              ack after the task returns; a task that raises is
+                                   acknowledged too, and so is the message of a lost process
+                                   (below): what never reached a claim is published again by
+                                   the relay (D146, service.republish_waiting);
   task_reject_on_worker_lost=False if the worker *process* dies, the message is acknowledged,
                                    not redelivered. Recovery is the sweeper's job, driven by
                                    database leases, so a killed worker never causes Celery to
-                                   re-run a task that may have reached the submit click;
+                                   re-run a task that may have reached the submit click. An
+                                   attempt whose process died before it claimed anything has
+                                   no lease: it is still queued, and the relay publishes it
+                                   again (D146, service.republish_waiting);
   worker_prefetch_multiplier=1     one reserved task per process;
   visibility_timeout=3600          Redis redelivers unacknowledged messages after an hour
                                    (NOEFFORTS_BROKER_VISIBILITY_TIMEOUT_SECONDS; tests only
@@ -161,7 +166,7 @@ def execute_attempt(self, attempt_id: str, forwarded: bool = False) -> str:
     # only where the browser runs inside the worker, `browser_isolation=netns`). The sweeper
     # removes them too, but it may now run on another host, where it cannot see them. It never
     # decides whether the attempt runs: a task that failed here would be acknowledged with the
-    # attempt never claimed, and nothing would take it up again.
+    # attempt never claimed, which would then wait to be published again (D146: five minutes).
     try:
         cleanup_stale_workdirs()
     except Exception as e:  # noqa: BLE001
@@ -172,8 +177,10 @@ def execute_attempt(self, attempt_id: str, forwarded: bool = False) -> str:
 @celery_app.task(name="noefforts.relay_outbox", soft_time_limit=SOFT_LIMIT)
 def relay_outbox() -> int:
     from app.modules.execution.service import relay_outbox as relay
+    from app.modules.execution.service import republish_waiting
 
-    return relay(publish)
+    # D146: then, for an attempt still queued long after its message went out, once more.
+    return relay(publish) + republish_waiting(publish)
 
 
 @celery_app.task(name="noefforts.sweep_attempts", soft_time_limit=SOFT_LIMIT)

@@ -34,9 +34,9 @@ import uuid
 from datetime import timedelta
 from typing import NamedTuple
 
-from sqlalchemy import delete, func, or_, select, text, update
+from sqlalchemy import delete, exists, func, or_, select, text, update
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core import authorizations
 from app.core.config import get_settings
@@ -277,6 +277,66 @@ def relay_outbox(publish, limit: int = 50) -> int:
     return sent
 
 
+def republish_waiting(publish, limit: int = 50) -> int:
+    """D146: publish again for an attempt still waiting to be taken, once its last publication
+    is older than `outbox_republish_seconds`. Nothing else sends a dispatched message a second
+    time: one lost with the broker's memory, or taken by a worker that stopped before starting
+    it, would leave its attempt queued (for good, or until the broker hands the message out
+    again an hour later).
+
+    Only an attempt the claim would still take: `pending`, no cancel requested, nothing
+    entered. One a worker holds, and one that ended, is never published here. That an attempt
+    which entered data is never run again is not this function's doing: the sweeper never puts
+    one back in the queue, and the claim itself refuses one (`claim`). This select only keeps
+    such an attempt from being published.
+
+    It repeats: an attempt still waiting gets another message each time that wait has passed
+    since its last one, with no limit (D146 says what that costs). If a message was not lost
+    there are then several. The claim takes an attempt once; every other delivery is ignored
+    (`runner.run_attempt`). The attempt's newest message decides: one not yet dispatched is the
+    relay's, and one dispatched recently is waited for.
+
+    Only the messages are locked, never the attempt (`of=OutboxMessage`): a claim, a cancel or
+    a revocation does not wait for a pass, even while it is talking to the broker. A second
+    pass skips a message the first holds (SKIP LOCKED). The pass ends at the first failed
+    publish: the broker is down, and each further try would hold its message longer. Returns
+    how many attempts were published again."""
+    cutoff = utcnow() - timedelta(seconds=get_settings().outbox_republish_seconds)
+    newer = aliased(OutboxMessage)
+    sent = 0
+    with SessionLocal() as db:
+        rows = db.scalars(
+            select(OutboxMessage)
+            .join(ExecutionAttempt, ExecutionAttempt.id == OutboxMessage.attempt_id)
+            .where(
+                OutboxMessage.dispatched_at < cutoff,
+                ExecutionAttempt.state == S.pending,
+                ExecutionAttempt.cancel_requested.is_(False),
+                ExecutionAttempt.disclosure_started_at.is_(None),
+                ~exists().where(
+                    newer.attempt_id == OutboxMessage.attempt_id,
+                    newer.created_at > OutboxMessage.created_at,
+                ),
+            )
+            .order_by(OutboxMessage.dispatched_at)
+            .limit(limit)
+            .with_for_update(of=OutboxMessage, skip_locked=True)
+        ).all()
+        for m in rows:
+            m.publish_attempts += 1
+            try:
+                publish(m.topic, str(m.attempt_id))  # ids only, never candidate data
+            except Exception as e:  # broker down: its age is unchanged, so the next pass tries
+                m.last_error = type(e).__name__  # the type only, as in relay_outbox
+                break
+            m.dispatched_at = utcnow()
+            m.last_error = None
+            sent += 1
+            log.info("attempt %s: still queued; published again", m.attempt_id)
+        db.commit()
+    return sent
+
+
 # --------------------------------------------------------------------------------------------
 # Claim, authority, heartbeats
 
@@ -285,7 +345,11 @@ def claim(attempt_id: uuid.UUID, worker: str) -> int | None:
     """Atomically take a pending attempt. Returns the new generation, or None if another
     delivery already claimed it (duplicate deliveries are ignored here). Locks the attempt (the
     compare-and-swap), then the application, in the global lock order; the approval is checked
-    under the application lock, so a revocation or cancel committed first is seen."""
+    under the application lock, so a revocation or cancel committed first is seen.
+
+    D146: an attempt that has entered data is never taken, whatever its state says. None is
+    ever `pending` (the sweeper puts back only one that entered nothing); with several messages
+    for one attempt now possible, the rule also stands here, where every delivery ends."""
     lease = timedelta(seconds=get_settings().lease_seconds)
     with SessionLocal() as db:
         app_id = db.scalar(
@@ -300,6 +364,7 @@ def claim(attempt_id: uuid.UUID, worker: str) -> int | None:
                 ExecutionAttempt.id == attempt_id,
                 ExecutionAttempt.state == S.pending,
                 ExecutionAttempt.cancel_requested.is_(False),
+                ExecutionAttempt.disclosure_started_at.is_(None),
             )
             .values(
                 state=S.claimed,
@@ -1388,7 +1453,11 @@ def stop_for_revoke(db: Session, app: Application) -> str:
     attempt, then the application). An attempt no worker has taken yet is cancelled at once,
     and the application waits for an approval again ("cancelled"). One a worker holds before
     the send gate is left to the gates, which refuse a revoked approval ("stopping"). After the
-    send gate the submission may be in flight: revoking is refused. "none": no attempt."""
+    send gate the submission may be in flight: revoking is refused. "none": no attempt.
+    An attempt the sweeper put back in the queue (its worker stopped before entering anything)
+    is pending while its application still shows running: it is cancelled the same way, and
+    the application moves as for a refused claim (D146 review: it used to fail, nothing was
+    revoked, and the attempt would have run later)."""
     att = _active_attempt(db, app.id)  # waits for a gate holding the attempt
     pk.lock_application(db, app.id)
     db.refresh(app)
@@ -1402,7 +1471,7 @@ def stop_for_revoke(db: Session, app: Application) -> str:
     att.state, att.finished_at = S.cancelled, utcnow()
     att.outcome_detail = "Approval revoked before a worker picked this up; nothing was sent."
     event(db, att, "cancelled")
-    _app_to(db, app, AppState.awaiting_approval, Actor.system, "Approval revoked")
+    _claim_refused(db, app, "Approval revoked")  # queued: approval again; running: you
     return "cancelled"
 
 

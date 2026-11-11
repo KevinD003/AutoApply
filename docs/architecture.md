@@ -236,6 +236,15 @@ it on any other queue (one published before the queues existed) is passed on onc
 there. This is an arrangement of processes, not a new guarantee: the claim, the gates and the
 sweeper are unchanged, and a single worker taking both queues behaves as before D144.
 
+Published again (D146). The relay publishes an attempt's message once, and a message can be
+lost: with the broker's memory, or acknowledged for a worker process that died before it
+claimed the attempt. So the relay's task also publishes again, every `outbox_republish_seconds`
+(300) and without a limit, for every attempt that is still `pending`, with no cancel requested
+and nothing entered. Extra messages end at the claim, which takes an attempt only while it is
+`pending` and has entered nothing. Nothing a worker holds is published again: that attempt is
+the sweeper's, by the rules above. A restored database is the exception: what it shows as
+queued may already have run (`docs/deployment.md` §7).
+
 Key properties and their limits are in the `service.py` docstring. In short: one active
 attempt per application (partial unique index); one worker per attempt can pass gate 2
 (fencing generation); nothing after gate 2 is retried; this is duplicate suppression on our
