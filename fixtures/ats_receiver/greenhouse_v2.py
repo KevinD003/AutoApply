@@ -1194,6 +1194,14 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 #                   after run #11's `u3`: a required dropdown that opened while a data request
 #                   to another Greenhouse host was refused; what that request was for is not
 #                   known)
+# D152 (the read-only survey's report of the adapter's settle rule):
+#   slow_changing   as click_popup, and from its first opening the options keep being
+#                   re-rendered, in alternating order, every 300 ms, with no request
+#   open_locale_fetch  as click_popup, and opening also GETs the locale file (cfg locale_origin
+#                   and locale_path) without waiting for it (cfg locale_delay_ms slows the answer)
+#   locale_on_first_open  the same, at the page's first opening only
+#   container_locale  as container_only, and a press on the input itself (which opens nothing)
+#                   GETs the locale file without waiting for it
 _DD_JS = """
 (() => {
   const DD = %DD%, DELAY = %DELAY%, BASE = %BASE%, LOCALE = %LOCALE%, VIA = %VIA%;
@@ -1217,7 +1225,8 @@ _DD_JS = """
   };
   const choose = (cb, o) => {
     if (DD === 'ignores_choice') { hide(cb); return; }
-    if (['react_select', 'react_locale', 'container_only', 'container_noisy'].includes(DD)) {   // the input keeps only
+    if (['react_select', 'react_locale', 'container_only', 'container_noisy',
+         'container_locale'].includes(DD)) {   // the input keeps only
       // search text (empty); the choice is shown in a single-value element, as react-select
       // shows it. data-value is read only by this fixture's own submit.
       const vc = cb.closest('.select__value-container') || cb.closest('.select__control');
@@ -1286,6 +1295,11 @@ _DD_JS = """
     } else {
       render(cb, p, pairs);
       if (DD === 'changing_on_reopen' && nth > 1) keepFlipping(cb, p, pairs, 300);
+      if (DD === 'slow_changing') keepFlipping(cb, p, pairs, 300);   // D152
+      if (DD === 'open_locale_fetch') fetch(LOCALE).catch(() => {});   // D152: not awaited
+      if (DD === 'locale_on_first_open' && !window.__fxLocaleAsked) {
+        window.__fxLocaleAsked = true; fetch(LOCALE).catch(() => {});
+      }
       if (DD === 'open_beacon' && BEACON) {   // opening also POSTs to another origin (D108)
         if (BEACON_VIA === 'sendbeacon') navigator.sendBeacon(BEACON, 'opened');
         else fetch(BEACON, {method: 'POST', body: 'opened', mode: 'no-cors'}).catch(() => {});
@@ -1334,7 +1348,7 @@ _DD_JS = """
       // anywhere on the control (the input included) opens the list (FIXTURE ASSUMPTION)
       const box = reactWrap(cb);
       box.addEventListener('mousedown', () => { if (!open.has(cb)) show(cb); });
-    } else if (DD === 'container_only' || DD === 'container_noisy') {   // D109: only a press on
+    } else if (['container_only', 'container_noisy', 'container_locale'].includes(DD)) {   // D109: only a press on
       // the control container, never on the input itself, opens the list (FIXTURE ASSUMPTION)
       const box = document.createElement('div');
       box.className = 'select__control css-fx-control';
@@ -1349,6 +1363,8 @@ _DD_JS = """
       if (DD === 'container_noisy')   // D109: the control's own click adds a hidden control
         cb.addEventListener('mousedown', () => box.append(Object.assign(
           document.createElement('input'), {type: 'hidden', id: cb.id + '-state'})), {once: true});
+      if (DD === 'container_locale')   // D152: the control's own click asks for a locale file
+        cb.addEventListener('mousedown', () => fetch(LOCALE).catch(() => {}));
     } else {
       cb.addEventListener('mousedown', () => show(cb));
     }

@@ -1369,6 +1369,9 @@ _OUTPUT_WORDS = {
     "list", "both",
     "inline", "menu", "dialog", "grid", "tree", "refused_shapes", "shapes_at_load",
     "shapes_during_actions", "path_shape", "query_params", *INSPECTION_STOPS,
+    # D152: the adapter's settle rule at the last read
+    "settle_rule", "list_quiet", "equal_reads", "in_flight", "met", "settle_rule_counts",
+    "not_met", "not_judged",
 }  # fmt: skip
 VOCAB = frozenset(
     _OUTPUT_WORDS | STANDARD_NAMES | {f"{n}[]" for n in STANDARD_NAMES} | GH_TYPES
@@ -1975,8 +1978,9 @@ _STATE_JS = """() => {
 # and leave nothing behind but a MutationObserver that is disconnected after the widget. Texts
 # of option-like elements are compared inside the worker and never leave it. The observer keeps
 # two times: of the document's last change (`quiet_ms`, read by `classify_open`) and, D145, of
-# the last change that touched a list (`list_quiet_ms`, read by the adapter's dropdown engine
-# only; the survey below neither uses nor publishes it).
+# the last change that touched a list (`list_quiet_ms`, read by the adapter's dropdown engine;
+# since D152 the survey publishes, per list, whether it met the adapter's rule at its last
+# read: `settle_rule`).
 _OPTION_ROLES = ("[role=option],[role=menuitem],[role=menuitemradio],[role=menuitemcheckbox],"
                  "[role=treeitem],[role=gridcell]")  # fmt: skip
 _POPUP_ROLES = "[role=listbox],[role=menu],[role=grid],[role=tree],[role=dialog]"
@@ -2134,6 +2138,10 @@ _OPENED = frozenset({"opened_options_not_observable", "partially_observed",
 _CLICK_MS = 2000  # per action; an element that is not actionable by then is not acted on
 _SAMPLES = 3  # probes spread over the settle window (the window itself is not extended)
 _QUIET_MS = 150  # DOM changes more recent than this at the last probe: still changing
+# D152: how long the page must have recorded no change to a list, at the last read, for the
+# adapter's settle rule (its STABLE_MS, execution/adapters/dropdowns.py; a test holds the two
+# equal, as this module imports nothing from execution).
+_LIST_QUIET_MS = 500
 _HASPOPUP = frozenset({"listbox", "menu", "dialog", "grid", "tree", "true", "false", "absent"})
 _AUTOCOMPLETE = frozenset({"list", "both", "inline", "none", "absent"})
 _ARIA_BOOL = frozenset({"true", "false", "absent"})
@@ -2236,6 +2244,41 @@ def classify_open(pre: dict, post: dict, series: list[int], api_count: int | Non
     return ("partially_observed" if partial else "observed_sufficiently"), evidence, partial
 
 
+def settle_rule(state: str, post: dict, reads: list, in_flight: bool) -> dict:
+    """D152: the adapter's settle rule (dropdowns._observe, D145), judged at this action's last
+    read, as published booleans (texts are compared here and never leave the worker):
+    - list_quiet: the page recorded no change to a list for _LIST_QUIET_MS before the last read
+      (no change recorded at all counts as quiet, as in the adapter);
+    - equal_reads: the last two reads showed the same option texts;
+    - in_flight: a request this action made was allowed and still had no answer (path B's
+      locale requests; every other data request is refused at once);
+    - met: observed sufficiently (classify_open), list_quiet and equal_reads, nothing in flight.
+    All None when no list opened (not opened, undetermined, a click that failed, a control
+    gone): there is nothing to judge. Only at the last read: a list the adapter would already
+    have chosen from may change later, and the survey's window on path A (600 ms) is shorter
+    than the adapter's (1.5 s); its window on paths B and C is the adapter's."""
+    if state not in _OPENED:
+        return {"list_quiet": None, "equal_reads": None, "in_flight": None, "met": None}
+    quiet = post["list_quiet_ms"] is None or post["list_quiet_ms"] >= _LIST_QUIET_MS
+    equal = len(reads) >= 2 and reads[-1] == reads[-2]
+    met = state == "observed_sufficiently" and quiet and equal and not in_flight
+    return {"list_quiet": quiet, "equal_reads": equal, "in_flight": in_flight, "met": met}
+
+
+def _in_flight(locale_allowed, since: int) -> bool:
+    """D152: whether an allowed request made since `since` has no answer yet (path B only)."""
+    return any(d.get("outcome") == "pending" for d in (locale_allowed or [])[since:])
+
+
+def _judged(w: dict):
+    """D152: a widget's settle rule as counted: the control's own action when it opened a list,
+    else the container's (path C), else None (not judged)."""
+    own = (w.get("settle_rule") or {}).get("met")
+    if own is not None:
+        return own
+    return ((w.get("container_attempt") or {}).get("settle_rule") or {}).get("met")
+
+
 def _observations(before, mid, after, post, click_ok, opts) -> dict:
     """The widget action's separate observations (D108). A class-name hint, a control added or
     removed and focus leaving the control are each recorded on their own: none of them is an
@@ -2326,7 +2369,7 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
         pre = page.evaluate(_PROBE_JS, c.id)
         actions += 1
         phase[0] = f"action:{actions}"
-        click_ok, click_error, series, post = True, None, [], pre
+        click_ok, click_error, series, post, reads = True, None, [], pre, []
         try:
             # Actionability checks: if another element would receive the click (an overlay or
             # a wrapper drawn over the input), nothing is clicked at all.
@@ -2348,12 +2391,15 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
                     break
                 post = got
                 series.append(len(post["texts"]))
+                reads.append([gdom._norm(t) for t in post["texts"]])  # compared, never kept
+        in_flight = _in_flight(locale_allowed, n_locale)  # D152: at the last read
         mid = page.evaluate(_STATE_JS)
         reason = check_stop(n_stops)
         api_count = len(option_lists[key]) if kind == "api_field" and key in option_lists else None
         state, evidence, partial = classify_open(pre, post, series, api_count, click_ok)
         if gone:
             state, evidence, partial = "undetermined", ["control_gone"], []
+        rule = settle_rule(state, post, reads, in_flight)
         after, closed = mid, None
         if click_ok and not gone:
             actions += 1
@@ -2394,7 +2440,7 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
             handle = page.evaluate_handle(_CONTAINER_JS, c.id).as_element()
             container = {"present": handle is not None, "click": None, "open_state": None,
                          "opening_evidence": [], "visible_option_list": False,
-                         "options_match_api": None}  # fmt: skip
+                         "options_match_api": None, "settle_rule": None}  # fmt: skip
             if handle is not None and (actions + 2 > limits.widget_actions
                                        or time.monotonic() + per_widget_s > ends):  # fmt: skip
                 container["skipped"] = "budget"
@@ -2402,9 +2448,10 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
                 page.evaluate(_END_PROBE_JS)
                 page.evaluate(_PRE_JS, c.id)
                 pre2 = page.evaluate(_PROBE_JS, c.id)
+                n_locale2 = len(locale_allowed or ())
                 actions += 1
                 phase[0] = f"action:{actions}"
-                ok2, err2, series2, post2, gone2 = True, None, [], pre2, False
+                ok2, err2, series2, post2, gone2, reads2 = True, None, [], pre2, False, []
                 try:
                     handle.click(timeout=left_ms(_CLICK_MS))  # open, through the container
                 except Stop:
@@ -2422,6 +2469,8 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
                             break
                         post2 = got
                         series2.append(len(post2["texts"]))
+                        reads2.append([gdom._norm(t) for t in post2["texts"]])
+                in_flight2 = _in_flight(locale_allowed, n_locale2)
                 mid = page.evaluate(_STATE_JS)  # the widget's observations cover both clicks
                 reason = check_stop(n_stops)
                 st2, ev2, _ = classify_open(pre2, post2, series2, api_count, ok2)
@@ -2433,6 +2482,7 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
                     opening_evidence=ev2, visible_option_list=bool(opts2),
                     options_match_api=(option_lists.get(key) == opts2)
                     if kind == "api_field" and st2 == "observed_sufficiently" else None,
+                    settle_rule=settle_rule(st2, post2, reads2, in_flight2),
                 )  # fmt: skip
                 after = mid
                 if ok2 and not gone2:
@@ -2458,6 +2508,8 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
             "open_state": state,
             "opening_evidence": evidence,
             "partial_reasons": partial,
+            # D152: the adapter's settle rule at the last read (settle_rule)
+            "settle_rule": rule,
             "click": {"completed": click_ok, "error": click_error},
             "target_box": shape["box"],
             "haspopup": _vocab(shape["haspopup"], _HASPOPUP),
@@ -2552,6 +2604,12 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
         "action_limit": limits.widget_actions,
         "stopped": stopped,
         "open_states": states,
+        # D152: how many lists met the adapter's settle rule at the survey's last read
+        "settle_rule_counts": {
+            "met": sum(1 for w in results if _judged(w) is True),
+            "not_met": sum(1 for w in results if _judged(w) is False),
+            "not_judged": sum(1 for w in results if _judged(w) is None),
+        },
         "widgets": results,
         # Not measured once the page may have been replaced (None: not observed).
         "location_control_present": None if left_page

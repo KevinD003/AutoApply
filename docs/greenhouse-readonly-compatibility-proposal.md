@@ -865,6 +865,18 @@ run #10)".
   above: the run did not comply with the authorized stop condition.
 - Full record: `docs/greenhouse-compatibility-report.md`, "Dropdown observation, path C".
 
+**Since D152 (2026-11-12; code only, no run):** every widget-inspection mode also publishes, per
+dropdown, whether its list met the adapter's settle rule at the run's last read (`settle_rule`):
+- no change to a list recorded for half a second (the adapter's rule since D145);
+- the last two reads equal;
+- no allowed request of that action still awaited;
+- and observed sufficiently.
+
+It also publishes how many lists met it (`settle_rule_counts`): booleans and counts only. Run
+#11's "11 lists read completely" was judged by the survey's own test, so whether those lists
+meet the adapter's rule is not known. Finding out needs a new run, which needs the owner's new
+approval; none is requested here.
+
 ## Deliverable: the comparison (once A/B are separately approved and run)
 
 | Area | Compared |
