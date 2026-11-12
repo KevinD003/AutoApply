@@ -689,6 +689,7 @@ def _run_api(aid, worker, gen, adapter) -> str:
     s = get_settings()
     phase = "before_disclosure"
     try:
+        _stop_if_requested()  # D150: before the API is asked anything
         reason = adapter.validate_before_disclosure()
         if reason:
             svc.fail_safe(aid, worker, gen, reason)

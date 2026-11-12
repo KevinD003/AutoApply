@@ -22,6 +22,7 @@ import uuid
 import pytest
 from sqlalchemy import select
 
+from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.modules.execution import runner, stopping
 from app.modules.execution import service as svc
@@ -286,11 +287,13 @@ def test_a_code_taken_after_the_stop_request_is_never_entered_and_is_erased(
 def test_on_the_api_route_a_stop_request_ends_the_run_before_its_next_request(
     api, receiver, monkeypatch, point, state
 ):
-    """The API route (no browser) checks at its two gates and before its uploads: before the
-    disclosure gate nothing is sent and the attempt goes back in the queue; after it, nothing
-    is uploaded; before the send gate the application is never submitted."""
-    from tests.test_api_provider import acceptances, api_application, fapi_requests
+    """The API route (no browser) checks as it starts, at its two gates and before its uploads:
+    asked to stop as it starts, the API is asked nothing and the attempt goes back in the queue;
+    after the disclosure gate, nothing is uploaded; before the send gate the application is
+    never submitted."""
+    from tests.test_api_provider import TOKEN, acceptances, api_application, fapi_requests
 
+    monkeypatch.setattr(get_settings(), "fake_api_token", TOKEN)
     app_id = api_application(api)
     aid = queue(api, app_id)
     monkeypatch.setenv("NOEFFORTS_FAULT", f"{point}=stop")
@@ -343,6 +346,7 @@ def _run_held(api, receiver, point: str, app_id: str | None = None):
     finally:
         w.stop()
     assert code == 0, w.text()[-3000:]
+    print(f"{point}: the worker exited {seconds:.1f} s after its held process was released")
     return app_id, aid, seconds, w
 
 
