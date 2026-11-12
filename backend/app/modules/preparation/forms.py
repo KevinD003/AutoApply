@@ -153,6 +153,21 @@ class SectionSpec(BaseModel):
     schools: list[SectionOptionSpec] = Field(default_factory=list, max_length=5000)
     degrees: list[SectionOptionSpec] = Field(default_factory=list, max_length=500)
     disciplines: list[SectionOptionSpec] = Field(default_factory=list, max_length=5000)
+    # D149 (the Workday-style stand-in's Work Experience): the wizard page the section is on, and
+    # whether the page requires at least one entry. Written only when set, so a Greenhouse
+    # section's stored schema and fingerprint are unchanged.
+    step: str | None = Field(default=None, min_length=1, max_length=200)
+    required: bool = False
+
+    @model_serializer(mode="wrap")
+    def _dump(self, handler):
+        out = handler(self)
+        if isinstance(out, dict):
+            if out.get("step") is None:
+                out.pop("step", None)
+            if not out.get("required"):
+                out.pop("required", None)
+        return out
 
 
 class WizardSpec(BaseModel):
@@ -190,6 +205,10 @@ class FormSchema(BaseModel):
             raise ValueError("field keys must be unique")
         if len({s.kind for s in self.sections}) != len(self.sections):
             raise ValueError("a section kind may appear at most once")
+        # D149: a section on a page is on one of a wizard's pages before its review page.
+        pages = self.wizard.pages[:-1] if self.wizard else []
+        if any(s.step is not None and s.step not in pages for s in self.sections):
+            raise ValueError("a section's page must be one of the wizard's pages before the last")
         return self
 
     @model_serializer(mode="wrap")
@@ -237,7 +256,11 @@ def form_fingerprint(schema: FormSchema) -> str:
             for group in (s.schools, s.degrees, s.disciplines)
             for o in group
         ]
-        parts.append("|".join(["section", s.kind, s.root, *opts]))
+        # D149: its page and requirement only when set, so a Greenhouse section's is unchanged;
+        # as one JSON value, so no page name can read as another page and requirement.
+        extra = ([json.dumps({"required": s.required, "step": s.step})]
+                 if s.step or s.required else [])  # fmt: skip
+        parts.append("|".join(["section", s.kind, s.root, *opts, *extra]))
     if schema.wizard:  # D142: added only for a wizard, so every other form's is unchanged
         # The pages' names in order and which question is on which page: never which page is
         # shown, so the same form reads the same before and after a Next.
@@ -347,10 +370,11 @@ def _bot_check() -> "FormField":
     )
 
 
-def extract_form_schema(html: str, *, challenges: bool = False) -> FormSchema:
+def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> FormSchema:
     """`challenges`: also report a CAPTCHA or bot check on the page as a required unsupported
     field (the generic capture path). The Greenhouse paths leave it to their adapters, which
-    stop when one appears."""
+    stop when one appears. `skip` (D149): a control whose name it accepts is not read at all
+    (the Workday-style capture reads its Work Experience entries itself)."""
     if len(html) > 2_000_000:
         raise ExtractionError("HTML too large")
     b = _TreeBuilder()
@@ -401,6 +425,8 @@ def extract_form_schema(html: str, *, challenges: bool = False) -> FormSchema:
     for n in nodes:
         name = n.attrs.get("name")
         if n.tag not in ("input", "select", "textarea") or not name:
+            continue
+        if skip is not None and skip(name):
             continue
         itype = n.attrs.get("type", "text").lower() if n.tag == "input" else n.tag
         if itype in ("hidden", "submit", "button", "reset", "image"):

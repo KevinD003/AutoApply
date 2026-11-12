@@ -280,8 +280,14 @@ def resolve_education_row(record, options: EducationOptions) -> RowResult:
 
 def _text_field(name: str, record, attr, label: str) -> FieldResult:
     text = getattr(record, attr, None)
-    if not text:
+    if not text or not text.strip():
         return FieldResult(name, "needs_user", explanation=f"No {label} on this record.")
+    if "\n" in text or "\r" in text:  # D149 review: a form's text box cannot hold one
+        return FieldResult(
+            name, "needs_user",
+            explanation=f"This record's {label} has a line break, which a form cannot hold; "
+            "fix it in your profile.",
+        )  # fmt: skip
     return FieldResult(
         name, "resolved", value={"text": text}, display=text, source="profile_fact",
         explanation=f"From your record's {label}.",

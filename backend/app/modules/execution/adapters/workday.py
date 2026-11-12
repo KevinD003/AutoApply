@@ -34,12 +34,26 @@ approved answer that the page requires stops it too (a single page pauses so you
 D135; a wizard page never pauses, D142, and its Next is never clicked); a shown optional one with
 no answer stays empty. Whether such a question is shown, and whether the page then requires it,
 is the page's reaction to the answers: the live form is compared with the approved one without
-them (`extract`)."""
+them (`extract`).
+
+D149: the stand-in's Work Experience section (FIXTURE ASSUMPTION FA7), captured as an employment
+section on its page (preparation/workday.py), is entered from your approved work history after
+that page's other answers (`workday_sections`): an entry added by the section's own button when
+it is not there yet, each control read back as entered and reported at once as a disclosure.
+The readback of its page, before the page's Next, requires every entry as approved, the controls
+NoEfforts leaves empty still empty, and no entry beyond the approved ones. Before anything is
+entered, a frozen section that cannot be planned, or is not on one of the wizard's pages before
+its review page (none on a single page), stops the attempt, and so does a page that already
+shows more entries than were approved (NoEfforts never removes one), or entries it cannot type
+into or that already hold values: stops that leave nothing at the employer. An entry that will
+not appear or a control that does not keep its value once entering began stops it with what was
+entered recorded."""
 
 from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PWTimeout
 
+from app.modules.execution.adapters import workday_sections as ws
 from app.modules.execution.adapters.fixture_ats import (
     ACK_DRAFT,
     ACK_ERROR,
@@ -93,6 +107,21 @@ FOLLOW_UP_HIDDEN_REQUIRED = (
     "so its own checks would refuse the application: apply on the employer's site"
 )
 UNSEEN_LOGIC = "an answer depends on page logic NoEfforts cannot see"  # as D135's
+# D149: the Work Experience section (`workday_sections`).
+SECTION_UNUSABLE = "the approved work history cannot be entered on this form as it was approved"
+SECTION_ENTRIES_BEYOND = (
+    "the employer's form already shows more work history entries than you approved, and "
+    "NoEfforts never removes one: add your work history to your profile and approve it, or "
+    "apply on the employer's site"
+)
+SECTION_PREFILLED = (
+    "the employer's form already holds work history values NoEfforts did not enter (a previous "
+    "application or a parsed resume): apply on the employer's site"
+)
+SECTION_NOT_ENTERED = (
+    "your work history could not be entered on the employer's form as approved (an entry did "
+    "not appear or did not keep its value): apply on the employer's site"
+)
 VERIFICATION_AFTER_CLICK = (
     "after the final click the employer's page asked you to verify your email. NoEfforts does "
     "not read your email or enter codes for this form, so it does not know whether your "
@@ -124,6 +153,10 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         self._filled = False
         self._step = {a["key"]: a.get("step") for a in self.content["answers"]}
         self._filled_steps: set[str | None] = set()  # the pages filled so far (a wizard's)
+        # D149: the wizard page being filled (None: a single page), and the pages being read
+        # back (None: all of them).
+        self._page_step: str | None = None
+        self._readback_steps: set[str] | None = None
 
     def form_url(self) -> str:
         return workday.form_url(self.content["destination"]["url"])
@@ -168,6 +201,17 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         if reason:
             return reason
         if not self._filled:
+            for sec in self.content.get("sections") or []:  # D149: plain stops, nothing entered
+                if not self._section_usable(sec):
+                    return SECTION_UNUSABLE
+                found = ws.entry_indices(page, ws.section_root(sec))
+                now = ws.entries_now(page, ws.section_root(sec))
+                if found is None or now is None or now["inoperable"]:
+                    return SECTION_UNUSABLE
+                if any(i >= len(sec["rows"]) for i in found):
+                    return SECTION_ENTRIES_BEYOND
+                if now["holding"]:
+                    return SECTION_PREFILLED
             for a in self.content["answers"]:
                 cond = a.get("condition") or {}
                 if (a["key"] in self._shown_by_page and a["value"] is not None
@@ -177,6 +221,18 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         if self.content.get("wizard"):
             return self._left_empty_but_required(page)
         return self.follow_ups(page, self.content["answers"])
+
+    def _section_usable(self, sec: dict) -> bool:
+        """D149: a frozen section this adapter enters: it plans, and it is on one of the wizard's
+        pages before its review page (on a single page, on none)."""
+        try:
+            ws.plan(sec)
+        except ws.Refused:
+            return False
+        wizard = self.content.get("wizard")
+        if wizard:
+            return sec.get("step") in wizard["pages"][:-1]
+        return sec.get("step") is None
 
     def _left_empty_but_required(self, page: Page) -> str | None:
         """A wizard once filled (after each Next, and before the send gate): a question the page
@@ -202,6 +258,7 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         self._filled_steps.update(a.get("step") for a in self.content["answers"])
         plain = [a for a in self.content["answers"] if a["key"] not in self._shown_by_page]
         disclosures = self._with_answers(plain, lambda: HostedFormAdapter.fill(self, page))
+        self._fill_sections(page, disclosures)  # D149
         for a in self.content["answers"]:
             if a["value"] is None or not shown_by_page(a.get("condition") or {}, a["type"]):
                 continue
@@ -218,6 +275,26 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
                 continue  # the readback and the check after filling report it
             self._entered.add(a["key"])
         return disclosures
+
+    def _fill_sections(self, page: Page, disclosures: list) -> None:
+        """D149: the sections on the page being filled (every one on a single page), after its
+        other answers. Each control entered is a disclosure, reported at once (D137); an entry
+        that will not appear, or a control that does not keep its value, stops the attempt with
+        what was entered recorded."""
+        for sec in self.content.get("sections") or []:
+            if sec.get("step") != self._page_step:
+                continue
+
+            def entered(en: dict, sec=sec) -> None:
+                disclosures.append(self._disclosed({
+                    "kind": "section_field", "section": sec["kind"], "row": en["row"],
+                    "field": en["field"]}))  # fmt: skip
+
+            try:
+                ws.apply(page, ws.plan(sec), ws.section_root(sec), on_entered=entered,
+                         progress=self._progress)  # fmt: skip
+            except ws.Refused as e:
+                raise StoppedAfterDisclosure(SECTION_NOT_ENTERED, list(disclosures)) from e
 
     def _shown(self, page: Page, key: str) -> bool:
         """The page shows this question now: one of its controls is visible. Found as filling
@@ -246,6 +323,13 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
                 if key not in self._entered:
                     a = {**a, "value": None}
             view.append(a)
+        for sec in self.content.get("sections") or []:  # D149: on the pages read back
+            if self._readback_steps is not None and sec.get("step") not in self._readback_steps:
+                continue
+            try:
+                bad.extend(ws.readback(page, ws.plan(sec), ws.section_root(sec)))
+            except ws.Refused:
+                bad.append(f"section:{sec.get('kind')}")
         return bad + self._with_answers(view, lambda: HostedFormAdapter.readback(self, page))
 
     def follow_ups(self, page: Page, answers: list[dict]):
@@ -312,14 +396,24 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
             self.content = full
 
     def fill_page(self, page: Page, i: int) -> list[dict]:
-        """Fill page i only, documents first (`fill`); its uploads' evidence."""
-        return self._with_answers(self.page_answers(i), lambda: self.fill(page))
+        """Fill page i only, documents first (`fill`), its sections too (D149); its uploads'
+        evidence."""
+        self._page_step = self.content["wizard"]["pages"][i - 1]
+        try:
+            return self._with_answers(self.page_answers(i), lambda: self.fill(page))
+        finally:
+            self._page_step = None
 
     def readback_through(self, page: Page, i: int) -> list[str]:
-        """Read back pages 1 to i, every field on them, the unanswered ones included: a value a
-        page changed after it was saved (a parsed resume) is never sent on."""
+        """Read back pages 1 to i, every field on them, the unanswered ones included, and their
+        sections (D149): a value a page changed after it was saved (a parsed resume) is never
+        sent on."""
         pages = range(1, i + 1)
-        return self._with_answers(self.page_answers(*pages), lambda: self.readback(page))
+        self._readback_steps = set(self.content["wizard"]["pages"][:i])
+        try:
+            return self._with_answers(self.page_answers(*pages), lambda: self.readback(page))
+        finally:
+            self._readback_steps = None
 
     def page_follow_ups(self, page: Page, i: int) -> str | None:
         """D148: before page i's Next, its questions the page shows by its own logic

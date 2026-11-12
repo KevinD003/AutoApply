@@ -69,6 +69,18 @@ tenant:
        follow_up_removed (optional; the page removes it instead of hiding it). No real
        Workday follow-up was observed (docs/research/workday.md: they hang off a
        single-select answer).
+  FA7  (D149) My Experience carries a Work Experience section: a <div data-wd-section="work">
+       on its page with no entry at load and one button, "Add" (then "Add Another"), that
+       appends an entry built from a <template> outside the form. An entry's controls are named
+       work[i].title, .company, .location, .current (a box, "I currently work here"), .from and
+       .to (text, MM/YYYY) and .description (a text area); Job Title, Company and From are
+       required, and To is required unless the box is ticked, which hides and empties it. A Next
+       saves the entries with the rest of their page, and the page's own checks then refuse an
+       entry missing a required value or a date not written MM/YYYY (the draft row is written
+       first, FA3). A section the page requires (`aria-required`) refuses a page without an
+       entry. No real Workday work-history section was observed (docs/research/workday.md: My
+       Experience sections can each be hidden or required, and resume parsing fills work
+       experience).
 cfg["wizard"] values: plain; drift (a required q.weekends on page 4 at load); already_applied
 (shown at open instead of the form); step_error (the page-2 draft is answered 422 with errors);
 step_timeout (the page-2 draft reply waits cfg["delay_s"]); late_question (the page-2 reply
@@ -80,7 +92,14 @@ parse_saved_page (a resume upload overwrites three page-1 fields already saved);
 (D142 review: the work-eligibility question sits at the end of page 3 instead of the start of
 page 4, the document order unchanged); next_stays (D142 review: the page-2 draft is saved, but
 the page stays on page 2); follow_up, follow_up_required, follow_up_revealed_required,
-follow_up_required_kept, follow_up_removed (D148, FA6: a follow-up question on page 4).
+follow_up_required_kept, follow_up_removed (D148, FA6: a follow-up question on page 4);
+experience (D149, FA7: the Work Experience section on page 2), experience_required (the page
+requires an entry), experience_parse (a resume upload adds an entry with values of its own),
+experience_entry_at_load (one empty entry already there at load), experience_unknown_control
+(an entry also asks a required "Reason for leaving"), experience_add_broken (Add adds
+nothing), experience_add_once (Add adds the first entry only) and experience_changed_after_next
+(once page 2 is saved, the page changes its first entry's Job Title, as a script could). The
+single page's mode wd_experience puts the section on its My Experience section.
 """
 
 import asyncio
@@ -136,6 +155,103 @@ shift.addEventListener('change', () => {{
   if (!shown) {gone}
 }});"""
     return markup, script
+
+
+# D149, FA7: the Work Experience section, by wizard variant (the single page's mode is
+# "wd_experience").
+WORK_VARIANTS = ("experience", "experience_required", "experience_parse",
+                 "experience_entry_at_load", "experience_unknown_control",
+                 "experience_add_broken", "experience_add_once",
+                 "experience_changed_after_next")  # fmt: skip
+CHANGED_TITLE = "Changed after saving (fictional)"  # experience_changed_after_next
+_WORK_NAME = re.compile(r"work\[(\d+)\]\.[a-z_]+")
+_MONTH_YEAR = re.compile(r"(0[1-9]|1[0-2])/[0-9]{4}")
+# What the resume parse puts in the entry it adds (experience_parse; fixture design).
+PARSED_ENTRY = {"title": "Parsed Title (fictional)", "company": "Parsed Company (fictional)",
+                "from": "01/2015", "description": "Parsed from the resume (fictional)"}
+
+
+def _work_entry(i: str, n: str, extra: bool = False) -> str:
+    """FA7: one entry; `i` its index in the control names, `n` its number on the page."""
+    reason = (f'<label for="work-{i}-reason">Reason for leaving</label><input id="work-{i}-'
+              f'reason" name="work[{i}].reason_for_leaving" type="text" required>'
+              if extra else "")  # fmt: skip
+    return f"""<div data-wd-entry="{i}"><h4>Work Experience {n}</h4>
+<label for="work-{i}-title">Job Title</label>
+<input id="work-{i}-title" name="work[{i}].title" type="text" required>
+<label for="work-{i}-company">Company</label>
+<input id="work-{i}-company" name="work[{i}].company" type="text" required>
+<label for="work-{i}-location">Location</label>
+<input id="work-{i}-location" name="work[{i}].location" type="text">
+<label><input name="work[{i}].current" type="checkbox" value="1" data-wd-current> I currently
+ work here</label>
+<label for="work-{i}-from">From</label>
+<input id="work-{i}-from" name="work[{i}].from" type="text" placeholder="MM/YYYY" required>
+<div data-wd-to><label for="work-{i}-to">To</label>
+<input id="work-{i}-to" name="work[{i}].to" type="text" placeholder="MM/YYYY" required></div>
+<label for="work-{i}-description">Role Description</label>
+<textarea id="work-{i}-description" name="work[{i}].description"></textarea>{reason}</div>"""
+
+
+def _work_section(variant: str | None) -> tuple[str, str, str]:
+    """FA7: the section's markup (on My Experience), its entry template (outside the form) and
+    its script; nothing for any other variant."""
+    if variant not in WORK_VARIANTS:
+        return "", "", ""
+    required = ' aria-required="true"' if variant == "experience_required" else ""
+    at_load = _work_entry("0", "1") if variant == "experience_entry_at_load" else ""
+    entry = _work_entry("__i__", "__n__", extra=variant == "experience_unknown_control")
+    markup = (f'<div id="work-experience" role="group" aria-labelledby="work-experience-label" '
+              f'data-wd-section="work" data-wd-entry-template="work-experience-entry"{required}>'
+              f'<h3 id="work-experience-label">Work Experience{" *" if required else ""}</h3>'
+              f"<div data-wd-entries>{at_load}</div>"
+              f'<button type="button" data-wd-add>{"Add Another" if at_load else "Add"}</button>'
+              "</div>")  # fmt: skip
+    template = f'<template id="work-experience-entry">{entry}</template>'
+    add = {"experience_add_broken": "return -1;",
+           "experience_add_once": "if (workEntries.children.length) return -1;"}.get(variant, "")
+    script = f"""
+const workSection = document.getElementById('work-experience');
+const workEntries = workSection.querySelector('[data-wd-entries]');
+const workAdd = workSection.querySelector('[data-wd-add]');
+function wireWorkEntry(entry) {{
+  const current = entry.querySelector('[data-wd-current]');
+  const toBox = entry.querySelector('[data-wd-to]');
+  const to = toBox.querySelector('input');
+  current.addEventListener('change', () => {{
+    toBox.hidden = current.checked;
+    to.required = !current.checked;
+    if (current.checked) to.value = '';
+  }});
+}}
+window.addWorkEntry = () => {{
+  {add}
+  const i = workEntries.querySelectorAll('[data-wd-entry]').length;
+  const tpl = document.getElementById('work-experience-entry').innerHTML;
+  workEntries.insertAdjacentHTML('beforeend',
+    tpl.replaceAll('__i__', String(i)).replaceAll('__n__', String(i + 1)));
+  wireWorkEntry(workEntries.lastElementChild);
+  workAdd.textContent = 'Add Another';
+  return i;
+}};
+for (const e of workEntries.querySelectorAll('[data-wd-entry]')) wireWorkEntry(e);
+workAdd.addEventListener('click', () => window.addWorkEntry());"""
+    return markup, template, script
+
+
+def _work_errors(fields: dict, required: bool) -> list[str]:
+    """FA7: what the page's own checks refuse in the Work Experience entries it was sent."""
+    found = sorted({int(m[1]) for k in fields if (m := _WORK_NAME.fullmatch(k))})
+    errors = ["Add your work experience"] if required and not found else []
+    for i in found:
+        def got(c: str) -> str:
+            return str(fields.get(f"work[{i}].{c}", ""))
+        current = got("current") == "1"
+        wanted = ("title", "company", "from") + (() if current else ("to",))
+        errors += [f"Work Experience {i + 1}: enter {c}" for c in wanted if not got(c)]
+        errors += [f"Work Experience {i + 1}: write {c} as MM/YYYY" for c in ("from", "to")
+                   if got(c) and not _MONTH_YEAR.fullmatch(got(c))]  # fmt: skip
+    return errors
 
 
 def _follow_up_required(shape: tuple[bool, bool, bool] | None, fields: dict) -> bool:
@@ -237,6 +353,8 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
     challenge = ('<div class="h-captcha" data-sitekey="fixture-not-a-key"></div>'
                  if mode == "wd_challenge" else "")  # fmt: skip
     follow_up, follow_up_js = _follow_up(FOLLOW_UPS.get(mode.removeprefix("wd_")))
+    work, work_template, work_js = _work_section(  # D149, FA7
+        "experience" if mode == "wd_experience" else None)
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
 {progress}
@@ -262,6 +380,7 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 <section data-step="My Experience">
 {_file("resume", "Resume/CV", True)}
 {_file("cover_letter", "Cover Letter", False)}
+{work}
 </section>
 <section data-step="Application Questions">
 {_yes_no("q.work_eligibility", "Are you legally authorized to work in the United States?", True)}
@@ -292,6 +411,7 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 {footer}
 <button type="submit" data-automation-id="bottom-navigation-next-button">Submit</button>
 </form>
+{work_template}
 <script>
 for (const input of document.querySelectorAll('input[type=file][data-wd-file]')) {{
   input.addEventListener('change', async () => {{
@@ -314,7 +434,7 @@ for (const input of document.querySelectorAll('input[type=file][data-wd-file]'))
       }}
     }} catch (e) {{ st.textContent = 'Upload failed'; st.dataset.attachmentError = '1'; }}
   }});
-}}{follow_up_js}
+}}{follow_up_js}{work_js}
 </script>"""
     return _page(f"{title} — {employer}", body, "form")
 
@@ -340,6 +460,7 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
     shifted = eligibility if variant == "page_shift" else ""  # end of page 3 (FA5)
     follow_up, follow_up_js = _follow_up(FOLLOW_UPS.get(variant))  # D148, FA6
     on_page_4 = "" if variant == "page_shift" else eligibility
+    work, work_template, work_js = _work_section(variant)  # D149, FA7
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
 <div data-wizard-progress>Page 1 of {len(WIZARD_PAGES)}</div>
@@ -369,6 +490,7 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 {_file("cover_letter", "Cover Letter", False)}
 <label for="exp_details">Additional details (optional)</label>
 <input id="exp_details" name="exp.details" type="text">
+{work}
 {_NEXT}
 </section>
 <section data-step="Voluntary Disclosures" data-wizard-page="3" hidden>
@@ -402,6 +524,7 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 </section>
 </form>
 <template id="late-question">{late}</template>
+{work_template}
 <script>
 for (const input of document.querySelectorAll('input[type=file][data-wd-file]')) {{
   input.addEventListener('change', async () => {{
@@ -421,6 +544,13 @@ for (const input of document.querySelectorAll('input[type=file][data-wd-file]'))
       for (const [k, v] of Object.entries(j.parsed || {{}})) {{
         const el = document.querySelector(`[name="${{k}}"]`);
         if (el) el.value = v;
+      }}
+      for (const entry of (j.entries || [])) {{  // D149: the parse adds an entry (FA7)
+        const i = window.addWorkEntry();
+        for (const [k, v] of Object.entries(entry)) {{
+          const el = document.querySelector(`[name="work[${{i}}].${{k}}"]`);
+          if (el) el.value = v;
+        }}
       }}
     }} catch (e) {{ st.textContent = 'Upload failed'; st.dataset.attachmentError = '1'; }}
   }});
@@ -474,6 +604,10 @@ for (const btn of form.querySelectorAll('[data-wizard-next]')) {{
       status.dataset.draftStatus = 'error';
       return;
     }}
+    for (const [k, v] of Object.entries(j.change || {{}})) {{  // D149, FA7
+      const el = form.querySelector(`[name="${{k}}"]`);
+      if (el) el.value = v;
+    }}
     if (j.stay) {{ status.dataset.draftStatus = 'saved'; return; }}
     if (j.reveal) {{
       const third = form.querySelector('section[data-wizard-page="3"]');
@@ -486,7 +620,7 @@ for (const btn of form.querySelectorAll('[data-wizard-next]')) {{
     progress.textContent = `Page ${{i + 1}} of ${{pages}}`;
     status.dataset.draftStatus = 'saved';
   }});
-}}{follow_up_js}
+}}{follow_up_js}{work_js}
 </script>"""
     return _page(f"{title} — {employer}", body, "form")
 
@@ -550,6 +684,8 @@ def mount(app, ledger, cfg, accept) -> None:
             out["parsed"] = {"legalName--firstName": "Samuel",
                              "address--addressLine1": "12 Parsed Street (fictional)",
                              "address--city": "Shelbyville (fictional)"}  # fmt: skip
+        if cfg.get("wizard") == "experience_parse" and field == "resume":
+            out["entries"] = [PARSED_ENTRY]  # D149, FA7 (fixture design)
         if cfg.get("wizard") == "parse_current_page" and field == "resume":
             # D142: the parse fills the optional field on the upload's own page (FIXTURE
             # ASSUMPTION), which NoEfforts leaves unanswered.
@@ -582,6 +718,10 @@ def mount(app, ledger, cfg, accept) -> None:
         row = ledger.run("select issued_at from tokens where token=?", (token,))
         if not row or time.time() - row[0][0] > cfg["token_ttl_s"]:
             return JSONResponse({"error": "session expired"}, status_code=419)
+        if variant in WORK_VARIANTS and page == 2:  # D149, FA7
+            errors = _work_errors(fields, variant == "experience_required")
+            if errors:
+                return JSONResponse({"errors": errors}, status_code=422)
         if variant == "step_error" and page == 2:
             return JSONResponse({"errors": ["Enter your work history (fixture design)"]},
                                 status_code=422)  # fmt: skip
@@ -598,6 +738,8 @@ def mount(app, ledger, cfg, accept) -> None:
         out = {"saved": True, "draft_id": f"WD-{digest}"}
         if variant == "late_question" and page == 2:
             out["reveal"] = LATE_QUESTION
+        if variant == "experience_changed_after_next" and page == 2:
+            out["change"] = {"work[0].title": CHANGED_TITLE}  # D149, FA7
         if variant == "next_stays" and page == 2:
             out["stay"] = True  # saved, but the page does not move on (FA5)
         return out
@@ -633,6 +775,8 @@ def mount(app, ledger, cfg, accept) -> None:
         if _follow_up_required(FOLLOW_UPS.get(wizard or mode.removeprefix("wd_")), fields):
             required.append(FOLLOW_UP)  # D148, FA6
         missing = [k for k in required if not fields.get(k)]
+        if mode == "wd_experience" or wizard in WORK_VARIANTS:  # D149, FA7
+            missing += _work_errors(fields, wizard == "experience_required")
         if wizard:  # D142, FA4: every page before Review was saved under this form token
             saved = {d["page"] for d in drafted_pages(slug, token)}
             missing += [f"page {i}" for i in range(1, len(WIZARD_PAGES)) if i not in saved]
