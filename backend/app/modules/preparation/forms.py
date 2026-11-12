@@ -140,6 +140,13 @@ class SectionOptionSpec(BaseModel):
     text: str = Field(min_length=1, max_length=500)
 
 
+# D155: the parts a work history entry may ask beyond those always entered (the Workday-style
+# stand-in's Location and Role Description), sorted: the one list every layer uses.
+ENTRY_PARTS = ("description", "location")
+EntryPart = Literal["description", "location"]
+assert ENTRY_PARTS == tuple(sorted(EntryPart.__args__))
+
+
 class SectionSpec(BaseModel):
     """D120: a captured structured education/employment section -- its kind, the DOM container the
     executor scopes 'Add another' to, and (for education) the option lists its comboboxes offer.
@@ -163,10 +170,8 @@ class SectionSpec(BaseModel):
     # record when it holds them (the Workday-style stand-in's Location and Role Description),
     # and those of them the page requires; sorted, each once. Written only when set, so every
     # other section's stored schema and fingerprint are unchanged.
-    parts: list[Literal["description", "location"]] = Field(default_factory=list, max_length=2)
-    required_parts: list[Literal["description", "location"]] = Field(
-        default_factory=list, max_length=2
-    )
+    parts: list[EntryPart] = Field(default_factory=list, max_length=2)
+    required_parts: list[EntryPart] = Field(default_factory=list, max_length=2)
 
     @model_validator(mode="after")
     def _parts_known(self):

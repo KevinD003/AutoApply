@@ -576,16 +576,17 @@ def test_a_required_section_is_sent_with_your_entry(api, receiver):
 
 @pytest.mark.parametrize("records", [(CURRENT,), ()], ids=["one-record", "no-record"])
 def test_an_entry_a_parsed_resume_adds_is_never_sent(api, receiver, records):
-    """The resume's parse adds an entry with values of its own (a description NoEfforts leaves
-    empty; with no record, the whole entry): page 2 is read back before its Next, which is never
-    clicked."""
+    """The resume's parse adds an entry with values of its own (with no record, an entry beyond
+    the approved ones): D155 review, the section is read again after the page's uploads, so the
+    attempt stops before anything is typed into it, and page 2's Next is never clicked."""
     app_id = experience_application(api, receiver, "experience_parse", records=records)
     aid = queue(api, app_id)
     assert runner.run_attempt(aid, "w1") == "abandoned"
     led = receiver.ledger()
     assert draft_pages(led) == [1] and posts(led, "/apply") == 0
-    (step,) = [r for r in rows(aid, "step") if r["page"] == 2]
-    assert step["mismatched"] >= 1
+    want = SECTION_PREFILLED if records else SECTION_ENTRIES_BEYOND
+    assert want in attempt(aid).outcome_detail
+    assert not [d for d in rows(aid, "disclosure") if d.get("kind") == "section_field"]
 
 
 @pytest.mark.parametrize("records, sent", [((CURRENT,), 1), ((CURRENT, PAST), 2)],

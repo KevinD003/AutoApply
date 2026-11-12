@@ -664,7 +664,7 @@ function DiffToggle({ appId, from, to, label }) {
               {sec.reordered && <span> (order changed)</span>}
               <ul className="ml-3">
                 {sec.rows.map((r) => (
-                  <li key={r.record_id}>
+                  <li key={r.record_id} className="whitespace-pre-wrap">
                     {r.label ?? "A record"} ({ROW_CHANGE[r.change] ?? r.change})
                     {r.change === "changed" &&
                       ": " + r.fields.map((f) => `${SECTION_FIELD[f.field] ?? f.field} ${sectionShown(f.before)} → ${sectionShown(f.after)}`).join("; ")}

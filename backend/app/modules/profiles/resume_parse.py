@@ -37,6 +37,9 @@ SECTIONS = {
               "contact"),
 }  # fmt: skip
 _HEADING = {h: kind for kind, names in SECTIONS.items() for h in names}
+# The note this parser puts first in a work entry's description: NoEfforts' own words, never
+# yours, so a description still holding it is never sent as written (D155).
+DATES_NOTE = "Dates as written: "
 _SEP = re.compile(r"\s+(?:—|–|-|\|)\s+")
 _AT = re.compile(r"^(?P<a>.+?)\s+at\s+(?P<b>.+)$", re.I)
 _BULLET = re.compile(r"^[•\-*·▪◦–]\s*")
@@ -113,7 +116,7 @@ def propose(text: str) -> Proposals:
                 continue
             current = {"title": _clip(title), "employer": _clip(employer), "lines": []}
             if dates:
-                current["lines"].insert(0, f"Dates as written: {dates.group(1).strip()}")
+                current["lines"].insert(0, f"{DATES_NOTE}{dates.group(1).strip()}")
             out.employment.append(current)
         elif section == "education":
             current = None

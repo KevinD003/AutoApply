@@ -28,6 +28,7 @@ from playwright.sync_api import Error as PWError
 
 from app.modules.execution.adapters import dropdowns
 from app.modules.preparation import gh_readonly as ro
+from app.modules.preparation.forms import ENTRY_PARTS
 from app.modules.preparation.structured_sections import FieldResult, RowResult, SectionResult
 
 
@@ -74,9 +75,8 @@ _SPEC = {"education": _EDUCATION_FIELDS, "employment": _EMPLOYMENT_FIELDS}
 # is refused rather than silently dropped -- we never trust a field we did not freeze.
 _FIELD_NAMES = {kind: frozenset(f[0] for f in spec) for kind, spec in _SPEC.items()}
 # D155: what an employment entry may ask beyond those five (the Workday-style stand-in's Location
-# and Role Description). A frozen section carries them only when it names them (`parts`), and
-# Greenhouse's executor refuses any section that does: its form has no such controls.
-ENTRY_PARTS = ("description", "location")
+# and Role Description, `forms.ENTRY_PARTS`). A frozen section carries them only when it names
+# them (`parts`), and Greenhouse's executor refuses any section that does: its form has none.
 
 # A frozen section's DOM root is used live as a Playwright locator (the "Add another" click is
 # scoped to it), so it must be the plain "#id" selector capture emits (#education-section /

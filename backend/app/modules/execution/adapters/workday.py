@@ -296,8 +296,19 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
                     "kind": "section_field", "section": sec["kind"], "row": en["row"],
                     "field": en["field"]}))  # fmt: skip
 
+            # D155 review: the page's own uploads come first on its page, and a parsed resume can
+            # add an entry or fill one; what was checked before anything was entered is checked
+            # again here, so such an entry is never filled in and adopted.
+            root = ws.section_root(sec)
+            found, now = ws.entry_indices(page, root), ws.entries_now(page, root)
+            if found is None or now is None or now["inoperable"]:
+                raise StoppedAfterDisclosure(SECTION_UNUSABLE, list(disclosures))
+            if any(i >= len(sec["rows"]) for i in found):
+                raise StoppedAfterDisclosure(SECTION_ENTRIES_BEYOND, list(disclosures))
+            if now["holding"]:
+                raise StoppedAfterDisclosure(SECTION_PREFILLED, list(disclosures))
             try:
-                ws.apply(page, ws.plan(sec), ws.section_root(sec), on_entered=entered,
+                ws.apply(page, ws.plan(sec), root, on_entered=entered,
                          progress=self._progress)  # fmt: skip
             except ws.Refused as e:
                 raise StoppedAfterDisclosure(SECTION_NOT_ENTERED, list(disclosures)) from e

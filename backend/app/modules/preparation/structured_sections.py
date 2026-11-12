@@ -35,8 +35,9 @@ Deliberately OUT OF SCOPE here (the isolated remaining gaps, not guessed):
 import re
 from dataclasses import dataclass, field
 
-from app.modules.preparation.forms import normalize
+from app.modules.preparation.forms import ENTRY_PARTS, normalize
 from app.modules.profiles.models import Approval
+from app.modules.profiles.resume_parse import DATES_NOTE
 
 _BAD_DATE_ORDER = "This record's start date is after its end date; fix it in your profile."
 
@@ -311,6 +312,12 @@ def _part_field(name: str, record, label: str, *, required: bool, lines: bool) -
         return FieldResult(name, "omitted", explanation=f"No {label} on this record: none is sent.")
     if lines:
         text = text.replace("\r\n", "\n").replace("\r", "\n")
+        if any(line.startswith(DATES_NOTE) for line in text.split("\n")):
+            return FieldResult(
+                name, "needs_user",
+                explanation=f"This record's {label} still holds the note NoEfforts added when "
+                "it read your resume (\"Dates as written\"); edit it in your profile.",
+            )  # fmt: skip
     elif "\n" in text or "\r" in text:
         return FieldResult(
             name, "needs_user",
@@ -324,7 +331,7 @@ def _part_field(name: str, record, label: str, *, required: bool, lines: bool) -
     )  # fmt: skip
 
 
-EMPLOYMENT_PARTS = ("description", "location")  # D155: as SectionSpec.parts, sorted
+EMPLOYMENT_PARTS = ENTRY_PARTS  # D155: as SectionSpec.parts, sorted
 
 
 def resolve_employment_row(record, parts=(), required_parts=()) -> RowResult:
@@ -389,6 +396,10 @@ def resolve_section(
     is returned as an explicit checkpoint (`supported=False`) rather than guessed."""
     if kind not in SUPPORTED_KINDS:
         return SectionResult(kind, [], supported=False, reason=f"Unsupported section '{kind}'.")
+    if (parts or required_parts) and kind != "employment":  # D155: never ignored silently
+        return SectionResult(
+            kind, [], supported=False, reason="The section's entries ask something unknown."
+        )
     approved = [r for r in records if _approved(r)]
     if kind == "education":
         if options is None:

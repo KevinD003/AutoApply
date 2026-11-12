@@ -76,7 +76,9 @@ def _op(i: int, field: str, kind: str, selector: str, fr) -> FillOp:
         text = fr.display
         if not isinstance(text, str) or not text.strip():
             raise Refused(f"{field}: resolved value carries no display text")
-        if "\r" in text or (kind == "text" and "\n" in text):
+        if "\r" in text:
+            raise Refused(f"{field}: a carriage return is never typed")
+        if kind == "text" and "\n" in text:
             raise Refused(f"{field}: a text box cannot hold a line break")
         return FillOp(i, field, "text", selector, text, text)
     val = fr.value if isinstance(fr.value, dict) else {}
@@ -144,17 +146,31 @@ def _give(page, op: FillOp, timeout_ms: int) -> None:
         loc.set_checked(bool(op.value), timeout=timeout_ms)
     else:
         loc.fill(str(op.value), timeout=timeout_ms)
+        # D155: focus leaves it, as it would for a person, so a page that reacts on `change`
+        # does so now, before the readback, not at the next click
+        loc.blur(timeout=timeout_ms)
+
+
+# D155: what the form would send under the control's name: the values its submission builds
+# (a hard-wrapping text area's line breaks, a control of another form or a disabled one, a second
+# control of the same name), never what the control shows.
+_SUBMITTED = """(sel) => { const e = document.querySelector(sel);
+  if (!e || !e.form || !e.name) return null;
+  return new FormData(e.form).getAll(e.name).map((v) => (typeof v === 'string' ? v : null)); }"""
 
 
 def _holds(page, op: FillOp) -> bool:
-    """The control holds exactly what was approved (a box: ticked as approved)."""
+    """The control holds exactly what was approved (a box: ticked as approved), and a typed one
+    is what its form would send, once and exactly (D155)."""
     try:
         loc = page.locator(op.selector)
         if loc.count() != 1:
             return False
         if op.kind == "checkbox":
             return loc.first.is_checked() == bool(op.value)
-        return loc.first.input_value() == op.readback
+        if loc.first.input_value() != op.readback:
+            return False
+        return page.evaluate(_SUBMITTED, op.selector) == [op.readback]
     except PWError:
         return False
 

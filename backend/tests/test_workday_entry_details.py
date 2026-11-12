@@ -10,15 +10,20 @@ compatibility only, never how a real Workday tenant behaves. Synthetic candidate
 
 import datetime
 import re
+import sys
 import uuid
 from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import select
 
+from app.core.db import SessionLocal
 from app.modules.execution import runner
 from app.modules.execution.adapters import greenhouse_sections as gs
 from app.modules.execution.adapters import workday_sections as ws
+from app.modules.execution.adapters.workday import SECTION_PREFILLED
+from app.modules.execution.models import ApplicationPause
 from app.modules.preparation import structured_sections as ss
 from app.modules.preparation import workday
 from app.modules.preparation.forms import (
@@ -29,8 +34,10 @@ from app.modules.preparation.forms import (
     WizardSpec,
     form_fingerprint,
 )
-from app.modules.preparation.package import SCHEMA_VERSION
-from tests.execution_harness import Receiver, queue
+from app.modules.profiles.resume_parse import DATES_NOTE
+from tests.execution_harness import ROOT as REPO
+from tests.execution_harness import Receiver, attempt, queue, synthetic_candidate
+from tests.test_sections_review import _diff
 from tests.test_workday_experience import (
     CURRENT,
     PAST,
@@ -49,7 +56,10 @@ from tests.test_workday_experience import (
     section_page,
     work,
 )
-from tests.test_workday_wizard import approvals, approve
+from tests.test_workday_wizard import approvals, approve, draft_pages, posts
+
+sys.path.insert(0, str(REPO / "fixtures" / "ats_receiver"))
+import workday_like  # noqa: E402
 
 LOCATION = "Springfield (fictional)"
 ROLE = "Triage and intake.\r\nNight rota lead (fictional)."  # as a record may hold it
@@ -82,9 +92,9 @@ DESCRIPTION_REQUIRED = entry().replace(
 )
 
 
-def without(template: str, part: str) -> str:
-    """The template without one part's label and control."""
-    return re.sub(rf'<label for="[a-z]__i__">[^<]*</label><(input|textarea)[^>]*name="work\[__i__\]'
+def without(template: str, part: str, i: str = "__i__") -> str:
+    """An entry (the template, or entry i on the page) without one part's label and control."""
+    return re.sub(rf'<label for="[a-z]{i}">[^<]*</label><(input|textarea)[^>]*name="work\[{i}\]'
                   rf'\.{part}"[^>]*>(\s*</textarea>)?', "", template)  # fmt: skip
 
 
@@ -115,6 +125,50 @@ def test_an_entry_that_asks_neither_names_neither():
     assert sec.parts == [] and "parts" not in sec.model_dump()
     schema, _ = read(form_page(section(), without(entry(), "description")))
     assert schema.sections[0].parts == ["location"]
+
+
+def describe(attrs: str) -> str:
+    """The template with attributes on its Role Description."""
+    return entry().replace('name="work[__i__].description">',
+                           f'name="work[__i__].description"{attrs}>')  # fmt: skip
+
+
+@pytest.mark.parametrize("template", [
+    describe(' wrap="hard"'),
+    describe(' wrap=" HARD " cols="20"'),
+    describe(' wrap="off"'),
+    entry(loc=' dirname="work[__i__].location.dir"'),
+    entry(loc=' form="workday-application"'),
+], ids=["wrap-hard", "wrap-hard-spaced", "wrap-other", "dirname", "form"])  # fmt: skip
+def test_a_control_whose_form_would_send_otherwise_than_typed_is_one_checkpoint(template):
+    """D155 review: a text area that hard-wraps (line breaks you never wrote), a direction field
+    sent beside a value, or a control tied to a form by name: what the employer would receive
+    is not what NoEfforts typed, so the work history is apply-on-the-employer's-site."""
+    schema, fields = read(form_page(section(), template))
+    assert schema.sections == [] and fields[workday.WORK_KEY].required
+
+
+def test_a_soft_wrapping_role_description_is_read():
+    schema, _ = read(form_page(section(), describe(' wrap="soft"')))
+    assert schema.sections[0].parts == ["description", "location"]
+
+
+@pytest.mark.parametrize("at_load, template", [
+    (without(entry("0"), "location", "0"), entry()),
+    (entry("0", loc=" required"), entry()),
+    (entry("0"), without(entry(), "location")),
+], ids=["lacks-a-part", "requires-it-alone", "asks-one-the-template-does-not"])  # fmt: skip
+def test_an_entry_on_the_page_that_asks_its_parts_otherwise_is_one_checkpoint(at_load, template):
+    """D155 review: NoEfforts fills an entry already on the page in place, from what the
+    template's parts resolved to; one asking Location or Role Description otherwise would stop
+    the attempt after values were entered (D149 refused it when the form was read)."""
+    schema, fields = read(form_page(section(at_load), template))
+    assert schema.sections == [] and fields[workday.WORK_KEY].required
+
+
+def test_an_entry_on_the_page_asking_its_parts_as_the_template_does_is_read():
+    schema, _ = read(form_page(section(entry("0", loc=" required")), entry(loc=" required")))
+    assert schema.sections[0].required_parts == ["location"]
 
 
 @pytest.mark.parametrize("kw", [
@@ -187,6 +241,15 @@ def test_a_part_the_page_requires_and_your_record_lacks_is_yours_to_add():
     assert row.fields["description"].status == "omitted"
 
 
+def test_a_role_description_still_holding_the_resume_reader_s_note_is_yours_to_edit():
+    """D155 review: the resume reader writes its own note first in a role's description (D72);
+    those are NoEfforts' words, never sent as yours."""
+    for text in (f"{DATES_NOTE}Jan 2019 - Present\nTriage.", f"Triage.\n{DATES_NOTE}2019"):
+        row = ss.resolve_employment_row(record(description=text), ("description",))
+        assert row.fields["description"].status == "needs_user"
+        assert "Dates as written" in row.fields["description"].explanation
+
+
 def test_a_location_with_a_line_break_is_yours_to_fix():
     row = ss.resolve_employment_row(record(location="Spring\nfield"), ("location",))
     assert row.fields["location"].status == "needs_user"
@@ -198,6 +261,8 @@ def test_a_section_asking_a_part_never_named_is_not_supported():
     assert not result.supported
     result = ss.resolve_section("employment", [], parts=("location",), required_parts=("title",))
     assert not result.supported
+    options = ss.EducationOptions()
+    assert not ss.resolve_section("education", [], options=options, parts=("location",)).supported
 
 
 # ---------------------------------------------------------------------------- frozen content
@@ -237,19 +302,21 @@ def test_a_section_frozen_before_d155_is_planned_as_before():
                                                                      "description")}  # fmt: skip
 
 
+# Each refused by the one check it names: the rows carry no part field unless the case is about
+# one (D155 review: rows carrying them were refused by the field allowlist anyway).
 @pytest.mark.parametrize("data", [
-    {**frozen_parts(), "kind": "education"},
+    {"kind": "education", "root": ROOT, "rows": [], "parts": ["location"]},
     frozen_parts() | {"parts": ["location", "description"]},
-    frozen_parts() | {"parts": ["salary"]},
-    frozen_parts() | {"parts": []},
-    frozen_parts() | {"parts": "location"},
-    frozen_parts() | {"parts": [1]},
-    frozen_parts(parts=("location",)) | {"parts": []},
+    frozen([frozen_row()], parts=["salary"]),
+    frozen([frozen_row()], parts=[]),
+    frozen([frozen_row()], parts="location"),
+    frozen([frozen_row()], parts=[1]),
+    frozen([frozen_row()], parts=["location", "location"]),
     frozen([frozen_parts()["rows"][0]]),  # the fields without the section naming them
     frozen_parts(parts=("description", "location")) | {"parts": ["location"]},
     frozen_parts(location="Spring\nfield"),
     frozen_parts(description="Carriage\rreturn"),
-], ids=["education", "unsorted", "unknown", "empty", "not-a-list", "not-text", "empty-named",
+], ids=["education", "unsorted", "unknown", "empty", "not-a-list", "not-text", "twice",
         "unnamed", "description-unnamed", "location-line-break", "description-cr"])  # fmt: skip
 def test_frozen_parts_it_cannot_enter_exactly_are_refused(data):
     with pytest.raises(gs.Refused):
@@ -259,12 +326,6 @@ def test_frozen_parts_it_cannot_enter_exactly_are_refused(data):
 def test_greenhouse_never_plans_a_section_that_names_parts():
     with pytest.raises(gs.Refused):
         gs.plan_content_section(frozen_parts() | {"root": "#employment-section"})
-
-
-def test_the_package_schema_version_is_unchanged():
-    """Only a section whose entry asks the parts carries them: every other package's content and
-    hash are as before (SCHEMA_VERSION stays 3, as D149 left it)."""
-    assert SCHEMA_VERSION == 3
 
 
 # ---------------------------------------------------------------------------- through the runner
@@ -301,7 +362,7 @@ def test_a_page_that_requires_one_your_record_lacks_blocks_approval(api, receive
     c = content(api, app_id)
     keys = [k for k in c["unresolved"] if k.startswith("section:employment:")]
     assert len(keys) == 1 and keys[0].endswith(":description")
-    assert approve(api, app_id).status_code != 200
+    assert approve(api, app_id).status_code == 409
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
 
@@ -324,6 +385,90 @@ def test_on_the_single_page_they_are_sent_too(api, receiver):
     (row,) = receiver.ledger()["acceptances"]
     assert row["fields"]["work[0].location"] == LOCATION
     assert lines(row["fields"]["work[0].description"]) == ROLE_SENT
+
+
+def test_an_entry_a_parsed_resume_fills_is_never_adopted(api, receiver):
+    """D155 review: your record holds every part, so the entry a resume parse adds could be filled
+    over with what you approved and sent; the section is read again after the page's uploads,
+    and the attempt stops before anything is typed into it (D149's rule)."""
+    app_id = experience_application(api, receiver, "experience_parse", records=(CURRENT_D,))
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    assert SECTION_PREFILLED in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert draft_pages(led) == [1] and posts(led, "/apply") == 0
+
+
+def paused(app_id: str) -> bool:
+    with SessionLocal() as db:
+        found = db.scalars(select(ApplicationPause).where(
+            ApplicationPause.application_id == uuid.UUID(app_id))).all()  # fmt: skip
+    return len(found) == 1 and found[0].resolved_at is None
+
+
+def test_an_approval_given_before_d155_pauses_before_anything_is_entered(
+    api, receiver, monkeypatch
+):
+    """Approved on a section read without its parts (as before D155; simulated), then run with
+    them: the live form is not the approved one, so the attempt pauses before anything is
+    entered (D132), never filling against the older package."""
+    real = workday._work_section
+
+    def before_d155(html):
+        spec, refused = real(html)
+        if spec is not None:
+            spec = spec.model_copy(update={"parts": [], "required_parts": []})
+        return spec, refused
+
+    monkeypatch.setattr(workday, "_work_section", before_d155)
+    app_id = experience_application(api, receiver, records=(CURRENT_D,))
+    assert "parts" not in content(api, app_id)["sections"][0]
+    monkeypatch.setattr(workday, "_work_section", real)
+    assert runner.run_attempt(queue(api, app_id), "w1") == "failed_safe"
+    assert receiver.ledger()["disclosures"] == [] and paused(app_id)
+
+
+def test_a_page_that_starts_requiring_them_after_approval_pauses(api, receiver):
+    app_id = experience_application(api, receiver, records=(CURRENT_D, PAST_D))
+    receiver.config(wizard="experience_parts_required")
+    assert runner.run_attempt(queue(api, app_id), "w1") == "failed_safe"
+    assert receiver.ledger()["disclosures"] == [] and paused(app_id)
+
+
+def test_an_edit_to_your_role_description_is_in_the_version_diff(api, receiver):
+    app_id = experience_application(api, receiver, records=(CURRENT_D,))
+    (rec,) = api.get("/profile/employment").json()
+    r = api.put(f"/profile/employment/{rec['id']}", json=CURRENT_D | {"description": "Wards."})
+    assert r.status_code == 200, r.text
+    assert api.post(f"/profile/employment/{rec['id']}/approve").status_code == 200
+    (sec,) = _diff(api, app_id)["sections"]
+    (row,) = sec["rows"]
+    changed = {f["field"]: (f["before"], f["after"]) for f in row["fields"]}
+    assert set(changed) == {"description"}
+    assert changed["description"][1] == {"status": "resolved", "display": "Wards."}
+
+
+def test_a_form_given_by_hand_never_names_parts(api):
+    synthetic_candidate(api)
+    job = api.post("/jobs", json={"title": "Manual", "employer": "Example Health"}).json()["job"]
+    form = {"title": "Manual (fictional)",
+            "fields": [{"key": "nickname", "label": "Nickname", "type": "text"}],
+            "sections": [{"kind": "employment", "root": "#w", "parts": ["location"]}]}  # fmt: skip
+    r = api.post(f"/jobs/{job['id']}/form", json={"form": form})
+    assert r.status_code == 400 and "'parts' is set by NoEfforts only" in r.text
+
+
+def test_the_stand_in_refuses_an_entry_without_a_part_it_requires():
+    """FA7's own check, the oracle the runs above rely on: in experience_parts_required an entry
+    without its Location or Role Description is refused (at the page's Next and at the final
+    POST); in every other variant they are optional."""
+    entry_ = {"work[0].title": "Clinic Assistant", "work[0].company": "Example Health",
+              "work[0].from": "01/2019", "work[0].current": "1", "work[0].location": "",
+              "work[0].description": "Triage."}  # fmt: skip
+    assert workday_like._work_errors(entry_, False, True) == ["Work Experience 1: enter location"]
+    assert workday_like._work_errors(entry_, False, False) == []
+    full = entry_ | {"work[0].location": LOCATION}
+    assert workday_like._work_errors(full, False, True) == []
 
 
 # ---------------------------------------------------------------------------- the page
@@ -359,3 +504,36 @@ def test_one_your_record_does_not_hold_stays_empty_and_is_checked(page):  # noqa
     page.evaluate("""() => { document.querySelector('[name="work[0].location"]').value
                              = 'Parsed (fictional)'; }""")  # fmt: skip
     assert ws.readback(page, entries, ROOT)
+
+
+def test_what_the_form_would_send_is_read_back_not_only_what_the_control_shows(page):  # noqa: F811
+    """D155 review: a script makes the Role Description hard-wrap after it was filled; it still
+    shows the approved text, but its form would send line breaks you never wrote."""
+    page.set_content(section_page())
+    entries = ws.plan(frozen_parts())
+    ws.apply(page, entries, ROOT)
+    assert ws.readback(page, entries, ROOT) == []
+    page.evaluate("""() => { const d = document.querySelector('[name="work[0].description"]');
+                             d.setAttribute('wrap', 'hard'); d.setAttribute('cols', '10'); }""")
+    assert page.locator('[name="work[0].description"]').input_value() == ROLE_SENT
+    assert "section:employment:0:description" in ws.readback(page, entries, ROOT)
+
+
+def test_a_control_its_form_would_not_send_is_found(page):  # noqa: F811
+    page.set_content(section_page())
+    entries = ws.plan(frozen_parts())
+    ws.apply(page, entries, ROOT)
+    page.evaluate("""() => document.querySelector('[name="work[0].location"]')
+                             .setAttribute('form', 'elsewhere')""")  # fmt: skip
+    assert "section:employment:0:location" in ws.readback(page, entries, ROOT)
+
+
+def test_a_page_that_rewrites_a_value_when_focus_leaves_it_stops_the_entry(page):  # noqa: F811
+    """D155 review: focus leaves each control once it is filled, so a page that rewrites a value
+    on `change` does so before the readback, not at the next click."""
+    rewrite = """<script>document.addEventListener('change', (e) => {
+      if ((e.target.name || '').endsWith('.description')) e.target.value += ' (edited)'; });
+    </script>"""
+    page.set_content(section_page(extra=rewrite))
+    with pytest.raises(gs.Refused):
+        ws.apply(page, ws.plan(frozen_parts()), ROOT)
