@@ -103,7 +103,7 @@ whole backend and e2e suites); ruff was. Nothing real was run.
 | After the second review's fixes | the new tests (JUnit), on the tree committed as ac5b48b, then bdb5311 (one case added) | exit 1 first (the test page kept a ticked role's To required, unlike the stand-in; the page corrected); then exit 0, 118 passed; the 63 capture cases, 63 passed |
 | The suites the change touches, on bdb5311 | the same 21 files (JUnit) | exit 0; 547 passed in 12.9 min (the new file's 119 cases among them) |
 | Each part changed in turn, after the second review | 83 changes, one at a time on bdb5311 | all 83 fail a test |
-| The regression set | `pytest` on 74 files (D148's 73 and `test_workday_experience.py`; JUnit), in a copy of the branch, alongside the runs above | @@REGRESS@@ |
+| The regression set | `pytest` on 74 files (D148's 73 and `test_workday_experience.py`; JUnit), in a copy of the branch at bdb5311, alongside the runs above | exit 0; 2037 passed in 68 min |
 
 ## A Workday-style follow-up question, entered only when the page shows it (D148, 2026-11-11; local only)
 
