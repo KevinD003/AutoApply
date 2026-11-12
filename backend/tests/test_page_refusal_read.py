@@ -313,9 +313,11 @@ def test_controls_filled_only_at_a_checkpoint_and_what_holds_them_are_left_out(p
 
 
 def test_the_dom_adapter_leaves_out_exactly_the_boxes_its_click_takes_for_the_checkpoint(page):
-    dom = SimpleNamespace(content={"answers": []})
-    for name in ("_code_box_ids", "_shown_code_box_ids", "_code_boxes", "leave_out"):
-        setattr(dom, name, getattr(GreenhouseDomAdapter, name).__get__(dom))
+    dom = SimpleNamespace(content={"answers": []})  # each named, never a name built at run time
+    dom._code_box_ids = GreenhouseDomAdapter._code_box_ids.__get__(dom)
+    dom._shown_code_box_ids = GreenhouseDomAdapter._shown_code_box_ids.__get__(dom)
+    dom._code_boxes = GreenhouseDomAdapter._code_boxes.__get__(dom)
+    dom.leave_out = GreenhouseDomAdapter.leave_out.__get__(dom)
     boxes = "".join(f'<input id="security-input-{i}" maxlength="1">' for i in range(8))
     page.set_content(form(boxes))
     assert dom.leave_out(page) == [f"security-input-{i}" for i in range(8)]
