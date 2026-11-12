@@ -42,11 +42,18 @@ before this routing existed) is passed on to ATTEMPT_QUEUE, once, instead of bei
 """
 
 import logging
+import os
 import socket
 import uuid
 
 from celery import Celery
-from celery.signals import after_setup_logger, after_setup_task_logger, worker_shutting_down
+from celery.signals import (
+    after_setup_logger,
+    after_setup_task_logger,
+    worker_init,
+    worker_shutdown,
+    worker_shutting_down,
+)
 from kombu import Exchange, Queue
 from sqlalchemy import delete
 
@@ -127,11 +134,29 @@ install_worker_filters()
 after_setup_logger.connect(lambda **_: install_worker_filters(), weak=False)
 after_setup_task_logger.connect(lambda **_: install_worker_filters(), weak=False)
 
-# D150: a stop request (SIGTERM from `docker compose stop`, SIGINT from Ctrl-C) is handled by
-# Celery in the main process only, which then waits for the running task. This receiver, run
-# there, sets the flag the pool processes share (execution/stopping.py), so the attempt running
-# in one of them takes no further protected step. Sent for a cold shutdown too.
-worker_shutting_down.connect(lambda **_: stopping.request(), weak=False)
+
+# D150: a stop request (SIGTERM from `docker compose stop` or an upgrade, SIGINT from Ctrl-C)
+# is handled by Celery in the main process only, which then waits for the running task. These
+# receivers, run there, back the flag the pool processes share (execution/stopping.py) before
+# the pool starts, and set it when the worker is asked to stop, so the attempt running in a pool
+# process takes no further protected step. Sent for a cold shutdown too.
+def _share_stop_flag(**_) -> None:
+    try:
+        stopping.share()
+    except OSError as e:  # a pool forked from this process still shares the anonymous page
+        log.warning("stop flag not backed by a file (%s): forked pool processes only",
+                    type(e).__name__)  # fmt: skip
+
+
+def _stop_requested(**_) -> None:
+    stopping.request()
+    # Inside Celery's signal handler: one write to the log, as a signal handler may make it.
+    os.write(2, b"NoEfforts: asked to stop; a running application stops before its next step\n")
+
+
+worker_init.connect(_share_stop_flag, weak=False)
+worker_shutting_down.connect(_stop_requested, weak=False)
+worker_shutdown.connect(lambda **_: stopping.unshare(), weak=False)
 
 WORKER_ID = f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
 

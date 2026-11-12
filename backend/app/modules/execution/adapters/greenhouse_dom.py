@@ -623,10 +623,10 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         answers = sorted(self.content["answers"], key=lambda a: a["type"] != "file")
         uploaded = False
         for a in answers:
-            self._progress()
             if uploaded and a["type"] != "file":
                 uploaded = False
                 self._settle(page)
+            self._progress()  # D150: after the page settled, right before this field
             if a["value"] is None or a["type"] == FieldType.unsupported.value:
                 continue
             if a.get("condition"):
@@ -697,7 +697,10 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             try:
                 plan = gsections.plan_content_section(sec)
                 root = gsections.section_root(sec)
-                gsections.apply_section_plan(page, plan, root, on_entered=entered)
+                # D150: the run's check between fields, before each control and "Add another"
+                gsections.apply_section_plan(
+                    page, plan, root, on_entered=entered, before_op=self._progress
+                )
             except gsections.Refused as e:
                 # What was entered before the refusal is already in `disclosures`.
                 raise StoppedAfterDisclosure(str(e), list(disclosures)) from e

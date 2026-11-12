@@ -455,22 +455,34 @@ def _apply_op(page, op: FillOp, timeout_ms: int) -> None:
 
 
 def apply_section_plan(
-    page, plan: SectionPlan, section_root: str, *, timeout_ms: int = 3000, on_entered=None
+    page,
+    plan: SectionPlan,
+    section_root: str,
+    *,
+    timeout_ms: int = 3000,
+    on_entered=None,
+    before_op=None,
 ) -> list[dict]:
     """Fill a planned section on ``page``, reading back every control, and return a per-row/field
     record of what was entered (field names only -- never the applicant's values) for the attempt
     log. Raises ``SectionFillError`` (a ``Refused``) on any readback mismatch or a planned row that
-    will not appear, so nothing is forced onto a form that no longer matches the approval."""
+    will not appear, so nothing is forced onto a form that no longer matches the approval.
+    ``before_op`` (D150: the runner's check between fields) is called before each "Add another"
+    and each control; what it raises passes through, with what was entered already reported."""
     entered: list[dict] = []
     try:
         for row in plan.rows:
             if row.add_another_first and not _present(page, row.anchor):
+                if before_op is not None:
+                    before_op()
                 _click_add_another(page, section_root, timeout_ms)
                 if not _present(page, row.anchor, wait_ms=timeout_ms):
                     raise SectionFillError(
                         f"{plan.kind} row {row.row}: {row.anchor} did not appear after Add another"
                     )
             for op in row.ops:
+                if before_op is not None:
+                    before_op()
                 _apply_op(page, op, timeout_ms)
                 entered.append({"row": row.row, "field": op.field})
                 if on_entered is not None:  # D137: reported as soon as it is entered
