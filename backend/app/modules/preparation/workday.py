@@ -25,6 +25,15 @@ page, one Next on each page before the last and none elsewhere, the only submit 
 page, every question on a page before it, and no other step marker. Anything else is the
 several-pages checkpoint above (fail closed), so each field's `step` is exactly its page.
 
+D148: a question of the application form hidden at load inside its page (the control, or an
+element between it and the form, is `hidden`, `aria-hidden="true"` or styled `display: none` /
+`visibility: hidden`) is one the page shows by its own logic, after an answer NoEfforts cannot
+name: `Condition(UNKNOWN_TRIGGER)`, as D135 reads Greenhouse's. A typed one is answered only by
+you or an approved profile fact and entered only if the page shows it
+(execution/adapters/workday.py); any other is never filled. A wizard page's own `hidden` (every
+page but the first, FA1) says nothing about its questions. The markup is read as the generic
+extractor parses it, never run.
+
 A parsed resume that fills fields after an upload is caught at execution by the readback of
 every field NoEfforts leaves unanswered (`hosted_form.HostedFormAdapter`)."""
 
@@ -35,10 +44,14 @@ from urllib.parse import urlsplit
 
 from app.modules.preparation.forms import (
     _VOID,
+    UNKNOWN_TRIGGER,
+    Condition,
     FieldType,
     FormField,
     FormSchema,
     WizardSpec,
+    _application_form,
+    _TreeBuilder,
     extract_form_schema,
 )
 
@@ -54,6 +67,50 @@ WIZARD_SELECTOR = ", ".join(f"[{m}]" for m in WIZARD_MARKERS)
 _NO_STEP = {"bot_check", MULTI_STEP_KEY, PREFILLED_KEY}  # checkpoints added here, not questions
 _STEP_OF = re.compile(r"\bof\s+(\d+)\b", re.IGNORECASE)
 _TEXT_TYPES = {"text", "email", "tel", "url", "number", "date", ""}
+# D148: what hides an element in raw HTML (no script or stylesheet is run or read).
+_HIDING_STYLE = re.compile(
+    r"(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)\s*(?:!\s*important\s*)?(?:;|$)",
+    re.IGNORECASE,
+)
+# Input types that are not questions (as forms.py), and a file input: a page commonly hides
+# its native file input behind a button of its own, and an upload never needs it shown.
+_NOT_MARKED = {"hidden", "submit", "button", "reset", "image", "file"}
+
+
+def _hides(a: dict[str, str]) -> bool:
+    """D148: the element is hidden at load by its own markup. A wizard page's section is not
+    counted: its `hidden` is the page's (FA1), never its questions'."""
+    if "data-wizard-page" in a:
+        return False
+    return ("hidden" in a or a.get("aria-hidden", "").strip().lower() == "true"
+            or bool(_HIDING_STYLE.search(a.get("style", ""))))  # fmt: skip
+
+
+def _hidden_in_page(html: str) -> set[str]:
+    """D148: the names of the application form's questions hidden at load inside their page:
+    every control of the name (each radio of a group) is hidden, by its own markup or an
+    element's between it and the form (`_hides`). Read on the generic extractor's own tree and
+    its choice of form, so a control outside that form (another form, a template) never marks
+    one of its questions. A file input is never marked (`_NOT_MARKED`)."""
+    b = _TreeBuilder()
+    b.feed(html)
+    nodes = list(b.root.walk())
+    form = _application_form(nodes)
+    seen: dict[str, list[bool]] = {}
+    for n in nodes:
+        name = n.attrs.get("name")
+        if n.tag not in ("input", "select", "textarea") or not name:
+            continue
+        if n.tag == "input" and n.attrs.get("type", "text").lower() in _NOT_MARKED:
+            continue
+        chain = [n, *n.ancestors()]
+        if form is not None:
+            if form not in chain:
+                continue  # outside the application form: not one of its questions
+            chain = chain[: chain.index(form)]
+        seen.setdefault(name, []).append(any(_hides(a.attrs) for a in chain))
+    return {name for name, hidden in seen.items() if all(hidden)}
+
 
 MULTI_STEP_REASON = (
     "an application on several pages: each page sends its answers to the employer on its own, "
@@ -248,9 +305,13 @@ def extract_schema(html: str) -> FormSchema:
     scan.feed(html)
     schema = extract_form_schema(_CASCADE.sub(_as_picker, html), challenges=True)
     keys = {f.key for f in schema.fields}
+    hidden = _hidden_in_page(html)
     for f in schema.fields:
         if f.key in scan.cascade:
             f.unsupported_reason = CASCADE_REASON
+        if f.key in hidden and f.type != FieldType.unsupported and f.condition is None:
+            # D148: shown by the page's own logic, after an answer NoEfforts cannot name.
+            f.condition = Condition(key=UNKNOWN_TRIGGER, any_of=["?"])
     wizard_refused = False
     if scan.wizard_seen:
         if _wizard_problem(scan, schema) is None:

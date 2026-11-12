@@ -462,7 +462,9 @@ def _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat) -> str | 
     its Next, one click of its Next, the page's answer recorded as disclosure evidence, then the
     checks that the form now shows the next page and is still the approved form. Each gate commits
     its `step_authorized` event before the action, so a worker lost after a click leaves the
-    record. Returns None when the review page is reached, or the runner's result once the attempt
+    record. D148: before the gate for a page's Next, the questions that page shows by its own
+    logic must be what was entered (`page_follow_ups`). Returns None when the review page is
+    reached, or the runner's result once the attempt
     has ended: `abandoned` (any refusal or finding; `svc.abandon` says pages may be saved at the
     employer and retires every approval), `unknown` (the page left the form after a Next:
     quarantined, the employer may hold the application) or `lost_authority`. Never a pause,
@@ -495,6 +497,12 @@ def _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat) -> str | 
         svc.record_evidence(aid, worker, gen, "step", step)
         if mismatches:
             svc.abandon(aid, worker, gen, f"{len(mismatches)} field(s) did not keep their values")
+            return "abandoned"
+        # D148: what the page shows after an earlier answer is what was entered; one it requires
+        # with no approved answer ends the attempt here, its Next never clicked (never a pause).
+        follow_up = adapter.page_follow_ups(page, i)
+        if follow_up:
+            svc.abandon(aid, worker, gen, follow_up)
             return "abandoned"
         beat()
         fault(f"before_next_gate_{i}")
