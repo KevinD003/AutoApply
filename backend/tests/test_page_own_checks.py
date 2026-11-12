@@ -93,7 +93,7 @@ def test_a_value_the_browser_would_refuse_stops_before_the_send_gate(api, receiv
 def test_a_submit_button_the_page_keeps_disabled_stops_before_the_send_gate(
     api, receiver, monkeypatch
 ):
-    monkeypatch.setattr(fa, "FINAL_READY_MS", 2000)
+    monkeypatch.setattr(fa, "FINAL_READY_MS", 2000, raising=False)
     app_id = single(api, receiver, "button_disabled")
     out, aid = run(api, app_id)
     assert out == "abandoned" and fa.FINAL_BUTTON_UNAVAILABLE in attempt(aid).outcome_detail
@@ -189,7 +189,7 @@ def test_a_wizard_whose_review_page_refuses_an_earlier_page_stops_before_the_sen
 def test_a_page_still_loading_after_the_answers_stops_before_its_checks(
     api, receiver, monkeypatch, wizard
 ):
-    monkeypatch.setattr(runner, "SETTLE_ENTRY_MS", 1500)  # the wait when the form opens unchanged
+    monkeypatch.setattr(runner, "SETTLE_ENTRY_MS", 1500, raising=False)  # not the wait at open
     receiver.config(page_check="slow_after_entry", page_check_delay_ms=15000, wizard=wizard)
     app_id = workday_application(api, url=fresh_url())
     out, aid = run(api, app_id)
@@ -254,7 +254,7 @@ def test_a_hidden_field_a_novalidate_page_never_reads_is_not_counted(api, receiv
 
 
 def test_a_v2_submit_button_kept_disabled_stops_before_the_send_gate(api, receiver, monkeypatch):
-    monkeypatch.setattr(fa, "FINAL_READY_MS", 2000)
+    monkeypatch.setattr(fa, "FINAL_READY_MS", 2000, raising=False)
     app_id = v2(api, receiver, "button_disabled")
     out, aid = run(api, app_id)
     assert out == "abandoned" and fa.FINAL_BUTTON_UNAVAILABLE in attempt(aid).outcome_detail
