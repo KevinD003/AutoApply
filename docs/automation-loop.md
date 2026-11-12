@@ -22,7 +22,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 
 | What | Where |
 |---|---|
-| `main` | 099642c (tree 33b8b0d, as predicted): #53 D144. Before it, 9346c8e (tree fd09e77): #52 D143; 25d04ea (tree a3054b8): #51 D142; 98fe380 (tree b75d64c): #50 D141; 3df7d0d (tree a625f26): #49 D140; 4585c59 (tree fac890a): #48 D139; a7f8742 (tree af2f25f): #47 D138; e2fd286 (tree 1d69376): #46 D137; 32c8f7c (tree 201ddbd): #45 D136; 53b28af (tree fe5c8c3): #44 D135 (main CI #269 green on all four jobs); 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
+| `main` | dd5d164 (tree 1c6df86, as predicted): #57 D148. Before it, b7f6c45 (tree 4f77573): #56 D147; 688c776 (tree c0865f1): #55 D146; 45c8229 (tree 0df08ea): #54 D145; 099642c (tree 33b8b0d): #53 D144; 9346c8e (tree fd09e77): #52 D143; 25d04ea (tree a3054b8): #51 D142; 98fe380 (tree b75d64c): #50 D141; 3df7d0d (tree a625f26): #49 D140; 4585c59 (tree fac890a): #48 D139; a7f8742 (tree af2f25f): #47 D138; e2fd286 (tree 1d69376): #46 D137; 32c8f7c (tree 201ddbd): #45 D136; 53b28af (tree fe5c8c3): #44 D135 (main CI #269 green on all four jobs); 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
 | D131 follow-up (the review's remaining findings) | merged (#39, bd38529); main CI #254 passed all four jobs |
 | D132 form-change pause and questions tab | merged (#40, c19c683); main CI #260 passed all four jobs |
 | D133 reuse and suggestion guards | merged (#41, da7ac61); its PR CI passed all four jobs on 360f34c, and main CI #265 on da7ac61 |
@@ -40,7 +40,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D145 a dropdown's list settled by the page's own record of its last change to a list | merged (#54, 45c8229, tree as predicted); its PR CI passed all four jobs on 9315953 |
 | D146 an attempt still waiting to be taken is published again | merged (#55, 688c776, tree as predicted); its PR CI passed all four jobs on e1fb40a |
 | D147 a restored database comes up held, and nothing it restored runs | merged (#56, b7f6c45, tree as predicted); its PR CI passed all four jobs on f102f50, the Docker smoke test's real dump and restore with the guide's checks among them |
-| D148 a Workday-style follow-up question, entered only when the page shows it | branch `wizard-follow-up` (D147's branch, then `main` with #56); reviewed twice; not merged |
+| D148 a Workday-style follow-up question, entered only when the page shows it | merged (#57, dd5d164, tree as predicted); its PR CI passed all four jobs on 93979df |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -282,7 +282,7 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     what NoEfforts cannot recognize; a rollback to a version before D147 keeps the step by hand;
   - two independent reviews: the first found the guide's case list unsafe and five weaknesses (rework e365797); the second found the stamp table's missing export decision (CI) and that the sweeper, cancelling, revoking and pausing could escape the quarantine (a6c1444).
 
-- **D148 (branch `wizard-follow-up`, not merged).** Rank 12, a Workday-style follow-up question:
+- **D148 (merged, #57).** Rank 12, a Workday-style follow-up question:
   - the gap: a question the page shows only after an earlier answer was read as an ordinary
     one (a saved answer or a draft could answer it), and filling waited for the page to show
     it: on a page that did not, the attempt ended as an internal error after data was entered
@@ -422,8 +422,9 @@ records).
   rollback across versions, two schedulers resolving at once on separate hosts (one advisory
   lock; tested with two connections), and anything real.
 
-- **D148 (branch `wizard-follow-up`):** the new tests, the suites the change touches, the
-  removal runs and the regression set, locally (Tests run below). Not tested: a real Workday
+- **D148:** merged (#57, dd5d164, tree as predicted); its PR CI passed all four jobs on
+  93979df. Locally: the new tests, the suites the change touches, the removal runs and the
+  regression set (Tests run below). Not tested: a real Workday
   page (no follow-up question was observed), a follow-up shown after a delay (filling does not
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
