@@ -50,7 +50,7 @@ Employment section, and cfg section_widget plain | react_select | ignores_choice
 prefill_end_date | option_other_id | extra_row varies how its comboboxes behave; FIXTURE ASSUMPTIONS,
 never seen on a real page),
 gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS; for dd locale_gate also locale_origin,
-locale_path, locale_via; for the D152 modes that ask for a locale file (open_locale_fetch,
+locale_path, locale_via; for the D152 modes that ask for a locale file (open_locale_fetch, open_locale_abort,
 locale_on_first_open, container_locale, container_open_locale) locale_origin and locale_path;
 for dd open_beacon also beacon, beacon_via; for dd late_other_host other_origin),
 GET /locales/{lang}/{ns}.json (cfg locale_delay_ms; lang "moved" redirects), D104 stand-ins: gh2_phone_country (cfg pc; see PHONE_COUNTRIES), D130
@@ -1211,6 +1211,9 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 #                   are removed from the page
 #   container_tooltip  as container_only, and a press on the input shows a tooltip (a visible
 #                   element that is no list, so the click's result is undetermined)
+#   open_locale_abort  as click_popup, and opening GETs the locale file and cancels it 100 ms
+#                   later (an AbortController: the request fails, it is never answered)
+#   hidden_one      as click_popup, and the last dropdown's field is hidden at load
 _DD_JS = """
 (() => {
   const DD = %DD%, DELAY = %DELAY%, BASE = %BASE%, LOCALE = %LOCALE%, VIA = %VIA%;
@@ -1311,6 +1314,11 @@ _DD_JS = """
       if (DD === 'open_locale_fetch' || DD === 'container_open_locale') {   // D152: not awaited
         fetch(LOCALE).catch(() => {});
       }
+      if (DD === 'open_locale_abort') {   // D152: the page cancels its own request
+        const ac = new AbortController();
+        fetch(LOCALE, {signal: ac.signal}).catch(() => {});
+        setTimeout(() => ac.abort(), 100);
+      }
       if (DD === 'vanish_after_open' && nth === 1) {   // D152: the control leaves the page
         setTimeout(() => { p.remove(); (cb.closest('.field') || cb).remove(); }, 1200);
       }
@@ -1399,6 +1407,7 @@ _DD_JS = """
     cb.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(cb); });
   };
   const boxes = Array.from(document.querySelectorAll('input[role=combobox][data-options]'));
+  if (DD === 'hidden_one' && boxes.length) boxes[boxes.length - 1].closest('.field').hidden = true;
   if (DD === 'react_locale') boxes.forEach(reactWrap);   // the markup is there from the start
   if (DD === 'locale_gate' || DD === 'react_locale') {
     let ready = false, frame = null;

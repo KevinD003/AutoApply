@@ -320,3 +320,23 @@ def test_a_reset_clears_the_page_busy_elsewhere(receiver):
     receiver.reset()
     receiver.config(mode="gh2_dd", dd="click_popup")
     assert tick() == "0"
+
+
+def test_a_request_the_page_cancels_is_no_longer_pending(receiver):
+    """Opening asks for a locale file (which would answer after 3 s) and the page cancels it
+    100 ms later: it failed, so nothing is pending at the last read, and the list meets the rule."""
+    ins, widgets = observe(receiver, "open_locale_abort", limits=PATH_B, rule=RULE_B,
+                           locale_delay_ms=3000)  # fmt: skip
+    for w in widgets:
+        assert w["requests_during"]["locale_allowed"] == 1 and w["settle_rule"] == SETTLED
+    assert ins["locale_requests_allowed"]["outcomes"] == {"failed": N}
+    assert counts(ins) == (N, 0, 0)
+
+
+def test_a_skipped_widget_is_not_counted(receiver):
+    """A dropdown hidden at load is skipped (never acted on): it is published as skipped, and the
+    counts cover only the lists acted on."""
+    ins = inspection(receiver, "hidden_one", limits=PATH_B)
+    assert [w.get("skipped") for w in ins["widgets"]] == [None] * (N - 1) + [
+        "not_visible_or_not_unique"]  # fmt: skip
+    assert counts(ins) == (N - 1, 0, 0)
