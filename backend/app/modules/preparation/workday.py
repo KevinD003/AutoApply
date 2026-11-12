@@ -199,7 +199,6 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
         or len(adds) != 1
         or adds[0].attrs.get("type", "submit").lower() != "button"
         or len(templates) != 1
-        or (form is not None and form in templates[0].ancestors())
         or any(root not in n.ancestors() for n in controls)
     ):
         return None, True

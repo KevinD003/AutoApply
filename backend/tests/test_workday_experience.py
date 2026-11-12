@@ -9,9 +9,11 @@ wizard page's Next) and its acceptances, never NoEfforts' tables. Passing here s
 compatibility only, never how a real Workday tenant behaves (no real work-history section was
 observed). Synthetic candidate data only."""
 
+import hashlib
 import uuid
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.core.db import SessionLocal
@@ -24,7 +26,15 @@ from app.modules.execution.adapters.workday import (
 )
 from app.modules.execution.models import ApplicationPause
 from app.modules.preparation import workday
-from app.modules.preparation.forms import FieldType, form_fingerprint
+from app.modules.preparation.forms import (
+    FieldType,
+    FormField,
+    FormSchema,
+    SectionSpec,
+    WizardSpec,
+    field_fingerprint,
+    form_fingerprint,
+)
 from app.modules.preparation.package import SECTION_REQUIRED
 from tests.execution_harness import Receiver, attempt, queue, synthetic_candidate
 from tests.test_workday_adapter import fresh_url, workday_job
@@ -181,12 +191,15 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
         form_page(section(), entry(extra='<div role="textbox" aria-label="Start"></div>')),
         form_page(section(entry("0").replace('name="work[0].from"', 'name="work[0].from.month"'))),
         form_page(section(f'<template id="t2">{entry()}</template>')),  # a template inside the form
+        form_page(section(), entry().replace(
+            '<label><input name="work[__i__].current" type="checkbox" value="1"> Current</label>',
+            "")),  # fmt: skip
     ],
     ids=["unknown-control", "left-empty-required", "a-part-missing", "a-part-of-another-kind",
          "template-value", "entry-value", "entry-ticked", "numbering", "no-add", "two-adds",
          "add-submits", "no-template", "entry-outside", "two-sections", "template-unfound",
          "template-in-form", "root-id", "custom-control", "a-part-split",
-         "template-in-section"],  # fmt: skip
+         "template-in-section", "a-part-absent"],  # fmt: skip
 )
 def test_any_other_work_history_is_one_required_checkpoint(html):
     """Anything about work history that is not the structure NoEfforts enters is one required
@@ -198,6 +211,38 @@ def test_any_other_work_history_is_one_required_checkpoint(html):
     cp = fields[workday.WORK_KEY]
     assert cp.type == FieldType.unsupported and cp.required
     assert cp.unsupported_reason == workday.WORK_REASON
+
+
+def test_a_greenhouse_section_reads_and_fingerprints_as_before():
+    """A section with no page and no requirement (Greenhouse's) is stored and fingerprinted
+    exactly as before D149: the formula below is the one before it (the oracle's own copy)."""
+    spec = SectionSpec(kind="employment", root="#employment-section")
+    field = FormField(key="nickname", label="Nickname", type=FieldType.text)
+    schema = FormSchema(fields=[field], sections=[spec])
+    before = ["action=", "method=", field_fingerprint(field),
+              "section|employment|#employment-section"]  # fmt: skip
+    assert form_fingerprint(schema) == hashlib.sha256("|".join(before).encode()).hexdigest()
+    assert spec.model_dump() == {"kind": "employment", "root": "#employment-section",
+                                 "schools": [], "degrees": [], "disciplines": []}  # fmt: skip
+
+
+def test_the_section_s_page_and_requirement_are_part_of_the_form():
+    wizard = WizardSpec(pages=["My Information", "My Experience", "Review"])
+    field = FormField(key="resume", label="Resume", type=FieldType.file, step="My Experience")
+
+    def schema(**kw) -> FormSchema:
+        sec = SectionSpec(kind="employment", root=ROOT, **kw)
+        return FormSchema(fields=[field], sections=[sec], wizard=wizard)
+
+    fingerprints = {form_fingerprint(schema(step="My Experience")),
+                    form_fingerprint(schema(step="My Information")),
+                    form_fingerprint(schema(step="My Experience", required=True))}  # fmt: skip
+    assert len(fingerprints) == 3
+    with pytest.raises(ValidationError):
+        schema(step="Review")  # the review page holds no question
+    with pytest.raises(ValidationError):  # a page on a form with no pages
+        FormSchema(fields=[field], sections=[SectionSpec(kind="employment", root=ROOT,
+                                                         step="My Experience")])  # fmt: skip
 
 
 def test_controls_named_as_entries_without_a_section_are_a_checkpoint():
@@ -546,6 +591,11 @@ def test_the_readback_finds_every_difference_and_any_entry_beyond_the_plan(page)
 def test_an_empty_entry_beyond_the_plan_is_found_too(page):
     page.set_content(section_page(entries=entry("0")))
     assert ws.readback(page, ws.plan(frozen([])), ROOT) == ["section:employment:0:entry"]
+
+
+def test_a_section_the_page_no_longer_has_is_found(page):
+    page.set_content("<!doctype html><html><body><form></form></body></html>")
+    assert ws.readback(page, ws.plan(frozen([])), ROOT) == ["section:employment:root"]
 
 
 def test_an_entry_that_does_not_appear_stops_with_what_was_entered(page):
