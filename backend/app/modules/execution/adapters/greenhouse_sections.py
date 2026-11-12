@@ -422,8 +422,9 @@ def _settled_list(page, selector: str, cid: str, pre: dict, data: list, done: se
     """D151: the control's own list once it has settled, by the dropdown's rule (dropdowns._observe:
     D104, D106, D108, D145). Read every SAMPLE_MS, it counts as settled once:
       * the probe's classification says it is observed sufficiently (ro.classify_open: it opened,
-        options can be read, nothing new on the page says it is loading, a list's aria-setsize
-        claims no more options than are shown, and the whole document has been quiet for 150 ms);
+        options can be read, nothing new on the page says it is loading, and a list's
+        aria-setsize claims no more options than are shown; D153: as the dropdown's, without the
+        whole document's 150 ms check);
       * no data request made since the click is still in flight;
       * the same options were read STABLE_SAMPLES times in a row;
       * the page has recorded no change to a list for STABLE_MS.
@@ -445,7 +446,7 @@ def _settled_list(page, selector: str, cid: str, pre: dict, data: list, done: se
             raise SectionFillError(f"{selector}: is no longer on the page")
         series.append(len(post["texts"]))
         seen.append(got["options"])
-        state, _, partial = ro.classify_open(pre, post, series, None, True)
+        state, _, partial = ro.classify_open(pre, post, series, None, True, False)
         pending = [r for r in data if id(r) not in done]
         same = len(seen) >= n and all(s == seen[-1] for s in seen[-n:])
         steady = (state == "observed_sufficiently" and got["named"] and got["open"]

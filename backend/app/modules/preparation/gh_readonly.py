@@ -2015,13 +2015,18 @@ _PRE_JS = (
   // D145: which changes touch a list (an option or a popup, by the same marks the probe reads
   // them by): one inside such an element, one that adds or removes such an element, and an
   // attribute change on an element holding one (which can show or hide it). A batch too large
-  // to look at one by one counts as the list's.
+  // to look at one by one counts as the list's. D153: so does any change to a style sheet in
+  // the page (a <style> element or its text, a stylesheet <link> or its attributes), which can
+  // show, hide or reorder options without touching the list; changes made through the CSS
+  // object model alone are no change to the document, and no observer sees them.
   const LIST = [OPT, POP, HINT_POP, HINT_OPT].join(',');
+  const SHEET = 'style,link[rel~="stylesheet" i]';
   const inList = (n) => {
     const e = n && (n.nodeType === 1 ? n : n.parentElement);
-    return !!(e && e.closest(LIST));
+    return !!(e && (e.closest(LIST) || e.closest('style')));
   };
-  const holdsList = (n) => !!(n && n.nodeType === 1 && (n.matches(LIST) || n.querySelector(LIST)));
+  const holdsList = (n) => !!(n && n.nodeType === 1
+    && (n.matches(LIST) || n.matches(SHEET) || n.querySelector(LIST + ',' + SHEET)));
   window.__neObs = new MutationObserver((ms) => {
     const m = window.__neMut;
     m.n += ms.length; m.last = performance.now();
@@ -2200,7 +2205,8 @@ def compare_controls(before: dict, after: dict) -> dict:
 
 
 def classify_open(pre: dict, post: dict, series: list[int], api_count: int | None,
-                  click_ok: bool) -> tuple[str, list[str], list[str]]:  # fmt: skip
+                  click_ok: bool,
+                  whole_page: bool = True) -> tuple[str, list[str], list[str]]:  # fmt: skip
     """(open_state, opening_evidence, partial_reasons). Never "absent": an action that shows no
     list says only that, within the window, under the permitted action.
     - click_failed: the target was not actionable (e.g. something else would get the click);
@@ -2214,7 +2220,11 @@ def classify_open(pre: dict, post: dict, series: list[int], api_count: int | Non
     - partially_observed: options read, but still changing or loading, fewer than the list
       says it has (aria-setsize), or fewer than the job data lists;
     - observed_sufficiently: options read, stable, nothing loading, complete as far as can be
-      told: only then are they compared."""
+      told: only then are they compared.
+    `whole_page` (the survey's own test, the default): a change anywhere on the page less than
+    150 ms before the read counts as still changing. The adapter passes False (D153): a page
+    busy elsewhere is no reason to refuse a list, and the adapter judges the list by the page's
+    record of changes to a list (list_quiet_ms, style sheets included) for half a second."""
     if not click_ok:
         return "click_failed", [], []
     evidence = []
@@ -2238,7 +2248,7 @@ def classify_open(pre: dict, post: dict, series: list[int], api_count: int | Non
     partial = []
     if len(series) >= 2 and series[-1] != series[-2]:
         partial.append("still_changing")
-    elif post["quiet_ms"] is not None and post["quiet_ms"] < _QUIET_MS:
+    elif whole_page and post["quiet_ms"] is not None and post["quiet_ms"] < _QUIET_MS:
         partial.append("still_changing")
     if post["busy"] or post["hint_loading"]:
         partial.append("loading")
@@ -2260,7 +2270,8 @@ def settle_rule(state: str, post: dict, reads: list, pending: bool, window_ms: i
       counted as settled, though the adapter could count it so (the safe direction);
     - pending: an allowed request made since the action began has not finished (paths B and C:
       the locale requests; every other data request is refused at once, so never on path A);
-    - met: observed sufficiently (classify_open), list_quiet, equal_reads, nothing pending.
+    - met: observed sufficiently by the adapter's classification (classify_open without the
+      whole page's 150 ms check, D153), list_quiet, equal_reads, nothing pending.
       None in a window shorter than the adapter's (_ADAPTER_SETTLE_MS; path A's 600 ms), where
       the adapter cannot yet have counted any list as settled.
     All None when no list opened (not opened, undetermined, a click that failed, a control
@@ -2416,7 +2427,12 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
         state, evidence, partial = classify_open(pre, post, series, api_count, click_ok)
         if gone:
             state, evidence, partial = "undetermined", ["control_gone"], []
-        rule = settle_rule(state, post, reads, pending, limits.widget_settle_ms)
+        # D153: the settle rule is the adapter's, whose classification leaves out the whole
+        # page's 150 ms check (the survey's own `open_state` keeps it)
+        as_adapter = state
+        if state in _OPENED:
+            as_adapter = classify_open(pre, post, series, api_count, click_ok, False)[0]
+        rule = settle_rule(as_adapter, post, reads, pending, limits.widget_settle_ms)
         after, closed = mid, None
         if click_ok and not gone:
             actions += 1
@@ -2493,13 +2509,16 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
                 st2, ev2, _ = classify_open(pre2, post2, series2, api_count, ok2)
                 if gone2:
                     st2, ev2 = "undetermined", ["control_gone"]
+                as_adapter2 = st2
+                if st2 in _OPENED:
+                    as_adapter2 = classify_open(pre2, post2, series2, api_count, ok2, False)[0]
                 opts2 = [] if gone2 else [gdom._norm(t) for t in post2["texts"]]
                 container.update(
                     click={"completed": ok2, "error": err2}, open_state=st2,
                     opening_evidence=ev2, visible_option_list=bool(opts2),
                     options_match_api=(option_lists.get(key) == opts2)
                     if kind == "api_field" and st2 == "observed_sufficiently" else None,
-                    settle_rule=settle_rule(st2, post2, reads2, pending2,
+                    settle_rule=settle_rule(as_adapter2, post2, reads2, pending2,
                                             limits.widget_settle_ms),
                 )  # fmt: skip
                 after = mid

@@ -1191,6 +1191,8 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 #                   in alternating order, every 300 ms (the choice, after data was entered)
 #   cfg dd_tick_ms  with any mode: an element that is no part of any list changes its text
 #                   every that many milliseconds (a page that is busy elsewhere)
+#   cfg dd_style_tick_ms  D153, with any mode: a style sheet (a <style> element) whose text
+#                   changes every that many milliseconds; its rule matches nothing on the page
 #   late_other_host the options are requested (GET) from another host, cfg other_origin (D111,
 #                   after run #11's `u3`: a required dropdown that opened while a data request
 #                   to another Greenhouse host was refused; what that request was for is not
@@ -1218,6 +1220,7 @@ _DD_JS = """
 (() => {
   const DD = %DD%, DELAY = %DELAY%, BASE = %BASE%, LOCALE = %LOCALE%, VIA = %VIA%;
   const BEACON = %BEACON%, BEACON_VIA = %BEACON_VIA%, OTHER = %OTHER%, TICK = %TICK%;
+  const STYLE_TICK = %STYLE_TICK%;
   const open = new Map();
   const opened = new Map();   // how many times each control's list has been opened (D145)
   let seq = 0;
@@ -1227,6 +1230,14 @@ _DD_JS = """
     document.body.append(t);
     let n = 0;
     setInterval(() => { t.textContent = String(++n); }, TICK);
+  }
+  if (STYLE_TICK > 0) {   // D153: a style sheet that keeps changing and matches nothing
+    const st = document.createElement('style');
+    st.id = 'fx-style-ticker';
+    document.head.append(st);
+    let n = 0;
+    setInterval(() => { st.textContent = '#fx-nothing-' + (++n % 2) + ' { color: red; }'; },
+                STYLE_TICK);
   }
   const keepFlipping = (cb, p, got, ms) => {
     let flip = false;
@@ -1562,6 +1573,7 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
                .replace("%BEACON_VIA%", json.dumps(cfg.get("beacon_via") or "fetch"))
                .replace("%OTHER%", json.dumps(cfg.get("other_origin") or ""))
                .replace("%TICK%", str(int(cfg.get("dd_tick_ms") or 0)))
+               .replace("%STYLE_TICK%", str(int(cfg.get("dd_style_tick_ms") or 0)))
                .replace("%BASE%", json.dumps(base)) + "</script>")
     if mode in ("gh2_widgets", "gh2_widget_variants"):
         # FIXTURE ASSUMPTIONS: two standalone labelled comboboxes not in the job data (one

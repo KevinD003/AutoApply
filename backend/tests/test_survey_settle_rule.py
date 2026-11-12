@@ -199,12 +199,24 @@ def test_the_survey_s_own_test_and_the_adapter_s_rule_can_differ(receiver):
     assert counts(ins) == (N, 0, 0)
 
 
-def test_changes_elsewhere_on_the_page_are_not_a_lists(receiver):
-    """Something that is no part of a list changes every 300 ms: the page's record of changes to
-    a list stays quiet. (The survey's own 150 ms check of the whole page may still fail at the
-    last read, so whether the rule is met then depends on timing: not asserted.)"""
-    ins, widgets = observe(receiver, "click_popup", limits=PATH_B, dd_tick_ms=300)
-    assert all(w["settle_rule"]["list_quiet"] is True for w in widgets)
+@pytest.mark.parametrize("tick_ms", [100, 300])
+def test_changes_elsewhere_on_the_page_are_not_a_lists(receiver, tick_ms):
+    """Something that is no part of a list changes every 100 or 300 ms: the page's record of
+    changes to a list stays quiet, and, as the adapter's classification leaves out the whole
+    page's 150 ms check since D153, every list meets the rule. (The survey's own `open_state`
+    keeps that check, so it may say still changing.)"""
+    ins, widgets = observe(receiver, "click_popup", limits=PATH_B, dd_tick_ms=tick_ms)
+    assert all(w["settle_rule"] == SETTLED for w in widgets)
+    assert counts(ins) == (N, 0, 0)
+
+
+def test_a_style_sheet_that_keeps_changing_holds_the_rule(receiver):
+    """D153: a style sheet whose text changes every 300 ms (its rule matches nothing) counts as a
+    change to a list, as it can hide or show options: no list is quiet, none meets the rule."""
+    ins, widgets = observe(receiver, "click_popup", limits=PATH_B, dd_style_tick_ms=300)
+    for w in widgets:
+        assert w["settle_rule"]["list_quiet"] is False and w["settle_rule"]["met"] is False
+    assert counts(ins) == (0, N, 0)
 
 
 @pytest.mark.parametrize("delay_ms,pending", [(3000, True), (0, False)])

@@ -176,7 +176,8 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                     "section_tick_ms": 0, "section_beacon_via": None,
                     # D152: the rest of the v2 approximation's settings (D145's ticker among
                     # them leaked into every later test of a module), so none leaks either
-                    "dd_tick_ms": 0, "beacon": None, "beacon_via": None, "other_origin": None,
+                    "dd_tick_ms": 0, "dd_style_tick_ms": 0, "beacon": None, "beacon_via": None,
+                    "other_origin": None,
                     "cdn": None, "variant": None, "widget_bad": None, "redirect_away": None,
                     "ll_code": None, "ll_code_value": None, "ll_invalid": None,
                     # D142: the Workday-style wizard variant, so none leaks into the next test

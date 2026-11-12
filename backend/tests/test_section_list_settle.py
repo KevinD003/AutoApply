@@ -130,19 +130,32 @@ def test_a_section_list_that_has_settled_is_chosen_from_when_read_slowly(
 
 
 @pytest.mark.parametrize("tick_ms,window", [(300, "stand-in"), (600, "stand-in"),
-                                            (600, "real page")])  # fmt: skip
+                                            (600, "real page"), (300, "real page"),
+                                            (100, "real page")])  # fmt: skip
 def test_a_page_busy_elsewhere_does_not_hold_up_a_section_list(
     api, receiver, monkeypatch, tick_ms, window
 ):
     """As D145's dropdown tests: changes elsewhere on the page are not changes to a list, so each
-    list still settles, in a stand-in's window and, with something changing every 600 ms, in a
-    real page's (SETTLE_MS). The classification's own check of the whole document (150 ms) is
-    kept as the dropdown has it; rank 19 would change both."""
+    list still settles, in a stand-in's window and in a real page's (SETTLE_MS). D153: the
+    classification's own check of the whole document (no change for 150 ms) is left out, as for
+    the dropdown, so a page changing something every 300 or even 100 ms holds up no list."""
     if window == "real page":
         monkeypatch.setattr(dropdowns, "LATE_MS", dropdowns.SETTLE_MS)
     aid, result = run(api, receiver, "plain", section_tick_ms=tick_ms)
     assert result == "confirmed", attempt(aid).outcome_detail
     assert education_sent(receiver) == EDUCATION
+
+
+def test_a_list_changed_only_by_a_style_sheet_is_refused_however_slowly_it_is_read(
+    api, receiver, monkeypatch
+):
+    """D153: the style sheet hiding the 2nd, then the 3rd, option every 300 ms, read every 600 ms,
+    in step with it: every read saw the same options, and until D153 nothing else looked at the
+    style sheet but the whole document's 150 ms check, so the list could be read as settled
+    (D151's stated limit). A change to a style sheet now counts as a change to a list."""
+    monkeypatch.setattr(dropdowns, "SAMPLE_MS", 600)
+    aid, result = run(api, receiver, "css_swapping_list")
+    refused(receiver, aid, result, "its list did not settle in time")
 
 
 # ------------------------------------------------- what the page sends, and what it hides

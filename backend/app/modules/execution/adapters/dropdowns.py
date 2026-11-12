@@ -44,14 +44,20 @@ then reproduced by setting the interval: a list flipping every 300 ms, read ever
 judged settled). The probe's observer notes, by the page's clock, when a change last touched a
 list: a change inside an option or a popup (found by the marks the probe reads them by), one
 that added or removed such an element, or an attribute change on an element holding one. So
-"unchanged for 500 ms" no longer depends on how often the list is read. Changes elsewhere on
-the page do not count: the classification's own check of the whole document (150 ms) is all
-that looks at them, as before. Limits: a list whose changes are at least half a second apart
-can be read as settled between two of them; so can one on a page whose own timers stall for
-that long; and where the observer has recorded no change to a list since before the action,
-the equal reads decide alone (nothing changed, or the page changes in a way the observer cannot
-see: options swapped by CSS alone, an observer the page has replaced). Later changes are
-caught by:
+"unchanged for 500 ms" no longer depends on how often the list is read.
+
+The rest of the page (D153). Changes elsewhere on the page do not count: until D153 the
+classification's own check of the whole document (no change at all for 150 ms) looked at them,
+so a page busy elsewhere could have its lists refused, depending on the reading pace. The
+adapter now leaves that check out (`classify_open(..., whole_page=False)`) and counts instead
+any change to a style sheet (a <style> element or its text, a stylesheet <link> or its
+attributes) as a change to a list, as a style sheet can hide or swap options without touching
+the list; a page that changes its style sheets that often has its lists refused. Limits: a
+list whose changes are at least half a second apart can be read as settled between two of
+them; so can one on a page whose own timers stall for that long; and where the observer has
+recorded no change to a list since before the action, the equal reads decide alone (nothing
+changed, or the page changes in a way the observer cannot see: styles changed through the CSS
+object model alone, an observer the page has replaced). Later changes are caught by:
   * the list being read again, and required to be exactly the approved one, when an option is
     chosen (`select`);
   * the readback of every answer before the send gate (adapter);
@@ -257,7 +263,7 @@ def _observe(page: Page, cid: str, strategy: str, api_count: int, late: bool = F
                 raise Refused("the control disappeared")
             series.append(len(post["texts"]))
             seen.append([dom._norm(t) for t in post["texts"]])
-            state, _, partial = ro.classify_open(pre, post, series, api_count, True)
+            state, _, partial = ro.classify_open(pre, post, series, api_count, True, False)
             refusal = _data_refusal(page, data, done, late)
             pending = [r for r in data if id(r) not in done]
             steady = (
