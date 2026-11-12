@@ -47,7 +47,13 @@ its review page (none on a single page), stops the attempt, and so does a page t
 shows more entries than were approved (NoEfforts never removes one), or entries it cannot type
 into or that already hold values: stops that leave nothing at the employer. An entry that will
 not appear or a control that does not keep its value once entering began stops it with what was
-entered recorded."""
+entered recorded.
+
+D156: before each wizard page's Next, what D154 reads before the final click: after the page's
+answers have settled, its Next is waited for (shown and enabled, `next_ready`) before the
+readback, and right before the gate for the Next, what the page itself would refuse at that
+click is read without acting on it (`next_would_refuse`). Either stops the attempt with that
+page never sent (the runner's `_wizard_pages`)."""
 
 from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
@@ -59,11 +65,15 @@ from app.modules.execution.adapters.fixture_ats import (
     ACK_ERROR,
     ACK_LEFT_FORM,
     ACK_NONE,
+    ClickChecks,
     ConditionalRequired,
     Outcome,
+    PageRefusal,
     StoppedAfterDisclosure,
     _sel,
+    button_ready,
     draft_evidence,
+    would_refuse,
 )
 from app.modules.execution.adapters.greenhouse import CHALLENGE_SELECTORS
 from app.modules.execution.adapters.hosted_form import BOT_CHECK, HostedFormAdapter
@@ -122,6 +132,24 @@ SECTION_NOT_ENTERED = (
     "your work history could not be entered on the employer's form as approved (an entry did "
     "not appear or did not keep its value): apply on the employer's site"
 )
+# D156: what the page itself would refuse at a wizard page's Next, read before its gate.
+NEXT_UNIDENTIFIED = "a page's Next button cannot be identified"
+NEXT_UNAVAILABLE = (
+    "the page does not let a page's Next be made (its Next button stays hidden or disabled): "
+    "apply on the employer's site"
+)
+NEXT_REFUSAL_UNREAD = "the page's own checks could not be read before a page's Next"
+NEXT_WOULD_REFUSE = "the page's own checks would refuse a page's Next"
+
+
+class NextRefusal(PageRefusal):
+    """D156: the page's own checks would refuse a wizard page's Next, found before its gate
+    (counts only, as D154's `PageRefusal`)."""
+
+    WHAT = NEXT_WOULD_REFUSE
+
+
+NEXT_CLICK = ClickChecks(NEXT_UNIDENTIFIED, NEXT_UNAVAILABLE, NEXT_REFUSAL_UNREAD, NextRefusal)
 VERIFICATION_AFTER_CLICK = (
     "after the final click the employer's page asked you to verify your email. NoEfforts does "
     "not read your email or enter codes for this form, so it does not know whether your "
@@ -439,6 +467,30 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         reason = self.follow_ups(page, self.page_answers(i)) or self.schema_matches(page)
         return str(reason) if reason else None
 
+    # -- D156: before a page's Next, as D154 before the final click ----------------------------
+    def next_button(self, page: Page, i: int):
+        """Page i's Next: found the same way for the checks before its gate (`next_ready`,
+        `next_would_refuse`) and for the click (`click_next`)."""
+        return page.locator(f'{self.FORM} section[data-wizard-page="{i}"] [data-wizard-next]')
+
+    def next_ready(self, page: Page, i: int) -> str | None:
+        """D156: after page i's answers are entered and the page has settled, and before they
+        are read back: its Next can be identified (exactly one, on that page) and is shown and
+        enabled, or becomes so within FINAL_READY_MS (D154's `final_ready`). None, or why not.
+        Reads only. Never a checkpoint before a Next: a wizard page asks for none."""
+        return button_ready(page, lambda: self.next_button(page, i), lambda: [], NEXT_CLICK)
+
+    def next_would_refuse(self, page: Page, i: int) -> str | None:
+        """D156: right before the gate for page i's Next (after the checks after filling), what
+        the page itself would refuse at that click, read without acting on it (D154's
+        `page_would_refuse`, from one read of the Next's form): a Next that is the browser's own
+        validated submission counts every control the browser would refuse, shown or not; any
+        other (a script's button, as the stand-in's) only the page's own marks on fields shown,
+        never on the one that still has focus. None, or why not; each is a stop with that page
+        never sent, where the Next would have been refused after it was clicked, or would have
+        sent a page the final click is then refused for."""
+        return would_refuse(lambda: self.next_button(page, i), lambda: [], NEXT_CLICK)
+
     def body_kind(self, page: Page) -> str | None:
         return page.locator("body").get_attribute(self.PAGE_KIND)
 
@@ -457,9 +509,7 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         click was being made is StoppedAfterDisclosure: the page's values may have been sent."""
         self._hand_over()
         try:
-            page.locator(f'{self.FORM} section[data-wizard-page="{i}"] [data-wizard-next]').click(
-                timeout=timeout_ms
-            )
+            self.next_button(page, i).click(timeout=timeout_ms)
             page.wait_for_function(_NEXT_ANSWERED, arg=[i, self.PAGE_KIND], timeout=timeout_ms)
             if self.body_kind(page) != "form":
                 return ACK_LEFT_FORM

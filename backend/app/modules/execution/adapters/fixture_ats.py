@@ -266,20 +266,9 @@ class FixtureAtsAdapter(ReportsDisclosures):
         at each step). None, or why not. Reads only: nothing is clicked. Waiting here, before
         the readback and the check after filling, means what the page changed while it kept the
         button disabled is read back and checked like any other change."""
-        waited = 0
-        try:
-            while True:
-                btn = self.final_button(page)
-                if btn is None or btn.count() != 1:
-                    return SUBMIT_UNIDENTIFIED
-                if self.leave_out(page) or _usable(btn):
-                    return None
-                if waited >= FINAL_READY_MS:
-                    return FINAL_BUTTON_UNAVAILABLE
-                page.wait_for_timeout(_READY_STEP_MS)
-                waited += _READY_STEP_MS
-        except PWError:
-            return REFUSAL_UNREAD
+        return button_ready(
+            page, lambda: self.final_button(page), lambda: self.leave_out(page), FINAL_CLICK
+        )
 
     def page_would_refuse(self, page: Page) -> str | None:
         """D154: right before the send gate (after the checks after filling), what the page
@@ -290,19 +279,9 @@ class FixtureAtsAdapter(ReportsDisclosures):
         button's form, `_REFUSAL_JS`); or the page could not be read (fail closed). Each is a
         stop with nothing sent, where the click would have been refused after the send gate (an
         unknown outcome, or a rejection after `sending`)."""
-        try:
-            btn = self.final_button(page)
-            if btn is None or btn.count() != 1:
-                return SUBMIT_UNIDENTIFIED
-            leave = self.leave_out(page)
-            if not leave and not _usable(btn):
-                return FINAL_BUTTON_UNAVAILABLE
-            got = btn.evaluate(_REFUSAL_JS, leave)
-        except PWError:
-            return REFUSAL_UNREAD
-        if not got:
-            return SUBMIT_UNIDENTIFIED  # the button belongs to no form
-        return PageRefusal.of(got)
+        return would_refuse(
+            lambda: self.final_button(page), lambda: self.leave_out(page), FINAL_CLICK
+        )
 
     # -- submit -----------------------------------------------------------------------------
     def send_watch_seconds(self, timeout_ms: int) -> int:
@@ -512,12 +491,68 @@ def _usable(btn) -> bool:
     return btn.is_visible() and btn.is_enabled(timeout=1000)
 
 
+@dataclass(frozen=True)
+class ClickChecks:
+    """D156: what the checks before a click say, by the click they guard (the final click,
+    D154; a wizard page's Next, `workday.NEXT_CLICK`): the button cannot be identified, it is
+    not shown and enabled, the page could not be read, and the page's own refusal."""
+
+    unidentified: str
+    unavailable: str
+    unread: str
+    refusal: type
+
+
+def button_ready(page: Page, find, leave_out, why: ClickChecks) -> str | None:
+    """D154, D156: the button `find()` locates can be identified (exactly one) and is shown and
+    enabled, or becomes so within FINAL_READY_MS, or the page asks for a checkpoint first
+    (`leave_out()`, looked for again at each step). None, or why not (`why`). Reads only."""
+    waited = 0
+    try:
+        while True:
+            btn = find()
+            if btn is None or btn.count() != 1:
+                return why.unidentified
+            if leave_out() or _usable(btn):
+                return None
+            if waited >= FINAL_READY_MS:
+                return why.unavailable
+            page.wait_for_timeout(_READY_STEP_MS)
+            waited += _READY_STEP_MS
+    except PWError:
+        return why.unread
+
+
+def would_refuse(find, leave_out, why: ClickChecks) -> str | None:
+    """D154, D156: what the page itself would refuse at a click on the button `find()`
+    locates, read without acting on it (`_REFUSAL_JS`, from one read of the button's form).
+    None, or why not (`why`): the button cannot be identified (none, several, or in no form) or
+    is not shown and enabled (unless the page first asks for a checkpoint, `leave_out()`); the
+    page's own checks would refuse the click (`why.refusal`, counts only); or the page could
+    not be read (fail closed)."""
+    try:
+        btn = find()
+        if btn is None or btn.count() != 1:
+            return why.unidentified
+        leave = leave_out()
+        if not leave and not _usable(btn):
+            return why.unavailable
+        got = btn.evaluate(_REFUSAL_JS, leave)
+    except PWError:
+        return why.unread
+    if not got:
+        return why.unidentified  # the button belongs to no form
+    return why.refusal.of(got)
+
+
 class PageRefusal(str):
     """D154: the page's own checks would refuse the final click, found before the send gate.
     `counts` are numbers only, never a field's key, label or value: fields it requires left
     empty, values it does not accept (type, pattern, length, range, step), and fields it marks
-    as not valid (a custom error its script set, or `aria-invalid`)."""
+    as not valid (a custom error its script set, or `aria-invalid`). D156: a subclass names
+    another click (`WHAT`)."""
 
+    WHAT = PAGE_WOULD_REFUSE
     counts: dict
 
     def __new__(cls, *, required: int = 0, refused: int = 0, marked: int = 0):
@@ -530,7 +565,7 @@ class PageRefusal(str):
             )
             if p
         ]
-        s = super().__new__(cls, f"{PAGE_WOULD_REFUSE} ({'; '.join(parts)})")
+        s = super().__new__(cls, f"{cls.WHAT} ({'; '.join(parts)})")
         s.counts = {"required": required, "refused": refused, "marked": marked}
         return s
 
@@ -538,6 +573,11 @@ class PageRefusal(str):
     def of(cls, got: dict) -> "PageRefusal | None":
         r, v, m = (int(got.get(k) or 0) for k in ("required", "refused", "marked"))
         return cls(required=r, refused=v, marked=m) if (r or v or m) else None
+
+
+FINAL_CLICK = ClickChecks(
+    SUBMIT_UNIDENTIFIED, FINAL_BUTTON_UNAVAILABLE, REFUSAL_UNREAD, PageRefusal
+)
 
 
 class StoppedAfterDisclosure(RuntimeError):
