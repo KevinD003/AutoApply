@@ -14,6 +14,7 @@ receiver's ledger as the oracle; the last tests send SIGTERM to a real Celery wo
 data only."""
 
 import glob
+import http.client
 import os
 import signal
 import subprocess
@@ -131,6 +132,16 @@ def stop_in_gate(monkeypatch, nth: int) -> None:
     monkeypatch.setattr(svc, "_gate_checks", checks)
 
 
+def no_requeue(monkeypatch) -> None:
+    """After data was entered a stopped run never asks for the requeue: the requeue's own
+    refusal then (service.requeue_on_stop) is the second guard, never the one relied on."""
+
+    def refuse(*_a, **_k):
+        raise AssertionError("asked to requeue an attempt after data was entered")
+
+    monkeypatch.setattr(svc, "requeue_on_stop", refuse)
+
+
 # ------------------------------------------------------------------------------- the flag
 
 FORKED = """
@@ -234,6 +245,7 @@ def test_stopped_after_the_disclosure_gate_the_attempt_is_abandoned_for_good(
     aid = queue(api, app_id)
     messages = waiting_messages(aid)
     monkeypatch.setenv("NOEFFORTS_FAULT", f"{point}=stop")
+    no_requeue(monkeypatch)
     assert runner.run_attempt(aid, "w1") == "abandoned"
     a = attempt(aid)
     assert a.adapter == adapter and a.state == "abandoned"
@@ -715,6 +727,8 @@ def test_on_the_api_route_a_stop_request_ends_the_run_before_its_next_request(
     app_id = api_application(api)
     aid = queue(api, app_id)
     monkeypatch.setenv("NOEFFORTS_FAULT", f"{point}=stop")
+    if state == "abandoned":
+        no_requeue(monkeypatch)
     assert runner.run_attempt(aid, "w1") == ("requeued" if state == "pending" else "abandoned")
     a = attempt(aid)
     assert a.adapter == "fake_api" and a.state == state
@@ -772,6 +786,44 @@ def test_a_stop_while_the_api_creates_the_draft_sends_no_document(
     assert runner.STOP_REQUESTED in attempt(aid).outcome_detail
     assert disclosures(aid) == [{"route": "api", "kind": "application_draft"}]
     assert uploads(receiver.ledger()) == 0 and acceptances(receiver) == []
+
+
+@pytest.mark.parametrize("point,outcome,state", [
+    ("schema", "requeued", "pending"),
+    ("after_disclosure_gate", "abandoned", "abandoned"),
+])  # fmt: skip
+def test_on_the_api_route_an_error_while_the_worker_is_stopping_ends_as_the_stop_does(
+    api, receiver, monkeypatch, fake_api, point, outcome, state
+):
+    """As on the browser route: an error with a stop requested, before the send gate, ends as
+    the stop does, never as an internal error. The schema's answer cut off (urllib raises a
+    connection closed before the answer as http.client.RemoteDisconnected, which the read does
+    not turn into a reason) puts the attempt back in the queue; after the disclosure gate it is
+    abandoned."""
+    from tests.test_api_provider import acceptances, api_application, fapi_requests
+
+    app_id = api_application(api)
+    aid = queue(api, app_id)
+    if point == "schema":
+        call = FakeApiAdapter._call
+
+        def cut_off(self, *a, **k):
+            call(self, *a, **k)  # the request reaches the API; its answer never comes back
+            stopping.request()
+            raise http.client.RemoteDisconnected("Remote end closed connection without response")
+
+        monkeypatch.setattr(FakeApiAdapter, "_call", cut_off)
+    else:
+        monkeypatch.setenv("NOEFFORTS_FAULT", f"{point}=stop,{point}=raise")
+    assert runner.run_attempt(aid, "w1") == outcome
+    a = attempt(aid)
+    assert a.state == state and "internal error" not in (a.outcome_detail or "")
+    if state == "abandoned":
+        assert runner.STOP_REQUESTED in a.outcome_detail
+    else:
+        assert a.disclosure_started_at is None
+        assert [m for m, _ in fapi_requests(receiver)] == ["GET"]  # the schema, and nothing else
+    assert acceptances(receiver) == [] and uploads(receiver.ledger()) == 0
 
 
 # ------------------------------------------------------------------- the requeue's fence
