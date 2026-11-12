@@ -442,6 +442,21 @@ def test_suggestions_that_keep_changing_never_count_as_exactly_one(
     assert led["accepted"] == 0 and kinds(led) == {"upload": 1, "location_search": 1}
 
 
+@MAKE
+def test_suggestions_on_a_page_whose_style_sheet_keeps_changing_never_settle(api, receiver, make):
+    """D153: the page's record of changes to a list counts changes to style sheets, which can
+    hide or reorder suggestions without touching the list. On a page that changes one every
+    300 ms (a rule that matches nothing) the suggestions never settle: the search stops after
+    its text was typed, which is counted as disclosed, and no place is chosen. This search never
+    had the whole page's 150 ms check, so for it D153 only adds refusals, after the typing."""
+    receiver.config(mode="gh2_loc_search", loc="style_tick")
+    aid = queue(api, make(api, job=LOC_JOB))
+    assert runner.run_attempt(aid, "w1") == "abandoned", attempt(aid).outcome_detail
+    assert adapter.LOCATION_NO_LIST in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and kinds(led) == {"upload": 1, "location_search": 1}
+
+
 @pytest.mark.parametrize(
     "loc,expected,disclosed",
     [

@@ -206,7 +206,8 @@ _SECTION_SCRIPT = """
   // (hidden_duplicate), one that hides the first school (hidden_approved), a control that never
   // opens (inert) or leaves the page once opened (vanishing), and a page busy elsewhere (cfg
   // section_tick_ms). open_beacon posts by fetch, or by navigator.sendBeacon with cfg
-  // section_beacon_via "sendbeacon".
+  // section_beacon_via "sendbeacon". D153: a style sheet that changes every 300 ms and matches
+  // nothing (css_ticking).
   const DELAY = %DELAY%, TICK = %TICK%, BEACON_VIA = %BEACON_VIA%;
   if (WIDGET === 'css_swapping_list') {  // a style sheet hides the 2nd, then the 3rd, option of
     // every list, in turn every 300 ms: no list itself changes, and the shown count stays
@@ -218,6 +219,12 @@ _SECTION_SCRIPT = """
                    '[role=listbox] li:nth-child(3){display:none}'];
     s.textContent = rules[0];
     setInterval(() => { k = 1 - k; s.textContent = rules[k]; }, 300);
+  }
+  if (WIDGET === 'css_ticking') {  // D153: the lists never change; a style sheet does
+    const s = document.createElement('style');
+    document.head.append(s);
+    let k = 0;
+    setInterval(() => { k = 1 - k; s.textContent = '#fx-nothing-' + k + '{color:red}'; }, 300);
   }
   const BASE = (document.querySelector('form[data-base]') || {dataset: {}}).dataset.base || '';
   if (TICK > 0) {  // an element that is no part of any list changes every TICK ms
@@ -1191,6 +1198,8 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 #                   in alternating order, every 300 ms (the choice, after data was entered)
 #   cfg dd_tick_ms  with any mode: an element that is no part of any list changes its text
 #                   every that many milliseconds (a page that is busy elsewhere)
+#   cfg dd_style_tick_ms  D153, with any mode: a style sheet (a <style> element) whose text
+#                   changes every that many milliseconds; its rule matches nothing on the page
 #   late_other_host the options are requested (GET) from another host, cfg other_origin (D111,
 #                   after run #11's `u3`: a required dropdown that opened while a data request
 #                   to another Greenhouse host was refused; what that request was for is not
@@ -1214,12 +1223,20 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 #   open_locale_abort  as click_popup, and opening GETs the locale file and cancels it 100 ms
 #                   later (an AbortController: the request fails, it is never answered)
 #   hidden_one      as click_popup, and the last dropdown's field is hidden at load
+# D153 (rank 19's safety review): what decides which list is read, or which of its options are
+# shown, changed on the control alone, every 125 ms from the list's opening:
+#   controls_flip   as click_popup, and a second list shows the same options in reverse order;
+#                   the control's aria-controls names each list in turn
+#   class_flip      as click_popup, and a style sheet hides each list's second option while its
+#                   control has the class fx-alt, which the control gains and loses in turn
 _DD_JS = """
 (() => {
   const DD = %DD%, DELAY = %DELAY%, BASE = %BASE%, LOCALE = %LOCALE%, VIA = %VIA%;
   const BEACON = %BEACON%, BEACON_VIA = %BEACON_VIA%, OTHER = %OTHER%, TICK = %TICK%;
+  const STYLE_TICK = %STYLE_TICK%;
   const open = new Map();
   const opened = new Map();   // how many times each control's list has been opened (D145)
+  const extras = new Map();   // D153: undoes what an opening started besides its list
   let seq = 0;
   if (TICK > 0) {   // D145: a change every TICK ms that touches no list
     const t = document.createElement('p');
@@ -1227,6 +1244,20 @@ _DD_JS = """
     document.body.append(t);
     let n = 0;
     setInterval(() => { t.textContent = String(++n); }, TICK);
+  }
+  if (DD === 'class_flip') {   // D153: while a control has fx-alt, each list hides option 2
+    const st = document.createElement('style');
+    st.textContent = 'body:has(.fx-alt) [role=listbox] > [role=option]:nth-child(2) '
+      + '{ display: none; }';
+    document.head.append(st);
+  }
+  if (STYLE_TICK > 0) {   // D153: a style sheet that keeps changing and matches nothing
+    const st = document.createElement('style');
+    st.id = 'fx-style-ticker';
+    document.head.append(st);
+    let n = 0;
+    setInterval(() => { st.textContent = '#fx-nothing-' + (++n % 2) + ' { color: red; }'; },
+                STYLE_TICK);
   }
   const keepFlipping = (cb, p, got, ms) => {
     let flip = false;
@@ -1319,6 +1350,22 @@ _DD_JS = """
         fetch(LOCALE, {signal: ac.signal}).catch(() => {});
         setTimeout(() => ac.abort(), 100);
       }
+      if (DD === 'controls_flip') {   // D153: two lists shown; the control names each in turn
+        const q = document.createElement('ul');
+        q.id = p.id + '-other'; q.setAttribute('role', 'listbox');
+        Object.assign(q.style, {position: 'absolute', left: (r.left + scrollX + 240) + 'px',
+          top: (r.bottom + scrollY) + 'px', background: '#fff', margin: '0', padding: '2px'});
+        document.body.append(q);
+        render(cb, q, pairs.slice().reverse());
+        const iv = setInterval(() => {
+          cb.setAttribute('aria-controls', cb.getAttribute('aria-controls') === p.id ? q.id : p.id);
+        }, 125);
+        extras.set(cb, () => { clearInterval(iv); q.remove(); });
+      }
+      if (DD === 'class_flip') {   // D153: the class the style sheet above reads
+        const iv = setInterval(() => cb.classList.toggle('fx-alt'), 125);
+        extras.set(cb, () => { clearInterval(iv); cb.classList.remove('fx-alt'); });
+      }
       if (DD === 'vanish_after_open' && nth === 1) {   // D152: the control leaves the page
         setTimeout(() => { p.remove(); (cb.closest('.field') || cb).remove(); }, 1200);
       }
@@ -1334,6 +1381,7 @@ _DD_JS = """
   const hide = (cb) => {
     const p = open.get(cb);
     if (!p) return;
+    if (extras.has(cb)) { extras.get(cb)(); extras.delete(cb); }
     p.remove(); open.delete(cb);
     cb.setAttribute('aria-expanded', 'false'); cb.removeAttribute('aria-controls');
   };
@@ -1455,6 +1503,8 @@ _DD_JS = """
 #   label_only            clicking shows the label but never sets the hidden values
 #   prefill               the location and its hidden values are set at load
 #   prefill_after_upload  they are set when the résumé upload is acknowledged ("autofill")
+#   style_tick            D153: as (none), and a style sheet (a <style> element) changes its text
+#                         every 300 ms; its rule matches nothing on the page
 _LOC_JS = """
 (() => {
   const V = %LOC%, BASE = %BASE%;
@@ -1524,6 +1574,12 @@ _LOC_JS = """
   });
   if (V === 'prefill') autofill();
   window.__fxLocAutofill = V === 'prefill_after_upload' ? autofill : null;
+  if (V === 'style_tick') {   // D153: a style sheet that keeps changing and matches nothing
+    const st = document.createElement('style');
+    document.head.append(st);
+    let n = 0;
+    setInterval(() => { st.textContent = '#fx-nothing-' + (++n % 2) + ' { color: red; }'; }, 300);
+  }
 })();
 """
 
@@ -1562,6 +1618,7 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
                .replace("%BEACON_VIA%", json.dumps(cfg.get("beacon_via") or "fetch"))
                .replace("%OTHER%", json.dumps(cfg.get("other_origin") or ""))
                .replace("%TICK%", str(int(cfg.get("dd_tick_ms") or 0)))
+               .replace("%STYLE_TICK%", str(int(cfg.get("dd_style_tick_ms") or 0)))
                .replace("%BASE%", json.dumps(base)) + "</script>")
     if mode in ("gh2_widgets", "gh2_widget_variants"):
         # FIXTURE ASSUMPTIONS: two standalone labelled comboboxes not in the job data (one

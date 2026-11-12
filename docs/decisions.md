@@ -6943,3 +6943,132 @@ audit-inventory and export-completeness guards are updated and pass.
     privacy check (fail closed, but a wasted run). The owner can check before approving one.
   - On path A no verdict is published at all.
 - **Evidence (local only):** `tests/test_survey_settle_rule.py`, 39 tests (18 through the read-only survey's browser path against the second Greenhouse-style stand-in's dropdowns, with the receiver's request log as the oracle; one of the receiver's reset; 20 on the rule and its counting alone); the 15 suites the change touches; 22 removal runs, each failing a test; the regression set of 77 files. Results by commit in `docs/implementation-status.md`, claims in `docs/evidence-matrix.md`.
+
+## D153 — A list is judged by the page's record of changes to a list, not by changes anywhere on the page, and the option is chosen from the list as one read shows it (2026-11-12)
+
+- **Context:** rank 19 of the automation loop (`docs/automation-loop.md`), found by D145's
+  second review. Local stand-ins only; nothing real was run. No migration, no new state,
+  reason code, gate, permission or retry; no package change (`SCHEMA_VERSION` unchanged).
+- **Problem:**
+  - Since D106 the probe's classification (`classify_open`) also checks the whole document: a
+    read within 150 ms of any change anywhere on the page counts as still changing. Since D145
+    the adapter judges a list by the page's own record of changes to a list as well, so the
+    whole-document check only added refusals: a page that changes something every 250 to
+    300 ms could have a list refused in a real page's window depending on how the reads fell
+    against its timer (by D145's second review, reads 254 to 300 ms apart: up to 55% of
+    openings at 250 ms, 4% to 50% at 300 ms), and a page changing something every 100 ms had every list refused. Refusals
+    only, at a check before anything is entered or at a choice after.
+  - The whole-document check was also the only thing that saw, within 150 ms of a read, a
+    change to a style sheet (which can hide, show or reorder options without touching the
+    list) and a change of which list the control names (`aria-controls`), which the list's
+    record did not count.
+- **Decided:**
+  - **The adapter leaves the whole-document check out** (`classify_open(...,
+    whole_page=False)`) in both places that choose from a list: the dropdown engine
+    (`dropdowns._observe`: the check before the disclosure gate and the choice) and a
+    section's combobox (`greenhouse_sections._settled_list`, D151). The survey's own
+    `open_state` keeps it, so its published classification is unchanged.
+  - **The page's record counts more as a change to a list** (`gh_readonly._PRE_JS`), besides
+    D145's (inside an option or a popup, such an element added or removed, an attribute of an
+    element holding one, a batch of more than 200):
+    - any attribute of the control;
+    - on an element holding the control, an attribute the probe finds its list by (`role`,
+      `aria-haspopup`, `aria-expanded`, `aria-controls`, `aria-owns`), and an element holding
+      the control added or removed;
+    - any element's `id` (the control names its list by id);
+    - a style sheet: a `<style>` element added or removed, its text, its attributes; a
+      stylesheet `<link>`'s attributes, and any `<link>`'s `rel` (a sheet switched off no
+      longer matches "stylesheet"); either inside an added or removed element. For an
+      attribute change, the changed element must itself be one: an element that only holds a
+      `<style>` (an inline SVG, say) is not.
+  - **The choice reads the list and the option together** (`dropdowns.select`): one read
+    (`_CHOICE_JS`, built on the probe's own read, `_PROBE_READ_JS`, so the same rules find the
+    texts and the elements) gives the list and its option at the approved position; the list
+    must still be exactly the approved one, and the option's own text is read again just
+    before the click. Before, the option was found by a second read with its own copy of the
+    probe's rules after the list was judged, and only a value the option exposed was checked:
+    a list that changed in between (relinked, an option hidden, a copy added first) had its
+    option at the approved position clicked though it was not the approved one, wherever no
+    value was exposed (react-select's options expose none). That gap is older than D153 (a
+    change between the last read and the option's read was never seen); leaving out the
+    whole-document check widened it, which the first safety review showed: on synthetic pages
+    whose control relinked or reclassed its list every 125 ms, 2 of 30 and 1 of 30 runs
+    clicked a wrong option after the disclosure gate (readback then stopped the attempt before
+    the send gate). A section's combobox already read its list and option in one go (D151).
+  - **A section's refusal names the record** (`list_changed_recently`) when only the record
+    held its list back, as a dropdown's does.
+  - **The read-only survey** judges its settle rule (D152) by the adapter's classification,
+    and compares a list's options once either classification, the survey's or the adapter's,
+    found it observed sufficiently (on a page busy elsewhere, the comparison the adapter would
+    make). Booleans only; no new key, word, request or action.
+- **What an approved run now does differently** (no adapter version change: `greenhouse_dom`
+  stays at 4 and the form reading at v6, as for D145):
+  - a page that changes things the record does not count, at any pace, no longer has its
+    lists refused for it;
+  - a page that changes a style sheet, the control's attributes or an id less than half a
+    second apart has its lists refused (before, mostly accepted: refused only when a change
+    fell within 150 ms of a read). A refusal at a check comes before anything is entered;
+  - style sheets changing every 550 to 750 ms have a share of openings refused, so the checks
+    before the disclosure gate can pass and a later choice be refused after data was entered
+    (by arithmetic, reads 254 to 300 ms apart in a real page's window: 64% to 78% of openings
+    at 550 ms, 36% to 67% at 600, 16% to 38% at 650, 8% to 14% at 700, 1% to 7% at 750, none
+    from 800; with three dropdowns at one refusal in three, about one attempt in five stops
+    at a choice). Before D153 none of these were refused;
+  - the location search, which never had the whole-document check, only gains refusals: a
+    page that changes a style sheet, the input's attributes or an id less than half a second
+    apart stops after the search text was typed (a disclosure), as `LOCATION_NO_LIST`;
+  - a list that changed after it was judged is not chosen from.
+  - Approvals stay valid. Rehearsal records keep counting although they were earned under the
+    earlier rule, so a first real submission can stop at a dropdown its rehearsal passed.
+- **Limits:**
+  - The record does not see: styles changed through the CSS object model alone; an observer
+    the page has replaced; a rule of an unchanged style sheet that starts or stops matching
+    because an element holding no list changed (a class on another element under a `:has()`
+    or sibling rule, an element inserted beside the list under a position rule); a style
+    sheet whose rules arrive after its `<link>` or `@import` was added (its request is not
+    waited for). At the choice, the one read sees what such a change did to the list.
+  - The one case left at the choice: an option whose element is given another option's text
+    between the second read of its text and the click (Playwright clicks only that element,
+    and only once it receives the click).
+  - Two lists with the same labels in the same order cannot be told apart: a control that
+    names another list with the approved labels has that list chosen from (the readback sees
+    the label, and the value where one is exposed).
+  - A control whose own attributes keep changing less than half a second apart (an animated
+    placeholder, say) has its lists refused.
+  - "Elsewhere" is narrower than the page: attribute changes on `<html>`, `<body>` or any
+    element holding a list (or holding an element whose class name hints at a menu, dropdown
+    or option), and batches of more than 200 changes, still count (D145's marks).
+  - D145's removal runs showed the re-rendered list read every 600 and 1200 ms was refused by
+    the whole-document check as well; now the record alone refuses it (each part's removal
+    run is redone here).
+- **Superseded, not edited:** D145's statements that the classification's own 150 ms check
+  "is unchanged" and still refuses a page busy elsewhere ("What this changes for an
+  application"), that the record does not take a style sheet or a change of which popup the
+  control points to for the list's ("No record"), and its 500 to 750 ms lottery "on marked
+  changes only" (now style sheets too); D151's "the whole document has been quiet for 150 ms"
+  in a section's classification, its limit that "a list changed only by a style sheet, in
+  step with the reads, can be read as settled", and that rank 19 would change both.
+- **The stand-in** (FIXTURE ASSUMPTIONS, `fixtures/ats_receiver/greenhouse_v2.py`): cfg
+  `dd_style_tick_ms` (a `<style>` whose text changes every so often, matching nothing; cleared
+  by the receiver's reset), dd `controls_flip` (a second list with the options in reverse
+  order; the control's `aria-controls` names each in turn every 125 ms) and `class_flip` (a
+  style sheet hides each list's second option while its control has a class it gains and
+  loses every 125 ms), loc `style_tick` and section_widget `css_ticking` (a style sheet that
+  changes every 300 ms, matching nothing).
+- **Reviewed independently twice** (on 1f897c3, the first version):
+  - The safety review found two blockers. B1: with the whole-document check gone, a list
+    relinked or reclassed through its control alone could be judged settled and, as the
+    choice found its option by a second read, a wrong option clicked (shown on synthetic
+    pages, above). Fixed: the record counts the control, what names its list and ids; the
+    choice reads the list and option together and the option's text again. B2: an attribute
+    change on any element that merely held a `<style>` counted as a list's (a page's rotating
+    inline SVG had every list refused, and a section stopped after disclosure). Fixed: only
+    the sheet itself counts for an attribute change.
+  - The second review found no blocker, and: the partial guard the whole-document check gave
+    against uncounted changes was gone, unstated; the 550 to 750 ms lottery and the location
+    search's new refusals were unstated; a `<link>` whose `rel` was switched off was missed;
+    the survey could publish `met` without comparing the options; path C's use of the
+    adapter's classification, the survey's own check, the engine's `whole_page=False` and the
+    reset of the style ticker were not pinned by a test; about fifteen statements were stale.
+    Each fixed with a test, or recorded above.
+- **Evidence (local only):** `tests/test_list_record.py` (18) and `tests/test_dropdown_choice.py` (5), new, and new cases in `test_dropdown_strategies.py`, `test_section_list_settle.py`, `test_survey_settle_rule.py` and `test_greenhouse_controls.py`: through the runner against the second Greenhouse-style stand-in, with the receiver's ledger as the oracle, or on its page in Chromium. Against the code before D153, 31 of the 45 new and changed cases fail; against its first version, 17. The 38 suites the change touches; 21 removal runs, each failing the test named for its part; the regression set of 79 files. Results by commit in `docs/implementation-status.md`, claims in `docs/evidence-matrix.md`.

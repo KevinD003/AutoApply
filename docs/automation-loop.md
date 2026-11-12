@@ -22,7 +22,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 
 | What | Where |
 |---|---|
-| `main` | cb399c4 (tree 377825e, as predicted): #60 D151. Before it, 3d826a6 (tree 67f29ac): #59 D150; 570a393 (tree 16e34b4): #58 D149; dd5d164 (tree 1c6df86): #57 D148; b7f6c45 (tree 4f77573): #56 D147; 688c776 (tree c0865f1): #55 D146; 45c8229 (tree 0df08ea): #54 D145; 099642c (tree 33b8b0d): #53 D144; 9346c8e (tree fd09e77): #52 D143; 25d04ea (tree a3054b8): #51 D142; 98fe380 (tree b75d64c): #50 D141; 3df7d0d (tree a625f26): #49 D140; 4585c59 (tree fac890a): #48 D139; a7f8742 (tree af2f25f): #47 D138; e2fd286 (tree 1d69376): #46 D137; 32c8f7c (tree 201ddbd): #45 D136; 53b28af (tree fe5c8c3): #44 D135 (main CI #269 green on all four jobs); 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
+| `main` | bfaeb1f (tree 6e1adb3, as predicted): #61 D152. Before it, cb399c4 (tree 377825e): #60 D151; 3d826a6 (tree 67f29ac): #59 D150; 570a393 (tree 16e34b4): #58 D149; dd5d164 (tree 1c6df86): #57 D148; b7f6c45 (tree 4f77573): #56 D147; 688c776 (tree c0865f1): #55 D146; 45c8229 (tree 0df08ea): #54 D145; 099642c (tree 33b8b0d): #53 D144; 9346c8e (tree fd09e77): #52 D143; 25d04ea (tree a3054b8): #51 D142; 98fe380 (tree b75d64c): #50 D141; 3df7d0d (tree a625f26): #49 D140; 4585c59 (tree fac890a): #48 D139; a7f8742 (tree af2f25f): #47 D138; e2fd286 (tree 1d69376): #46 D137; 32c8f7c (tree 201ddbd): #45 D136; 53b28af (tree fe5c8c3): #44 D135 (main CI #269 green on all four jobs); 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
 | D131 follow-up (the review's remaining findings) | merged (#39, bd38529); main CI #254 passed all four jobs |
 | D132 form-change pause and questions tab | merged (#40, c19c683); main CI #260 passed all four jobs |
 | D133 reuse and suggestion guards | merged (#41, da7ac61); its PR CI passed all four jobs on 360f34c, and main CI #265 on da7ac61 |
@@ -44,7 +44,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D149 Workday-style Work Experience: your approved work history entered on My Experience | merged (#58, 570a393, tree as predicted); its PR CI passed all four jobs on 8f9acba |
 | D150 a request to stop the worker honoured before the next protected step | merged (#59, 3d826a6, tree as predicted); its PR CI passed all four jobs on c94be94 |
 | D151 a section's combobox chooses only from a list that has settled | merged (#60, cb399c4, tree as predicted); its PR CI passed all four jobs on 9c39774 |
-| D152 the read-only survey publishes whether each list met the adapter's settle rule | branch `survey-settle-rule` (from D151's branch, then with its records and `main` with #60); reviewed twice; not merged |
+| D152 the read-only survey publishes whether each list met the adapter's settle rule | merged (#61, bfaeb1f, tree as predicted); its PR CI passed all four jobs on 5f4fe33 |
+| D153 a list judged by the page's record of changes to a list; the option chosen from one read | branch `whole-page-check` (from D152's branch, then `main` with #61); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -65,7 +66,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 3 | Future reuse | unit (resolver), generic form; D133 merged (#41): suggestions judge the saved side, "Use here only"; D138 merged (#47): a saved answer reaches the next gh2 job that asks the same question (receiver ledger) | D138 merged (#47): reused on the next posting (receiver ledger); single page |
 | 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 merged (#47): a gh2 look-alike naming a country is neither reused nor suggested | D138 merged (#47): "Preferred shift" never saved or reused |
 | 5 | Conditional question | fx on the v1 fixture; D135 merged (#44), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | D148 on its branch (stand-in FA6, receiver ledger): a typed follow-up the page shows after an earlier answer is answerable, entered only when shown, never waited for; a shown required one without an answer pauses a single page and stops a wizard page before its Next; a hidden one the page still requires, or one it removes, stops the attempt; a choice hidden at load is still never filled (a hidden file input is uploaded as before) |
-| 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger); D145 (branch): a dropdown whose list keeps being re-rendered is refused however slowly it is read (the page's own record of its last change to a list), before anything is entered, and a location search whose suggestions keep changing chooses no place (gh2 stand-ins; receiver ledger); D152 on its branch: the read-only survey publishes whether each list met that rule at its last read (gh2 stand-ins; code only, no run) | fx at capture |
+| 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger); D145 (branch): a dropdown whose list keeps being re-rendered is refused however slowly it is read (the page's own record of its last change to a list), before anything is entered, and a location search whose suggestions keep changing chooses no place (gh2 stand-ins; receiver ledger); D152 merged (#61): the read-only survey publishes whether each list met that rule at its last read (gh2 stand-ins; code only, no run); D153 on its branch: a page busy elsewhere no longer has its lists refused, one whose style sheets or control keep changing has them refused before anything is entered, and an option is chosen only from one read of the list that is still the approved one (gh2 stand-ins; receiver ledger) | fx at capture |
 | 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger); D151 on its branch: a section combobox chooses only from a list that has settled, by the dropdown's rule, and a list that keeps changing, posts or fails to load stops the section (gh2 stand-ins, receiver ledger) | D149 on its branch (stand-in FA7, receiver ledger): the Work Experience entries on My Experience filled from your approved work history (employment), each added by the section's own button and read back, no entry beyond the approved ones sent, a required section waiting for your approved work history; anything else about work history a checkpoint; education, languages, websites and skills not built |
 | 8 | Answer edits invalidate approvals | fx; D138 merged (#47): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger); D140 merged (#49): an education or employment edit retires the approval at once; on the education stand-in, approved again, the new degree is sent, and an edit while a worker fills is stopped at the send gate (receiver ledger) | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; D143 merged (#52): on gh2 by id a worker killed before anything was sent is run again once, and one killed after entering data, at the send gate, around the final click or after the employer's receipt is never run again; a run past its budget stops before the final click (gh2 by id and the pilot stand-in; receiver ledger); D144 merged (#53): the sweeper runs on a worker of its own, so it is not held up by attempts waiting for codes (real workers, generic form; receiver ledger) | partial; D142 merged (#51): on the wizard stand-in a lost or killed worker leaves the record of each page's Next, is never taken over, and the application is never run again (receiver ledger); D143 merged (#52): the same kills on the single-page form and on the wizard's review page, and a wizard past its budget stops for good (receiver ledger) |
@@ -349,7 +350,7 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the location search's loop, not the dropdown's rule it cited, with further
     weaknesses. Fixed (abcd4dd, 21e2289), each with a test; the rest recorded in D151.
 
-- **D152 (branch `survey-settle-rule`, not merged).** Rank 18, the survey reports the
+- **D152 (#61, bfaeb1f).** Rank 18, the survey reports the
   adapter's settle rule:
   - the gap (D145's review): the read-only survey judged each list by its own test and
     published nothing of the page's record of changes to a list, which the adapter has
@@ -365,6 +366,23 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     adapter's three, with further weaknesses. Fixed (26e6cdc, 30766a5), each with a test;
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
+
+- **D153 (branch `whole-page-check`, not merged).** Rank 19, the list judged by its own
+  record:
+  - the gap (D145's second review): the classification's check of the whole document (no
+    change anywhere for 150 ms) also held lists back, so a page changing something every
+    250 to 300 ms could have a list refused in a real page's window depending on the
+    reading pace, and one changing every 100 ms every list;
+  - the adapter (dropdowns, a section's combobox) leaves that check out; the page's record
+    now also counts style sheets, any attribute of the control, what names its list and
+    ids; a dropdown's option is chosen from one read of the list, which must still be the
+    approved one, and its text is read again just before the click; the survey judges its
+    rule by the adapter's classification;
+  - two independent reviews: the safety review found two blockers (a list relinked or
+    reclassed through its control alone could be judged settled and a wrong option
+    clicked at the choice; any element holding a style sheet counted as a list's), the
+    second none, with gaps in tests and records. Fixed (5e42918), each with a test;
+    the rest recorded in D153.
 
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
@@ -406,9 +424,12 @@ when the form is read and enters it only when the page shows it. **D149** (rank 
 enters your approved work history in the Workday-style stand-in's Work Experience section,
 entry by entry. **D150** (rank 16, #59) honours a request to stop the worker before the next
 protected step. **D151** (rank 17, #60) has a section's combobox choose only from a list
-that has settled, by the dropdown's rule. **D152** (rank 18, on its branch) has the
-read-only survey publish whether each list met that rule. Next, rank 19 (the
-classification's whole-page check judged by the list's own record).
+that has settled, by the dropdown's rule. **D152** (rank 18, #61) has the
+read-only survey publish whether each list met that rule. **D153** (rank 19, on its
+branch) judges a list by the page's record of changes to a list instead of changes
+anywhere on the page, and chooses an option only from one read of the list. Every ranked
+slice left after it waits on an owner decision; next, the candidates under Exact next
+action.
 
 ## Unvalidated or partly validated changes
 
@@ -502,8 +523,16 @@ classification's whole-page check judged by the list's own record).
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D152 (branch `survey-settle-rule`):** the new tests, the suites the change touches, the
-  removal runs and the regression set, locally (Tests run below). Not tested: any real page
+- **D153 (branch `whole-page-check`):** the new tests (and against the code before it),
+  the suites the change touches, the removal runs and the regression set, locally (Tests
+  run below). Not tested: any real page; a list changed by a rule of an unchanged style
+  sheet that starts matching because an element holding no list changed, between the
+  checks (only the choice's one read sees it); a style sheet whose rules arrive late; an
+  option element reused between the second read of its text and the click; two lists
+  with the same labels.
+- **D152:** merged (#61, bfaeb1f, tree as predicted); its PR CI passed all four jobs on 5f4fe33.
+  Locally: the new tests, the suites the change touches, the removal runs and the
+  regression set (Tests run below). Not tested: any real page
   (no run is requested), the survey's command line and CI workflow with the new fields (the
   summary is built by the same code the tests call), a real page's locale request whose
   status arrives before its body, and a list changed only by a style sheet at the survey's
@@ -723,6 +752,14 @@ classification's whole-page check judged by the list's own record).
 | D152, the regression set: `pytest` on 77 files (D151's 76 and `test_survey_settle_rule.py`; JUnit), in a copy of the branch at 7a29fdc | exit 0; 2159 passed in 79.7 min |
 | D152, `main` with #60 merged in (f188b4e): `pytest tests/test_survey_settle_rule.py tests/test_dropdown_observation_c.py tests/test_widget_inspection.py tests/test_section_list_settle.py` (JUnit) | exit 0; 122 passed in 13.7 min |
 | D152, after its records: the document tests and `test_survey_settle_rule.py`; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 84 passed; ruff formatted nothing, found nothing, and the format check passed |
+| D153, the first version: the new tests (JUnit) on 1f897c3, then against the product files of 7a29fdc | exit 0, 27 passed; exit 1, 13 of 27 fail |
+| D153, after the reviews (5e42918): the 25 new and changed cases, then the choice tests; the six changed test files (JUnit) | exit 0, 25 passed; exit 0, 5 passed; exit 0; 221 passed in 22.9 min (started on the working tree before the choice's last two cases, which passed on their own) |
+| D153, against the code before it: the 45 new and changed cases (JUnit), on 5e42918's tests and stand-in with the four product files as they were at 7a29fdc (before D153), then as at 1f897c3 (its first version) | exit 1, 31 of 45 fail against 7a29fdc, among them the three lists changed after they were judged, from which the choice clicked an option at the approved position that was not the approved one; exit 1, 17 of 45 fail against 1f897c3, among them both lists switched through their control, which it accepted (the attempt confirmed), and the same three choices |
+| D153, the suites the change touches: `pytest` on the 12 of the 38 files the change touches that are not in the regression set (`test_b3_policy`, `test_dropdown_observation_c`, `test_gh_readonly`, `test_greenhouse_sections`, `test_greenhouse_sections_browser`, `test_greenhouse_sections_hardening`, `test_locale_observation`, `test_path_a`, `test_readonly_cli_process`, `test_sections_review`, `test_widget_detector`, `test_widget_inspection`; JUnit), on 5e42918; the other 26 are in the regression set | exit 0; 354 passed in 14.3 min (a first run of all 38 was stopped at its time limit at 58%: 720 passed, none failed) |
+| D153, each part changed in turn: 21 changes on 5e42918, one at a time, the file restored | exit 1 for each: all 21 fail a test, each the one named for its part |
+| D153, the regression set: `pytest` on 79 files (D152's 77, `test_list_record.py` and `test_dropdown_choice.py`; JUnit), in a copy of the branch at 5e42918 | exit 0; 2197 passed in 80.3 min |
+| D153, `main` with #61 merged in (bb37b6f): the new tests, the survey's and the section's | exit 0; 99 passed in 10.5 min |
+| D153, after its records: the document tests and `test_list_record.py`; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 63 passed; ruff formatted nothing, found nothing, and the format check passed |
 
 ## Failed approaches and rejected designs
 
@@ -838,8 +875,7 @@ classification's whole-page check judged by the list's own record).
 
 ## Exact next action
 
-1. D152 (branch `survey-settle-rule`, rank 18): its pull request (D151 merged as #60). Then
-   rank 19 (the classification's whole-page check judged by the list's own record). Candidates: a check of the form's own validity before the send gate
+1. D153 (branch `whole-page-check`, rank 19): its pull request (D152 merged as #61). Candidates: a check of the form's own validity before the send gate
    (D148's proposal); Location and Role Description from your record; education on Workday.
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive

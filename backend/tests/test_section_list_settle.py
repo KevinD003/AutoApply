@@ -2,13 +2,15 @@
 through the dropdown's settle rule (adapters/dropdowns.py `_observe`: D104, D106, D108, D145)
 instead of once on opening. Read every SAMPLE_MS, its list counts as settled once the probe's
 classification says it is observed sufficiently (it opened, its options can be read, nothing new
-on the page says it is loading, no list claims more options than it shows, and the whole document
-has been quiet for 150 ms), no data request made since the click is still in flight, the same
-options were read three times in a row and the page has recorded no change to a list for half a
-second; data requests are refused as a dropdown's are. Otherwise the section stops, and no option
+on the page says it is loading, and no list claims more options than it shows; since D153 without
+the whole document's 150 ms check), no data request made since the click is still in flight, the
+same options were read three times in a row and the page has recorded no change to a list for
+half a second (since D153 counting style sheets and the control's attributes); data requests are
+refused as a dropdown's are. Otherwise the section stops, and no option
 is clicked. The section stand-in's list behaviours (`section_widget` late_list, late_react,
-late_fetch, late_fetch_404, changing_list, slow_changing_list, css_swapping_list, open_beacon,
-hidden_duplicate, inert; cfg section_delay_ms, section_tick_ms) are FIXTURE ASSUMPTIONS: no real
+late_fetch, late_fetch_404, changing_list, slow_changing_list, css_swapping_list, css_ticking,
+open_beacon, hidden_duplicate, inert; cfg section_delay_ms, section_tick_ms) are FIXTURE
+ASSUMPTIONS: no real
 Greenhouse section page has been observed. The receiver's ledger is the oracle for what was sent.
 Synthetic data only."""
 
@@ -99,7 +101,7 @@ def test_a_section_list_that_arrives_late_is_chosen_from_once_it_has_settled(
     ("changing_list", {}),  # re-rendered in the other order every 60 ms
     ("slow_changing_list", {}),  # ... every 300 ms
     ("css_swapping_list", {}),  # a style sheet hides another option every 300 ms: no list
-    # changes, so only the reads see it (D145's limit of the page's record)
+    # changes, but since D153 the page's record counts the style sheet's
     ("late_list", {"section_delay_ms": 600_000}),  # still loading when the wait ends
 ])  # fmt: skip
 def test_a_section_list_that_does_not_settle_stops_the_section(api, receiver, widget, cfg):
@@ -130,19 +132,45 @@ def test_a_section_list_that_has_settled_is_chosen_from_when_read_slowly(
 
 
 @pytest.mark.parametrize("tick_ms,window", [(300, "stand-in"), (600, "stand-in"),
-                                            (600, "real page")])  # fmt: skip
+                                            (600, "real page"), (300, "real page"),
+                                            (100, "real page")])  # fmt: skip
 def test_a_page_busy_elsewhere_does_not_hold_up_a_section_list(
     api, receiver, monkeypatch, tick_ms, window
 ):
     """As D145's dropdown tests: changes elsewhere on the page are not changes to a list, so each
-    list still settles, in a stand-in's window and, with something changing every 600 ms, in a
-    real page's (SETTLE_MS). The classification's own check of the whole document (150 ms) is
-    kept as the dropdown has it; rank 19 would change both."""
+    list still settles, in a stand-in's window and in a real page's (SETTLE_MS). D153: the
+    classification's own check of the whole document (no change for 150 ms) is left out, as for
+    the dropdown, so a page changing something every 300 or even 100 ms holds up no list."""
     if window == "real page":
         monkeypatch.setattr(dropdowns, "LATE_MS", dropdowns.SETTLE_MS)
     aid, result = run(api, receiver, "plain", section_tick_ms=tick_ms)
     assert result == "confirmed", attempt(aid).outcome_detail
     assert education_sent(receiver) == EDUCATION
+
+
+def test_a_list_changed_only_by_a_style_sheet_is_refused_however_slowly_it_is_read(
+    api, receiver, monkeypatch
+):
+    """D153: the style sheet hiding the 2nd, then the 3rd, option every 300 ms, read every 600 ms,
+    in step with it: every read saw the same options, and until D153 nothing else looked at the
+    style sheet but the whole document's 150 ms check, so the list could be read as settled
+    (D151's stated limit). A change to a style sheet now counts as a change to a list."""
+    monkeypatch.setattr(dropdowns, "SAMPLE_MS", 600)
+    aid, result = run(api, receiver, "css_swapping_list")
+    refused(receiver, aid, result, "its list did not settle in time")
+
+
+def test_a_list_held_back_only_by_the_pages_record_says_so(api, receiver):
+    """D153: the list never changes, but a style sheet does, every 300 ms (its rule matches
+    nothing): every read is the same, and only the page's record of changes to a list holds it
+    back. The refusal names that, as a dropdown's does (`list_changed_recently`)."""
+    aid, result = run(api, receiver, "css_ticking")
+    refused(
+        receiver,
+        aid,
+        result,
+        "its list did not settle in time (observed_sufficiently: list_changed_recently)",
+    )
 
 
 # ------------------------------------------------- what the page sends, and what it hides

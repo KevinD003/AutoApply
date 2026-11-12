@@ -868,10 +868,18 @@ run #10)".
 **Since D152 (2026-11-12; code only, no run):** every widget-inspection mode also publishes, per
 action that opened a list, whether the list met the adapter's settle rule at that action's last
 read (`settle_rule`, booleans only), and how many lists met it (`settle_rule_counts`):
-- `list_quiet`: no change to a list recorded for half a second (the adapter's rule since D145);
+- `list_quiet`: no change to a list recorded for half a second (the adapter's rule since D145;
+  since D153 the record also counts changes to style sheets, any attribute of the control and
+  any element's id);
 - `equal_reads`: all three of the action's reads showed the same options;
 - `pending`: an allowed request made since the action began had not finished;
-- `met`: all of these, and observed sufficiently.
+- `met`: all of these, and observed sufficiently by the adapter's classification (since D153
+  without the whole page's 150 ms check, which the survey's own `open_state` keeps: on a page
+  busy elsewhere, `met` can be true beside an `open_state` of `partially_observed`).
+
+Since D153 the options are also compared (`options_match_api`, `options_equal_to_fields`) when
+only the adapter's classification found the list observed sufficiently: on a page busy
+elsewhere, the comparison the adapter would make.
 
 What it does and does not say:
 - **Path A:** its window (600 ms) ends before the adapter could count any list as settled, so
@@ -879,8 +887,7 @@ What it does and does not say:
 - **"Met" means settled, not accepted:** on a real page the adapter still refuses a list whose
   opening made any data request (published apart) and compares the options.
 - **"Not met"** can be a list the adapter would already have chosen from earlier in its window.
-  Reads 500 ms apart are stricter than the adapter's 250 ms, and the survey's own 150 ms check
-  fails more often on a busy page.
+  Reads 500 ms apart are stricter than the adapter's 250 ms.
 - **The privacy check:** the new keys add a few common words to the summary (quiet, reads,
   settle, rule). The check refuses the whole summary when a posting's label of four or more
   letters appears in it. So a posting with a label that is exactly one of those words would

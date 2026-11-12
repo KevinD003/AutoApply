@@ -183,11 +183,9 @@ def test_a_page_that_keeps_changing_elsewhere_does_not_hold_up_a_settled_list(
     else on the page changes every 300 ms, or every 600 ms: in a stand-in's window each
     dropdown's list is still read as settled, at the check and at the choice, and the
     application is submitted with the approved options. (On the whole document's record the
-    300 ms page would never settle. The classification's own check of the whole document is
-    unchanged: a read within 150 ms of any change still waits, so a page changing something
-    every 250 to 300 ms can still have a list refused in a real page's shorter window,
-    depending on the reading pace, as before D145. The next test gives the 600 ms page a real
-    page's window.)"""
+    300 ms page would never settle. Since D153 the classification's own check of the whole
+    document, no change for 150 ms, is left out by the adapter too: see the tests below in a
+    real page's window.)"""
     app_id, aid, result = run(api, receiver, dd="click_popup", dd_tick_ms=tick_ms)
     assert result == "confirmed", attempt(aid).outcome_detail
     _approved_options_sent(api, receiver, app_id)
@@ -206,6 +204,55 @@ def test_a_page_busy_elsewhere_passes_every_check_in_a_real_pages_window(
     app_id, aid, result = run(api, receiver, dd="click_popup", dd_tick_ms=600)
     assert result == "confirmed", attempt(aid).outcome_detail
     _approved_options_sent(api, receiver, app_id)
+
+
+@pytest.mark.parametrize("tick_ms", [100, 250, 300])
+def test_a_page_busy_elsewhere_has_its_lists_settle_in_a_real_pages_window(
+    api, receiver, monkeypatch, tick_ms
+):
+    """D153 (rank 19): until D153 a read within 150 ms of any change on the page could not settle
+    (the classification's check of the whole document, D106), so a page changing something
+    every 250 to 300 ms had a list refused in a real page's window depending on the reading
+    pace, and one changing every 100 ms had every list refused. The adapter judges the list by
+    the page's record of changes to a list instead: the checks and the choices pass, and the
+    application is submitted with the approved options."""
+    monkeypatch.setattr(dropdowns, "LATE_MS", dropdowns.SETTLE_MS)
+    app_id, aid, result = run(api, receiver, dd="click_popup", dd_tick_ms=tick_ms)
+    assert result == "confirmed", attempt(aid).outcome_detail
+    _approved_options_sent(api, receiver, app_id)
+
+
+def test_a_page_whose_style_sheet_keeps_changing_has_its_lists_refused(api, receiver):
+    """D153: a change to a style sheet counts as a change to a list, since a style sheet can hide,
+    show or reorder options without touching the list (the whole document's check used to see
+    such a change within 150 ms of a read). A page that changes one every 300 ms, here a rule
+    that matches nothing, never has a list settle: refused before anything is entered."""
+    _, aid, result = run(api, receiver, dd="click_popup", dd_style_tick_ms=300)
+    assert result == "failed_safe", attempt(aid).outcome_detail
+    detail = attempt(aid).outcome_detail
+    assert "dropdown: its list could not be read completely" in detail, detail
+    assert "list_changed_recently" in detail, detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+@pytest.mark.parametrize("dd", ["controls_flip", "class_flip"])
+def test_a_list_switched_through_its_control_is_refused_before_anything_is_entered(
+    api, receiver, dd
+):
+    """D153 (rank 19's safety review, B1): which list the probe reads, or which of its options
+    are shown, can change through the control alone: here every 125 ms its aria-controls names
+    each of two lists in turn (the same options, in reverse order), or its class hides an option
+    through a style sheet. Without the whole page's 150 ms check such a list could be judged
+    settled when the reads fell in step with it, and a wrong option clicked. The page's record
+    now counts any attribute of the control: the list never settles, and is refused before
+    anything is entered."""
+    _, aid, result = run(api, receiver, dd=dd)
+    assert result == "failed_safe", attempt(aid).outcome_detail
+    detail = attempt(aid).outcome_detail
+    assert "dropdown: its list could not be read completely" in detail, detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
 
 
 def test_a_list_that_starts_changing_after_the_check_stops_the_attempt_before_sending(
@@ -299,8 +346,8 @@ def test_settled_means_unchanged_by_the_pages_own_record(monkeypatch):
     """D145, the rule itself, on a stand-in for the page's probe: three equal reads are not
     enough while the page reports a change to a list in the last half second, whatever the
     reading interval; they are once it reports none for that long, or none at all since before
-    the action. A change elsewhere on the page, however recent the classification allows, does
-    not count."""
+    the action. A change elsewhere on the page does not count, however recent (D153: the
+    classification's whole-page 150 ms check is left out; the 20 ms case would fail it)."""
     monkeypatch.setattr(dropdowns, "_act", lambda *a: True)
     for list_quiet, quiet, state, word in (
         ([200, 120, 280, 90, 260, 140], None, "partially_observed", None),  # re-rendered
@@ -308,6 +355,7 @@ def test_settled_means_unchanged_by_the_pages_own_record(monkeypatch):
         ([10, 260, 500], None, "observed_sufficiently", None),  # exactly the half second
         ([None, None, None], None, "observed_sufficiently", None),  # no change to a list
         ([600, 850, 1100], 200, "observed_sufficiently", None),  # the page is busy elsewhere
+        ([600, 850, 1100], 20, "observed_sufficiently", None),  # ... changed 20 ms ago (D153)
     ):
         got = dropdowns._observe(_ProbePage(list_quiet, quiet=quiet), "c", "click_control", 2)
         assert got["state"] == state, (list_quiet, got)

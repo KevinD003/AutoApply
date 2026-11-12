@@ -2015,13 +2015,37 @@ _PRE_JS = (
   // D145: which changes touch a list (an option or a popup, by the same marks the probe reads
   // them by): one inside such an element, one that adds or removes such an element, and an
   // attribute change on an element holding one (which can show or hide it). A batch too large
-  // to look at one by one counts as the list's.
+  // to look at one by one counts as the list's. D153: so do the changes that decide, without
+  // touching a list, which list the probe reads or which of its options are shown: any
+  // attribute of the control; on an element holding the control, an attribute the probe finds
+  // the list by (role, aria-haspopup, aria-expanded, aria-controls, aria-owns); an element
+  // holding the control added or removed; any element's id; and a style sheet (a <style>
+  // element or its text; a stylesheet <link>'s attributes, or any <link>'s rel; either added
+  // or removed, alone or inside another element). Not seen: a rule of an unchanged style
+  // sheet that starts or stops matching because something else changed (a class on another
+  // element, say), and changes made through the CSS object model alone, which change no
+  // element.
   const LIST = [OPT, POP, HINT_POP, HINT_OPT].join(',');
+  const SHEET = 'style,link[rel~="stylesheet" i]';
+  const FINDS = ['role', 'aria-haspopup', 'aria-expanded', 'aria-controls', 'aria-owns'];
   const inList = (n) => {
     const e = n && (n.nodeType === 1 ? n : n.parentElement);
-    return !!(e && e.closest(LIST));
+    return !!(e && (e.closest(LIST) || e.closest('style')));
   };
-  const holdsList = (n) => !!(n && n.nodeType === 1 && (n.matches(LIST) || n.querySelector(LIST)));
+  const holds = (n, sel) => !!(n && n.nodeType === 1 && (n.matches(sel) || n.querySelector(sel)));
+  const holdsCtl = (n) => !!(n && n.nodeType === 1
+    && (n.contains(el) || n.contains(document.getElementById(id))));
+  const touches = (r) => {
+    if (inList(r.target)) return true;
+    if (r.type === 'childList') {
+      const any = (ns) => Array.from(ns).some((n) => holds(n, LIST + ',' + SHEET) || holdsCtl(n));
+      return any(r.addedNodes) || any(r.removedNodes);
+    }
+    if (r.type !== 'attributes') return false;
+    const t = r.target, a = r.attributeName;
+    return holds(t, LIST) || t === el || t.id === id || a === 'id' || t.matches(SHEET)
+      || (t.tagName === 'LINK' && a === 'rel') || (FINDS.includes(a) && holdsCtl(t));
+  };
   window.__neObs = new MutationObserver((ms) => {
     const m = window.__neMut;
     m.n += ms.length; m.last = performance.now();
@@ -2030,12 +2054,7 @@ _PRE_JS = (
       for (const a of r.addedNodes) {
         if (a.nodeType === 1 && m.added.length < 500) m.added.push(a);
       }
-      if (list) continue;
-      if (inList(r.target)) list = true;
-      else if (r.type === 'childList') {
-        list = Array.from(r.addedNodes).some(holdsList)
-          || Array.from(r.removedNodes).some(holdsList);
-      } else if (r.type === 'attributes') list = holdsList(r.target);
+      if (!list && touches(r)) list = true;
     }
     if (list) m.list = m.last;
   });
@@ -2052,8 +2071,10 @@ _PRE_JS = (
           wrapper: !!wrap};
 }"""
 )
-# During and after the action: what is visible now that was not before.
-_PROBE_JS = (
+# During and after the action: what is visible now that was not before (`read`), and the
+# option elements its texts came from (`opts`; D153: the adapter's choice reads the list and
+# the option to click in one evaluation, by these same rules). `_PROBE_JS` returns `read`.
+_PROBE_READ_JS = (
     "(id) => {\n"
     + _PROBE_COMMON
     + """
@@ -2094,7 +2115,7 @@ _PROBE_JS = (
   const scope = assocVis.concat(newPops);
   const active = document.activeElement;
   const now = performance.now(), m = window.__neMut || {n: 0, last: 0, list: 0, added: []};
-  return {
+  return {opts, read: {
     expanded: exp(el), wrapper_expanded: wrap && wrap !== el ? exp(wrap) : 'absent',
     reference: ref, associated: assoc.length, associated_visible: assocVis.length,
     new_popups: newPops.length,
@@ -2110,9 +2131,10 @@ _PROBE_JS = (
     mutations: m.n, quiet_ms: m.last ? Math.round(now - m.last) : null,
     list_quiet_ms: m.list ? Math.round(now - m.list) : null,
     added_visible: m.added.filter((a) => a.isConnected && vis(a)).length,
-  };
+  }};
 }"""
 )
+_PROBE_JS = "(id) => { const r = (" + _PROBE_READ_JS + ")(id); return r && r.read; }"
 _END_PROBE_JS = "() => { if (window.__neObs) window.__neObs.disconnect(); window.__neObs = null; }"
 # Path C (D109): the control's react-select-style container, if any: the nearest ancestor whose
 # class names a `select__control` (react-select's default class scheme), visible and holding
@@ -2136,8 +2158,8 @@ _MARKUP_JS = """(id) => {
           indicator: has('[class*="select__indicator"]'),
           in_value_container: !!(el && el.closest('[class*="select__value-container"]'))};
 }"""
-_OPENED = frozenset({"opened_options_not_observable", "partially_observed",
-                     "observed_sufficiently"})  # fmt: skip
+_OBSERVED = "observed_sufficiently"
+_OPENED = frozenset({"opened_options_not_observable", "partially_observed", _OBSERVED})
 
 _CLICK_MS = 2000  # per action; an element that is not actionable by then is not acted on
 _SAMPLES = 3  # probes spread over the settle window (the window itself is not extended)
@@ -2200,7 +2222,8 @@ def compare_controls(before: dict, after: dict) -> dict:
 
 
 def classify_open(pre: dict, post: dict, series: list[int], api_count: int | None,
-                  click_ok: bool) -> tuple[str, list[str], list[str]]:  # fmt: skip
+                  click_ok: bool,
+                  whole_page: bool = True) -> tuple[str, list[str], list[str]]:  # fmt: skip
     """(open_state, opening_evidence, partial_reasons). Never "absent": an action that shows no
     list says only that, within the window, under the permitted action.
     - click_failed: the target was not actionable (e.g. something else would get the click);
@@ -2214,7 +2237,11 @@ def classify_open(pre: dict, post: dict, series: list[int], api_count: int | Non
     - partially_observed: options read, but still changing or loading, fewer than the list
       says it has (aria-setsize), or fewer than the job data lists;
     - observed_sufficiently: options read, stable, nothing loading, complete as far as can be
-      told: only then are they compared."""
+      told: only then are they compared.
+    `whole_page` (the survey's own test, the default): a change anywhere on the page less than
+    150 ms before the read counts as still changing. The adapter passes False (D153): a page
+    busy elsewhere is no reason to refuse a list, and the adapter judges the list by the page's
+    record of changes to a list (list_quiet_ms, style sheets included) for half a second."""
     if not click_ok:
         return "click_failed", [], []
     evidence = []
@@ -2238,7 +2265,7 @@ def classify_open(pre: dict, post: dict, series: list[int], api_count: int | Non
     partial = []
     if len(series) >= 2 and series[-1] != series[-2]:
         partial.append("still_changing")
-    elif post["quiet_ms"] is not None and post["quiet_ms"] < _QUIET_MS:
+    elif whole_page and post["quiet_ms"] is not None and post["quiet_ms"] < _QUIET_MS:
         partial.append("still_changing")
     if post["busy"] or post["hint_loading"]:
         partial.append("loading")
@@ -2260,15 +2287,18 @@ def settle_rule(state: str, post: dict, reads: list, pending: bool, window_ms: i
       counted as settled, though the adapter could count it so (the safe direction);
     - pending: an allowed request made since the action began has not finished (paths B and C:
       the locale requests; every other data request is refused at once, so never on path A);
-    - met: observed sufficiently (classify_open), list_quiet, equal_reads, nothing pending.
+    - met: observed sufficiently by the adapter's classification (classify_open without the
+      whole page's 150 ms check, D153), list_quiet, equal_reads, nothing pending.
       None in a window shorter than the adapter's (_ADAPTER_SETTLE_MS; path A's 600 ms), where
       the adapter cannot yet have counted any list as settled.
     All None when no list opened (not opened, undetermined, a click that failed, a control
     gone). `met` says the list had settled, not that the adapter would accept it: on a real page
     it also refuses a list whose opening made any data request (D104/D108; `requests_during`)
-    and compares the options. And only at the last read: a list the adapter would already have
-    chosen from may change later, and a page that changes something every few hundred
-    milliseconds can fail the survey's own 150 ms check at that read (the safe direction)."""
+    and compares the options (`options_match_api`, compared since D153 once either
+    classification found the list observed sufficiently). And only at the last read: a list the
+    adapter would already have chosen from may change later. A page busy elsewhere can have
+    `met` true beside an `open_state` of partially_observed (still_changing): the survey's own
+    classification keeps the 150 ms check, the adapter's does not."""
     if state not in _OPENED:
         return {"list_quiet": None, "equal_reads": None, "pending": None, "met": None}
     quiet = post["list_quiet_ms"] is None or post["list_quiet_ms"] >= _LIST_QUIET_MS
@@ -2416,7 +2446,12 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
         state, evidence, partial = classify_open(pre, post, series, api_count, click_ok)
         if gone:
             state, evidence, partial = "undetermined", ["control_gone"], []
-        rule = settle_rule(state, post, reads, pending, limits.widget_settle_ms)
+        # D153: the settle rule is the adapter's, whose classification leaves out the whole
+        # page's 150 ms check (the survey's own `open_state` keeps it)
+        as_adapter = state
+        if state in _OPENED:
+            as_adapter = classify_open(pre, post, series, api_count, click_ok, whole_page=False)[0]
+        rule = settle_rule(as_adapter, post, reads, pending, limits.widget_settle_ms)
         after, closed = mid, None
         if click_ok and not gone:
             actions += 1
@@ -2493,13 +2528,18 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
                 st2, ev2, _ = classify_open(pre2, post2, series2, api_count, ok2)
                 if gone2:
                     st2, ev2 = "undetermined", ["control_gone"]
+                as_adapter2 = st2
+                if st2 in _OPENED:
+                    as_adapter2 = classify_open(
+                        pre2, post2, series2, api_count, ok2, whole_page=False
+                    )[0]
                 opts2 = [] if gone2 else [gdom._norm(t) for t in post2["texts"]]
                 container.update(
                     click={"completed": ok2, "error": err2}, open_state=st2,
                     opening_evidence=ev2, visible_option_list=bool(opts2),
                     options_match_api=(option_lists.get(key) == opts2)
-                    if kind == "api_field" and st2 == "observed_sufficiently" else None,
-                    settle_rule=settle_rule(st2, post2, reads2, pending2,
+                    if kind == "api_field" and _OBSERVED in (st2, as_adapter2) else None,
+                    settle_rule=settle_rule(as_adapter2, post2, reads2, pending2,
                                             limits.widget_settle_ms),
                 )  # fmt: skip
                 after = mid
@@ -2518,7 +2558,10 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
                     reason = reason or check_stop(n_stops)
         page.evaluate(_END_PROBE_JS)
         opts = [] if gone else [gdom._norm(t) for t in post["texts"]]
-        sufficient = state == "observed_sufficiently"
+        # D153: compared once either classification found the list observed sufficiently, the
+        # survey's own or the adapter's (which leaves out the whole page's 150 ms check): on a
+        # page busy elsewhere, the comparison the adapter would make
+        sufficient = _OBSERVED in (state, as_adapter)
         now = counts()
         r = {
             "target": key,
@@ -2549,7 +2592,7 @@ def inspect_comboboxes(page, html, api_json, limits, phase, stops, events, data_
             "control_gone": gone,
             "dom_mutations": post["mutations"],
             "added_visible_elements": post["added_visible"],
-            # Compared only when observed sufficiently; otherwise not compared (None).
+            # Compared only when observed sufficiently (above); otherwise not compared (None).
             "options_match_api": (option_lists.get(key) == opts)
             if kind == "api_field" and sufficient else None,
             "options_equal_to_fields": sorted(k for k, v in option_lists.items() if v == opts)
