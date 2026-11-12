@@ -352,7 +352,10 @@ def test_the_runner_stops_on_a_followed_locale_redirect_before_entering_and_befo
     first = src.index("LOCALE_REDIRECTED if eg.redirected")
     assert first < src.index("svc.gate_before_disclosure(")  # before anything is entered
     second = src.index("LOCALE_REDIRECTED if eg.redirected", first + 1)
-    assert src.index("adapter.fill(page)") < second < src.index("_rehearsal(aid)")
+    # After filling, and before the rehearsal's stop and the send gate. (Named by those statements:
+    # since D150 the run also asks `_rehearsal(aid)` right after filling, for its stop requests.)
+    assert src.index("adapter.fill(page)") < second < src.index("return _stop_rehearsal(")
+    assert second < src.index("svc.gate_before_send(")
 
 
 def test_a_pilot_page_never_follows_a_redirect_of_its_own_fetches():
