@@ -9,6 +9,29 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## The read-only survey publishes whether each list met the adapter's settle rule (D152, 2026-11-12; local only)
+
+Nothing here ran against a real page; no run is requested. Branch `survey-settle-rule`. The runs
+are the survey itself (`gh_readonly.observe_page` with widget inspection) through the real
+browser path against the second Greenhouse-style stand-in's dropdowns (`gh2_dd`, FIXTURE
+ASSUMPTIONS); the receiver's request log shows nothing was disclosed or accepted, and every
+summary passes the leak guard. All in `tests/test_survey_settle_rule.py` unless named.
+
+| Claim | Test | Result |
+|---|---|---|
+| The rule's parts, each on its own | `test_the_rule_at_the_last_read` (8), `test_nothing_is_judged_where_no_list_opened` (3), `test_a_window_shorter_than_the_adapters_publishes_the_parts_but_no_verdict` | no record of a change is quiet, 500 ms is, 499 ms is not; every read compared; the survey's own test and a pending request each keep `met` false; nothing judged where no list opened; no verdict in a window under 1.5 s |
+| The numbers are the adapter's | `test_the_quiet_time_and_the_window_are_the_adapters` | 500 ms and 1.5 s, equal to `dropdowns.STABLE_MS` and `SETTLE_MS`; path A's window shorter |
+| A settled list meets it; path A gives no verdict | `test_a_settled_list_meets_the_rule_in_the_adapters_window`, `test_path_a_publishes_the_parts_but_never_a_verdict` | met for all three lists on path B; on path A the parts, `met: null`, counted not applicable |
+| A list that keeps changing never meets it | `test_a_list_that_keeps_changing_never_meets_it` (600 ms and 1.5 s windows), `test_a_containers_list_that_keeps_changing_does_not_meet_it` | `list_quiet: false` for every list; not met where judged |
+| The survey's own test and the rule can differ | `test_the_survey_s_own_test_and_the_adapter_s_rule_can_differ` (options shown 250 ms after the click) | "observed sufficiently" at 600 ms with `list_quiet: false`; met in the adapter's window |
+| Changes elsewhere are not a list's | `test_changes_elsewhere_on_the_page_are_not_a_lists` (a change every 300 ms) | `list_quiet: true` for every list |
+| Pending as the adapter counts it | `test_an_answer_still_awaited_at_the_last_read_holds_the_rule` (3 s, 0 s), `test_only_the_actions_own_requests_count_as_pending`, `test_a_containers_own_request_still_awaited_holds_the_rule`, `test_a_containers_action_counts_only_its_own_requests`, `test_a_request_the_page_cancels_is_no_longer_pending`, `test_a_request_is_pending_until_it_has_finished` | a request still unfinished at the last read holds the rule; only the action's own requests count; a cancelled one is finished; one whose status has arrived is not |
+| Counted as the adapter would reach the list | `test_a_list_opened_by_its_container_is_judged_on_that_action`, `test_a_list_after_an_undetermined_click_is_not_counted`, `test_a_list_is_counted_as_the_adapter_would_reach_it` (6), `test_a_skipped_widget_is_not_counted`, mixed counts in `test_only_the_actions_own_requests_count_as_pending` | the container's list counted after a click that opened nothing, not after an undetermined one; skipped widgets not counted |
+| Nothing judged without a list | `test_a_list_that_never_opens_is_not_judged`, `test_a_control_that_leaves_the_page_is_not_judged`, and the address-change test in `test_widget_inspection.py` | all four `null` |
+| A reset clears the stand-in's ticker | `test_a_reset_clears_the_page_busy_elsewhere` | the page served after a reset has no ticker (D145's leaked into later tests) |
+| The surveys as before | `test_widget_inspection.py`, `test_widget_detector.py`, `test_locale_observation.py`, `test_dropdown_observation_c.py` (the container record's keys), `test_readonly_cli_process.py`, the adapter's dropdown tests | pass, within the 15 suites the change touches (677 passed on 26e6cdc) |
+| Each part is needed | 22 changes, one at a time, the named tests run, the file restored (`docs/implementation-status.md`) | each of the 22 fails a test |
+
 ## A section's combobox chooses only from a list that has settled (D151, 2026-11-12; local only)
 
 Nothing here ran against a real page or a real account; no real Greenhouse section has been

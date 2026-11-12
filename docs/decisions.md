@@ -6852,3 +6852,94 @@ audit-inventory and export-completeness guards are updated and pass.
   - D137's stated limit is unchanged: a control whose choice then fails its readback is not
     recorded as entered.
 - **Evidence (local only):** `tests/test_section_list_settle.py`, 30 tests (22 through the runner against the second Greenhouse-style stand-in's education section, with the receiver's ledger as the oracle; 8 driving a section combobox on the stand-in's page in Chromium), 25 of which fail against the code before this change; the 15 suites the change touches; 20 removal runs, each failing a test; the regression set of 76 files. Results by commit in `docs/implementation-status.md`, claims in `docs/evidence-matrix.md`.
+
+## D152 — The read-only survey publishes whether each list met the adapter's settle rule (2026-11-12)
+
+- **Context:** rank 18 of the automation loop (`docs/automation-loop.md`), found by D145's review.
+  Code only: nothing real was run, and no run is requested. The read-only survey
+  (`gh_readonly`, the inspection of a real board) runs only with the owner's explicit, recorded
+  approval for one run; every recorded permission ended on 2026-11-06. No migration, no new
+  state, reason code or package change; the execution adapter is unchanged.
+- **Problem:** the survey judges each dropdown's list by its own test (`classify_open`: the
+  number of options at its last two reads, nothing loading, 150 ms without a change anywhere on
+  the page). Since D145 the adapter counts a list as settled only when, besides that, the page
+  has recorded no change to a list for half a second (STABLE_MS), the same texts were read three
+  times in a row and no data request of its own action is in flight. The survey neither tested
+  nor published that record, so no run, run #11 included, shows whether a real page meets the
+  adapter's rule. On the stand-in, a list re-rendered every 300 ms can pass the survey's own test
+  (the same number of options at every read, pauses longer than 150 ms), and a list shown 250 ms
+  after the click is "observed sufficiently" at the survey's last read (600 ms), though the page
+  changed it only about 350 ms before.
+- **Decided:**
+  - **Per action that opened a list**, judged at its last read (`settle_rule`), published as
+    booleans:
+    - `list_quiet`: the page recorded no change to a list for the adapter's STABLE_MS (500 ms);
+      no change recorded at all counts as quiet, as in the adapter;
+    - `equal_reads`: all of the action's reads showed the same option texts (compared in the
+      worker, never kept). The adapter needs three in a row, 250 ms apart; the survey's three
+      are 200 ms apart on path A and 500 ms on paths B and C, so a list that opens more than
+      half a second after the click is not counted as settled there, though the adapter could
+      count it so (the safe direction);
+    - `pending`: an allowed request made since the action began has not finished (paths B and
+      C: the locale requests; any other data request is refused at once). Finished means its
+      body has arrived (`requestfinished`), or it failed, as the adapter counts it, not when its
+      status arrives;
+    - `met`: observed sufficiently, `list_quiet`, `equal_reads` and nothing pending. It is
+      `None` in a window shorter than the adapter's (1.5 s): on path A (600 ms) the parts are
+      published but no verdict, as the adapter cannot count any list as settled before its
+      third read (750 ms).
+  - **Not judged** (all four `None`) where no list opened: not opened, undetermined, a click
+    that failed, a control gone.
+  - **Path C:** the container's click is judged on its own reads, and only the requests made
+    since it count.
+  - **Per inspection:** `settle_rule_counts` (met, not met, not applicable). Only widgets acted
+    on are counted, each once, as the adapter would reach it: on the control's own action when
+    it opened a list; on the container's only after the control's click showed nothing
+    (`not_opened`), since the adapter refuses an undetermined opening and tries nothing else.
+  - **Nothing a run does changes:** no new request, action, wait or budget. The new fields are
+    booleans and counts, from the published vocabulary, under the same leak guard; `pending`
+    and `not_applicable` were already words of the output.
+  - The quiet time and the window are numbers in the survey, held equal to the adapter's
+    STABLE_MS and SETTLE_MS by a test (`dropdowns` imports the survey when it loads).
+- **What the answer means, and does not:**
+  - `met` says the list had settled, not that the adapter would accept it: on a real page the
+    adapter also refuses a list whose opening made any data request (D104/D108; the survey
+    publishes those requests apart, `requests_during`) and compares the options.
+  - Only at the last read: a list the adapter would already have chosen from may change later,
+    and a page that changes something every few hundred milliseconds can fail the survey's own
+    150 ms check at that read. Both make it "not met" where the adapter could settle the list
+    (the safe direction).
+  - A list changed only by a style sheet is not in the page's record (D145's limit); only the
+    reads can see it, at the survey's pace.
+- **The stand-in** (FIXTURE ASSUMPTIONS, `fixtures/ats_receiver/greenhouse_v2.py`, `_DD_JS`):
+  `slow_changing` and `container_slow_changing` (re-rendered every 300 ms), `open_locale_fetch`,
+  `locale_on_first_open`, `container_locale` and `container_open_locale` (a locale request not
+  waited for, from the opening, the page's first opening, the control's click, or the
+  container's opening), `open_locale_abort` (one the page cancels), `container_tooltip` (an
+  undetermined click), `vanish_after_open` (the control leaves the page) and `hidden_one` (a
+  dropdown hidden at load). The receiver's reset now clears every setting of the v2 stand-in:
+  D145's ticker (`dd_tick_ms`) and ten others went on into every later test of a module, found
+  when a test here followed the ticker's.
+- **Reviewed independently twice**, before the records:
+  - Both found the same blocker: an existing path C test compared the container's record with a
+    fixed list of keys, and `settle_rule` was a new one (CI would have failed). The literal has
+    the key now.
+  - Both found that comparing only the last two reads was weaker than the adapter's three
+    equal reads (a list changed only by a style sheet could be published as settled): all
+    reads are compared now.
+  - Also fixed: pending ended when a response's status arrived, not when it finished; path A
+    published a verdict its window cannot give; a container's list was counted after an
+    undetermined click, which the adapter refuses; skipped widgets counted as not applicable;
+    two key names (`in_flight`, `not_judged`) added words a posting's label could match, which
+    makes the privacy check withhold the whole summary; tests with thin timing margins; no test
+    of a container's list that keeps changing, of a container's own pending request, of a
+    control leaving the page, or of mixed counts; the docs claimed a closer match than there is.
+- **Not built, and limits:**
+  - No run: whether the lists of a real page meet the adapter's rule stays unknown until the
+    owner approves a new run (Path A, B or C), which nothing here requests.
+  - The survey's own test, window and reads are unchanged; only what it publishes grows.
+  - The new keys still add a few common words to every summary (quiet, reads, settle, rule):
+    a posting with a label that is exactly one of them would have its summary withheld by the
+    privacy check (fail closed, but a wasted run). The owner can check before approving one.
+  - On path A no verdict is published at all.
+- **Evidence (local only):** `tests/test_survey_settle_rule.py`, 39 tests (18 through the read-only survey's browser path against the second Greenhouse-style stand-in's dropdowns, with the receiver's request log as the oracle; one of the receiver's reset; 20 on the rule and its counting alone); the 15 suites the change touches; 22 removal runs, each failing a test; the regression set of 77 files. Results by commit in `docs/implementation-status.md`, claims in `docs/evidence-matrix.md`.
