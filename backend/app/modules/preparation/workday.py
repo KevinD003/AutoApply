@@ -228,7 +228,6 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
         or not _ROOT_ID.fullmatch(rid)
         or sum(1 for n in nodes if n.attrs.get("id") == rid) != 1
         or len(buttons) != 1
-        or buttons[0].tag != "button"
         or buttons[0].attrs.get("type", "submit").lower() != "button"
         or not _ADD.match(buttons[0].all_text())
         or len(templates) != 1

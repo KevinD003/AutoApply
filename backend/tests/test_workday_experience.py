@@ -224,6 +224,7 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
         form_page(section().replace('id="work-experience"', 'id="work-experience\n"')),
         form_page(section().replace('id="work-experience"', f'id="w{"x" * 200}"')),
         form_page(f'<div data-wizard-page="2" data-step="{"P" * 201}">{section()}</div>'),
+        form_page(section(add='<button type="button">Remove</button>')),
     ],
     ids=["unknown-control", "left-empty-required", "a-part-missing", "a-part-of-another-kind",
          "template-value", "entry-value", "entry-ticked", "numbering", "no-add", "two-adds",
@@ -233,7 +234,7 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
          "a-button-in-an-entry", "id-used-twice", "readonly", "disabled", "a-hidden-control",
          "section-hidden", "section-wrapper-hidden", "a-part-twice",
          "description-text-at-load", "custom-control-in-section", "left-empty-aria-required",
-         "id-with-newline", "id-too-long", "page-name-too-long"],  # fmt: skip
+         "id-with-newline", "id-too-long", "page-name-too-long", "a-button-not-add"],  # fmt: skip
 )
 def test_any_other_work_history_is_one_required_checkpoint(html):
     """Anything about work history that is not the structure NoEfforts enters is one required
@@ -272,6 +273,15 @@ def test_the_section_s_page_and_requirement_are_part_of_the_form():
                     form_fingerprint(schema(step="My Information")),
                     form_fingerprint(schema(step="My Experience", required=True))}  # fmt: skip
     assert len(fingerprints) == 3
+    # One JSON value: no page's name can read as another page and requirement.
+    odd = WizardSpec(pages=["A", "A|required", "Review"])
+    a_required = FormSchema(fields=[field.model_copy(update={"step": "A"})], wizard=odd,
+                            sections=[SectionSpec(kind="employment", root=ROOT, step="A",
+                                                  required=True)])  # fmt: skip
+    named_so = FormSchema(fields=[field.model_copy(update={"step": "A"})], wizard=odd,
+                          sections=[SectionSpec(kind="employment", root=ROOT,
+                                                step="A|required")])  # fmt: skip
+    assert form_fingerprint(a_required) != form_fingerprint(named_so)
     with pytest.raises(ValidationError):
         schema(step="Review")  # the review page holds no question
     with pytest.raises(ValidationError):  # a page on a form with no pages
@@ -297,9 +307,10 @@ CHECKPOINT_COLLISIONS = [
 def test_a_page_question_named_like_a_checkpoint_never_hides_it(key, html):
     """D149 review: a page question that happens to share a checkpoint's key is replaced by the
     checkpoint, never kept in its place (the checkpoint blocks approval either way)."""
-    _, fields = read(html)
+    schema, fields = read(html)
     assert fields[key].type == FieldType.unsupported and fields[key].required
     assert fields[key].unsupported_reason
+    assert [f.key for f in schema.fields].count(key) == 1  # a stored form's keys are unique
 
 
 @pytest.mark.parametrize("key", [workday.WORK_KEY, workday.MULTI_STEP_KEY, workday.PREFILLED_KEY])
@@ -770,6 +781,13 @@ def test_the_add_button_is_found_by_its_text(page):
     """As capture reads it: an accessible name of its own changes nothing."""
     page.set_content(section_page().replace('id="add">', 'id="add" aria-label="New entry">'))
     assert len(ws.apply(page, ws.plan(frozen([frozen_row()])), ROOT)) == 4
+
+
+def test_a_section_whose_one_button_is_not_its_add_is_never_clicked(page):
+    page.set_content(section_page().replace('id="add">Add<', 'id="add">Remove<'))
+    with pytest.raises(ws.SectionFillError):
+        ws.apply(page, ws.plan(frozen([frozen_row()])), ROOT, timeout_ms=500)
+    assert page.locator('[name="work[0].title"]').count() == 0
 
 
 def test_a_browser_error_while_entering_is_the_section_s_stop(page):
