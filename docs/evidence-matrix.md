@@ -9,6 +9,30 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A list is judged by the page's record of changes to a list, and the option is chosen from one read (D153, 2026-11-12; local only)
+
+Nothing here ran against a real page. Branch `whole-page-check`. The runs drive the adapter
+through the runner against the second Greenhouse-style stand-in (`gh2_dd`, `gh2_sections`,
+`gh2_loc_search`; FIXTURE ASSUMPTIONS), with the receiver's ledger as the oracle; or drive the
+probe, the choice or the survey on the stand-in's page in Chromium.
+
+| Claim | Test | Result |
+|---|---|---|
+| The adapter's classification leaves out the whole page's 150 ms check; the survey's keeps it | `test_list_record.py::test_the_adapters_classification_leaves_out_the_whole_pages_check`; `test_dropdown_strategies.py::test_settled_means_unchanged_by_the_pages_own_record` (the page changed 20 ms before) | one probe read: `partially_observed` (`still_changing`) by the survey's classification, `observed_sufficiently` by the adapter's; the engine settles three equal reads with the page's last change 20 ms old |
+| A page busy elsewhere has its lists settle in a real page's window | `test_dropdown_strategies.py::test_a_page_busy_elsewhere_has_its_lists_settle_in_a_real_pages_window` (a change every 100, 250, 300 ms); `test_section_list_settle.py::test_a_page_busy_elsewhere_does_not_hold_up_a_section_list` (300, 100 ms) | `confirmed`; receiver ledger: one acceptance, each approved option. Against the code before D153: the 100 and 250 ms dropdown cases and the 100 ms section case refused |
+| What the page's record counts as a change to a list | `test_list_record.py` (12 cases counted, 5 not) | counted: a `<style>` added, removed, its text, its text node, one inside an added element; a stylesheet `<link>`'s attribute and its `rel` set away; the control's `aria-controls` and class; `aria-owns` on an element holding the control; the control moved; an id elsewhere. Not counted: text and an inline style elsewhere; an attribute of an element holding a `<style>`; another attribute of an element holding the control; a class elsewhere, even one a style sheet reads (the record's limit) |
+| A page whose style sheet keeps changing has its lists refused | `test_dropdown_strategies.py::test_a_page_whose_style_sheet_keeps_changing_has_its_lists_refused`; `test_section_list_settle.py::test_a_list_changed_only_by_a_style_sheet_is_refused_however_slowly_it_is_read`, `test_a_list_held_back_only_by_the_pages_record_says_so`; `test_greenhouse_controls.py::test_suggestions_on_a_page_whose_style_sheet_keeps_changing_never_settle`; `test_survey_settle_rule.py::test_a_style_sheet_that_keeps_changing_holds_the_rule` | dropdowns: `failed_safe` before anything is entered (`list_changed_recently`); a section: stops naming `list_changed_recently`; the location search: `abandoned` after the search text (counted as disclosed), `LOCATION_NO_LIST`; the survey: not met |
+| A list switched through its control is refused before anything is entered | `test_dropdown_strategies.py::test_a_list_switched_through_its_control_is_refused_before_anything_is_entered` (`controls_flip`, `class_flip`: every 125 ms) | `failed_safe`, "its list could not be read completely"; receiver ledger: no disclosure, nothing accepted |
+| The choice takes the option from one read of the list, and reads its text again | `test_dropdown_choice.py` (5: the list unchanged; relinked, its first option hidden, a copy of the approved option first, all after the list was judged; the option given another's text after the read) | unchanged: the approved option chosen; otherwise no option clicked and the control left empty. Against the code before D153, the three changes to the list each had a wrong option clicked |
+| The survey judges and compares as the adapter would | `test_survey_settle_rule.py::test_changes_elsewhere_on_the_page_are_not_a_lists` (100, 300 ms), `test_a_containers_list_on_a_page_busy_elsewhere_meets_it` (path C) | the rule met and the options compared (`options_match_api: true`); the survey's own `open_state` `partially_observed` (`still_changing`) at 100 ms, for the control's action and for the container's |
+| A reset clears the style ticker | `test_survey_settle_rule.py::test_a_reset_clears_the_page_busy_elsewhere` | the page served after a reset has neither ticker |
+| The surveys and the adapter's paths as before | the 38 files the change touches: 12 run on their own, 26 within the regression set | pass: the 12 on their own (354 passed on 5e42918), the other 26 within the regression set |
+| Each part is needed | 21 changes, one at a time, the named tests run, the file restored (`docs/implementation-status.md`) | each of the 21 fails a test, the one named for its part |
+
+In D145's section, the result of "A page that keeps changing elsewhere does not hold up a settled
+list" ("the classification's own 150 ms check still counts changes anywhere") describes the
+adapter before D153.
+
 ## The read-only survey publishes whether each list met the adapter's settle rule (D152, 2026-11-12; local only)
 
 Nothing here ran against a real page; no run is requested. Branch `survey-settle-rule`. The runs
