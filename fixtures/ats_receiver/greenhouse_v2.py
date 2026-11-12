@@ -198,6 +198,83 @@ def _sections(cfg) -> str:
 _SECTION_SCRIPT = """
 (() => {
   const WIDGET = %WIDGET%;
+  // D151 (FIXTURE ASSUMPTIONS; no real section list has been observed): lists that load, are
+  // replaced or keep changing once opened (section_widget late_list, late_react, late_fetch,
+  // late_fetch_404, changing_list, slow_changing_list, css_swapping_list; cfg section_delay_ms),
+  // one that posts when opened (open_beacon), one holding a hidden copy of an option
+  // (hidden_duplicate), one that hides the first school (hidden_approved), a control that never
+  // opens (inert) or leaves the page once opened (vanishing), and a page busy elsewhere (cfg
+  // section_tick_ms). open_beacon posts by fetch, or by navigator.sendBeacon with cfg
+  // section_beacon_via "sendbeacon".
+  const DELAY = %DELAY%, TICK = %TICK%, BEACON_VIA = %BEACON_VIA%;
+  if (WIDGET === 'css_swapping_list') {  // a style sheet hides the 2nd, then the 3rd, option of
+    // every list, in turn every 300 ms: no list itself changes, and the shown count stays
+    const s = document.createElement('style');
+    s.id = 'fx-css-swap';
+    document.head.append(s);
+    let k = 0;
+    const rules = ['[role=listbox] li:nth-child(2){display:none}',
+                   '[role=listbox] li:nth-child(3){display:none}'];
+    s.textContent = rules[0];
+    setInterval(() => { k = 1 - k; s.textContent = rules[k]; }, 300);
+  }
+  const BASE = (document.querySelector('form[data-base]') || {dataset: {}}).dataset.base || '';
+  if (TICK > 0) {  // an element that is no part of any list changes every TICK ms
+    const t = document.createElement('p');
+    t.id = 'fx-section-ticker'; t.textContent = '0';
+    document.body.append(t);
+    let k = 0;
+    setInterval(() => { t.textContent = String(++k); }, TICK);
+  }
+  const timed = (lb) => {  // on a list's first opening
+    if (lb.dataset.fxTimed) return;
+    lb.dataset.fxTimed = '1';
+    const opts = Array.from(lb.children);
+    if (WIDGET === 'hidden_approved' && lb.id === 'school--0-listbox') {
+      opts[0].style.display = 'none';  // the first school, not shown
+    }
+    if (WIDGET === 'hidden_duplicate' && lb.id === 'school--0-listbox') {  // a copy of the
+      // first school, not shown, with an id of its own
+      const d = document.createElement('li');
+      d.setAttribute('role', 'option'); d.dataset.value = 'sch_dup';
+      d.textContent = opts[0].textContent; d.style.display = 'none';
+      lb.append(d);
+    }
+    if (WIDGET === 'late_react') {  // as react-select shows loading: an empty menu with a
+      // "Loading..." notice and a loading indicator by the control, no aria-busy, no progressbar
+      const note = document.createElement('div');
+      note.className = 'select__menu-notice select__menu-notice--loading';
+      note.textContent = 'Loading...';
+      const ind = document.createElement('span');
+      ind.className = 'select__loading-indicator'; ind.textContent = '...';
+      lb.replaceChildren(note);
+      const cb = document.querySelector('[data-fx-list="' + lb.id + '"]');
+      if (cb) cb.after(ind);
+      setTimeout(() => { ind.remove(); lb.replaceChildren(...opts); }, DELAY);
+    } else if (WIDGET === 'late_fetch_404') {  // waits for a same-origin GET the page's server
+      // does not answer with a 2xx, then shows its options anyway
+      fetch(BASE + '/section-options-missing/' + encodeURIComponent(lb.id) + '.json')
+        .catch(() => {}).finally(() => { lb.replaceChildren(...opts); });
+      lb.replaceChildren();
+    } else if (WIDGET === 'late_list') {  // busy, with a progress bar, then the options after DELAY
+      const bar = document.createElement('li');
+      bar.setAttribute('role', 'progressbar'); bar.textContent = 'Loading options';
+      lb.setAttribute('aria-busy', 'true'); lb.replaceChildren(bar);
+      setTimeout(() => { lb.replaceChildren(...opts); lb.removeAttribute('aria-busy'); }, DELAY);
+    } else if (WIDGET === 'late_fetch') {  // one placeholder option, not marked busy, until a
+      // same-origin GET answers (after section_delay_ms, on the server)
+      const wait = document.createElement('li');
+      wait.setAttribute('role', 'option'); wait.textContent = 'Searching...';
+      lb.replaceChildren(wait);
+      fetch(BASE + '/section-options/' + encodeURIComponent(lb.id) + '.json')
+        .then((r) => r.json()).then(() => { lb.replaceChildren(...opts); }).catch(() => {});
+    } else if (WIDGET === 'changing_list' || WIDGET === 'slow_changing_list') {
+      setInterval(() => {  // re-rendered in the other order, every 60 or 300 ms
+        if (!lb.isConnected) return;
+        for (const o of Array.from(lb.children).reverse()) lb.appendChild(o);
+      }, WIDGET === 'changing_list' ? 60 : 300);
+    }
+  };
   window.__fxSectionTyped = 0;  // D141: keys typed into a section combobox (posted with the form)
   const close = (cb, lb) => {
     lb.hidden = true; cb.setAttribute('aria-expanded','false');
@@ -230,7 +307,14 @@ _SECTION_SCRIPT = """
         }
         lb.hidden = false; cb.setAttribute('aria-expanded','true');
         if (WIDGET === 'react_select') cb.setAttribute('aria-controls', lb.id);
+        timed(lb);
+        if (WIDGET === 'open_beacon') {  // D151: each opening also posts to the page's own server
+          if (BEACON_VIA === 'sendbeacon') navigator.sendBeacon(BASE + '/section-opened', 'opened');
+          else fetch(BASE + '/section-opened', {method: 'POST', body: 'opened'}).catch(() => {});
+        }
+        if (WIDGET === 'vanishing') setTimeout(() => cb.remove(), 300);  // D151
       };
+      if (WIDGET === 'inert') continue;  // D151: nothing opens it
       cb.addEventListener('click', open);
       const box = cb.closest('.select__control');
       if (box) box.addEventListener('click', open);
@@ -253,6 +337,7 @@ _SECTION_SCRIPT = """
       div.innerHTML = rows.firstElementChild.outerHTML.replace(re, repl(n));
       const row = div.firstElementChild;
       for (const o of row.querySelectorAll('[role=option]')) o.setAttribute('aria-selected','false');
+      for (const l of row.querySelectorAll('[role=listbox]')) delete l.dataset.fxTimed;
       for (const sv of row.querySelectorAll('.select__single-value')) sv.remove();
       for (const cb of row.querySelectorAll('input[role=combobox]')) { cb.value=''; delete cb.dataset.value; }
       for (const inp of row.querySelectorAll('input:not([role=combobox])')) {
@@ -1495,7 +1580,11 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
             + ('<script src="https://assets.fixture-cdn.invalid/widget.js"></script>'
                if mode == "gh2_external_asset" else "")
             + ("<script>" + _SECTION_SCRIPT.replace(
-                "%WIDGET%", json.dumps(cfg.get("section_widget") or "plain")) + "</script>"
+                "%WIDGET%", json.dumps(cfg.get("section_widget") or "plain"))
+               .replace("%DELAY%", str(int(cfg.get("section_delay_ms") or 0)))
+               .replace("%TICK%", str(int(cfg.get("section_tick_ms") or 0)))
+               .replace("%BEACON_VIA%", json.dumps(cfg.get("section_beacon_via") or "fetch"))
+               + "</script>"
                if mode == "gh2_sections" else ""))
     return HTMLResponse(
         "<!doctype html><html><head><meta charset='utf-8'>"
@@ -1590,6 +1679,14 @@ def mount(app, ledger, cfg, accept) -> None:
         if cfg.get("dd") == "late_differ":
             pairs.append(["999", "Prefer not to say"])
         return JSONResponse(pairs)
+
+    @app.get("/gh2/{board}/jobs/{job_id}/section-options/{lid}.json")
+    async def section_options(board: str, job_id: str, lid: str):
+        """D151: a section list waiting for this answer (section_widget late_fetch), given after
+        cfg section_delay_ms. The page keeps its own options; this only times them."""
+        job_or_404(board, job_id)
+        await asyncio.sleep(int(cfg.get("section_delay_ms") or 0) / 1000)
+        return JSONResponse({"ok": True})
 
     @app.get("/gh2/{board}/jobs/{job_id}/options.json")
     def widget_options(board: str, job_id: str):  # must never be reached during inspection

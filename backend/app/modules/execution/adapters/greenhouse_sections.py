@@ -24,6 +24,10 @@ enters what resolution already established, and reads it back.
 import re
 from dataclasses import dataclass
 
+from playwright.sync_api import Error as PWError
+
+from app.modules.execution.adapters import dropdowns
+from app.modules.preparation import gh_readonly as ro
 from app.modules.preparation.structured_sections import FieldResult, RowResult, SectionResult
 
 
@@ -358,7 +362,6 @@ _COMBO_JS = """(sel) => {
     id: cb.hasAttribute('data-value') ? cb.getAttribute('data-value') : null,
   };
 }"""
-_LIST_ID = re.compile(r"[A-Za-z][A-Za-z0-9_\-:.]*")
 
 
 def combobox_shows(page, selector: str, want_text: str | None, want_id: str | None) -> bool:
@@ -379,21 +382,96 @@ def combobox_shows(page, selector: str, want_text: str | None, want_id: str | No
     return want_id is None or got["id"] is None or got["id"] == want_id
 
 
-def _own_list(page, loc):
-    """The list a combobox names as its own right now (aria-controls / aria-owns), or None."""
-    ac = loc.get_attribute("aria-controls") or loc.get_attribute("aria-owns") or ""
-    return page.locator(f"[id='{ac}']") if _LIST_ID.fullmatch(ac) else None
-
-
 def _close_list(page, loc) -> None:
     try:
-        loc.press("Escape")
+        loc.press("Escape", timeout=dropdowns._ACTION_MS)  # never the page's default wait
     except Exception:  # noqa: BLE001
         pass
 
 
+# D151: every option of the list a section combobox names as its own (aria-controls /
+# aria-owns), shown or not, read in one go: its text as the page renders it, the id it exposes,
+# and whether it is shown; whether the list is named and shown. Null when the control is gone.
+_LIST_JS = """(id) => {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const vis = (e) => e.checkVisibility ? e.checkVisibility({visibilityProperty: true})
+    : !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
+  const ref = el.getAttribute('aria-controls') || el.getAttribute('aria-owns') || '';
+  const lb = /^[A-Za-z][A-Za-z0-9_\\-:.]*$/.test(ref) ? document.getElementById(ref) : null;
+  if (!lb) return {named: false, open: false, options: []};
+  return {named: true, open: vis(lb),
+          options: Array.from(lb.querySelectorAll('[role=option]'))
+            .map((o) => [(o.innerText || '').trim(), o.getAttribute('data-value'), vis(o)])};
+}"""
+# Just before the click, in one read: the list as _LIST_JS reads it, and its i-th option (shown or
+# not) as the element to click. Nothing can change between the two.
+_CHOICE_JS = (
+    "([id, i]) => { const got = (" + _LIST_JS + ")(id);\n"
+    """  if (!got || !got.named) return {options: null, el: null};
+  const el = document.getElementById(id);
+  const lb = document.getElementById(el.getAttribute('aria-controls')
+                                     || el.getAttribute('aria-owns'));
+  return {options: got.options,
+          el: Array.from(lb.querySelectorAll('[role=option]'))[i] || null}; }"""
+)
+
+
+def _settled_list(page, selector: str, cid: str, pre: dict, data: list, done: set,
+                  late: bool) -> list:  # fmt: skip
+    """D151: the control's own list once it has settled, by the dropdown's rule (dropdowns._observe:
+    D104, D106, D108, D145). Read every SAMPLE_MS, it counts as settled once:
+      * the probe's classification says it is observed sufficiently (ro.classify_open: it opened,
+        options can be read, nothing new on the page says it is loading, a list's aria-setsize
+        claims no more options than are shown, and the whole document has been quiet for 150 ms);
+      * no data request made since the click is still in flight;
+      * the same options were read STABLE_SAMPLES times in a row;
+      * the page has recorded no change to a list for STABLE_MS.
+    Within SETTLE_MS, or LATE_MS on a local stand-in, counted in reads; a list nothing opened stops
+    the wait after SETTLE_MS. Data requests made since the click are refused as a dropdown's are
+    (dropdowns._data_refusal: on a stand-in, only same-origin GETs answered 2xx). Its options, shown
+    or not, as [text, id, shown]."""
+    series: list = []
+    seen: list = []
+    got = None
+    state, partial, settled, waited = "not_opened", [], False, 0
+    n = dropdowns.STABLE_SAMPLES
+    while waited < (dropdowns.LATE_MS if late else dropdowns.SETTLE_MS):
+        page.wait_for_timeout(dropdowns.SAMPLE_MS)
+        waited += dropdowns.SAMPLE_MS
+        post = page.evaluate(ro._PROBE_JS, cid)
+        got = page.evaluate(_LIST_JS, cid)
+        if post is None or got is None:
+            raise SectionFillError(f"{selector}: is no longer on the page")
+        series.append(len(post["texts"]))
+        seen.append(got["options"])
+        state, _, partial = ro.classify_open(pre, post, series, None, True)
+        pending = [r for r in data if id(r) not in done]
+        same = len(seen) >= n and all(s == seen[-1] for s in seen[-n:])
+        steady = (state == "observed_sufficiently" and got["named"] and got["open"]
+                  and not pending and same)  # fmt: skip
+        recent = post["list_quiet_ms"] is not None and post["list_quiet_ms"] < dropdowns.STABLE_MS
+        if steady and not recent:
+            settled = True
+            break
+        if waited >= dropdowns.SETTLE_MS and state == "not_opened" and not data:
+            break  # nothing opened and nothing is loading: no reason to wait longer
+    refusal = dropdowns._data_refusal(page, data, done, late)
+    if refusal:
+        raise SectionFillError(f"{selector}: {refusal}")
+    if settled:
+        return got["options"]
+    if not got["named"]:
+        raise SectionFillError(f"{selector}: names no list of its own")
+    if state in ("not_opened", "undetermined") or not got["open"]:
+        raise SectionFillError(f"{selector}: its list did not open")
+    why = ", ".join(partial)  # a fixed vocabulary, never page text
+    raise SectionFillError(f"{selector}: its list did not settle in time ({state}"
+                           + (f": {why})" if why else ")"))  # fmt: skip
+
+
 def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
-                     timeout_ms: int) -> None:  # fmt: skip
+                     timeout_ms: int, late: bool = False) -> None:  # fmt: skip
     """Open a section combobox and choose the one option whose text is exactly ``want_text``.
 
     D141, following D108/D109: nothing is ever typed into it; it is opened by a click on the
@@ -402,52 +480,84 @@ def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
     control names none until then, D130), never from the rest of the page, and a control that
     names none when open is refused; exactly one option may read ``want_text`` and, where it
     exposes an id, that id must be the frozen one; the choice is then proven by readback
-    (``combobox_shows``). No near match is ever accepted."""
+    (``combobox_shows``). No near match is ever accepted.
+
+    D151: the list is read through the dropdown's settle rule (``_settled_list``), never once on
+    opening. The probe's observer (D145) is set before the click and taken off after, as are the
+    request listeners. Exactly one option of the list, shown or not, may read the approved text,
+    and it must be shown. Just before the click the whole list is read again, with the option to
+    click, in one read: it must be the list that settled."""
     loc = page.locator(selector).first
     loc.scroll_into_view_if_needed(timeout=timeout_ms)
-    loc.click(timeout=timeout_ms)
-    listbox = _own_list(page, loc)
-    if listbox is None or not listbox.first.is_visible():
-        box = loc.locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), "
-                          "' select__control ')][1]")  # fmt: skip
-        if box.count():
-            box.first.click(timeout=timeout_ms)
-            listbox = _own_list(page, loc)
-    if listbox is None:
-        _close_list(page, loc)
-        raise SectionFillError(f"{selector}: names no list of its own")
+    cid = loc.get_attribute("id") or ""
+    if not cid or page.evaluate(ro._PRE_JS, cid) is None:  # the probe's record starts here
+        raise SectionFillError(f"{selector}: cannot be found by its id")
+    data: list = []
+    done: set[int] = set()
+
+    def on_request(r):
+        # A data request, or anything else that sends (a POST beacon, a form post): D108.
+        if r.resource_type in dropdowns._DATA or r.method != "GET":
+            data.append(r)
+
+    def on_done(r):
+        done.add(id(r))
+
+    page.on("request", on_request)
+    page.on("requestfinished", on_done)
+    page.on("requestfailed", on_done)
     try:
-        listbox.first.wait_for(state="visible", timeout=timeout_ms)
-    except Exception:  # noqa: BLE001
-        raise SectionFillError(f"{selector}: its list did not open") from None
-    opts = listbox.first.locator("[role=option]")
-    hits = []
-    for k in range(opts.count()):
-        option = opts.nth(k)
+        pre = page.evaluate(ro._PROBE_JS, cid)
+        if pre is None:
+            raise SectionFillError(f"{selector}: cannot be found by its id")
+        loc.click(timeout=timeout_ms)
+        got = page.evaluate(_LIST_JS, cid)
+        if got is None or not got["named"] or not got["open"]:
+            box = loc.locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), "
+                              "' '), ' select__control ')][1]")  # fmt: skip
+            if box.count():
+                box.first.click(timeout=timeout_ms)
         try:
-            text = (option.inner_text() or "").strip()
-        except Exception:  # noqa: BLE001
-            text = ""
-        if text == want_text:
-            hits.append(option)
-    if len(hits) != 1:
-        _close_list(page, loc)
-        raise SectionFillError(f"{selector}: {len(hits)} options read the approved text exactly")
-    exposed = hits[0].get_attribute("data-value")
-    if want_id is not None and exposed is not None and exposed != want_id:
-        _close_list(page, loc)
-        raise SectionFillError(f"{selector}: the approved option records another id")
-    hits[0].click(timeout=timeout_ms)
+            options = _settled_list(page, selector, cid, pre, data, done, late)
+        except SectionFillError:
+            _close_list(page, loc)
+            raise
+        hits = [k for k, (text, _, _) in enumerate(options) if text == want_text]
+        if len(hits) != 1:
+            _close_list(page, loc)
+            n = len(hits)
+            raise SectionFillError(f"{selector}: {n} options read the approved text exactly")
+        _, exposed, shown = options[hits[0]]
+        if not shown:
+            _close_list(page, loc)
+            raise SectionFillError(f"{selector}: the approved option is not shown")
+        if want_id is not None and exposed is not None and exposed != want_id:
+            _close_list(page, loc)
+            raise SectionFillError(f"{selector}: the approved option records another id")
+        choice = page.evaluate_handle(_CHOICE_JS, [cid, hits[0]])
+        option = choice.get_property("el").as_element()
+        if choice.get_property("options").json_value() != options or option is None:
+            _close_list(page, loc)
+            raise SectionFillError(f"{selector}: its list changed before the choice")
+        option.click(timeout=timeout_ms)
+    finally:
+        page.remove_listener("request", on_request)
+        page.remove_listener("requestfinished", on_done)
+        page.remove_listener("requestfailed", on_done)
+        try:
+            page.evaluate(ro._END_PROBE_JS)  # the observer is not left on the page
+        except PWError:
+            pass
     page.wait_for_timeout(50)
     if not combobox_shows(page, selector, want_text, want_id):
         raise SectionFillError(f"{selector}: does not show the approved option after choosing")
 
 
-def _apply_op(page, op: FillOp, timeout_ms: int) -> None:
+def _apply_op(page, op: FillOp, timeout_ms: int, late: bool = False) -> None:
     if op.kind in ("text", "year"):
         _fill_text(page, op.selector, op.value, op.readback, timeout_ms)
     elif op.kind in ("combobox", "month"):
-        _select_combobox(page, op.selector, op.readback, op.option_id, timeout_ms)
+        _select_combobox(page, op.selector, op.readback, op.option_id, timeout_ms, late)
     elif op.kind == "checkbox":
         _set_checkbox(page, op.selector, bool(op.value), timeout_ms)
     else:
@@ -462,13 +572,15 @@ def apply_section_plan(
     timeout_ms: int = 3000,
     on_entered=None,
     before_op=None,
+    late: bool = False,
 ) -> list[dict]:
     """Fill a planned section on ``page``, reading back every control, and return a per-row/field
     record of what was entered (field names only -- never the applicant's values) for the attempt
     log. Raises ``SectionFillError`` (a ``Refused``) on any readback mismatch or a planned row that
     will not appear, so nothing is forced onto a form that no longer matches the approval.
     ``before_op`` (D150: the runner's check between fields) is called before each "Add another"
-    and each control; what it raises passes through, with what was entered already reported."""
+    and each control; what it raises passes through, with what was entered already reported.
+    ``late`` (D151: a local stand-in, D104): a combobox's list may take LATE_MS to settle."""
     entered: list[dict] = []
     try:
         for row in plan.rows:
@@ -483,7 +595,7 @@ def apply_section_plan(
             for op in row.ops:
                 if before_op is not None:
                     before_op()
-                _apply_op(page, op, timeout_ms)
+                _apply_op(page, op, timeout_ms, late)
                 entered.append({"row": row.row, "field": op.field})
                 if on_entered is not None:  # D137: reported as soon as it is entered
                     on_entered(entered[-1])

@@ -22,7 +22,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 
 | What | Where |
 |---|---|
-| `main` | 570a393 (tree 16e34b4, as predicted): #58 D149. Before it, dd5d164 (tree 1c6df86): #57 D148; b7f6c45 (tree 4f77573): #56 D147; 688c776 (tree c0865f1): #55 D146; 45c8229 (tree 0df08ea): #54 D145; 099642c (tree 33b8b0d): #53 D144; 9346c8e (tree fd09e77): #52 D143; 25d04ea (tree a3054b8): #51 D142; 98fe380 (tree b75d64c): #50 D141; 3df7d0d (tree a625f26): #49 D140; 4585c59 (tree fac890a): #48 D139; a7f8742 (tree af2f25f): #47 D138; e2fd286 (tree 1d69376): #46 D137; 32c8f7c (tree 201ddbd): #45 D136; 53b28af (tree fe5c8c3): #44 D135 (main CI #269 green on all four jobs); 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
+| `main` | 3d826a6 (tree 67f29ac, as predicted): #59 D150. Before it, 570a393 (tree 16e34b4): #58 D149; dd5d164 (tree 1c6df86): #57 D148; b7f6c45 (tree 4f77573): #56 D147; 688c776 (tree c0865f1): #55 D146; 45c8229 (tree 0df08ea): #54 D145; 099642c (tree 33b8b0d): #53 D144; 9346c8e (tree fd09e77): #52 D143; 25d04ea (tree a3054b8): #51 D142; 98fe380 (tree b75d64c): #50 D141; 3df7d0d (tree a625f26): #49 D140; 4585c59 (tree fac890a): #48 D139; a7f8742 (tree af2f25f): #47 D138; e2fd286 (tree 1d69376): #46 D137; 32c8f7c (tree 201ddbd): #45 D136; 53b28af (tree fe5c8c3): #44 D135 (main CI #269 green on all four jobs); 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
 | D131 follow-up (the review's remaining findings) | merged (#39, bd38529); main CI #254 passed all four jobs |
 | D132 form-change pause and questions tab | merged (#40, c19c683); main CI #260 passed all four jobs |
 | D133 reuse and suggestion guards | merged (#41, da7ac61); its PR CI passed all four jobs on 360f34c, and main CI #265 on da7ac61 |
@@ -42,7 +42,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D147 a restored database comes up held, and nothing it restored runs | merged (#56, b7f6c45, tree as predicted); its PR CI passed all four jobs on f102f50, the Docker smoke test's real dump and restore with the guide's checks among them |
 | D148 a Workday-style follow-up question, entered only when the page shows it | merged (#57, dd5d164, tree as predicted); its PR CI passed all four jobs on 93979df |
 | D149 Workday-style Work Experience: your approved work history entered on My Experience | merged (#58, 570a393, tree as predicted); its PR CI passed all four jobs on 8f9acba |
-| D150 a request to stop the worker honoured before the next protected step | branch `worker-stop-request` (from `main` at D148, then `main` with #58); reviewed twice; not merged |
+| D150 a request to stop the worker honoured before the next protected step | merged (#59, 3d826a6, tree as predicted); its PR CI passed all four jobs on c94be94 |
+| D151 a section's combobox chooses only from a list that has settled | branch `section-list-settle` (from D150's branch, then `main` with #59); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -64,7 +65,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 merged (#47): a gh2 look-alike naming a country is neither reused nor suggested | D138 merged (#47): "Preferred shift" never saved or reused |
 | 5 | Conditional question | fx on the v1 fixture; D135 merged (#44), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | D148 on its branch (stand-in FA6, receiver ledger): a typed follow-up the page shows after an earlier answer is answerable, entered only when shown, never waited for; a shown required one without an answer pauses a single page and stops a wizard page before its Next; a hidden one the page still requires, or one it removes, stops the attempt; a choice hidden at load is still never filled (a hidden file input is uploaded as before) |
 | 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger); D145 (branch): a dropdown whose list keeps being re-rendered is refused however slowly it is read (the page's own record of its last change to a list), before anything is entered, and a location search whose suggestions keep changing chooses no place (gh2 stand-ins; receiver ledger) | fx at capture |
-| 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger) | D149 on its branch (stand-in FA7, receiver ledger): the Work Experience entries on My Experience filled from your approved work history (employment), each added by the section's own button and read back, no entry beyond the approved ones sent, a required section waiting for your approved work history; anything else about work history a checkpoint; education, languages, websites and skills not built |
+| 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger); D151 on its branch: a section combobox chooses only from a list that has settled, by the dropdown's rule, and a list that keeps changing, posts or fails to load stops the section (gh2 stand-ins, receiver ledger) | D149 on its branch (stand-in FA7, receiver ledger): the Work Experience entries on My Experience filled from your approved work history (employment), each added by the section's own button and read back, no entry beyond the approved ones sent, a required section waiting for your approved work history; anything else about work history a checkpoint; education, languages, websites and skills not built |
 | 8 | Answer edits invalidate approvals | fx; D138 merged (#47): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger); D140 merged (#49): an education or employment edit retires the approval at once; on the education stand-in, approved again, the new degree is sent, and an edit while a worker fills is stopped at the send gate (receiver ledger) | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; D143 merged (#52): on gh2 by id a worker killed before anything was sent is run again once, and one killed after entering data, at the send gate, around the final click or after the employer's receipt is never run again; a run past its budget stops before the final click (gh2 by id and the pilot stand-in; receiver ledger); D144 merged (#53): the sweeper runs on a worker of its own, so it is not held up by attempts waiting for codes (real workers, generic form; receiver ledger) | partial; D142 merged (#51): on the wizard stand-in a lost or killed worker leaves the record of each page's Next, is never taken over, and the application is never run again (receiver ledger); D143 merged (#52): the same kills on the single-page form and on the wizard's review page, and a wizard past its budget stops for good (receiver ledger) |
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus; D139 merged (#48): self-identification on gh2 (by id and pilot) up to the ledger: off or unmatched never sent, a label or a decline label sent, your per-application "Don't disclose" beats it, a required one without a match waits; a change retires its approvals at once (queued, held by a worker, under the standing rule: nothing withdrawn is sent) | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify"; D139 merged (#48): self-identification sent as each option's own value, each question only from the label naming its category, a bare "No" or two labels never used, a decline only where the choices name a category, a required gender without a match waits; withdrawal and change retire the approval (single page; the Workday decline wording is a fixture assumption) |
@@ -316,7 +317,7 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the second found no blocker and three weaknesses (ac5b48b). Fixed, each with a test;
     the rest recorded in D149.
 
-- **D150 (branch `worker-stop-request`, not merged).** Rank 16, a stop request honoured:
+- **D150 (#59, 3d826a6).** Rank 16, a stop request honoured:
   - the gap (D144, measured): `docker compose stop` asked the worker's main process, the
     attempt went on in its pool process and could still be submitted in the ten seconds
     before Docker ended it;
@@ -330,6 +331,22 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     weaknesses. Fixed (300b87e), each with a test; the rest recorded in D150;
   - the removal runs: two parts of the API route that no test needed (its own handler of the
     request, and its branch for an error while stopping); both kept, tests added (aeab20d).
+
+- **D151 (branch `section-list-settle`, not merged).** Rank 17, a section's list read as a
+  dropdown's:
+  - the gap (D145's review): a section combobox (school, degree, discipline, the months)
+    read its list once, as soon as it was shown; against that code a list re-rendered every
+    300 ms, or one whose opening posted, was chosen from and the application submitted, and
+    a list still loading was refused (25 of the 30 new tests fail on it);
+  - it now reads its own list through the dropdown's rule, reusing its code: the probe and
+    its classification, requests recorded and refused as a dropdown's, three equal reads and
+    half a second with no change to a list, within 1.5 s (5 s on a stand-in); it clicks the
+    one shown option reading the approved text, after reading the whole list again in one
+    go;
+  - two independent reviews: both found one blocker (D150's section stop test's stand-in
+    took three arguments, the change passed a fourth) and that the first version followed
+    the location search's loop, not the dropdown's rule it cited, with further
+    weaknesses. Fixed (abcd4dd, 21e2289), each with a test; the rest recorded in D151.
 
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
@@ -369,8 +386,10 @@ restored database come up held and end, without running it, everything it shows 
 or in progress. **D148** (rank 12, #57) answers a Workday-style follow-up question
 when the form is read and enters it only when the page shows it. **D149** (rank 13, #58)
 enters your approved work history in the Workday-style stand-in's Work Experience section,
-entry by entry. **D150** (rank 16, on its branch) honours a request to stop the worker before
-the next protected step. Next, ranks 17 to 19 (the dropdown rule's neighbours).
+entry by entry. **D150** (rank 16, #59) honours a request to stop the worker before the next
+protected step. **D151** (rank 17, on its branch) has a section's combobox choose only from a
+list that has settled, by the dropdown's rule. Next, ranks 18 and 19 (the dropdown rule's
+other neighbours).
 
 ## Unvalidated or partly validated changes
 
@@ -464,8 +483,15 @@ the next protected step. Next, ranks 17 to 19 (the dropdown rule's neighbours).
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D150 (branch `worker-stop-request`):** the new tests, the suites the change touches, the
-  removal runs and the regression set, locally (Tests run below). Not tested: a real
+- **D151 (branch `section-list-settle`):** the new tests (and against the code before it),
+  the suites the change touches, the removal runs and the regression set, locally (Tests run
+  below). Not tested: a real Greenhouse section (none was observed), a real react-select
+  list loading its options, a list changed only by a style sheet in step with the reads,
+  the new list behaviours on the employment section (the tests use education; both use the
+  same code), and anything real.
+- **D150:** merged (#59, 3d826a6, tree as predicted); its PR CI passed all four jobs
+  on c94be94. Locally: the new tests, the suites the change touches, the
+  removal runs and the regression set (Tests run below). Not tested: a real
   `docker compose stop` of the deployed stack (the tests send SIGTERM to a worker process),
   Compose's stop order and grace period in a running stack, a native worker on a Mac
   (spawn; tested by its mechanism), several attempts at a time, and anything real.
@@ -658,6 +684,13 @@ the next protected step. Next, ranks 17 to 19 (the dropdown rule's neighbours).
 | D150, the regression set: `pytest` on 75 files (D149's 74 and `test_worker_stop.py`; JUnit), in a copy of the branch at f8a08b4 | exit 1; 2,086 of 2,088: D111's source-order test (repointed, 4b456c7) and the capture guard on the stop tests' action recorder (rewritten, 0e6dc26); both then passed |
 | D150, after the recorder was rewritten: `pytest tests/test_forbidden_capabilities.py tests/test_worker_stop.py` (JUnit), on 0e6dc26; the removals a1 to a5 again | exit 0; 194 passed; the five removals still fail the same tests |
 | D150, after its records: the document tests; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 98 passed (the 45 document tests and the new file's 53); ruff clean (385 files), on the records committed with this result |
+| D151, the new tests: `pytest tests/test_section_list_settle.py` (JUnit), on 5559514, abcd4dd (with `test_section_widgets.py` and D150's two section stop tests) and 21e2289 | exit 0; 17, 39 and 30 passed |
+| D151, the new tests against the adapter before it (`greenhouse_sections.py` and `greenhouse_dom.py` as on 1b955aa), on 5559514 and 21e2289 | exit 1; 14 of 17, then 25 of 30 failed; the five that passed must pass either way (D151) |
+| D151, the suites the change touches: 15 files (JUnit), on 21e2289 | exit 0; 423 passed in 24.2 min |
+| D151, each part changed in turn: 20 changes on 21e2289, one at a time, the file restored | all 20 fail a test |
+| D151, the regression set: `pytest` on 76 files (D150's 75 and `test_section_list_settle.py`; JUnit), in a copy of the branch at 21e2289 | exit 0; 2,120 passed in 73.8 min |
+| D151, D150's last two commits and then `main` with #59 merged in (ca0eba9): `test_worker_stop.py`, `test_forbidden_capabilities.py`, `test_section_list_settle.py`, `test_greenhouse_live.py` (JUnit) | exit 0; 266 passed in 7.9 min |
+| D151, after its records: the document tests; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 75 passed (the 45 document tests and the new file's 30, after ruff formatted one of its test signatures); ruff clean (386 files), on the records committed with this result |
 
 ## Failed approaches and rejected designs
 
@@ -773,8 +806,8 @@ the next protected step. Next, ranks 17 to 19 (the dropdown rule's neighbours).
 
 ## Exact next action
 
-1. D150 (branch `worker-stop-request`, rank 16): its pull request (D149 merged as #58). Then
-   ranks 17 to 19 (the dropdown rule's neighbours). Candidates: a check of the form's own validity before the send gate
+1. D151 (branch `section-list-settle`, rank 17): its pull request (D150 merged as #59). Then
+   ranks 18 and 19 (the dropdown rule's other neighbours). Candidates: a check of the form's own validity before the send gate
    (D148's proposal); Location and Role Description from your record; education on Workday.
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive

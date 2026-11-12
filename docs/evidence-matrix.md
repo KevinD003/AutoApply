@@ -9,6 +9,30 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A section's combobox chooses only from a list that has settled (D151, 2026-11-12; local only)
+
+Nothing here ran against a real page or a real account; no real Greenhouse section has been
+observed. Branch `section-list-settle`. The runs are against the second Greenhouse-style stand-in's
+education section (`gh2_sections`) and its list behaviours (FIXTURE ASSUMPTIONS); the receiver's
+ledger is the oracle for what was sent. "On the page" rows drive the stand-in's page in a browser
+without the runner. All in `tests/test_section_list_settle.py` unless named.
+
+| Claim | Test | Result |
+|---|---|---|
+| A list that arrives late is chosen from once it has settled | `test_a_section_list_that_arrives_late_is_chosen_from_once_it_has_settled` (4: loading for 0.3 s and 2.5 s; react-select's notice and indicator for 1.5 s; one placeholder option until a same-origin GET answers after 1.2 s) | `confirmed`, the approved options sent; each list waited for its own answer |
+| A list that never settles stops the section, nothing chosen | `test_a_section_list_that_does_not_settle_stops_the_section` (4: re-rendered every 60 ms or 300 ms; a style sheet hiding another option every 300 ms; loading for ten minutes) | `abandoned`, "#school--0: its list did not settle in time", never the value; nothing accepted |
+| How often it is read does not decide (D145) | `…_keeps_changing_is_refused_however_slowly_it_is_read` (read every 590, 600, 610, 1200 ms), `…_has_settled_is_chosen_from_when_read_slowly` (2) | refused; settled lists still chosen from |
+| Changes elsewhere on the page are not a list's | `test_a_page_busy_elsewhere_does_not_hold_up_a_section_list` (every 300 and 600 ms in a stand-in's window, every 600 ms in a real page's) | `confirmed` |
+| Requests as a dropdown's (D104, D108) | `test_a_section_list_whose_opening_sends_or_fails_to_load_is_refused` (a POST by fetch, by sendBeacon; a GET answered 404) | `abandoned`, "its options load from the network in a way NoEfforts does not accept" |
+| Exactly one option reads the approved text, and it is shown | `test_an_approved_option_the_list_does_not_show_is_never_clicked`, `test_a_hidden_copy_of_the_approved_option_refuses_the_list` | refused before any click |
+| On the page: nothing clicked, the list closed, nothing left behind | `test_no_option_is_clicked_in_a_section_list_that_never_settles`, `test_the_probe_is_set_for_the_choice_and_taken_off_after` | the control empty, no option selected, the list closed; the observer and the request listeners removed after a refusal and after a choice |
+| The windows | `test_a_real_pages_window_is_shorter_than_a_stand_ins`, `test_a_control_that_never_opens_stops_the_wait_after_a_real_pages_window` | a list loading for 3.5 s refused in a real page's window and chosen from in a stand-in's; a control that never opens given up after six reads |
+| A list changed after it settled is not chosen from | `test_a_list_changed_after_it_settled_is_not_chosen_from` (reversed, the option re-keyed, a copy added) | refused, "its list changed before the choice"; nothing selected |
+| A control leaving the page | `test_a_control_that_leaves_the_page_while_its_list_is_read_stops_at_once` | refused, "is no longer on the page", within 6 s (2 s to close the list) |
+| The tests tell the old rule apart | the 30, with `greenhouse_sections.py` and `greenhouse_dom.py` as before D151 | 25 fail; the five that pass must pass either way (a settled list read slowly, a page busy elsewhere, a hidden copy of the approved option) |
+| The sections as before | `test_section_widgets.py`, `test_greenhouse_sections_browser.py`, `test_greenhouse_sections_e2e.py`, D150's section stop tests in `test_worker_stop.py` | pass, within the 15 suites the change touches (423 passed on 21e2289) |
+| Each part is needed | 20 changes, one at a time, the named tests run, the file restored (`docs/implementation-status.md`) | each of the 20 fails a test |
+
 ## A request to stop the worker honoured before the next protected step (D150, 2026-11-12; local only)
 
 Nothing here ran against a real page or a real account. Branch `worker-stop-request`. The runs

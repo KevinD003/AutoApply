@@ -697,10 +697,12 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             try:
                 plan = gsections.plan_content_section(sec)
                 root = gsections.section_root(sec)
-                # D150: the run's check between fields, before each control and "Add another"
+                # D150: the run's check between fields, before each control and "Add another".
+                # D151: a combobox's list settles by the dropdown's rule, in a stand-in's window.
                 gsections.apply_section_plan(
-                    page, plan, root, on_entered=entered, before_op=self._progress
-                )
+                    page, plan, root, on_entered=entered, before_op=self._progress,
+                    late=self._stand_in,
+                )  # fmt: skip
             except gsections.Refused as e:
                 # What was entered before the refusal is already in `disclosures`.
                 raise StoppedAfterDisclosure(str(e), list(disclosures)) from e
