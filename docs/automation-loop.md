@@ -629,7 +629,7 @@ section, entry by entry. Next, rank 16 (a stop request honoured before the next 
 | D149, the suites the change touches: 21 files (JUnit), on 9fc9734, d282574 and bdb5311 | 473, 522 passed; exit 0; 547 passed in 12.9 min (the new file's 119 cases among them) |
 | D149, each part changed in turn: 43 changes on 5e891ad, 64 on e30ba41, 83 on bdb5311, one at a time, the file restored | all 43; 63 of 64 (one did not compile); all 83 fail a test |
 | D149, the regression set: `pytest` on 74 files (D148's 73 and `test_workday_experience.py`; JUnit), in a copy of the branch, alongside the runs above | @@REGRESS@@ |
-| D149, after its records: the document tests; `ruff format .`, `ruff check .`, `ruff format --check .` | {FINALDOCS} |
+| D149, after its records: the document tests; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 164 passed (the 45 document tests and the new file's 119, after ruff's formatting); ruff clean (383 files), on the records committed with this result |
 
 ## Failed approaches and rejected designs
 
