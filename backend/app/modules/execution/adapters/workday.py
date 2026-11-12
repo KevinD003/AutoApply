@@ -252,16 +252,22 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
     def fill(self, page: Page) -> list[dict]:
         """Documents first, then every other answered control (HostedFormAdapter.fill); then each
         typed question the page shows by its own logic, now that the page has reacted to the
-        other answers, only if it is shown. One it does not show is never touched or waited
-        for: the readback requires it empty."""
+        other answers (D154: the requests it made meanwhile waited for, `_await_page`), only if
+        it is shown. One it does not show is never touched or waited for: the readback requires
+        it empty."""
         self._filled = True
         self._filled_steps.update(a.get("step") for a in self.content["answers"])
         plain = [a for a in self.content["answers"] if a["key"] not in self._shown_by_page]
         disclosures = self._with_answers(plain, lambda: HostedFormAdapter.fill(self, page))
         self._fill_sections(page, disclosures)  # D149
-        for a in self.content["answers"]:
-            if a["value"] is None or not shown_by_page(a.get("condition") or {}, a["type"]):
-                continue
+        follow = [
+            a
+            for a in self.content["answers"]
+            if a["value"] is not None and shown_by_page(a.get("condition") or {}, a["type"])
+        ]
+        if follow:
+            self._await_page()  # D154: the page's reaction to the other answers, a request first
+        for a in follow:
             self._progress()
             if not self._shown(page, a["key"]):
                 continue  # not asked: nothing is entered

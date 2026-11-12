@@ -11,8 +11,9 @@ send gate (`_wizard_pages`): forward only, each step behind a gate that commits 
 anything unexpected ends the attempt for good (`abandoned`, or `unknown` when the employer may
 hold the application); NoEfforts never runs that application again.
 D154: after a page's answers are entered, what they started is waited for before the checks
-(`_settle`); and before the send gate, what the page itself would refuse at the final click is
-read without acting on it (`adapter.page_would_refuse`): a stop with nothing sent.
+(`_settle`), then the submit button (`adapter.final_ready`); and right before the send gate,
+what the page itself would refuse at the final click is read without acting on it
+(`adapter.page_would_refuse`): a stop with nothing sent.
 """
 
 import hashlib
@@ -20,6 +21,7 @@ import logging
 import time
 import traceback
 import uuid
+from functools import partial
 from urllib.parse import urlsplit
 
 from sqlalchemy import select
@@ -38,6 +40,7 @@ from app.modules.execution.adapters.fixture_ats import (
     ACK_ERROR,
     ACK_LEFT_FORM,
     ACK_NONE,
+    REFUSAL_UNREAD,
     ConditionalRequired,
     FixtureAtsAdapter,
     FormChanged,
@@ -77,6 +80,7 @@ log = logging.getLogger("noefforts.execution")
 
 
 SETTLE_LOAD_MS = 8000  # how long a form's page may take to finish loading what it needs
+SETTLE_ENTRY_MS = 8000  # D154: and what entering a page's answers started
 QUIET_MS = 100  # nothing it needs in flight for this long: the page is ready
 _POLL_MS = 25
 # What a form's own set-up waits on. Not waited on: WebSockets and event streams (open by
@@ -115,7 +119,9 @@ class _Loading:
             self.page.remove_listener(event, fn)
 
 
-def _settle(page, loading: _Loading, honour_stop: bool = False) -> bool:
+def _settle(
+    page, loading: _Loading, honour_stop: bool = False, limit_ms: int | None = None
+) -> bool:
     """Wait until the page has finished the requests it made by itself (its scripts, a locale
     file): a control may only respond once they have arrived, and on a busy machine they come
     late (CI #133). True as soon as none has been in flight for QUIET_MS; False if the page is
@@ -123,7 +129,7 @@ def _settle(page, loading: _Loading, honour_stop: bool = False) -> bool:
     typed, clicked, sent or repeated. D150: with `honour_stop` (the first page, before anything
     is entered) a stop request ends the wait (StopRequested); never after a page's Next, whose
     outcome the reads after this wait decide."""
-    deadline = time.monotonic() + SETTLE_LOAD_MS / 1000
+    deadline = time.monotonic() + (SETTLE_LOAD_MS if limit_ms is None else limit_ms) / 1000
     quiet_since = None
     while True:
         if honour_stop:
@@ -360,10 +366,12 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                     # question it shows after a request) is waited for before anything is
                     # read back or checked, as when the form opened (`_settle`).
                     loading = _Loading(page)
+                    adapter.on_settle = partial(_settle, page, loading, limit_ms=SETTLE_ENTRY_MS)
                     try:
                         disclosures = adapter.fill(page)
-                        settled = _settle(page, loading)
+                        settled = _settle(page, loading, limit_ms=SETTLE_ENTRY_MS)
                     finally:
+                        adapter.on_settle = None
                         loading.close()
             except StoppedAfterDisclosure as e:  # an upload, D104's search, or a page's Next
                 _log_cause(aid, e)
@@ -379,6 +387,11 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             if not settled:
                 svc.abandon(aid, worker, gen, STILL_LOADING, retire_every="stopped_after_entry")
                 return "abandoned"
+            # D154: the submit button, waited for now (before the readback and the check after
+            # filling, so what the page changed meanwhile is read back and checked as well).
+            refused = adapter.final_ready(page)
+            if refused:
+                return _refused(aid, worker, gen, refused, stop_if_requested)
             mismatches = adapter.readback(page)
             # How many fields kept their values, never which (the posting's field keys).
             svc.record_evidence(
@@ -414,8 +427,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             # page that would refuse the click is never recorded.
             refused = adapter.page_would_refuse(page)
             if refused:
-                svc.abandon(aid, worker, gen, str(refused), retire_every="stopped_after_entry")
-                return "abandoned"
+                return _refused(aid, worker, gen, refused, stop_if_requested)
             svc.record_evidence(aid, worker, gen, "recheck", rehearsal.RECHECK_MATCHED)
             denied = eg.proxy_denied()
             if eg.blocked or denied:
@@ -571,10 +583,12 @@ def _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat) -> str | 
                 return "abandoned"
             beat()
         loading = _Loading(page)  # D154: what the page's answers started, before its checks
+        adapter.on_settle = partial(_settle, page, loading, limit_ms=SETTLE_ENTRY_MS)
         try:
             filled = adapter.fill_page(page, i)
-            settled = _settle(page, loading)
+            settled = _settle(page, loading, limit_ms=SETTLE_ENTRY_MS)
         finally:
+            adapter.on_settle = None
             loading.close()
         for d in _not_yet(filled, recorded):
             svc.record_evidence(aid, worker, gen, "disclosure", d)
@@ -632,6 +646,18 @@ def _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat) -> str | 
             svc.abandon(aid, worker, gen, str(reason))
             return "abandoned"
     return None
+
+
+def _refused(aid, worker, gen, reason: str, stop_if_requested) -> str:
+    """D154: a stop before the send gate for what the page itself would refuse at the final
+    click (`adapter.final_ready`, `adapter.page_would_refuse`): abandoned with nothing sent,
+    every live approval retired (D132), never a pause or a retry. A page that could not be read
+    while the worker is being stopped (its browser closed with it) ends as the stop does (D150,
+    StopRequested), where the stop is honoured."""
+    if reason == REFUSAL_UNREAD:
+        stop_if_requested()
+    svc.abandon(aid, worker, gen, str(reason), retire_every="stopped_after_entry")
+    return "abandoned"
 
 
 def _stop(aid, worker, gen, reason: str, plain) -> None:

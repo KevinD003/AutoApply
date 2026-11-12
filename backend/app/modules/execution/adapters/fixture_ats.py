@@ -40,6 +40,14 @@ class ReportsDisclosures:
     on_disclosure = None  # the runner's recorder, set for each attempt
     on_progress = None  # D143: the runner's heartbeat, set for each attempt
     on_hand_over = None  # D143: the runner's own check of its authority, never throttled
+    on_settle = None  # D154: the runner's wait for what entering this page's answers started
+
+    def _await_page(self) -> None:
+        """D154: wait, as the runner does after filling, for the requests the page made while
+        this page's answers were entered (bounded; the runner's own wait after filling stops
+        the attempt if the page is still loading then). Only while the runner fills a page."""
+        if self.on_settle is not None:
+            self.on_settle()
 
     def _disclosed(self, d: dict) -> dict:
         if self.on_disclosure is not None:
@@ -237,35 +245,57 @@ class FixtureAtsAdapter(ReportsDisclosures):
 
     # -- before the send gate (D154) ---------------------------------------------------------
     def final_button(self, page: Page):
-        """The control the final click is made on, found the same way for the check before the
-        send gate (`page_would_refuse`) and for the click (`submit`); None when the adapter
-        cannot name one."""
+        """The control the final click is made on, found the same way for the checks before the
+        send gate (`final_ready`, `page_would_refuse`) and for the click (`submit`); None when
+        the adapter cannot name one."""
         return page.locator("form#application button[type=submit]")
 
     def leave_out(self, page: Page) -> list[str]:
         """D154: ids of controls the page shows before the final click that NoEfforts fills
-        only later, at a checkpoint (a security code's boxes): never counted against the form.
-        While the page shows any, it asks for that checkpoint first and the final click comes
-        only after it (D116: its Submit may stay disabled until the code is typed), so the
-        button is not waited for now."""
+        only later, at a checkpoint (a security code's boxes): never counted against the form,
+        nor any element holding one or held by one. While the page shows any, it asks for that
+        checkpoint first and the final click comes only after it (D116: its Submit may stay
+        disabled until the code is typed), so the button is not required to be enabled now."""
         return []
+
+    def final_ready(self, page: Page) -> str | None:
+        """D154: after the answers are entered and the page has settled, and before they are
+        read back: the submit button can be identified (exactly one, in a form) and is shown
+        and enabled, or becomes so within FINAL_READY_MS (a page may enable it some time after
+        the last answer), or the page asks for a checkpoint first (`leave_out`, looked for again
+        at each step). None, or why not. Reads only: nothing is clicked. Waiting here, before
+        the readback and the check after filling, means what the page changed while it kept the
+        button disabled is read back and checked like any other change."""
+        waited = 0
+        try:
+            while True:
+                btn = self.final_button(page)
+                if btn is None or btn.count() != 1:
+                    return SUBMIT_UNIDENTIFIED
+                if self.leave_out(page) or _usable(btn):
+                    return None
+                if waited >= FINAL_READY_MS:
+                    return FINAL_BUTTON_UNAVAILABLE
+                page.wait_for_timeout(_READY_STEP_MS)
+                waited += _READY_STEP_MS
+        except PWError:
+            return REFUSAL_UNREAD
 
     def page_would_refuse(self, page: Page) -> str | None:
         """D154: right before the send gate (after the checks after filling), what the page
         itself would refuse at the final click, read without acting on it. None, or why not:
-        the submit button cannot be identified (none, several, or in no form); it is still
-        hidden or disabled after FINAL_READY_MS (unless the page first asks for a checkpoint,
-        `leave_out`); the page's own checks would refuse the click
-        (`PageRefusal`, counted: the browser's own validation of the form, and fields the page
-        marks as not valid); or the page could not be read (fail closed). Each is a stop with
-        nothing sent, where the click would have been refused after the send gate (an unknown
-        outcome, or a rejection after `sending`)."""
-        btn = self.final_button(page)
+        the submit button cannot be identified (none, several, or in no form) or is no longer
+        shown and enabled (unless the page first asks for a checkpoint, `leave_out`); the
+        page's own checks would refuse the click (`PageRefusal`, counted from one read of the
+        button's form, `_REFUSAL_JS`); or the page could not be read (fail closed). Each is a
+        stop with nothing sent, where the click would have been refused after the send gate (an
+        unknown outcome, or a rejection after `sending`)."""
         try:
+            btn = self.final_button(page)
             if btn is None or btn.count() != 1:
                 return SUBMIT_UNIDENTIFIED
             leave = self.leave_out(page)
-            if not leave and not _ready_soon(page, btn):
+            if not leave and not _usable(btn):
                 return FINAL_BUTTON_UNAVAILABLE
             got = btn.evaluate(_REFUSAL_JS, leave)
         except PWError:
@@ -397,23 +427,46 @@ FINAL_BUTTON_UNAVAILABLE = (
 )
 REFUSAL_UNREAD = "the page's own checks could not be read before the final click"
 PAGE_WOULD_REFUSE = "the page's own checks would refuse the final click"
-FINAL_READY_MS = 2000  # how long the submit button may take to be shown and enabled
+# How long the submit button may take to be shown and enabled once the page has settled after
+# the answers (the Greenhouse DOM adapter's click waited as long for it before D154).
+FINAL_READY_MS = 10_000
 _READY_STEP_MS = 100
-# Passive: reads each control's validity state and attributes only. Never checkValidity() or
-# reportValidity(), which fire `invalid` events the page may act on; nothing is changed.
-# `native`: the click is the browser's own form submission with validation (a submit button of
-# the form, no `novalidate`, no `formnovalidate`), so the browser refuses it for any control it
-# validates, shown or not; otherwise only the controls shown count (the page's own script
-# decides, and one that checks the form's validity skips nothing it shows). Counts only.
+# One read of the final button's form. Passive: each control's validity state and attributes,
+# and `:invalid`, only; never checkValidity() or reportValidity(), which fire `invalid` events
+# the page may act on; nothing is changed or focused. Counts only.
+#  - `native`: the click is the browser's own validated submission (a submit button of the
+#    form, no `novalidate`, no `formnovalidate`). The browser then refuses it for any control
+#    it finds invalid, shown or not, so all of them count, by kind: required and empty; a value
+#    the markup does not accept (type, pattern, length, range, step, bad input); otherwise
+#    marked (a custom error the page's script set, or a form-associated element's own state).
+#  - otherwise the page's script decides: only the page's own marks count (a custom error, or
+#    `aria-invalid="true"`), on elements shown; never the markup's constraints, which such a
+#    page may not apply (a keypad hint written as a pattern, a URL without its scheme).
+#  - a mark on the control that still has focus, on an element holding it or held by it, never
+#    counts: a page that checks a field when focus leaves it checks that one only at the click
+#    (Playwright's typing leaves focus there), so its mark may be stale. Value-based states are
+#    read from the current value and always count.
+#  - `aria-invalid="true"` counts on a shown element of the form; a group of radios, and a
+#    marked element with a counted one inside or around it, count once.
+#  - `leave`: ids filled only at a checkpoint; they, and any element holding one or held by
+#    one, never count.
 _REFUSAL_JS = """(b, leave) => {
   const form = b.form;
   if (!form) return null;
   const submits = (b.localName === 'button' && b.type === 'submit')
     || (b.localName === 'input' && (b.type === 'submit' || b.type === 'image'));
   const native = submits && !form.noValidate && !b.formNoValidate;
-  const shown = (e) => (e.checkVisibility ? e.checkVisibility({visibilityProperty: true})
-    : !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length));
-  const out = (e) => !!e.id && leave.includes(e.id);
+  const shown = (e) => {
+    if (e.closest('[inert], [aria-hidden="true"]')) return false;
+    return e.checkVisibility
+      ? e.checkVisibility({visibilityProperty: true, opacityProperty: true})
+      : !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
+  };
+  const left = leave.map((id) => document.getElementById(id)).filter(Boolean);
+  const out = (e) => left.some((l) => l === e || l.contains(e) || e.contains(l));
+  const a = document.activeElement;
+  const focus = a && a !== document.body && a !== document.documentElement ? a : null;
+  const nearFocus = (e) => !!focus && (e === focus || e.contains(focus) || focus.contains(e));
   const VALUE = ['typeMismatch', 'patternMismatch', 'tooLong', 'tooShort', 'rangeUnderflow',
                  'rangeOverflow', 'stepMismatch', 'badInput'];
   const n = {native, required: 0, refused: 0, marked: 0};
@@ -425,21 +478,24 @@ _REFUSAL_JS = """(b, leave) => {
     return true;
   };
   for (const e of form.elements) {
-    if (out(e) || !e.willValidate || !e.validity || e.validity.valid) continue;
-    if (!native && !shown(e)) continue;
+    if (out(e)) continue;
+    const v = e.validity;
+    // a form-associated custom element exposes no validity of its own: its state is :invalid
+    if (!(v ? e.willValidate && !v.valid : e.matches(':invalid'))) continue;
+    const missing = !!(v && v.valueMissing);
+    const value = !missing && !!(v && VALUE.some((k) => v[k]));
+    const mark = !missing && !value;
+    if (mark ? nearFocus(e) || (!native && !shown(e)) : !native) continue;
     counted.push(e);
     if (!once(e)) continue;
-    const v = e.validity;
-    if (v.valueMissing) n.required++;
-    else if (VALUE.some((k) => v[k])) n.refused++;
-    else n.marked++;  // a custom error alone: set by the page's own script
+    if (missing) n.required++;
+    else if (value) n.refused++;
+    else n.marked++;
   }
-  // aria-invalid as ARIA reads it: any value but none, "false", "grammar" or "spelling".
-  const FINE = ['', 'false', 'grammar', 'spelling'];
   const marks = new Set(form.querySelectorAll('[aria-invalid]'));
   for (const e of form.elements) if (e.hasAttribute('aria-invalid')) marks.add(e);
-  const flagged = [...marks].filter((e) => !out(e) && !counted.includes(e) && shown(e)
-    && !FINE.includes((e.getAttribute('aria-invalid') || '').trim().toLowerCase()))
+  const flagged = [...marks].filter((e) => !out(e) && !counted.includes(e) && !nearFocus(e)
+    && (e.getAttribute('aria-invalid') || '').trim().toLowerCase() === 'true' && shown(e))
     // one field once: not part of a control already counted, nor inside another flagged one
     .filter((e) => !counted.some((c) => c.contains(e) || e.contains(c)));
   for (const e of flagged) {
@@ -450,17 +506,10 @@ _REFUSAL_JS = """(b, leave) => {
 }"""
 
 
-def _ready_soon(page: Page, btn) -> bool:
-    """D154: the submit button is shown and enabled, or becomes so within FINAL_READY_MS (a page
-    may enable it a moment after the last answer). Reads only: it is never clicked here."""
-    waited = 0
-    while True:
-        if btn.is_visible() and btn.is_enabled(timeout=1000):
-            return True
-        if waited >= FINAL_READY_MS:
-            return False
-        page.wait_for_timeout(_READY_STEP_MS)
-        waited += _READY_STEP_MS
+def _usable(btn) -> bool:
+    """D154: the submit button is shown and enabled now, as the click itself requires (Playwright
+    counts `aria-disabled` as disabled too). Reads only."""
+    return btn.is_visible() and btn.is_enabled(timeout=1000)
 
 
 class PageRefusal(str):
@@ -481,11 +530,7 @@ class PageRefusal(str):
             )
             if p
         ]
-        s = super().__new__(
-            cls,
-            f"{PAGE_WOULD_REFUSE} ({'; '.join(parts)}); review the application and approve "
-            "again, or apply on the employer's site",
-        )
+        s = super().__new__(cls, f"{PAGE_WOULD_REFUSE} ({'; '.join(parts)})")
         s.counts = {"required": required, "refused": refused, "marked": marked}
         return s
 

@@ -394,6 +394,12 @@ def page_form(slug, token, cfg):
     if tamper == "checkbox":  # the page unticks the box
         js_extra += ("document.querySelector('[name=privacy_ack]').addEventListener('change', "
                      "e => { e.target.checked = false; });\n")
+    if cfg.get("page_check") == "two_submit":  # D154: an answer adds a second submit button
+        js_extra += ("document.getElementById('application').addEventListener('input', () => {"
+                     " if (document.getElementById('fx-submit-2')) return;"
+                     " const b = document.createElement('button'); b.type = 'submit';"
+                     " b.id = 'fx-submit-2'; b.textContent = 'Submit';"
+                     " document.getElementById('application').append(b); });\n")
     # C8 (D61): the self-identification question required, as some boards make it.
     eeo_required = " required" if cfg["mode"] == "required_eeo" else ""
     hostile = ""

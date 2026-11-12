@@ -553,9 +553,10 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
 
     def leave_out(self, page: Page) -> list[str]:
         """D154: a security code's boxes the page shows before the final click are filled only
-        at your checkpoint, never counted against the form."""
-        boxes = self._code_box_ids(page)
-        return boxes if 1 <= len(boxes) <= 12 else []
+        at your checkpoint, never counted against the form; exactly the boxes `submit` takes
+        for that checkpoint (`_code_boxes`), so the button is never excused for boxes the click
+        would not treat as one."""
+        return self._shown_code_box_ids(page) or []
 
     def _submit_button(self, page: Page):
         """The form's one submit button: `button[type=submit]`, else exactly one button in the
@@ -577,12 +578,18 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         except PWError:
             return []
 
-    def _code_boxes(self, page: Page):
-        """The security code's boxes when the page shows them (1 to 12), else None."""
+    def _shown_code_box_ids(self, page: Page) -> list[str] | None:
+        """The ids of the security code's boxes when the page shows them (1 to 12, each a safe
+        id), else None."""
         ids = self._code_box_ids(page)
         if not (1 <= len(ids) <= 12) or not all(_SAFE_ID.match(i) for i in ids):
             return None
-        return [page.locator(f'[id="{i}"]') for i in ids]
+        return ids
+
+    def _code_boxes(self, page: Page):
+        """The security code's boxes when the page shows them (1 to 12), else None."""
+        ids = self._shown_code_box_ids(page)
+        return None if ids is None else [page.locator(f'[id="{i}"]') for i in ids]
 
     @staticmethod
     def _hidden_search_ok(page: Page, fields, controls, c) -> bool:

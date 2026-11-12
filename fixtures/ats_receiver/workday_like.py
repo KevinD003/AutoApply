@@ -88,9 +88,13 @@ tenant:
        button stays disabled), button_late_enable (disabled until a second after the last
        answer), late_invalid (a wizard: on the review page the page's script refuses page 1's
        phone), slow_after_entry (an answer starts a request answered cfg["page_check_delay_ms"]
-       later) and late_follow_up (FA6's follow-up is shown only once a request the page makes
-       after the shift answer is answered, that much later). The request is GET /_fx/wait on
-       the page's own origin (receiver.py). None was observed on a real Workday tenant.
+       later), late_follow_up (FA6's follow-up is shown only once a request the page makes
+       after the shift answer is answered, that much later), late_rewrite (Submit disabled
+       until a second after the last answer, when the page also rewrites Address Line 1) and
+       focus_validation (the page marks a field `aria-invalid` when focus leaves it empty,
+       clears the mark when focus leaves it filled, and cancels its own submission while any
+       field is marked; the terms box has focus at load). The request is GET /_fx/wait on the
+       page's own origin (receiver.py). None was observed on a real Workday tenant.
 cfg["wizard"] values: plain; drift (a required q.weekends on page 4 at load); already_applied
 (shown at open instead of the form); step_error (the page-2 draft is answered 422 with errors);
 step_timeout (the page-2 draft reply waits cfg["delay_s"]); late_question (the page-2 reply
@@ -188,7 +192,7 @@ _PAGE_CHECK_JS = """
   if (!form) return;
   if (CHECK === 'custom_error' && phone) {
     const rule = () => phone.setCustomValidity(
-      /\s/.test(phone.value) ? 'Enter the number without spaces' : '');
+      /\\s/.test(phone.value) ? 'Enter the number without spaces' : '');
     phone.addEventListener('input', rule);
     phone.addEventListener('change', rule);
   }
@@ -205,6 +209,36 @@ _PAGE_CHECK_JS = """
       if (form.dataset.wizardCurrent === form.dataset.wizardPages)
         phone.setCustomValidity('Check your phone number');
     }).observe(form, {attributes: true, attributeFilter: ['data-wizard-current']});
+  }
+  if (CHECK === 'late_rewrite' && btn) {
+    // the page keeps Submit disabled, then rewrites a field and enables it, a second later
+    btn.disabled = true;
+    let t = null;
+    const later = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        document.getElementById('line1').value = 'Changed by the page';
+        btn.disabled = false;
+      }, 1000);
+    };
+    form.addEventListener('input', later);
+    form.addEventListener('change', later);
+  }
+  if (CHECK === 'focus_validation') {
+    // the page checks a field when focus leaves it (marks an empty one), and refuses its own
+    // submit while any field is marked; the terms box has focus at load
+    const empty = (el) => (el.type === 'checkbox' || el.type === 'radio') ? !el.checked : !el.value;
+    form.addEventListener('focusout', (e) => {
+      const el = e.target;
+      if (!el.matches || !el.matches('input:not([type=hidden]):not([type=file]), select')) return;
+      if (empty(el)) el.setAttribute('aria-invalid', 'true');
+      else el.removeAttribute('aria-invalid');
+    });
+    form.addEventListener('submit', (e) => {
+      if (form.querySelector('[aria-invalid="true"]')) e.preventDefault();
+    });
+    const terms = form.querySelector('[name="terms_ack"]');
+    if (terms) terms.focus();
   }
   if (CHECK === 'slow_after_entry') {
     let once = false;
