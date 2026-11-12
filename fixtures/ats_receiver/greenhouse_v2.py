@@ -50,9 +50,10 @@ Employment section, and cfg section_widget plain | react_select | ignores_choice
 prefill_end_date | option_other_id | extra_row varies how its comboboxes behave; FIXTURE ASSUMPTIONS,
 never seen on a real page),
 gh2_dd / gh2_dd_extras (cfg dd, delay_ms; see _DD_JS; for dd locale_gate also locale_origin,
-locale_path, locale_via; for dd open_beacon also beacon, beacon_via; for dd late_other_host
-other_origin), GET /locales/{lang}/{ns}.json (cfg locale_delay_ms; lang "moved"
-redirects), D104 stand-ins: gh2_phone_country (cfg pc; see PHONE_COUNTRIES), D130
+locale_path, locale_via; for the D152 modes that ask for a locale file (open_locale_fetch,
+locale_on_first_open, container_locale, container_open_locale) locale_origin and locale_path;
+for dd open_beacon also beacon, beacon_via; for dd late_other_host other_origin),
+GET /locales/{lang}/{ns}.json (cfg locale_delay_ms; lang "moved" redirects), D104 stand-ins: gh2_phone_country (cfg pc; see PHONE_COUNTRIES), D130
 gh2_phone_companion (cfg pcm; see _phone_companion),
 gh2_loc_search (cfg loc; see _LOC_JS) with GET /gh2/{board}/jobs/{id}/places (a disclosure: the
 search text), GET|POST /gh2/{board}/jobs/{id}/dd-options/{qid}.json (dd late_*),
@@ -1202,6 +1203,14 @@ def _extra_dropdown(cid, text, opts, required) -> str:
 #   locale_on_first_open  the same, at the page's first opening only
 #   container_locale  as container_only, and a press on the input itself (which opens nothing)
 #                   GETs the locale file without waiting for it
+#   container_slow_changing  as container_only, and the list its container opens keeps being
+#                   re-rendered every 300 ms
+#   container_open_locale  as container_only, and the container's opening GETs the locale file
+#                   without waiting for it
+#   vanish_after_open  as click_popup, and 1.2 s after its first opening the control and its list
+#                   are removed from the page
+#   container_tooltip  as container_only, and a press on the input shows a tooltip (a visible
+#                   element that is no list, so the click's result is undetermined)
 _DD_JS = """
 (() => {
   const DD = %DD%, DELAY = %DELAY%, BASE = %BASE%, LOCALE = %LOCALE%, VIA = %VIA%;
@@ -1225,8 +1234,9 @@ _DD_JS = """
   };
   const choose = (cb, o) => {
     if (DD === 'ignores_choice') { hide(cb); return; }
-    if (['react_select', 'react_locale', 'container_only', 'container_noisy',
-         'container_locale'].includes(DD)) {   // the input keeps only
+    if (['react_select', 'react_locale', 'container_only', 'container_noisy', 'container_locale',
+         'container_slow_changing', 'container_open_locale', 'container_tooltip']
+        .includes(DD)) {   // the input keeps only
       // search text (empty); the choice is shown in a single-value element, as react-select
       // shows it. data-value is read only by this fixture's own submit.
       const vc = cb.closest('.select__value-container') || cb.closest('.select__control');
@@ -1295,8 +1305,15 @@ _DD_JS = """
     } else {
       render(cb, p, pairs);
       if (DD === 'changing_on_reopen' && nth > 1) keepFlipping(cb, p, pairs, 300);
-      if (DD === 'slow_changing') keepFlipping(cb, p, pairs, 300);   // D152
-      if (DD === 'open_locale_fetch') fetch(LOCALE).catch(() => {});   // D152: not awaited
+      if (DD === 'slow_changing' || DD === 'container_slow_changing') {   // D152
+        keepFlipping(cb, p, pairs, 300);
+      }
+      if (DD === 'open_locale_fetch' || DD === 'container_open_locale') {   // D152: not awaited
+        fetch(LOCALE).catch(() => {});
+      }
+      if (DD === 'vanish_after_open' && nth === 1) {   // D152: the control leaves the page
+        setTimeout(() => { p.remove(); (cb.closest('.field') || cb).remove(); }, 1200);
+      }
       if (DD === 'locale_on_first_open' && !window.__fxLocaleAsked) {
         window.__fxLocaleAsked = true; fetch(LOCALE).catch(() => {});
       }
@@ -1348,7 +1365,8 @@ _DD_JS = """
       // anywhere on the control (the input included) opens the list (FIXTURE ASSUMPTION)
       const box = reactWrap(cb);
       box.addEventListener('mousedown', () => { if (!open.has(cb)) show(cb); });
-    } else if (['container_only', 'container_noisy', 'container_locale'].includes(DD)) {   // D109: only a press on
+    } else if (['container_only', 'container_noisy', 'container_locale', 'container_slow_changing',
+                'container_open_locale', 'container_tooltip'].includes(DD)) {   // D109: only a press on
       // the control container, never on the input itself, opens the list (FIXTURE ASSUMPTION)
       const box = document.createElement('div');
       box.className = 'select__control css-fx-control';
@@ -1365,6 +1383,10 @@ _DD_JS = """
           document.createElement('input'), {type: 'hidden', id: cb.id + '-state'})), {once: true});
       if (DD === 'container_locale')   // D152: the control's own click asks for a locale file
         cb.addEventListener('mousedown', () => fetch(LOCALE).catch(() => {}));
+      if (DD === 'container_tooltip')   // D152: the control's own click shows a tooltip
+        cb.addEventListener('mousedown', () => box.after(Object.assign(
+          document.createElement('div'), {className: 'fx-tip', textContent: 'Choose one'})),
+          {once: true});
     } else {
       cb.addEventListener('mousedown', () => show(cb));
     }

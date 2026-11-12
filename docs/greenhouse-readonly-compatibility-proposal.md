@@ -866,16 +866,29 @@ run #10)".
 - Full record: `docs/greenhouse-compatibility-report.md`, "Dropdown observation, path C".
 
 **Since D152 (2026-11-12; code only, no run):** every widget-inspection mode also publishes, per
-dropdown, whether its list met the adapter's settle rule at the run's last read (`settle_rule`):
-- no change to a list recorded for half a second (the adapter's rule since D145);
-- the last two reads equal;
-- no allowed request of that action still awaited;
-- and observed sufficiently.
+action that opened a list, whether the list met the adapter's settle rule at that action's last
+read (`settle_rule`, booleans only), and how many lists met it (`settle_rule_counts`):
+- `list_quiet`: no change to a list recorded for half a second (the adapter's rule since D145);
+- `equal_reads`: all three of the action's reads showed the same options;
+- `pending`: an allowed request made since the action began had not finished;
+- `met`: all of these, and observed sufficiently.
 
-It also publishes how many lists met it (`settle_rule_counts`): booleans and counts only. Run
-#11's "11 lists read completely" was judged by the survey's own test, so whether those lists
-meet the adapter's rule is not known. Finding out needs a new run, which needs the owner's new
-approval; none is requested here.
+What it does and does not say:
+- **Path A:** its window (600 ms) ends before the adapter could count any list as settled, so
+  it publishes the parts but no verdict. Paths B and C read for the adapter's 1.5 s.
+- **"Met" means settled, not accepted:** on a real page the adapter still refuses a list whose
+  opening made any data request (published apart) and compares the options.
+- **"Not met"** can be a list the adapter would already have chosen from earlier in its window.
+  Reads 500 ms apart are stricter than the adapter's 250 ms, and the survey's own 150 ms check
+  fails more often on a busy page.
+- **The privacy check:** the new keys add a few common words to the summary (quiet, reads,
+  settle, rule). The check refuses the whole summary when a posting's label of four or more
+  letters appears in it. So a posting with a label that is exactly one of those words would
+  have its summary withheld: it fails closed, but would waste the run.
+
+Run #11's "11 lists were read completely" was judged by the survey's own test, so whether those
+lists meet the adapter's rule is not known. Finding out needs a new run, which needs the owner's
+new approval; none is requested here.
 
 ## Deliverable: the comparison (once A/B are separately approved and run)
 
