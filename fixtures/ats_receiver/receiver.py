@@ -92,7 +92,9 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
            "fh_mode": "normal", "fh_rate_limit": 1000, "upload_fail_field": None,
            "upload_delay_s": 0.0, "verify_drop": False, "inbox_mode": "normal", "email_codes": None,
            "verify_delay_s": 0.0,  # D143: the code is accepted, its reply arrives this much later
-           "wizard": None}  # D142: the Workday-style wizard variant (workday_like.py)
+           "wizard": None,  # D142: the Workday-style wizard variant (workday_like.py)
+           # D154: a page's own checks before its final click (workday_like.py, greenhouse_v2.py)
+           "page_check": None, "page_check_delay_ms": 800}
 
     def admin(tok: str | None):
         if tok != admin_token:
@@ -181,8 +183,17 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                     "cdn": None, "variant": None, "widget_bad": None, "redirect_away": None,
                     "ll_code": None, "ll_code_value": None, "ll_invalid": None,
                     # D142: the Workday-style wizard variant, so none leaks into the next test
-                    "wizard": None})
+                    "wizard": None,
+                    # D154: a page's own checks before its final click
+                    "page_check": None, "page_check_delay_ms": 800})
         return {"ok": True}
+
+    @app.get("/_fx/wait")
+    async def fx_wait():
+        """D154: a request a stand-in page makes after an answer, answered after
+        cfg["page_check_delay_ms"] (what a page may load before it reacts to an answer)."""
+        await asyncio.sleep(cfg["page_check_delay_ms"] / 1000)
+        return {}
 
     @app.post("/_admin/inbox")
     async def inbox_add(request: Request, x_admin_token: str | None = Header(None)):

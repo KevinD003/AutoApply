@@ -825,6 +825,7 @@ for (const inp of LIVE_LIKE ? [] : document.querySelectorAll('input[type=file]')
 }
 if (!LIVE_LIKE) form.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (window.__fxRefuse && window.__fxRefuse()) return;  // D154: the page's own checks
   const fields = {};
   for (const el of form.querySelectorAll('input[id], textarea[id]')) {
     if (el.type === 'file' || el.closest('[hidden]') || el.hidden) continue;
@@ -919,6 +920,7 @@ _LIVE_LIKE_JS = """
   }
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (window.__fxRefuse && window.__fxRefuse()) return;  // D154: the page's own checks
     if (INVALID) {
       let box = document.getElementById('first_name-error');
       if (!box) { box = Object.assign(document.createElement('div'),
@@ -956,6 +958,78 @@ _LIVE_LIKE_JS = """
     let box = document.getElementById('form-errors'); box.hidden = false;
     box.textContent = (j.errors || ['There was an error processing your application.']).join('; ');
   });
+})();
+"""
+
+# D154 (FIXTURE ASSUMPTIONS): a page's own checks before its final click, by cfg page_check,
+# on a form marked `novalidate` whose script decides: aria_invalid (the page marks an
+# example.com address as not valid as it is typed, and its submit handler refuses a form with
+# a field so marked), check_validity (it refuses such an address through the browser's own
+# validation state, and its submit handler refuses when `form.checkValidity()` fails),
+# hidden_invalid (a hidden field holding a value its type refuses, which the page never reads
+# or sends), two_submit (an answer adds a second submit button), button_disabled (an answer
+# disables the submit button for good), button_late_enable (it is enabled a second after the
+# last answer) and code_boxes_required (the security code's boxes, D116, are `required`).
+_PAGE_CHECK_JS = """
+(() => {
+  const CHECK = %CHECK%;
+  const form = document.getElementById('application-form');
+  if (!form || !CHECK) return;
+  const email = document.getElementById('email');
+  const btn = document.getElementById('submit_app');
+  const refuse = (bad) => {
+    if (!bad) return false;
+    const box = document.getElementById('form-errors');
+    box.hidden = false;
+    box.textContent = 'Please fix the highlighted fields';
+    return true;
+  };
+  if (CHECK === 'aria_invalid' && email) {
+    email.addEventListener('input', () => {
+      let err = document.getElementById('email-error');
+      if (/@example[.]com$/i.test(email.value)) {
+        email.setAttribute('aria-invalid', 'true');
+        if (!err) {
+          err = Object.assign(document.createElement('div'),
+                              {id: 'email-error', className: 'helper-text--error'});
+          email.after(err);
+        }
+        err.textContent = 'Use another email address';
+      } else {
+        email.removeAttribute('aria-invalid');
+        if (err) err.remove();
+      }
+    });
+    window.__fxRefuse = () => refuse(!!form.querySelector('[aria-invalid="true"]'));
+  }
+  if (CHECK === 'check_validity' && email) {
+    email.addEventListener('input', () => email.setCustomValidity(
+      /@example[.]com$/i.test(email.value) ? 'Use another email address' : ''));
+    window.__fxRefuse = () => refuse(!form.checkValidity());
+  }
+  if (CHECK === 'two_submit') {
+    form.addEventListener('input', () => {
+      if (document.getElementById('fx_submit_2')) return;
+      form.append(Object.assign(document.createElement('button'),
+                                {type: 'submit', id: 'fx_submit_2', textContent: 'Submit'}));
+    });
+  }
+  if (CHECK === 'button_disabled' && btn) {
+    form.addEventListener('input', () => { btn.disabled = true; });
+  }
+  if (CHECK === 'button_late_enable' && btn) {
+    btn.disabled = true;
+    let t = null;
+    form.addEventListener('input', () => {
+      clearTimeout(t);
+      t = setTimeout(() => { btn.disabled = false; }, 1000);
+    });
+  }
+  if (CHECK === 'code_boxes_required') {
+    new MutationObserver(() => {
+      for (const b of form.querySelectorAll('[id^=security-input-]')) b.required = true;
+    }).observe(form, {childList: true, subtree: true});
+  }
 })();
 """
 
@@ -1665,6 +1739,9 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
     if mode == "gh2_new_question":  # a visible question the job data does not list
         qs += ('<div class="field"><label for="question_8199">Years of experience</label>'
                '<input type="text" id="question_8199"></div>')
+    if cfg.get("page_check") == "hidden_invalid":  # D154: never read or sent by the page
+        qs += ('<div hidden id="fx-hidden-block"><input type="email" id="fx_backup_email" '
+               'value="not-an-email"></div>')
     script = _SCRIPT.replace("%CONDITIONS%", json.dumps(CONDITIONS))
     phrase = (f'<div id="application-confirmation" role="status">{html.escape(PHRASE_STATUS)}'
               '</div>' if mode in ("gh2_phrase_in_body", "gh2_phrase_no_confirmation") else "")
@@ -1689,7 +1766,9 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
                .replace("%TICK%", str(int(cfg.get("section_tick_ms") or 0)))
                .replace("%BEACON_VIA%", json.dumps(cfg.get("section_beacon_via") or "fetch"))
                + "</script>"
-               if mode == "gh2_sections" else ""))
+               if mode == "gh2_sections" else "")
+            + ("<script>" + _PAGE_CHECK_JS.replace("%CHECK%", json.dumps(cfg["page_check"]))
+               + "</script>" if cfg.get("page_check") else ""))
     return HTMLResponse(
         "<!doctype html><html><head><meta charset='utf-8'>"
         f"<title>{html.escape(j['title'])}</title></head><body data-gh2='form'>"

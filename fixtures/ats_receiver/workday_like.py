@@ -81,6 +81,16 @@ tenant:
        entry. No real Workday work-history section was observed (docs/research/workday.md: My
        Experience sections can each be hidden or required, and resume parsing fills work
        experience).
+  FA8  (D154) a page's own checks before its final click, by cfg["page_check"], on the single
+       page and the wizard alike (the form validates natively: no `novalidate`): pattern (the
+       phone must be ten digits, in the markup), custom_error (the page's script refuses a phone
+       written with spaces through the browser's own validation), button_disabled (the submit
+       button stays disabled), button_late_enable (disabled until a second after the last
+       answer), late_invalid (a wizard: on the review page the page's script refuses page 1's
+       phone), slow_after_entry (an answer starts a request answered cfg["page_check_delay_ms"]
+       later) and late_follow_up (FA6's follow-up is shown only once a request the page makes
+       after the shift answer is answered, that much later). The request is GET /_fx/wait on
+       the page's own origin (receiver.py). None was observed on a real Workday tenant.
 cfg["wizard"] values: plain; drift (a required q.weekends on page 4 at load); already_applied
 (shown at open instead of the form); step_error (the page-2 draft is answered 422 with errors);
 step_timeout (the page-2 draft reply waits cfg["delay_s"]); late_question (the page-2 reply
@@ -136,8 +146,10 @@ FOLLOW_UPS = {"follow_up": (False, False, False), "follow_up_required": (True, T
               "follow_up_removed": (False, False, True)}  # fmt: skip
 
 
-def _follow_up(shape: tuple[bool, bool, bool] | None) -> tuple[str, str]:
-    """FA6: the follow-up's markup (after "Preferred shift") and the script that shows it."""
+def _follow_up(shape: tuple[bool, bool, bool] | None, late: bool = False) -> tuple[str, str]:
+    """FA6: the follow-up's markup (after "Preferred shift") and the script that shows it. D154
+    (cfg page_check "late_follow_up", FA8): the page reacts to the shift only once a request it
+    makes has been answered (cfg page_check_delay_ms later)."""
     if shape is None:
         return "", ""
     at_load, once_shown, removed = shape
@@ -145,16 +157,73 @@ def _follow_up(shape: tuple[bool, bool, bool] | None) -> tuple[str, str]:
     markup = ('<div id="nights-follow-up" hidden><label for="nights_detail">Which nights of '
               f'the week can you work?</label><input id="nights_detail" name="{FOLLOW_UP}" '
               f'type="text"{" required" if at_load else ""}></div>')  # fmt: skip
+    react = f"""const react = () => {{
+  const shown = shift.value === 'Nights';
+  followUp.hidden = !shown;{" detail.required = shown;" if once_shown else ""}
+  if (!shown) {gone}
+}};"""
+    on = ("() => { fetch('/_fx/wait').then(react).catch(() => {}); }" if late else "react")
     script = f"""
 const shift = document.getElementById('shift');
 const followUp = document.getElementById('nights-follow-up');
 const detail = followUp.querySelector('input');
-shift.addEventListener('change', () => {{
-  const shown = shift.value === 'Nights';
-  followUp.hidden = !shown;{" detail.required = shown;" if once_shown else ""}
-  if (!shown) {gone}
-}});"""
+{react}
+shift.addEventListener('change', {on});"""
     return markup, script
+
+
+# D154, FA8 (FIXTURE ASSUMPTIONS): a page's own checks before its final click, by cfg
+# page_check, on the single page and the wizard: "pattern" (the phone must be ten digits, in
+# the markup), "custom_error" (the page's script refuses a phone written with spaces),
+# "button_disabled" (the submit button stays disabled), "button_late_enable" (disabled until a
+# second after the last answer), "late_invalid" (a wizard: on the review page, the page's script
+# refuses page 1's phone) and "slow_after_entry" (an answer starts a request answered
+# cfg page_check_delay_ms later); "late_follow_up" is the follow-up's (`_follow_up`).
+_PAGE_CHECK_JS = """
+(() => {
+  const CHECK = %CHECK%;
+  const form = document.getElementById('workday-application');
+  const phone = document.getElementById('phone');
+  const btn = form && form.querySelector('button[type=submit]');
+  if (!form) return;
+  if (CHECK === 'custom_error' && phone) {
+    const rule = () => phone.setCustomValidity(
+      /\s/.test(phone.value) ? 'Enter the number without spaces' : '');
+    phone.addEventListener('input', rule);
+    phone.addEventListener('change', rule);
+  }
+  if (CHECK === 'button_disabled' && btn) btn.disabled = true;
+  if (CHECK === 'button_late_enable' && btn) {
+    btn.disabled = true;
+    let t = null;
+    const later = () => { clearTimeout(t); t = setTimeout(() => { btn.disabled = false; }, 1000); };
+    form.addEventListener('input', later);
+    form.addEventListener('change', later);
+  }
+  if (CHECK === 'late_invalid' && phone) {
+    new MutationObserver(() => {
+      if (form.dataset.wizardCurrent === form.dataset.wizardPages)
+        phone.setCustomValidity('Check your phone number');
+    }).observe(form, {attributes: true, attributeFilter: ['data-wizard-current']});
+  }
+  if (CHECK === 'slow_after_entry') {
+    let once = false;
+    form.addEventListener('change', () => {
+      if (once) return;
+      once = true;
+      fetch('/_fx/wait').catch(() => {});
+    });
+  }
+})();"""
+
+
+def _page_check(cfg: dict) -> tuple[str, str]:
+    """D154, FA8: the phone input's extra markup and the page's script, by cfg page_check."""
+    check = cfg.get("page_check")
+    if not check:
+        return "", ""
+    phone = ' pattern="[0-9]{10}"' if check == "pattern" else ""
+    return phone, _PAGE_CHECK_JS.replace("%CHECK%", json.dumps(check))
 
 
 # D149, FA7: the Work Experience section, by wizard variant (the single page's mode is
@@ -352,9 +421,11 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
     gender_required = " required" if mode == "wd_gender_required" else ""
     challenge = ('<div class="h-captcha" data-sitekey="fixture-not-a-key"></div>'
                  if mode == "wd_challenge" else "")  # fmt: skip
-    follow_up, follow_up_js = _follow_up(FOLLOW_UPS.get(mode.removeprefix("wd_")))
+    follow_up, follow_up_js = _follow_up(FOLLOW_UPS.get(mode.removeprefix("wd_")),
+                                         late=cfg.get("page_check") == "late_follow_up")
     work, work_template, work_js = _work_section(  # D149, FA7
         "experience" if mode == "wd_experience" else None)
+    phone_check, check_js = _page_check(cfg)  # D154, FA8
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
 {progress}
@@ -371,7 +442,7 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 <label for="last">Family Name</label>
 <input id="last" name="legalName--lastName" type="text" required>
 <label for="email">Email Address</label><input id="email" name="email" type="email" required>
-<label for="phone">Phone Number</label><input id="phone" name="phone--number" type="tel" required>
+<label for="phone">Phone Number</label><input id="phone" name="phone--number" type="tel" required{phone_check}>
 <label for="line1">Address Line 1</label>
 <input id="line1" name="address--addressLine1" type="text">
 <label for="city">City</label><input id="city" name="address--city" type="text"{city}>
@@ -434,7 +505,7 @@ for (const input of document.querySelectorAll('input[type=file][data-wd-file]'))
       }}
     }} catch (e) {{ st.textContent = 'Upload failed'; st.dataset.attachmentError = '1'; }}
   }});
-}}{follow_up_js}{work_js}
+}}{follow_up_js}{work_js}{check_js}
 </script>"""
     return _page(f"{title} — {employer}", body, "form")
 
@@ -458,9 +529,11 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
     eligibility = _yes_no("q.work_eligibility",
                           "Are you legally authorized to work in the United States?", True)
     shifted = eligibility if variant == "page_shift" else ""  # end of page 3 (FA5)
-    follow_up, follow_up_js = _follow_up(FOLLOW_UPS.get(variant))  # D148, FA6
+    follow_up, follow_up_js = _follow_up(FOLLOW_UPS.get(variant),  # D148, FA6
+                                         late=cfg.get("page_check") == "late_follow_up")
     on_page_4 = "" if variant == "page_shift" else eligibility
     work, work_template, work_js = _work_section(variant)  # D149, FA7
+    phone_check, check_js = _page_check(cfg)  # D154, FA8
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
 <div data-wizard-progress>Page 1 of {len(WIZARD_PAGES)}</div>
@@ -479,7 +552,7 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 <label for="last">Family Name</label>
 <input id="last" name="legalName--lastName" type="text" required>
 <label for="email">Email Address</label><input id="email" name="email" type="email" required>
-<label for="phone">Phone Number</label><input id="phone" name="phone--number" type="tel" required>
+<label for="phone">Phone Number</label><input id="phone" name="phone--number" type="tel" required{phone_check}>
 <label for="line1">Address Line 1</label>
 <input id="line1" name="address--addressLine1" type="text">
 <label for="city">City</label><input id="city" name="address--city" type="text">
@@ -620,7 +693,7 @@ for (const btn of form.querySelectorAll('[data-wizard-next]')) {{
     progress.textContent = `Page ${{i + 1}} of ${{pages}}`;
     status.dataset.draftStatus = 'saved';
   }});
-}}{follow_up_js}{work_js}
+}}{follow_up_js}{work_js}{check_js}
 </script>"""
     return _page(f"{title} — {employer}", body, "form")
 

@@ -548,6 +548,15 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         a, b = urlsplit(r.url), urlsplit(submit_url)
         return (a.scheme, a.netloc, a.path.rstrip("/")) == (b.scheme, b.netloc, b.path.rstrip("/"))
 
+    def final_button(self, page: Page):
+        return self._submit_button(page)
+
+    def leave_out(self, page: Page) -> list[str]:
+        """D154: a security code's boxes the page shows before the final click are filled only
+        at your checkpoint, never counted against the form."""
+        boxes = self._code_box_ids(page)
+        return boxes if 1 <= len(boxes) <= 12 else []
+
     def _submit_button(self, page: Page):
         """The form's one submit button: `button[type=submit]`, else exactly one button in the
         form labelled exactly "Submit" or "Submit application" (legacy: real forms)."""
@@ -974,7 +983,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             # The page asked for the code before the click (sent once the address was typed):
             # nothing more is clicked until you give it.
             return Outcome("otp", "security code requested")
-        btn = self._submit_button(page)
+        btn = self.final_button(page)
         if btn is None:
             return Outcome("unknown", "the form's submit button cannot be identified")
         before = self._confirmed(page)  # S5 (D62, R6.4): never evidence for this click
