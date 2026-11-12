@@ -22,7 +22,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 
 | What | Where |
 |---|---|
-| `main` | bfaeb1f (tree 6e1adb3, as predicted): #61 D152. Before it, cb399c4 (tree 377825e): #60 D151; 3d826a6 (tree 67f29ac): #59 D150; 570a393 (tree 16e34b4): #58 D149; dd5d164 (tree 1c6df86): #57 D148; b7f6c45 (tree 4f77573): #56 D147; 688c776 (tree c0865f1): #55 D146; 45c8229 (tree 0df08ea): #54 D145; 099642c (tree 33b8b0d): #53 D144; 9346c8e (tree fd09e77): #52 D143; 25d04ea (tree a3054b8): #51 D142; 98fe380 (tree b75d64c): #50 D141; 3df7d0d (tree a625f26): #49 D140; 4585c59 (tree fac890a): #48 D139; a7f8742 (tree af2f25f): #47 D138; e2fd286 (tree 1d69376): #46 D137; 32c8f7c (tree 201ddbd): #45 D136; 53b28af (tree fe5c8c3): #44 D135 (main CI #269 green on all four jobs); 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
+| `main` | 4f804be (tree 783c3eb, as predicted): #62 D153. Before it, bfaeb1f (tree 6e1adb3): #61 D152; cb399c4 (tree 377825e): #60 D151; 3d826a6 (tree 67f29ac): #59 D150; 570a393 (tree 16e34b4): #58 D149; dd5d164 (tree 1c6df86): #57 D148; b7f6c45 (tree 4f77573): #56 D147; 688c776 (tree c0865f1): #55 D146; 45c8229 (tree 0df08ea): #54 D145; 099642c (tree 33b8b0d): #53 D144; 9346c8e (tree fd09e77): #52 D143; 25d04ea (tree a3054b8): #51 D142; 98fe380 (tree b75d64c): #50 D141; 3df7d0d (tree a625f26): #49 D140; 4585c59 (tree fac890a): #48 D139; a7f8742 (tree af2f25f): #47 D138; e2fd286 (tree 1d69376): #46 D137; 32c8f7c (tree 201ddbd): #45 D136; 53b28af (tree fe5c8c3): #44 D135 (main CI #269 green on all four jobs); 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
 | D131 follow-up (the review's remaining findings) | merged (#39, bd38529); main CI #254 passed all four jobs |
 | D132 form-change pause and questions tab | merged (#40, c19c683); main CI #260 passed all four jobs |
 | D133 reuse and suggestion guards | merged (#41, da7ac61); its PR CI passed all four jobs on 360f34c, and main CI #265 on da7ac61 |
@@ -45,7 +45,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D150 a request to stop the worker honoured before the next protected step | merged (#59, 3d826a6, tree as predicted); its PR CI passed all four jobs on c94be94 |
 | D151 a section's combobox chooses only from a list that has settled | merged (#60, cb399c4, tree as predicted); its PR CI passed all four jobs on 9c39774 |
 | D152 the read-only survey publishes whether each list met the adapter's settle rule | merged (#61, bfaeb1f, tree as predicted); its PR CI passed all four jobs on 5f4fe33 |
-| D153 a list judged by the page's record of changes to a list; the option chosen from one read | branch `whole-page-check` (from D152's branch, then `main` with #61); reviewed twice; not merged |
+| D153 a list judged by the page's record of changes to a list; the option chosen from one read | merged (#62, 4f804be, tree as predicted); its PR CI passed all four jobs on 2d53b77 |
+| D154 what the page itself would refuse at the final click stops before the send gate; filling waits for what the answers started | branch `page-own-checks` (from D153's branch, then `main` with #62); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -65,14 +66,14 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 2 | New question → questions tab → saved → resumes | fx (gh2 by id and pilot stand-in), on `main` since D132 (#40) | fx (e2e), on `main` since D132 |
 | 3 | Future reuse | unit (resolver), generic form; D133 merged (#41): suggestions judge the saved side, "Use here only"; D138 merged (#47): a saved answer reaches the next gh2 job that asks the same question (receiver ledger) | D138 merged (#47): reused on the next posting (receiver ledger); single page |
 | 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 merged (#47): a gh2 look-alike naming a country is neither reused nor suggested | D138 merged (#47): "Preferred shift" never saved or reused |
-| 5 | Conditional question | fx on the v1 fixture; D135 merged (#44), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | D148 on its branch (stand-in FA6, receiver ledger): a typed follow-up the page shows after an earlier answer is answerable, entered only when shown, never waited for; a shown required one without an answer pauses a single page and stops a wizard page before its Next; a hidden one the page still requires, or one it removes, stops the attempt; a choice hidden at load is still never filled (a hidden file input is uploaded as before) |
-| 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger); D145 (branch): a dropdown whose list keeps being re-rendered is refused however slowly it is read (the page's own record of its last change to a list), before anything is entered, and a location search whose suggestions keep changing chooses no place (gh2 stand-ins; receiver ledger); D152 merged (#61): the read-only survey publishes whether each list met that rule at its last read (gh2 stand-ins; code only, no run); D153 on its branch: a page busy elsewhere no longer has its lists refused, one whose style sheets or control keep changing has them refused before anything is entered, and an option is chosen only from one read of the list that is still the approved one (gh2 stand-ins; receiver ledger) | fx at capture |
+| 5 | Conditional question | fx on the v1 fixture; D135 merged (#44), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | D148 merged (#57; stand-in FA6, receiver ledger): a typed follow-up the page shows after an earlier answer is answerable, entered only when shown, never waited for; a shown required one without an answer pauses a single page and stops a wizard page before its Next; a hidden one the page still requires, or one it removes, stops the attempt; a choice hidden at load is still never filled (a hidden file input is uploaded as before); D154 on its branch: one the page shows after a request is waited for, entered when answered, and otherwise pauses a single page or stops a wizard page before its Next (FA8, receiver ledger) |
+| 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger); D145 (branch): a dropdown whose list keeps being re-rendered is refused however slowly it is read (the page's own record of its last change to a list), before anything is entered, and a location search whose suggestions keep changing chooses no place (gh2 stand-ins; receiver ledger); D152 merged (#61): the read-only survey publishes whether each list met that rule at its last read (gh2 stand-ins; code only, no run); D153 merged (#62): a page busy elsewhere no longer has its lists refused, one whose style sheets or control keep changing has them refused before anything is entered, and an option is chosen only from one read of the list that is still the approved one (gh2 stand-ins; receiver ledger) | fx at capture |
 | 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger); D151 on its branch: a section combobox chooses only from a list that has settled, by the dropdown's rule, and a list that keeps changing, posts or fails to load stops the section (gh2 stand-ins, receiver ledger) | D149 on its branch (stand-in FA7, receiver ledger): the Work Experience entries on My Experience filled from your approved work history (employment), each added by the section's own button and read back, no entry beyond the approved ones sent, a required section waiting for your approved work history; anything else about work history a checkpoint; education, languages, websites and skills not built |
 | 8 | Answer edits invalidate approvals | fx; D138 merged (#47): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger); D140 merged (#49): an education or employment edit retires the approval at once; on the education stand-in, approved again, the new degree is sent, and an edit while a worker fills is stopped at the send gate (receiver ledger) | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; D143 merged (#52): on gh2 by id a worker killed before anything was sent is run again once, and one killed after entering data, at the send gate, around the final click or after the employer's receipt is never run again; a run past its budget stops before the final click (gh2 by id and the pilot stand-in; receiver ledger); D144 merged (#53): the sweeper runs on a worker of its own, so it is not held up by attempts waiting for codes (real workers, generic form; receiver ledger) | partial; D142 merged (#51): on the wizard stand-in a lost or killed worker leaves the record of each page's Next, is never taken over, and the application is never run again (receiver ledger); D143 merged (#52): the same kills on the single-page form and on the wizard's review page, and a wizard past its budget stops for good (receiver ledger) |
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus; D139 merged (#48): self-identification on gh2 (by id and pilot) up to the ledger: off or unmatched never sent, a label or a decline label sent, your per-application "Don't disclose" beats it, a required one without a match waits; a change retires its approvals at once (queued, held by a worker, under the standing rule: nothing withdrawn is sent) | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify"; D139 merged (#48): self-identification sent as each option's own value, each question only from the label naming its category, a bare "No" or two labels never used, a decline only where the choices name a category, a required gender without a match waits; withdrawal and change retire the approval (single page; the Workday decline wording is a fixture assumption) |
 | 11 | Upload failure preserves evidence | fx for UploadFailed; D137 merged (#46): every disclosure is recorded as it is made (receiver ledger): an unexpected error after an upload keeps its evidence (generic form, gh2 by id, the API route); a killed worker after an upload (generic form); a failure during an upload counts the document as possibly received (generic form, gh2 by id, the first Greenhouse-style page, the API route); a draft or document the API received and answered badly is recorded | fx; D137: a failure during an upload counts it as possibly received (Workday-style page); D142 merged (#51): each page's Next is recorded as disclosure evidence as it is made (wizard stand-in) |
-| 12 | Uncertain send quarantined | fx; D143 merged (#52): at the task's time limit the worker process is ended and the sweeper calls the outcome unknown (a real worker, generic form); the send lease covers the page's own wait for its answer; a code typed late in its wait is still answered under a lease (generic form); on gh2 by id a worker killed around the final click is quarantined (receiver ledger) | fx; D142 merged (#51): on the wizard stand-in, a Next after which the page shows a confirmation or "already applied" is quarantined in `submitted_unconfirmed`, as is an unknown final click; never run again (receiver ledger); D143 merged (#52): a worker killed around the final click on the single-page form, or before it on the wizard's review page, is quarantined and never run again (receiver ledger) |
+| 12 | Uncertain send quarantined | fx; D143 merged (#52): at the task's time limit the worker process is ended and the sweeper calls the outcome unknown (a real worker, generic form); the send lease covers the page's own wait for its answer; a code typed late in its wait is still answered under a lease (generic form); on gh2 by id a worker killed around the final click is quarantined (receiver ledger) | fx; D142 merged (#51): on the wizard stand-in, a Next after which the page shows a confirmation or "already applied" is quarantined in `submitted_unconfirmed`, as is an unknown final click; never run again (receiver ledger); D143 merged (#52): a worker killed around the final click on the single-page form, or before it on the wizard's review page, is quarantined and never run again (receiver ledger); D154 on its branch: a final click the page itself would refuse (the browser's validation, the page's marks, a button kept disabled) stops before the send gate with nothing sent, instead of a quarantine (FA8, receiver ledger) |
 | 13 | Cancellation respected | fx on the generic form; D134 merged (#43), on the gh2 stand-in through the pilot (receiver ledger): a pause stops what the standing rule queued, your own queued work runs on, a revocation stands; D143 merged (#52): a cancel after data was entered says what may have been entered, and a worker whose attempt was cancelled stops between fields (generic form); D150 on its branch: a request to stop the worker (`docker compose stop`, an upgrade, Ctrl-C) is honoured before the next protected step: back in the queue before anything is entered, abandoned after, the click completed past the send gate (a real Celery worker and the stand-ins, receiver ledger) | partial; D142 merged (#51): a revocation or a profile edit between wizard pages stops at the next page's gate; a cancel there is refused (`wizard_in_progress`), so a Next that submits is still quarantined (receiver ledger) |
 | 14 | Tenant isolation | fx (per-application routes) | D142 merged (#51): fx on the wizard stand-in: another account on the same posting is not refused and reaches nothing of the first (404) |
 | loop | Durable pause → answer → recheck → continue | fx, on `main` since D132 (#40): pause, read again, answer, one new run (receiver ledger) | fx (e2e), on `main` since D132 |
@@ -367,7 +368,27 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
 
-- **D153 (branch `whole-page-check`, not merged).** Rank 19, the list judged by its own
+- **D154 (branch `page-own-checks`, not merged).** Rank 21, what the page itself would
+  refuse at the final click:
+  - the gap (D148's proposal): a final click the page's own checks refuse was found only
+    after the send gate (the browser refused a native submission: `unknown`, quarantined;
+    the page's script refused it: `rejected` after `sending`; a button it kept disabled:
+    `unknown`), a rehearsal of such a page was recorded as passing, and filling did not
+    wait for the page's reaction to the answers;
+  - after a page's answers the runner waits for the requests they started, then for the
+    submit button, before the readback; right before the send gate it reads, without
+    acting on the page, what the page would refuse at the click: where the browser
+    validates, every control it would refuse, by kind; where the page's script decides,
+    only the page's own marks; never a stale mark on the field that has focus. A finding
+    stops the attempt with nothing sent, every approval retired;
+  - two independent reviews: the safety review found one blocker (a stale mark on the
+    focused field counted, so a page that checks a field when focus leaves it would have
+    every application ending on a dropdown stopped), the second none; both found gaps.
+    Fixed (539d1b7, 9fa81bc, 2e95220), each with a test; the rest recorded in D154;
+  - 49 removal runs, each failing the test named for its part; one only once 5db60c8 gave the
+    receiver's own form a button that does not submit it (it had a single button).
+
+- **D153 (merged, #62).** Rank 19, the list judged by its own
   record:
   - the gap (D145's second review): the classification's check of the whole document (no
     change anywhere for 150 ms) also held lists back, so a page changing something every
@@ -385,7 +406,9 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the rest recorded in D153.
 
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
-  (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
+  (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began
+  (since D154, only where the page shows its refusal at the click: what it shows before
+  stops the attempt before the send gate).
   Pausing there and later queuing one new attempt is a retry after `sending`, which CLAUDE.md
   forbids ("never add a retry after `disclosure_started_at` or `sending`"). Today it ends
   `failed_terminal` (apply on the employer's site). Not built.
@@ -425,9 +448,11 @@ enters your approved work history in the Workday-style stand-in's Work Experienc
 entry by entry. **D150** (rank 16, #59) honours a request to stop the worker before the next
 protected step. **D151** (rank 17, #60) has a section's combobox choose only from a list
 that has settled, by the dropdown's rule. **D152** (rank 18, #61) has the
-read-only survey publish whether each list met that rule. **D153** (rank 19, on its
-branch) judges a list by the page's record of changes to a list instead of changes
-anywhere on the page, and chooses an option only from one read of the list. Every ranked
+read-only survey publish whether each list met that rule. **D153** (rank 19, #62)
+judges a list by the page's record of changes to a list instead of changes
+anywhere on the page, and chooses an option only from one read of the list. **D154**
+(rank 21, on its branch) stops before the send gate an attempt whose final click the page
+itself would refuse, and waits for the page's reaction to the answers before the checks. Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
 
@@ -523,8 +548,14 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D153 (branch `whole-page-check`):** the new tests (and against the code before it),
-  the suites the change touches, the removal runs and the regression set, locally (Tests
+- **D154 (branch `page-own-checks`):** the new tests (and against the code before it and
+  its first version), the suites the change touches, the removal runs and the regression
+  set, locally (Tests run below). Not tested: any real page; a page that cancels its submit
+  button's click and sends by script; validation a page runs only at the click; controls in
+  a shadow root; a reaction on a timer or to the last text field's `change`.
+- **D153:** merged (#62, 4f804be, tree as predicted); its PR CI passed all four jobs on
+  2d53b77. Locally: the new tests (and against the code before it),
+  the suites the change touches, the removal runs and the regression set (Tests
   run below). Not tested: any real page; a list changed by a rule of an unchanged style
   sheet that starts matching because an element holding no list changed, between the
   checks (only the choice's one read sees it); a style sheet whose rules arrive late; an
@@ -760,6 +791,17 @@ action.
 | D153, the regression set: `pytest` on 79 files (D152's 77, `test_list_record.py` and `test_dropdown_choice.py`; JUnit), in a copy of the branch at 5e42918 | exit 0; 2197 passed in 80.3 min |
 | D153, `main` with #61 merged in (bb37b6f): the new tests, the survey's and the section's | exit 0; 99 passed in 10.5 min |
 | D153, after its records: the document tests and `test_list_record.py`; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 63 passed; ruff formatted nothing, found nothing, and the format check passed |
+| D154, the first version: the new tests (JUnit) on cc3c49e, then with the D116 mechanics; then `test_page_own_checks.py` (17) against the product files of 2d53b77 | exit 0, 51 passed; exit 0, 75 passed; exit 1, 13 of 17 fail |
+| D154, the first version, each part changed in turn: 30 changes on 64842b4, one at a time, the file restored | exit 1 for each: all 30 fail a test, each the one named for its part |
+| D154, after the reviews: the new tests and the four suites they touch most (JUnit), on the working tree before 539d1b7 | exit 0; 190 passed in 6.0 min |
+| D154, against the code before it and its first version: `test_page_own_checks.py` (23, JUnit) on 2e95220's tests and stand-ins with the seven product files as they were at 2d53b77 (before D154); then it and `test_page_refusal_read.py` (91) with the five as at cc3c49e (its first version); the case 5db60c8 adds, against both | exit 1, 18 of 23 fail against 2d53b77; exit 1, 28 of 91 fail against cc3c49e, among them the stale mark on the focused field (the safety review's blocker); exit 0, the new case passes against both |
+| D154, the suites the change touches: `pytest` on the 14 of the 84 files the change touches that are not in the regression set (`test_after_send_diagnostics`, `test_b3_policy`, `test_batch_review`, `test_dropdown_observation_c`, `test_form_readiness`, `test_gh_readonly`, `test_greenhouse_sections_hardening`, `test_lever_fixture`, `test_locale_observation`, `test_readonly_cli_process`, `test_reason_codes`, `test_receiver_reset`, `test_widget_detector`, `test_widget_inspection`; JUnit), on 5db60c8; the 84 are the 80 that import a changed module and 4 that drive the changed receiver or pin the fixture adapter's version; the other 70 are in the regression set | exit 0; 368 passed in 14.2 min |
+| D154, each part changed in turn: 49 changes on 2e95220, one at a time, the file restored | exit 1 for 48, each failing the test named for its part; the 49th passed (the receiver's own form had a single button), then failed the test 5db60c8 adds |
+| D154, the regression set: `pytest` on 81 files (D153's 79, `test_page_refusal_read.py` and `test_page_own_checks.py`; JUnit), in a copy of the branch at 2e95220 (the tree of 1976010) | exit 1; 2 failed, 2286 passed in 85.0 min: both tests e687fff updates, neither in the product (a computed `getattr` in a new read test, which the capture guard R11.4 refuses where a page runs; R11.8's expected wording, now D154's reason since 539d1b7 waits for the button before the readback); both files run again in full on e687fff: exit 0, 247 passed with `test_page_refusal_read.py` |
+| D154, 5db60c8 (a test and a stand-in variant): the new case and the second-submit case, then `test_receiver_reset.py` and the receiver's form's happy path (JUnit), on the working tree before it | exit 0; 2 passed; exit 0; 3 passed |
+| D154, e687fff (two tests the regression set found): `test_forbidden_capabilities.py` and `test_greenhouse_adapter.py` on 5db60c8, then with `test_page_refusal_read.py` after the fix; `test_bank_edit.py` | exit 1, 2 failed, 177 passed (both reproduced); exit 0, 247 passed; exit 0, 15 passed |
+| D154, the suites that read the repository, outside both runs: `pytest` on 14 files (`test_api_tokens`, `test_applications`, `test_authorizations`, `test_drafting`, `test_drafting_provider`, `test_email_reminders`, `test_fit`, `test_freehire_discovery`, `test_job_signals`, `test_lever`, `test_path_a`, `test_repo_hygiene`, `test_resolver`, `test_runtime_dependencies`; JUnit), on e687fff | exit 0; 875 passed in 3.9 min |
+| D154, after its records: the document tests and `test_page_refusal_read.py`; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 113 passed; ruff formatted nothing, found nothing, and the format check passed |
 
 ## Failed approaches and rejected designs
 
@@ -875,14 +917,14 @@ action.
 
 ## Exact next action
 
-1. D153 (branch `whole-page-check`, rank 19): its pull request (D152 merged as #61). Candidates: a check of the form's own validity before the send gate
-   (D148's proposal); Location and Role Description from your record; education on Workday.
+1. D154 (branch `page-own-checks`, rank 21): its pull request (D153 merged as #62). Candidates: Location and Role Description from your record; education on Workday; the
+   page's own marks read before each wizard page's Next (D154's limit).
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it
    sends since D133 (D139); every recorded permission ended on 2026-11-06 (renewing is the owner's call,
    never extended because work took longer); continuing after a form change (D132); a final click
-   the page's own checks block (`CLIENT_BLOCKED`, after `sending`).
+   the page's own checks block only at the click (`CLIENT_BLOCKED`, after `sending`).
 
 ## Research log (accessed 2026-11-06)
 

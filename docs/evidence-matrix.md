@@ -9,6 +9,37 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Before the send gate, what the page itself would refuse at the final click stops the attempt; filling waits for what the answers started (D154, 2026-11-12; local only)
+
+Nothing here ran against a real page. Branch `page-own-checks`. The runs drive the runner against
+the Workday-style stand-in (single page and wizard, FA8), the second Greenhouse-style stand-in
+and the receiver's own form (`page_check`; FIXTURE ASSUMPTIONS), with the receiver's ledger as
+the oracle; or drive the checks on pages set in Chromium, where the browser's own validation is
+the oracle.
+
+| Claim | Test | Result |
+|---|---|---|
+| A value the browser would refuse stops before the send gate | `test_page_own_checks.py::test_a_value_the_browser_would_refuse_stops_before_the_send_gate` (a pattern; a custom error the page's script set) | `abandoned`, every approval retired; receiver ledger: no final POST, nothing accepted; the reason names counts only. Before D154: `unknown` (no request; quarantined) |
+| A field the page's own script refuses stops before the send gate | `test_a_field_the_pages_own_script_refuses_stops_before_the_send_gate` (`aria-invalid`; a custom error with the page's `checkValidity()` at its click) | `abandoned`; no POST to the submit address. Before D154: `rejected` after `sending` (`CLIENT_BLOCKED`) |
+| A final click that cannot be made stops before the send gate | `test_a_submit_button_the_page_keeps_disabled_stops_before_the_send_gate`, `test_a_v2_submit_button_kept_disabled_stops_before_the_send_gate`, `test_a_second_submit_button_stops_before_the_send_gate` (the receiver's own form) | `abandoned`; nothing sent. Before D154: `unknown`, or an internal error after the gate |
+| A form's other buttons are never taken for its submit button | `test_a_forms_other_buttons_are_never_taken_for_its_submit_button` (the receiver's own form with a "Save for later" button) | `confirmed`, one acceptance, one final POST |
+| A page that keeps Submit disabled until an unlisted click (R11.8, the v1 Greenhouse stand-in) stops after the wait | `test_greenhouse_adapter.py::test_a_submit_button_waiting_for_an_unlisted_click_stops_before_the_final_click` | `abandoned` before the send gate with D154's reason, nothing clicked, one upload in the ledger (before D154: the adapter's own "still disabled" stop, at once) |
+| A submit button enabled a moment after the last answer is waited for, before the readback | `test_a_submit_button_enabled_a_second_after_the_last_answer_is_waited_for`, `test_a_v2_submit_button_enabled_a_second_later_is_waited_for`; `test_what_the_page_changes_while_it_keeps_submit_disabled_is_read_back` | `confirmed`, one acceptance; the field the page rewrote meanwhile stops the readback (`abandoned`, nothing sent; before D154 and in its first version: `confirmed`, the rewritten value sent) |
+| A stale mark on the field that has focus is not counted | `test_a_mark_the_page_would_clear_when_focus_leaves_the_field_is_not_counted` (the page checks a field when focus leaves it, and refuses its own submission while one is marked) | `confirmed`, one acceptance (D154's first version: `abandoned`, the safety review's blocker) |
+| A question the page shows after a request is waited for | `test_a_follow_up_shown_after_a_request_pauses_for_your_answer`; `test_a_follow_up_shown_after_a_request_stops_a_wizard_before_its_pages_next`; `test_an_answered_follow_up_shown_after_a_request_is_entered` (single page, wizard) | unanswered: the conditional-required pause (D135), nothing sent; on a wizard, stopped before page 4's Next (draft pages 1 to 3 only); answered: entered and `confirmed`, the answer in the acceptance. Before D154: `rejected` after the application (or page 4) was sent |
+| The browser validates every page of a wizard at the final click | `test_a_wizard_whose_review_page_refuses_an_earlier_page_stops_before_the_send_gate` | `abandoned` on the review page; draft pages 1 to 4, no final POST. Before D154: `unknown` |
+| A page still loading after the answers stops before its checks | `test_a_page_still_loading_after_the_answers_stops_before_its_checks` (single page; wizard page 1) | `abandoned`, every approval retired, nothing sent (on the wizard, no draft). Before D154: `confirmed` (never waited) |
+| A page unreadable while the worker is being stopped ends as the stop | `test_a_page_unreadable_while_the_worker_is_being_stopped_ends_as_the_stop` | the stop's outcome ("the worker was asked to stop"); otherwise the refusal, every approval retired |
+| A rehearsal of a page that would refuse the click is never recorded | `test_a_rehearsal_of_a_page_that_would_refuse_the_click_is_never_recorded` | `abandoned`, no rehearsal record. Before D154: `rehearsed` |
+| What the page never reads does not stop it | `test_a_hidden_field_a_novalidate_page_never_reads_is_not_counted`; `test_security_code_boxes_shown_before_the_click_are_left_for_the_checkpoint` | `confirmed`; the security code entered only from the checkpoint, then `confirmed` |
+| What the read counts | `test_page_refusal_read.py` (68 cases on pages set in Chromium) | where the browser validates: every invalid control, hidden ones too, by kind (typing-only states included; a form-associated element; controls tied by `form=`); disabled, read-only, hidden-type and template controls not; where the script decides (`novalidate`, `formnovalidate`, a non-submit button): only the page's own marks on shown elements, never the markup's constraints; marks on the focused field and its wrapper never; `aria-invalid` only as "true"; marks hidden, invisible, transparent, inert or aria-hidden never; radios and nested marks once; a checkpoint's boxes and their wrapper never, as the Greenhouse DOM adapter's click takes them; the button: none, two, in no form, disabled, hidden, `aria-disabled`, enabled later, a checkpoint shown while waiting, a page closed |
+| The checks act on nothing | `test_the_checks_fire_no_event_run_no_check_and_change_nothing`; `test_the_read_returns_counts_only` | no `invalid`, focus, input, change or scroll event, no `checkValidity()`/`reportValidity()` call, the form's markup and focus unchanged; four keys, numbers and a boolean |
+| The adapters' paths as before | the 84 files the change touches: 14 run on their own, 70 within the regression set | pass: the 14 on their own (368 passed in 14.2 min on 5db60c8), the other 70 within the regression set |
+| Each part is needed | 49 changes, one at a time, the named tests run, the file restored (`docs/implementation-status.md`) | each of the 49 fails a test, the one named for its part (one only once 5db60c8 gave the receiver's own form a button that does not submit it) |
+
+In D148's section, "a required one shown after that check would make the page's own checks refuse
+the final click, which ends as an unknown outcome" describes the runner before D154.
+
 ## A list is judged by the page's record of changes to a list, and the option is chosen from one read (D153, 2026-11-12; local only)
 
 Nothing here ran against a real page. Branch `whole-page-check`. The runs drive the adapter

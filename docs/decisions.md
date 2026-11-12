@@ -7072,3 +7072,158 @@ audit-inventory and export-completeness guards are updated and pass.
     reset of the style ticker were not pinned by a test; about fifteen statements were stale.
     Each fixed with a test, or recorded above.
 - **Evidence (local only):** `tests/test_list_record.py` (18) and `tests/test_dropdown_choice.py` (5), new, and new cases in `test_dropdown_strategies.py`, `test_section_list_settle.py`, `test_survey_settle_rule.py` and `test_greenhouse_controls.py`: through the runner against the second Greenhouse-style stand-in, with the receiver's ledger as the oracle, or on its page in Chromium. Against the code before D153, 31 of the 45 new and changed cases fail; against its first version, 17. The 38 suites the change touches; 21 removal runs, each failing the test named for its part; the regression set of 79 files. Results by commit in `docs/implementation-status.md`, claims in `docs/evidence-matrix.md`.
+
+## D154 — Before the send gate, what the page itself would refuse at the final click stops the attempt with nothing sent; filling waits for what the answers started (2026-11-12)
+
+- **Context:** rank 21 of the automation loop (`docs/automation-loop.md`), D148's proposal
+  ("checking the form's own validity before the send gate would turn that into a stop with
+  nothing sent"). Local stand-ins only; nothing real was run. No migration, no new state, reason
+  code, gate, permission or retry; no package change (`SCHEMA_VERSION` unchanged).
+- **Problem:**
+  - A final click the page's own checks refuse was found only after the send gate, where nothing
+    is ever retried:
+    - the browser refuses a native submission of a form it finds invalid (a required field
+      empty, a value its type, pattern, length, range or step refuses, a custom error the page's
+      script set): no request is made, the navigation is waited for, and the attempt ends
+      `unknown` (quarantined, `submitted_unconfirmed`) although nothing was sent;
+    - a page whose script checks its own form refuses the click and shows what is wrong: on the
+      Greenhouse DOM adapter that is `CLIENT_BLOCKED`, a rejection after `sending` (D116; what
+      to do then is the owner's open decision, rank 4's second half);
+    - a submit button the page keeps disabled or hidden, or that cannot be identified, ended
+      the same way: `unknown` after the gate, or an internal error.
+  - A rehearsal of such a page was recorded as passing: it stops before the gate, so it never
+    met the refusal, and the first real submission it allowed ends `unknown` or `rejected`.
+  - Filling did not wait for the page's reaction to the answers (D148's limit): a question a page
+    shows only after a request was missed by the checks after filling, and on the stand-ins the
+    application was sent and refused by the employer (`rejected`), also when you had answered
+    it.
+- **Decided:**
+  - **The page's reaction to the answers is waited for.** After a single page is filled, and
+    after each wizard page is filled, the runner waits as when the form opened (`_settle`: the
+    requests the page made while the answers were entered, tracked from before filling,
+    finished and none started for 100 ms; at most 8 s, `SETTLE_ENTRY_MS`). A Workday-style page
+    waits the same way before its follow-up questions are entered (D148), so one the page shows
+    after a request is entered when you answered it. A page still loading 8 s after its answers
+    ends the attempt there (`abandoned`, nothing sent; on a wizard, that page's Next never
+    clicked). The wait honours no stop request itself; the next step does (D150).
+  - **Then the submit button** (`adapter.final_ready`), before the readback and the check after
+    filling: exactly one, in a form (the control `submit` clicks, `final_button`, one locator per
+    adapter for both), shown and enabled, or so within 10 s (`FINAL_READY_MS`, as long as the
+    Greenhouse DOM adapter's click waited for it), else "the page does not let the final click be
+    made". Not required while the page asks for a checkpoint first (D116: the security code's
+    boxes shown before the click, Submit disabled until they are full), looked for again at each
+    step. Waiting here, before the readback, means what the page changes while it keeps the
+    button disabled is read back like any other change.
+  - **Right before the send gate, one read of what the page itself would refuse at the final
+    click** (`adapter.page_would_refuse`, `_REFUSAL_JS`), after the check after filling and
+    before the recheck evidence, the rehearsal stop and the send gate, on a single page and on a
+    wizard's review page. It acts on nothing: each control's `willValidate` and `validity`,
+    `:invalid` and `aria-invalid` are read; never `checkValidity()` or `reportValidity()`, which
+    fire `invalid` events the page may act on; nothing is changed or focused. Counts only. It
+    reads the final button's own form (`button.form`):
+    - **when the click is the browser's own validated submission** (a submit button of the form,
+      no `novalidate`, no `formnovalidate`), every control the browser validates counts, shown
+      or not, as the browser refuses the click for any of them, by kind: fields it requires left
+      empty; values the markup does not accept (type, pattern, length, range, step, bad input);
+      otherwise marked (a custom error the page's script set, or a form-associated element's own
+      invalid state);
+    - **when the page's script decides** (`novalidate`, `formnovalidate`, or a final control that
+      is not a submit button), only the page's own marks count (a custom error, or
+      `aria-invalid="true"`), on elements shown (not hidden, invisible, transparent, inert or
+      `aria-hidden`); never the markup's constraints, which such a page may not apply (a keypad
+      hint written as a pattern, a URL its script takes without a scheme);
+    - **a mark on the control that has focus**, or on an element holding it or held by it, never
+      counts: a page that checks a field when focus leaves it checks the last one filled only at
+      the click (typing leaves focus there), so its mark may be stale. States read from the
+      current value (required and empty, a value not accepted) always count;
+    - `aria-invalid` counts only as "true", on a shown element of the form; a group of radios,
+      and a marked element with a counted control inside or around it, count once;
+    - the security code's boxes shown before the click, and any element holding one or held by
+      one, never count (filled only at your checkpoint; exactly the boxes the click takes for it).
+  - **Any finding stops the attempt with nothing sent**: `abandoned`, every live approval retired
+    with it (`stopped_after_entry`, D132), never a pause, never a retry. A page that cannot be
+    read stops it too (fail closed); while the worker is being stopped (its browser closed with
+    it) that is the stop's, ended as the stop is (D150). The reason names counts only ("the
+    page's own checks would refuse the final click (1 field(s) it requires left empty)"), never
+    a field's key, label or value.
+  - **A rehearsal of a page that would refuse the click is never recorded**: the read comes
+    before the recheck evidence and the rehearsal stop, so such a rehearsal ends `abandoned`. The
+    recheck evidence keeps its value (`{"form": "matched"}`) and now also means the page's own
+    checks were read and found nothing.
+- **What an approved run now does differently** (no adapter version change, as D145 and D153;
+  approvals stay valid):
+  - a page whose own checks would refuse the final click, as far as they show before it, stops
+    before the send gate with nothing sent, instead of ending `unknown` or `rejected` after it;
+    the application can be reviewed and approved again (on a wizard, D142 still ends it for
+    good);
+  - every single page and wizard page waits at least 100 ms after its answers, longer while the
+    page's own requests are in flight; a page still loading 8 s after them stops there;
+  - a submit button still disabled after the answers is waited for up to 10 s before the
+    readback;
+  - a follow-up a Workday-style page shows after a request is entered when you answered it,
+    and pauses for your answer when you did not (a wizard stops before that page's Next);
+  - rehearsals that passed before D154 keep counting (E6): a first real submission can now stop
+    before the send gate where its rehearsal passed.
+- **Limits:**
+  - Only what the page states before the click is read. A page whose script refuses the click by
+    rules it shows nowhere (D116's `CLIENT_BLOCKED` stand-in), or checks the last field only when
+    focus leaves it at the click, is still refused after the gate, as before.
+  - A page that cancels its submit button's click and sends by script, on a form the browser
+    would find invalid, is stopped although it would have sent (the browser's own validation is
+    what the read follows; no such page is known). A stale `aria-invalid` the page clears only
+    at the click on a field without focus stops the attempt too (fail closed).
+  - Where the page's script decides, a hidden control it checks anyway (`form.checkValidity()`),
+    a field clipped out of view, or a required field marked only in the markup is not counted:
+    such refusals are still met at the click (on the Greenhouse DOM adapter, a required field
+    with no approved answer already stops the check after filling, D135).
+  - Not read: controls inside a shadow root, validation a page runs only on the click, and an
+    overlay over the button.
+  - The wait after filling sees only requests the page makes (scripts, style sheets, fetch, XHR,
+    documents), started within 100 ms of each other: a reaction on a timer, after a longer
+    debounce, after a WebSocket message, or to the last text field's `change` (which fires only
+    at the click) is not waited for. Before each wizard page's Next, the page's own marks are not
+    read; a Next the page refuses ends as before (D142).
+  - A same-origin request an answer starts that stays open more than 8 s (a long-poll) stops the
+    attempt after the answers (fail closed).
+  - Never seen on a real page.
+- **Superseded, not edited:** D148's limit that a required question shown after the check after
+  filling "would make the page's own checks refuse the final click, which ends as an unknown
+  outcome ... (proposed, not built)" and that "filling does not wait for the page to settle";
+  D132's "This covers that check only" (D154's stops after filling retire every approval too);
+  D135's and D116's "a final click the page's own checks block ... ends ... as rejected", now
+  only where the page shows its refusal only at the click (rank 4's second half is unchanged
+  for those); D62's (S5) stop for a v1 Greenhouse submit button still disabled after filling,
+  now the wait's (`final_ready`, D154's reason, after up to 10 s; the adapter's own check is
+  reached only if the page disables the button again after the wait).
+- **The stand-ins** (FIXTURE ASSUMPTIONS): `cfg page_check` and `page_check_delay_ms`, cleared by
+  the receiver's reset; `GET /_fx/wait` (answered that much later) on any stand-in's origin. On the
+  Workday-style page (FA8, `fixtures/ats_receiver/workday_like.py`, validated natively): `pattern`,
+  `custom_error`, `button_disabled`, `button_late_enable`, `late_rewrite`, `focus_validation`,
+  `late_invalid` (a wizard's review page refuses page 1's phone), `slow_after_entry` and
+  `late_follow_up` (FA6's follow-up shown only once a request is answered). On the v2
+  Greenhouse-style page (`greenhouse_v2.py`, `novalidate`, its script decides): `aria_invalid`,
+  `check_validity`, `hidden_invalid`, `two_submit`, `button_disabled`, `button_late_enable`,
+  `code_boxes_required` (D116's boxes `required`). On the receiver's own form: `two_submit`, and
+  `other_button` (a button that does not submit the form).
+- **Reviewed independently twice** (on cc3c49e, the first version):
+  - The safety review found one blocker: a "not valid" mark on the control that still had focus
+    was counted, though a page that checks a field when focus leaves it checks that one only at
+    the click; NoEfforts creates that condition itself on Greenhouse (it opens and closes empty
+    dropdowns before disclosure, and a choice keeps focus), so every such application whose last
+    answer is a dropdown would have stopped. Fixed: a mark on the focused control and what holds
+    it or it holds never counts; value-based states still do. It also found: the markup's
+    constraints counted where the page's script decides (a keypad pattern, a URL without its
+    scheme, an "at least one" checkbox group); the button waited for after the readback, so a
+    field the page changed while it kept Submit disabled was sent unread; a 2 s wait shorter than
+    the click's own; the boxes' wrapper counted, and boxes appearing during the wait; junk
+    `aria-invalid` values counted; `final_button` outside the read's guard; test gaps. Each fixed
+    with a test, or recorded above.
+  - The second review found no blocker, and: boxes appearing during the wait ended in a false
+    stop; `leave_out` and the click took different boxes; the markup's constraints counted where
+    the script decides; the two-submit case passed without D154 (the check after filling stops it
+    first on the Greenhouse DOM adapter; now tested on the receiver's own form); rules no test
+    pinned; the Workday follow-ups decided before the wait; a stop during the read retired every
+    approval; wrong wording for the new stops; no records; an invalid escape in the stand-in;
+    form-associated elements missed; a test timing that could flake. Each fixed with a test, or
+    recorded above.
+- **Evidence (local only):** `tests/test_page_refusal_read.py` (68: the checks on pages set in Chromium, the browser's own validation the oracle) and `tests/test_page_own_checks.py` (24: through the runner against the Workday-style stand-in, single page and wizard, the second Greenhouse-style stand-in and the receiver's own form, with the receiver's ledger as the oracle), new. Against the code before D154, 18 of the 23 runner cases of 2e95220 fail; against its first version, 28 of its 91 new cases, among them the safety review's blocker; the case 5db60c8 adds passes against both, as it pins what is never stopped. The 84 suites the change touches; 49 removal runs, each failing the test named for its part (one only once 5db60c8 gave the stand-in's form a second button); the regression set of 81 files, which found two tests to update (e687fff: a name built at run time where a page runs; R11.8's wording after the button wait). Results by commit in `docs/implementation-status.md`, claims in `docs/evidence-matrix.md`.
