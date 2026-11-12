@@ -404,13 +404,17 @@ _LIST_JS = """(id) => {
           options: Array.from(lb.querySelectorAll('[role=option]'))
             .map((o) => [(o.innerText || '').trim(), o.getAttribute('data-value'), vis(o)])};
 }"""
-# The i-th option of that list (shown or not), as _LIST_JS counted it, or null.
-_OPTION_JS = """([id, i]) => {
+# Just before the click, in one read: the list as _LIST_JS reads it, and its i-th option (shown or
+# not) as the element to click. Nothing can change between the two.
+_CHOICE_JS = (
+    "([id, i]) => { const got = (" + _LIST_JS + ")(id);\n"
+    """  if (!got || !got.named) return {options: null, el: null};
   const el = document.getElementById(id);
-  const ref = el ? (el.getAttribute('aria-controls') || el.getAttribute('aria-owns') || '') : '';
-  const lb = /^[A-Za-z][A-Za-z0-9_\\-:.]*$/.test(ref) ? document.getElementById(ref) : null;
-  return lb ? (Array.from(lb.querySelectorAll('[role=option]'))[i] || null) : null;
-}"""
+  const lb = document.getElementById(el.getAttribute('aria-controls')
+                                     || el.getAttribute('aria-owns'));
+  return {options: got.options,
+          el: Array.from(lb.querySelectorAll('[role=option]'))[i] || null}; }"""
+)
 
 
 def _settled_list(page, selector: str, cid: str, pre: dict, data: list, done: set,
@@ -481,8 +485,8 @@ def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
     D151: the list is read through the dropdown's settle rule (``_settled_list``), never once on
     opening. The probe's observer (D145) is set before the click and taken off after, as are the
     request listeners. Exactly one option of the list, shown or not, may read the approved text,
-    and it must be shown. Just before the click the whole list is read again and must be the one
-    that settled, and the option at its place must still read the approved text and id."""
+    and it must be shown. Just before the click the whole list is read again, with the option to
+    click, in one read: it must be the list that settled."""
     loc = page.locator(selector).first
     loc.scroll_into_view_if_needed(timeout=timeout_ms)
     cid = loc.get_attribute("id") or ""
@@ -530,11 +534,9 @@ def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
         if want_id is not None and exposed is not None and exposed != want_id:
             _close_list(page, loc)
             raise SectionFillError(f"{selector}: the approved option records another id")
-        again = page.evaluate(_LIST_JS, cid)
-        option = page.evaluate_handle(_OPTION_JS, [cid, hits[0]]).as_element()
-        if (again is None or again["options"] != options or option is None
-                or (option.inner_text() or "").strip() != want_text
-                or option.get_attribute("data-value") != exposed):  # fmt: skip
+        choice = page.evaluate_handle(_CHOICE_JS, [cid, hits[0]])
+        option = choice.get_property("el").as_element()
+        if choice.get_property("options").json_value() != options or option is None:
             _close_list(page, loc)
             raise SectionFillError(f"{selector}: its list changed before the choice")
         option.click(timeout=timeout_ms)

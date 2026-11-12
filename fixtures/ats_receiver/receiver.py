@@ -173,7 +173,7 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                     "dd": None, "delay_ms": 0, "locale_delay_ms": 0, "loc": None, "pc": None,
                     "locale_origin": None, "locale_path": None, "locale_via": None,
                     "sections": None, "section_widget": None, "section_delay_ms": 0,
-                    "section_tick_ms": 0,
+                    "section_tick_ms": 0, "section_beacon_via": None,
                     # D142: the Workday-style wizard variant, so none leaks into the next test
                     "wizard": None})
         return {"ok": True}

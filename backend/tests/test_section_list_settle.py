@@ -12,6 +12,8 @@ hidden_duplicate, inert; cfg section_delay_ms, section_tick_ms) are FIXTURE ASSU
 Greenhouse section page has been observed. The receiver's ledger is the oracle for what was sent.
 Synthetic data only."""
 
+import time
+
 import pytest
 
 from app.core.config import get_settings
@@ -146,15 +148,23 @@ def test_a_page_busy_elsewhere_does_not_hold_up_a_section_list(
 # ------------------------------------------------- what the page sends, and what it hides
 
 
-@pytest.mark.parametrize("widget", [
-    "open_beacon",  # opening a list posts to the page's own server
-    "late_fetch_404",  # its options wait for a GET that is not answered with a 2xx
+@pytest.mark.parametrize("widget,cfg", [
+    ("open_beacon", {}),  # opening a list posts to the page's own server
+    ("open_beacon", {"section_beacon_via": "sendbeacon"}),  # ... with navigator.sendBeacon
+    ("late_fetch_404", {}),  # its options wait for a GET that is not answered with a 2xx
 ])  # fmt: skip
-def test_a_section_list_whose_opening_sends_or_fails_to_load_is_refused(api, receiver, widget):
+def test_a_section_list_whose_opening_sends_or_fails_to_load_is_refused(
+    api, receiver, widget, cfg
+):
     """As a dropdown's (D104, D108): on a stand-in only a same-origin GET answered with a 2xx may
     bring a list's options; anything that sends, or fails, refuses the list."""
-    aid, result = run(api, receiver, widget)
+    aid, result = run(api, receiver, widget, **cfg)
     refused(receiver, aid, result, NETWORK)
+
+
+def test_an_approved_option_the_list_does_not_show_is_never_clicked(api, receiver):
+    aid, result = run(api, receiver, "hidden_approved")
+    refused(receiver, aid, result, "the approved option is not shown")
 
 
 def test_a_hidden_copy_of_the_approved_option_refuses_the_list(api, receiver):
@@ -239,6 +249,18 @@ def test_a_control_that_never_opens_stops_the_wait_after_a_real_pages_window(rec
             _school(page, late=True)
         assert reads.count(dropdowns.SAMPLE_MS) == dropdowns.SETTLE_MS // dropdowns.SAMPLE_MS
         _nothing_chosen(page)
+
+
+def test_a_control_that_leaves_the_page_while_its_list_is_read_stops_at_once(receiver):
+    """The section stops at the next read, and closing the list takes the dropdown's action time
+    (2 s), never the page's own wait (8 s here, the navigation timeout in the runner)."""
+    receiver.config(mode="gh2_sections", sections="education", section_widget="vanishing")
+    with _session() as (page, _log):
+        _open_section_page(page)
+        started = time.monotonic()
+        with pytest.raises(gsections.SectionFillError, match="is no longer on the page"):
+            _school(page, late=True)
+        assert time.monotonic() - started < 6
 
 
 # Changed after it settled, just before the click: the list in the other order, the approved

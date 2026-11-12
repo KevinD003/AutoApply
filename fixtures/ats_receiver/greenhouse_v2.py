@@ -202,9 +202,11 @@ _SECTION_SCRIPT = """
   // replaced or keep changing once opened (section_widget late_list, late_react, late_fetch,
   // late_fetch_404, changing_list, slow_changing_list, css_swapping_list; cfg section_delay_ms),
   // one that posts when opened (open_beacon), one holding a hidden copy of an option
-  // (hidden_duplicate), a control that never opens (inert), and a page busy elsewhere (cfg
-  // section_tick_ms).
-  const DELAY = %DELAY%, TICK = %TICK%;
+  // (hidden_duplicate), one that hides the first school (hidden_approved), a control that never
+  // opens (inert) or leaves the page once opened (vanishing), and a page busy elsewhere (cfg
+  // section_tick_ms). open_beacon posts by fetch, or by navigator.sendBeacon with cfg
+  // section_beacon_via "sendbeacon".
+  const DELAY = %DELAY%, TICK = %TICK%, BEACON_VIA = %BEACON_VIA%;
   if (WIDGET === 'css_swapping_list') {  // a style sheet hides the 2nd, then the 3rd, option of
     // every list, in turn every 300 ms: no list itself changes, and the shown count stays
     const s = document.createElement('style');
@@ -228,6 +230,9 @@ _SECTION_SCRIPT = """
     if (lb.dataset.fxTimed) return;
     lb.dataset.fxTimed = '1';
     const opts = Array.from(lb.children);
+    if (WIDGET === 'hidden_approved' && lb.id === 'school--0-listbox') {
+      opts[0].style.display = 'none';  // the first school, not shown
+    }
     if (WIDGET === 'hidden_duplicate' && lb.id === 'school--0-listbox') {  // a copy of the
       // first school, not shown, with an id of its own
       const d = document.createElement('li');
@@ -304,8 +309,10 @@ _SECTION_SCRIPT = """
         if (WIDGET === 'react_select') cb.setAttribute('aria-controls', lb.id);
         timed(lb);
         if (WIDGET === 'open_beacon') {  // D151: each opening also posts to the page's own server
-          fetch(BASE + '/section-opened', {method: 'POST', body: 'opened'}).catch(() => {});
+          if (BEACON_VIA === 'sendbeacon') navigator.sendBeacon(BASE + '/section-opened', 'opened');
+          else fetch(BASE + '/section-opened', {method: 'POST', body: 'opened'}).catch(() => {});
         }
+        if (WIDGET === 'vanishing') setTimeout(() => cb.remove(), 300);  // D151
       };
       if (WIDGET === 'inert') continue;  // D151: nothing opens it
       cb.addEventListener('click', open);
@@ -1575,7 +1582,9 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
             + ("<script>" + _SECTION_SCRIPT.replace(
                 "%WIDGET%", json.dumps(cfg.get("section_widget") or "plain"))
                .replace("%DELAY%", str(int(cfg.get("section_delay_ms") or 0)))
-               .replace("%TICK%", str(int(cfg.get("section_tick_ms") or 0))) + "</script>"
+               .replace("%TICK%", str(int(cfg.get("section_tick_ms") or 0)))
+               .replace("%BEACON_VIA%", json.dumps(cfg.get("section_beacon_via") or "fetch"))
+               + "</script>"
                if mode == "gh2_sections" else ""))
     return HTMLResponse(
         "<!doctype html><html><head><meta charset='utf-8'>"
