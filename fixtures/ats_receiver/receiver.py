@@ -400,6 +400,10 @@ def page_form(slug, token, cfg):
                      " const b = document.createElement('button'); b.type = 'submit';"
                      " b.id = 'fx-submit-2'; b.textContent = 'Submit';"
                      " document.getElementById('application').append(b); });\n")
+    # D154: a button of the form that is not its submit button (the final click is still one)
+    other_button = ""
+    if cfg.get("page_check") == "other_button":
+        other_button = '<button type="button" id="fx-save-later">Save for later</button>\n'
     # C8 (D61): the self-identification question required, as some boards make it.
     eeo_required = " required" if cfg["mode"] == "required_eeo" else ""
     hostile = ""
@@ -469,7 +473,7 @@ def page_form(slug, token, cfg):
 <section data-step="Review">
 <label><input type="checkbox" name="privacy_ack" required> I have read and agree to the privacy notice.</label>
 </section>
-<button type="submit" id="submit-application">Submit application</button>
+{other_button}<button type="submit" id="submit-application">Submit application</button>
 </form>
 {hostile}
 <script>

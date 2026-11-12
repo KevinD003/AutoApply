@@ -252,6 +252,17 @@ def test_a_second_submit_button_stops_before_the_send_gate(api, receiver):
     assert stopped_after_entry(aid, app_id)
 
 
+def test_a_forms_other_buttons_are_never_taken_for_its_submit_button(api, receiver):
+    """The receiver's own form with a button that does not submit it ("Save for later"): the
+    final click is still identified, and made once."""
+    receiver.config(page_check="other_button")
+    app_id = prepared_application(api, receiver)
+    out, _aid = run(api, app_id)
+    assert out == "confirmed"
+    led = receiver.ledger()
+    assert led["accepted"] == 1 and posts(led, "/submit") == 1
+
+
 # ---------------------------------------------------------------------------- Greenhouse v2
 
 
