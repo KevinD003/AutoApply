@@ -556,6 +556,8 @@ const SECTION_FIELD = {
   current: "Current role",
   start_date: "Start",
   end_date: "End",
+  location: "Location",
+  description: "Role description",
 };
 const ROW_CHANGE = { added: "added", removed: "removed", changed: "changed" };
 const sectionShown = (x) => (x === null ? "—" : x.status === "omitted" ? "not sent" : (x.display ?? "—"));
@@ -582,7 +584,9 @@ function SectionsCard({ sections }) {
                     {Object.entries(r.fields).map(([name, f]) => (
                       <div key={name} className="flex flex-wrap gap-x-3">
                         <dt className="min-w-24 text-ink-muted">{SECTION_FIELD[name] ?? name}</dt>
-                        <dd>{f.status === "omitted" ? (name === "end_date" ? "Not sent (current role)" : "Not sent") : f.display}</dd>
+                        <dd className={name === "description" ? "whitespace-pre-wrap" : undefined}>
+                          {f.status === "omitted" ? (name === "end_date" ? "Not sent (current role)" : "Not sent") : f.display}
+                        </dd>
                       </div>
                     ))}
                   </dl>

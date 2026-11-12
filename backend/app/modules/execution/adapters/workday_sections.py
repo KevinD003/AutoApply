@@ -11,8 +11,10 @@ the section's one button, "Add" (then "Add Another"), found by its text as captu
   * Job Title and Company are typed exactly as approved (one that holds a line break, which a
     text box cannot, is refused before anything is entered); From and To as MM/YYYY from the
     frozen month and year; "I currently work here" ticked or not as approved. A current role's
-    To is never entered and must stay empty. Location and Role Description are never entered
-    and must stay empty.
+    To is never entered and must stay empty. D155: Location and Role Description are entered
+    from your record when the section names them (`parts`, the page's own entry asks them) and
+    the record holds them: Location typed whole like Job Title, Role Description into its text
+    area with its line breaks; otherwise they are never entered and must stay empty.
   * An entry is added only when its controls are not on the page yet, by one click of the
     section's button; one that does not appear stops the attempt.
   * Each control is reported as entered as soon as the page was given its value (D137), then
@@ -51,7 +53,13 @@ _FIELDS = (
     ("current", "checkbox", "current"),
     ("end_date", "month_year", "to"),
 )
-_NEVER_FILLED = ("location", "description")  # never entered; must stay empty
+# D155: the parts an entry may ask beyond those, entered only when the frozen section names them
+# (`parts`) and the row holds a value; otherwise they must stay empty. "lines": a text area, which
+# keeps line breaks.
+_PART_FIELDS = (
+    ("location", "text", "location"),
+    ("description", "lines", "description"),
+)
 _ADD = re.compile(r"\s*add(?:\s+another)?\s*", re.IGNORECASE)  # read whole (fullmatch)
 _ENTRY_NAME = re.compile(r"^work\[(\d+)\]\.")
 # Every control in the section that a click could act on (capture allows exactly one: its Add).
@@ -64,11 +72,11 @@ def _control(root: str, i: int, part: str) -> str:
 
 
 def _op(i: int, field: str, kind: str, selector: str, fr) -> FillOp:
-    if kind == "text":
+    if kind in ("text", "lines"):
         text = fr.display
         if not isinstance(text, str) or not text.strip():
             raise Refused(f"{field}: resolved value carries no display text")
-        if "\n" in text or "\r" in text:
+        if "\r" in text or (kind == "text" and "\n" in text):
             raise Refused(f"{field}: a text box cannot hold a line break")
         return FillOp(i, field, "text", selector, text, text)
     val = fr.value if isinstance(fr.value, dict) else {}
@@ -94,11 +102,12 @@ def plan(data: object) -> SectionPlan:
     if not section.ready():
         raise Refused("the section has unresolved fields; it stays a checkpoint")
     root = section_root(data)
+    asked = set(data.get("parts") or ())  # validated with the section (section_from_content)
     rows = []
     for i, row in enumerate(section.rows):
         ops: list[FillOp] = []
-        blank = [_control(root, i, part) for part in _NEVER_FILLED]
-        for field, kind, part in _FIELDS:
+        blank = [_control(root, i, part) for field, _, part in _PART_FIELDS if field not in asked]
+        for field, kind, part in (*_FIELDS, *(f for f in _PART_FIELDS if f[0] in asked)):
             fr = row.fields.get(field)
             selector = _control(root, i, part)
             if fr is None or fr.status == "omitted":

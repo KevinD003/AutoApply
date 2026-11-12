@@ -133,7 +133,9 @@ def _hidden_in_page(html: str) -> set[str]:
 
 
 # D149: the Work Experience section (FA7). An entry's controls, by the last part of their name
-# (work[i].<part>): (tag, input type, filled by NoEfforts). One not filled is never required.
+# (work[i].<part>): (tag, input type, always entered). D155: Location and Role Description are
+# entered when your record holds them (`_OPTIONAL_PARTS`); the page may require them, and then a
+# record without one blocks approval. Any other part is always entered.
 _WORK_NAME = re.compile(r"work\[(\d+|__i__)\]\.([a-z_]+)")  # always read whole (fullmatch)
 _WORK_ANY = re.compile(r"^work\[")  # any control named as an entry's
 _WORK_CONTROLS = {
@@ -145,6 +147,7 @@ _WORK_CONTROLS = {
     "to": ("input", "text", True),
     "description": ("textarea", None, False),
 }
+_OPTIONAL_PARTS = ("description", "location")  # sorted, as SectionSpec.parts
 _ADD = re.compile(r"^add(?: another)?$", re.IGNORECASE)
 _ROOT_ID = re.compile(r"[A-Za-z][\w-]{0,99}")  # always read whole (fullmatch)
 WORK_REASON = (
@@ -198,10 +201,14 @@ def _work_control_ok(n: _Node, index: str, template: _Node | None) -> bool:
         return False
     if (n.attrs.get("value") and kind != "checkbox") or "checked" in n.attrs or n.all_text():
         return False  # a value at load is never trusted (as PREFILLED_KEY)
-    required = "required" in n.attrs or n.attrs.get("aria-required", "").lower() == "true"
     # A box left unticked for a past role must never be required (the browser would block the
-    # final click); a part NoEfforts leaves empty must never be required either.
-    return not required or (filled and m[2] != "current")
+    # final click). D155: a required Location or Role Description is entered from your record,
+    # or the package cannot be approved without it.
+    return not _required(n) or (filled and m[2] != "current") or m[2] in _OPTIONAL_PARTS
+
+
+def _required(n: _Node) -> bool:
+    return "required" in n.attrs or n.attrs.get("aria-required", "").lower() == "true"
 
 
 def _entry_ok(controls: list[_Node], index: str, template: _Node | None) -> bool:
@@ -270,12 +277,18 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
     ):
         return None, True
     page = next((a for a in root.ancestors() if "data-wizard-page" in a.attrs), None)
+    # D155: the template's Location and Role Description (each once, `_entry_ok`), and which of
+    # them the page requires.
+    asked = {_WORK_NAME.fullmatch(n.attrs["name"])[2]: n for n in entry}
+    parts = [p for p in _OPTIONAL_PARTS if p in asked]
     try:
         spec = SectionSpec(
             kind="employment",
             root=f"#{rid}",
             step=(page.attrs.get("data-step") or None) if page is not None else None,
             required=root.attrs.get("aria-required", "").lower() == "true",
+            parts=parts,
+            required_parts=[p for p in parts if _required(asked[p])],
         )
     except ValidationError:  # a page name too long to record: never an error of capture
         return None, True

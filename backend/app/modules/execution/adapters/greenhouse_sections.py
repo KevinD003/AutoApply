@@ -73,6 +73,10 @@ _SPEC = {"education": _EDUCATION_FIELDS, "employment": _EMPLOYMENT_FIELDS}
 # The only field names each section kind may carry. Anything else in frozen content is unknown and
 # is refused rather than silently dropped -- we never trust a field we did not freeze.
 _FIELD_NAMES = {kind: frozenset(f[0] for f in spec) for kind, spec in _SPEC.items()}
+# D155: what an employment entry may ask beyond those five (the Workday-style stand-in's Location
+# and Role Description). A frozen section carries them only when it names them (`parts`), and
+# Greenhouse's executor refuses any section that does: its form has no such controls.
+ENTRY_PARTS = ("description", "location")
 
 # A frozen section's DOM root is used live as a Playwright locator (the "Add another" click is
 # scoped to it), so it must be the plain "#id" selector capture emits (#education-section /
@@ -257,6 +261,13 @@ def validate_content_section(data: object) -> None:
     if not isinstance(rows, list):
         raise Refused("section rows are not a list")
     allowed = _FIELD_NAMES[kind]
+    if "parts" in data:  # D155: written only for an entry that asks them
+        parts = data["parts"]
+        if (kind != "employment" or not isinstance(parts, list) or not parts
+                or not all(isinstance(x, str) for x in parts)
+                or parts != sorted(set(parts)) or not set(parts) <= set(ENTRY_PARTS)):  # fmt: skip
+            raise Refused("section parts are malformed")
+        allowed = allowed | frozenset(parts)
     seen: set[str] = set()
     for idx, row in enumerate(rows):
         if not isinstance(row, dict):
@@ -299,7 +310,10 @@ def section_from_content(data: dict) -> SectionResult:
 
 
 def plan_content_section(data: dict) -> SectionPlan:
-    """Plan directly from a package content section (rebuild then plan)."""
+    """Plan directly from a package content section (rebuild then plan). D155: a section whose
+    entries ask more than Greenhouse's five fields (`parts`) is never planned here."""
+    if isinstance(data, dict) and "parts" in data:
+        raise Refused("the section's entries ask what this form does not have")
     return plan_section(section_from_content(data))
 
 

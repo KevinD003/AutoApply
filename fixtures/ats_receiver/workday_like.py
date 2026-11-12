@@ -80,7 +80,8 @@ tenant:
        first, FA3). A section the page requires (`aria-required`) refuses a page without an
        entry. No real Workday work-history section was observed (docs/research/workday.md: My
        Experience sections can each be hidden or required, and resume parsing fills work
-       experience).
+       experience). D155: in experience_parts_required an entry's Location and Role Description
+       are `required` too, and the page's own checks refuse an entry without them.
   FA8  (D154) a page's own checks before its final click, by cfg["page_check"], on the single
        page and the wizard alike (the form validates natively: no `novalidate`): pattern (the
        phone must be ten digits, in the markup), custom_error (the page's script refuses a phone
@@ -112,7 +113,8 @@ requires an entry), experience_parse (a resume upload adds an entry with values 
 experience_entry_at_load (one empty entry already there at load), experience_unknown_control
 (an entry also asks a required "Reason for leaving"), experience_add_broken (Add adds
 nothing), experience_add_once (Add adds the first entry only) and experience_changed_after_next
-(once page 2 is saved, the page changes its first entry's Job Title, as a script could). The
+(once page 2 is saved, the page changes its first entry's Job Title, as a script could), and
+experience_parts_required (D155: an entry's Location and Role Description are required too). The
 single page's mode wd_experience puts the section on its My Experience section.
 """
 
@@ -265,7 +267,7 @@ def _page_check(cfg: dict) -> tuple[str, str]:
 WORK_VARIANTS = ("experience", "experience_required", "experience_parse",
                  "experience_entry_at_load", "experience_unknown_control",
                  "experience_add_broken", "experience_add_once",
-                 "experience_changed_after_next")  # fmt: skip
+                 "experience_changed_after_next", "experience_parts_required")  # fmt: skip
 CHANGED_TITLE = "Changed after saving (fictional)"  # experience_changed_after_next
 _WORK_NAME = re.compile(r"work\[(\d+)\]\.[a-z_]+")
 _MONTH_YEAR = re.compile(r"(0[1-9]|1[0-2])/[0-9]{4}")
@@ -274,8 +276,10 @@ PARSED_ENTRY = {"title": "Parsed Title (fictional)", "company": "Parsed Company 
                 "from": "01/2015", "description": "Parsed from the resume (fictional)"}
 
 
-def _work_entry(i: str, n: str, extra: bool = False) -> str:
-    """FA7: one entry; `i` its index in the control names, `n` its number on the page."""
+def _work_entry(i: str, n: str, extra: bool = False, parts_required: bool = False) -> str:
+    """FA7: one entry; `i` its index in the control names, `n` its number on the page. D155:
+    `parts_required`, Location and Role Description required too."""
+    req = " required" if parts_required else ""
     reason = (f'<label for="work-{i}-reason">Reason for leaving</label><input id="work-{i}-'
               f'reason" name="work[{i}].reason_for_leaving" type="text" required>'
               if extra else "")  # fmt: skip
@@ -285,7 +289,7 @@ def _work_entry(i: str, n: str, extra: bool = False) -> str:
 <label for="work-{i}-company">Company</label>
 <input id="work-{i}-company" name="work[{i}].company" type="text" required>
 <label for="work-{i}-location">Location</label>
-<input id="work-{i}-location" name="work[{i}].location" type="text">
+<input id="work-{i}-location" name="work[{i}].location" type="text"{req}>
 <label><input name="work[{i}].current" type="checkbox" value="1" data-wd-current> I currently
  work here</label>
 <label for="work-{i}-from">From</label>
@@ -293,7 +297,7 @@ def _work_entry(i: str, n: str, extra: bool = False) -> str:
 <div data-wd-to><label for="work-{i}-to">To</label>
 <input id="work-{i}-to" name="work[{i}].to" type="text" placeholder="MM/YYYY" required></div>
 <label for="work-{i}-description">Role Description</label>
-<textarea id="work-{i}-description" name="work[{i}].description"></textarea>{reason}</div>"""
+<textarea id="work-{i}-description" name="work[{i}].description"{req}></textarea>{reason}</div>"""
 
 
 def _work_section(variant: str | None) -> tuple[str, str, str]:
@@ -303,7 +307,8 @@ def _work_section(variant: str | None) -> tuple[str, str, str]:
         return "", "", ""
     required = ' aria-required="true"' if variant == "experience_required" else ""
     at_load = _work_entry("0", "1") if variant == "experience_entry_at_load" else ""
-    entry = _work_entry("__i__", "__n__", extra=variant == "experience_unknown_control")
+    entry = _work_entry("__i__", "__n__", extra=variant == "experience_unknown_control",
+                        parts_required=variant == "experience_parts_required")
     markup = (f'<div id="work-experience" role="group" aria-labelledby="work-experience-label" '
               f'data-wd-section="work" data-wd-entry-template="work-experience-entry"{required}>'
               f'<h3 id="work-experience-label">Work Experience{" *" if required else ""}</h3>'
@@ -342,15 +347,17 @@ workAdd.addEventListener('click', () => window.addWorkEntry());"""
     return markup, template, script
 
 
-def _work_errors(fields: dict, required: bool) -> list[str]:
-    """FA7: what the page's own checks refuse in the Work Experience entries it was sent."""
+def _work_errors(fields: dict, required: bool, parts_required: bool = False) -> list[str]:
+    """FA7: what the page's own checks refuse in the Work Experience entries it was sent. D155:
+    `parts_required`, an entry's Location and Role Description too."""
     found = sorted({int(m[1]) for k in fields if (m := _WORK_NAME.fullmatch(k))})
     errors = ["Add your work experience"] if required and not found else []
     for i in found:
         def got(c: str) -> str:
             return str(fields.get(f"work[{i}].{c}", ""))
         current = got("current") == "1"
-        wanted = ("title", "company", "from") + (() if current else ("to",))
+        wanted = (("title", "company", "from") + (() if current else ("to",))
+                  + (("location", "description") if parts_required else ()))
         errors += [f"Work Experience {i + 1}: enter {c}" for c in wanted if not got(c)]
         errors += [f"Work Experience {i + 1}: write {c} as MM/YYYY" for c in ("from", "to")
                    if got(c) and not _MONTH_YEAR.fullmatch(got(c))]  # fmt: skip
@@ -826,7 +833,8 @@ def mount(app, ledger, cfg, accept) -> None:
         if not row or time.time() - row[0][0] > cfg["token_ttl_s"]:
             return JSONResponse({"error": "session expired"}, status_code=419)
         if variant in WORK_VARIANTS and page == 2:  # D149, FA7
-            errors = _work_errors(fields, variant == "experience_required")
+            errors = _work_errors(fields, variant == "experience_required",
+                                  variant == "experience_parts_required")
             if errors:
                 return JSONResponse({"errors": errors}, status_code=422)
         if variant == "step_error" and page == 2:
@@ -883,7 +891,8 @@ def mount(app, ledger, cfg, accept) -> None:
             required.append(FOLLOW_UP)  # D148, FA6
         missing = [k for k in required if not fields.get(k)]
         if mode == "wd_experience" or wizard in WORK_VARIANTS:  # D149, FA7
-            missing += _work_errors(fields, wizard == "experience_required")
+            missing += _work_errors(fields, wizard == "experience_required",
+                                    wizard == "experience_parts_required")
         if wizard:  # D142, FA4: every page before Review was saved under this form token
             saved = {d["page"] for d in drafted_pages(slug, token)}
             missing += [f"page {i}" for i in range(1, len(WIZARD_PAGES)) if i not in saved]
