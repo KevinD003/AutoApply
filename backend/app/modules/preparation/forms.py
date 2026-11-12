@@ -370,10 +370,11 @@ def _bot_check() -> "FormField":
     )
 
 
-def extract_form_schema(html: str, *, challenges: bool = False) -> FormSchema:
+def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> FormSchema:
     """`challenges`: also report a CAPTCHA or bot check on the page as a required unsupported
     field (the generic capture path). The Greenhouse paths leave it to their adapters, which
-    stop when one appears."""
+    stop when one appears. `skip` (D149): a control whose name it accepts is not read at all
+    (the Workday-style capture reads its Work Experience entries itself)."""
     if len(html) > 2_000_000:
         raise ExtractionError("HTML too large")
     b = _TreeBuilder()
@@ -424,6 +425,8 @@ def extract_form_schema(html: str, *, challenges: bool = False) -> FormSchema:
     for n in nodes:
         name = n.attrs.get("name")
         if n.tag not in ("input", "select", "textarea") or not name:
+            continue
+        if skip is not None and skip(name):
             continue
         itype = n.attrs.get("type", "text").lower() if n.tag == "input" else n.tag
         if itype in ("hidden", "submit", "button", "reset", "image"):

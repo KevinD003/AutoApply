@@ -44,9 +44,10 @@ The readback of its page, before the page's Next, requires every entry as approv
 NoEfforts leaves empty still empty, and no entry beyond the approved ones. Before anything is
 entered, a frozen section that cannot be planned, or is not on one of the wizard's pages before
 its review page (none on a single page), stops the attempt, and so does a page that already
-shows more entries than were approved (NoEfforts never removes one): stops that leave nothing
-at the employer. An entry that will not appear or a control that does not keep its value once
-entering began stops it with what was entered recorded."""
+shows more entries than were approved (NoEfforts never removes one), or entries it cannot type
+into or that already hold values: stops that leave nothing at the employer. An entry that will
+not appear or a control that does not keep its value once entering began stops it with what was
+entered recorded."""
 
 from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
@@ -112,6 +113,10 @@ SECTION_ENTRIES_BEYOND = (
     "the employer's form already shows more work history entries than you approved, and "
     "NoEfforts never removes one: add your work history to your profile and approve it, or "
     "apply on the employer's site"
+)
+SECTION_PREFILLED = (
+    "the employer's form already holds work history values NoEfforts did not enter (a previous "
+    "application or a parsed resume): apply on the employer's site"
 )
 SECTION_NOT_ENTERED = (
     "your work history could not be entered on the employer's form as approved (an entry did "
@@ -200,10 +205,13 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
                 if not self._section_usable(sec):
                     return SECTION_UNUSABLE
                 found = ws.entry_indices(page, ws.section_root(sec))
-                if found is None or not ws.entries_operable(page, ws.section_root(sec)):
+                now = ws.entries_now(page, ws.section_root(sec))
+                if found is None or now is None or now["inoperable"]:
                     return SECTION_UNUSABLE
                 if any(i >= len(sec["rows"]) for i in found):
                     return SECTION_ENTRIES_BEYOND
+                if now["holding"]:
+                    return SECTION_PREFILLED
             for a in self.content["answers"]:
                 cond = a.get("condition") or {}
                 if (a["key"] in self._shown_by_page and a["value"] is not None

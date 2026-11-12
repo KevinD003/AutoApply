@@ -9,8 +9,10 @@ wizard page's Next) and its acceptances, never NoEfforts' tables. Passing here s
 compatibility only, never how a real Workday tenant behaves (no real work-history section was
 observed). Synthetic candidate data only."""
 
+import datetime
 import hashlib
 import uuid
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -23,10 +25,12 @@ from app.modules.execution.adapters import workday_sections as ws
 from app.modules.execution.adapters.workday import (
     SECTION_ENTRIES_BEYOND,
     SECTION_NOT_ENTERED,
+    SECTION_PREFILLED,
     SECTION_UNUSABLE,
     WorkdayFixtureAdapter,
 )
 from app.modules.execution.models import ApplicationPause
+from app.modules.preparation import structured_sections as ss
 from app.modules.preparation import workday
 from app.modules.preparation.forms import (
     FieldType,
@@ -38,6 +42,7 @@ from app.modules.preparation.forms import (
     form_fingerprint,
 )
 from app.modules.preparation.package import SECTION_REQUIRED
+from app.modules.profiles.models import Approval
 from tests.execution_harness import BASE, Receiver, attempt, queue, synthetic_candidate
 from tests.test_workday_adapter import REQ, TENANT, fresh_url, workday_job
 from tests.test_workday_wizard import (
@@ -138,8 +143,10 @@ ENTRY = """<div data-wd-entry="{i}">
 <label for="c{i}">Company</label><input id="c{i}" name="work[{i}].company" type="text" required>
 <label for="l{i}">Location</label><input id="l{i}" name="work[{i}].location" type="text"{loc}>
 <label><input name="work[{i}].current" type="checkbox" value="1"{checked}> Current</label>
-<label for="f{i}">From</label><input id="f{i}" name="work[{i}].from" type="text"{value} required>
-<label for="o{i}">To</label><input id="o{i}" name="work[{i}].to" type="text" required>
+<label for="f{i}">From</label>
+<input id="f{i}" name="work[{i}].from" type="text" placeholder="MM/YYYY"{value} required>
+<label for="o{i}">To</label>
+<input id="o{i}" name="work[{i}].to" type="text" placeholder="MM/YYYY" required>
 <label for="d{i}">Role Description</label><textarea id="d{i}" name="work[{i}].description">
 </textarea>{extra}</div>"""
 
@@ -197,7 +204,7 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
         form_page(section(), inside=entry("0")),  # an entry outside the section
         form_page(section() + section()),  # two sections
         form_page(section()).replace('<template id="tpl">', '<template id="tpl2">'),
-        form_page(section(), "").replace("</form>", "") + "</form>",  # the template inside the form
+        form_page(section()).replace("</form>", "") + "</form>",  # the template inside the form
         form_page(section().replace('id="work-experience"', 'id="1bad"')),
         form_page(section(), entry(extra='<div role="textbox" aria-label="Start"></div>')),
         form_page(section(entry("0").replace('name="work[0].from"', 'name="work[0].from.month"'))),
@@ -225,6 +232,29 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
         form_page(section().replace('id="work-experience"', f'id="w{"x" * 200}"')),
         form_page(f'<div data-wizard-page="2" data-step="{"P" * 201}">{section()}</div>'),
         form_page(section(add='<button type="button">Remove</button>')),
+        form_page(section(add='<button type="button" disabled>Add</button>')),
+        form_page(section(add='<button type="button" aria-disabled="true">Add</button>')),
+        form_page(section(add='<span hidden><button type="button">Add</button></span>')),
+        form_page(f"<fieldset disabled><legend>Work</legend>{section()}</fieldset>"),
+        form_page(section(), entry().replace(
+            '<label for="t__i__">', '<fieldset disabled><legend>x</legend><label for="t__i__">'
+        ).replace('name="work[__i__].title" type="text" required>',
+                  'name="work[__i__].title" type="text" required></fieldset>')),  # fmt: skip
+        form_page(section(), entry().replace('name="work[__i__].company"',
+                                             'aria-disabled="true" name="work[__i__].company"')),
+        form_page(section(), entry().replace('name="work[__i__].title" type="text"',
+                                             'name="work[__i__].title" type="text" maxlength="5"')),
+        form_page(section(), entry().replace(
+            'name="work[__i__].company" type="text"',
+            'name="work[__i__].company" type="text" pattern="[A-Z]+"')),  # fmt: skip
+        form_page(section(), entry().replace('type="checkbox" value="1"',
+                                             'type="checkbox" value="1" required')),
+        form_page(section(), entry().replace(' placeholder="MM/YYYY" required>', " required>", 1)),
+        form_page(section().replace('data-wd-section="work"', 'data-wd-section="Work"')),
+        form_page(section() + section().replace('id="work-experience"', 'id="education"').replace(
+            'data-wd-section="work"', 'data-wd-section="education"')),  # fmt: skip
+        form_page(section(), inside='<button type="button" data-wd-add>Add</button>'),
+        form_page("", inside='<div data-wd-section="education"></div>'),
     ],
     ids=["unknown-control", "left-empty-required", "a-part-missing", "a-part-of-another-kind",
          "template-value", "entry-value", "entry-ticked", "numbering", "no-add", "two-adds",
@@ -234,7 +264,11 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
          "a-button-in-an-entry", "id-used-twice", "readonly", "disabled", "a-hidden-control",
          "section-hidden", "section-wrapper-hidden", "a-part-twice",
          "description-text-at-load", "custom-control-in-section", "left-empty-aria-required",
-         "id-with-newline", "id-too-long", "page-name-too-long", "a-button-not-add"],  # fmt: skip
+         "id-with-newline", "id-too-long", "page-name-too-long", "a-button-not-add",
+         "add-disabled", "add-aria-disabled", "add-hidden", "section-in-a-disabled-fieldset",
+         "a-control-in-a-disabled-fieldset", "a-control-aria-disabled", "maxlength", "pattern",
+         "a-required-box", "a-date-without-its-format", "marker-case", "another-kind-of-section",
+         "a-stray-add-marker", "only-another-section"],  # fmt: skip
 )
 def test_any_other_work_history_is_one_required_checkpoint(html):
     """Anything about work history that is not the structure NoEfforts enters is one required
@@ -313,7 +347,8 @@ def test_a_page_question_named_like_a_checkpoint_never_hides_it(key, html):
     assert [f.key for f in schema.fields].count(key) == 1  # a stored form's keys are unique
 
 
-@pytest.mark.parametrize("key", [workday.WORK_KEY, workday.MULTI_STEP_KEY, workday.PREFILLED_KEY])
+@pytest.mark.parametrize("key", [workday.WORK_KEY, workday.MULTI_STEP_KEY, workday.PREFILLED_KEY,
+                                 "bot_check"])
 def test_a_page_question_named_like_a_checkpoint_is_on_its_page_like_any_other(receiver, key):
     """D149 review: on a wizard, such a question is held to D142's rule that every question is
     on a page before the review page, as any other is."""
@@ -323,6 +358,17 @@ def test_a_page_question_named_like_a_checkpoint_is_on_its_page_like_any_other(r
         '<button type="submit" data-automation-id="bottom-navigation-next-button">')  # fmt: skip
     schema, fields = read(html)
     assert schema.wizard is None and workday.MULTI_STEP_KEY in fields
+
+
+def test_entries_are_never_read_as_questions_however_many_or_unlabelled():
+    """D149 review: the generic extractor never reads an entry's controls (it would refuse an
+    unlabelled one, and more than 300 controls), so the read of a filled page never fails."""
+    many = "".join(entry(str(i)) for i in range(50))  # 350 entry controls
+    schema, fields = read(form_page(section(many)))
+    assert len(schema.sections) == 1 and set(fields) == {"resume"}
+    unlabelled = entry("0").replace('<label for="l0">Location</label>', "")
+    schema, fields = read(form_page(section(unlabelled)))
+    assert len(schema.sections) == 1 and set(fields) == {"resume"}
 
 
 def test_controls_named_as_entries_without_a_section_are_a_checkpoint():
@@ -392,6 +438,20 @@ def test_a_section_the_page_requires_needs_your_approved_work_history(api, recei
     c = content(api, app_id)
     assert not c["unresolved"] and len(c["sections"][0]["rows"]) == 1
     assert approve(api, app_id).status_code == 200
+
+
+@pytest.mark.parametrize("title, company", [("Night\nNurse", "River Clinic"),
+                                            ("Night Nurse", "   ")])
+def test_a_line_break_or_a_blank_is_a_checkpoint_when_the_package_is_built(title, company):
+    """D149 review: a text box cannot hold a line break, and a blank employer is none: your
+    answer, before approval, never a stop at execution (as on Greenhouse: the same rows)."""
+    record = SimpleNamespace(id=uuid.uuid4(), version=1, approval_status=Approval.approved,
+                             employer=company, title=title, start_date=datetime.date(2015, 3, 1),
+                             end_date=datetime.date(2018, 12, 1), is_current=False)  # fmt: skip
+    result = ss.resolve_section("employment", [record])
+    assert not result.ready()
+    assert [f for _, f, _ in result.checkpoints()] == [
+        "title" if "\n" in title else "company_name"]
 
 
 def test_work_history_the_section_cannot_take_blocks_approval(api, receiver):
@@ -552,13 +612,15 @@ def test_a_section_changed_after_approval_pauses_before_anything_is_entered(api,
 def test_a_work_history_edit_retires_the_approval(api, receiver):
     """D140, unchanged: an edit to a record a package sends as an entry retires its approval at
     once; approved again, the new value is sent."""
-    app_id = experience_application(api, receiver, records=())
-    rec = employment(api, CURRENT)
-    assert all(a.invalidated_at is not None for a in approvals(app_id))
+    app_id = experience_application(api, receiver, records=(CURRENT,))
+    (rec,) = api.get("/profile/employment").json()
+    r = api.put(f"/profile/employment/{rec['id']}", json=CURRENT | {"title": "Senior Assistant"})
+    assert r.status_code == 200, r.text
+    assert api.post(f"/profile/employment/{rec['id']}/approve").status_code == 200
+    assert approvals(app_id) and all(a.invalidated_at is not None for a in approvals(app_id))
     assert approve(api, app_id).status_code == 200
     assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
-    assert work(page_2(receiver.ledger()))["work[0].title"] == "Clinic Assistant"
-    assert rec["title"] == "Clinic Assistant"
+    assert work(page_2(receiver.ledger()))["work[0].title"] == "Senior Assistant"
 
 
 def test_on_the_single_page_each_entry_is_entered_and_sent(api, receiver):
@@ -653,6 +715,7 @@ function wire(e) {{
   const box = e.querySelector('[name$=".current"]'), to = e.querySelector('[name$=".to"]');
   box.addEventListener('change', () => {{
     to.hidden = box.checked;
+    to.required = !box.checked;  // as the stand-in does (FA7)
     if (box.checked) to.value = '';
   }});
 }}
@@ -802,9 +865,11 @@ def test_a_browser_error_while_entering_is_the_section_s_stop(page):
 
 @pytest.mark.parametrize("change", [
     "document.querySelector('[data-wd-entry]').hidden = true",
+    "document.querySelector('[data-wd-entry]').outerHTML = "
+    "'<fieldset disabled>' + document.querySelector('[data-wd-entry]').outerHTML + '</fieldset>'",
     "document.querySelector('[name=\"work[0].from\"]').readOnly = true",
     "document.querySelector('[name=\"work[0].company\"]').disabled = true",
-], ids=["hidden", "readonly", "disabled"])  # fmt: skip
+], ids=["hidden", "fieldset-disabled", "readonly", "disabled"])  # fmt: skip
 def test_before_anything_is_entered_an_entry_it_cannot_type_into_stops_it(page, change):
     """D149 review: an entry already on the page that cannot be typed into, as its markup stands
     (hidden pages included), is a plain stop before anything is entered."""
@@ -832,6 +897,41 @@ def test_the_adapter_enters_a_single_page_s_section_and_reads_it_back(page):
     assert adapter.readback(page) == []
     page.evaluate("""() => document.querySelector('[name="work[0].location"]').value = 'x'""")
     assert adapter.readback(page) == ["section:employment:0:location"]
+
+
+def test_each_entry_control_is_reported_to_the_runner_as_it_is_entered(page):
+    html = section_page()
+    page.set_content(html)
+    adapter = section_adapter(html, [frozen([frozen_row()])])
+    reported = []
+    adapter.on_disclosure = reported.append
+    adapter.fill(page)
+    assert [(d["kind"], d["field"]) for d in reported] == [
+        ("section_field", f) for f in CURRENT_OPS]  # fmt: skip
+
+
+def test_before_anything_is_entered_entries_holding_values_stop_it(page):
+    """D149 review: an entry already on the page whose values a script set (no markup shows
+    them) is a plain stop before anything is entered."""
+    html = section_page(entries=entry("0"))
+    page.set_content(html)
+    page.evaluate("""() => document.querySelector('[name="work[0].title"]').value = 'x'""")
+    adapter = section_adapter(html, [frozen([frozen_row()])])
+    assert adapter.schema_matches(page) == SECTION_PREFILLED
+
+
+def test_the_readback_refuses_a_control_left_empty_that_the_page_requires(page):
+    """D149 review: the browser would block the final click on a required control left empty
+    (a current role's To, a box left unticked), whatever the page's script checks."""
+    page.set_content(section_page())
+    entries = ws.plan(frozen([frozen_row(), frozen_row("r2", current=False)]))
+    ws.apply(page, entries, ROOT)
+    page.evaluate("""() => {
+      document.querySelector('[name="work[0].to"]').required = true;
+      document.querySelector('[name="work[1].current"]').required = true;
+    }""")
+    assert sorted(ws.readback(page, entries, ROOT)) == [
+        "section:employment:0:to", "section:employment:1:current"]  # fmt: skip
 
 
 def test_before_anything_is_entered_a_section_it_cannot_enter_is_a_plain_stop(page):

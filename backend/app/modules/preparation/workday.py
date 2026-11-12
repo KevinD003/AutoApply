@@ -65,6 +65,7 @@ from app.modules.preparation.forms import (
     SectionSpec,
     WizardSpec,
     _application_form,
+    _bot_check,
     _Node,
     _TreeBuilder,
     extract_form_schema,
@@ -80,10 +81,10 @@ STEP_SELECTOR = "[data-workday-progress], [data-automation-id=pageFooterNextButt
 WIZARD_MARKERS = ("data-wizard-pages", "data-wizard-page", "data-wizard-next",
                   "data-wizard-progress")  # fmt: skip
 WIZARD_SELECTOR = ", ".join(f"[{m}]" for m in WIZARD_MARKERS)
-# The generic extractor's challenge field, which belongs to no page. The checkpoints added here
-# are appended after the wizard is checked, so a page question that happens to share one of their
-# keys is checked like any other (D149 review).
-_NO_STEP = {"bot_check"}
+# D149 review: the generic extractor's own challenge field belongs to no page; it alone is exempt
+# from the wizard's page rule, by what it is (`_bot_check()`), never by its key, so a page
+# question that happens to share a key is checked like any other. The checkpoints added here are
+# appended after the wizard is checked.
 _STEP_OF = re.compile(r"\bof\s+(\d+)\b", re.IGNORECASE)
 _TEXT_TYPES = {"text", "email", "tel", "url", "number", "date", ""}
 # D148: what hides an element in raw HTML (no script or stylesheet is run or read).
@@ -159,15 +160,21 @@ def _button_like(n: _Node) -> bool:
                 in ("button", "submit", "reset", "image")))  # fmt: skip
 
 
-def _shown_within(n: _Node, top: _Node) -> bool:
-    """Nothing between the control and `top` (the section or the template) hides it at load
-    (D148's markup signals): the executor types only into what the page shows."""
+def _usable_within(n: _Node, top: _Node | None) -> bool:
+    """Nothing between the control and `top` (the form, the section or the template) hides it at
+    load (D148's markup signals) or disables it (a disabled fieldset, `aria-disabled`): the
+    executor clicks and types only into what the page shows and accepts."""
     a = n
     while a is not None and a is not top:
-        if _hides(a.attrs):
+        if (_hides(a.attrs) or a.attrs.get("aria-disabled", "").lower() == "true"
+                or (a.tag == "fieldset" and "disabled" in a.attrs)):  # fmt: skip
             return False
         a = a.parent
     return True
+
+
+# Constraints on a typed value NoEfforts would not honour (it types the approved value whole).
+_CONSTRAINTS = ("maxlength", "minlength", "pattern")
 
 
 def _work_control_ok(n: _Node, index: str, template: _Node | None) -> bool:
@@ -178,18 +185,23 @@ def _work_control_ok(n: _Node, index: str, template: _Node | None) -> bool:
     page showed at load from one NoEfforts added; the adapter checks the entries already on the
     page before anything is entered (execution/adapters/workday_sections.py)."""
     if template is not None and ("readonly" in n.attrs or "disabled" in n.attrs
-                                 or not _shown_within(n, template)):  # fmt: skip
+                                 or any(c in n.attrs for c in _CONSTRAINTS)
+                                 or not _usable_within(n, template)):  # fmt: skip
         return False
     m = _WORK_NAME.fullmatch(n.attrs.get("name", ""))
     if not m or m[1] != index or m[2] not in _WORK_CONTROLS:
         return False
+    if m[2] in ("from", "to") and n.attrs.get("placeholder") != "MM/YYYY":
+        return False  # the page says how a date is written, and it is the way NoEfforts writes it
     tag, kind, filled = _WORK_CONTROLS[m[2]]
     if n.tag != tag or (kind and n.attrs.get("type", "text").lower() != kind):
         return False
     if (n.attrs.get("value") and kind != "checkbox") or "checked" in n.attrs or n.all_text():
         return False  # a value at load is never trusted (as PREFILLED_KEY)
     required = "required" in n.attrs or n.attrs.get("aria-required", "").lower() == "true"
-    return filled or not required
+    # A box left unticked for a past role must never be required (the browser would block the
+    # final click); a part NoEfforts leaves empty must never be required either.
+    return not required or (filled and m[2] != "current")
 
 
 def _entry_ok(controls: list[_Node], index: str, template: _Node | None) -> bool:
@@ -215,9 +227,10 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
     inside = [n for n in nodes if form is None or n is form or form in n.ancestors()]
     controls = [n for n in inside if n.tag in ("input", "select", "textarea")
                 and _WORK_ANY.match(n.attrs.get("name", ""))]  # fmt: skip
-    sections = [n for n in inside if n.attrs.get("data-wd-section") == "work"]
+    sections = [n for n in inside if "data-wd-section" in n.attrs]
+    markers = [n for n in inside if "data-wd-add" in n.attrs or "data-wd-entry-template" in n.attrs]
     if not sections:
-        return None, bool(controls)  # entries outside any section: never guessed
+        return None, bool(controls or markers)  # entries outside any section: never guessed
     root = sections[0]
     rid = root.attrs.get("id", "")
     buttons = [n for n in root.walk() if _button_like(n)]  # the section's Add, and nothing else
@@ -225,15 +238,19 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
     templates = [n for n in nodes if n.tag == "template" and tid and n.attrs.get("id") == tid]
     if (
         len(sections) != 1
+        or root.attrs["data-wd-section"] != "work"  # another kind of section: never read as one
+        or any(n is not root and root not in n.ancestors() for n in markers)
         or not _ROOT_ID.fullmatch(rid)
         or sum(1 for n in nodes if n.attrs.get("id") == rid) != 1
         or len(buttons) != 1
         or buttons[0].attrs.get("type", "submit").lower() != "button"
+        or "disabled" in buttons[0].attrs
+        or not _usable_within(buttons[0], root)
         or not _ADD.match(buttons[0].all_text())
         or len(templates) != 1
         or any(_button_like(n) for n in templates[0].walk())
         or any(root not in n.ancestors() for n in controls)
-        or not _shown_within(root, form)  # the section hidden at load (a wizard page is not)
+        or not _usable_within(root, form)  # hidden or disabled at load (a wizard page is not)
     ):
         return None, True
     entry = [n for n in templates[0].walk() if n.tag in ("input", "select", "textarea")]
@@ -449,7 +466,7 @@ def _wizard_problem(scan: _Scan, schema: FormSchema) -> str | None:
     if scan.submits != [str(n)]:
         return "submit button"
     # 6. Every question is on a page before the last.
-    if any(f.step not in names[:-1] for f in schema.fields if f.key not in _NO_STEP):
+    if any(f.step not in names[:-1] for f in schema.fields if f != _bot_check()):
         return "field outside a page"
     # 7. No other several-pages marker at the same time.
     if scan.steps > 1 or scan.next_button:
@@ -463,10 +480,11 @@ def extract_schema(html: str) -> FormSchema:
     `schema.wizard`; one that does not is the several-pages checkpoint."""
     scan = _Scan()
     scan.feed(html)
-    schema = extract_form_schema(_CASCADE.sub(_as_picker, html), challenges=True)
-    # D149: an entry's controls are the section's, never questions of their own.
+    # D149: an entry's controls are the section's, never questions of their own, and never read
+    # by the generic extractor (however many entries, labelled or not).
+    schema = extract_form_schema(_CASCADE.sub(_as_picker, html), challenges=True,
+                                 skip=_WORK_ANY.match)  # fmt: skip
     work, work_problem = _work_section(html)
-    schema.fields = [f for f in schema.fields if not _WORK_ANY.match(f.key)]
     keys = {f.key for f in schema.fields}
     hidden = _hidden_in_page(html)
     for f in schema.fields:

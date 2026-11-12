@@ -19,10 +19,12 @@ the section's one button, "Add" (then "Add Another"), found by its text as captu
     read back; one that does not hold exactly the approved value stops the attempt. A browser
     error while entering is the same stop, never an internal error.
   * Before the page's Next, every planned control must still hold what was approved, every one
-    left empty must be empty, and the page must show no entry beyond the plan (an entry a
-    parsed resume added, or an empty one): it would be sent unapproved, or refused by the
-    page's own checks. Before anything is entered, `entry_indices` lets the adapter refuse a
-    page that already shows more entries than were approved.
+    left empty must be empty and not required by the page (nor a box left unticked), and the
+    page must show no entry beyond the plan (an entry a parsed resume added, or an empty one):
+    it would be sent unapproved, or refused by the page's or the browser's own checks. Before
+    anything is entered, `entry_indices` and `entries_now` let the adapter refuse a page that
+    already shows more entries than were approved, or entries it cannot type into or that
+    already hold values.
 Nothing here maps, guesses or infers a value: it only enters what resolution established."""
 
 import re
@@ -148,6 +150,19 @@ def _holds(page, op: FillOp) -> bool:
         return False
 
 
+_REQUIRED = """(sel) => { const e = document.querySelector(sel);
+  return !!e && (e.required || e.getAttribute('aria-required') === 'true'); }"""
+
+
+def _required(page, selector: str) -> bool:
+    """The page requires this control now (a required one left empty would make the browser
+    refuse the final click, whatever the page's own script checks)."""
+    try:
+        return bool(page.evaluate(_REQUIRED, selector))
+    except PWError:
+        return True
+
+
 def _empty(page, selector: str) -> bool:
     """The control holds nothing (a box: not ticked); one the page does not have holds nothing."""
     try:
@@ -201,29 +216,38 @@ def apply(page, entries: SectionPlan, root: str, *, timeout_ms: int = 3000, on_e
 
 
 _ENTRY_NAMES = """(root) => [...document.querySelectorAll(`${root} [name]`)].map(e => e.name)"""
-# Each entry control the section has now, by its markup (hidden pages included): one hidden by
-# its own attributes or an element's between it and the section, or one that cannot be edited.
-_INOPERABLE = """(root) => {
+# The entry controls the section has now (hidden pages included): how many cannot be typed into
+# as their markup stands (hidden by their own attributes or an element's between them and the
+# section, read-only, disabled or `aria-disabled`), and how many already hold a value (one a
+# script put there is a property, which no markup shows).
+_ENTRIES_NOW = """(root) => {
   const top = document.querySelector(root);
   const hiding = /(^|;)\\s*(display\\s*:\\s*none|visibility\\s*:\\s*hidden)/i;
-  const hides = (e) => e.hidden || e.getAttribute('aria-hidden') === 'true'
-    || hiding.test(e.getAttribute('style') || '');
-  return [...top.querySelectorAll('[name^="work["]')].filter((c) => {
-    if (c.readOnly || c.disabled) return true;
-    for (let e = c; e && e !== top; e = e.parentElement) if (hides(e)) return true;
-    return false;
-  }).length;
+  const stops = (e) => e.hidden || e.getAttribute('aria-hidden') === 'true'
+    || e.getAttribute('aria-disabled') === 'true' || hiding.test(e.getAttribute('style') || '');
+  const controls = [...top.querySelectorAll('[name^="work["]')];
+  return {
+    inoperable: controls.filter((c) => {
+      if (c.readOnly || c.matches(':disabled')) return true;
+      for (let e = c; e && e !== top; e = e.parentElement) if (stops(e)) return true;
+      return false;
+    }).length,
+    holding: controls.filter((c) => (c.type === 'checkbox' ? c.checked : c.value !== '')).length,
+  };
 }"""
 
 
-def entries_operable(page, root: str) -> bool:
-    """Before anything is entered: every control of the entries already on the page can be
-    typed into as their markup stands (D148's signals, never computed style: on a wizard the
-    section's page is not shown yet)."""
+def entries_now(page, root: str) -> dict | None:
+    """Before anything is entered: of the entries already on the page, how many controls cannot
+    be typed into as their markup stands (D148's signals, never computed style: on a wizard the
+    section's page is not shown yet) and how many hold a value; None when the page does not
+    have exactly one such section."""
     try:
-        return page.locator(root).count() == 1 and page.evaluate(_INOPERABLE, root) == 0
+        if page.locator(root).count() != 1:
+            return None
+        return page.evaluate(_ENTRIES_NOW, root)
     except PWError:
-        return False
+        return None
 
 
 def entry_indices(page, root: str) -> set[int] | None:
@@ -245,10 +269,12 @@ def readback(page, entries: SectionPlan, root: str) -> list[str]:
     bad: list[str] = []
     for row in entries.rows:
         for op in row.ops:
-            if not _holds(page, op):
+            unticked_but_required = op.kind == "checkbox" and not op.value and _required(
+                page, op.selector)  # fmt: skip
+            if not _holds(page, op) or unticked_but_required:
                 bad.append(f"section:{KIND}:{row.row}:{op.field}")
         for selector in row.blank:
-            if not _empty(page, selector):
+            if not _empty(page, selector) or _required(page, selector):
                 part = selector.rsplit(".", 1)[-1].rstrip('"]')
                 bad.append(f"section:{KIND}:{row.row}:{part}")
     found = entry_indices(page, root)
