@@ -93,26 +93,37 @@ def checkpoints(aid: str) -> list[tuple[str, str | None]]:
         return [(c.status, c.code) for c in rows]
 
 
-ACTIONS = {
-    Locator: ("fill", "click", "check", "set_checked", "select_option", "set_input_files", "press"),
-    ElementHandle: ("fill", "click", "check", "select_option", "set_input_files", "press"),
-}
+# Each written out, never looked up by a name built at run time: test_forbidden_capabilities
+# (R11.4) refuses that in any file where a page runs.
+ACTIONS = (
+    (Locator, "fill", Locator.fill),
+    (Locator, "click", Locator.click),
+    (Locator, "check", Locator.check),
+    (Locator, "set_checked", Locator.set_checked),
+    (Locator, "select_option", Locator.select_option),
+    (Locator, "set_input_files", Locator.set_input_files),
+    (Locator, "press", Locator.press),
+    (ElementHandle, "fill", ElementHandle.fill),
+    (ElementHandle, "click", ElementHandle.click),
+    (ElementHandle, "check", ElementHandle.check),
+    (ElementHandle, "select_option", ElementHandle.select_option),
+    (ElementHandle, "set_input_files", ElementHandle.set_input_files),
+    (ElementHandle, "press", ElementHandle.press),
+)
 
 
 def actions_after_stop(monkeypatch) -> list[str]:
     """Every action on the page (typing, clicking, choosing, uploading) made after the stop was
     requested, by name."""
     seen: list[str] = []
-    for cls, names in ACTIONS.items():
-        for name in names:
-            original = getattr(cls, name)
+    for cls, name, original in ACTIONS:
 
-            def act(self, *a, _orig=original, _name=f"{cls.__name__}.{name}", **k):
-                if stopping.requested():
-                    seen.append(_name)
-                return _orig(self, *a, **k)
+        def act(self, *a, _orig=original, _name=f"{cls.__name__}.{name}", **k):
+            if stopping.requested():
+                seen.append(_name)
+            return _orig(self, *a, **k)
 
-            monkeypatch.setattr(cls, name, act)
+        monkeypatch.setattr(cls, name, act)
     return seen
 
 
