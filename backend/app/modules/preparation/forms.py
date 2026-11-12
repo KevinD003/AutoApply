@@ -256,8 +256,10 @@ def form_fingerprint(schema: FormSchema) -> str:
             for group in (s.schools, s.degrees, s.disciplines)
             for o in group
         ]
-        # D149: its page and requirement only when set, so a Greenhouse section's is unchanged.
-        extra = ([f"step={s.step}"] if s.step else []) + (["required"] if s.required else [])
+        # D149: its page and requirement only when set, so a Greenhouse section's is unchanged;
+        # as one JSON value, so no page name can read as another page and requirement.
+        extra = ([json.dumps({"required": s.required, "step": s.step})]
+                 if s.step or s.required else [])  # fmt: skip
         parts.append("|".join(["section", s.kind, s.root, *opts, *extra]))
     if schema.wizard:  # D142: added only for a wizard, so every other form's is unchanged
         # The pages' names in order and which question is on which page: never which page is

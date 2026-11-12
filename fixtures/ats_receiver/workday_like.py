@@ -96,8 +96,10 @@ follow_up_required_kept, follow_up_removed (D148, FA6: a follow-up question on p
 experience (D149, FA7: the Work Experience section on page 2), experience_required (the page
 requires an entry), experience_parse (a resume upload adds an entry with values of its own),
 experience_entry_at_load (one empty entry already there at load), experience_unknown_control
-(an entry also asks a required "Reason for leaving") and experience_add_broken (Add adds
-nothing). The single page's mode wd_experience puts the section on its My Experience section.
+(an entry also asks a required "Reason for leaving"), experience_add_broken (Add adds
+nothing), experience_add_once (Add adds the first entry only) and experience_changed_after_next
+(once page 2 is saved, the page changes its first entry's Job Title, as a script could). The
+single page's mode wd_experience puts the section on its My Experience section.
 """
 
 import asyncio
@@ -159,7 +161,9 @@ shift.addEventListener('change', () => {{
 # "wd_experience").
 WORK_VARIANTS = ("experience", "experience_required", "experience_parse",
                  "experience_entry_at_load", "experience_unknown_control",
-                 "experience_add_broken")  # fmt: skip
+                 "experience_add_broken", "experience_add_once",
+                 "experience_changed_after_next")  # fmt: skip
+CHANGED_TITLE = "Changed after saving (fictional)"  # experience_changed_after_next
 _WORK_NAME = re.compile(r"work\[(\d+)\]\.[a-z_]+")
 _MONTH_YEAR = re.compile(r"(0[1-9]|1[0-2])/[0-9]{4}")
 # What the resume parse puts in the entry it adds (experience_parse; fixture design).
@@ -204,7 +208,8 @@ def _work_section(variant: str | None) -> tuple[str, str, str]:
               f'<button type="button" data-wd-add>{"Add Another" if at_load else "Add"}</button>'
               "</div>")  # fmt: skip
     template = f'<template id="work-experience-entry">{entry}</template>'
-    add = "return -1;" if variant == "experience_add_broken" else ""
+    add = {"experience_add_broken": "return -1;",
+           "experience_add_once": "if (workEntries.children.length) return -1;"}.get(variant, "")
     script = f"""
 const workSection = document.getElementById('work-experience');
 const workEntries = workSection.querySelector('[data-wd-entries]');
@@ -599,6 +604,10 @@ for (const btn of form.querySelectorAll('[data-wizard-next]')) {{
       status.dataset.draftStatus = 'error';
       return;
     }}
+    for (const [k, v] of Object.entries(j.change || {{}})) {{  // D149, FA7
+      const el = form.querySelector(`[name="${{k}}"]`);
+      if (el) el.value = v;
+    }}
     if (j.stay) {{ status.dataset.draftStatus = 'saved'; return; }}
     if (j.reveal) {{
       const third = form.querySelector('section[data-wizard-page="3"]');
@@ -729,6 +738,8 @@ def mount(app, ledger, cfg, accept) -> None:
         out = {"saved": True, "draft_id": f"WD-{digest}"}
         if variant == "late_question" and page == 2:
             out["reveal"] = LATE_QUESTION
+        if variant == "experience_changed_after_next" and page == 2:
+            out["change"] = {"work[0].title": CHANGED_TITLE}  # D149, FA7
         if variant == "next_stays" and page == 2:
             out["stay"] = True  # saved, but the page does not move on (FA5)
         return out

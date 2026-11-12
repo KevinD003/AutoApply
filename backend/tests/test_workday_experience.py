@@ -12,6 +12,7 @@ observed). Synthetic candidate data only."""
 import hashlib
 import uuid
 
+import httpx
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -20,6 +21,7 @@ from app.core.db import SessionLocal
 from app.modules.execution import runner
 from app.modules.execution.adapters import workday_sections as ws
 from app.modules.execution.adapters.workday import (
+    SECTION_ENTRIES_BEYOND,
     SECTION_NOT_ENTERED,
     SECTION_UNUSABLE,
     WorkdayFixtureAdapter,
@@ -36,9 +38,18 @@ from app.modules.preparation.forms import (
     form_fingerprint,
 )
 from app.modules.preparation.package import SECTION_REQUIRED
-from tests.execution_harness import Receiver, attempt, queue, synthetic_candidate
-from tests.test_workday_adapter import fresh_url, workday_job
-from tests.test_workday_wizard import approvals, approve, draft_pages, drafts, posts, rows
+from tests.execution_harness import BASE, Receiver, attempt, queue, synthetic_candidate
+from tests.test_workday_adapter import REQ, TENANT, fresh_url, workday_job
+from tests.test_workday_wizard import (
+    WORKDAY_FP,
+    approvals,
+    approve,
+    draft_pages,
+    drafts,
+    posts,
+    rows,
+    wizard_html,
+)
 
 ROOT = "#work-experience"  # FA7, the oracle's own copy
 CURRENT = {"employer": "Example Health", "title": "Clinic Assistant", "start_date": "2019-01-01",
@@ -194,12 +205,35 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
         form_page(section(), entry().replace(
             '<label><input name="work[__i__].current" type="checkbox" value="1"> Current</label>',
             "")),  # fmt: skip
+        form_page(section(add='<button type="button">Add</button><input type="button" value="+">')),
+        form_page(section(add='<button type="button">Add</button><span role="button">x</span>')),
+        form_page(section(), entry(extra='<button type="button">Delete</button>')),
+        form_page(section(), inside='<a id="work-experience"></a>'),  # an id used twice
+        form_page(section(), entry().replace('type="text" required>', 'type="text" readonly>', 1)),
+        form_page(section(), entry().replace('type="text" required>', 'type="text" disabled>', 1)),
+        form_page(section(), entry().replace('<label for="c', '<label hidden for="c').replace(
+            'name="work[__i__].company"', 'hidden name="work[__i__].company"')),  # fmt: skip
+        form_page(section(attrs=" hidden")),
+        form_page(f'<div style="display:none">{section()}</div>'),
+        form_page(section(), entry(extra='<input name="work[__i__].title" type="text">')),
+        form_page(section(entry("0").replace("</textarea>", "Text at load</textarea>"))),
+        form_page(section(add='<button type="button">Add</button><div role="textbox"></div>')),
+        form_page(section(), entry().replace('type="text">\n<label><input name="work[__i__].c',
+                                             'type="text" aria-required="true">\n<label><input '
+                                             'name="work[__i__].c')),  # fmt: skip
+        form_page(section().replace('id="work-experience"', 'id="work-experience\n"')),
+        form_page(section().replace('id="work-experience"', f'id="w{"x" * 200}"')),
+        form_page(f'<div data-wizard-page="2" data-step="{"P" * 201}">{section()}</div>'),
     ],
     ids=["unknown-control", "left-empty-required", "a-part-missing", "a-part-of-another-kind",
          "template-value", "entry-value", "entry-ticked", "numbering", "no-add", "two-adds",
          "add-submits", "no-template", "entry-outside", "two-sections", "template-unfound",
          "template-in-form", "root-id", "custom-control", "a-part-split",
-         "template-in-section", "a-part-absent"],  # fmt: skip
+         "template-in-section", "a-part-absent", "an-input-button", "a-role-button",
+         "a-button-in-an-entry", "id-used-twice", "readonly", "disabled", "a-hidden-control",
+         "section-hidden", "section-wrapper-hidden", "a-part-twice",
+         "description-text-at-load", "custom-control-in-section", "left-empty-aria-required",
+         "id-with-newline", "id-too-long", "page-name-too-long"],  # fmt: skip
 )
 def test_any_other_work_history_is_one_required_checkpoint(html):
     """Anything about work history that is not the structure NoEfforts enters is one required
@@ -245,6 +279,41 @@ def test_the_section_s_page_and_requirement_are_part_of_the_form():
                                                          step="My Experience")])  # fmt: skip
 
 
+CHECKPOINT_COLLISIONS = [
+    (workday.WORK_KEY, form_page(section(), entry(extra='<input name="work[__i__].x" type="text">'),
+                                 inside='<label for="we">Years of work experience</label>'
+                                        '<input id="we" name="work_experience" type="text">')),
+    (workday.MULTI_STEP_KEY, form_page("", inside='<div data-workday-progress>Step 1 of 4</div>'
+                                       '<label for="ms">Steps</label>'
+                                       '<input id="ms" name="multi_step" type="text">')),
+    (workday.PREFILLED_KEY, form_page("", inside='<label for="fi">First</label>'
+                                      '<input id="fi" name="first" type="text" value="Sam">'
+                                      '<label for="pv">Values</label>'
+                                      '<input id="pv" name="prefilled_values" type="text">')),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("key, html", CHECKPOINT_COLLISIONS, ids=lambda x: str(x)[:20])
+def test_a_page_question_named_like_a_checkpoint_never_hides_it(key, html):
+    """D149 review: a page question that happens to share a checkpoint's key is replaced by the
+    checkpoint, never kept in its place (the checkpoint blocks approval either way)."""
+    _, fields = read(html)
+    assert fields[key].type == FieldType.unsupported and fields[key].required
+    assert fields[key].unsupported_reason
+
+
+@pytest.mark.parametrize("key", [workday.WORK_KEY, workday.MULTI_STEP_KEY, workday.PREFILLED_KEY])
+def test_a_page_question_named_like_a_checkpoint_is_on_its_page_like_any_other(receiver, key):
+    """D149 review: on a wizard, such a question is held to D142's rule that every question is
+    on a page before the review page, as any other is."""
+    html = wizard_html(receiver).replace(
+        '<button type="submit" data-automation-id="bottom-navigation-next-button">',
+        f'<label for="cx">Collides</label><input id="cx" name="{key}" type="text" required>'
+        '<button type="submit" data-automation-id="bottom-navigation-next-button">')  # fmt: skip
+    schema, fields = read(html)
+    assert schema.wizard is None and workday.MULTI_STEP_KEY in fields
+
+
 def test_controls_named_as_entries_without_a_section_are_a_checkpoint():
     html = form_page("", inside=entry("0"))
     schema, fields = read(html)
@@ -267,8 +336,11 @@ def test_on_a_wizard_the_section_is_on_its_page(api, receiver):
 
 
 def test_a_page_without_the_section_reads_as_before(api, receiver):
-    """No work history, no section and no checkpoint: the plain wizard's and the single page's
-    fingerprints are those D142 pinned (tests/test_workday_wizard.py)."""
+    """No work history, no section and no checkpoint; the default page's fingerprint is the one
+    pinned before D142 (tests/test_workday_wizard.py)."""
+    receiver.config(wizard=None)
+    default = httpx.get(f"{BASE}/workday/{TENANT}/{REQ}/apply").text
+    assert form_fingerprint(workday.extract_schema(default)) == WORKDAY_FP
     for cfg in ({"wizard": "plain"}, {"mode": "normal"}):
         receiver.config(**cfg)
         synthetic_candidate(api)
@@ -377,11 +449,70 @@ def test_an_empty_entry_already_there_is_filled_in_place(api, receiver, records,
     assert got["work[0].title"] == "Clinic Assistant"
 
 
-def test_an_empty_entry_with_no_record_for_it_stops_before_its_page_is_sent(api, receiver):
+def test_an_empty_entry_with_no_record_for_it_stops_before_anything_is_entered(api, receiver):
+    """D149 review: known before anything is entered, so it stops then (nothing saved at the
+    employer, nothing uploaded), never after page 1 was saved."""
     app_id = experience_application(api, receiver, "experience_entry_at_load", records=())
-    assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+    assert SECTION_ENTRIES_BEYOND in attempt(aid).outcome_detail
+    assert attempt(aid).disclosure_started_at is None
+
+
+def test_a_page_showing_an_entry_after_approval_stops_before_anything_is_entered(api, receiver):
+    """Approved with no entry on the page and no work history; the page now shows an empty one:
+    the same form (an empty entry is read as before), stopped before anything is entered."""
+    app_id = experience_application(api, receiver, records=())
+    receiver.config(wizard="experience_entry_at_load")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert receiver.ledger()["disclosures"] == []
+    assert SECTION_ENTRIES_BEYOND in attempt(aid).outcome_detail
+
+
+def test_a_stop_after_an_entry_keeps_what_was_entered(api, receiver):
+    """The page adds the first entry and no other: the first entry's controls are recorded as
+    entered, the attempt stops before page 2's Next."""
+    app_id = experience_application(api, receiver, "experience_add_once")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
     led = receiver.ledger()
     assert draft_pages(led) == [1] and posts(led, "/apply") == 0
+    assert SECTION_NOT_ENTERED in attempt(aid).outcome_detail
+    entered = [(d["row"], d["field"]) for d in rows(aid, "disclosure")
+               if d.get("kind") == "section_field"]  # fmt: skip
+    assert entered == [(0, "title"), (0, "company_name"), (0, "start_date"), (0, "current")]
+
+
+def test_an_entry_changed_after_its_page_was_saved_is_never_sent_on(api, receiver):
+    """Page 2 is saved, then the page changes its first entry: page 3 is read back with every
+    page before it, and its Next is never clicked."""
+    app_id = experience_application(api, receiver, "experience_changed_after_next")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    led = receiver.ledger()
+    assert draft_pages(led) == [1, 2] and posts(led, "/apply") == 0
+    (step,) = [r for r in rows(aid, "step") if r["page"] == 3]
+    assert step["mismatched"] == 1
+
+
+def test_a_build_that_cannot_read_the_section_pauses_before_anything_is_entered(
+    api, receiver, monkeypatch
+):
+    """Why no version change is needed: approved with the section, then read by a build that
+    cannot see it (simulated), the live form is not the approved one, so the attempt pauses
+    before anything is entered (D132), as for an approval given before D149."""
+    app_id = experience_application(api, receiver)
+    monkeypatch.setattr(workday, "_work_section", lambda html: (None, False))
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert receiver.ledger()["disclosures"] == []
+    with SessionLocal() as db:
+        pause = db.scalars(select(ApplicationPause).where(
+            ApplicationPause.application_id == uuid.UUID(app_id))).one()  # fmt: skip
+        assert pause.resolved_at is None
 
 
 def test_an_entry_that_will_not_appear_stops_the_attempt(api, receiver):
@@ -432,12 +563,11 @@ def frozen(rows_: list[dict], **extra) -> dict:
     return {"kind": "employment", "root": ROOT, "rows": rows_, **extra}
 
 
-def frozen_row(rid="r1", *, current=True, start=(1, 2019), end=(12, 2018)) -> dict:
+def frozen_row(rid="r1", *, current=True, start=(1, 2019), end=(12, 2018),
+               title="Clinic Assistant", company="Example Health") -> dict:  # fmt: skip
     fields = {
-        "company_name": {"status": "resolved", "value": {"text": "Example Health"},
-                         "display": "Example Health"},
-        "title": {"status": "resolved", "value": {"text": "Clinic Assistant"},
-                  "display": "Clinic Assistant"},
+        "company_name": {"status": "resolved", "value": {"text": company}, "display": company},
+        "title": {"status": "resolved", "value": {"text": title}, "display": title},
         "start_date": {"status": "resolved", "value": {"month": start[0], "year": start[1]},
                        "display": f"{start[0]:02d}/{start[1]}"},
         "current": {"status": "resolved", "value": {"bool": current},
@@ -494,8 +624,6 @@ def test_before_anything_is_entered_a_section_off_its_page_stops_the_attempt():
     assert usable(sec, None)
     assert not usable({**sec, "step": "My Experience"}, None)
     assert not usable({**frozen([frozen_row(start=(0, 2019))]), "step": "My Experience"}, wizard)
-    assert SECTION_UNUSABLE  # the plain stop's text (schema_matches)
-    assert form_fingerprint  # imported for the fingerprint tests above
 
 
 # ---------------------------------------------------------------------------- in the browser
@@ -621,7 +749,58 @@ def test_a_control_that_does_not_keep_its_value_stops_the_entry(page):
       .addEventListener('input', e => { e.target.value = 'Changed'; })""")
     with pytest.raises(ws.SectionFillError) as e:
         ws.apply(page, ws.plan(frozen([frozen_row()])), ROOT, timeout_ms=500)
+    # The company was given to the page (whose script saw it) even though it was not kept.
+    assert e.value.entered == [{"row": 0, "field": "title"}, {"row": 0, "field": "company_name"}]
+
+
+def test_a_value_is_entered_and_read_back_exactly(page):
+    """D149 review: an approved title or employer is typed and read back exactly, spaces and
+    all; one holding a line break (which a text box cannot hold) is refused before entry."""
+    page.set_content(section_page())
+    entries = ws.plan(frozen([frozen_row(title="Night Nurse ", company=" River Clinic")]))
+    ws.apply(page, entries, ROOT)
+    assert page.locator('[name="work[0].title"]').input_value() == "Night Nurse "
+    assert page.locator('[name="work[0].company"]').input_value() == " River Clinic"
+    assert ws.readback(page, entries, ROOT) == []
+    with pytest.raises(ws.Refused):
+        ws.plan(frozen([frozen_row(title="Night\nNurse")]))
+
+
+def test_the_add_button_is_found_by_its_text(page):
+    """As capture reads it: an accessible name of its own changes nothing."""
+    page.set_content(section_page().replace('id="add">', 'id="add" aria-label="New entry">'))
+    assert len(ws.apply(page, ws.plan(frozen([frozen_row()])), ROOT)) == 4
+
+
+def test_a_browser_error_while_entering_is_the_section_s_stop(page):
+    """D149 review: a control the page made uneditable fails in the browser; that is the
+    section's stop, with the control reported as entered, never an internal error."""
+    page.set_content(section_page(entries=entry("0")))
+    page.evaluate("""() => document.querySelector('[name="work[0].title"]').disabled = true""")
+    with pytest.raises(ws.SectionFillError) as e:
+        ws.apply(page, ws.plan(frozen([frozen_row()])), ROOT, timeout_ms=300)
     assert e.value.entered == [{"row": 0, "field": "title"}]
+
+
+@pytest.mark.parametrize("change", [
+    "document.querySelector('[data-wd-entry]').hidden = true",
+    "document.querySelector('[name=\"work[0].from\"]').readOnly = true",
+    "document.querySelector('[name=\"work[0].company\"]').disabled = true",
+], ids=["hidden", "readonly", "disabled"])  # fmt: skip
+def test_before_anything_is_entered_an_entry_it_cannot_type_into_stops_it(page, change):
+    """D149 review: an entry already on the page that cannot be typed into, as its markup stands
+    (hidden pages included), is a plain stop before anything is entered."""
+    html = section_page(entries=entry("0"))
+    page.set_content(html)
+    page.evaluate(f"() => {{ {change}; }}")
+    assert section_adapter(html, [frozen([frozen_row()])]).schema_matches(page) == SECTION_UNUSABLE
+
+
+def test_before_anything_is_entered_entries_beyond_the_approved_ones_stop_it(page):
+    html = section_page(entries=entry("0"))
+    page.set_content(html)
+    assert section_adapter(html, [frozen([])]).schema_matches(page) == SECTION_ENTRIES_BEYOND
+    assert section_adapter(html, [frozen([frozen_row()])]).schema_matches(page) is None
 
 
 def test_the_adapter_enters_a_single_page_s_section_and_reads_it_back(page):

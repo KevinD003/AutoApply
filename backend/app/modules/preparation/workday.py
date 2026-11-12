@@ -52,6 +52,8 @@ from html.parser import HTMLParser
 from typing import NamedTuple
 from urllib.parse import urlsplit
 
+from pydantic import ValidationError
+
 from app.modules.preparation.forms import (
     _ARIA_WIDGETS,
     _VOID,
@@ -78,7 +80,10 @@ STEP_SELECTOR = "[data-workday-progress], [data-automation-id=pageFooterNextButt
 WIZARD_MARKERS = ("data-wizard-pages", "data-wizard-page", "data-wizard-next",
                   "data-wizard-progress")  # fmt: skip
 WIZARD_SELECTOR = ", ".join(f"[{m}]" for m in WIZARD_MARKERS)
-_NO_STEP = {"bot_check", MULTI_STEP_KEY, PREFILLED_KEY, WORK_KEY}  # checkpoints added here
+# The generic extractor's challenge field, which belongs to no page. The checkpoints added here
+# are appended after the wizard is checked, so a page question that happens to share one of their
+# keys is checked like any other (D149 review).
+_NO_STEP = {"bot_check"}
 _STEP_OF = re.compile(r"\bof\s+(\d+)\b", re.IGNORECASE)
 _TEXT_TYPES = {"text", "email", "tel", "url", "number", "date", ""}
 # D148: what hides an element in raw HTML (no script or stylesheet is run or read).
@@ -128,7 +133,7 @@ def _hidden_in_page(html: str) -> set[str]:
 
 # D149: the Work Experience section (FA7). An entry's controls, by the last part of their name
 # (work[i].<part>): (tag, input type, filled by NoEfforts). One not filled is never required.
-_WORK_NAME = re.compile(r"^work\[(\d+|__i__)\]\.([a-z_]+)$")
+_WORK_NAME = re.compile(r"work\[(\d+|__i__)\]\.([a-z_]+)")  # always read whole (fullmatch)
 _WORK_ANY = re.compile(r"^work\[")  # any control named as an entry's
 _WORK_CONTROLS = {
     "title": ("input", "text", True),
@@ -140,7 +145,7 @@ _WORK_CONTROLS = {
     "description": ("textarea", None, False),
 }
 _ADD = re.compile(r"^add(?: another)?$", re.IGNORECASE)
-_ROOT_ID = re.compile(r"^[A-Za-z][\w-]*$")
+_ROOT_ID = re.compile(r"[A-Za-z][\w-]{0,99}")  # always read whole (fullmatch)
 WORK_REASON = (
     "a work history section NoEfforts cannot fill exactly as it is (an entry asks something "
     "NoEfforts does not fill, already holds a value, or cannot be added): apply on the "
@@ -148,10 +153,34 @@ WORK_REASON = (
 )
 
 
-def _work_control_ok(n: _Node, index: str) -> bool:
+def _button_like(n: _Node) -> bool:
+    return (n.tag == "button" or (n.attrs.get("role") or "").lower() == "button"
+            or (n.tag == "input" and n.attrs.get("type", "").lower()
+                in ("button", "submit", "reset", "image")))  # fmt: skip
+
+
+def _shown_within(n: _Node, top: _Node) -> bool:
+    """Nothing between the control and `top` (the section or the template) hides it at load
+    (D148's markup signals): the executor types only into what the page shows."""
+    a = n
+    while a is not None and a is not top:
+        if _hides(a.attrs):
+            return False
+        a = a.parent
+    return True
+
+
+def _work_control_ok(n: _Node, index: str, template: _Node | None) -> bool:
     """One control of an entry (the template's index `__i__`, or an entry's own): a part NoEfforts
-    knows, of its kind, holding nothing, and never required when NoEfforts leaves it empty."""
-    m = _WORK_NAME.match(n.attrs.get("name", ""))
+    knows, of its kind, holding nothing, and never required when NoEfforts leaves it empty. In
+    the template, also shown and editable. An entry on the page is not held to that here: the
+    page hides a current role's To once its box is ticked, and capture cannot tell an entry the
+    page showed at load from one NoEfforts added; the adapter checks the entries already on the
+    page before anything is entered (execution/adapters/workday_sections.py)."""
+    if template is not None and ("readonly" in n.attrs or "disabled" in n.attrs
+                                 or not _shown_within(n, template)):  # fmt: skip
+        return False
+    m = _WORK_NAME.fullmatch(n.attrs.get("name", ""))
     if not m or m[1] != index or m[2] not in _WORK_CONTROLS:
         return False
     tag, kind, filled = _WORK_CONTROLS[m[2]]
@@ -163,13 +192,13 @@ def _work_control_ok(n: _Node, index: str) -> bool:
     return filled or not required
 
 
-def _entry_ok(controls: list[_Node], index: str) -> bool:
+def _entry_ok(controls: list[_Node], index: str, template: _Node | None) -> bool:
     """An entry's controls: each one known (`_work_control_ok`), each part once, and every part
     NoEfforts fills present."""
-    parts = [_WORK_NAME.match(n.attrs.get("name", ""))[2] for n in controls
-             if _WORK_NAME.match(n.attrs.get("name", ""))]  # fmt: skip
+    parts = [_WORK_NAME.fullmatch(n.attrs.get("name", ""))[2] for n in controls
+             if _WORK_NAME.fullmatch(n.attrs.get("name", ""))]  # fmt: skip
     return (
-        all(_work_control_ok(n, index) for n in controls)
+        all(_work_control_ok(n, index, template) for n in controls)
         and len(parts) == len(set(parts)) == len(controls)
         and {p for p, (_, _, filled) in _WORK_CONTROLS.items() if filled} <= set(parts)
     )
@@ -190,41 +219,51 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
     if not sections:
         return None, bool(controls)  # entries outside any section: never guessed
     root = sections[0]
-    adds = [n for n in root.walk() if n.tag == "button" and _ADD.match(n.all_text())]
+    rid = root.attrs.get("id", "")
+    buttons = [n for n in root.walk() if _button_like(n)]  # the section's Add, and nothing else
     tid = root.attrs.get("data-wd-entry-template", "")
     templates = [n for n in nodes if n.tag == "template" and tid and n.attrs.get("id") == tid]
     if (
         len(sections) != 1
-        or not _ROOT_ID.match(root.attrs.get("id", ""))
-        or len(adds) != 1
-        or adds[0].attrs.get("type", "submit").lower() != "button"
+        or not _ROOT_ID.fullmatch(rid)
+        or sum(1 for n in nodes if n.attrs.get("id") == rid) != 1
+        or len(buttons) != 1
+        or buttons[0].tag != "button"
+        or buttons[0].attrs.get("type", "submit").lower() != "button"
+        or not _ADD.match(buttons[0].all_text())
         or len(templates) != 1
+        or any(_button_like(n) for n in templates[0].walk())
         or any(root not in n.ancestors() for n in controls)
+        or not _shown_within(root, form)  # the section hidden at load (a wizard page is not)
     ):
         return None, True
     entry = [n for n in templates[0].walk() if n.tag in ("input", "select", "textarea")]
-    if not _entry_ok(entry, "__i__"):
+    if not _entry_ok(entry, "__i__", templates[0]):
         return None, True
     if any((n.attrs.get("role") or "").lower() in _ARIA_WIDGETS
            for n in (*root.walk(), *templates[0].walk())):  # fmt: skip
         return None, True  # a custom control in an entry: nothing NoEfforts can operate
-    if any(not (m := _WORK_NAME.match(n.attrs["name"])) or not m[1].isdigit()
+    if any(not (m := _WORK_NAME.fullmatch(n.attrs["name"])) or not m[1].isdigit()
            for n in controls):  # fmt: skip
         return None, True  # a control named as an entry's but not one, or a template inside
     by_index: dict[str, list[_Node]] = {}
     for n in controls:  # entries already on the page: empty ones only, numbered 0, 1, ...
-        by_index.setdefault(_WORK_NAME.match(n.attrs["name"])[1], []).append(n)
+        by_index.setdefault(_WORK_NAME.fullmatch(n.attrs["name"])[1], []).append(n)
     if sorted(by_index, key=int) != [str(i) for i in range(len(by_index))] or not all(
-        _entry_ok(c, i) for i, c in by_index.items()
+        _entry_ok(c, i, None) for i, c in by_index.items()
     ):
         return None, True
     page = next((a for a in root.ancestors() if "data-wizard-page" in a.attrs), None)
-    return SectionSpec(
-        kind="employment",
-        root=f"#{root.attrs['id']}",
-        step=(page.attrs.get("data-step") or None) if page is not None else None,
-        required=root.attrs.get("aria-required", "").lower() == "true",
-    ), False
+    try:
+        spec = SectionSpec(
+            kind="employment",
+            root=f"#{rid}",
+            step=(page.attrs.get("data-step") or None) if page is not None else None,
+            required=root.attrs.get("aria-required", "").lower() == "true",
+        )
+    except ValidationError:  # a page name too long to record: never an error of capture
+        return None, True
+    return spec, False
 
 
 MULTI_STEP_REASON = (
@@ -369,6 +408,13 @@ def _checkpoint(key: str, label: str, reason: str) -> FormField:
                      unsupported_reason=reason)  # fmt: skip
 
 
+def _add_checkpoint(schema: FormSchema, key: str, label: str, reason: str) -> None:
+    """D149 review: a checkpoint replaces a page question that happens to share its key, so such
+    a question can never hide it (the checkpoint blocks approval either way)."""
+    schema.fields = [f for f in schema.fields if f.key != key]
+    schema.fields.append(_checkpoint(key, label, reason))
+
+
 _CASCADE = re.compile(r"<select\b([^>]*\bdata-cascade-from\b[^>]*)>.*?</select>", re.I | re.S)
 
 
@@ -442,14 +488,12 @@ def extract_schema(html: str) -> FormSchema:
             schema.sections = [*schema.sections, work]
         else:
             work_problem = True
-    if work_problem and WORK_KEY not in keys:
-        schema.fields.append(_checkpoint(WORK_KEY, "Work Experience", WORK_REASON))
-    if (scan.steps > 1 or scan.next_button or wizard_refused) and MULTI_STEP_KEY not in keys:
-        schema.fields.append(
-            _checkpoint(MULTI_STEP_KEY, "An application on several pages", MULTI_STEP_REASON)
-        )
-    if scan.prefilled & keys and PREFILLED_KEY not in keys:
-        schema.fields.append(
-            _checkpoint(PREFILLED_KEY, "Answers the page filled in itself", PREFILLED_REASON)
-        )
+    if work_problem:
+        _add_checkpoint(schema, WORK_KEY, "Work Experience", WORK_REASON)
+    if scan.steps > 1 or scan.next_button or wizard_refused:
+        _add_checkpoint(schema, MULTI_STEP_KEY, "An application on several pages",
+                        MULTI_STEP_REASON)  # fmt: skip
+    if scan.prefilled & keys:
+        _add_checkpoint(schema, PREFILLED_KEY, "Answers the page filled in itself",
+                        PREFILLED_REASON)  # fmt: skip
     return schema

@@ -43,9 +43,10 @@ it is not there yet, each control read back as entered and reported at once as a
 The readback of its page, before the page's Next, requires every entry as approved, the controls
 NoEfforts leaves empty still empty, and no entry beyond the approved ones. Before anything is
 entered, a frozen section that cannot be planned, or is not on one of the wizard's pages before
-its review page (none on a single page), stops the attempt. An entry that will not appear or a
-control that does not keep its value once entering began stops it with what was entered
-recorded."""
+its review page (none on a single page), stops the attempt, and so does a page that already
+shows more entries than were approved (NoEfforts never removes one): stops that leave nothing
+at the employer. An entry that will not appear or a control that does not keep its value once
+entering began stops it with what was entered recorded."""
 
 from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
@@ -107,6 +108,11 @@ FOLLOW_UP_HIDDEN_REQUIRED = (
 UNSEEN_LOGIC = "an answer depends on page logic NoEfforts cannot see"  # as D135's
 # D149: the Work Experience section (`workday_sections`).
 SECTION_UNUSABLE = "the approved work history cannot be entered on this form as it was approved"
+SECTION_ENTRIES_BEYOND = (
+    "the employer's form already shows more work history entries than you approved, and "
+    "NoEfforts never removes one: add your work history to your profile and approve it, or "
+    "apply on the employer's site"
+)
 SECTION_NOT_ENTERED = (
     "your work history could not be entered on the employer's form as approved (an entry did "
     "not appear or did not keep its value): apply on the employer's site"
@@ -190,8 +196,14 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         if reason:
             return reason
         if not self._filled:
-            if not all(self._section_usable(s) for s in self.content.get("sections") or []):
-                return SECTION_UNUSABLE  # D149: a plain stop, before anything is entered
+            for sec in self.content.get("sections") or []:  # D149: plain stops, nothing entered
+                if not self._section_usable(sec):
+                    return SECTION_UNUSABLE
+                found = ws.entry_indices(page, ws.section_root(sec))
+                if found is None or not ws.entries_operable(page, ws.section_root(sec)):
+                    return SECTION_UNUSABLE
+                if any(i >= len(sec["rows"]) for i in found):
+                    return SECTION_ENTRIES_BEYOND
             for a in self.content["answers"]:
                 cond = a.get("condition") or {}
                 if (a["key"] in self._shown_by_page and a["value"] is not None

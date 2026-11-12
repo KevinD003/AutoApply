@@ -214,7 +214,9 @@ CAPABILITIES: dict[str, dict] = {
         "environments": ["development", "test"],
         "inspect": True,  # the application page, read by the generic extractor and its checks
         "extract": True,
-        "fill": True,  # a single page only: text, email, phone, Yes/No, radio, select, consent
+        # A single page, or the stand-in's wizard page by page (D142): text, email, phone,
+        # Yes/No, radio, select, consent; work history entries on My Experience (D149).
+        "fill": True,
         "upload": True,  # files uploaded when chosen (counted as disclosures)
         "checkpoint": True,  # accounts, several pages, prefill, location lists, pickers
         "submit": True,
@@ -226,10 +228,13 @@ CAPABILITIES: dict[str, dict] = {
             "uploads": "synthetic: files uploaded when chosen, to the fixture's endpoint",
             "resume_parse": "synthetic: a resume upload overwriting page fields (one mode)",
             "confirmation": "synthetic: a confirmation page with a reference",
+            "wizard": "synthetic: five pages in one document, each Next saving its page (D142)",
+            "work_history": "synthetic: Work Experience entries added from a template (D149)",
         },
         "unsupported": [
             "candidate accounts, sign-in, passwords and email verification (stop)",
-            "applications on several pages (stop; each page would send its own answers)",
+            "applications on several pages other than the stand-in's wizard (stop)",
+            "education, languages, websites and skills on My Experience; removing an entry",
             "values the page filled in itself: a parsed resume or a previous application",
             "location lists that depend on another answer, search-as-you-type pickers",
             "custom dropdowns with no native input",
