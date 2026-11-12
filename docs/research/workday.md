@@ -196,7 +196,9 @@ plus unverified candidates:
 2. "User-assisted login and verification": consistent (email verification is a tenant option).
 3. "Multi-step forms": consistent (application wizard; page names above).
 4. "Repeating work-history and education records": consistent (My Experience; parsing fills work
-   experience and education).
+   experience and education). D149 (stand-in only): the stand-in's Work Experience section is
+   filled from your approved work history, entry by entry; education, languages, websites and
+   skills are not built, and an entry a parse adds stops the attempt before its page's Next.
 5. "Résumé parsing and prefill validation": consistent, and parsing is documented as imperfect.
 6. "Checkpoints for CAPTCHA": CAPTCHA is not documented; keep the checkpoint, but
    `captcha_possible` should be `unknown` (not seen in docs) rather than "expected" if the trait

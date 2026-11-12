@@ -6513,3 +6513,125 @@ audit-inventory and export-completeness guards are updated and pass.
   - Several levels of follow-ups: each level is read the same way, but only one level is tested.
   - Real Workday pages are unobserved.
 - **Evidence (local only):** 49 tests in `tests/test_workday_follow_up.py`: 21 through the runner against the stand-in (the receiver's ledger the oracle), 17 driving the adapter on a page set in Chromium, 11 reading capture alone; the suites the change touches, 312 passed on 67e382f; removal checks: 23 changes on 9c3bf1c, 30 on 4f90edc and 38 on 67e382f, each failing a test (one only once its test was made stricter, a9f4222); the regression set (73 files): 1901 passed on f65c551 and exit 0; 1918 passed in 64 min on 67e382f; ruff clean.
+
+## D149 — Workday-style Work Experience: your approved work history entered on My Experience, entry by entry, and nothing else (2026-11-12)
+
+- **Context:** rank 13 of the automation loop (item 7, repeating records, for Workday). Local
+  stand-ins only; nothing real was run, and no real Workday work-history section was observed.
+  Documentation read by the loop's research reader says My Experience sections can each be hidden
+  or required, and that resume parsing fills work experience (docs/research/workday.md). No
+  migration, no new state or reason code.
+- **Problem:**
+  - Item 7 was absent on Workday: the stand-in's My Experience page held only the resume, the
+    cover letter and one optional text, so nothing sent your work history.
+  - A section of repeating entries read by the generic extractor alone would have become one
+    question per control (`work[0].title`, ...), answerable from saved answers or drafts, with no
+    record behind it; an entry a script adds would have been an unexpected question.
+- **Decided:**
+  - **The stand-in** (FA7, a FIXTURE ASSUMPTION in fixtures/ats_receiver/workday_like.py): My
+    Experience carries a Work Experience section with no entry at load and one button, "Add"
+    (then "Add Another"), that appends an entry built from a template outside the form. An entry
+    asks Job Title, Company, Location, "I currently work here", From and To (text boxes that say
+    MM/YYYY) and Role Description; Job Title, Company and From are required, and so is To unless
+    the box is ticked, which hides, empties and un-requires it. A Next saves the entries with the
+    rest of their page; the page's own checks then refuse an incomplete entry or a date not
+    written MM/YYYY (the draft row is written first, FA3). A section the page requires refuses a
+    page without an entry. Variants: required; a resume parse that adds an entry; an empty entry
+    already there; an entry asking something else; an Add that adds nothing; one that adds the
+    first entry only; a first entry changed after its page was saved; and the single page's mode.
+  - **Capture reads it as an employment section** (preparation/workday.py), D120's: kind
+    `employment`, the section's `#id`, the wizard page it is on (`step`; none on a single page)
+    and whether the page requires an entry (`required`). The entries' controls are never
+    questions and are never read by the generic extractor (`skip`): however many entries, labelled
+    or not. Only the exact structure NoEfforts enters is read: one section marked as work, with an
+    id the document uses once, shown and enabled at load, whose one clickable control is its
+    enabled, shown "Add" button; a template outside the form whose controls are exactly the five
+    NoEfforts fills (title, company, current, from, to) and two it leaves empty (location,
+    description), none required but those it always fills, none hidden, read-only, disabled or
+    limited in length or pattern, the dates saying MM/YYYY, no button and no custom control in an
+    entry; entries already there only empty and numbered from 0. Anything else (another control
+    or marker, another kind of section, a value at load, an entry outside the section, two
+    sections, no way to add an entry) is one required checkpoint, `work_experience`: apply on the
+    employer's site. Never a guess, never left out silently.
+  - **A checkpoint is never hidden by a page question that shares its key** (D149 review): it
+    replaces it (`work_experience`, and D88's and D142's `multi_step` and `prefilled_values`), and
+    only the generic extractor's own challenge field is exempt from D142's page rule, by what it
+    is, not by its key.
+  - **Your approved work history fills it, as on Greenhouse** (package.py): the same rows (D120's
+    resolution, newest first; a current role sends no end date), shown on the review page and
+    diffed (D140), an edit retiring the approval at once (D140), the section frozen with its page.
+    A section the page requires with no approved work history blocks approval
+    (`section:employment`). A title or employer holding a line break (a text box cannot hold one)
+    or only spaces is a checkpoint when the package is built, on Greenhouse too, where it failed
+    at execution.
+  - **Before anything is entered** (the adapter's check before the disclosure gate):
+    - the section is in the form's fingerprint (its id, page and requirement, as one value), so a
+      section changed, removed or added since approval pauses (D132);
+    - a frozen section that cannot be planned, or is not on a wizard page before the review page,
+      is a plain stop;
+    - so are a page already showing more entries than were approved (NoEfforts never removes
+      one), entries already there that cannot be typed into as their markup stands, and entries
+      already holding values (a script's): stops that leave nothing at the employer.
+  - **Entering it** (execution/adapters/workday_sections.py, from the Workday adapter, after the
+    other answers of its page, on that page only):
+    - an entry is added by one click of the section's button (found by its text, as capture reads
+      it) only when its controls are not there yet; one that does not appear stops the attempt;
+    - Job Title and Company typed exactly as approved; From and To as MM/YYYY from the frozen month
+      and year; the box as approved; a current role's To, Location and Role Description never
+      entered;
+    - each control reported as entered as soon as the page was given its value (D137), then read
+      back exactly; one that does not keep it, or a browser error, stops the attempt with what was
+      entered recorded, never an internal error.
+  - **Before the page's Next** (its readback, D142) and again before the send gate: every entry
+    as approved, every control left empty still empty and not required by the page (nor a box
+    left unticked: the browser would block the final click), and no entry beyond the approved
+    ones, empty or not. Any difference ends the attempt there, its Next never clicked.
+  - **No adapter version change (`fixture-workday-2`), and `SCHEMA_VERSION` (3) unchanged,
+    deliberately.**
+    - A page without the section reads, fills and checks exactly as before: its fingerprint and
+      package are unchanged (the default page's pinned fingerprint is compared).
+    - The section's `step` is in a package only for such a section, which no package built before
+      has (recorded under version 3, as D142's `wizard`; `test_package_contract.py`).
+    - D120 bumped greenhouse_dom's version because a section-blind build of that adapter would
+      have matched a section-bearing approval and silently skipped the section: it re-proves the
+      approved fields one by one. This adapter re-reads the whole form and compares its
+      fingerprint before anything is entered (`FixtureAtsAdapter.schema_matches`), and the
+      section is part of it: a build that cannot read the section cannot match an approval that
+      has one, and pauses before anything is entered (tested by simulating such a build); an
+      approval given before this change does not match the form read now either.
+- **Reviewed independently, twice.**
+  - The first review (on 26efad8) found three blockers: a page question named `work_experience`
+    hid the checkpoint and escaped the page rule (and D88's and D142's checkpoints had the same
+    pattern); entries already on the page beyond the approved ones were caught only after page 1
+    was saved; and a title or employer with surrounding spaces could never read back. It also
+    found that capture accepted markup the executor could not operate, that browser errors
+    escaped as internal errors, that a control typed but not kept went unreported, and gaps in
+    the tests. All fixed (d282574, e30ba41), each with a test.
+  - The second review (on d282574) found no blocker. It found that the generic extractor still
+    read the entries (a crash after many entries or an unlabelled control, after page 1 was
+    saved), that a disabled or hidden Add button, a disabled fieldset or a length limit still
+    passed capture, that a control left empty but required would make the browser block the
+    final click (an unknown outcome), and smaller points: values a script put in an entry at
+    load, other section markers, line breaks and blanks failing late, three test gaps, and the
+    challenge field exempt by key. All fixed (ac5b48b, bdb5311), each with a test; the rest
+    recorded below.
+- **Not changed:** Greenhouse's sections (their stored schema, fingerprint and package are
+  unchanged: `step` and `required` are written only when set); every other mode and variant.
+- **Not built, stated:**
+  - Education on Workday (its school is a search-as-you-type list, docs/research/workday.md),
+    languages, websites and skills: a section marked as another kind is the checkpoint; one with
+    no marker is read as ordinary questions, as before.
+  - Location and Role Description are never entered, though your record may hold them; a page
+    requiring either is the checkpoint.
+  - Removing an entry: never done. A page whose resume parse adds an entry stops before that
+    page's Next, after the earlier pages were saved (the parse happens on the upload, which is on
+    the same page).
+  - The labels of an entry's controls, and the box's value, are not compared: the contract is
+    their names; that dates are written MM/YYYY is the page's own word (its hint), never checked
+    further.
+  - The runner's `checked` count in its step and readback evidence counts answers, not entry
+    controls (mismatches count both).
+  - Found in shared Greenhouse code, not changed here: `greenhouse_sections._fill_text` compares a
+    stripped value with an unstripped one, and `_valid_root` accepts a trailing line break.
+  - Real Workday pages are unobserved.
+- **Evidence (local only):** 119 tests in `tests/test_workday_experience.py`: 25 through the runner against the stand-in (the receiver's ledger the oracle), 22 driving the section's executor or the adapter on a page set in Chromium, 72 reading capture, the package and the plan alone (the 63 capture cases among them); the suites the change touches, 473 passed on 9fc9734, 522 on d282574 and 547 on bdb5311; removal checks: 43 changes on 5e891ad, 64 on e30ba41 and 83 on bdb5311, each failing a test but one of the 64, which made the module fail to compile and so showed nothing (replaced in the next round); the regression set (74 files): 2037 passed in 68 min on bdb5311 (exit 0); ruff clean.

@@ -174,6 +174,10 @@ SHAPES[3] = SHAPES[3] | {
 # names its pages. Present only for such a form, which no form stored before D142 is, so no
 # existing package's content or hash changes: recorded under version 3, deliberately.
 SHAPES[3] = SHAPES[3] | {".wizard.pages[]"}
+# D149: a section captured on a wizard's page (the Workday-style stand-in's Work Experience) names
+# that page. Present only for such a section, which no package built before D149 has, so no
+# existing package's content or hash changes: recorded under version 3, deliberately (as D142).
+SHAPES[3] = SHAPES[3] | {".sections[].step"}
 
 
 @pytest.fixture(scope="module")
@@ -293,6 +297,22 @@ def _contents(api, receiver, monkeypatch) -> list[dict]:
     app = api.post("/applications", json={"job_id": job["job"]["id"]}).json()
     content = api.get(f"/applications/{app['id']}/package").json()["package"]["content"]
     assert content["wizard"]["pages"][-1] == "Review", content.get("wizard")
+    out.append(content)
+    # D149: a wizard whose My Experience page carries the Work Experience section, frozen with
+    # its page and the current employment record above.
+    receiver.config(wizard="experience")
+    try:
+        posting = {"url": f"{BASE}/workday/examplehealth/R-1490001", "title": "Experience",
+                   "employer": "Example Health"}  # fmt: skip
+        job = api.post("/jobs", json=posting).json()
+        r = api.post(f"/jobs/{job['job']['id']}/form/workday")
+        assert r.status_code == 201, r.text
+    finally:
+        receiver.config(wizard=None)
+    app = api.post("/applications", json={"job_id": job["job"]["id"]}).json()
+    content = api.get(f"/applications/{app['id']}/package").json()["package"]["content"]
+    assert [(x["kind"], x["step"]) for x in content["sections"]] == [
+        ("employment", "My Experience")], content.get("sections")  # fmt: skip
     out.append(content)
     return out
 

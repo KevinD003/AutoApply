@@ -369,13 +369,30 @@ def _approved_records(db: Session, user_id, kind: str) -> list:
     )
 
 
+# D149: a section the page requires, with no approved record to fill it.
+SECTION_REQUIRED = {
+    "employment": (
+        "The employer's form requires at least one work history entry, and your profile has no "
+        "approved work history. Add it to your profile and approve it, or apply on the "
+        "employer's site."
+    ),
+    "education": (
+        "The employer's form requires at least one education entry, and your profile has no "
+        "approved education. Add it to your profile and approve it, or apply on the employer's "
+        "site."
+    ),
+}
+
+
 def _resolve_sections(
     db: Session, app: Application, schema, unresolved: list, errors: list
 ) -> list:
     """D120: resolve each captured structured section from the owner's approved records; freeze the
     ready ones into the package and turn an unready one into checkpoints that block approval. Only a
     form that actually has a section (a stand-in today) carries any specs here, so a form without
-    one produces no ``sections`` key and its package content and hash are unchanged."""
+    one produces no ``sections`` key and its package content and hash are unchanged. D149: a
+    section on a wizard's page is frozen with that page (`step`), and one the page requires with
+    no approved record blocks approval."""
     from app.modules.execution.adapters import greenhouse_sections as gs
     from app.modules.preparation import structured_sections as ss
 
@@ -390,8 +407,16 @@ def _resolve_sections(
                 disciplines=tuple(ss.SectionOption(o.id, o.text) for o in spec.disciplines),
             )
         result = ss.resolve_section(spec.kind, records, options=options)
+        if getattr(spec, "required", False) and result.supported and not result.rows:
+            key = f"section:{spec.kind}"
+            unresolved.append(key)
+            errors.append({"key": key, "message": SECTION_REQUIRED[spec.kind]})
+            continue
         if result.ready():
-            frozen.append(gs.section_to_content(result, root=spec.root))
+            frozen_section = gs.section_to_content(result, root=spec.root)
+            if getattr(spec, "step", None):  # D149: only a wizard's section has one
+                frozen_section["step"] = spec.step
+            frozen.append(frozen_section)
             continue
         if not result.supported:
             key = f"section:{spec.kind}"
