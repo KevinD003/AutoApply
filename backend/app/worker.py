@@ -46,7 +46,7 @@ import socket
 import uuid
 
 from celery import Celery
-from celery.signals import after_setup_logger, after_setup_task_logger
+from celery.signals import after_setup_logger, after_setup_task_logger, worker_shutting_down
 from kombu import Exchange, Queue
 from sqlalchemy import delete
 
@@ -54,6 +54,7 @@ import app.models  # noqa: F401  (register every table before any task runs)
 from app.core.config import get_settings
 from app.core.db import SessionLocal, utcnow
 from app.core.log_safety import install_worker_filters
+from app.modules.execution import stopping
 from app.modules.identity.models import UserSession
 
 settings = get_settings()
@@ -125,6 +126,12 @@ celery_app.conf.update(
 install_worker_filters()
 after_setup_logger.connect(lambda **_: install_worker_filters(), weak=False)
 after_setup_task_logger.connect(lambda **_: install_worker_filters(), weak=False)
+
+# D150: a stop request (SIGTERM from `docker compose stop`, SIGINT from Ctrl-C) is handled by
+# Celery in the main process only, which then waits for the running task. This receiver, run
+# there, sets the flag the pool processes share (execution/stopping.py), so the attempt running
+# in one of them takes no further protected step. Sent for a cold shutdown too.
+worker_shutting_down.connect(lambda **_: stopping.request(), weak=False)
 
 WORKER_ID = f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
 

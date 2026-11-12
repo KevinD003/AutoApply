@@ -26,7 +26,7 @@ from app.core.db import SessionLocal
 from app.core.urlsafety import destination_category, is_fixture_origin
 from app.modules.documents.models import Document
 from app.modules.documents.storage import get_storage
-from app.modules.execution import live, policy, rehearsal
+from app.modules.execution import live, policy, rehearsal, stopping
 from app.modules.execution import service as svc
 from app.modules.execution.adapters.ashby import AshbyFixtureAdapter
 from app.modules.execution.adapters.fake_api import FakeApiAdapter
@@ -193,6 +193,11 @@ def _rehearsal(attempt_id) -> bool:
 def run_attempt(attempt_id: str, worker: str) -> str:
     aid = uuid.UUID(attempt_id)
     fault("before_claim")
+    if stopping.requested():
+        # D150: a worker asked to stop claims nothing. The attempt stays queued; the relay
+        # publishes it again (D146) for the next worker that runs.
+        log.info("attempt %s: not claimed, the worker was asked to stop", aid)
+        return "stopping"
     gen = svc.claim(aid, worker)
     if gen is None:
         log.info("attempt %s: delivery ignored (already claimed, finished or not eligible)", aid)
@@ -206,7 +211,9 @@ def run_attempt(attempt_id: str, worker: str) -> str:
     def within_budget():
         # D143: the run's own time limit, checked between steps and so never raised inside a
         # browser wait. Past it the run stops as its phase says: before the final click that
-        # is always "nothing was submitted".
+        # is always "nothing was submitted". D150: a stop request is honoured at the same
+        # checks, and first.
+        _stop_if_requested()
         if run_clock() - started > s.attempt_run_budget_seconds:
             raise RunBudgetExceeded()
 
@@ -276,6 +283,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         with _Closing(session):
             beat()
             fault("before_navigate")
+            within_budget()  # D150: a stop requested while the browser started; never opened
             url = adapter.form_url()
             if rehearsal.normalize_origin(_origin_of(url)) != rehearsal.normalize_origin(
                 dest["origin"]
@@ -396,6 +404,8 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         # sweeper will mark the attempt unknown; we never act on it again from here.
         log.warning("attempt %s: lost authority in phase %s; stopped", aid, phase)
         return "lost_authority"
+    except StopRequested:
+        return _stopped(aid, worker, gen, phase)
     except Exception as e:  # noqa: BLE001
         # The exception type only: browser errors can quote URLs, selectors or page text, so
         # neither the message nor the traceback is logged (same as the API route below).
@@ -414,11 +424,33 @@ def run_attempt(attempt_id: str, worker: str) -> str:
 
 
 TIME_LIMIT = "the run reached its time limit and was stopped"
+STOP_REQUESTED = "the worker was asked to stop"
 
 
 class RunBudgetExceeded(Exception):
     """D143: the attempt took longer than its run budget (attempt_run_budget_seconds) to reach
     the final click. Raised by the runner between steps, never inside a browser wait."""
+
+
+class StopRequested(Exception):
+    """D150: the worker was asked to stop (stopping.py). Raised where the run budget is checked,
+    so never after the send gate: past it the click is made and its outcome read."""
+
+
+def _stop_if_requested() -> None:
+    if stopping.requested():
+        raise StopRequested()
+
+
+def _stopped(aid, worker, gen, phase: str) -> str:
+    """D150: where a run asked to stop ends. Before anything was entered the attempt goes back
+    in the queue for the next worker (service.requeue_on_stop); after, it is abandoned like any
+    stop there, never retried. Never reached after the send gate."""
+    log.info("attempt %s: stopped in phase %s, the worker was asked to stop", aid, phase)
+    if phase == "before_disclosure":  # None: no longer held (a cancel, the sweeper)
+        out = svc.requeue_on_stop(aid, worker, gen)
+        return {"requeued": "requeued", "failed": "failed_safe"}.get(out, "lost_authority")
+    return "abandoned" if svc.abandon(aid, worker, gen, STOP_REQUESTED) else "lost_authority"
 
 
 def _failure_reason(e: BaseException) -> str:
@@ -661,6 +693,7 @@ def _run_api(aid, worker, gen, adapter) -> str:
         if reason:
             svc.fail_safe(aid, worker, gen, reason)
             return "failed_safe"
+        _stop_if_requested()  # D150
         try:
             svc.gate_before_disclosure(aid, worker, gen)
         except svc.GateRefused as e:
@@ -670,6 +703,7 @@ def _run_api(aid, worker, gen, adapter) -> str:
         fault("after_disclosure_gate")
         recorded = _record_as_made(aid, worker, gen, adapter)
         try:
+            _stop_if_requested()  # D150: the uploads below are the disclosure
             draft = adapter.prepare()
             svc.record_evidence(aid, worker, gen, "disclosure",
                                 {"route": "api", "kind": "application_draft"})  # fmt: skip
@@ -691,6 +725,7 @@ def _run_api(aid, worker, gen, adapter) -> str:
             svc.record_evidence(aid, worker, gen, "recheck", rehearsal.RECHECK_MATCHED)
             return _stop_rehearsal(aid, worker, gen)
         fault("before_send_gate")
+        _stop_if_requested()  # D150
         try:
             svc.gate_before_send(aid, worker, gen)
         except svc.GateRefused as e:
@@ -715,6 +750,8 @@ def _run_api(aid, worker, gen, adapter) -> str:
     except svc.LostAuthority:
         log.warning("attempt %s: lost authority in phase %s; stopped", aid, phase)
         return "lost_authority"
+    except StopRequested:
+        return _stopped(aid, worker, gen, phase)
     except Exception as e:  # noqa: BLE001
         log.warning(
             "attempt %s failed in phase %s (%s) at %s",
@@ -774,11 +811,20 @@ def _verification_loop(aid, worker, gen, adapter, page, s) -> str:
     deadline = run_clock() + s.checkpoint_ttl_seconds  # from the request, not from the first look
     fault("in_code_wait")
     while True:
+        if stopping.requested():
+            # D150: entering a code is a protected step. The click was made, so the verification
+            # is left unfinished; a code typed meanwhile is erased with the request.
+            svc.abandon(aid, worker, gen, STOP_REQUESTED)
+            return "abandoned"
         # D143: a code is looked for before the wait's own end is judged, so one accepted in the
         # wait's last moment is still entered.
         code, status = svc.take_code(cp, aid, worker, gen, adapter.code_watch_seconds(submit_ms))
         if status in ("expired", "failed"):
             svc.abandon(aid, worker, gen, f"verification {status}")
+            return "abandoned"
+        if code is not None and stopping.requested():  # D150: taken, never entered
+            del code
+            svc.abandon(aid, worker, gen, STOP_REQUESTED)
             return "abandoned"
         if code is None:
             if run_clock() > deadline:

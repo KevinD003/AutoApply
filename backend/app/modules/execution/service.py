@@ -957,6 +957,38 @@ def abandon(
     )
 
 
+def requeue_on_stop(attempt_id, worker, gen) -> str | None:
+    """D150: the worker was asked to stop (`docker compose stop`, an upgrade's restart) before
+    this attempt entered anything. What the sweeper does for a lost worker's attempt
+    (`_sweep_one`), at once and by the worker itself: the attempt goes back in the queue,
+    counted against `max_safe_retries`, with a new message for the relay, and the next worker
+    takes it; past the limit it ends failed_safe as the sweeper's does. One generation-fenced
+    write from `claimed` with nothing disclosed (lock order: the attempt, then its
+    application). Returns "requeued" or "failed"; None, writing nothing, when the worker no
+    longer holds the attempt or data was entered (the caller then ends it as before)."""
+    with SessionLocal() as db:
+        try:
+            att = _locked_attempt(db, attempt_id, worker, gen, S.claimed)
+        except LostAuthority:
+            return None
+        if att.disclosure_started_at is not None:
+            return None
+        app = pk.lock_application(db, att.application_id)
+        att.lease_owner, att.lease_expires_at = None, None
+        if att.retry_count < get_settings().max_safe_retries:
+            att.state, att.retry_count = S.pending, att.retry_count + 1
+            event(db, att, "stop_requeued", retry=att.retry_count)
+            db.add(OutboxMessage(topic=TOPIC_EXECUTE, attempt_id=att.id))
+            db.commit()
+            return "requeued"
+        att.state, att.finished_at = S.failed_safe, utcnow()
+        att.outcome_detail = "Worker kept stopping before sending anything."
+        _app_to(db, app, AppState.failed_retryable, Actor.system, att.outcome_detail)
+        event(db, att, "stop_failed")
+        db.commit()
+        return "failed"
+
+
 def pause_for_form_change(attempt_id, worker, gen, reason: str, counts: dict) -> bool:
     """D132: before anything was entered, the employer's form no longer matches the approved one
     in a way a fresh read of the form can show (the adapter's `FormChanged`). One
