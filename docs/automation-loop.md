@@ -655,7 +655,8 @@ the next protected step. Next, ranks 17 to 19 (the dropdown rule's neighbours).
 | D150, the new tests: `pytest tests/test_worker_stop.py` (JUnit), on 109ca88, d95856c, 300b87e, f8a08b4 and 4b456c7 (with `test_greenhouse_live.py`) | exit 1 (25 of 28: the API tests lacked the fake API's token), then 28, 50 (after a first run of 45 of 46 and a stand-in that passed for the wrong reason; status table), 51 and 53 passed |
 | D150, the suites the change touches: 23 files (JUnit), on f8a08b4 | exit 1; 636 of 637: D111's source-order test, which found the rehearsal's stop by the first `_rehearsal(aid)` (D150 asks it earlier too); repointed (4b456c7), then passed (row above) |
 | D150, each part changed in turn: 46 changes on f8a08b4, one at a time, the file restored; the three that passed, again against the whole file on aeab20d | 43 of 46 failed a test with the tests named first; the other three, against the whole file after two tests were added, fail 10, 2 and 2 |
-| D150, the regression set: `pytest` on 75 files (D149's 74 and `test_worker_stop.py`; JUnit), in a copy of the branch at f8a08b4 | {REGRESS} |
+| D150, the regression set: `pytest` on 75 files (D149's 74 and `test_worker_stop.py`; JUnit), in a copy of the branch at f8a08b4 | exit 1; 2,086 of 2,088: D111's source-order test (repointed, 4b456c7) and the capture guard on the stop tests' action recorder (rewritten, 0e6dc26); both then passed |
+| D150, after the recorder was rewritten: `pytest tests/test_forbidden_capabilities.py tests/test_worker_stop.py` (JUnit), on 0e6dc26; the removals a1 to a5 again | exit 0; 194 passed; the five removals still fail the same tests |
 | D150, after its records: the document tests; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 98 passed (the 45 document tests and the new file's 53); ruff clean (385 files), on the records committed with this result |
 
 ## Failed approaches and rejected designs
