@@ -132,7 +132,7 @@ def section(entries="", *, add='<button type="button">Add</button>', attrs="", t
             f"{attrs}><h3>Work Experience</h3><div>{entries}</div>{add}</div>")  # fmt: skip
 
 
-def page(sec: str, template: str | None = None, *, inside: str = "") -> str:
+def form_page(sec: str, template: str | None = None, *, inside: str = "") -> str:
     template = entry() if template is None else template
     return (f'<form id="workday-application" action="/apply" method="post">'
             f'<section data-step="My Experience"><label for="r">Resume/CV</label>'
@@ -147,42 +147,46 @@ def read(html: str):
 
 
 def test_capture_reads_the_section_and_never_its_controls_as_questions():
-    schema, fields = read(page(section()))
+    schema, fields = read(form_page(section()))
     (sec,) = schema.sections
     assert sec.model_dump() == {"kind": "employment", "root": ROOT, "schools": [],
                                 "degrees": [], "disciplines": []}  # fmt: skip
     assert set(fields) == {"resume"}  # no work[...] control is a question
-    schema, fields = read(page(section(entry("0") + entry("1"))))  # empty entries at load
+    schema, fields = read(form_page(section(entry("0") + entry("1"))))  # empty entries at load
     assert len(schema.sections) == 1 and set(fields) == {"resume"}
-    schema, _ = read(page(section(attrs=' aria-required="true"')))
+    schema, _ = read(form_page(section(attrs=' aria-required="true"')))
     assert schema.sections[0].required is True
 
 
 @pytest.mark.parametrize(
     "html",
     [
-        page(section(), entry(extra='<input name="work[__i__].reason" type="text">')),
-        page(section(), entry(loc=" required")),  # a control NoEfforts leaves empty, required
-        page(section(), entry().replace('name="work[__i__].current"', 'name="work[__i__].x"')),
-        page(section(), entry().replace('type="checkbox"', 'type="text"')),
-        page(section(), entry(value=' value="01/2020"')),  # a template that fills every entry
-        page(section(entry("0", value=' value="01/2020"'))),  # a value already on the page
-        page(section(entry("0", checked=" checked"))),
-        page(section(entry("1"))),  # entries not numbered from 0
-        page(section(add="")),  # no way to add an entry
-        page(section(add='<button type="button">Add</button><button type="button">Add</button>')),
-        page(section(add="<button>Add</button>")),  # a submit button
-        page(section(tid="none")),  # no template
-        page(section(), inside=entry("0")),  # an entry outside the section
-        page(section() + section()),  # two sections
-        page(section()).replace('<template id="tpl">', '<template id="tpl2">'),
-        page(section(), "").replace("</form>", "") + "</form>",  # the template inside the form
-        page(section().replace('id="work-experience"', 'id="1bad"')),
+        form_page(section(), entry(extra='<input name="work[__i__].reason" type="text">')),
+        form_page(section(), entry(loc=" required")),  # a control NoEfforts leaves empty, required
+        form_page(section(), entry().replace('name="work[__i__].current"', 'name="work[__i__].x"')),
+        form_page(section(), entry().replace('type="checkbox"', 'type="text"')),
+        form_page(section(), entry(value=' value="01/2020"')),  # a template that fills every entry
+        form_page(section(entry("0", value=' value="01/2020"'))),  # a value already on the page
+        form_page(section(entry("0", checked=" checked"))),
+        form_page(section(entry("1"))),  # entries not numbered from 0
+        form_page(section(add="")),  # no way to add an entry
+        form_page(section(add='<button type="button">Add</button>' * 2)),
+        form_page(section(add="<button>Add</button>")),  # a submit button
+        form_page(section(tid="none")),  # no template
+        form_page(section(), inside=entry("0")),  # an entry outside the section
+        form_page(section() + section()),  # two sections
+        form_page(section()).replace('<template id="tpl">', '<template id="tpl2">'),
+        form_page(section(), "").replace("</form>", "") + "</form>",  # the template inside the form
+        form_page(section().replace('id="work-experience"', 'id="1bad"')),
+        form_page(section(), entry(extra='<div role="textbox" aria-label="Start"></div>')),
+        form_page(section(entry("0").replace('name="work[0].from"', 'name="work[0].from.month"'))),
+        form_page(section(f'<template id="t2">{entry()}</template>')),  # a template inside the form
     ],
     ids=["unknown-control", "left-empty-required", "a-part-missing", "a-part-of-another-kind",
          "template-value", "entry-value", "entry-ticked", "numbering", "no-add", "two-adds",
          "add-submits", "no-template", "entry-outside", "two-sections", "template-unfound",
-         "template-in-form", "root-id"],  # fmt: skip
+         "template-in-form", "root-id", "custom-control", "a-part-split",
+         "template-in-section"],  # fmt: skip
 )
 def test_any_other_work_history_is_one_required_checkpoint(html):
     """Anything about work history that is not the structure NoEfforts enters is one required
@@ -197,7 +201,7 @@ def test_any_other_work_history_is_one_required_checkpoint(html):
 
 
 def test_controls_named_as_entries_without_a_section_are_a_checkpoint():
-    html = page("", inside=entry("0"))
+    html = form_page("", inside=entry("0"))
     schema, fields = read(html)
     assert schema.sections == [] and workday.WORK_KEY in fields
 
@@ -447,3 +451,159 @@ def test_before_anything_is_entered_a_section_off_its_page_stops_the_attempt():
     assert not usable({**frozen([frozen_row(start=(0, 2019))]), "step": "My Experience"}, wizard)
     assert SECTION_UNUSABLE  # the plain stop's text (schema_matches)
     assert form_fingerprint  # imported for the fingerprint tests above
+
+
+# ---------------------------------------------------------------------------- in the browser
+
+SECTION_PAGE = """<!doctype html><html><body>
+<form id="workday-application" action="http://fixture.test/apply" method="post">
+<section data-step="My Experience">
+<label for="r">Resume/CV</label><input id="r" name="resume" type="file">
+<div id="work-experience" data-wd-section="work" data-wd-entry-template="tpl">
+<div data-entries>{entries}</div><button type="button" id="add">Add</button>{extra}</div>
+</section><button type="submit">Submit</button></form>
+<template id="tpl">{template}</template>
+<script>
+const entries = document.querySelector('[data-entries]');
+function wire(e) {{
+  const box = e.querySelector('[name$=".current"]'), to = e.querySelector('[name$=".to"]');
+  box.addEventListener('change', () => {{
+    to.hidden = box.checked;
+    if (box.checked) to.value = '';
+  }});
+}}
+for (const e of entries.children) wire(e);
+document.getElementById('add').addEventListener('click', () => {{
+  if (window.broken) return;
+  const i = entries.children.length;
+  entries.insertAdjacentHTML('beforeend',
+    document.getElementById('tpl').innerHTML.replaceAll('__i__', String(i)));
+  wire(entries.lastElementChild);
+}});
+</script></body></html>"""
+CURRENT_OPS = ("title", "company_name", "start_date", "current")
+
+
+def section_page(entries: str = "", extra: str = "") -> str:
+    return SECTION_PAGE.format(entries=entries, extra=extra, template=entry())
+
+
+def section_adapter(captured: str, sections: list[dict], wizard=None) -> WorkdayFixtureAdapter:
+    dest = {"url": "http://fixture.test/workday/t/R-1000", "submit_url": "http://fixture.test/apply",
+            "form_fingerprint": form_fingerprint(workday.extract_schema(captured))}  # fmt: skip
+    return WorkdayFixtureAdapter({"answers": [], "documents": [], "destination": dest,
+                                  "sections": sections, **({"wizard": wizard} if wizard else {})},
+                                 {})  # fmt: skip
+
+
+@pytest.fixture(scope="module")
+def _browser():
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
+        yield browser
+        browser.close()
+
+
+@pytest.fixture
+def page(_browser):
+    pg = _browser.new_page()
+    yield pg
+    pg.close()
+
+
+def test_entries_are_added_entered_and_read_back(page):
+    page.set_content(section_page())
+    entries = ws.plan(frozen([frozen_row(), frozen_row("r2", current=False)]))
+    got = ws.apply(page, entries, ROOT)
+    assert got == [{"row": 0, "field": f} for f in CURRENT_OPS] + [
+        {"row": 1, "field": f} for f in (*CURRENT_OPS, "end_date")]  # fmt: skip
+    assert ws.readback(page, entries, ROOT) == []
+    assert page.locator('[name="work[0].current"]').is_checked()
+    assert page.locator('[name="work[0].to"]').input_value() == ""  # never entered
+    assert page.locator('[name="work[1].to"]').input_value() == "12/2018"
+    assert page.locator('[name="work[1].from"]').input_value() == "01/2019"
+
+
+def test_the_readback_finds_every_difference_and_any_entry_beyond_the_plan(page):
+    page.set_content(section_page())
+    entries = ws.plan(frozen([frozen_row(), frozen_row("r2", current=False)]))
+    ws.apply(page, entries, ROOT)
+    page.evaluate("""() => {
+      document.querySelector('[name="work[0].description"]').value = 'Parsed (fictional)';
+      document.querySelector('[name="work[0].to"]').value = '01/2020';
+      document.querySelector('[name="work[1].title"]').value = 'Another title';
+      document.querySelector('[name="work[1].current"]').checked = true;
+      document.getElementById('add').click();
+    }""")
+    assert sorted(ws.readback(page, entries, ROOT)) == sorted([
+        "section:employment:0:description", "section:employment:0:to",
+        "section:employment:1:title", "section:employment:1:current",
+        "section:employment:2:entry"])  # fmt: skip
+
+
+def test_an_empty_entry_beyond_the_plan_is_found_too(page):
+    page.set_content(section_page(entries=entry("0")))
+    assert ws.readback(page, ws.plan(frozen([])), ROOT) == ["section:employment:0:entry"]
+
+
+def test_an_entry_that_does_not_appear_stops_with_what_was_entered(page):
+    page.set_content(section_page(entries=entry("0")))
+    page.evaluate("() => { window.broken = true; }")
+    entries = ws.plan(frozen([frozen_row(), frozen_row("r2", current=False)]))
+    with pytest.raises(ws.SectionFillError) as e:
+        ws.apply(page, entries, ROOT, timeout_ms=500)
+    assert e.value.entered == [{"row": 0, "field": f} for f in CURRENT_OPS]
+
+
+def test_a_section_without_one_add_button_is_never_clicked(page):
+    page.set_content(section_page(extra='<button type="button">Add Another</button>'))
+    with pytest.raises(ws.SectionFillError) as e:
+        ws.apply(page, ws.plan(frozen([frozen_row()])), ROOT, timeout_ms=500)
+    assert e.value.entered == []
+    assert page.locator('[name="work[0].title"]').count() == 0
+
+
+def test_a_control_that_does_not_keep_its_value_stops_the_entry(page):
+    page.set_content(section_page(entries=entry("0")))
+    page.evaluate("""() => document.querySelector('[name="work[0].company"]')
+      .addEventListener('input', e => { e.target.value = 'Changed'; })""")
+    with pytest.raises(ws.SectionFillError) as e:
+        ws.apply(page, ws.plan(frozen([frozen_row()])), ROOT, timeout_ms=500)
+    assert e.value.entered == [{"row": 0, "field": "title"}]
+
+
+def test_the_adapter_enters_a_single_page_s_section_and_reads_it_back(page):
+    html = section_page()
+    page.set_content(html)
+    adapter = section_adapter(html, [frozen([frozen_row()])])
+    assert adapter.schema_matches(page) is None
+    sent = adapter.fill(page)
+    assert [(d["kind"], d["row"], d["field"]) for d in sent] == [
+        ("section_field", 0, f) for f in CURRENT_OPS]  # fmt: skip
+    assert adapter.readback(page) == []
+    page.evaluate("""() => document.querySelector('[name="work[0].location"]').value = 'x'""")
+    assert adapter.readback(page) == ["section:employment:0:location"]
+
+
+def test_before_anything_is_entered_a_section_it_cannot_enter_is_a_plain_stop(page):
+    html = section_page()
+    page.set_content(html)
+    adapter = section_adapter(html, [frozen([frozen_row(start=(13, 2019))])])
+    assert adapter.schema_matches(page) == SECTION_UNUSABLE
+    assert page.locator('[name="work[0].title"]').count() == 0
+
+
+def test_on_a_wizard_a_section_is_entered_and_read_back_with_its_own_page(page):
+    html = section_page()
+    page.set_content(html)
+    wizard = {"pages": ["My Information", "My Experience", "Review"]}
+    sec = {**frozen([frozen_row()]), "step": "My Experience"}
+    adapter = section_adapter(html, [sec], wizard)
+    assert adapter.fill_page(page, 1) == []
+    assert page.locator('[name="work[0].title"]').count() == 0
+    assert adapter.readback_through(page, 1) == []  # its page is not read back yet
+    assert adapter.readback_through(page, 2) == [f"section:employment:0:{f}" for f in CURRENT_OPS]
+    assert [d["field"] for d in adapter.fill_page(page, 2)] == list(CURRENT_OPS)
+    assert adapter.readback_through(page, 2) == [] and adapter.readback(page) == []

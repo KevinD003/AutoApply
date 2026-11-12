@@ -53,6 +53,7 @@ from typing import NamedTuple
 from urllib.parse import urlsplit
 
 from app.modules.preparation.forms import (
+    _ARIA_WIDGETS,
     _VOID,
     UNKNOWN_TRIGGER,
     Condition,
@@ -128,6 +129,7 @@ def _hidden_in_page(html: str) -> set[str]:
 # D149: the Work Experience section (FA7). An entry's controls, by the last part of their name
 # (work[i].<part>): (tag, input type, filled by NoEfforts). One not filled is never required.
 _WORK_NAME = re.compile(r"^work\[(\d+|__i__)\]\.([a-z_]+)$")
+_WORK_ANY = re.compile(r"^work\[")  # any control named as an entry's
 _WORK_CONTROLS = {
     "title": ("input", "text", True),
     "company": ("input", "text", True),
@@ -183,7 +185,7 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
     form = _application_form(nodes)
     inside = [n for n in nodes if form is None or n is form or form in n.ancestors()]
     controls = [n for n in inside if n.tag in ("input", "select", "textarea")
-                and _WORK_NAME.match(n.attrs.get("name", ""))]  # fmt: skip
+                and _WORK_ANY.match(n.attrs.get("name", ""))]  # fmt: skip
     sections = [n for n in inside if n.attrs.get("data-wd-section") == "work"]
     if not sections:
         return None, bool(controls)  # entries outside any section: never guessed
@@ -204,6 +206,12 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
     entry = [n for n in templates[0].walk() if n.tag in ("input", "select", "textarea")]
     if not _entry_ok(entry, "__i__"):
         return None, True
+    if any((n.attrs.get("role") or "").lower() in _ARIA_WIDGETS
+           for n in (*root.walk(), *templates[0].walk())):  # fmt: skip
+        return None, True  # a custom control in an entry: nothing NoEfforts can operate
+    if any(not (m := _WORK_NAME.match(n.attrs["name"])) or not m[1].isdigit()
+           for n in controls):  # fmt: skip
+        return None, True  # a control named as an entry's but not one, or a template inside
     by_index: dict[str, list[_Node]] = {}
     for n in controls:  # entries already on the page: empty ones only, numbered 0, 1, ...
         by_index.setdefault(_WORK_NAME.match(n.attrs["name"])[1], []).append(n)
@@ -414,7 +422,7 @@ def extract_schema(html: str) -> FormSchema:
     schema = extract_form_schema(_CASCADE.sub(_as_picker, html), challenges=True)
     # D149: an entry's controls are the section's, never questions of their own.
     work, work_problem = _work_section(html)
-    schema.fields = [f for f in schema.fields if not _WORK_NAME.match(f.key)]
+    schema.fields = [f for f in schema.fields if not _WORK_ANY.match(f.key)]
     keys = {f.key for f in schema.fields}
     hidden = _hidden_in_page(html)
     for f in schema.fields:
