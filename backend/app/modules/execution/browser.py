@@ -436,7 +436,16 @@ def browser_session(
             [host, *(h for h, _ in extra_hp), *relay]))  # fmt: skip
         args.insert(0, f"--host-resolver-rules=MAP * ~NOTFOUND , {keep}")
     with ExitStack() as stack, sync_playwright() as p:
-        launch: dict = {"headless": True, "args": args}
+        # D150: Playwright's driver shares the worker's process group, and by default closes the
+        # browser on Ctrl-C, SIGTERM or SIGHUP; the worker's own stop request ends the run at its
+        # next check and closes the browser itself (a lost worker's ends with its driver).
+        launch: dict = {
+            "headless": True,
+            "args": args,
+            "handle_sigint": False,
+            "handle_sigterm": False,
+            "handle_sighup": False,
+        }
         chrome = os.environ.get("PW_CHROMIUM_PATH") or p.chromium.executable_path
         if isolation == "netns":
             workdir = tempfile.mkdtemp(prefix=f"{WORKDIR_PREFIX}{os.getpid()}-")

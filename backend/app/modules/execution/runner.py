@@ -26,7 +26,7 @@ from app.core.db import SessionLocal
 from app.core.urlsafety import destination_category, is_fixture_origin
 from app.modules.documents.models import Document
 from app.modules.documents.storage import get_storage
-from app.modules.execution import live, policy, rehearsal
+from app.modules.execution import live, policy, rehearsal, stopping
 from app.modules.execution import service as svc
 from app.modules.execution.adapters.ashby import AshbyFixtureAdapter
 from app.modules.execution.adapters.fake_api import FakeApiAdapter
@@ -52,6 +52,7 @@ from app.modules.execution.adapters.workday import WorkdayFixtureAdapter
 from app.modules.execution.browser import IsolationUnavailable, browser_session
 from app.modules.execution.faults import fault, run_clock
 from app.modules.execution.models import ExecutionAttempt
+from app.modules.execution.stopping import StopRequested
 from app.modules.preparation import package as pk
 from app.modules.preparation import sending
 from app.modules.preparation.models import ApplicationPackage, ApprovalScope, PackageApproval
@@ -109,15 +110,19 @@ class _Loading:
             self.page.remove_listener(event, fn)
 
 
-def _settle(page, loading: _Loading) -> bool:
+def _settle(page, loading: _Loading, honour_stop: bool = False) -> bool:
     """Wait until the page has finished the requests it made by itself (its scripts, a locale
     file): a control may only respond once they have arrived, and on a busy machine they come
     late (CI #133). True as soon as none has been in flight for QUIET_MS; False if the page is
     still loading after SETTLE_LOAD_MS, and the caller stops safely. It only waits: nothing is
-    typed, clicked, sent or repeated."""
+    typed, clicked, sent or repeated. D150: with `honour_stop` (the first page, before anything
+    is entered) a stop request ends the wait (StopRequested); never after a page's Next, whose
+    outcome the reads after this wait decide."""
     deadline = time.monotonic() + SETTLE_LOAD_MS / 1000
     quiet_since = None
     while True:
+        if honour_stop:
+            stopping.raise_if_requested()
         now = time.monotonic()
         if loading.pending:
             quiet_since = None
@@ -193,6 +198,13 @@ def _rehearsal(attempt_id) -> bool:
 def run_attempt(attempt_id: str, worker: str) -> str:
     aid = uuid.UUID(attempt_id)
     fault("before_claim")
+    if stopping.requested():
+        # D150: a worker asked to stop claims nothing. The attempt stays queued, with a new
+        # message the relay publishes within seconds for the next worker (its own republish,
+        # D146, would wait five minutes).
+        log.info("attempt %s: not claimed, the worker was asked to stop", aid)
+        svc.publish_again(aid)
+        return "stopping"
     gen = svc.claim(aid, worker)
     if gen is None:
         log.info("attempt %s: delivery ignored (already claimed, finished or not eligible)", aid)
@@ -202,11 +214,18 @@ def run_attempt(attempt_id: str, worker: str) -> str:
     phase = "before_disclosure"
     started = run_clock()
     last_beat = [time.monotonic()]
+    honour_stop = [True]  # D150: off once a rehearsal has filled (nothing protected is left)
+
+    def stop_if_requested():
+        if honour_stop[0]:
+            stopping.raise_if_requested()
 
     def within_budget():
         # D143: the run's own time limit, checked between steps and so never raised inside a
         # browser wait. Past it the run stops as its phase says: before the final click that
-        # is always "nothing was submitted".
+        # is always "nothing was submitted". D150: a stop request is honoured at the same
+        # checks, and first.
+        stop_if_requested()
         if run_clock() - started > s.attempt_run_budget_seconds:
             raise RunBudgetExceeded()
 
@@ -214,6 +233,15 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         within_budget()
         svc.heartbeat(aid, worker, gen)
         last_beat[0] = time.monotonic()
+        stop_if_requested()  # D150: again after the round trip, right before the step it guards
+
+    def lost_browser(reason: str) -> str:
+        # D150: before anything was entered, a browser lost or a page not ready while the worker
+        # is being stopped (the whole stack stopping with it, Ctrl-C) ends as the stop does.
+        if stopping.requested():
+            return _stopped(aid, worker, gen, "before_disclosure")
+        svc.fail_safe(aid, worker, gen, reason)
+        return "failed_safe"
 
     def progress():
         # D143: between fields. Renews the lease at most every quarter of it, so a long fill or
@@ -271,11 +299,11 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         except IsolationUnavailable as e:
             # The fixed code only: the message is for developers reading the code, never stored.
             log.warning("attempt %s: browser isolation unavailable (%s)", aid, e.code)
-            svc.fail_safe(aid, worker, gen, f"browser isolation unavailable ({e.code})")
-            return "failed_safe"
+            return lost_browser(f"browser isolation unavailable ({e.code})")
         with _Closing(session):
             beat()
             fault("before_navigate")
+            within_budget()  # D150: a stop requested while the browser started; never opened
             url = adapter.form_url()
             if rehearsal.normalize_origin(_origin_of(url)) != rehearsal.normalize_origin(
                 dest["origin"]
@@ -288,13 +316,14 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             loading = _Loading(page)
             try:
                 page.goto(url)
-                ready = _settle(page, loading)
+                ready = _settle(page, loading, honour_stop=True)
+            except StopRequested:
+                raise
             except Exception as e:  # noqa: BLE001 - any navigation failure is a safe stop
-                svc.fail_safe(aid, worker, gen, f"could not open the form ({type(e).__name__})")
-                return "failed_safe"
+                return lost_browser(f"could not open the form ({type(e).__name__})")
             finally:
                 loading.close()
-            if not ready:
+            if not ready:  # a stop request during the wait ended it above (StopRequested)
                 svc.fail_safe(aid, worker, gen, NOT_READY)
                 return "failed_safe"
             reason = (
@@ -327,6 +356,10 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                 _record_disclosures(aid, worker, gen, _not_yet(e.disclosures, recorded))
                 svc.abandon(aid, worker, gen, str(e))
                 return "abandoned"
+            if _rehearsal(aid):
+                # D150: a rehearsal has filled; reading back, re-checking and ending it enter
+                # nothing more, so a stop request no longer cuts it short (it ends rehearsed).
+                honour_stop[0] = False
             for d in _not_yet(disclosures, recorded):
                 svc.record_evidence(aid, worker, gen, "disclosure", d)
             mismatches = adapter.readback(page)
@@ -396,6 +429,8 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         # sweeper will mark the attempt unknown; we never act on it again from here.
         log.warning("attempt %s: lost authority in phase %s; stopped", aid, phase)
         return "lost_authority"
+    except StopRequested:
+        return _stopped(aid, worker, gen, phase)
     except Exception as e:  # noqa: BLE001
         # The exception type only: browser errors can quote URLs, selectors or page text, so
         # neither the message nor the traceback is logged (same as the API route below).
@@ -403,6 +438,10 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             "attempt %s failed in phase %s (%s) at %s",
             aid, phase, type(e).__name__, _origin_frames(e),
         )  # fmt: skip
+        if phase != "after_send" and honour_stop[0] and stopping.requested():
+            # D150: an error while the worker is being stopped (its browser closed with the
+            # stack, Ctrl-C) ends as the stop does; past the send gate, as before.
+            return _stopped(aid, worker, gen, phase)
         reason = _failure_reason(e)
         if phase == "before_disclosure":
             svc.fail_safe(aid, worker, gen, reason)
@@ -414,11 +453,25 @@ def run_attempt(attempt_id: str, worker: str) -> str:
 
 
 TIME_LIMIT = "the run reached its time limit and was stopped"
+STOP_REQUESTED = "the worker was asked to stop"
 
 
 class RunBudgetExceeded(Exception):
     """D143: the attempt took longer than its run budget (attempt_run_budget_seconds) to reach
     the final click. Raised by the runner between steps, never inside a browser wait."""
+
+
+def _stopped(aid, worker, gen, phase: str) -> str:
+    """D150: where a run asked to stop ends. Before anything was entered the attempt goes back
+    in the queue for the next worker (service.requeue_on_stop); after, it is abandoned like any
+    stop there, never retried. Never reached after the send gate."""
+    log.info("attempt %s: stopped in phase %s, the worker was asked to stop", aid, phase)
+    if phase == "before_disclosure":
+        out = svc.requeue_on_stop(aid, worker, gen)
+        if out is not None:
+            return {"requeued": "requeued", "failed": "failed_safe"}[out]
+        # None: no longer held (a cancel, the sweeper), or data was entered after all
+    return "abandoned" if svc.abandon(aid, worker, gen, STOP_REQUESTED) else "lost_authority"
 
 
 def _failure_reason(e: BaseException) -> str:
@@ -657,19 +710,22 @@ def _run_api(aid, worker, gen, adapter) -> str:
     s = get_settings()
     phase = "before_disclosure"
     try:
+        stopping.raise_if_requested()  # D150: before the API is asked anything
         reason = adapter.validate_before_disclosure()
         if reason:
             svc.fail_safe(aid, worker, gen, reason)
             return "failed_safe"
         try:
-            svc.gate_before_disclosure(aid, worker, gen)
+            svc.gate_before_disclosure(aid, worker, gen)  # D150: it reads the stop request last
         except svc.GateRefused as e:
             svc.fail_safe(aid, worker, gen, str(e), code=e.code)
             return "failed_safe"
         phase = "after_disclosure"
         fault("after_disclosure_gate")
         recorded = _record_as_made(aid, worker, gen, adapter)
+        adapter.before_document = stopping.raise_if_requested  # D150: before each document
         try:
+            stopping.raise_if_requested()  # D150: the draft and the uploads below disclose
             draft = adapter.prepare()
             svc.record_evidence(aid, worker, gen, "disclosure",
                                 {"route": "api", "kind": "application_draft"})  # fmt: skip
@@ -692,7 +748,7 @@ def _run_api(aid, worker, gen, adapter) -> str:
             return _stop_rehearsal(aid, worker, gen)
         fault("before_send_gate")
         try:
-            svc.gate_before_send(aid, worker, gen)
+            svc.gate_before_send(aid, worker, gen)  # D150: it reads the stop request last
         except svc.GateRefused as e:
             svc.abandon(aid, worker, gen, str(e), code=e.code)
             return "abandoned"
@@ -715,11 +771,15 @@ def _run_api(aid, worker, gen, adapter) -> str:
     except svc.LostAuthority:
         log.warning("attempt %s: lost authority in phase %s; stopped", aid, phase)
         return "lost_authority"
+    except StopRequested:
+        return _stopped(aid, worker, gen, phase)
     except Exception as e:  # noqa: BLE001
         log.warning(
             "attempt %s failed in phase %s (%s) at %s",
             aid, phase, type(e).__name__, _origin_frames(e),
         )  # fmt: skip
+        if phase != "after_send" and stopping.requested():  # D150, as on the browser route
+            return _stopped(aid, worker, gen, phase)
         reason = _failure_reason(e)
         if phase == "before_disclosure":
             svc.fail_safe(aid, worker, gen, reason)
@@ -768,18 +828,29 @@ def _conclude(aid, worker, gen, adapter, page, out) -> str:
     return "unknown"
 
 
+def _abandoned(aid, worker, gen, reason: str) -> str:
+    return "abandoned" if svc.abandon(aid, worker, gen, reason) else "lost_authority"
+
+
 def _verification_loop(aid, worker, gen, adapter, page, s) -> str:
     cp = svc.open_checkpoint(aid, worker, gen, "Enter the code the employer emailed you.")
     submit_ms = s.submit_timeout_seconds * 1000
     deadline = run_clock() + s.checkpoint_ttl_seconds  # from the request, not from the first look
     fault("in_code_wait")
     while True:
+        if stopping.requested():
+            # D150: entering a code is a protected step, so the verification is left unfinished;
+            # a code typed meanwhile is erased with the request.
+            return _abandoned(aid, worker, gen, STOP_REQUESTED)
         # D143: a code is looked for before the wait's own end is judged, so one accepted in the
         # wait's last moment is still entered.
         code, status = svc.take_code(cp, aid, worker, gen, adapter.code_watch_seconds(submit_ms))
         if status in ("expired", "failed"):
             svc.abandon(aid, worker, gen, f"verification {status}")
             return "abandoned"
+        if code is not None and stopping.requested():  # D150: taken, never entered
+            del code
+            return _abandoned(aid, worker, gen, STOP_REQUESTED)
         if code is None:
             if run_clock() > deadline:
                 svc.abandon(aid, worker, gen, "no code was entered in time")

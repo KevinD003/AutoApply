@@ -9,6 +9,35 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A request to stop the worker honoured before the next protected step (D150, 2026-11-12; local only)
+
+Nothing here ran against a real page or a real account. Branch `worker-stop-request`. The runs
+are against the local stand-ins (FIXTURE ASSUMPTIONS); the receiver's ledger is the oracle for
+everything said to have reached the employer. "In-process" rows run the runner in the test
+process with the request set at a named point (a test-only fault action, `stop`, or a stand-in
+for one step); the "real worker" rows start a Celery worker (prefork, one process) and send its
+main process SIGTERM, as `docker compose stop` does. All in `tests/test_worker_stop.py`.
+
+| Claim | Test | Result |
+|---|---|---|
+| The flag reaches a pool process: forked after the import, or a new interpreter mapping the file named at `worker_init`; the file is removed at `worker_shutdown` | `test_the_flag_is_shared_with_a_process_forked_after_it_and_starts_cleared`, `test_shared_through_its_file_a_process_started_afresh_sees_the_request` | the child sees the parent's later request; a new process starts cleared; the file is gone after `unshare` |
+| Before anything is entered, the attempt goes back in the queue; the next worker sends it once | `test_stopped_before_anything_is_entered_the_attempt_goes_back_in_the_queue` (4 adapters) | `pending`, a new outbox message, the receiver asked nothing; then `confirmed`, accepted once |
+| After the disclosure gate, abandoned for good | `test_stopped_after_the_disclosure_gate_the_attempt_is_abandoned_for_good` (4 adapters, 2 points) | `abandoned` with the stop's text; no upload before the first field; never run again; the requeue never asked for (its refusal once data was entered stays a second guard) |
+| Counted with the sweeper's re-queues | `test_a_third_stop_in_a_row_before_entry_fails_safe_as_the_sweeper_would` | `requeued`, `requeued`, `failed_safe` ("Worker kept stopping…"), `failed_retryable` |
+| Past the send gate the click and its outcome are completed; an error there is unknown | `test_after_the_send_gate_the_click_and_its_outcome_are_completed`, `test_an_error_after_the_send_gate_while_stopping_is_an_unknown_outcome` | `confirmed`, accepted once; `unknown`, `submitted_unconfirmed` |
+| Before the claim, nothing claimed, a new message | `test_a_worker_asked_to_stop_claims_nothing` | `pending`, generation 0, one new message; the next worker sends it once |
+| A wizard stops before the next page's step | `test_on_a_wizard_a_stop_request_ends_the_run_before_the_next_page_step` (2 points) | drafts saved: none, or page 1 only; no step recorded past the stop; every approval retired |
+| Each gate reads the request last and commits nothing | `test_a_stop_while_the_disclosure_gate_runs_records_nothing_and_requeues`, `…_send_gate_runs_never_clicks`, `…_a_wizard_s_step_gate_runs_records_no_step` | no disclosure stamp or event (re-queued); no `send_authorized`, nothing accepted; no `step_authorized` |
+| A browser lost while stopping is the stop's | `test_an_error_while_the_worker_is_stopping_ends_as_the_stop_does` (2), `test_a_stop_while_the_first_page_loads_puts_the_attempt_back_at_once` (2), `test_a_browser_that_cannot_be_started_while_stopping_is_the_stop_s` | re-queued or abandoned with the stop's text, never "internal error"; the first page's wait ends well within its eight seconds |
+| Between controls on the adapters | `test_workday_section_entries_stop_at_the_next_control`, `test_greenhouse_section_controls_stop_at_the_next_one`, `test_greenhouse_section_rows_are_not_added_after_a_stop`, `test_on_greenhouse_pages_the_stop_is_read_after_the_page_settles_from_an_upload`, `test_on_the_hosted_form_a_stop_during_the_wait_for_a_shown_question_enters_it_not`, `test_a_stop_during_a_heartbeat_is_read_before_the_step_it_precedes` | no page action after the request (every typing, click, choice and upload recorded); one section control entered; no "Add another"; no document sent |
+| A rehearsal that has filled ends as rehearsed | `test_a_rehearsal_that_has_filled_ends_as_rehearsed` | `rehearsed`, nothing accepted |
+| The code wait enters no code after the request | `test_waiting_for_a_code_a_stop_request_leaves_the_verification_unfinished`, `test_a_code_taken_after_the_stop_request_is_never_entered_and_is_erased` | "Verification was not completed: …"; the challenge not done, no code given to the employer; the request closed, its code erased |
+| The API route | `test_on_the_api_route_a_stop_request_ends_the_run_before_its_next_request` (3), `test_a_stop_while_the_api_reads_the_job_s_schema_puts_the_attempt_back`, `test_a_stop_while_the_api_creates_the_draft_sends_no_document`, `test_on_the_api_route_an_error_while_the_worker_is_stopping_ends_as_the_stop_does` (2) | the API asked nothing, or only the schema (re-queued); no draft after the gate; no document after the draft; never submitted; the requeue never asked for after the gate; an error with a stop requested (the schema's answer cut off, as urllib raises it, or an error after the gate) re-queued or abandoned with the stop's text, never "internal error" |
+| The re-queue's fence; a new message only for a waiting attempt | `test_the_requeue_writes_nothing_for_a_worker_that_no_longer_holds_the_attempt`, `test_a_new_message_is_queued_only_for_an_attempt_still_waiting` | nothing written for another worker or generation, a cancel, an expired lease or data entered; no message for a cancel requested or a claimed attempt |
+| Playwright without its own signal handling; the worker stopped first, with time for a click's answer | `test_the_browser_is_launched_without_playwright_s_own_signal_handling`, `test_the_worker_stops_before_its_browser_and_waits_for_a_click_s_answer` | `handle_sigint/sigterm/sighup` false; `depends_on` the runner and the proxy; `stop_grace_period` ≥ the real-page watch + 20 s |
+| A real worker told to stop (SIGTERM) | `test_a_real_worker_told_to_stop_…` (5: before the send gate, before opening the form, after the send gate, in the code wait, as it takes an attempt) | as above, with the receiver's ledger; the flag file made at start and removed at exit; the worker exited 2.3 to 2.5 s after its held process was released |
+| Each part is needed | 46 changes, one at a time, the named tests run, the file restored (`docs/implementation-status.md`) | each fails a test: 43 with the tests named first; one more against the whole file; the last two after two tests were added (aeab20d) |
+
 ## Workday-style Work Experience: your approved work history entered on My Experience (D149, 2026-11-12; local only)
 
 Nothing here ran against a real page or a real account, and no real Workday work-history section

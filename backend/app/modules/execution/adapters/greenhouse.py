@@ -137,6 +137,7 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
                 continue
             if a.get("condition"):
                 page.locator(f'[name="{a["key"]}"]').first.wait_for(state="visible")
+                self._progress()  # D150: after the wait for it, right before it is entered
             if a["type"] == "file":
                 try:
                     attach = partial(self._attach, page, a)

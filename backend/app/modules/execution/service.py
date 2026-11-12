@@ -45,7 +45,7 @@ from app.modules.applications.models import Application
 from app.modules.applications.service import transition
 from app.modules.applications.states import Actor, AppState
 from app.modules.audit.service import record
-from app.modules.execution import live, rehearsal, restore
+from app.modules.execution import live, rehearsal, restore, stopping
 from app.modules.execution.models import (
     ACTIVE,
     PAUSE_UNRESOLVED,
@@ -663,6 +663,9 @@ def gate_before_disclosure(attempt_id, worker: str, gen: int) -> None:
         except GateRefused as e:
             db.rollback()
             raise GateRefused(str(e), e.code) from None
+        # D150: read last, under the gate's locks: a stop request that came while this gate ran
+        # leaves nothing recorded (StopRequested; the session closes without committing).
+        stopping.raise_if_requested()
         att.disclosure_started_at = utcnow()
         event(db, att, "disclosure_authorized")
         db.commit()
@@ -698,6 +701,7 @@ def gate_before_send(attempt_id, worker: str, gen: int, watch_seconds: int | Non
         except GateRefused as e:
             db.rollback()
             raise GateRefused(str(e), e.code) from None
+        stopping.raise_if_requested()  # D150: as at the disclosure gate; the click never follows
         app = ctx.app
         now = utcnow()
         att.state, att.send_started_at = S.sending, now
@@ -765,6 +769,7 @@ def gate_before_step(attempt_id, worker: str, gen: int, page: int, phase: str) -
         except GateRefused as e:
             db.rollback()
             raise GateRefused(str(e), e.code) from None
+        stopping.raise_if_requested()  # D150: as at the disclosure gate; no step is recorded
         event(db, att, "step_authorized", page=page, phase=phase, pages=pages)
         db.commit()
 
@@ -955,6 +960,53 @@ def abandon(
         f"Verification was not completed: {reason}",
         retire="verification_not_completed",
     )
+
+
+def requeue_on_stop(attempt_id, worker, gen) -> str | None:
+    """D150: the worker was asked to stop (`docker compose stop`, an upgrade's restart) before
+    this attempt entered anything. What the sweeper does for a lost worker's attempt
+    (`_sweep_one`), at once and by the worker itself: the attempt goes back in the queue,
+    counted against `max_safe_retries`, with a new message for the relay, and the next worker
+    takes it; past the limit it ends failed_safe as the sweeper's does. One generation-fenced
+    write from `claimed` with nothing disclosed (lock order: the attempt, then its
+    application). Returns "requeued" or "failed"; None, writing nothing, when the worker no
+    longer holds the attempt (a cancel, the sweeper) or data was entered (the caller then
+    abandons it, which the fence refuses in the first case)."""
+    with SessionLocal() as db:
+        try:
+            att = _locked_attempt(db, attempt_id, worker, gen, S.claimed)
+        except LostAuthority:
+            return None
+        if att.disclosure_started_at is not None:
+            return None
+        app = pk.lock_application(db, att.application_id)
+        att.lease_owner, att.lease_expires_at = None, None
+        if att.retry_count < get_settings().max_safe_retries:
+            att.state, att.retry_count = S.pending, att.retry_count + 1
+            event(db, att, "stop_requeued", retry=att.retry_count)
+            db.add(OutboxMessage(topic=TOPIC_EXECUTE, attempt_id=att.id))
+            db.commit()
+            return "requeued"
+        att.state, att.finished_at = S.failed_safe, utcnow()
+        att.outcome_detail = "Worker kept stopping before sending anything."
+        _app_to(db, app, AppState.failed_retryable, Actor.system, att.outcome_detail)
+        event(db, att, "stop_failed")
+        db.commit()
+        return "failed"
+
+
+def publish_again(attempt_id) -> bool:
+    """D150: a new message for an attempt still waiting (`pending`, no cancel requested) that a
+    worker asked to stop received and did not claim; the relay publishes it within seconds, for
+    the next worker (D146's own republish would wait five minutes). A second message for one
+    attempt is harmless: the claim takes it once."""
+    with SessionLocal() as db:
+        att = db.get(ExecutionAttempt, attempt_id)
+        if att is None or att.state != S.pending or att.cancel_requested:
+            return False
+        db.add(OutboxMessage(topic=TOPIC_EXECUTE, attempt_id=att.id))
+        db.commit()
+        return True
 
 
 def pause_for_form_change(attempt_id, worker, gen, reason: str, counts: dict) -> bool:

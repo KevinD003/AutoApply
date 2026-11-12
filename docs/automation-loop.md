@@ -22,7 +22,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 
 | What | Where |
 |---|---|
-| `main` | dd5d164 (tree 1c6df86, as predicted): #57 D148. Before it, b7f6c45 (tree 4f77573): #56 D147; 688c776 (tree c0865f1): #55 D146; 45c8229 (tree 0df08ea): #54 D145; 099642c (tree 33b8b0d): #53 D144; 9346c8e (tree fd09e77): #52 D143; 25d04ea (tree a3054b8): #51 D142; 98fe380 (tree b75d64c): #50 D141; 3df7d0d (tree a625f26): #49 D140; 4585c59 (tree fac890a): #48 D139; a7f8742 (tree af2f25f): #47 D138; e2fd286 (tree 1d69376): #46 D137; 32c8f7c (tree 201ddbd): #45 D136; 53b28af (tree fe5c8c3): #44 D135 (main CI #269 green on all four jobs); 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
+| `main` | 570a393 (tree 16e34b4, as predicted): #58 D149. Before it, dd5d164 (tree 1c6df86): #57 D148; b7f6c45 (tree 4f77573): #56 D147; 688c776 (tree c0865f1): #55 D146; 45c8229 (tree 0df08ea): #54 D145; 099642c (tree 33b8b0d): #53 D144; 9346c8e (tree fd09e77): #52 D143; 25d04ea (tree a3054b8): #51 D142; 98fe380 (tree b75d64c): #50 D141; 3df7d0d (tree a625f26): #49 D140; 4585c59 (tree fac890a): #48 D139; a7f8742 (tree af2f25f): #47 D138; e2fd286 (tree 1d69376): #46 D137; 32c8f7c (tree 201ddbd): #45 D136; 53b28af (tree fe5c8c3): #44 D135 (main CI #269 green on all four jobs); 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
 | D131 follow-up (the review's remaining findings) | merged (#39, bd38529); main CI #254 passed all four jobs |
 | D132 form-change pause and questions tab | merged (#40, c19c683); main CI #260 passed all four jobs |
 | D133 reuse and suggestion guards | merged (#41, da7ac61); its PR CI passed all four jobs on 360f34c, and main CI #265 on da7ac61 |
@@ -41,7 +41,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D146 an attempt still waiting to be taken is published again | merged (#55, 688c776, tree as predicted); its PR CI passed all four jobs on e1fb40a |
 | D147 a restored database comes up held, and nothing it restored runs | merged (#56, b7f6c45, tree as predicted); its PR CI passed all four jobs on f102f50, the Docker smoke test's real dump and restore with the guide's checks among them |
 | D148 a Workday-style follow-up question, entered only when the page shows it | merged (#57, dd5d164, tree as predicted); its PR CI passed all four jobs on 93979df |
-| D149 Workday-style Work Experience: your approved work history entered on My Experience | branch `wizard-experience` (D148's branch, then `main` with #57); reviewed twice; not merged |
+| D149 Workday-style Work Experience: your approved work history entered on My Experience | merged (#58, 570a393, tree as predicted); its PR CI passed all four jobs on 8f9acba |
+| D150 a request to stop the worker honoured before the next protected step | branch `worker-stop-request` (from `main` at D148, then `main` with #58); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -69,7 +70,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus; D139 merged (#48): self-identification on gh2 (by id and pilot) up to the ledger: off or unmatched never sent, a label or a decline label sent, your per-application "Don't disclose" beats it, a required one without a match waits; a change retires its approvals at once (queued, held by a worker, under the standing rule: nothing withdrawn is sent) | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify"; D139 merged (#48): self-identification sent as each option's own value, each question only from the label naming its category, a bare "No" or two labels never used, a decline only where the choices name a category, a required gender without a match waits; withdrawal and change retire the approval (single page; the Workday decline wording is a fixture assumption) |
 | 11 | Upload failure preserves evidence | fx for UploadFailed; D137 merged (#46): every disclosure is recorded as it is made (receiver ledger): an unexpected error after an upload keeps its evidence (generic form, gh2 by id, the API route); a killed worker after an upload (generic form); a failure during an upload counts the document as possibly received (generic form, gh2 by id, the first Greenhouse-style page, the API route); a draft or document the API received and answered badly is recorded | fx; D137: a failure during an upload counts it as possibly received (Workday-style page); D142 merged (#51): each page's Next is recorded as disclosure evidence as it is made (wizard stand-in) |
 | 12 | Uncertain send quarantined | fx; D143 merged (#52): at the task's time limit the worker process is ended and the sweeper calls the outcome unknown (a real worker, generic form); the send lease covers the page's own wait for its answer; a code typed late in its wait is still answered under a lease (generic form); on gh2 by id a worker killed around the final click is quarantined (receiver ledger) | fx; D142 merged (#51): on the wizard stand-in, a Next after which the page shows a confirmation or "already applied" is quarantined in `submitted_unconfirmed`, as is an unknown final click; never run again (receiver ledger); D143 merged (#52): a worker killed around the final click on the single-page form, or before it on the wizard's review page, is quarantined and never run again (receiver ledger) |
-| 13 | Cancellation respected | fx on the generic form; D134 merged (#43), on the gh2 stand-in through the pilot (receiver ledger): a pause stops what the standing rule queued, your own queued work runs on, a revocation stands; D143 merged (#52): a cancel after data was entered says what may have been entered, and a worker whose attempt was cancelled stops between fields (generic form) | partial; D142 merged (#51): a revocation or a profile edit between wizard pages stops at the next page's gate; a cancel there is refused (`wizard_in_progress`), so a Next that submits is still quarantined (receiver ledger) |
+| 13 | Cancellation respected | fx on the generic form; D134 merged (#43), on the gh2 stand-in through the pilot (receiver ledger): a pause stops what the standing rule queued, your own queued work runs on, a revocation stands; D143 merged (#52): a cancel after data was entered says what may have been entered, and a worker whose attempt was cancelled stops between fields (generic form); D150 on its branch: a request to stop the worker (`docker compose stop`, an upgrade, Ctrl-C) is honoured before the next protected step: back in the queue before anything is entered, abandoned after, the click completed past the send gate (a real Celery worker and the stand-ins, receiver ledger) | partial; D142 merged (#51): a revocation or a profile edit between wizard pages stops at the next page's gate; a cancel there is refused (`wizard_in_progress`), so a Next that submits is still quarantined (receiver ledger) |
 | 14 | Tenant isolation | fx (per-application routes) | D142 merged (#51): fx on the wizard stand-in: another account on the same posting is not refused and reaches nothing of the first (404) |
 | loop | Durable pause → answer → recheck → continue | fx, on `main` since D132 (#40): pause, read again, answer, one new run (receiver ledger) | fx (e2e), on `main` since D132 |
 | tab | "Questions needing your answer" | on `main` since D132 (#40) (`/questions`) | on `main` since D132 |
@@ -299,7 +300,7 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     passed the check before disclosure) and four weaknesses (4f90edc); the second found no
     blocker and five weaknesses (67e382f). Fixed, each with a test; the rest recorded in D148.
 
-- **D149 (branch `wizard-experience`, not merged).** Rank 13, Workday-style repeating records:
+- **D149 (#58, 570a393).** Rank 13, Workday-style repeating records:
   - the gap: the stand-in's My Experience page sent no work history at all, and repeating
     entries read by the generic extractor would have been one question per control, with
     no record behind them;
@@ -314,6 +315,21 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     saved; a title with surrounding spaces never read back) and four weaknesses (d282574);
     the second found no blocker and three weaknesses (ac5b48b). Fixed, each with a test;
     the rest recorded in D149.
+
+- **D150 (branch `worker-stop-request`, not merged).** Rank 16, a stop request honoured:
+  - the gap (D144, measured): `docker compose stop` asked the worker's main process, the
+    attempt went on in its pool process and could still be submitted in the ten seconds
+    before Docker ended it;
+  - the worker's processes share a flag Celery's shutdown sets; the run reads it before the
+    claim, between steps and after each heartbeat, inside each gate, before and while the
+    first page opens, and in the code wait. Before anything is entered the attempt goes back
+    in the queue (as the sweeper does for a killed worker's); after, it is abandoned and
+    never retried; past the send gate the click is completed and its outcome read;
+  - two independent reviews: the first found no blocker and five weaknesses, the second one
+    blocker (Greenhouse section controls entered with no check between them) and five
+    weaknesses. Fixed (300b87e), each with a test; the rest recorded in D150;
+  - the removal runs: two parts of the API route that no test needed (its own handler of the
+    request, and its branch for an error while stopping); both kept, tests added (aeab20d).
 
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
@@ -351,9 +367,10 @@ waiting to be taken: two defects found on the way. Its review found that a resto
 would then run again what it shows as queued: **D147** (rank 20, #56) makes a
 restored database come up held and end, without running it, everything it shows as queued
 or in progress. **D148** (rank 12, #57) answers a Workday-style follow-up question
-when the form is read and enters it only when the page shows it. **D149** (rank 13, on its
-branch) enters your approved work history in the Workday-style stand-in's Work Experience
-section, entry by entry. Next, rank 16 (a stop request honoured before the next step).
+when the form is read and enters it only when the page shows it. **D149** (rank 13, #58)
+enters your approved work history in the Workday-style stand-in's Work Experience section,
+entry by entry. **D150** (rank 16, on its branch) honours a request to stop the worker before
+the next protected step. Next, ranks 17 to 19 (the dropdown rule's neighbours).
 
 ## Unvalidated or partly validated changes
 
@@ -447,7 +464,12 @@ section, entry by entry. Next, rank 16 (a stop request honoured before the next 
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D149 (branch `wizard-experience`):** the new tests, the suites the change touches, the
+- **D150 (branch `worker-stop-request`):** the new tests, the suites the change touches, the
+  removal runs and the regression set, locally (Tests run below). Not tested: a real
+  `docker compose stop` of the deployed stack (the tests send SIGTERM to a worker process),
+  Compose's stop order and grace period in a running stack, a native worker on a Mac
+  (spawn; tested by its mechanism), several attempts at a time, and anything real.
+- **D149 (#58):** the new tests, the suites the change touches, the
   removal runs and the regression set, locally (Tests run below). Not tested: a real Workday
   page (no work-history section was observed), education, languages, websites and skills,
   removing an entry, a resume parse that adds an entry on a page whose earlier pages were
@@ -630,6 +652,12 @@ section, entry by entry. Next, rank 16 (a stop request honoured before the next 
 | D149, each part changed in turn: 43 changes on 5e891ad, 64 on e30ba41, 83 on bdb5311, one at a time, the file restored | all 43; 63 of 64 (one did not compile); all 83 fail a test |
 | D149, the regression set: `pytest` on 74 files (D148's 73 and `test_workday_experience.py`; JUnit), in a copy of the branch at bdb5311, alongside the runs above | exit 0; 2037 passed in 68 min |
 | D149, after its records: the document tests; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 164 passed (the 45 document tests and the new file's 119, after ruff's formatting); ruff clean (383 files), on the records committed with this result |
+| D150, the new tests: `pytest tests/test_worker_stop.py` (JUnit), on 109ca88, d95856c, 300b87e, f8a08b4 and 4b456c7 (with `test_greenhouse_live.py`) | exit 1 (25 of 28: the API tests lacked the fake API's token), then 28, 50 (after a first run of 45 of 46 and a stand-in that passed for the wrong reason; status table), 51 and 53 passed |
+| D150, the suites the change touches: 23 files (JUnit), on f8a08b4 | exit 1; 636 of 637: D111's source-order test, which found the rehearsal's stop by the first `_rehearsal(aid)` (D150 asks it earlier too); repointed (4b456c7), then passed (row above) |
+| D150, each part changed in turn: 46 changes on f8a08b4, one at a time, the file restored; the three that passed, again against the whole file on aeab20d | 43 of 46 failed a test with the tests named first; the other three, against the whole file after two tests were added, fail 10, 2 and 2 |
+| D150, the regression set: `pytest` on 75 files (D149's 74 and `test_worker_stop.py`; JUnit), in a copy of the branch at f8a08b4 | exit 1; 2,086 of 2,088: D111's source-order test (repointed, 4b456c7) and the capture guard on the stop tests' action recorder (rewritten, 0e6dc26); both then passed |
+| D150, after the recorder was rewritten: `pytest tests/test_forbidden_capabilities.py tests/test_worker_stop.py` (JUnit), on 0e6dc26; the removals a1 to a5 again | exit 0; 194 passed; the five removals still fail the same tests |
+| D150, after its records: the document tests; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 98 passed (the 45 document tests and the new file's 53); ruff clean (385 files), on the records committed with this result |
 
 ## Failed approaches and rejected designs
 
@@ -745,9 +773,8 @@ section, entry by entry. Next, rank 16 (a stop request honoured before the next 
 
 ## Exact next action
 
-1. D149 (branch `wizard-experience`, rank 13): its pull request (D148 merged as #57). Then
-   rank 16 (a stop request honoured before the next step) and ranks 17 to 19 (the dropdown
-   rule's neighbours). Candidates: a check of the form's own validity before the send gate
+1. D150 (branch `worker-stop-request`, rank 16): its pull request (D149 merged as #58). Then
+   ranks 17 to 19 (the dropdown rule's neighbours). Candidates: a check of the form's own validity before the send gate
    (D148's proposal); Location and Role Description from your record; education on Workday.
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive

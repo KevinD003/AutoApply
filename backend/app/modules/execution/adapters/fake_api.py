@@ -64,6 +64,7 @@ def _sig(fields) -> dict:
 class FakeApiAdapter(ReportsDisclosures):
     name = "fake_api"
     confirmation_strength = "api_receipt"
+    before_document = None  # D150: the runner's check, called before each document is sent
 
     def __init__(self, content: dict, documents: dict, idempotency_key: str):
         self.content = sendable_view(content)  # only resolved answers are sent or uploaded
@@ -157,6 +158,8 @@ class FakeApiAdapter(ReportsDisclosures):
         acknowledged one is reported at once (D137)."""
         out = []
         for d in self.content["documents"]:
+            if self.before_document is not None:
+                self.before_document()
             name, ctype, raw = self.documents[d["field"]]
             sent = {"field": d["field"], "sha256": d["sha256"], "route": "api"}
             try:

@@ -158,6 +158,12 @@ docker compose up -d --build  # the API applies new migrations as it starts
 # 2. check (section 4)
 ```
 
+With an application in progress, stop the worker first (`docker compose stop worker`), then
+`up -d --build`. Since D150 a stopped worker ends its application at its next step: one that
+had entered nothing goes back in the queue and the new worker runs it. `up -d --build` alone
+may replace the egress proxy, built from the same code, before it stops the worker: the
+application then loses its way to the employer mid-step and stops with an error instead.
+
 Upgrading from a version with one worker (before D144): `up -d --build` starts `scheduler` and
 restarts `worker` with its new role. An application queued but not yet started at that moment is
 passed on to the new worker. One thing may need doing by hand: a `docker-compose.override.yml`
@@ -295,10 +301,12 @@ killed, or the machine loses power, what was queued since its last snapshot is p
 the same way. While `worker` is stopped the messages add up in the broker (12 an hour for each
 waiting application); all but one are ignored when they are taken.
 
-`stop` asks each service to finish and ends it ten seconds later. An application in progress
-goes on during those seconds and can still be submitted in them (measured: a worker told to
-stop finished the application it was running). To stop applications at once, use
-`docker compose kill worker` (`docs/activation-status.md` §8).
+`stop` asks each service to finish and ends it ten seconds later; `worker` gets 150 seconds.
+Since D150 the worker's application in progress takes no further step at the employer once
+it is asked: one that had entered nothing goes back in the queue, one that had entered data
+is left for you, and one past its send gate reads the employer's answer to its click before
+the worker exits. Before D150 it went on and could be submitted (measured 2026-11-11). To end
+the processes at once, use `docker compose kill worker` (`docs/activation-status.md` §8).
 
 ## 9. Verify (safe, throwaway)
 

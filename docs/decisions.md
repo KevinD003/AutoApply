@@ -6635,3 +6635,135 @@ audit-inventory and export-completeness guards are updated and pass.
     stripped value with an unstripped one, and `_valid_root` accepts a trailing line break.
   - Real Workday pages are unobserved.
 - **Evidence (local only):** 119 tests in `tests/test_workday_experience.py`: 25 through the runner against the stand-in (the receiver's ledger the oracle), 22 driving the section's executor or the adapter on a page set in Chromium, 72 reading capture, the package and the plan alone (the 63 capture cases among them); the suites the change touches, 473 passed on 9fc9734, 522 on d282574 and 547 on bdb5311; removal checks: 43 changes on 5e891ad, 64 on e30ba41 and 83 on bdb5311, each failing a test but one of the 64, which made the module fail to compile and so showed nothing (replaced in the next round); the regression set (74 files): 2037 passed in 68 min on bdb5311 (exit 0); ruff clean.
+
+## D150 — A request to stop the worker is honoured before the next protected step (2026-11-12)
+
+- **Context:** rank 16 of the automation loop (`docs/automation-loop.md`), found by D144's review
+  and measured there. Local stand-ins and a real Celery worker on the test machine; nothing real
+  was run. No migration, no new state, transition or reason code. New: two attempt events
+  (`stop_requeued`, `stop_failed`), one outcome text ("the worker was asked to stop"), and two
+  settings of the `worker` service in `docker-compose.yml`.
+- **Problem:** `docker compose stop` sends SIGTERM to the worker's main process, as an upgrade
+  (`up -d --build`) does when it replaces the worker, and Ctrl-C sends SIGINT to a worker run by
+  hand. Celery handles the signal there: it takes no new task and waits for the running one. The
+  attempt runs in a pool process the signal never reaches. D144 measured it: a worker told to
+  stop while its application waited before the send gate, and one before its final click,
+  finished both, and the receiver accepted them. Docker ends the process ten seconds after
+  asking, whatever it is doing then. The owner's table has named `docker compose kill` for
+  "now" since D144.
+- **Decided:**
+  - **The pool process learns of the request.** Celery's `worker_shutting_down` signal, sent
+    in the main process for a warm or a cold shutdown, sets one byte of memory the worker's
+    processes share (`execution/stopping.py`), and the worker writes one line to its log.
+    - The page is mapped when the module is imported in the main process, before the pool
+      starts, so a forked pool process shares it (Linux, the deployment).
+    - At `worker_init` the main process backs it by a one-byte file named in the environment,
+      so a pool process started by spawn maps the same page. Spawn is billiard's default on
+      macOS, where the README runs a worker by hand. The file is removed at `worker_shutdown`.
+    - Every new worker starts cleared.
+  - **Where the run looks:**
+    - before it claims an attempt;
+    - at D143's checks between steps, and again after each heartbeat: before each field,
+      document, section control and page's Next. Section controls are Greenhouse's D120 rows
+      and their "Add another", and Workday's D149 entries;
+    - right before the first page is opened, and during the wait for it to finish loading;
+    - inside each gate (disclosure, a wizard's step, send), last, under the gate's locks: a
+      stop that comes while a gate runs leaves nothing recorded;
+    - after the waits that sit between fields: the page settling after an upload on
+      Greenhouse pages, and a shown question on the hosted form;
+    - on the API route as it starts, before its draft and before each document;
+    - in the wait for a verification code: before a code is taken, and again before one
+      taken is entered.
+
+    A field already being entered is completed: a dropdown's open and choose, or a
+    location's text and its suggestion, is one step.
+  - **Where the run ends:**
+    - **Before the claim:** nothing is claimed. The attempt stays queued, with a new message
+      for the relay, so the next worker takes it within seconds instead of D146's five
+      minutes.
+    - **Before the disclosure gate:** the page may have been opened; nothing was entered.
+      - The attempt goes back in the queue at once, with a new message, as the sweeper puts
+        back a killed worker's (`_sweep_one`).
+      - This counts against `max_safe_retries` (2), shared with the sweeper; past the limit
+        it is failed_safe ("Worker kept stopping before sending anything."), as the sweeper's.
+      - An upgrade during an application therefore runs it again on the new worker, instead
+        of leaving it for you.
+    - **After the disclosure gate:** the attempt is abandoned ("Stopped after entering data
+      but before submitting: the worker was asked to stop") and never retried. On a wizard,
+      every approval is retired (D142).
+    - **Past the send gate:** nothing looks. The click is made and its outcome read; ending
+      there would leave an application the employer may have, with no outcome. An error
+      there is an unknown outcome, as before.
+    - **In the code wait:** no code is entered. The verification is left unfinished
+      ("Verification was not completed: the worker was asked to stop"), its request closed,
+      and a code typed meanwhile erased.
+    - **A rehearsal that has filled** ends as rehearsed: what is left of it (reading back,
+      the re-check, its stop) enters nothing.
+  - **The browser lost with the worker:**
+    - A browser lost, or a page not opened, while the worker is being stopped (the whole
+      stack stopping with it, or Ctrl-C) ends as the stop does, before the send gate.
+    - Playwright is launched without its own handling of Ctrl-C, SIGTERM and SIGHUP, which
+      closed the browser under the run.
+    - In Compose the worker now depends on the browser runner and the egress proxy, so
+      `docker compose stop` and `down` stop it first.
+    - The worker has 150 seconds (`stop_grace_period`) instead of Docker's ten: longer than a
+      real Greenhouse page's answer to the click may take (123 s, D143).
+  - **The owner's instructions:**
+    - The table in `docs/activation-status.md` §8 and the deployment guide (§6, §8) now say
+      that `docker compose stop worker scheduler` stops safely; `kill` stays the way to end
+      the processes at once.
+    - Before an upgrade, stop the worker first (`docker compose stop worker`): Compose may
+      replace the egress proxy, built from the same code, before it stops the worker.
+- **Measured (2026-11-12; a real Celery worker, prefork, one process; SIGTERM as
+  `docker compose stop` sends; local stand-ins):** five held points.
+  - Before the send gate: abandoned, nothing accepted.
+  - Before the page is opened: back in the queue; the next worker sent it once.
+  - Past the send gate, before the click: confirmed, accepted once.
+  - In the code wait: verification unfinished, nothing accepted.
+  - Before the claim: not claimed; the next worker sent it once.
+
+  Each time the worker exited 2.3 to 2.5 s after its held process was released.
+- **Reviewed independently twice**, before the records:
+  - The first found no blocker. The second called a blocker the Greenhouse section controls
+    entered with no check between them, on the live pilot's path.
+  - Fixed:
+    - the gates read the request themselves;
+    - section controls, the field after an upload's settle, the hosted form's shown question
+      and the API route's documents each check;
+    - a browser lost while stopping is the stop's;
+    - the first page's wait ends at the request;
+    - rehearsals that have filled complete;
+    - a new message on the unclaimed path;
+    - the flag is shared with spawned pool processes;
+    - Playwright's own signal handling is off;
+    - the worker is stopped before the browser and given 150 s.
+  - Two checks on the API route just before its gates were dropped: the gates read the request
+    last, so no test could fail without them.
+- **The removal runs** (each part changed in turn) found two parts of the API route that no test
+  needed:
+  - its own handler of the request: without it the run's outer handler took the request as if
+    before the disclosure gate, and the requeue's refusal once data was entered gave the same
+    outcome;
+  - its branch for an error while the worker is stopping: no test raised one there.
+
+  Both stay, now tested. A stop after entry never asks for the requeue, on either route, so the
+  requeue's refusal is a second guard and not the one relied on. The API route is tested with
+  the schema's answer cut off (as urllib raises it) and with an error after the disclosure gate,
+  each with a stop requested.
+- **Not built, and limits:**
+  - A single browser wait is not interrupted: navigation and its settle, a page's Next and its
+    answer, an upload's acknowledgement (up to about 30 seconds). The request is read after
+    it. Within 150 seconds that is in time. With a shorter `docker compose stop -t`, the
+    worker can be killed during it, and what a killed worker leaves is as before: the sweeper
+    decides (tested since D22 and D143).
+  - Between a check and the step it guards there is no wait, but there is time: a stop that
+    comes after the last check is not seen by that step. The gates narrow this to their commit,
+    and after the send gate's commit the click follows.
+  - Upgrades: Compose may replace the egress proxy before it stops the worker (dependencies
+    first). The guide says to stop the worker first; nothing enforces it.
+  - The scheduler's periodic tasks are unchanged: none takes a protected step at an employer.
+  - Several attempts at a time (more pool processes) are untested, as in D144.
+  - The spawn path is tested with a new interpreter mapping the file, not with a native
+    worker on a Mac.
+  - A requested stop uses one of the two `max_safe_retries`.
+- **Evidence (local only):** `tests/test_worker_stop.py`, 53 tests (five send SIGTERM to a real Celery worker), with the receiver's ledger as the oracle; the 23 suites the change touches; 46 removal runs, each failing a test; the regression set of 75 files. Results by commit in `docs/implementation-status.md`, claims in `docs/evidence-matrix.md`.
