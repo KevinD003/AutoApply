@@ -255,6 +255,7 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
             'data-wd-section="work"', 'data-wd-section="education"')),  # fmt: skip
         form_page(section(), inside='<button type="button" data-wd-add>Add</button>'),
         form_page("", inside='<div data-wd-section="education"></div>'),
+        form_page("", inside='<button type="button" data-wd-add>Add</button>'),
     ],
     ids=["unknown-control", "left-empty-required", "a-part-missing", "a-part-of-another-kind",
          "template-value", "entry-value", "entry-ticked", "numbering", "no-add", "two-adds",
@@ -268,7 +269,7 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
          "add-disabled", "add-aria-disabled", "add-hidden", "section-in-a-disabled-fieldset",
          "a-control-in-a-disabled-fieldset", "a-control-aria-disabled", "maxlength", "pattern",
          "a-required-box", "a-date-without-its-format", "marker-case", "another-kind-of-section",
-         "a-stray-add-marker", "only-another-section"],  # fmt: skip
+         "a-stray-add-marker", "only-another-section", "only-a-stray-marker"],  # fmt: skip
 )
 def test_any_other_work_history_is_one_required_checkpoint(html):
     """Anything about work history that is not the structure NoEfforts enters is one required
