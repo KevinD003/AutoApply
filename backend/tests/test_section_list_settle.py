@@ -153,9 +153,7 @@ def test_a_page_busy_elsewhere_does_not_hold_up_a_section_list(
     ("open_beacon", {"section_beacon_via": "sendbeacon"}),  # ... with navigator.sendBeacon
     ("late_fetch_404", {}),  # its options wait for a GET that is not answered with a 2xx
 ])  # fmt: skip
-def test_a_section_list_whose_opening_sends_or_fails_to_load_is_refused(
-    api, receiver, widget, cfg
-):
+def test_a_section_list_whose_opening_sends_or_fails_to_load_is_refused(api, receiver, widget, cfg):
     """As a dropdown's (D104, D108): on a stand-in only a same-origin GET answered with a 2xx may
     bring a list's options; anything that sends, or fails, refuses the list."""
     aid, result = run(api, receiver, widget, **cfg)

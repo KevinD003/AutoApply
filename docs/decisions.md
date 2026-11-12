@@ -6767,3 +6767,88 @@ audit-inventory and export-completeness guards are updated and pass.
     worker on a Mac.
   - A requested stop uses one of the two `max_safe_retries`.
 - **Evidence (local only):** `tests/test_worker_stop.py`, 53 tests (five send SIGTERM to a real Celery worker), with the receiver's ledger as the oracle; the 23 suites the change touches; 46 removal runs, each failing a test; the regression set of 75 files. Results by commit in `docs/implementation-status.md`, claims in `docs/evidence-matrix.md`.
+
+## D151 — A section's combobox chooses only from a list that has settled, by the dropdown's rule (2026-11-12)
+
+- **Context:** rank 17 of the automation loop (`docs/automation-loop.md`), found by D145's review.
+  Local stand-ins only; nothing real was run, and no real Greenhouse section has been observed
+  (D120): sections are filled on local stand-ins only, and a real destination refuses them before
+  anything is entered. No migration, no new state, reason code or package change.
+- **Problem:** a section combobox (D120/D141: school, degree, discipline and the months of the
+  education and employment rows) read its list once, as soon as the list was shown, and chose
+  from that read. Against the code before this change, 25 of the 30 new tests fail on the
+  stand-in:
+  - a list still loading, or waiting for its options, was refused: no option read the approved
+    text yet;
+  - a list re-rendered every 300 ms, or changed by a style sheet, was chosen from, and the
+    application submitted;
+  - a list re-rendered every 60 ms had options chosen from it, until one read missed the
+    approved text;
+  - a list whose opening posted (by fetch or sendBeacon), or whose options came from a GET
+    answered 404, was chosen from, and the application submitted;
+  - the click on an approved option the list hid waited until it timed out (an internal error).
+
+  The top-level dropdowns have waited for a settled list since D106 and D145.
+- **Decided:**
+  - **The dropdown's rule** (`dropdowns._observe`), reusing its code, not a copy of it:
+    - the probe's observer (D145) is set before the click (`ro._PRE_JS`) and taken off after
+      (`ro._END_PROBE_JS`), on every path;
+    - the list is read every SAMPLE_MS (250 ms), within SETTLE_MS (1.5 s), or LATE_MS (5 s) on a
+      local stand-in, counted in reads;
+    - it counts as settled once the probe's classification (`ro.classify_open`) says it is
+      observed sufficiently, no data request made since the click is still in flight, the same
+      options were read STABLE_SAMPLES (3) times in a row, and the page has recorded no change to
+      a list for STABLE_MS (500 ms). The classification is the dropdown's: the list opened, its
+      options can be read, nothing new on the page says it is loading (aria-busy, a progressbar,
+      a class naming loading or a spinner), no list claims more options than it shows
+      (aria-setsize), and the whole document has been quiet for 150 ms;
+    - requests made since the click are recorded as a dropdown's are (data requests, and
+      anything that sends) and refused as a dropdown's are (`dropdowns._data_refusal`: on a
+      stand-in only same-origin GETs answered with a 2xx; anywhere else, any);
+    - a list nothing opened stops the wait after SETTLE_MS;
+    - otherwise the section stops, nothing in the list is clicked, and the list is closed.
+  - **What differs from a dropdown, and why:**
+    - there is no approved list to compare with: the package freezes only the chosen option's
+      text and id (D120/D141), so the choice is the one option reading that text exactly;
+    - the list read is the control's own (aria-controls / aria-owns, D141), opened by a click on
+      the control, then on its react-select container; no other strategy.
+  - **The choice:** exactly one option of the list, shown or not, may read the approved text, and
+    it must be shown; where it exposes an id, the id must be the frozen one (D141). Just before
+    the click the whole list and the option to click are read in one go and must be the list that
+    settled. Readback after the choice is unchanged (D141).
+  - **Each refusal says why**, from a fixed vocabulary naming the control, never the value.
+  - **No adapter version change**, as for D145: approvals stay valid. An option is no longer
+    chosen from a list that has not settled, and a list may be waited for; rehearsal records
+    earned under the one-read rule keep counting.
+- **The stand-in** (FIXTURE ASSUMPTIONS, `fixtures/ats_receiver/greenhouse_v2.py`; no real section
+  list has been observed): lists that load (aria-busy and a progressbar; or react-select's
+  "Loading..." notice and indicator), wait for a same-origin GET (answered, or not with a 2xx),
+  keep changing (every 60 or 300 ms), or change only through a style sheet; one that posts when
+  opened (fetch or sendBeacon); one holding a hidden copy of the approved option, or hiding the
+  approved option itself; a control that never opens or leaves the page once opened; and a page
+  busy elsewhere.
+- **Reviewed independently twice**, before the records:
+  - Both found the same blocker: D150's stop test between section controls replaced the
+    function that enters a control with one taking three arguments, and the change passed a
+    fourth. Fixed (the stand-in passes any arguments on).
+  - Both found that the first version followed the location search's loop, not the dropdown's
+    rule it cited: no classification (loading shown by a class name, an empty menu, partial
+    lists), requests recorded only to wait for them, never refused. Now the dropdown's own code.
+  - Also fixed: tests whose bounds depended on how fast reads run; the re-read before the click
+    untested, and in two steps; the equal reads untested (a list changed only by a style sheet);
+    the probe's cleanup checked only after a choice; a control that never opens waited for the
+    whole window; closing a list on a vanished control with the page's own wait; and a hidden
+    option reading the approved text no longer counted, which the code before this change
+    refused (kept).
+- **Not built, and limits:**
+  - Sections still run on stand-ins only, and nothing about a real section list is known.
+  - The classification's whole-document check (150 ms) is kept as the dropdown has it; rank 19
+    would change both. No section test depends on it: it only ever refuses.
+  - A list changed only by a style sheet, in step with the reads (every 600 ms, read every
+    600 ms), can be read as settled: the page's record does not see style sheets (D145's limit).
+  - For D150, opening, settling and choosing is one step: a stop request that comes during it is
+    read before the next control, up to LATE_MS later.
+  - Each section combobox now takes at least three reads (about 0.75 s) before its choice.
+  - D137's stated limit is unchanged: a control whose choice then fails its readback is not
+    recorded as entered.
+- **Evidence (local only):** `tests/test_section_list_settle.py`, 30 tests (22 through the runner against the second Greenhouse-style stand-in's education section, with the receiver's ledger as the oracle; 8 driving a section combobox on the stand-in's page in Chromium), 25 of which fail against the code before this change; the 15 suites the change touches; 20 removal runs, each failing a test; the regression set of 76 files. Results by commit in `docs/implementation-status.md`, claims in `docs/evidence-matrix.md`.
