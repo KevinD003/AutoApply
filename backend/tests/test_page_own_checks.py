@@ -18,8 +18,9 @@ import pytest
 from sqlalchemy import select
 
 from app.core.db import SessionLocal
-from app.modules.execution import runner
+from app.modules.execution import runner, stopping
 from app.modules.execution.adapters import fixture_ats as fa
+from app.modules.execution.adapters.workday import WorkdayFixtureAdapter
 from app.modules.execution.models import ApplicationPause, RehearsalRecord
 from tests.execution_harness import Receiver, attempt, prepared_application, queue
 from tests.test_execution_security import open_checkpoint, start_worker
@@ -197,6 +198,33 @@ def test_a_page_still_loading_after_the_answers_stops_before_its_checks(
     led = receiver.ledger()
     assert draft_pages(led) == [] and nothing_sent(led, "/apply")
     assert stopped_after_entry(aid, app_id)
+
+
+@pytest.mark.parametrize("stopping_now", [True, False], ids=["worker_stopping", "not_stopping"])
+def test_a_page_unreadable_while_the_worker_is_being_stopped_ends_as_the_stop(
+    api, receiver, monkeypatch, stopping_now
+):
+    """D150: stopping the worker closes its browser, so the read before the send gate can fail
+    then: that is the stop's, ended as the stop is. Otherwise an unreadable page is a refusal
+    like any other (fail closed), every approval retired."""
+
+    def unread(self, page):
+        if stopping_now:
+            stopping.request()
+        return fa.REFUSAL_UNREAD
+
+    app_id = single(api, receiver, None)
+    monkeypatch.setattr(WorkdayFixtureAdapter, "page_would_refuse", unread)
+    try:
+        out, aid = run(api, app_id)
+    finally:
+        stopping.clear()
+    assert out == "abandoned" and nothing_sent(receiver.ledger(), "/apply")
+    detail = attempt(aid).outcome_detail
+    if stopping_now:
+        assert runner.STOP_REQUESTED in detail and fa.REFUSAL_UNREAD not in detail
+    else:
+        assert fa.REFUSAL_UNREAD in detail and stopped_after_entry(aid, app_id)
 
 
 def test_a_rehearsal_of_a_page_that_would_refuse_the_click_is_never_recorded(api, receiver):
