@@ -198,6 +198,41 @@ def _sections(cfg) -> str:
 _SECTION_SCRIPT = """
 (() => {
   const WIDGET = %WIDGET%;
+  // D151 (FIXTURE ASSUMPTIONS; no real section list has been observed): lists that load, are
+  // replaced or keep changing once opened (section_widget late_list, late_fetch, changing_list,
+  // slow_changing_list; cfg section_delay_ms), and a page busy elsewhere (cfg section_tick_ms).
+  const DELAY = %DELAY%, TICK = %TICK%;
+  const BASE = (document.querySelector('form[data-base]') || {dataset: {}}).dataset.base || '';
+  if (TICK > 0) {  // an element that is no part of any list changes every TICK ms
+    const t = document.createElement('p');
+    t.id = 'fx-section-ticker'; t.textContent = '0';
+    document.body.append(t);
+    let k = 0;
+    setInterval(() => { t.textContent = String(++k); }, TICK);
+  }
+  const timed = (lb) => {  // on a list's first opening
+    if (lb.dataset.fxTimed) return;
+    lb.dataset.fxTimed = '1';
+    const opts = Array.from(lb.children);
+    if (WIDGET === 'late_list') {  // busy, with a progress bar, then the options after DELAY
+      const bar = document.createElement('li');
+      bar.setAttribute('role', 'progressbar'); bar.textContent = 'Loading options';
+      lb.setAttribute('aria-busy', 'true'); lb.replaceChildren(bar);
+      setTimeout(() => { lb.replaceChildren(...opts); lb.removeAttribute('aria-busy'); }, DELAY);
+    } else if (WIDGET === 'late_fetch') {  // one placeholder option, not marked busy, until a
+      // same-origin GET answers (after section_delay_ms, on the server)
+      const wait = document.createElement('li');
+      wait.setAttribute('role', 'option'); wait.textContent = 'Searching...';
+      lb.replaceChildren(wait);
+      fetch(BASE + '/section-options/' + encodeURIComponent(lb.id) + '.json')
+        .then((r) => r.json()).then(() => { lb.replaceChildren(...opts); }).catch(() => {});
+    } else if (WIDGET === 'changing_list' || WIDGET === 'slow_changing_list') {
+      setInterval(() => {  // re-rendered in the other order, every 60 or 300 ms
+        if (!lb.isConnected) return;
+        for (const o of Array.from(lb.children).reverse()) lb.appendChild(o);
+      }, WIDGET === 'changing_list' ? 60 : 300);
+    }
+  };
   window.__fxSectionTyped = 0;  // D141: keys typed into a section combobox (posted with the form)
   const close = (cb, lb) => {
     lb.hidden = true; cb.setAttribute('aria-expanded','false');
@@ -230,6 +265,7 @@ _SECTION_SCRIPT = """
         }
         lb.hidden = false; cb.setAttribute('aria-expanded','true');
         if (WIDGET === 'react_select') cb.setAttribute('aria-controls', lb.id);
+        timed(lb);
       };
       cb.addEventListener('click', open);
       const box = cb.closest('.select__control');
@@ -253,6 +289,7 @@ _SECTION_SCRIPT = """
       div.innerHTML = rows.firstElementChild.outerHTML.replace(re, repl(n));
       const row = div.firstElementChild;
       for (const o of row.querySelectorAll('[role=option]')) o.setAttribute('aria-selected','false');
+      for (const l of row.querySelectorAll('[role=listbox]')) delete l.dataset.fxTimed;
       for (const sv of row.querySelectorAll('.select__single-value')) sv.remove();
       for (const cb of row.querySelectorAll('input[role=combobox]')) { cb.value=''; delete cb.dataset.value; }
       for (const inp of row.querySelectorAll('input:not([role=combobox])')) {
@@ -1495,7 +1532,9 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
             + ('<script src="https://assets.fixture-cdn.invalid/widget.js"></script>'
                if mode == "gh2_external_asset" else "")
             + ("<script>" + _SECTION_SCRIPT.replace(
-                "%WIDGET%", json.dumps(cfg.get("section_widget") or "plain")) + "</script>"
+                "%WIDGET%", json.dumps(cfg.get("section_widget") or "plain"))
+               .replace("%DELAY%", str(int(cfg.get("section_delay_ms") or 0)))
+               .replace("%TICK%", str(int(cfg.get("section_tick_ms") or 0))) + "</script>"
                if mode == "gh2_sections" else ""))
     return HTMLResponse(
         "<!doctype html><html><head><meta charset='utf-8'>"
@@ -1590,6 +1629,14 @@ def mount(app, ledger, cfg, accept) -> None:
         if cfg.get("dd") == "late_differ":
             pairs.append(["999", "Prefer not to say"])
         return JSONResponse(pairs)
+
+    @app.get("/gh2/{board}/jobs/{job_id}/section-options/{lid}.json")
+    async def section_options(board: str, job_id: str, lid: str):
+        """D151: a section list waiting for this answer (section_widget late_fetch), given after
+        cfg section_delay_ms. The page keeps its own options; this only times them."""
+        job_or_404(board, job_id)
+        await asyncio.sleep(int(cfg.get("section_delay_ms") or 0) / 1000)
+        return JSONResponse({"ok": True})
 
     @app.get("/gh2/{board}/jobs/{job_id}/options.json")
     def widget_options(board: str, job_id: str):  # must never be reached during inspection
