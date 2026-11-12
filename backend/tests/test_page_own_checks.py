@@ -198,13 +198,13 @@ def test_a_hidden_field_a_novalidate_page_never_reads_is_not_counted(api, receiv
 
 
 @pytest.mark.parametrize("check, reason", [
-    ("two_submit", fa.SUBMIT_UNIDENTIFIED),
-    ("button_disabled", fa.FINAL_BUTTON_UNAVAILABLE),
+    ("two_submit", "SUBMIT_UNIDENTIFIED"),
+    ("button_disabled", "FINAL_BUTTON_UNAVAILABLE"),
 ], ids=["two_submit", "button_disabled"])  # fmt: skip
 def test_a_final_click_that_cannot_be_made_stops_before_the_send_gate(api, receiver, check, reason):
     app_id = v2(api, receiver, check)
     out, aid = run(api, app_id)
-    assert out == "abandoned" and reason in attempt(aid).outcome_detail
+    assert out == "abandoned" and getattr(fa, reason) in attempt(aid).outcome_detail
     assert nothing_sent(receiver.ledger(), "/submit")
 
 
