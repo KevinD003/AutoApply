@@ -209,25 +209,38 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
         form_page(section(), entry(extra='<div role="textbox" aria-label="Start"></div>')),
         form_page(section(entry("0").replace('name="work[0].from"', 'name="work[0].from.month"'))),
         form_page(section(f'<template id="t2">{entry()}</template>')),  # a template inside the form
-        form_page(section(), entry().replace(
-            '<label><input name="work[__i__].current" type="checkbox" value="1"> Current</label>',
-            "")),  # fmt: skip
+        form_page(
+            section(),
+            entry().replace(
+                '<label><input name="work[__i__].current" type="checkbox" value="1">'
+                " Current</label>",
+                "",
+            ),
+        ),
         form_page(section(add='<button type="button">Add</button><input type="button" value="+">')),
         form_page(section(add='<button type="button">Add</button><span role="button">x</span>')),
         form_page(section(), entry(extra='<button type="button">Delete</button>')),
         form_page(section(), inside='<a id="work-experience"></a>'),  # an id used twice
         form_page(section(), entry().replace('type="text" required>', 'type="text" readonly>', 1)),
         form_page(section(), entry().replace('type="text" required>', 'type="text" disabled>', 1)),
-        form_page(section(), entry().replace('<label for="c', '<label hidden for="c').replace(
-            'name="work[__i__].company"', 'hidden name="work[__i__].company"')),  # fmt: skip
+        form_page(
+            section(),
+            entry()
+            .replace('<label for="c', '<label hidden for="c')
+            .replace('name="work[__i__].company"', 'hidden name="work[__i__].company"'),
+        ),
         form_page(section(attrs=" hidden")),
         form_page(f'<div style="display:none">{section()}</div>'),
         form_page(section(), entry(extra='<input name="work[__i__].title" type="text">')),
         form_page(section(entry("0").replace("</textarea>", "Text at load</textarea>"))),
         form_page(section(add='<button type="button">Add</button><div role="textbox"></div>')),
-        form_page(section(), entry().replace('type="text">\n<label><input name="work[__i__].c',
-                                             'type="text" aria-required="true">\n<label><input '
-                                             'name="work[__i__].c')),  # fmt: skip
+        form_page(
+            section(),
+            entry().replace(
+                'type="text">\n<label><input name="work[__i__].c',
+                'type="text" aria-required="true">\n<label><input name="work[__i__].c',
+            ),
+        ),
         form_page(section().replace('id="work-experience"', 'id="work-experience\n"')),
         form_page(section().replace('id="work-experience"', f'id="w{"x" * 200}"')),
         form_page(f'<div data-wizard-page="2" data-step="{"P" * 201}">{section()}</div>'),
@@ -236,40 +249,108 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
         form_page(section(add='<button type="button" aria-disabled="true">Add</button>')),
         form_page(section(add='<span hidden><button type="button">Add</button></span>')),
         form_page(f"<fieldset disabled><legend>Work</legend>{section()}</fieldset>"),
-        form_page(section(), entry().replace(
-            '<label for="t__i__">', '<fieldset disabled><legend>x</legend><label for="t__i__">'
-        ).replace('name="work[__i__].title" type="text" required>',
-                  'name="work[__i__].title" type="text" required></fieldset>')),  # fmt: skip
-        form_page(section(), entry().replace('name="work[__i__].company"',
-                                             'aria-disabled="true" name="work[__i__].company"')),
-        form_page(section(), entry().replace('name="work[__i__].title" type="text"',
-                                             'name="work[__i__].title" type="text" maxlength="5"')),
-        form_page(section(), entry().replace(
-            'name="work[__i__].company" type="text"',
-            'name="work[__i__].company" type="text" pattern="[A-Z]+"')),  # fmt: skip
-        form_page(section(), entry().replace('type="checkbox" value="1"',
-                                             'type="checkbox" value="1" required')),
+        form_page(
+            section(),
+            entry()
+            .replace(
+                '<label for="t__i__">', '<fieldset disabled><legend>x</legend><label for="t__i__">'
+            )
+            .replace(
+                'name="work[__i__].title" type="text" required>',
+                'name="work[__i__].title" type="text" required></fieldset>',
+            ),
+        ),
+        form_page(
+            section(),
+            entry().replace(
+                'name="work[__i__].company"', 'aria-disabled="true" name="work[__i__].company"'
+            ),
+        ),
+        form_page(
+            section(),
+            entry().replace(
+                'name="work[__i__].title" type="text"',
+                'name="work[__i__].title" type="text" maxlength="5"',
+            ),
+        ),
+        form_page(
+            section(),
+            entry().replace(
+                'name="work[__i__].company" type="text"',
+                'name="work[__i__].company" type="text" pattern="[A-Z]+"',
+            ),
+        ),
+        form_page(
+            section(),
+            entry().replace('type="checkbox" value="1"', 'type="checkbox" value="1" required'),
+        ),
         form_page(section(), entry().replace(' placeholder="MM/YYYY" required>', " required>", 1)),
         form_page(section().replace('data-wd-section="work"', 'data-wd-section="Work"')),
-        form_page(section() + section().replace('id="work-experience"', 'id="education"').replace(
-            'data-wd-section="work"', 'data-wd-section="education"')),  # fmt: skip
+        form_page(
+            section()
+            + section()
+            .replace('id="work-experience"', 'id="education"')
+            .replace('data-wd-section="work"', 'data-wd-section="education"')
+        ),
         form_page(section(), inside='<button type="button" data-wd-add>Add</button>'),
         form_page("", inside='<div data-wd-section="education"></div>'),
         form_page("", inside='<button type="button" data-wd-add>Add</button>'),
     ],
-    ids=["unknown-control", "left-empty-required", "a-part-missing", "a-part-of-another-kind",
-         "template-value", "entry-value", "entry-ticked", "numbering", "no-add", "two-adds",
-         "add-submits", "no-template", "entry-outside", "two-sections", "template-unfound",
-         "template-in-form", "root-id", "custom-control", "a-part-split",
-         "template-in-section", "a-part-absent", "an-input-button", "a-role-button",
-         "a-button-in-an-entry", "id-used-twice", "readonly", "disabled", "a-hidden-control",
-         "section-hidden", "section-wrapper-hidden", "a-part-twice",
-         "description-text-at-load", "custom-control-in-section", "left-empty-aria-required",
-         "id-with-newline", "id-too-long", "page-name-too-long", "a-button-not-add",
-         "add-disabled", "add-aria-disabled", "add-hidden", "section-in-a-disabled-fieldset",
-         "a-control-in-a-disabled-fieldset", "a-control-aria-disabled", "maxlength", "pattern",
-         "a-required-box", "a-date-without-its-format", "marker-case", "another-kind-of-section",
-         "a-stray-add-marker", "only-another-section", "only-a-stray-marker"],  # fmt: skip
+    ids=[
+        "unknown-control",
+        "left-empty-required",
+        "a-part-missing",
+        "a-part-of-another-kind",
+        "template-value",
+        "entry-value",
+        "entry-ticked",
+        "numbering",
+        "no-add",
+        "two-adds",
+        "add-submits",
+        "no-template",
+        "entry-outside",
+        "two-sections",
+        "template-unfound",
+        "template-in-form",
+        "root-id",
+        "custom-control",
+        "a-part-split",
+        "template-in-section",
+        "a-part-absent",
+        "an-input-button",
+        "a-role-button",
+        "a-button-in-an-entry",
+        "id-used-twice",
+        "readonly",
+        "disabled",
+        "a-hidden-control",
+        "section-hidden",
+        "section-wrapper-hidden",
+        "a-part-twice",
+        "description-text-at-load",
+        "custom-control-in-section",
+        "left-empty-aria-required",
+        "id-with-newline",
+        "id-too-long",
+        "page-name-too-long",
+        "a-button-not-add",
+        "add-disabled",
+        "add-aria-disabled",
+        "add-hidden",
+        "section-in-a-disabled-fieldset",
+        "a-control-in-a-disabled-fieldset",
+        "a-control-aria-disabled",
+        "maxlength",
+        "pattern",
+        "a-required-box",
+        "a-date-without-its-format",
+        "marker-case",
+        "another-kind-of-section",
+        "a-stray-add-marker",
+        "only-another-section",
+        "only-a-stray-marker",
+    ],  # fmt: skip
 )
 def test_any_other_work_history_is_one_required_checkpoint(html):
     """Anything about work history that is not the structure NoEfforts enters is one required
@@ -348,8 +429,9 @@ def test_a_page_question_named_like_a_checkpoint_never_hides_it(key, html):
     assert [f.key for f in schema.fields].count(key) == 1  # a stored form's keys are unique
 
 
-@pytest.mark.parametrize("key", [workday.WORK_KEY, workday.MULTI_STEP_KEY, workday.PREFILLED_KEY,
-                                 "bot_check"])
+@pytest.mark.parametrize(
+    "key", [workday.WORK_KEY, workday.MULTI_STEP_KEY, workday.PREFILLED_KEY, "bot_check"]
+)
 def test_a_page_question_named_like_a_checkpoint_is_on_its_page_like_any_other(receiver, key):
     """D149 review: on a wizard, such a question is held to D142's rule that every question is
     on a page before the review page, as any other is."""
@@ -441,8 +523,9 @@ def test_a_section_the_page_requires_needs_your_approved_work_history(api, recei
     assert approve(api, app_id).status_code == 200
 
 
-@pytest.mark.parametrize("title, company", [("Night\nNurse", "River Clinic"),
-                                            ("Night Nurse", "   ")])
+@pytest.mark.parametrize(
+    "title, company", [("Night\nNurse", "River Clinic"), ("Night Nurse", "   ")]
+)
 def test_a_line_break_or_a_blank_is_a_checkpoint_when_the_package_is_built(title, company):
     """D149 review: a text box cannot hold a line break, and a blank employer is none: your
     answer, before approval, never a stop at execution (as on Greenhouse: the same rows)."""
@@ -451,8 +534,7 @@ def test_a_line_break_or_a_blank_is_a_checkpoint_when_the_package_is_built(title
                              end_date=datetime.date(2018, 12, 1), is_current=False)  # fmt: skip
     result = ss.resolve_section("employment", [record])
     assert not result.ready()
-    assert [f for _, f, _ in result.checkpoints()] == [
-        "title" if "\n" in title else "company_name"]
+    assert [f for _, f, _ in result.checkpoints()] == ["title" if "\n" in title else "company_name"]
 
 
 def test_work_history_the_section_cannot_take_blocks_approval(api, receiver):
@@ -674,8 +756,14 @@ def test_the_plan_enters_what_was_approved_and_leaves_the_rest_empty():
         {**frozen([frozen_row()]), "root": "body > form"},
         frozen([frozen_row(), frozen_row()]),  # one record twice
         frozen([{"record_id": "r1", "fields": {"salary": {"status": "resolved"}}}]),
-        frozen([{"record_id": "r1", "fields": {**frozen_row()["fields"],
-                 "title": {"status": "needs_user"}}}]),  # fmt: skip
+        frozen(
+            [
+                {
+                    "record_id": "r1",
+                    "fields": {**frozen_row()["fields"], "title": {"status": "needs_user"}},
+                }
+            ]
+        ),
     ],
     ids=["month", "year", "education", "root", "twice", "unknown-field", "unresolved"],
 )

@@ -41,6 +41,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D146 an attempt still waiting to be taken is published again | merged (#55, 688c776, tree as predicted); its PR CI passed all four jobs on e1fb40a |
 | D147 a restored database comes up held, and nothing it restored runs | merged (#56, b7f6c45, tree as predicted); its PR CI passed all four jobs on f102f50, the Docker smoke test's real dump and restore with the guide's checks among them |
 | D148 a Workday-style follow-up question, entered only when the page shows it | merged (#57, dd5d164, tree as predicted); its PR CI passed all four jobs on 93979df |
+| D149 Workday-style Work Experience: your approved work history entered on My Experience | branch `wizard-experience` (D148's branch, then `main` with #57); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -62,7 +63,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 merged (#47): a gh2 look-alike naming a country is neither reused nor suggested | D138 merged (#47): "Preferred shift" never saved or reused |
 | 5 | Conditional question | fx on the v1 fixture; D135 merged (#44), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | D148 on its branch (stand-in FA6, receiver ledger): a typed follow-up the page shows after an earlier answer is answerable, entered only when shown, never waited for; a shown required one without an answer pauses a single page and stops a wizard page before its Next; a hidden one the page still requires, or one it removes, stops the attempt; a choice hidden at load is still never filled (a hidden file input is uploaded as before) |
 | 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger); D145 (branch): a dropdown whose list keeps being re-rendered is refused however slowly it is read (the page's own record of its last change to a list), before anything is entered, and a location search whose suggestions keep changing chooses no place (gh2 stand-ins; receiver ledger) | fx at capture |
-| 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger) | absent |
+| 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger) | D149 on its branch (stand-in FA7, receiver ledger): the Work Experience entries on My Experience filled from your approved work history (employment), each added by the section's own button and read back, no entry beyond the approved ones sent, a required section waiting for your approved work history; anything else about work history a checkpoint; education, languages, websites and skills not built |
 | 8 | Answer edits invalidate approvals | fx; D138 merged (#47): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger); D140 merged (#49): an education or employment edit retires the approval at once; on the education stand-in, approved again, the new degree is sent, and an edit while a worker fills is stopped at the send gate (receiver ledger) | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; D143 merged (#52): on gh2 by id a worker killed before anything was sent is run again once, and one killed after entering data, at the send gate, around the final click or after the employer's receipt is never run again; a run past its budget stops before the final click (gh2 by id and the pilot stand-in; receiver ledger); D144 merged (#53): the sweeper runs on a worker of its own, so it is not held up by attempts waiting for codes (real workers, generic form; receiver ledger) | partial; D142 merged (#51): on the wizard stand-in a lost or killed worker leaves the record of each page's Next, is never taken over, and the application is never run again (receiver ledger); D143 merged (#52): the same kills on the single-page form and on the wizard's review page, and a wizard past its budget stops for good (receiver ledger) |
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus; D139 merged (#48): self-identification on gh2 (by id and pilot) up to the ledger: off or unmatched never sent, a label or a decline label sent, your per-application "Don't disclose" beats it, a required one without a match waits; a change retires its approvals at once (queued, held by a worker, under the standing rule: nothing withdrawn is sent) | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify"; D139 merged (#48): self-identification sent as each option's own value, each question only from the label naming its category, a bare "No" or two labels never used, a decline only where the choices name a category, a required gender without a match waits; withdrawal and change retire the approval (single page; the Workday decline wording is a fixture assumption) |
@@ -298,6 +299,22 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     passed the check before disclosure) and four weaknesses (4f90edc); the second found no
     blocker and five weaknesses (67e382f). Fixed, each with a test; the rest recorded in D148.
 
+- **D149 (branch `wizard-experience`, not merged).** Rank 13, Workday-style repeating records:
+  - the gap: the stand-in's My Experience page sent no work history at all, and repeating
+    entries read by the generic extractor would have been one question per control, with
+    no record behind them;
+  - the stand-in's Work Experience section (FA7) is read as an employment section on its
+    page, filled from your approved work history (D120's rows, shown and diffed as D140's),
+    entry by entry: added by the section's own button, each control typed exactly and read
+    back, and before the page's Next no entry beyond the approved ones and nothing left
+    empty that the page requires; anything about work history it cannot fill exactly is
+    one checkpoint, and what is known before anything is entered stops there;
+  - two independent reviews: the first found three blockers (a page question sharing the
+    checkpoint's key hid it; entries beyond the approved ones stopped only after page 1 was
+    saved; a title with surrounding spaces never read back) and four weaknesses (d282574);
+    the second found no blocker and three weaknesses (ac5b48b). Fixed, each with a test;
+    the rest recorded in D149.
+
 - **Rank 4, second half, needs the owner's decision.** A final click the page's own checks block
   (`CLIENT_BLOCKED`, nothing sent: the request was intercepted) is found after `sending` began.
   Pausing there and later queuing one new attempt is a retry after `sending`, which CLAUDE.md
@@ -333,9 +350,10 @@ last change to a list, and **D146** (rank 15, #55) publishes again an attempt st
 waiting to be taken: two defects found on the way. Its review found that a restored database
 would then run again what it shows as queued: **D147** (rank 20, #56) makes a
 restored database come up held and end, without running it, everything it shows as queued
-or in progress. **D148** (rank 12, on its branch) answers a Workday-style follow-up question
-when the form is read and enters it only when the page shows it. Next, rank 13 (repeating
-records).
+or in progress. **D148** (rank 12, #57) answers a Workday-style follow-up question
+when the form is read and enters it only when the page shows it. **D149** (rank 13, on its
+branch) enters your approved work history in the Workday-style stand-in's Work Experience
+section, entry by entry. Next, rank 16 (a stop request honoured before the next step).
 
 ## Unvalidated or partly validated changes
 
@@ -429,6 +447,11 @@ records).
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
+- **D149 (branch `wizard-experience`):** the new tests, the suites the change touches, the
+  removal runs and the regression set, locally (Tests run below). Not tested: a real Workday
+  page (no work-history section was observed), education, languages, websites and skills,
+  removing an entry, a resume parse that adds an entry on a page whose earlier pages were
+  saved (it stops, tested; nothing more), and anything real.
 
 ## Tests run (this loop)
 
@@ -602,6 +625,11 @@ records).
 | D148, the form's bounds rechecked: the capture test with a visible control of the same name outside the form (a9f4222), then those two changes in turn | exit 0, 1 passed; both changes fail it |
 | D148, main merged in (D146 as #55, D147 as #56): two documents conflicted (D146's records), main's version taken; then D147 recorded as merged and the document tests on it (414bfd3) | exit 0; 45 passed |
 | D148, after its records: the same document tests; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 45 passed; ruff clean (381 files), on the records committed with this result |
+| D149, the new tests: `pytest tests/test_workday_experience.py` (JUnit), on 9fc9734, 26efad8, 5e891ad, d282574, e30ba41 and ac5b48b; on bdb5311 the 63 capture cases, and all 119 cases within the suites below | 45, 57, 61, 94, 96, 118 passed in turn (three runs failed first, each corrected: an assumed status code, a helper's name, a test page; status table); 63 passed |
+| D149, the suites the change touches: 21 files (JUnit), on 9fc9734, d282574 and bdb5311 | 473, 522 passed; exit 0; 547 passed in 12.9 min (the new file's 119 cases among them) |
+| D149, each part changed in turn: 43 changes on 5e891ad, 64 on e30ba41, 83 on bdb5311, one at a time, the file restored | all 43; 63 of 64 (one did not compile); all 83 fail a test |
+| D149, the regression set: `pytest` on 74 files (D148's 73 and `test_workday_experience.py`; JUnit), in a copy of the branch, alongside the runs above | @@REGRESS@@ |
+| D149, after its records: the document tests; `ruff format .`, `ruff check .`, `ruff format --check .` | {FINALDOCS} |
 
 ## Failed approaches and rejected designs
 
@@ -717,10 +745,10 @@ records).
 
 ## Exact next action
 
-1. D148 (branch `wizard-follow-up`, rank 12): its pull request (D147 merged as #56). Then
-   rank 13 (Workday-style repeating records), rank 16 (a stop request honoured before the
-   next step) and ranks 17 to 19 (the dropdown rule's neighbours). A check of the form's own
-   validity before the send gate (D148's proposal) is a candidate.
+1. D149 (branch `wizard-experience`, rank 13): its pull request (D148 merged as #57). Then
+   rank 16 (a stop request honoured before the next step) and ranks 17 to 19 (the dropdown
+   rule's neighbours). Candidates: a check of the form's own validity before the send gate
+   (D148's proposal); Location and Role Description from your record; education on Workday.
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it
