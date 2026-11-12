@@ -1,9 +1,10 @@
 """D152 (rank 18): the read-only survey publishes, for each list it opens, whether the list met
 the adapter's settle rule at the survey's last read (local only; no run is approved for a real
-page). Since D145 the adapter counts a list as settled only when, besides the survey's own test
-and equal reads, the page has recorded no change to a list for half a second (STABLE_MS). The
-survey judged lists by its own, weaker test and published nothing of that record, so no run
-showed whether a real page meets the rule.
+page). Since D145 the adapter counts a list as settled only when, besides the probe's
+classification (since D153 without the whole page's 150 ms check, which the survey's own
+`open_state` keeps) and equal reads, the page has recorded no change to a list for half a second
+(STABLE_MS). The survey judged lists by its own, weaker test and published nothing of that
+record, so no run showed whether a real page meets the rule.
 
 Through the real browser path against the v2 fixture's dropdowns (`gh2_dd`). Its variants are
 FIXTURE ASSUMPTIONS, not observations of a real page; the receiver's request log is the oracle
@@ -111,7 +112,7 @@ def _post(list_quiet_ms):
         ("observed_sufficiently", 900, [["a", "b"], ["a", "b"], ["b", "a"]], False,
          (True, False, False, False)),
         ("observed_sufficiently", 900, [["a"]] * 3, True, (True, True, True, False)),
-        # the survey's own test comes first
+        # the classification comes first (the adapter's, D153, passed in by the survey)
         ("partially_observed", 900, [["a"]] * 3, False, (True, True, False, False)),
         ("opened_options_not_observable", 900, [[]] * 3, False, (True, True, False, False)),
     ],
@@ -203,10 +204,16 @@ def test_the_survey_s_own_test_and_the_adapter_s_rule_can_differ(receiver):
 def test_changes_elsewhere_on_the_page_are_not_a_lists(receiver, tick_ms):
     """Something that is no part of a list changes every 100 or 300 ms: the page's record of
     changes to a list stays quiet, and, as the adapter's classification leaves out the whole
-    page's 150 ms check since D153, every list meets the rule. (The survey's own `open_state`
-    keeps that check, so it may say still changing.)"""
+    page's 150 ms check since D153, every list meets the rule and has its options compared, as
+    the adapter would compare them. The survey's own `open_state` keeps that check, published
+    as before: with a change every 100 ms every read falls within it, so it says still
+    changing beside a rule that is met."""
     ins, widgets = observe(receiver, "click_popup", limits=PATH_B, dd_tick_ms=tick_ms)
-    assert all(w["settle_rule"] == SETTLED for w in widgets)
+    for w in widgets:
+        assert w["settle_rule"] == SETTLED and w["options_match_api"] is True, w
+        if tick_ms == 100:
+            assert w["open_state"] == "partially_observed", w
+            assert w["partial_reasons"] == ["still_changing"], w
     assert counts(ins) == (N, 0, 0)
 
 
@@ -256,6 +263,19 @@ def test_a_list_opened_by_its_container_is_judged_on_that_action(receiver):
     for w in widgets:
         assert w["opened_by"] == "container" and w["settle_rule"] == NOT_JUDGED
         assert w["container_attempt"]["settle_rule"] == SETTLED
+    assert counts(ins) == (N, 0, 0)
+
+
+def test_a_containers_list_on_a_page_busy_elsewhere_meets_it(receiver):
+    """D153, path C: the container's action is judged by the adapter's classification too. With
+    something that is no part of a list changing every 100 ms, the container's list meets the
+    rule and has its options compared, while its own `open_state` keeps the survey's check."""
+    ins, widgets = observe(receiver, "container_only", limits=PATH_C, rule=RULE_C,
+                           dd_tick_ms=100)  # fmt: skip
+    for w in widgets:
+        c = w["container_attempt"]
+        assert w["opened_by"] == "container" and c["open_state"] == "partially_observed", w
+        assert c["settle_rule"] == SETTLED and c["options_match_api"] is True, c
     assert counts(ins) == (N, 0, 0)
 
 
@@ -321,17 +341,18 @@ def test_a_control_that_leaves_the_page_is_not_judged(receiver):
 def test_a_reset_clears_the_page_busy_elsewhere(receiver):
     """D145's ticker (`dd_tick_ms`) was not among the settings the receiver's reset clears, so it
     went on changing the page of every later test of a module (found by this file's own order).
-    The page the stand-in serves after a reset has no ticker."""
+    The page the stand-in serves after a reset has no ticker, nor D153's style sheet ticker."""
 
-    def tick() -> str:
+    def ticks() -> tuple[str, str]:
         page = urllib.request.urlopen(f"{BASE}/gh2/{BOARD}/jobs/{JOB}", timeout=10).read()
-        return re.search(r"TICK = (\d+)", page.decode()).group(1)
+        found = re.search(r"TICK = (\d+);\s*const STYLE_TICK = (\d+)", page.decode())
+        return found.group(1), found.group(2)
 
-    receiver.config(mode="gh2_dd", dd="click_popup", dd_tick_ms=300)
-    assert tick() == "300"
+    receiver.config(mode="gh2_dd", dd="click_popup", dd_tick_ms=300, dd_style_tick_ms=200)
+    assert ticks() == ("300", "200")
     receiver.reset()
     receiver.config(mode="gh2_dd", dd="click_popup")
-    assert tick() == "0"
+    assert ticks() == ("0", "0")
 
 
 def test_a_request_the_page_cancels_is_no_longer_pending(receiver):

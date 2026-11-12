@@ -236,6 +236,25 @@ def test_a_page_whose_style_sheet_keeps_changing_has_its_lists_refused(api, rece
     assert led["disclosures"] == [] and led["accepted"] == 0
 
 
+@pytest.mark.parametrize("dd", ["controls_flip", "class_flip"])
+def test_a_list_switched_through_its_control_is_refused_before_anything_is_entered(
+    api, receiver, dd
+):
+    """D153 (rank 19's safety review, B1): which list the probe reads, or which of its options
+    are shown, can change through the control alone: here every 125 ms its aria-controls names
+    each of two lists in turn (the same options, in reverse order), or its class hides an option
+    through a style sheet. Without the whole page's 150 ms check such a list could be judged
+    settled when the reads fell in step with it, and a wrong option clicked. The page's record
+    now counts any attribute of the control: the list never settles, and is refused before
+    anything is entered."""
+    _, aid, result = run(api, receiver, dd=dd)
+    assert result == "failed_safe", attempt(aid).outcome_detail
+    detail = attempt(aid).outcome_detail
+    assert "dropdown: its list could not be read completely" in detail, detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
 def test_a_list_that_starts_changing_after_the_check_stops_the_attempt_before_sending(
     api, receiver
 ):
@@ -327,8 +346,8 @@ def test_settled_means_unchanged_by_the_pages_own_record(monkeypatch):
     """D145, the rule itself, on a stand-in for the page's probe: three equal reads are not
     enough while the page reports a change to a list in the last half second, whatever the
     reading interval; they are once it reports none for that long, or none at all since before
-    the action. A change elsewhere on the page, however recent the classification allows, does
-    not count."""
+    the action. A change elsewhere on the page does not count, however recent (D153: the
+    classification's whole-page 150 ms check is left out; the 20 ms case would fail it)."""
     monkeypatch.setattr(dropdowns, "_act", lambda *a: True)
     for list_quiet, quiet, state, word in (
         ([200, 120, 280, 90, 260, 140], None, "partially_observed", None),  # re-rendered
@@ -336,6 +355,7 @@ def test_settled_means_unchanged_by_the_pages_own_record(monkeypatch):
         ([10, 260, 500], None, "observed_sufficiently", None),  # exactly the half second
         ([None, None, None], None, "observed_sufficiently", None),  # no change to a list
         ([600, 850, 1100], 200, "observed_sufficiently", None),  # the page is busy elsewhere
+        ([600, 850, 1100], 20, "observed_sufficiently", None),  # ... changed 20 ms ago (D153)
     ):
         got = dropdowns._observe(_ProbePage(list_quiet, quiet=quiet), "c", "click_control", 2)
         assert got["state"] == state, (list_quiet, got)

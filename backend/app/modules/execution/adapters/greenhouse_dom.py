@@ -803,6 +803,10 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             # D145: the page's own record of changes to a list, as for a dropdown (the probe's
             # observer, which only reads): "exactly one suggestion" is judged on a list the
             # page has not changed for STABLE_MS, not on reads that may have fallen in step.
+            # D153: the record also counts changes to style sheets, any attribute of the input
+            # and any id, so a page that changes one of these less than STABLE_MS apart now
+            # stops here, after the text was typed (this search never had the whole page's
+            # 150 ms check, so for it D153 only adds refusals).
             try:  # before anything is typed: a stop here records no disclosure (D145 review)
                 if page.evaluate(ro._PRE_JS, key) is None:  # the control is gone
                     raise LocationStopped(LOCATION_FAILED, list(before))

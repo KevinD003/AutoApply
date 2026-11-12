@@ -446,7 +446,7 @@ def _settled_list(page, selector: str, cid: str, pre: dict, data: list, done: se
             raise SectionFillError(f"{selector}: is no longer on the page")
         series.append(len(post["texts"]))
         seen.append(got["options"])
-        state, _, partial = ro.classify_open(pre, post, series, None, True, False)
+        state, _, partial = ro.classify_open(pre, post, series, None, True, whole_page=False)
         pending = [r for r in data if id(r) not in done]
         same = len(seen) >= n and all(s == seen[-1] for s in seen[-n:])
         steady = (state == "observed_sufficiently" and got["named"] and got["open"]
@@ -466,6 +466,8 @@ def _settled_list(page, selector: str, cid: str, pre: dict, data: list, done: se
         raise SectionFillError(f"{selector}: names no list of its own")
     if state in ("not_opened", "undetermined") or not got["open"]:
         raise SectionFillError(f"{selector}: its list did not open")
+    if steady and recent:  # D153: its own word, as for a dropdown, when only the record says no
+        partial = [*partial, "list_changed_recently"]
     why = ", ".join(partial)  # a fixed vocabulary, never page text
     raise SectionFillError(f"{selector}: its list did not settle in time ({state}"
                            + (f": {why})" if why else ")"))  # fmt: skip

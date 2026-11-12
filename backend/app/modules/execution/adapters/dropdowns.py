@@ -46,20 +46,40 @@ list: a change inside an option or a popup (found by the marks the probe reads t
 that added or removed such an element, or an attribute change on an element holding one. So
 "unchanged for 500 ms" no longer depends on how often the list is read.
 
-The rest of the page (D153). Changes elsewhere on the page do not count: until D153 the
-classification's own check of the whole document (no change at all for 150 ms) looked at them,
-so a page busy elsewhere could have its lists refused, depending on the reading pace. The
-adapter now leaves that check out (`classify_open(..., whole_page=False)`) and counts instead
-any change to a style sheet (a <style> element or its text, a stylesheet <link> or its
-attributes) as a change to a list, as a style sheet can hide or swap options without touching
-the list; a page that changes its style sheets that often has its lists refused. Limits: a
-list whose changes are at least half a second apart can be read as settled between two of
-them; so can one on a page whose own timers stall for that long; and where the observer has
-recorded no change to a list since before the action, the equal reads decide alone (nothing
-changed, or the page changes in a way the observer cannot see: styles changed through the CSS
-object model alone, an observer the page has replaced). Later changes are caught by:
-  * the list being read again, and required to be exactly the approved one, when an option is
-    chosen (`select`);
+The rest of the page (D153). Until D153 the classification's own check of the whole document
+(no change at all for 150 ms) also held a list back, so a page busy elsewhere could have its
+lists refused, depending on the reading pace. The adapter leaves that check out
+(`classify_open(..., whole_page=False)`) and counts instead, as changes to a list, what can
+decide which list is read, or which of its options are shown, without touching it: any
+attribute of the control; on an element holding the control, an attribute the probe finds its
+list by (role, aria-haspopup, aria-expanded, aria-controls, aria-owns); an element holding the
+control added or removed; any element's id; and a style sheet (a <style> element or its text,
+a stylesheet <link>'s attributes, any <link>'s rel). "Elsewhere" is narrower than the page: an
+attribute change on <html>, <body> or any element holding a list (or holding an element whose
+class name hints at a menu, dropdown or option), and any batch of more than 200 changes, still
+count as changes to a list (D145).
+
+Limits:
+  * a list whose changes are at least half a second apart can be read as settled between two of
+    them; so can one on a page whose own timers stall for that long;
+  * a page whose style sheets change every 550 to 750 ms has a share of its openings refused (in
+    a real page's window, reads 254 to 300 ms apart, by arithmetic: 64-78% at 550 ms, 36-67% at
+    600, 16-38% at 650, 8-14% at 700, 1-7% at 750; none from 800 ms; before D153 none of these),
+    so the checks before the disclosure gate can pass and a later choice be refused, after data
+    was entered (with three dropdowns at one refusal in three: about one attempt in five);
+  * where the observer has recorded no change to a list since before the action, the equal reads
+    decide alone;
+  * the observer does not see: styles changed through the CSS object model alone; an observer
+    the page has replaced; a rule of an unchanged style sheet that starts or stops matching
+    because an element holding no list changed (a class on another element under a `:has()` or
+    sibling rule, an element inserted beside the list under a position rule); and a style sheet
+    whose rules arrive after its <link> or @import was added (its request is not waited for).
+Later changes are caught by:
+  * the choice (`select`): the list and the option to click come from one read, and the list
+    must still be exactly the approved one; the option's own text is read again just before the
+    click, which lands on that element only (Playwright waits until it is the element that
+    receives the click). An option whose element is reused for another option between that read
+    and the click is the one case left;
   * the readback of every answer before the send gate (adapter);
   * the form drift checks before the disclosure gate, which stop the attempt before anything is
     entered.
@@ -124,30 +144,13 @@ _TRIGGERS = """(id) => {
 }"""
 _TRIGGER_COUNT_JS = "(id) => { const t = (" + _TRIGGERS + ")(id); return t ? t.length : -1; }"
 _TRIGGER_JS = "(id) => (" + _TRIGGERS + ")(id)[0]"
-# The i-th option of the list the probe read (same source rules as the probe).
-_OPTION_JS = (
-    "([id, i]) => {\n"
-    + ro._PROBE_COMMON
-    + """
-  const el = document.getElementById(id);
-  const before = window.__neBefore || new Set();
-  const isNew = (e) => vis(e) && !before.has(e);
-  const wrap = el.parentElement
-    && el.parentElement.closest('[role=combobox],[aria-haspopup],[aria-expanded]');
-  const ids = [];
-  for (const [n, a] of [[el, 'aria-controls'], [el, 'aria-owns'],
-                        [wrap, 'aria-controls'], [wrap, 'aria-owns']]) {
-    const v = n && n.getAttribute(a);
-    if (v) ids.push(...v.split(/\\s+/).filter(Boolean));
-  }
-  const assoc = ids.map((x) => document.getElementById(x)).filter(Boolean).filter(vis);
-  let opts = assoc.flatMap((p) => Array.from(p.querySelectorAll(OPT))).filter(vis);
-  if (!opts.length) {
-    const pops = all(POP).filter(isNew).filter((p) => !assoc.includes(p));
-    if (pops.length === 1) opts = Array.from(pops[0].querySelectorAll(OPT)).filter(vis);
-  }
-  return opts[i] || null;
-}"""
+# D153: in one read, the list as the probe reads it and its i-th option, the element to click:
+# nothing can change between the two. (Before, the option was found by a second read with its
+# own copy of the probe's rules, after the list was judged: a list that changed in between
+# could have its i-th option clicked though it was not the approved one.)
+_CHOICE_JS = (
+    "([id, i]) => { const r = (" + ro._PROBE_READ_JS + ")(id);\n"
+    "  return r ? {texts: r.read.texts, el: r.opts[i] || null} : {texts: null, el: null}; }"
 )
 _CONTROLS_JS = """() => {
   const ctl = Array.from(document.querySelectorAll('input, textarea, [role=combobox]'));
@@ -263,7 +266,9 @@ def _observe(page: Page, cid: str, strategy: str, api_count: int, late: bool = F
                 raise Refused("the control disappeared")
             series.append(len(post["texts"]))
             seen.append([dom._norm(t) for t in post["texts"]])
-            state, _, partial = ro.classify_open(pre, post, series, api_count, True, False)
+            state, _, partial = ro.classify_open(
+                pre, post, series, api_count, True, whole_page=False
+            )
             refusal = _data_refusal(page, data, done, late)
             pending = [r for r in data if id(r) not in done]
             steady = (
@@ -361,25 +366,34 @@ def verify(page: Page, cid: str, options: list, late: bool = False) -> str:
 def select(page: Page, cid: str, strategy: str, options: list, want_value: str,
            late: bool = False) -> bool:  # fmt: skip
     """Open with the verified strategy and click the one option whose label (and value, where
-    exposed) is the approved one. False when that cannot be done exactly; readback decides."""
-    labels = [o.label for o in options]
+    exposed) is the approved one. False when that cannot be done exactly; readback decides.
+    D153: the option to click is taken from one read of the list, which must still be the
+    approved list, and its own text is read again just before the click."""
+    labels = [dom._norm(o.label) for o in options]
     target = next((o for o in options if str(o.value) == str(want_value)), None)
     if target is None:
         return False
+    want = dom._norm(target.label)
     try:
         got = _observe(page, cid, strategy, len(labels), late)
         texts = [dom._norm(t) for t in got["texts"]]
-        if (got["state"] != "observed_sufficiently" or got["data"]
-                or texts != [dom._norm(x) for x in labels]):  # fmt: skip
+        if got["state"] != "observed_sufficiently" or got["data"] or texts != labels:
             _close(page, cid)
             return False
-        idx = [i for i, t in enumerate(texts) if t == dom._norm(target.label)]
+        idx = [i for i, t in enumerate(texts) if t == want]
         if len(idx) != 1:
             _close(page, cid)
             return False
-        opt = page.evaluate_handle(_OPTION_JS, [cid, idx[0]]).as_element()
-        exposed = opt.get_attribute("data-value") if opt else None
-        if opt is None or (exposed is not None and exposed != str(target.value)):
+        choice = page.evaluate_handle(_CHOICE_JS, [cid, idx[0]])
+        now = choice.get_property("texts").json_value()
+        opt = choice.get_property("el").as_element()
+        if now is None or [dom._norm(t) for t in now] != labels or opt is None:
+            _close(page, cid)
+            return False
+        exposed = opt.get_attribute("data-value")
+        if (exposed is not None and exposed != str(target.value)) or (
+            dom._norm(opt.text_content() or "") != want
+        ):
             _close(page, cid)
             return False
         opt.click(timeout=_ACTION_MS)
