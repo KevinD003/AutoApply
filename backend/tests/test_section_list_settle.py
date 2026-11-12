@@ -1,12 +1,16 @@
 """D151: a section's combobox (Greenhouse education and employment, D120/D141) reads its list
-through the dropdown's settle rule (adapters/dropdowns.py, D106 and D145) instead of once on
-opening. Its list counts as settled once it is shown and says it is not loading, no data request
-made since the click is still in flight, the same options were read three times in a row and the
-page has recorded no change to a list for half a second; otherwise the section stops, and no
-option is clicked. The section stand-in's list behaviours (`section_widget` late_list, late_fetch,
-changing_list, slow_changing_list; cfg section_delay_ms, section_tick_ms) are FIXTURE ASSUMPTIONS:
-no real Greenhouse section page has been observed. The receiver's ledger is the oracle for what
-was sent. Synthetic data only."""
+through the dropdown's settle rule (adapters/dropdowns.py `_observe`: D104, D106, D108, D145)
+instead of once on opening. Read every SAMPLE_MS, its list counts as settled once the probe's
+classification says it is observed sufficiently (it opened, its options can be read, nothing new
+on the page says it is loading, no list claims more options than it shows, and the whole document
+has been quiet for 150 ms), no data request made since the click is still in flight, the same
+options were read three times in a row and the page has recorded no change to a list for half a
+second; data requests are refused as a dropdown's are. Otherwise the section stops, and no option
+is clicked. The section stand-in's list behaviours (`section_widget` late_list, late_react,
+late_fetch, late_fetch_404, changing_list, slow_changing_list, css_swapping_list, open_beacon,
+hidden_duplicate, inert; cfg section_delay_ms, section_tick_ms) are FIXTURE ASSUMPTIONS: no real
+Greenhouse section page has been observed. The receiver's ledger is the oracle for what was sent.
+Synthetic data only."""
 
 import pytest
 
@@ -36,6 +40,7 @@ def _reset(receiver):
 # posts them: the option ids chosen, and the months.
 EDUCATION = {"school--0": "sch_state", "degree--0": "deg_bach", "discipline--0": "dis_cs",
              "start-month--0": "9", "end-month--0": "5"}  # fmt: skip
+NETWORK = "its options load from the network in a way NoEfforts does not accept"
 
 
 def education_sent(receiver) -> dict:
@@ -53,20 +58,31 @@ def run(api, receiver, widget: str, **cfg) -> tuple[str, str]:
     return aid, runner.run_attempt(aid, "w1")
 
 
+def refused(receiver, aid: str, result: str, reason: str) -> None:
+    """The section stopped at the first control, saying why, naming the control and never the
+    value, and nothing was submitted."""
+    assert result == "abandoned"
+    detail = attempt(aid).outcome_detail
+    assert f"#school--0: {reason}" in detail, detail
+    assert "State University" not in detail
+    assert receiver.ledger()["accepted"] == 0
+
+
 # ------------------------------------------------------------------- lists that settle late
 
 
 @pytest.mark.parametrize("widget,delay_ms", [
-    ("late_list", 300),  # says it is loading, then shows its options
+    ("late_list", 300),  # says it is loading (aria-busy, a progressbar), then shows its options
     ("late_list", 2500),  # ... later than a real page's window, within a stand-in's
+    ("late_react", 1500),  # an empty menu, a "Loading..." notice and a loading indicator only
     ("late_fetch", 1200),  # one placeholder option, not marked loading, until a GET answers
 ])  # fmt: skip
 def test_a_section_list_that_arrives_late_is_chosen_from_once_it_has_settled(
     api, receiver, widget, delay_ms
 ):
-    """Read once on opening, each of these lists was refused (no option, or only the placeholder,
-    read the approved text): the choice now waits for the list to settle, and is the approved
-    option."""
+    """Read once on opening, each of these lists was refused: no option, or only the placeholder,
+    read the approved text (the run against the code before D151 is recorded in D151). The choice
+    now waits for the list to settle, and is the approved option."""
     aid, result = run(api, receiver, widget, section_delay_ms=delay_ms)
     assert result == "confirmed", attempt(aid).outcome_detail
     assert education_sent(receiver) == EDUCATION
@@ -79,16 +95,14 @@ def test_a_section_list_that_arrives_late_is_chosen_from_once_it_has_settled(
 
 @pytest.mark.parametrize("widget,cfg", [
     ("changing_list", {}),  # re-rendered in the other order every 60 ms
-    ("slow_changing_list", {}),  # ... every 300 ms: the page's own record of it refuses it
-    ("late_list", {"section_delay_ms": 7000}),  # still loading when the wait ends (LATE_MS)
+    ("slow_changing_list", {}),  # ... every 300 ms
+    ("css_swapping_list", {}),  # a style sheet hides another option every 300 ms: no list
+    # changes, so only the reads see it (D145's limit of the page's record)
+    ("late_list", {"section_delay_ms": 600_000}),  # still loading when the wait ends
 ])  # fmt: skip
 def test_a_section_list_that_does_not_settle_stops_the_section(api, receiver, widget, cfg):
     aid, result = run(api, receiver, widget, **cfg)
-    assert result == "abandoned"
-    detail = attempt(aid).outcome_detail
-    assert "#school--0: its list did not settle in time" in detail, detail
-    assert "State University" not in detail  # the control is named, never the value
-    assert receiver.ledger()["accepted"] == 0
+    refused(receiver, aid, result, "its list did not settle in time")
 
 
 # D145, for sections: how often the list is read must not decide whether it counts as settled.
@@ -99,9 +113,7 @@ def test_a_section_list_that_keeps_changing_is_refused_however_slowly_it_is_read
 ):
     monkeypatch.setattr(dropdowns, "SAMPLE_MS", sample_ms)
     aid, result = run(api, receiver, "slow_changing_list")
-    assert result == "abandoned"
-    assert "#school--0: its list did not settle in time" in attempt(aid).outcome_detail
-    assert receiver.ledger()["accepted"] == 0
+    refused(receiver, aid, result, "its list did not settle in time")
 
 
 @pytest.mark.parametrize("widget,cfg", [("plain", {}),
@@ -115,17 +127,41 @@ def test_a_section_list_that_has_settled_is_chosen_from_when_read_slowly(
     assert education_sent(receiver) == EDUCATION
 
 
-@pytest.mark.parametrize("tick_ms", [100, 300])
+@pytest.mark.parametrize("tick_ms,window", [(300, "stand-in"), (600, "stand-in"),
+                                            (600, "real page")])  # fmt: skip
 def test_a_page_busy_elsewhere_does_not_hold_up_a_section_list(
-    api, receiver, monkeypatch, tick_ms
+    api, receiver, monkeypatch, tick_ms, window
 ):
-    """Only changes to a list count (D145's record), not changes elsewhere on the page: with
-    something else changing every 100 or 300 ms, each list still settles, in a real page's
-    window (SETTLE_MS) rather than a stand-in's."""
-    monkeypatch.setattr(dropdowns, "LATE_MS", dropdowns.SETTLE_MS)
+    """As D145's dropdown tests: changes elsewhere on the page are not changes to a list, so each
+    list still settles, in a stand-in's window and, with something changing every 600 ms, in a
+    real page's (SETTLE_MS). The classification's own check of the whole document (150 ms) is
+    kept as the dropdown has it; rank 19 would change both."""
+    if window == "real page":
+        monkeypatch.setattr(dropdowns, "LATE_MS", dropdowns.SETTLE_MS)
     aid, result = run(api, receiver, "plain", section_tick_ms=tick_ms)
     assert result == "confirmed", attempt(aid).outcome_detail
     assert education_sent(receiver) == EDUCATION
+
+
+# ------------------------------------------------- what the page sends, and what it hides
+
+
+@pytest.mark.parametrize("widget", [
+    "open_beacon",  # opening a list posts to the page's own server
+    "late_fetch_404",  # its options wait for a GET that is not answered with a 2xx
+])  # fmt: skip
+def test_a_section_list_whose_opening_sends_or_fails_to_load_is_refused(api, receiver, widget):
+    """As a dropdown's (D104, D108): on a stand-in only a same-origin GET answered with a 2xx may
+    bring a list's options; anything that sends, or fails, refuses the list."""
+    aid, result = run(api, receiver, widget)
+    refused(receiver, aid, result, NETWORK)
+
+
+def test_a_hidden_copy_of_the_approved_option_refuses_the_list(api, receiver):
+    """Exactly one option of the list, shown or not, may read the approved text (as before D151:
+    the list was counted whole)."""
+    aid, result = run(api, receiver, "hidden_duplicate")
+    refused(receiver, aid, result, "2 options read the approved text exactly")
 
 
 # ------------------------------------------------------------------ on the page itself
@@ -140,41 +176,108 @@ def _open_section_page(page) -> None:
     page.locator("#school--0").wait_for(state="attached")
 
 
+def _session():
+    return browser_session(BASE, 8000, isolation=get_settings().browser_isolation,
+                           allow_private_destination=True)  # fmt: skip
+
+
+def _request_listeners(page) -> int:
+    return len(page._impl_obj.listeners("request"))
+
+
+def _nothing_chosen(page) -> None:
+    assert gsections.combobox_shows(page, "#school--0", None, None)
+    assert page.locator("#school--0-listbox [aria-selected=true]").count() == 0
+
+
 def test_no_option_is_clicked_in_a_section_list_that_never_settles(receiver):
     """In a browser on the stand-in's page: the list is refused and closed, the control still
-    shows nothing, and no option in it was ever selected."""
+    shows nothing, no option in it was ever selected, and neither the probe's observer nor the
+    request listeners are left behind."""
     receiver.config(mode="gh2_sections", sections="education", section_widget="changing_list")
-    with browser_session(BASE, 8000, isolation=get_settings().browser_isolation,
-                         allow_private_destination=True) as (page, _log):  # fmt: skip
+    with _session() as (page, _log):
         _open_section_page(page)
+        listeners = _request_listeners(page)
         with pytest.raises(gsections.SectionFillError, match="did not settle in time"):
             _school(page, late=True)
-        assert gsections.combobox_shows(page, "#school--0", None, None)
-        assert page.locator("#school--0-listbox [aria-selected=true]").count() == 0
+        _nothing_chosen(page)
         assert page.locator("#school--0").get_attribute("aria-expanded") == "false"
+        assert page.evaluate("() => window.__neObs") is None
+        assert _request_listeners(page) == listeners
 
 
 def test_a_real_pages_window_is_shorter_than_a_stand_ins(receiver):
     """The bound is the dropdown's: SETTLE_MS (1.5 s) on any page but a local stand-in, which
-    may take LATE_MS (5 s). A list that says it is loading for 2.5 s is refused in the first
+    may take LATE_MS (5 s). A list that says it is loading for 3.5 s is refused in the first
     window and chosen from in the second (sections run on stand-ins only today, D120)."""
     receiver.config(mode="gh2_sections", sections="education", section_widget="late_list",
-                    section_delay_ms=2500)  # fmt: skip
-    with browser_session(BASE, 8000, isolation=get_settings().browser_isolation,
-                         allow_private_destination=True) as (page, _log):  # fmt: skip
+                    section_delay_ms=3500)  # fmt: skip
+    with _session() as (page, _log):
         _open_section_page(page)
         with pytest.raises(gsections.SectionFillError, match="did not settle in time"):
             _school(page, late=False)
-        assert gsections.combobox_shows(page, "#school--0", None, None)
+        _nothing_chosen(page)
         _open_section_page(page)  # a fresh page: its list loads afresh
         _school(page, late=True)
         assert gsections.combobox_shows(page, "#school--0", "State University", "sch_state")
 
 
-def test_the_probe_is_taken_off_the_page_after_each_choice(receiver):
-    receiver.config(mode="gh2_sections", sections="education", section_widget="plain")
-    with browser_session(BASE, 8000, isolation=get_settings().browser_isolation,
-                         allow_private_destination=True) as (page, _log):  # fmt: skip
+def test_a_control_that_never_opens_stops_the_wait_after_a_real_pages_window(receiver):
+    """As a dropdown's: when nothing opened and nothing is loading, the wait ends after SETTLE_MS
+    of reads even on a stand-in, whose window is LATE_MS."""
+    receiver.config(mode="gh2_sections", sections="education", section_widget="inert")
+    with _session() as (page, _log):
         _open_section_page(page)
+        reads, wait = [], page.wait_for_timeout
+
+        def counted(ms):
+            reads.append(ms)
+            return wait(ms)
+
+        page.wait_for_timeout = counted
+        with pytest.raises(gsections.SectionFillError, match="its list did not open"):
+            _school(page, late=True)
+        assert reads.count(dropdowns.SAMPLE_MS) == dropdowns.SETTLE_MS // dropdowns.SAMPLE_MS
+        _nothing_chosen(page)
+
+
+# Changed after it settled, just before the click: the list in the other order, the approved
+# option re-keyed, or a second option reading the approved text added at the end.
+CHANGED = {
+    "reversed": "for (const o of Array.from(lb.children).reverse()) lb.appendChild(o);",
+    "re-keyed": "lb.querySelector('[data-value=sch_state]').dataset.value = 'sch_other';",
+    "copied": "lb.append(lb.querySelector('[data-value=sch_state]').cloneNode(true));",
+}
+
+
+@pytest.mark.parametrize("change", list(CHANGED))
+def test_a_list_changed_after_it_settled_is_not_chosen_from(receiver, monkeypatch, change):
+    """The whole list is read again just before the click and must be the one that settled, and
+    the option at its place must still read the approved text and id: otherwise nothing is
+    clicked."""
+    receiver.config(mode="gh2_sections", sections="education", section_widget="plain")
+    real = gsections._settled_list
+
+    def settled_then_changed(page, *a, **k):
+        out = real(page, *a, **k)
+        page.evaluate("() => { const lb = document.getElementById('school--0-listbox'); "
+                      + CHANGED[change] + " }")  # fmt: skip
+        return out
+
+    monkeypatch.setattr(gsections, "_settled_list", settled_then_changed)
+    with _session() as (page, _log):
+        _open_section_page(page)
+        with pytest.raises(gsections.SectionFillError, match="its list changed before the choice"):
+            _school(page, late=True)
+        _nothing_chosen(page)
+
+
+def test_the_probe_is_set_for_the_choice_and_taken_off_after(receiver):
+    receiver.config(mode="gh2_sections", sections="education", section_widget="plain")
+    with _session() as (page, _log):
+        _open_section_page(page)
+        listeners = _request_listeners(page)
         _school(page, late=True)
-        assert page.evaluate("() => window.__neObs") is None
+        assert page.evaluate("() => !!window.__neMut")  # it recorded the page's changes
+        assert page.evaluate("() => window.__neObs") is None  # and stopped
+        assert _request_listeners(page) == listeners

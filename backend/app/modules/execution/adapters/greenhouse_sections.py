@@ -384,15 +384,14 @@ def combobox_shows(page, selector: str, want_text: str | None, want_id: str | No
 
 def _close_list(page, loc) -> None:
     try:
-        loc.press("Escape")
+        loc.press("Escape", timeout=dropdowns._ACTION_MS)  # never the page's default wait
     except Exception:  # noqa: BLE001
         pass
 
 
-# D151: the list a section combobox names as its own (aria-controls / aria-owns), read in one go:
-# whether it is named and shown, whether it says it is loading, its shown options (text as shown,
-# and the id each exposes), and how long ago the page last changed a list (the probe's record,
-# D145; null when it has recorded none since the probe was set).
+# D151: every option of the list a section combobox names as its own (aria-controls /
+# aria-owns), shown or not, read in one go: its text as the page renders it, the id it exposes,
+# and whether it is shown; whether the list is named and shown. Null when the control is gone.
 _LIST_JS = """(id) => {
   const el = document.getElementById(id);
   if (!el) return null;
@@ -400,54 +399,71 @@ _LIST_JS = """(id) => {
     : !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
   const ref = el.getAttribute('aria-controls') || el.getAttribute('aria-owns') || '';
   const lb = /^[A-Za-z][A-Za-z0-9_\\-:.]*$/.test(ref) ? document.getElementById(ref) : null;
-  const m = window.__neMut;
-  const quiet = m && m.list ? Math.round(performance.now() - m.list) : null;
-  if (!lb) return {named: false, open: false, busy: false, quiet, options: []};
-  return {
-    named: true, open: vis(lb), quiet,
-    busy: lb.getAttribute('aria-busy') === 'true' || !!lb.querySelector('[role=progressbar]'),
-    options: Array.from(lb.querySelectorAll('[role=option]')).filter(vis)
-      .map((o) => [(o.innerText || '').trim(), o.getAttribute('data-value')]),
-  };
+  if (!lb) return {named: false, open: false, options: []};
+  return {named: true, open: vis(lb),
+          options: Array.from(lb.querySelectorAll('[role=option]'))
+            .map((o) => [(o.innerText || '').trim(), o.getAttribute('data-value'), vis(o)])};
 }"""
-# The i-th shown option of that list, as _LIST_JS counted it, or null.
+# The i-th option of that list (shown or not), as _LIST_JS counted it, or null.
 _OPTION_JS = """([id, i]) => {
   const el = document.getElementById(id);
-  const vis = (e) => e.checkVisibility ? e.checkVisibility({visibilityProperty: true})
-    : !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
   const ref = el ? (el.getAttribute('aria-controls') || el.getAttribute('aria-owns') || '') : '';
   const lb = /^[A-Za-z][A-Za-z0-9_\\-:.]*$/.test(ref) ? document.getElementById(ref) : null;
-  return lb ? (Array.from(lb.querySelectorAll('[role=option]')).filter(vis)[i] || null) : null;
+  return lb ? (Array.from(lb.querySelectorAll('[role=option]'))[i] || null) : null;
 }"""
 
 
-def _settled_list(page, selector: str, cid: str, data: set, done: set, late: bool) -> list:
-    """D151: the control's own list once it has settled, by the dropdown's rule (dropdowns.py,
-    D106 and D145): read every SAMPLE_MS, it counts as settled once it is shown and says it is not
-    loading, no data request made since the click is still in flight, the same options were read
-    STABLE_SAMPLES times in a row, and the page has recorded no change to a list for STABLE_MS.
-    Within SETTLE_MS, or LATE_MS on a local stand-in (D104), counted in reads; otherwise refused.
-    [text, id] pairs, as shown."""
+def _settled_list(page, selector: str, cid: str, pre: dict, data: list, done: set,
+                  late: bool) -> list:  # fmt: skip
+    """D151: the control's own list once it has settled, by the dropdown's rule (dropdowns._observe:
+    D104, D106, D108, D145). Read every SAMPLE_MS, it counts as settled once:
+      * the probe's classification says it is observed sufficiently (ro.classify_open: it opened,
+        options can be read, nothing new on the page says it is loading, a list's aria-setsize
+        claims no more options than are shown, and the whole document has been quiet for 150 ms);
+      * no data request made since the click is still in flight;
+      * the same options were read STABLE_SAMPLES times in a row;
+      * the page has recorded no change to a list for STABLE_MS.
+    Within SETTLE_MS, or LATE_MS on a local stand-in, counted in reads; a list nothing opened stops
+    the wait after SETTLE_MS. Data requests made since the click are refused as a dropdown's are
+    (dropdowns._data_refusal: on a stand-in, only same-origin GETs answered 2xx). Its options, shown
+    or not, as [text, id, shown]."""
+    series: list = []
     seen: list = []
     got = None
-    waited = 0
+    state, partial, settled, waited = "not_opened", [], False, 0
+    n = dropdowns.STABLE_SAMPLES
     while waited < (dropdowns.LATE_MS if late else dropdowns.SETTLE_MS):
         page.wait_for_timeout(dropdowns.SAMPLE_MS)
         waited += dropdowns.SAMPLE_MS
+        post = page.evaluate(ro._PROBE_JS, cid)
         got = page.evaluate(_LIST_JS, cid)
-        if got is None:
+        if post is None or got is None:
             raise SectionFillError(f"{selector}: is no longer on the page")
+        series.append(len(post["texts"]))
         seen.append(got["options"])
-        n = dropdowns.STABLE_SAMPLES
-        if (got["open"] and not got["busy"] and data <= done
-                and len(seen) >= n and all(s == seen[-1] for s in seen[-n:])
-                and (got["quiet"] is None or got["quiet"] >= dropdowns.STABLE_MS)):  # fmt: skip
-            return got["options"]
-    if got is None or not got["named"]:
+        state, _, partial = ro.classify_open(pre, post, series, None, True)
+        pending = [r for r in data if id(r) not in done]
+        same = len(seen) >= n and all(s == seen[-1] for s in seen[-n:])
+        steady = (state == "observed_sufficiently" and got["named"] and got["open"]
+                  and not pending and same)  # fmt: skip
+        recent = post["list_quiet_ms"] is not None and post["list_quiet_ms"] < dropdowns.STABLE_MS
+        if steady and not recent:
+            settled = True
+            break
+        if waited >= dropdowns.SETTLE_MS and state == "not_opened" and not data:
+            break  # nothing opened and nothing is loading: no reason to wait longer
+    refusal = dropdowns._data_refusal(page, data, done, late)
+    if refusal:
+        raise SectionFillError(f"{selector}: {refusal}")
+    if settled:
+        return got["options"]
+    if not got["named"]:
         raise SectionFillError(f"{selector}: names no list of its own")
-    if not got["open"]:
+    if state in ("not_opened", "undetermined") or not got["open"]:
         raise SectionFillError(f"{selector}: its list did not open")
-    raise SectionFillError(f"{selector}: its list did not settle in time")
+    why = ", ".join(partial)  # a fixed vocabulary, never page text
+    raise SectionFillError(f"{selector}: its list did not settle in time ({state}"
+                           + (f": {why})" if why else ")"))  # fmt: skip
 
 
 def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
@@ -463,20 +479,22 @@ def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
     (``combobox_shows``). No near match is ever accepted.
 
     D151: the list is read through the dropdown's settle rule (``_settled_list``), never once on
-    opening: a list still loading, being replaced or changing is never chosen from. The probe's
-    observer (D145) is set before the click and taken off after; the option found in the settled
-    list is read again, by its place, just before it is clicked, and must still be the same."""
+    opening. The probe's observer (D145) is set before the click and taken off after, as are the
+    request listeners. Exactly one option of the list, shown or not, may read the approved text,
+    and it must be shown. Just before the click the whole list is read again and must be the one
+    that settled, and the option at its place must still read the approved text and id."""
     loc = page.locator(selector).first
     loc.scroll_into_view_if_needed(timeout=timeout_ms)
     cid = loc.get_attribute("id") or ""
     if not cid or page.evaluate(ro._PRE_JS, cid) is None:  # the probe's record starts here
         raise SectionFillError(f"{selector}: cannot be found by its id")
-    data: set[int] = set()
+    data: list = []
     done: set[int] = set()
 
     def on_request(r):
-        if r.resource_type in ("xhr", "fetch"):
-            data.add(id(r))
+        # A data request, or anything else that sends (a POST beacon, a form post): D108.
+        if r.resource_type in dropdowns._DATA or r.method != "GET":
+            data.append(r)
 
     def on_done(r):
         done.add(id(r))
@@ -485,6 +503,9 @@ def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
     page.on("requestfinished", on_done)
     page.on("requestfailed", on_done)
     try:
+        pre = page.evaluate(ro._PROBE_JS, cid)
+        if pre is None:
+            raise SectionFillError(f"{selector}: cannot be found by its id")
         loc.click(timeout=timeout_ms)
         got = page.evaluate(_LIST_JS, cid)
         if got is None or not got["named"] or not got["open"]:
@@ -493,21 +514,26 @@ def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
             if box.count():
                 box.first.click(timeout=timeout_ms)
         try:
-            options = _settled_list(page, selector, cid, data, done, late)
+            options = _settled_list(page, selector, cid, pre, data, done, late)
         except SectionFillError:
             _close_list(page, loc)
             raise
-        hits = [k for k, (text, _) in enumerate(options) if text == want_text]
+        hits = [k for k, (text, _, _) in enumerate(options) if text == want_text]
         if len(hits) != 1:
             _close_list(page, loc)
             n = len(hits)
             raise SectionFillError(f"{selector}: {n} options read the approved text exactly")
-        exposed = options[hits[0]][1]
+        _, exposed, shown = options[hits[0]]
+        if not shown:
+            _close_list(page, loc)
+            raise SectionFillError(f"{selector}: the approved option is not shown")
         if want_id is not None and exposed is not None and exposed != want_id:
             _close_list(page, loc)
             raise SectionFillError(f"{selector}: the approved option records another id")
+        again = page.evaluate(_LIST_JS, cid)
         option = page.evaluate_handle(_OPTION_JS, [cid, hits[0]]).as_element()
-        if (option is None or (option.inner_text() or "").strip() != want_text
+        if (again is None or again["options"] != options or option is None
+                or (option.inner_text() or "").strip() != want_text
                 or option.get_attribute("data-value") != exposed):  # fmt: skip
             _close_list(page, loc)
             raise SectionFillError(f"{selector}: its list changed before the choice")

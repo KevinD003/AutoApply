@@ -199,9 +199,23 @@ _SECTION_SCRIPT = """
 (() => {
   const WIDGET = %WIDGET%;
   // D151 (FIXTURE ASSUMPTIONS; no real section list has been observed): lists that load, are
-  // replaced or keep changing once opened (section_widget late_list, late_fetch, changing_list,
-  // slow_changing_list; cfg section_delay_ms), and a page busy elsewhere (cfg section_tick_ms).
+  // replaced or keep changing once opened (section_widget late_list, late_react, late_fetch,
+  // late_fetch_404, changing_list, slow_changing_list, css_swapping_list; cfg section_delay_ms),
+  // one that posts when opened (open_beacon), one holding a hidden copy of an option
+  // (hidden_duplicate), a control that never opens (inert), and a page busy elsewhere (cfg
+  // section_tick_ms).
   const DELAY = %DELAY%, TICK = %TICK%;
+  if (WIDGET === 'css_swapping_list') {  // a style sheet hides the 2nd, then the 3rd, option of
+    // every list, in turn every 300 ms: no list itself changes, and the shown count stays
+    const s = document.createElement('style');
+    s.id = 'fx-css-swap';
+    document.head.append(s);
+    let k = 0;
+    const rules = ['[role=listbox] li:nth-child(2){display:none}',
+                   '[role=listbox] li:nth-child(3){display:none}'];
+    s.textContent = rules[0];
+    setInterval(() => { k = 1 - k; s.textContent = rules[k]; }, 300);
+  }
   const BASE = (document.querySelector('form[data-base]') || {dataset: {}}).dataset.base || '';
   if (TICK > 0) {  // an element that is no part of any list changes every TICK ms
     const t = document.createElement('p');
@@ -214,7 +228,30 @@ _SECTION_SCRIPT = """
     if (lb.dataset.fxTimed) return;
     lb.dataset.fxTimed = '1';
     const opts = Array.from(lb.children);
-    if (WIDGET === 'late_list') {  // busy, with a progress bar, then the options after DELAY
+    if (WIDGET === 'hidden_duplicate' && lb.id === 'school--0-listbox') {  // a copy of the
+      // first school, not shown, with an id of its own
+      const d = document.createElement('li');
+      d.setAttribute('role', 'option'); d.dataset.value = 'sch_dup';
+      d.textContent = opts[0].textContent; d.style.display = 'none';
+      lb.append(d);
+    }
+    if (WIDGET === 'late_react') {  // as react-select shows loading: an empty menu with a
+      // "Loading..." notice and a loading indicator by the control, no aria-busy, no progressbar
+      const note = document.createElement('div');
+      note.className = 'select__menu-notice select__menu-notice--loading';
+      note.textContent = 'Loading...';
+      const ind = document.createElement('span');
+      ind.className = 'select__loading-indicator'; ind.textContent = '...';
+      lb.replaceChildren(note);
+      const cb = document.querySelector('[data-fx-list="' + lb.id + '"]');
+      if (cb) cb.after(ind);
+      setTimeout(() => { ind.remove(); lb.replaceChildren(...opts); }, DELAY);
+    } else if (WIDGET === 'late_fetch_404') {  // waits for a same-origin GET the page's server
+      // does not answer with a 2xx, then shows its options anyway
+      fetch(BASE + '/section-options-missing/' + encodeURIComponent(lb.id) + '.json')
+        .catch(() => {}).finally(() => { lb.replaceChildren(...opts); });
+      lb.replaceChildren();
+    } else if (WIDGET === 'late_list') {  // busy, with a progress bar, then the options after DELAY
       const bar = document.createElement('li');
       bar.setAttribute('role', 'progressbar'); bar.textContent = 'Loading options';
       lb.setAttribute('aria-busy', 'true'); lb.replaceChildren(bar);
@@ -266,7 +303,11 @@ _SECTION_SCRIPT = """
         lb.hidden = false; cb.setAttribute('aria-expanded','true');
         if (WIDGET === 'react_select') cb.setAttribute('aria-controls', lb.id);
         timed(lb);
+        if (WIDGET === 'open_beacon') {  // D151: each opening also posts to the page's own server
+          fetch(BASE + '/section-opened', {method: 'POST', body: 'opened'}).catch(() => {});
+        }
       };
+      if (WIDGET === 'inert') continue;  // D151: nothing opens it
       cb.addEventListener('click', open);
       const box = cb.closest('.select__control');
       if (box) box.addEventListener('click', open);

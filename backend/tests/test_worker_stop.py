@@ -471,8 +471,8 @@ def test_greenhouse_section_controls_stop_at_the_next_one(api, receiver, monkeyp
 
     real, done = gsections._apply_op, []
 
-    def op_then_stop(page, op, timeout_ms):
-        real(page, op, timeout_ms)
+    def op_then_stop(page, op, *rest):  # rest: the time limit and, since D151, `late`
+        real(page, op, *rest)
         if not done:
             done.append(op.field)
             stopping.request()
