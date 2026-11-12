@@ -466,6 +466,34 @@ def test_greenhouse_section_controls_stop_at_the_next_one(api, receiver, monkeyp
     assert receiver.ledger()["accepted"] == 0
 
 
+def test_workday_section_entries_stop_at_the_next_control(api, receiver, monkeypatch):
+    """D149's Work Experience entries on the Workday-style wizard: the run checks before each
+    entry and each control, so a stop after the first control enters no further one, and its
+    page's Next is never clicked."""
+    from app.modules.execution.adapters import workday_sections as ws
+    from tests.test_workday_experience import experience_application
+    from tests.test_workday_wizard import draft_pages
+
+    real, done = ws._give, []
+
+    def give_then_stop(page, op, timeout_ms):
+        real(page, op, timeout_ms)
+        if not done:
+            done.append(op.field)
+            stopping.request()
+
+    monkeypatch.setattr(ws, "_give", give_then_stop)
+    app_id = experience_application(api, receiver)
+    aid = queue(api, app_id)
+    seen = actions_after_stop(monkeypatch)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    assert runner.STOP_REQUESTED in attempt(aid).outcome_detail
+    fields = [d for d in disclosures(aid) if d.get("kind") == "section_field"]
+    assert [d["field"] for d in fields] == done and seen == []
+    led = receiver.ledger()
+    assert draft_pages(led) == [1] and led["accepted"] == 0
+
+
 def test_greenhouse_section_rows_are_not_added_after_a_stop(api, receiver, monkeypatch):
     """Two education rows: a stop that comes as the second row is looked for clicks no "Add
     another"; the first row stays as entered."""
