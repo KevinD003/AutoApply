@@ -171,6 +171,7 @@ def test_a_navigation_started_by_a_widget_is_refused_and_stops(receiver):
     assert ins["controls_at_end"] is None  # the page may have been replaced: not measured
     last = ins["widgets"][-1]
     assert last["control_gone"] is True and last["open_state"] == "undetermined"
+    assert set(last["settle_rule"].values()) == {None}  # D152: nothing left to judge
     only_the_page_was_requested(receiver)
 
 

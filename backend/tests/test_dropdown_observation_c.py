@@ -165,7 +165,8 @@ def test_an_allowed_locale_request_that_fails_is_not_counted_as_loaded(receiver)
     assert w["open_state"] == "not_opened" and w["opened_by"] is None
     assert w["container_attempt"] == {"present": False, "click": None, "open_state": None,
                                       "opening_evidence": [], "visible_option_list": False,
-                                      "options_match_api": None}  # fmt: skip
+                                      "options_match_api": None,
+                                      "settle_rule": None}  # fmt: skip
     out = ins["locale_requests_allowed"]
     assert out["total"] >= 1 and out["outcomes"] == {"4xx": out["total"]}
     nothing_disclosed(receiver)
