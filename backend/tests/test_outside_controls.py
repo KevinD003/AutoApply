@@ -421,13 +421,22 @@ def test_a_second_control_under_a_read_question_s_name_stops_where_a_read_misses
     stopped_before_anything(receiver, app_id, aid, UNREAD_CONTROLS.format(n=1))
 
 
-def test_a_hidden_value_under_the_file_question_s_name_is_never_sent(api, receiver):
+@pytest.mark.parametrize("mode", ["hidden_twin", "hidden_twin_on_input"])
+def test_a_hidden_value_under_the_file_question_s_name_is_never_sent(api, receiver, mode):
     """D160 reviews (since D159): the file readback checked only the upload, so a hidden input
-    of the page's under the résumé's name was sent with it. Its form must send the file alone."""
-    receiver.config(sends="hidden_twin")
+    of the page's under the résumé's name was sent with it. Its form must send the file alone:
+    the readback stops one the page adds once "Why us" is typed, after the upload (one there at
+    load already makes the upload's own control ambiguous, so nothing is uploaded)."""
+    receiver.config(sends=mode)
     app_id = prepared_application(api, receiver, why_text=WHY)
-    assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
     assert receiver.ledger()["accepted"] == 0
+    detail = attempt(aid).outcome_detail
+    if mode == "hidden_twin_on_input":  # entered, uploaded, read back: the file not alone
+        assert "did not keep their values" in detail, detail
+    else:
+        assert "did not keep their values" not in detail, detail
 
 
 @pytest.mark.parametrize(

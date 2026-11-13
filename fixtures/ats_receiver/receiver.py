@@ -540,6 +540,12 @@ def page_form(slug, token, cfg):
         form_tail = f'</div><input{hidden} name="{"resume" if hidden == "" else "extra"}" value="{page_text}">'
     if sends == "hidden_twin":
         extra += f'<input type="hidden" name="resume" value="{page_text}">'
+    if sends == "hidden_twin_on_input":  # the same, added once "Why us" is typed (after the upload)
+        js_extra += ("{ let done = false; document.getElementById('why_us').addEventListener("
+                     "'input', () => { if (done) return; done = true; const h = document"
+                     ".createElement('input'); h.type = 'hidden'; h.name = 'resume';"
+                     f" h.value = '{page_text}'; document.getElementById('application')"
+                     ".append(h); }); }\n")
     if sends == "button_other_form":
         button_attrs = ' form="fx-other"'
         outside += (f'<form id="fx-other" action="/apply/{slug}/submit" method="post">'
