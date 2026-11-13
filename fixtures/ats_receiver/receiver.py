@@ -212,7 +212,7 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                     "gh2_limits": None, "gh2_limit_js": None, "gh2_limit_on_focus": None,
                     "gh2_limit_on_input": None, "gh2_types": None, "gh2_autosave": None,
                     "gh2_limit_once_typed": None, "gh2_unlock": None,
-                    "gh2_readonly_focus": None})
+                    "gh2_readonly_focus": None, "gh2_bad_byte": None})
         return {"ok": True}
 
     @app.get("/_fx/wait")

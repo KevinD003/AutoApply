@@ -50,7 +50,8 @@ turn}), gh2_limit_js / gh2_limit_on_focus / gh2_limit_on_input ({id: the limit t
 loaded, as the control gets focus, or once something is typed}) and gh2_types ({id: the input's
 type}), gh2_limit_once_typed ({id: limit set once anything is typed}) and gh2_unlock ([ids
 served disabled, enabled by the page's script]), gh2_readonly_focus ([ids served read-only until
-they have focus]) on a typed question's control, and gh2_autosave ([ids]: the page saves those questions as they
+they have focus]) on a typed question's control, gh2_bad_byte (the page served with one byte
+that is no UTF-8), and gh2_autosave ([ids]: the page saves those questions as they
 are typed, their length only, POST /gh2/{board}/jobs/{id}/autosave, a disclosure) (FIXTURE
 ASSUMPTIONS, never seen on a real page),
 gh2_sections (D120: an Education section; D141: cfg sections "education,employment" adds an
@@ -1833,11 +1834,14 @@ def _form_page(board, job_id, token, cfg) -> HTMLResponse:
             + ("<script>" + _PAGE_CHECK_JS.replace("%CHECK%", json.dumps(cfg["page_check"]))
                + "</script>" if cfg.get("page_check") else "")
             + _limit_script(cfg) + _autosave_script(cfg, base))
-    return HTMLResponse(
-        "<!doctype html><html><head><meta charset='utf-8'>"
-        f"<title>{html.escape(j['title'])}</title></head><body data-gh2='form'>"
-        "<p class='fixture-banner'>SYNTHETIC FIXTURE v2: approximation of a hosted form "
-        f"structure; fictional employer.</p>{body}</body></html>")
+    page = ("<!doctype html><html><head><meta charset='utf-8'>"
+            f"<title>{html.escape(j['title'])}</title></head><body data-gh2='form'>"
+            "<p class='fixture-banner'>SYNTHETIC FIXTURE v2: approximation of a hosted form "
+            f"structure; fictional employer.</p>{body}</body></html>")
+    if cfg.get("gh2_bad_byte"):  # D161: the same page, with one byte that is no UTF-8 in it
+        return HTMLResponse(page.encode().replace(b"<body data-gh2='form'>",
+                                                  b"<body data-gh2='form'><!--\xff-->", 1))
+    return HTMLResponse(page)
 
 
 # In every locale file's body and, once loaded, in the page: a test checks it never reaches the

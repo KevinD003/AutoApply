@@ -142,6 +142,23 @@ def uploads(receiver) -> int:
     return sum(d["kind"] == "upload" for d in receiver.ledger()["disclosures"])
 
 
+def disclosures(aid: str) -> list[dict]:
+    """The attempt's own record of what it disclosed (D137)."""
+    import uuid
+
+    from sqlalchemy import select
+
+    from app.modules.execution.models import Evidence
+
+    with SessionLocal() as db:
+        rows = db.scalars(
+            select(Evidence)
+            .where(Evidence.attempt_id == uuid.UUID(aid), Evidence.kind == "disclosure")
+            .order_by(Evidence.created_at)
+        ).all()
+        return [r.data for r in rows]
+
+
 def pauses(app_id: str) -> list[ApplicationPause]:
     import uuid
 
@@ -375,6 +392,8 @@ def test_a_question_the_page_shows_is_not_entered_when_its_limit_is_lowered_on_f
     assert runner.run_attempt(aid, "w1") == "abandoned"
     assert receiver.ledger()["accepted"] == 0 and saves(receiver, TEAM) == []
     assert adapter.LIMIT_AT_FOCUS.format(limits=3) in attempt(aid).outcome_detail
+    # the résumé uploaded before it stays recorded as sent (D137)
+    assert [d.get("field") for d in disclosures(aid)] == ["resume"] and uploads(receiver) == 1
 
 
 def test_before_d161_the_question_the_page_shows_was_typed_cut(api, receiver, monkeypatch):
@@ -467,6 +486,13 @@ def test_the_survey_reports_each_typed_question_s_limit_as_the_browser_and_captu
     assert got["question_8101"] == "not_applicable"  # a list
     assert got["resume"] == "not_applicable"  # a file
     assert receiver.ledger()["disclosures"] == []
+
+
+def test_the_survey_reads_the_page_as_served_as_the_capture_decodes_it(receiver, survey):
+    """D161 review: one byte that is no UTF-8 in the page as served; the capture decodes it
+    replacing it, and so does the survey (a strict read gave "not_observable")."""
+    receiver.config(gh2_bad_byte=True, gh2_limits={NAME: "3"})
+    assert survey()[NAME] == {"browser_reads": 3, "capture_records": 3}
 
 
 def test_the_survey_says_which_typed_question_has_no_control_to_read(receiver, survey):
