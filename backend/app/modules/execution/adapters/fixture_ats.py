@@ -580,8 +580,14 @@ class FixtureAtsAdapter(ReportsDisclosures):
         page's own checks would refuse the click (`PageRefusal`, counted from one read of the
         button's form, `_REFUSAL_JS`); or the page could not be read (fail closed). Each is a
         stop with nothing sent, where the click would have been refused after the send gate (an
-        unknown outcome, or a rejection after `sending`)."""
-        return self._click_target(page, self.final_button(page), required=True) or would_refuse(
+        unknown outcome, or a rejection after `sending`). D160: first, the button must send the
+        form that was read (`_click_target`); a button that cannot be read still fails closed
+        (D154), before that check as inside it."""
+        try:
+            button = self.final_button(page)
+        except PWError:
+            return REFUSAL_UNREAD
+        return self._click_target(page, button, required=True) or would_refuse(
             lambda: self.final_button(page), lambda: self.leave_out(page), FINAL_CLICK
         )
 
