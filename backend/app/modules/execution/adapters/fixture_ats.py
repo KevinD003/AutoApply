@@ -9,7 +9,7 @@ from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PWTimeout
 
-from app.modules.execution.adapters.form_entries import ENTRIES_JS, sends
+from app.modules.execution.adapters.form_entries import ENTRIES_JS, NAMES_JS, sends
 from app.modules.execution.faults import fault
 from app.modules.preparation.forms import (
     BOT_CHECK_KEY,
@@ -68,6 +68,13 @@ LIMIT_UNREADABLE = (
 CHARSET_REFUSED = (
     "the employer's form sends in another character set ({charset}), which would change "
     "characters in your answers (accents, symbols, emoji): apply on the employer's site"
+)
+# D160: no read of the page shows such a control, so reading the form again never would: a plain
+# stop (no pause), naming how many, never which.
+UNREAD_CONTROLS = (
+    "the employer's form would also send {n} control(s) NoEfforts cannot read (one the page "
+    "builds with its own script, or gives the form from elsewhere on the page): what they hold "
+    "would go with your application, unapproved. Apply on the employer's site"
 )
 
 
@@ -180,7 +187,7 @@ class FixtureAtsAdapter(ReportsDisclosures):
             )
         if live.action and urljoin(page.url, live.action) != dest["submit_url"]:
             return "the form now submits to a different address"
-        return self._sendable_now(page)
+        return self._sendable_now(page, live)
 
     # -- D159: what the page would make of the approved answers ------------------------------
     APPLICATION_FORM = "form#application"  # the form the final click submits
@@ -188,10 +195,31 @@ class FixtureAtsAdapter(ReportsDisclosures):
     def _application_form(self, page: Page):
         return page.locator(self.APPLICATION_FORM)
 
-    def _sendable_now(self, page: Page) -> str | None:
+    def _sendable_now(self, page: Page, live: FormSchema) -> str | None:
         """D159, with the form (before anything is entered, and again after filling): the form's
-        character set (`_charset_refused`), then each typed answer's limit (`_limits_fit`)."""
-        return self._charset_refused(page) or self._limits_fit(page)
+        character set (`_charset_refused`), then each typed answer's limit (`_limits_fit`). D160:
+        first, every control the form would send is one this read of the page (`live`) shows
+        (`_unread_controls`)."""
+        return (
+            self._unread_controls(page, live)
+            or self._charset_refused(page)
+            or self._limits_fit(page)
+        )
+
+    def _unread_controls(self, page: Page, live: FormSchema) -> str | None:
+        """D160: the form sends every control in its own list (`form.elements`), wherever the
+        page puts it and whatever its script makes it. One the read of the page does not show
+        (read from the markup as the browser serializes it) would send what it holds unapproved:
+        a form-associated custom element (it sends what its script sets, under any name), or a
+        control the browser gives the form that its markup does not hold. Counted passively
+        (`NAMES_JS`), whatever each holds now; a section's entries are read by their own checks
+        (D149). A form that cannot be found is left to the readback, as `_charset_refused`."""
+        form = self._application_form(page)
+        if form.count() != 1:
+            return None
+        got = form.evaluate(NAMES_JS, [s.root for s in live.sections])
+        n = len(set(got["names"]) - {f.key for f in live.fields}) + got["custom"]
+        return UNREAD_CONTROLS.format(n=n) if n else None
 
     def _charset_refused(self, page: Page) -> str | None:
         """D159: a form that sends in another character set than UTF-8 sends a character it

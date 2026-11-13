@@ -16,7 +16,12 @@ physical or on, any case: line breaks where it wraps on screen), a file, a form-
 element, and the direction field a `dirname` adds under its own name (an empty one too).
 
 Read in the page's own context, as every readback is: a page that redefines the properties read
-here can make them say anything (a limit recorded in D159)."""
+here can make them say anything (a limit recorded in D159).
+
+D160: a form-associated custom element is named by its `name` attribute (it has no `name`
+property of its own unless its script defines one). It may also send entries under any names its
+script chooses (a list of entries as its value), which no passive read can know: `NAMES_JS`
+counts every one, and the runner stops before anything is entered when the form holds one."""
 
 ENTRIES_JS = """(f) => {
   const out = {};
@@ -24,18 +29,20 @@ ENTRIES_JS = """(f) => {
   for (const e of f.elements) {
     const tag = e.localName;
     if (tag === 'fieldset' || tag === 'object' || tag === 'output' || tag === 'button') continue;
-    if (!e.name || e.matches(':disabled')) continue;  // inside a datalist: sent (measured)
-    if (tag.includes('-')) { add(e.name, null); continue; }
+    const custom = tag.includes('-');  // D160: named by its attribute
+    const name = custom ? e.getAttribute('name') : e.name;
+    if (!name || e.matches(':disabled')) continue;  // inside a datalist: sent (measured)
+    if (custom) { add(name, null); continue; }
     const type = tag === 'input' ? e.type : tag;
     if (['submit', 'reset', 'button', 'image'].includes(type)) continue;
     if ((type === 'checkbox' || type === 'radio') && !e.checked) continue;
     if (tag === 'select') {
-      for (const o of e.selectedOptions) if (!o.matches(':disabled')) add(e.name, o.value);
+      for (const o of e.selectedOptions) if (!o.matches(':disabled')) add(name, o.value);
       continue;
     }
-    if (type === 'file') { add(e.name, null); continue; }
+    if (type === 'file') { add(name, null); continue; }
     const hard = tag === 'textarea' && /^(hard|physical|on)$/i.test(e.getAttribute('wrap') || '');
-    add(e.name, hard && e.value !== '' ? null : e.value);  // nothing to wrap: as it is
+    add(name, hard && e.value !== '' ? null : e.value);  // nothing to wrap: as it is
     const dn = e.getAttribute('dirname');  // even empty: Chromium adds a field with no name
     if (dn !== null && (tag === 'textarea'
         || ['text', 'search', 'tel', 'url', 'email', 'password', 'hidden'].includes(type))) {
@@ -43,6 +50,29 @@ ENTRIES_JS = """(f) => {
     }
   }
   return out;
+}"""
+
+# D160: every control the form would send, whatever it holds now (empty, unchecked or disabled:
+# the page may fill, check or enable it), by name: the names a read of the page must show. Not
+# the page's technical values (hidden inputs) nor its buttons (only the one clicked is sent), as
+# a read leaves them too; nor a control inside one of `roots` (a section whose entries their own
+# reads check, D149). A form-associated custom element is counted, not named: it sends what its
+# script sets, under names no read can know.
+NAMES_JS = """(f, roots) => {
+  const names = new Set();
+  let custom = 0;
+  for (const e of f.elements) {
+    const tag = e.localName;
+    if (tag.includes('-')) { custom += 1; continue; }
+    if (tag === 'fieldset' || tag === 'object' || tag === 'output' || tag === 'button') continue;
+    const name = e.getAttribute('name');
+    if (!name || roots.some((r) => e.closest(r))) continue;
+    if (tag === 'input' && ['submit', 'reset', 'button', 'image', 'hidden'].includes(e.type)) {
+      continue;
+    }
+    names.add(name);
+  }
+  return {names: [...names], custom};
 }"""
 
 

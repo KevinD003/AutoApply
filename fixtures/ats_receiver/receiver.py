@@ -491,6 +491,35 @@ def page_form(slug, token, cfg):
         js_extra += ("{ const w = document.getElementById('why_us'); let done = false;"
                      " w.addEventListener('input', () => { if (done) return; done = true; "
                      f"{on_input} }}); }}\n")
+    # D160: a control the page gives its application form from outside the form's markup (its
+    # `form` names the form), holding text the page wrote or left empty; or a form-associated
+    # custom element of the page's own making, sending what its script sets: under its name, or
+    # as entries of any name (here a second "Why us").
+    page_text = "Text the page wrote (fictional)"
+    outside = {
+        "outside_text": ('<label for="fx-extra">Anything else we should know? (optional)</label>'
+                         '<input id="fx-extra" name="extra" form="application"'
+                         f' value="{page_text}">'),
+        "outside_empty": ('<label for="fx-extra">Anything else we should know? (optional)</label>'
+                          '<input id="fx-extra" name="extra" form="application">'),
+        "outside_required": ('<label for="fx-extra">Your referral code</label>'
+                             '<input id="fx-extra" name="extra" form="application" required>'),
+        "outside_on_input": ('<label for="fx-extra">Anything else we should know?</label>'
+                             f'<input id="fx-extra" name="extra" value="{page_text}">'),
+    }.get(sends, "")
+    if sends == "outside_on_input":  # given to the form once "Why us" is typed
+        js_extra += ("{ let done = false; document.getElementById('why_us').addEventListener("
+                     "'input', () => { if (done) return; done = true; document.getElementById("
+                     "'fx-extra').setAttribute('form', 'application'); }); }\n")
+    if sends in ("custom_control", "custom_entries"):
+        named = sends == "custom_control"
+        extra += '<fx-note name="note"></fx-note>' if named else "<fx-note></fx-note>"
+        value = (f"'{page_text}'" if named else
+                 f"(() => {{ const d = new FormData(); d.append('why_us', '{page_text}');"
+                 " return d; })()")
+        js_extra += ("customElements.define('fx-note', class extends HTMLElement {"
+                     " static formAssociated = true; connectedCallback() {"
+                     f" this.attachInternals().setFormValue({value}); }} }});\n")
     # D154: a button of the form that is not its submit button (the final click is still one)
     other_button = ""
     if cfg.get("page_check") == "other_button":
@@ -566,6 +595,7 @@ def page_form(slug, token, cfg):
 </section>
 {other_button}<button type="submit" id="submit-application">Submit application</button>
 </form>
+{outside}
 {hostile}
 <script>
 document.getElementById('resume').addEventListener('change', async (e) => {{

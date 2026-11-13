@@ -607,7 +607,17 @@ def extract_form_schema(
     # none, is refused rather than guessed.
     app_form = _application_form(nodes)
     if app_form is not None:
-        nodes = [n for n in nodes if n is app_form or app_form in n.ancestors()]
+        first_by_id: dict[str, _Node] = {}
+        for n in nodes:
+            if n.attrs.get("id"):
+                first_by_id.setdefault(n.attrs["id"], n)
+        nodes = [
+            n
+            for n in nodes
+            if n is app_form
+            or app_form in n.ancestors()
+            or given_from_outside(n, app_form, first_by_id)  # D160, in the page's order
+        ]
 
     fields: list[FormField] = []
     seen_groups: set[str] = set()
@@ -765,6 +775,16 @@ def extract_form_schema(
         method=(form_node.attrs.get("method") or "get").lower() if form_node else None,
         fields=fields,
     )
+
+
+def given_from_outside(n: "_Node", app_form: "_Node", first_by_id: dict) -> bool:
+    """D160: a control outside the application form's markup that the page gives to the form
+    by naming it (`form`): the browser sends it with the application, so it is read with the
+    form's own questions (and refused, as D159 refuses `form`: `sent_otherwise`). The name
+    resolves as the browser resolves it: to the first element on the page with that id, which
+    must be the form. Only the element naming it: a `fieldset` given so gives the form nothing
+    inside it."""
+    return "form" in n.attrs and first_by_id.get(n.attrs["form"]) is app_form
 
 
 def _application_form(nodes: list["_Node"]) -> "_Node | None":
