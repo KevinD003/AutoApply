@@ -223,7 +223,8 @@ def test_greenhouse_classic_keeps_its_cross_check_where_the_page_refuses_a_quest
     textarea = html[html.index('<textarea id="question_7007"') :]
     textarea = textarea[: textarea.index("</textarea>") + len("</textarea>")]
     as_list = ('<select id="question_7007" name="question_7007" form="elsewhere" '
-               'aria-describedby="question_7007_help"><option value="1">One</option></select>')  # fmt: skip
+               'aria-describedby="question_7007_help">'
+               '<option value="1">One</option></select>')  # fmt: skip
     listed = html.replace(textarea, as_list)
     page_q = {f.key: f for f in gh.rendered_schema(listed, sent_rule=False).fields}["question_7007"]
     api_q = {f.key: f for f in gh.schema_from_api(api_json).fields}["question_7007"]
