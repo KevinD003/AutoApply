@@ -7785,7 +7785,7 @@ audit-inventory and export-completeness guards are updated and pass.
     answer longer than a real page's limit is still typed cut, then stopped by its readback.
   - A control outside the application form's markup that the page gives to it (`form` naming
     it, or markup the browser re-nests into it) is never read as a question: what it holds is
-    sent with your application.
+    sent with your application. (D160: read and refused, or the attempt stopped.)
   - A page that lowers a limit, makes a text area hard-wrap or gives a control to another form
     while the answer is being typed, or between the readback and the final click, is found by
     the readback or the read after filling where they still run, not otherwise.
@@ -7797,4 +7797,142 @@ audit-inventory and export-completeness guards are updated and pass.
     D159 too): left blank, the page's own validation stops it before the send gate (D154). A
     question refused while hidden at load on the Workday-style page loses "shown by the page"
     and, if required, blocks approval although it may never be shown.
+  - Never seen on a real page.
+
+## D160 — A control the page gives its application form from outside its markup is read as a question, and the form must send nothing NoEfforts did not read, by the click on its own button (2026-11-13)
+
+- **Context:** rank 27 of the automation loop (`docs/automation-loop.md`), D159's limit ("a
+  control outside the application form's markup that the page gives to it (`form` naming it,
+  or markup the browser re-nests into it) is never read as a question: what it holds is sent
+  with your application"). Local stand-ins only; nothing real was run. No migration, no new
+  state, gate, permission or retry; one new refusal reason. The Greenhouse pilot's adapter
+  (`greenhouse_dom`, `greenhouse_live`) is unchanged.
+- **Problem** (measured in Chromium and on the base stand-in, `test_before_d160_...`):
+  - The browser sends every control in the form's own list (`form.elements`), and its form
+    owner decides which: a control anywhere on the page whose `form` names the form, one the
+    HTML parser gives the form although it is outside its markup (`<div><form>..</div>
+    <input>`), and what a form-associated custom element's script sets, under its name or
+    any other. A read of the page took only the controls inside the form's markup, and the
+    readback checked only the questions read: on the base stand-in the application was
+    confirmed and the ledger held the page's own text with it.
+  - The final click submits its button's own form (`button.form`), to the button's own
+    address, method, encoding or window if it names one (`formaction`, `formmethod`,
+    `formenctype`, `formtarget`), which no check before the send gate compared with the form
+    it read (since D154; found by D160's second review): the click sent another form of the
+    page's, or your application to another address.
+  - A file question's readback checked the upload's handle only, so a value of the page's
+    under the file's name was sent with it (since D159).
+- **Decided:**
+  - **Reading the form** (`forms.given_from_outside`, `owned_nodes`; every capture reading
+    pages with `extract_form_schema`, and the runner's own read of the live page): a listed
+    control (input, select, text area, and the rest the browser can give a form) outside the
+    application form's markup whose `form` names the form is read with the form's own
+    questions, in the page's order, and refused (`GIVEN_FROM_OUTSIDE`: a required one a
+    checkpoint, an optional one left blank, D136). The name resolves as the browser resolves
+    it: to the first element in the document with that id, an attribute written twice by its
+    first value (D158's rule), and content the browser never puts in the document (a
+    template's, a noscript's while scripts run) neither holds an id nor gives a control. A
+    control inside the form naming another form keeps D159's reason (`SENT_OTHERWISE`): the
+    reasons say what happens. Greenhouse classic adopts either refusal from its page (a
+    control given from outside that its job data lacks is a difference, the capture refused);
+    a Workday-style entry's control given from outside is D149's work-history checkpoint.
+  - **Before anything is entered, and again after filling** (`FixtureAtsAdapter._sendable_now`
+    from `schema_matches`: the base, Greenhouse classic, Lever-, Ashby- and Workday-style
+    adapters), each a plain stop with nothing entered (no pause: no read of the form would
+    change it), naming how many, never which:
+    - the application form must be singled out (exactly one) and readable
+      (`FORM_UNREADABLE`); the runner's own read of the page failing (a control given
+      without a label, or under a question's name) is the same stop, where it was an
+      internal error;
+    - every control the form would send must be one that read shows (`_unread_controls`,
+      `form_entries.NAMES_JS`, `unread`): counted per name, whatever it holds now (empty,
+      unchecked, disabled), so a second control under a question read as one control (a
+      typed answer, a list, a box, a file) is one too many; a group's choices and a refused
+      question may have several (their readback requires exactly the approved choices, or
+      nothing); a form-associated custom element and a control the parser gives the form
+      outside its markup (hidden too) are counted apart, whatever their names; the page's
+      hidden values and its buttons, as a read leaves them, are not (`UNREAD_CONTROLS`);
+    - the final click must send the form read, as it is (`_click_target`): its button belongs
+      to the one application form and names no other address, method, encoding or window
+      (`CLICK_ELSEWHERE`); checked again right before the send gate (`page_would_refuse`);
+    - no question NoEfforts leaves blank already holds something the page put there
+      (`_refused_holding`, `REFUSED_HOLDS`): the readback found it only after every answer was
+      entered (and a page that saves as you type kept them). On Greenhouse classic every one,
+      its job data's own unsupported questions too, which its readback skips.
+  - **The readback:** a file question's form must send the file alone under its name
+    (`file_alone`: the base, hosted and Greenhouse classic readbacks).
+  - **The passive reads** (D159's `ENTRIES_JS`, `NAMES_JS`, the character set, D154's read of
+    the final click's form) read the form's own properties through the browser's definitions:
+    a control the page names "elements" or "getAttribute" replaces the form's property of
+    that name, which made the reads see nothing or throw. A form-associated custom element is
+    named by its `name` attribute.
+  - **The stand-ins** (`fixtures/ats_receiver`): the base page's `cfg["sends"]` (a control
+    given from outside, holding page text, empty, required, unlabelled, under the résumé's
+    name, or given once "Why us" is typed; custom elements, by name or by entries, beside a
+    control named "elements", or added once an answer is typed; the parser's controls, under
+    the résumé's name or hidden; a hidden value under the résumé's name; a submit button given
+    to another form or with its own address; two forms of the application's id); the Lever-
+    and Greenhouse classic pages' hidden value under the résumé's name; Greenhouse classic's
+    unlabelled given control.
+- **What an approved run now does differently:**
+  - An application whose form would send a control NoEfforts did not read, or whose click
+    would send another form or elsewhere, stops before anything is entered (or before the send
+    gate, when the page makes it so after filling), where it was confirmed with the employer
+    holding something else.
+  - A form captured before D160 that holds a control given from outside reads as changed at
+    its next run (the runner's own read takes it now): D132's pause, nothing entered; read
+    again, the question is refused (optional: left blank; required: yours on the employer's
+    site). Forms without one read exactly as before (their fingerprints are unchanged).
+  - **`SCHEMA_VERSION` stays 3** (the content's shape is unchanged; a refusal reason is
+    already part of it), and so do `EXTRACTION_VERSION` and the adapter versions, as for D145
+    and D154 to D159: the rules only stop more, and an approval given before means what it
+    meant.
+- **Reviews:** two independent reviews of the first version (515fe33).
+  - **Both found:** controls compared by name, so a second control under a read question's
+    name passed (measured: the page's text sent under the résumé's name, the parser giving
+    the form the control, or a template holding an element of the form's id first); the
+    capture resolving `form` and `id` unlike the browser (an attribute written twice; ids
+    and controls inside a template or noscript; an element that is no control), leaving a
+    pause no read ends or a checkpoint for a control never sent; the check failing open
+    where the form was not singled out, or its properties were shadowed by named controls
+    (`elements`, `getAttribute`: the custom element passed, or an internal error); a refused
+    control holding the page's text caught only after everything was entered; the reason's
+    wording ("belongs to another form") wrong for a control given to this form; the check
+    after filling untested, and no adapter but the base's tested.
+  - **The second also found a blocker** (since D154): the final click submits its button's own
+    form, to the button's own address; measured: confirmed with the stand-in holding only the
+    page's own values, and with `formaction` your application sent elsewhere. Fixed
+    (`_click_target`).
+  - **The first also found:** a Workday-style entry's control given from outside skipped by
+    the capture, so every attempt stopped. Fixed (the work-history checkpoint).
+  - **The second also found:** a given control without a label failing the runner's own read
+    with an internal error (fixed: a plain stop); the limit below.
+  - Each is fixed with a test (70e0ee3, 937cc2f), or recorded below.
+- **The regression set** (on 937cc2f): 65 of D154's tests failed. They call the check before
+  the send gate (`page_would_refuse`) with a stand-in of their own, which lacked D160's new
+  check of the final click. Reading them found a slip: that check read the button before
+  D154's fail-closed handling, so where reading it fails (the pilot's own button lookup, on a
+  page gone) the check raised where D154 stops plainly (`REFUSAL_UNREAD`): no send, but an
+  internal error in place of a plain stop. Fixed (9838d26): the button is read inside that
+  handling (D154's `test_a_button_that_cannot_be_found_fails_closed` fails without it); D154's
+  tests stand in for D160's check, which has its own.
+- **Not built:**
+  - **The Greenhouse pilot** (`greenhouse_dom`, `greenhouse_live`): its reads are its own, the
+    check of the final button's form included (its page's script submits what its controls
+    hold).
+  - A control the page gives its form, or a custom element it defines, during the final
+    click's own events (the form's `submit` event runs before the browser builds what it
+    sends), or from a timer after the check after filling: never seen (measured by the second
+    review: confirmed with it). Any read before the click has this limit (D159 recorded the
+    same for its attributes).
+  - NoEfforts' page reader is not the browser's parser: markup the two read differently (an
+    empty `<!-->` comment, a declarative shadow root holding an id) can make the capture and
+    the runner's read of the page differ: a pause no read of the form ends, or a plain stop;
+    never a send (the count of the form's own controls covers what a read misses).
+  - Playwright's own check that the final button is enabled fails on a page whose form holds a
+    control named "getAttribute": the check before the click then stops it, unread.
+  - A wizard's Next (the stand-in's is a script's button, which the page's script sends as it
+    chooses): the click-target check covers the final click.
+  - The reads run in the page's own context: a page that redefines the browser's own
+    definitions can make them say anything.
   - Never seen on a real page.

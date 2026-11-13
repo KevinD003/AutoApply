@@ -542,16 +542,22 @@ def test_greenhouse_classic_pauses_on_a_limit_its_page_s_script_sets(api, receiv
     assert p.status == "open"
 
 
-def test_greenhouse_classic_never_sends_page_text_in_a_question_it_refused(api, receiver):
+@pytest.mark.parametrize("mode, outcome", [("gh_wrap_text_on_input", "abandoned"),
+                                           ("gh_wrap_page_text", "failed_safe")])  # fmt: skip
+def test_greenhouse_classic_never_sends_page_text_in_a_question_it_refused(
+    api, receiver, mode, outcome
+):
     """D159 review: its readback skipped unsupported questions, so a text area refused for
     hard-wrapping, into which the page wrote its own text, was sent with it. It must hold
-    nothing, as on every other adapter."""
-    receiver.config(sends="gh_wrap_page_text")
+    nothing, as on every other adapter: the readback stops it once the page writes it as an
+    answer is typed. D160: written by the page at load, it stops before anything is entered."""
+    receiver.config(sends=mode)
     app_id, _ = gh_prepared(api, answer_7007=False)
     q = answers(api.get(f"/applications/{app_id}/package").json())["question_7007"]
     assert q["value"] is None and SENT_OTHERWISE in q["explanation"]
-    assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
-    assert receiver.ledger()["accepted"] == 0
+    assert runner.run_attempt(queue(api, app_id), "w1") == outcome
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and (outcome == "abandoned" or led["disclosures"] == [])
 
 
 # ---------------------------------------------------------------------------- what the form sends

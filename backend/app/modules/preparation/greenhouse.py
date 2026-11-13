@@ -18,7 +18,7 @@ from html.parser import HTMLParser
 from urllib.parse import parse_qs, urlsplit
 
 from app.modules.preparation.forms import (
-    SENT_OTHERWISE,
+    FORM_REFUSALS,
     Condition,
     FieldType,
     FormField,
@@ -247,10 +247,10 @@ def _as_on_page(f: FormField, on_page: dict[str, FormField]) -> FormField:
     page = on_page.get(f.key)
     if page is None:
         return f
-    if page.unsupported_reason == SENT_OTHERWISE:
+    if page.unsupported_reason in FORM_REFUSALS:  # D159, D160
         return f.model_copy(update={"type": FieldType.unsupported, "options": [],
-                                    "unsupported_reason": SENT_OTHERWISE, "max_length": None,
-                                    "accept": None})  # fmt: skip
+                                    "unsupported_reason": page.unsupported_reason,
+                                    "max_length": None, "accept": None})  # fmt: skip
     if f.max_length is None and page.max_length is not None:
         return f.model_copy(update={"max_length": page.max_length})
     return f

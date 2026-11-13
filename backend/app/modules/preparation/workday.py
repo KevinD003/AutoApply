@@ -72,6 +72,7 @@ from app.modules.preparation.forms import (
     _Node,
     _TreeBuilder,
     extract_form_schema,
+    owned_nodes,
     read_maxlength,
     sent_otherwise,
 )
@@ -289,7 +290,9 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
     b.feed(html)
     nodes = list(b.root.walk())
     form = _application_form(nodes)
-    inside = [n for n in nodes if form is None or n is form or form in n.ancestors()]
+    # D160: with what the page gives the form from outside its markup (an entry control given so
+    # is never in its section: the work-history checkpoint, never a plain stop at every run)
+    inside = nodes if form is None else owned_nodes(nodes, form)
     controls = [n for n in inside if n.tag in ("input", "select", "textarea")
                 and _WORK_ANY.match(n.attrs.get("name", ""))]  # fmt: skip
     sections = [n for n in inside if "data-wd-section" in n.attrs]

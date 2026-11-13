@@ -14,20 +14,30 @@ from urllib.parse import urljoin, urlsplit
 from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PWTimeout
+from pydantic import ValidationError
 
 from app.modules.execution.adapters.fixture_ats import (
     ACK_ERROR,
     ACK_NONE,
     ACK_SHOWN,
     FORM_CHANGED,
+    FORM_UNREADABLE,
     FixtureAtsAdapter,
     FormChanged,
     Outcome,
     UploadFailed,
+    file_alone,
     upload_evidence,
 )
 from app.modules.execution.faults import fault
-from app.modules.preparation.forms import SENT_OTHERWISE, Condition, FieldType, FormField, Option
+from app.modules.preparation.forms import (
+    FORM_REFUSALS,
+    Condition,
+    ExtractionError,
+    FieldType,
+    FormField,
+    Option,
+)
 from app.modules.preparation.greenhouse import comparable, rendered_schema
 
 # Bot checks are a stop condition: never solved, bypassed or waited out.
@@ -95,7 +105,10 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
         return None
 
     def schema_matches(self, page: Page) -> str | None:
-        live = self.extract(page)
+        try:
+            live = self.extract(page)
+        except (ExtractionError, ValidationError):  # D160: a plain stop, never an internal error
+            return FORM_UNREADABLE
         want = comparable(approved_fields(self.content))
         got = comparable(live.fields)
         if got != want:
@@ -123,7 +136,7 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
             return "the form's submit button cannot be identified"
         if self._filled and button.is_disabled():
             return SUBMIT_DISABLED  # S5 (D62): never clicked; nothing else on the page is either
-        return self._sendable_now(page)  # D159
+        return self._sendable_now(page, live)  # D159, D160
 
     # -- fill -------------------------------------------------------------------------------
     def fill(self, page: Page) -> list[dict]:
@@ -185,14 +198,20 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
         for a in self.content["answers"]:
             self._progress()
             if (a["type"] == FieldType.unsupported.value
-                    and a.get("unsupported_reason") != SENT_OTHERWISE):  # fmt: skip
+                    and a.get("unsupported_reason") not in FORM_REFUSALS):  # fmt: skip
                 continue  # the page's own hidden values, or a type no adapter fills
             if a["type"] == "file":
                 key = a["key"]
                 hidden = page.locator(f"#{key}_attachment_id")
                 got = hidden.input_value() if hidden.count() else ""
                 shown = page.locator(f"#{key}-status").get_attribute("data-attachment-id")
-                if (a["value"] is None) != (got == "") or (got and got != shown):
+                if (
+                    (a["value"] is None) != (got == "")
+                    or (got and got != shown)
+                    or (
+                        not file_alone(self._form_entries(page), key)  # D160: the file alone
+                    )
+                ):
                     bad.append(key)
                 continue
             plain.append(a)

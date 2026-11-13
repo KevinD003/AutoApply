@@ -287,14 +287,27 @@ if (next) next.addEventListener('click', () => {{ location.href = next.dataset.n
     # states no limit), limited by the page's script at load, or made to hard-wrap and filled with
     # the page's own text by its script.
     sends = cfg.get("sends")
-    if sends in ("gh_limit_served", "gh_wrap_page_text"):
+    if sends in ("gh_limit_served", "gh_wrap_page_text", "gh_wrap_text_on_input"):
         extra = ' maxlength="20"' if sends == "gh_limit_served" else ' wrap="hard" cols="20"'
         body = body.replace('<textarea id="question_7007"', f'<textarea{extra} id="question_7007"')
+    # D160: a value of the page's under the résumé's name; a control given to the form from
+    # outside it that no read can take (no label)
+    if sends == "hidden_twin":
+        body = body.replace("</form>", '<input type="hidden" name="resume" value="Text the page wrote (fictional)">'
+                            "</form>", 1)
+    if sends == "outside_unlabelled":
+        body = body.replace("</form>", '</form><input name="fx_extra" form="application_form"'
+                            ' value="Text the page wrote (fictional)">', 1)
     if sends == "gh_limit_at_load":
         body += "<script>document.getElementById('question_7007').maxLength = 20;</script>"
     if sends == "gh_wrap_page_text":
         body += ("<script>document.getElementById('question_7007').value = 'Text the page wrote "
                  "itself (fictional), long enough to wrap twice.';</script>")
+    if sends == "gh_wrap_text_on_input":  # D160: written once the first name is typed
+        body += ("<script>{ let done = false; document.querySelector('[name=first_name]')"
+                 ".addEventListener('input', () => { if (done) return; done = true;"
+                 " document.getElementById('question_7007').value = 'Text the page wrote"
+                 " itself (fictional).'; }); }</script>")
     return _page(f"Job Application for {j['title']} at {j['company_name']}", body, "form")
 
 

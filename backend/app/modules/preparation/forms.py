@@ -198,6 +198,15 @@ SENT_OTHERWISE = (
     "its own, sends your text's direction as a field of its own, or belongs to another form): "
     "NoEfforts does not fill it"
 )
+# D160: a control outside the application form's markup that the page gives to it by naming it
+# (`form`): the browser sends it with your application. Refused as D159 refuses `form`.
+GIVEN_FROM_OUTSIDE = (
+    "a control the page places outside the application form and gives to it by name, whose "
+    "content is sent with your application: NoEfforts does not fill it"
+)
+# Refused because of how the page's form would send them (D159, D160): read back as holding
+# nothing, and sending nothing, by every adapter that reads the form (Greenhouse classic too).
+FORM_REFUSALS = (SENT_OTHERWISE, GIVEN_FROM_OUTSIDE)
 
 
 # D159: the `wrap` values on which Chromium (the browser every attempt runs in) hard-wraps a text
@@ -607,7 +616,14 @@ def extract_form_schema(
     # none, is refused rather than guessed.
     app_form = _application_form(nodes)
     if app_form is not None:
-        nodes = [n for n in nodes if n is app_form or app_form in n.ancestors()]
+        nodes = owned_nodes(nodes, app_form)  # D160: given from outside too, in the page's order
+
+    def refusal(*ns: _Node) -> str:
+        """Why a control (or a group, by any of its choices) is refused (D159): given to the form
+        from outside its markup (D160), or the other ways its form would send it otherwise."""
+        if app_form is not None and any(app_form not in m.ancestors() for m in ns):
+            return GIVEN_FROM_OUTSIDE
+        return SENT_OTHERWISE
 
     fields: list[FormField] = []
     seen_groups: set[str] = set()
@@ -623,18 +639,20 @@ def extract_form_schema(
         required = "required" in n.attrs or n.attrs.get("aria-required") == "true"
         common = dict(key=name, step=step_of(n))
 
-        def refused(label: str, help_text: str | None, req: bool, common=common) -> FormField:
+        def refused(
+            label: str, help_text: str | None, req: bool, reason: str, common=common
+        ) -> FormField:
             """D159: a question whose control's form would not send exactly what is typed into
             it (`sent_otherwise`): never filled, a required one a checkpoint (D136)."""
             return FormField(label=label, help_text=help_text, type=FieldType.unsupported,
-                             required=req, unsupported_reason=SENT_OTHERWISE, **common)  # fmt: skip
+                             required=req, unsupported_reason=reason, **common)  # fmt: skip
 
         if itype in ("radio", "checkbox"):
             group = next((a for a in n.ancestors() if a.tag == "fieldset"), None)
             members = [m for m in nodes if m.tag == "input" and m.attrs.get("name") == name]
             if itype == "checkbox" and len(members) == 1 and group is None:
                 if sent_rule and sent_otherwise(n):
-                    fields.append(refused(label_of(n), help_of(n), required))
+                    fields.append(refused(label_of(n), help_of(n), required, refusal(n)))
                     continue
                 fields.append(
                     FormField(
@@ -661,7 +679,9 @@ def extract_form_schema(
                 required or "required" in group.attrs or group.attrs.get("aria-required") == "true"
             )
             if sent_rule and any(sent_otherwise(m) for m in members):  # D159: one is enough
-                fields.append(refused(legend.all_text(), help_of(group) or help_of(n), req))
+                fields.append(
+                    refused(legend.all_text(), help_of(group) or help_of(n), req, refusal(*members))
+                )
                 continue
             fields.append(
                 FormField(
@@ -676,7 +696,7 @@ def extract_form_schema(
             continue
         if n.tag == "select":
             if sent_rule and sent_otherwise(n):  # D159
-                fields.append(refused(label_of(n), help_of(n), required))
+                fields.append(refused(label_of(n), help_of(n), required, refusal(n)))
                 continue
             opts = [
                 Option(value=o.attrs.get("value", o.all_text()), label=o.all_text())
@@ -732,7 +752,7 @@ def extract_form_schema(
             )
             continue
         if sent_rule and sent_otherwise(n):  # D159: after the reasons above, as they were
-            fields.append(refused(label_of(n), help_of(n), required))
+            fields.append(refused(label_of(n), help_of(n), required, refusal(n)))
             continue
         ftype = (
             FieldType.textarea
@@ -765,6 +785,57 @@ def extract_form_schema(
         method=(form_node.attrs.get("method") or "get").lower() if form_node else None,
         fields=fields,
     )
+
+
+# D160: the elements a `form` attribute can give to a form (the browser's listed elements; a
+# form-associated custom element is never read as a question). Content the browser never puts
+# in the document (a template's, a noscript's while scripts run, which they always do in every
+# attempt) neither holds an id it resolves nor a control it sends.
+_LISTED = frozenset({"input", "select", "textarea", "button", "fieldset", "object", "output"})
+_INERT = frozenset({"template", "noscript"})
+
+
+def _first(n: "_Node", attr: str) -> str | None:
+    """An attribute as the browser keeps it: the value written first (D158, `_Node.twice`)."""
+    return n.twice.get(attr, n.attrs.get(attr))
+
+
+def _inert(n: "_Node") -> bool:
+    return any(a.tag in _INERT for a in n.ancestors())
+
+
+def given_from_outside(n: "_Node", app_form: "_Node", first_by_id: dict) -> bool:
+    """D160: a control outside the application form's markup that the page gives to the form
+    by naming it (`form`): the browser sends it with the application, so it is read with the
+    form's own questions (and refused: `GIVEN_FROM_OUTSIDE`). The name resolves as the browser
+    resolves it: to the first element in the document with that id (attributes written twice
+    by their first value), which must be the form. Only the listed element naming it: a
+    `fieldset` given so gives the form nothing inside it."""
+    form = _first(n, "form")
+    return (
+        form is not None
+        and n.tag in _LISTED
+        and not _inert(n)
+        and first_by_id.get(form) is app_form
+        and app_form not in n.ancestors()
+    )
+
+
+def owned_nodes(nodes: list["_Node"], app_form: "_Node") -> list["_Node"]:
+    """The application form, what its markup holds, and what the page gives it from outside
+    (D160, `given_from_outside`), in the page's order."""
+    first_by_id: dict[str, _Node] = {}
+    for n in nodes:
+        nid = _first(n, "id")
+        if nid and not _inert(n):
+            first_by_id.setdefault(nid, n)
+    return [
+        n
+        for n in nodes
+        if n is app_form
+        or app_form in n.ancestors()
+        or given_from_outside(n, app_form, first_by_id)
+    ]
 
 
 def _application_form(nodes: list["_Node"]) -> "_Node | None":

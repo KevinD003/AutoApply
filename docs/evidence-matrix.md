@@ -7,7 +7,35 @@ Python 3.12.3, PostgreSQL 16.15, Redis 7.0.15, Celery 5.6.3 / kombu 5.6.2 / redi
 with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
-no code or database with NoEfforts. "Mock" marks anything simulated.
+no code or database with NoEfforts. "Mock" marks anything simulated.## A control the page gives its application form from outside its markup is read as a question, and the form must send nothing NoEfforts did not read, by the click on its own button (D160, 2026-11-13; local only)
+
+Nothing here ran against a real page. Branch `outside-controls`. The runs drive the API and the
+runner against the base stand-in (`cfg["sends"]`), Lever-style and Greenhouse classic's, with
+the receiver's ledger as the oracle (its acceptances, the disclosures, the requests it received);
+or read pages at capture against Chromium's own list of the form's controls for the same pages;
+or run each adapter's checks on its own stand-in's page in Chromium. All in
+`tests/test_outside_controls.py`.
+
+| Claim | Test | Result |
+|---|---|---|
+| Before D160 the employer received what the page wrote | `test_before_d160_the_employer_received_what_the_page_wrote` (6 modes; D160's parts switched off), `test_before_d160_the_final_click_sent_elsewhere` (2) | `confirmed`, the acceptance holding the page's text (a control given from outside, at load or once typed; a custom element, by name or as a second "Why us"; a hidden control the parser gives the form); the click sent to another address, or another form sent |
+| A control given from outside is read and refused, as the browser gives it | `test_a_control_given_to_the_form_from_outside_is_read_and_refused` (3), `test_every_kind_of_control_given_from_outside_is_refused` (8), `test_what_the_browser_does_not_give_the_form_is_not_read` (11), `test_a_form_without_an_id_is_given_nothing`, `test_a_control_given_from_outside_keeps_whether_the_page_requires_it`, `test_a_control_inside_the_form_given_to_another_keeps_d159_s_reason` | read in the page's order, refused (`GIVEN_FROM_OUTSIDE`); an attribute written twice by its first value, ids and controls in a template or noscript left out, an element that is no control not read |
+| The read equals Chromium's own list of the form's controls | `test_the_form_is_read_as_chromium_gives_it_its_controls` (21 pages) | the same names, none unread, none read that Chromium does not send |
+| Greenhouse classic, Workday-style | `test_greenhouse_classic_refuses_a_page_that_gives_its_form_a_control_the_job_data_lacks`, `..._adopts_the_refusal_of_a_question_given_from_outside`, `test_a_work_entry_control_given_from_outside_is_the_work_history_checkpoint` | a difference (capture refused); refused as the page reads it; D149's checkpoint |
+| A required one is a checkpoint; an empty optional one is left blank | `test_a_required_control_given_from_outside_is_a_checkpoint`, `test_an_empty_optional_control_given_from_outside_is_left_blank` | never approvable; `confirmed`, nothing under it |
+| One holding the page's text stops before anything is entered | `test_a_control_given_from_outside_holding_page_text_stops_before_anything_is_entered` | `failed_safe`, no disclosure (before the reviews: `abandoned`, the résumé uploaded) |
+| A control no read shows stops before anything is entered | `test_a_control_no_read_shows_stops_the_attempt_before_anything_is_entered` (5), `test_a_second_control_under_a_read_question_s_name_stops_where_a_read_misses_it` | `failed_safe`, no disclosure, no pause, the count named and no name |
+| ... and after filling | `test_a_custom_control_added_once_an_answer_is_typed_stops_before_the_send_gate`, `test_a_control_given_once_an_answer_is_typed_stops_before_the_send_gate` | `abandoned`, no acceptance |
+| The final click must send the form read | `test_a_final_click_that_would_send_elsewhere_stops_before_anything_is_entered` (2), `test_the_final_click_must_send_the_form_checked` (7, Chromium) | `failed_safe`, no request to send; another form, an address, method, encoding or window, two forms of the id: refused |
+| A form not singled out, or unreadable, is a plain stop | `test_a_form_that_cannot_be_singled_out_stops_before_anything_is_entered`, `test_a_form_the_runner_cannot_read_is_a_plain_stop` (2), `test_greenhouse_classic_s_form_it_cannot_read_is_a_plain_stop` | `failed_safe`, nothing entered (before: an internal error, or everything entered first) |
+| A file question's form sends the file alone | `test_a_hidden_value_under_the_file_question_s_name_is_never_sent` (there at load; added once "Why us" is typed, after the upload), `test_a_hosted_file_question_s_form_must_send_the_file_alone` (Lever-style, Greenhouse classic) | `abandoned`, no acceptance; the readback stops the one added after the upload |
+| The reads see the form whatever its controls are named | `test_the_form_is_read_whatever_its_controls_are_named`, `test_the_form_s_controls_are_counted_passively`, `test_a_control_the_parser_gives_the_form_outside_its_markup_is_counted`, `test_a_custom_control_is_read_by_its_name_attribute` | counted, read, the character set read; no `formdata` event; Chromium's own entry list holds what is counted |
+| Each adapter on its own page | `test_each_adapter_reads_its_own_page_without_a_stop_and_stops_what_no_read_shows` (5) | no stop as served; a custom element, a button sending elsewhere: stopped |
+| What is counted | `test_what_the_read_does_not_show_is_counted` (7) | per name, a group's choices and a refused question aside |
+| A final button that cannot be read stops plainly | `test_a_button_that_cannot_be_found_fails_closed` (D154's) | `REFUSAL_UNREAD` (before 9838d26, found by the regression set: the error raised) |
+| Every other flow unchanged | the suites the change touches; the regression set | pass after one fix, 9838d26 (`docs/implementation-status.md`) |
+| Each part is needed | 25 changes, one at a time, the named tests run, the file restored (`docs/implementation-status.md`) | each fails the tests named for its part |
+
 ## An ordinary answer is read back as its form would send it, and a control whose form would send something else is refused when the form is read (D159, 2026-11-13; local only)
 
 Nothing here ran against a real page. Branch `sent-as-approved`. The runs drive the API and the

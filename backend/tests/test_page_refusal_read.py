@@ -51,12 +51,19 @@ def page(_browser):
     pg.close()
 
 
+def no_click_target(page, button, required=False):
+    """D160's check that the button sends the form read (`_click_target`) has its own tests
+    (test_outside_controls.py); here the page's own checks are read alone, as D154 reads them."""
+    return None
+
+
 def shim(sel=SUBMIT, leave=()):
     """The base adapter's own code, with this button and these ids left out (`leave` may be a
     callable reading the page, as an adapter's `leave_out` does)."""
     return SimpleNamespace(
         final_button=lambda p: p.locator(sel),
         leave_out=leave if callable(leave) else (lambda p: list(leave)),
+        _click_target=no_click_target,
     )
 
 
@@ -402,7 +409,7 @@ def test_a_button_that_cannot_be_found_fails_closed(page):
     def broken(p):
         raise PWError("Target page, context or browser has been closed")
 
-    s = SimpleNamespace(final_button=broken, leave_out=lambda p: [])
+    s = SimpleNamespace(final_button=broken, leave_out=lambda p: [], _click_target=no_click_target)
     assert fa.FixtureAtsAdapter.page_would_refuse(s, page) == fa.REFUSAL_UNREAD
     assert fa.FixtureAtsAdapter.final_ready(s, page) == fa.REFUSAL_UNREAD
 
