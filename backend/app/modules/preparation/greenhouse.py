@@ -209,9 +209,10 @@ class _Conditions(HTMLParser):
                 break
 
 
-def rendered_schema(html: str) -> FormSchema:
-    """The hosted form as rendered: generic extraction plus show-if conditions."""
-    schema = extract_form_schema(html)
+def rendered_schema(html: str, *, sent_rule: bool = True) -> FormSchema:
+    """The hosted form as rendered: generic extraction plus show-if conditions. `sent_rule`
+    (D159): as `extract_form_schema`'s; off only for the cross-check with the job data."""
+    schema = extract_form_schema(html, sent_rule=sent_rule)
     p = _Conditions()
     p.feed(html)
     out = []
@@ -235,32 +236,42 @@ def comparable(fields: list[FormField]) -> dict[str, str]:
     }
 
 
-def _refused_on_page(f: FormField, on_page: dict[str, FormField]) -> FormField:
-    """D159: a question whose control on the page would not send exactly what is typed into it
-    (`forms.sent_otherwise`) is refused as the page reads it, whatever type the job data gives
-    it: never filled, a required one a checkpoint. Its wording and requirement are still compared
-    with the job data's."""
+def _as_on_page(f: FormField, on_page: dict[str, FormField]) -> FormField:
+    """D159: a question as the page has it where the job data says nothing about it:
+      * refused, where its control on the page would not send exactly what is typed into it
+        (`forms.sent_otherwise`), whatever type the job data gives it: never filled, a required
+        one a checkpoint;
+      * held to the page's own length limit (`maxlength`, read as the browser reads it): the job
+        data states none, so a limit the page lowers is recorded when the form is read again,
+        rather than found only by the attempt. (Before D159 the page's limit was never read.)"""
     page = on_page.get(f.key)
-    if page is None or page.unsupported_reason != SENT_OTHERWISE:
+    if page is None:
         return f
-    return f.model_copy(update={"type": FieldType.unsupported, "unsupported_reason": SENT_OTHERWISE,
-                                "options": [], "max_length": None, "accept": None})  # fmt: skip
+    if page.unsupported_reason == SENT_OTHERWISE:
+        return f.model_copy(update={"type": FieldType.unsupported, "options": [],
+                                    "unsupported_reason": SENT_OTHERWISE, "max_length": None,
+                                    "accept": None})  # fmt: skip
+    if f.max_length is None and page.max_length is not None:
+        return f.model_copy(update={"max_length": page.max_length})
+    return f
 
 
 def build_schema(api: dict, hosted_html: str) -> FormSchema:
-    """Combine and cross-check the two views; raises SchemaMismatch on any difference."""
+    """Combine and cross-check the two views; raises SchemaMismatch on any difference. D159: the
+    views are compared as the page's controls read without D159's rule (`sent_rule`), so a type
+    the page's control disagrees on is still a difference; what the page refuses, and its
+    limits, are taken from it after (`_as_on_page`)."""
     from_api = schema_from_api(api)
+    compared = rendered_schema(hosted_html, sent_rule=False)
     dom = rendered_schema(hosted_html)
     conds = {f.key: f.condition for f in dom.fields if f.condition}
     on_page = {f.key: f for f in dom.fields}
     # The job data only says consent is required; its wording is what the page shows.
     fields = [
-        on_page[f.key]
-        if f.key == CONSENT_KEY and f.key in on_page
-        else _refused_on_page(f, on_page)  # D159
+        on_page[f.key] if f.key == CONSENT_KEY and f.key in on_page else f
         for f in (f.model_copy(update={"condition": conds.get(f.key)}) for f in from_api.fields)
     ]
-    a, d = comparable(fields), comparable(dom.fields)
+    a, d = comparable(fields), comparable(compared.fields)
     if a != d:
         only_api, only_page = sorted(set(a) - set(d)), sorted(set(d) - set(a))
         changed = sorted(k for k in set(a) & set(d) if a[k] != d[k])
@@ -273,4 +284,5 @@ def build_schema(api: dict, hosted_html: str) -> FormSchema:
         )
     if not dom.action or (dom.method or "").lower() != "post":
         raise SchemaMismatch("the application page has no form to submit", "no_submittable_form")
+    fields = [f if f.key == CONSENT_KEY else _as_on_page(f, on_page) for f in fields]
     return FormSchema(title=from_api.title, action=dom.action, method="post", fields=fields)

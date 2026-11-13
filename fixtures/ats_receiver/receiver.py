@@ -46,9 +46,12 @@ LIMITS = {"why_us": 1000}
 
 
 def page_limits(cfg: dict) -> dict:
-    """D159: the limits of the page this server serves now: with cfg["sends"] "limit_served" its
-    "Why us" box is limited to 500, in its markup and here."""
-    return {**LIMITS, "why_us": 500} if cfg.get("sends") == "limit_served" else LIMITS
+    """D159: the limits of the page this server serves now: with cfg["sends"] "limit_served" (or
+    "limit_unreadable", written "500.0", which the browser reads as 500) its "Why us" box is
+    limited to 500, in its markup and here."""
+    if cfg.get("sends") in ("limit_served", "limit_unreadable"):
+        return {**LIMITS, "why_us": 500}
+    return LIMITS
 
 
 def too_long(fields: dict, limits: dict | None = None) -> list[str]:
@@ -428,8 +431,34 @@ def page_form(slug, token, cfg):
     # once "Why us", or with "limit_on_input" the first name, is typed: after the form is checked).
     sends = cfg.get("sends")
     why_attrs = f'maxlength="{page_limits(cfg)["why_us"]}"'
+    if sends == "limit_unreadable":
+        why_attrs = 'maxlength="500.0"'
     if sends == "hard_wrap_served":
         why_attrs += ' wrap="hard" cols="20"'
+    form_attrs = ' accept-charset="ISO-8859-1"' if sends == "latin1_form" else ""
+    if sends == "optional_box_form":  # an optional box given to a form by name: refused, blank
+        extra += ('<label><input type="checkbox" name="updates" form="application"> Send me job '
+                  'updates (optional)</label>')
+    if sends == "optional_group_form":  # one choice given to a form by name: the group refused
+        extra += ("<fieldset><legend>Preferred way to contact you (optional)</legend>"
+                  "<label><input type='radio' name='contact' value='email'> Email</label>"
+                  "<label><input type='radio' name='contact' value='phone' form='application'>"
+                  " Phone</label></fieldset>")
+    if sends == "on_formdata":  # the page sends the form from the `formdata` event (scripts do)
+        js_extra += ("document.getElementById('application').addEventListener('formdata', (e) =>"
+                     f" fetch('/apply/{slug}/submit', {{method: 'POST', body: e.formData}}));\n")
+    if sends == "choice_disabled":  # once "Are you willing to relocate?" is chosen, disabled
+        js_extra += ("for (const r of document.querySelectorAll('[name=relocate]')) "
+                     "r.addEventListener('change', () => { for (const x of "
+                     "document.querySelectorAll('[name=relocate]')) x.disabled = true; });\n")
+    if sends == "limit_on_focus":  # lowered once "Why us" gets focus; saved as it is typed
+        js_extra += (
+            "document.getElementById('why_us').addEventListener('focus', (e) => {"
+            " e.target.maxLength = 500; });\n"
+            "document.getElementById('why_us').addEventListener('input', (e) => fetch("
+            f"'/apply/{slug}/autosave', {{method: 'POST', headers: {{'Content-Type': "
+            "'application/json'}, body: JSON.stringify({field: 'why_us', "
+            "length: e.target.value.length})}));\n")
     if sends == "limit_at_load":
         js_extra += "document.getElementById('why_us').maxLength = 500;\n"
     if sends == "hard_wrap_at_load":
@@ -485,7 +514,7 @@ def page_form(slug, token, cfg):
 </head><body>
 <p role="note"><strong>SYNTHETIC TEST RECEIVER.</strong> Fictional employer. Never deploy.</p>
 <h1>Clinic Assistant — Example Health Clinic (fictional)</h1>
-<form id="application" method="post" action="/apply/{slug}/submit" enctype="multipart/form-data">
+<form id="application" method="post" action="/apply/{slug}/submit" enctype="multipart/form-data"{form_attrs}>
 <input type="hidden" name="form_token" value="{token}">
 <input type="hidden" name="resume_upload_id" id="resume_upload_id" value="">
 <section data-step="Personal information">

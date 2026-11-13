@@ -283,6 +283,18 @@ if (next) next.addEventListener('click', () => {{ location.href = next.dataset.n
                  " d.innerHTML = '<label for=\"extra_js_q\">Extra question added by script *</label>"
                  "<input type=\"text\" id=\"extra_js_q\" name=\"extra_js_q\" required>';"
                  " document.querySelector('form').appendChild(d);</script>")
+    # D159 (cfg["sends"]): "Why are you interested" limited in the page as served (the job data
+    # states no limit), limited by the page's script at load, or made to hard-wrap and filled with
+    # the page's own text by its script.
+    sends = cfg.get("sends")
+    if sends in ("gh_limit_served", "gh_wrap_page_text"):
+        extra = ' maxlength="20"' if sends == "gh_limit_served" else ' wrap="hard" cols="20"'
+        body = body.replace('<textarea id="question_7007"', f'<textarea{extra} id="question_7007"')
+    if sends == "gh_limit_at_load":
+        body += "<script>document.getElementById('question_7007').maxLength = 20;</script>"
+    if sends == "gh_wrap_page_text":
+        body += ("<script>document.getElementById('question_7007').value = 'Text the page wrote "
+                 "itself (fictional), long enough to wrap twice.';</script>")
     return _page(f"Job Application for {j['title']} at {j['company_name']}", body, "form")
 
 

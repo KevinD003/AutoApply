@@ -200,20 +200,44 @@ SENT_OTHERWISE = (
 )
 
 
+# D159: the `wrap` values on which Chromium (the browser every attempt runs in) hard-wraps a text
+# area, compared ASCII case-insensitively and exactly (measured: " hard", "off" and "virtual" do
+# not); the HTML standard names only "hard".
+_HARD_WRAP = ("hard", "physical", "on")
+# D159: the input types whose `dirname` adds a field to what their form sends (measured; an
+# unknown or empty type is a text box); a text area's does too. Even an empty `dirname` adds one,
+# under an empty name.
+_DIRNAME_TYPES = ("text", "search", "tel", "url", "email", "password")
+_INPUT_TYPES = frozenset((*_DIRNAME_TYPES, "hidden", "number", "range", "color", "checkbox",
+                          "radio", "file", "submit", "image", "reset", "button", "date", "month",
+                          "week", "time", "datetime-local"))  # fmt: skip
+
+
+def _ascii_lower(s: str) -> str:
+    return "".join(chr(ord(c) + 32) if "A" <= c <= "Z" else c for c in s)
+
+
 def sent_otherwise(n: "_Node") -> bool:
     """D155 (a work entry's controls), D159 (every question's): the control's form would not send
     exactly what is typed into it, read from its tag as the browser reads it (an attribute written
     twice, by its first value):
-      * a text area that hard-wraps: the form inserts line breaks you never wrote where the text
-        wraps on the screen (the browser does on `wrap="hard"`; every value but soft, empty or
-        none is refused rather than read);
-      * `dirname`: the form sends your text's direction as a field of its own;
-      * `form`: the control may belong to another form, or to none, and the application form
-        would not send it."""
-    wrap = n.twice.get("wrap", n.attrs.get("wrap"))
-    if n.tag == "textarea" and wrap is not None and wrap.strip().lower() not in ("", "soft"):
+      * a text area that hard-wraps (`_HARD_WRAP`): the form inserts line breaks you never wrote
+        where the text wraps on the screen;
+      * `dirname` on a text area or a typed input (`_DIRNAME_TYPES`): the form sends your text's
+        direction as a field of its own;
+      * `form`, whatever it names: the control may belong to another form, or to none, and the
+        application form would not send it (one naming its own form is refused too)."""
+
+    def first(name: str) -> str:
+        return n.twice.get(name, n.attrs.get(name)) or ""
+
+    if n.tag == "textarea" and _ascii_lower(first("wrap")) in _HARD_WRAP:
         return True
-    return "dirname" in n.attrs or "form" in n.attrs
+    itype = _ascii_lower(first("type"))
+    typed = n.tag == "textarea" or (
+        n.tag == "input" and (itype if itype in _INPUT_TYPES else "text") in _DIRNAME_TYPES
+    )
+    return ("dirname" in n.attrs and typed) or "form" in n.attrs
 
 
 class SectionSpec(BaseModel):
@@ -451,7 +475,7 @@ def _twice(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
     return first
 
 
-def _question_limit(raw: str | None, top: int = 100_000) -> int | None:
+def question_limit(raw: str | None, top: int = 100_000) -> int | None:
     """An ordinary question's `maxlength` (`FormField.max_length`), read as the browser reads it
     (`read_maxlength`; D158: ASCII whitespace around the digits too, as the browser skips it)
     and recorded only from 1 to `top` (`FormField`'s own bounds), None otherwise: never an error
@@ -530,11 +554,16 @@ def _bot_check() -> "FormField":
     )
 
 
-def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> FormSchema:
+def extract_form_schema(
+    html: str, *, challenges: bool = False, skip=None, sent_rule: bool = True
+) -> FormSchema:
     """`challenges`: also report a CAPTCHA or bot check on the page as a required unsupported
     field (the generic capture path). The Greenhouse paths leave it to their adapters, which
     stop when one appears. `skip` (D149): a control whose name it accepts is not read at all
-    (the Workday-style capture reads its Work Experience entries itself)."""
+    (the Workday-style capture reads its Work Experience entries itself). `sent_rule` (D159):
+    refuse a question whose control's form would not send what is typed (`sent_otherwise`);
+    off only to compare a page with its job data as the control reads otherwise (Greenhouse's
+    classic capture), never to store a form."""
     if len(html) > 2_000_000:
         raise ExtractionError("HTML too large")
     b = _TreeBuilder()
@@ -604,7 +633,7 @@ def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> Fo
             group = next((a for a in n.ancestors() if a.tag == "fieldset"), None)
             members = [m for m in nodes if m.tag == "input" and m.attrs.get("name") == name]
             if itype == "checkbox" and len(members) == 1 and group is None:
-                if sent_otherwise(n):
+                if sent_rule and sent_otherwise(n):
                     fields.append(refused(label_of(n), help_of(n), required))
                     continue
                 fields.append(
@@ -631,7 +660,7 @@ def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> Fo
             req = (
                 required or "required" in group.attrs or group.attrs.get("aria-required") == "true"
             )
-            if any(sent_otherwise(m) for m in members):  # D159: one choice is enough
+            if sent_rule and any(sent_otherwise(m) for m in members):  # D159: one is enough
                 fields.append(refused(legend.all_text(), help_of(group) or help_of(n), req))
                 continue
             fields.append(
@@ -646,7 +675,7 @@ def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> Fo
             )
             continue
         if n.tag == "select":
-            if sent_otherwise(n):  # D159
+            if sent_rule and sent_otherwise(n):  # D159
                 fields.append(refused(label_of(n), help_of(n), required))
                 continue
             opts = [
@@ -702,7 +731,7 @@ def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> Fo
                 )
             )
             continue
-        if sent_otherwise(n):  # D159: after the reasons above, which keep their fingerprints
+        if sent_rule and sent_otherwise(n):  # D159: after the reasons above, as they were
             fields.append(refused(label_of(n), help_of(n), required))
             continue
         ftype = (
@@ -719,7 +748,7 @@ def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> Fo
                 help_text=help_of(n),
                 type=ftype,
                 required=required,
-                max_length=_question_limit(maxlen),
+                max_length=question_limit(maxlen),
                 accept=n.attrs.get("accept") if ftype == FieldType.file else None,
                 **common,
             )

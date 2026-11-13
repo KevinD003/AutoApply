@@ -56,6 +56,9 @@ class HostedFormAdapter(FixtureAtsAdapter):
     def blocked_reason(self, page: Page) -> str | None:
         return BOT_CHECK if page.locator(CHALLENGE_SELECTORS).count() else None
 
+    def _application_form(self, page: Page):
+        return page.locator(self.FORM)  # D159: what it would send is read from it
+
     def schema_matches(self, page: Page) -> str | None:
         reason = super().schema_matches(page)  # fingerprint and submit address
         if reason:
@@ -119,7 +122,9 @@ class HostedFormAdapter(FixtureAtsAdapter):
     def readback(self, page: Page) -> list[str]:
         """Every approved value as the page holds it, documents by their upload reference, and
         every field NoEfforts leaves unanswered (an unsupported picker included) still empty:
-        a value the page put there itself (a parsed resume) would be sent unapproved."""
+        a value the page put there itself (a parsed resume) would be sent unapproved. D159: an
+        unsupported one is read as the base adapter reads it, whatever its control (a box, a
+        list, a group), and as its form would send it."""
         bad, plain = [], []
         for a in self.content["answers"]:
             self._progress()
@@ -131,10 +136,6 @@ class HostedFormAdapter(FixtureAtsAdapter):
                 shown = (status.evaluate("(s, ok) => s.dataset[ok] || ''", self.STATUS_OK)
                          if status.count() else "")  # fmt: skip
                 if (a["value"] is None) != (got == "") or (got and got != shown):
-                    bad.append(key)
-            elif a["type"] == FieldType.unsupported.value:
-                loc = page.locator(f'{self.FORM} [name="{key}"]')
-                if loc.count() == 1 and loc.input_value() != "":
                     bad.append(key)
             else:
                 plain.append(a)

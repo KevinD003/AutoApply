@@ -9,13 +9,16 @@ from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PWTimeout
 
+from app.modules.execution.adapters.form_entries import ENTRIES_JS, sends
 from app.modules.execution.faults import fault
 from app.modules.preparation.forms import (
     BOT_CHECK_KEY,
     TEXT_TYPES,
+    FieldType,
     FormSchema,
     extract_form_schema,
     form_fingerprint,
+    question_limit,
     sent_len,
 )
 from app.modules.preparation.sending import sendable_view
@@ -33,28 +36,68 @@ def _sel(key: str) -> str:
     return f'[name="{key}"]'
 
 
-# D159: the length a control accepts now (`maxLength`, -1 for none), as the browser reads it,
-# whatever set it (the page's markup or its script), as D157 reads a work entry's.
-_LIVE_LIMIT = "(e) => e.maxLength"
+# D159: a control's limit now, as the browser reads it (`maxLength`, -1 for none), whatever set it
+# (the page's markup or its script), as D157 reads a work entry's; and its `maxlength` attribute
+# as written (the first of two, which the browser keeps): what reading the form again records
+# (`forms.question_limit`).
+_LIVE_LIMIT = "(e) => [e.maxLength, e.getAttribute('maxlength')]"
 _TYPED_TEXT = {t.value for t in TEXT_TYPES}
-# D159: what the application form (the one its final button submits) would send now: each name's
-# values as its submission builds them (a hard-wrapping text area's added line breaks; nothing
-# for a control of another form or a disabled one; one value per control of the name), never
-# what a control shows. Building it fires the form's `formdata` event, as a submission would.
-_FORM_ENTRIES = """(btn) => { const f = btn.form; if (!f) return null; const out = {};
-  for (const [k, v] of new FormData(f)) {
-    (out[k] = out[k] || []).push(typeof v === 'string' ? v : null); }
-  return out; }"""
+# D159: whether any control of a name holds something: a box or a choice ticked, a list with a
+# chosen value, a file or text (the page's own hidden values and its buttons aside).
+_HOLDS = """(els) => els.some((e) => {
+  const t = e.localName === 'input' ? e.type : e.localName;
+  if (t === 'checkbox' || t === 'radio') return e.checked;
+  if (t === 'select') return [...e.selectedOptions].some((o) => o.value !== '');
+  if (t === 'file') return e.files.length > 0;
+  if (['hidden', 'submit', 'reset', 'button', 'image'].includes(t)) return false;
+  return e.value !== ''; })"""
+# D159: the character set the application form sends in: the first label of its `accept-charset`
+# the browser knows, else the page's own (`TextDecoder` names it as the browser does; building one
+# fires nothing).
+_FORM_CHARSET = """(f) => {
+  for (const t of (f.getAttribute('accept-charset') || '').split(/[\\t\\n\\f\\r ]+/)) {
+    if (!t) continue;
+    try { return new TextDecoder(t).encoding; } catch (e) { /* not a label: the next one */ }
+  }
+  return document.characterSet.toLowerCase(); }"""
+LIMIT_UNREADABLE = (
+    "an answer is longer than the employer's page accepts ({limits} characters as the form sends "
+    "them), a limit NoEfforts cannot read from the form: shorten the answer and approve it again, "
+    "or apply on the employer's site"
+)
+CHARSET_REFUSED = (
+    "the employer's form sends in another character set ({charset}), which would change "
+    "characters in your answers (accents, symbols, emoji): apply on the employer's site"
+)
 
 
-# The answers the readback reads by what is chosen or attached; every other one is typed.
-_CHOSEN_OR_FILE = ("file", "radio", "checkbox_group", "checkbox", "select", "multiselect")
+def number_text(n) -> str:
+    """D159: a number as it is typed and read back, exactly: a whole number in its digits, any
+    other as Python writes it (the shortest form that reads back the same). Before D159 it was
+    `f"{n:g}"`, six significant digits: 12345678 was typed, and sent, as 1.23457e+07."""
+    f = float(n)
+    return str(int(f)) if f.is_integer() else repr(f)
 
 
 def _over_limit(limit, text: str) -> bool:
     """D159: a text longer, as its form sends it (D158: a line break or an emoji counting two),
     than a control's live limit (`_LIVE_LIMIT`)."""
     return isinstance(limit, int) and not isinstance(limit, bool) and 0 <= limit < sent_len(text)
+
+
+def _sent_strings(content: dict):
+    """D159: the text of every approved answer as its form sends it: typed text and the values
+    of the options chosen (numbers and dates are digits)."""
+    for a in content["answers"]:
+        v = a["value"]
+        if not isinstance(v, dict):
+            continue
+        if isinstance(v.get("text"), str):
+            yield v["text"]
+        if isinstance(v.get("option"), str):
+            yield v["option"]
+        for o in v.get("options") or []:
+            yield o["option"]
 
 
 class ReportsDisclosures:
@@ -137,16 +180,52 @@ class FixtureAtsAdapter(ReportsDisclosures):
             )
         if live.action and urljoin(page.url, live.action) != dest["submit_url"]:
             return "the form now submits to a different address"
-        return self._limits_fit(page)
+        return self._sendable_now(page)
+
+    # -- D159: what the page would make of the approved answers ------------------------------
+    APPLICATION_FORM = "form#application"  # the form the final click submits
+
+    def _application_form(self, page: Page):
+        return page.locator(self.APPLICATION_FORM)
+
+    def _sendable_now(self, page: Page) -> str | None:
+        """D159, with the form (before anything is entered, and again after filling): the form's
+        character set (`_charset_refused`), then each typed answer's limit (`_limits_fit`)."""
+        return self._charset_refused(page) or self._limits_fit(page)
+
+    def _charset_refused(self, page: Page) -> str | None:
+        """D159: a form that sends in another character set than UTF-8 sends a character it
+        cannot encode as something else (a numeric reference: "☕" as "&#9749;"), whatever the
+        readback reads. Any answer holding a character outside ASCII is refused there, rather
+        than sent changed: a plain stop (reading the form again would not show it). UTF-16 is
+        sent as UTF-8, as the browser does. A form that cannot be found is left to the
+        readback."""
+        if all(s.isascii() for s in _sent_strings(self.content)):
+            return None
+        try:
+            form = self._application_form(page)
+            if form.count() != 1:
+                return None
+            charset = form.evaluate(_FORM_CHARSET)
+        except PWError:
+            return None
+        if charset in ("utf-8", "utf-16le", "utf-16be"):
+            return None
+        return CHARSET_REFUSED.format(charset=charset)
 
     def _limits_fit(self, page: Page) -> str | None:
         """D159: each approved typed answer within the limit its control has now (`maxLength`, as
-        the browser reads it, whatever set it), counted as its form sends it (D158). Checked with
-        the form, before anything is entered (and again after filling). One that no longer fits is
-        a changed form: before anything is entered, D132's pause; reading the form again records
-        the new limit (a new version, D159) and the answer is then yours to shorten (D158). A
-        control that is not exactly one is left to filling and the readback."""
-        over = 0
+        the browser reads it, whatever set it), counted as its form sends it (D158). One that no
+        longer fits stops the attempt, naming the limit (a number, never the question):
+          * where its `maxlength` reads as that limit (`forms.question_limit`), a changed form:
+            before anything is entered, D132's pause; reading the form again records it (a new
+            version) and the answer is then yours to shorten (D158). Set by the page's script
+            alone, the read finds nothing new ("unexplained": shorten it and try again);
+          * otherwise (written as the reader never reads it: "500.0", "+500"), a plain stop: no
+            read of the form would ever record it.
+        After filling, either stops the attempt before the send gate. A control that is not
+        exactly one is left to filling and the readback."""
+        over: list[tuple[int, bool]] = []  # the live limit, and whether a read records it
         for a in self.content["answers"]:
             v = a["value"]
             if a["type"] not in _TYPED_TEXT or not isinstance(v, dict):
@@ -155,13 +234,19 @@ class FixtureAtsAdapter(ReportsDisclosures):
             try:
                 if loc.count() != 1:
                     continue
-                over += _over_limit(loc.evaluate(_LIVE_LIMIT), v["text"])
+                limit, written = loc.evaluate(_LIVE_LIMIT)
             except PWError:
                 continue  # filling and the readback report it
-        if over:
-            return FormChanged(f"{FORM_CHANGED} ({over} answer(s) longer than the page now "
-                               "accepts)", changed=over)  # fmt: skip
-        return None
+            if _over_limit(limit, v["text"]):
+                over.append((limit, question_limit(written) == limit))
+        if not over:
+            return None
+        limits = ", ".join(str(n) for n in sorted({n for n, _ in over}))
+        if all(readable for _, readable in over):
+            return FormChanged(f"{FORM_CHANGED} ({len(over)} answer(s) longer than the page now "
+                               f"accepts: {limits} characters as the form sends them)",
+                               changed=len(over))  # fmt: skip
+        return LIMIT_UNREADABLE.format(limits=limits)
 
     # -- fill -------------------------------------------------------------------------------
     def fill(self, page: Page) -> list[dict]:
@@ -250,91 +335,87 @@ class FixtureAtsAdapter(ReportsDisclosures):
         elif t == "multiselect":
             loc.select_option(value=[o["option"] for o in v["options"]])
         elif t == "number":
-            loc.fill(f"{v['number']:g}")
+            loc.fill(number_text(v["number"]))  # D159: exactly
         elif t == "date":
             loc.fill(v["date"])
-        elif not _over_limit(loc.evaluate(_LIVE_LIMIT), v["text"]):
-            # D159: the control's own limit read right before its value is typed (a page's
-            # script may have lowered it since the form was checked): a value it would cut is
-            # never typed, so a page that saves as you type never holds it cut; the readback
-            # reports the answer, and nothing is sent.
+        elif self._fits_now(loc, v["text"]):
             loc.fill(v["text"])
         return None
 
+    @staticmethod
+    def _fits_now(loc, text: str) -> bool:
+        """D159: the control's own limit, read once it has focus and right before its value is
+        typed (a page's script may lower it after the form was checked, or as the control gets
+        focus): a value it would cut then is never typed, so a page that saves as you type never
+        holds it cut, and the readback reports the answer: nothing is sent. A page that lowers
+        it while the value is being typed still cuts it; the readback stops that too."""
+        loc.focus()
+        limit, _ = loc.evaluate(_LIVE_LIMIT)
+        return not _over_limit(limit, text)
+
     # -- verify -----------------------------------------------------------------------------
     def readback(self, page: Page) -> list[str]:
-        """Read the controls' actual values and compare with the approved package. D159: a typed
-        answer (text, a number, a date) also as the application form would send it
-        (`_form_entries`, `_sends`)."""
+        """Read the controls' actual values and compare with the approved package. D159: every
+        answer is also read as the application form would send it (`form_entries`: what the
+        browser's own submission picks, read without asking the page to build it), and a typed
+        answer, a list or a box must have exactly one control of its name. A question NoEfforts
+        does not fill (unsupported) holds nothing, and its form sends nothing under its name."""
         bad = []
-        entries: dict | None = None
-        built = False
+        entries = self._form_entries(page)
         for a in self.content["answers"]:
             self._progress()
             key, t, v = a["key"], a["type"], a["value"]
             loc = page.locator(_sel(key))
-            if t not in _CHOSEN_OR_FILE:  # typed (an unsupported one too: it must stay empty)
-                if not built:
-                    entries, built = self._form_entries(page), True
-                if t == "number":
-                    want = f"{v['number']:g}" if v else ""
-                elif t == "date":
-                    want = v["date"] if v else ""
-                else:
-                    want = v["text"] if v else ""
-                # D159: exactly one control of the name (a second one, anywhere on the page, is a
-                # mismatch, never the browser's strict-mode error), holding the approved value,
-                # which is what its form would send.
-                if not (loc.count() == 1 and loc.input_value() == want
-                        and self._sends(entries, key, want)):  # fmt: skip
-                    bad.append(key)
-                continue
             if t == "file":
                 ok = v is None or bool(page.locator("#resume_upload_id").input_value())
+            elif t == FieldType.unsupported.value:
+                ok = not page.eval_on_selector_all(_sel(key), _HOLDS) and sends(entries, key, "")
             elif t == "radio":
                 checked = page.locator(f'input[name="{key}"]:checked')
                 got = checked.get_attribute("value") if checked.count() else None
-                ok = got == (v["option"] if v else None)
+                want = v["option"] if v else None
+                ok = got == want and sends(entries, key, [want] if v else [])
             elif t == "checkbox_group":
                 got = {
                     b.get_attribute("value")
                     for b in page.locator(f'input[name="{key}"]:checked').all()
                 }
-                ok = got == ({o["option"] for o in v["options"]} if v else set())
-            elif t == "checkbox":
-                ok = loc.is_checked() == bool(v and v["checked"])
+                want = {o["option"] for o in v["options"]} if v else set()
+                ok = got == want and sends(entries, key, sorted(want))
+            elif t == "checkbox":  # its value is the page's: one entry when ticked, none when not
+                want = bool(v and v["checked"])
+                ok = (loc.count() == 1 and loc.is_checked() == want and entries is not None
+                      and len(entries.get(key, [])) == int(want))  # fmt: skip
             elif t == "select":
-                ok = loc.input_value() == (v["option"] if v else "")
-            else:  # multiselect
+                want = v["option"] if v else ""
+                ok = loc.count() == 1 and loc.input_value() == want and sends(entries, key, want)
+            elif t == "multiselect":
                 got = loc.evaluate("e => Array.from(e.selectedOptions).map(o => o.value)")
-                ok = set(got) == ({o["option"] for o in v["options"]} if v else set())
+                want = {o["option"] for o in v["options"]} if v else set()
+                ok = set(got) == want and sends(entries, key, sorted(want))
+            else:  # typed: text, a number, a date
+                if t == "number":
+                    want = number_text(v["number"]) if v else ""
+                elif t == "date":
+                    want = v["date"] if v else ""
+                else:
+                    want = v["text"] if v else ""
+                ok = loc.count() == 1 and loc.input_value() == want and sends(entries, key, want)
             if not ok:
                 bad.append(key)
         return bad
 
     def _form_entries(self, page: Page) -> dict | None:
-        """D159: what the application form, the one its final button submits, would send now
-        (`_FORM_ENTRIES`). None when that button is not exactly one or has no form: every typed
-        answer then fails the readback."""
+        """D159: what the application form would send now (`form_entries`), read passively:
+        never by building it, which would let the page send it. None when the form is not
+        exactly one: every answer then fails the readback."""
         try:
-            btn = self.final_button(page)
-            if btn is None or btn.count() != 1:
+            form = self._application_form(page)
+            if form.count() != 1:
                 return None
-            return btn.evaluate(_FORM_ENTRIES)
+            return form.evaluate(ENTRIES_JS)
         except PWError:
             return None
-
-    @staticmethod
-    def _sends(entries: dict | None, key: str, want: str) -> bool:
-        """D159: the form would send exactly the approved value under the question's name, and
-        once: a text area that hard-wraps (line breaks it adds), a control given to another form
-        or disabled (nothing sent), a second control of the name (two values) all fail it. A
-        question left unanswered: nothing but empty values under its name (a value the page put
-        in a control of the same name would be sent unapproved)."""
-        if entries is None:
-            return False
-        got = entries.get(key, [])
-        return all(g == "" for g in got) if want == "" else got == [want]
 
     # -- before the send gate (D154) ---------------------------------------------------------
     def final_button(self, page: Page):
