@@ -169,6 +169,10 @@ for (const input of document.querySelectorAll('input[type=file][data-upload]')) 
   }});
 }}
 </script>"""
+    if cfg.get("sends") == "hidden_twin":  # D160: a value of the page's under the résumé's name
+        body = body.replace('<button type="submit" id="btn-submit">',
+                            '<input type="hidden" name="resume" value="Text the page wrote (fictional)">'
+                            '<button type="submit" id="btn-submit">')
     return _page(f"{title} — {employer}", body, "form")
 
 

@@ -57,6 +57,8 @@ from app.modules.preparation.forms import (
     extract_form_schema,
 )
 from tests.execution_harness import Receiver, attempt, prepared_application, queue
+from tests.test_greenhouse_adapter import gh_application
+from tests.test_lever_adapter import lever_application
 from tests.test_sent_as_approved import gh_page, greenhouse_like, pauses
 from tests.test_workday_experience import (
     _browser,  # noqa: F401  (the module's browser, for `page`)
@@ -428,6 +430,27 @@ def test_a_hidden_value_under_the_file_question_s_name_is_never_sent(api, receiv
     assert receiver.ledger()["accepted"] == 0
 
 
+@pytest.mark.parametrize(
+    "prepare", [lever_application, gh_application], ids=["Lever-style", "Greenhouse classic"]
+)
+def test_a_hosted_file_question_s_form_must_send_the_file_alone(api, receiver, prepare):
+    """D160 reviews: the hosted adapters' and Greenhouse classic's file readbacks checked only
+    the upload's handle, so a value of the page's under the résumé's name was sent with it."""
+    app_id = prepare(api)
+    receiver.config(sends="hidden_twin")
+    assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
+    assert receiver.ledger()["accepted"] == 0
+
+
+def test_greenhouse_classic_s_form_it_cannot_read_is_a_plain_stop(api, receiver):
+    """D160 review: Greenhouse classic's own read of the page, failing, was an internal error."""
+    app_id = gh_application(api)
+    receiver.config(sends="outside_unlabelled")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    stopped_before_anything(receiver, app_id, aid, FORM_UNREADABLE)
+
+
 @pytest.mark.parametrize("mode", ["button_other_form", "button_formaction"])
 def test_a_final_click_that_would_send_elsewhere_stops_before_anything_is_entered(
     api, receiver, mode
@@ -665,3 +688,4 @@ def test_each_adapter_reads_its_own_page_without_a_stop_and_stops_what_no_read_s
     assert adapter._unread_controls(page, adapter.extract(page)) == UNREAD_CONTROLS.format(n=1)
     adapter.final_button(page).evaluate("(b) => b.setAttribute('formaction', '/elsewhere')")
     assert adapter._click_target(page, adapter.final_button(page)) == CLICK_ELSEWHERE
+    assert adapter.page_would_refuse(page) == CLICK_ELSEWHERE  # and right before the send gate

@@ -551,6 +551,11 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
     def final_button(self, page: Page):
         return self._submit_button(page)
 
+    def _click_target(self, page: Page, button, required: bool = False) -> str | None:
+        """D160's check of the button's own form is not this adapter's (the pilot's reads are
+        its own, as D159 left them; its page's script submits what its controls hold)."""
+        return None
+
     def leave_out(self, page: Page) -> list[str]:
         """D154: a security code's boxes the page shows before the final click are filled only
         at your checkpoint, never counted against the form; exactly the boxes `submit` takes

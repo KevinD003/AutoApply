@@ -104,13 +104,6 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
             )
         return None
 
-    def _reads_refused(self, a: dict) -> bool:
-        """As its readback: only a question refused for how its form would send it (D159,
-        D160); the job data's own unsupported ones are the page's hidden values."""
-        return a["type"] == FieldType.unsupported.value and a.get("unsupported_reason") in (
-            FORM_REFUSALS
-        )
-
     def schema_matches(self, page: Page) -> str | None:
         try:
             live = self.extract(page)
