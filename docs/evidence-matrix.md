@@ -9,6 +9,30 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## An ordinary question's length limit is read as the browser reads it, and your answer held to it as its form sends it (D158, 2026-11-13; local only)
+
+Nothing here ran against a real page. Branch `question-limits`. The runs drive the API and the
+runner against the base stand-in (its "Why us" text area, limited to 1000, `receiver.LIMITS`),
+with the receiver's ledger as the oracle (its acceptances, and its own check of the limit on what
+it receives); or read pages at capture; or drive the answer box in the browser. All in
+`tests/test_question_limits.py` unless named.
+
+| Claim | Test | Result |
+|---|---|---|
+| An answer at its limit as its form sends it is sent whole | `test_an_answer_at_its_limit_as_the_form_sends_it_is_sent_whole` (999 for the browser, 1000 as sent) | `confirmed`; the acceptance holds it whole; the page's own check accepts it |
+| One its form would send longer is refused when saved | `test_an_answer_the_form_would_send_too_long_is_refused_when_saved` | 400, "1001/1000 characters as the form sends them"; at 1000, 200 |
+| Before D158 it reached the page and was refused there | `test_what_the_page_s_own_check_refuses_never_reaches_it_now` (the old count, code points, monkeypatched) | not `confirmed`, no acceptance: the page's own check refused it after the final click |
+| Counted as the form sends it | `test_an_answer_is_held_to_its_limit_as_its_form_sends_it` (9 cases), `test_a_text_area_s_line_breaks_are_kept_as_one_lf_each` | LF, CR and CRLF each one line break counting 2; a character outside the plane 2 |
+| A one-line box holds no line break | `test_a_one_line_box_holds_no_line_break` (text, email, tel, url; LF, CR, CRLF) | refused when saved (before: accepted, then the readback stopped the attempt) |
+| A broken character is refused plainly | `test_a_broken_character_is_refused_plainly` | ValueError, never the codec's words or a server error |
+| An answer you gave that no longer fits is a checkpoint, even optional | `test_an_answer_saved_before_that_no_longer_fits_is_a_checkpoint_even_when_optional` | `needs_user`, unresolved, the count named (before: `blank_optional`, sent empty) |
+| A draft is fitted to its field, never offered when accepting would refuse it | `test_a_draft_its_form_would_send_too_long_is_never_offered`, `test_a_cached_draft_that_no_longer_fits_is_replaced_not_offered_again`, `test_a_draft_for_a_one_line_box_is_offered_on_one_line` | 422, nothing kept; a new draft requested; offered on one line and accepted |
+| The limit is read as the browser reads it | `test_a_question_s_limit_is_read_as_the_browser_reads_it` (12 spellings, a limit written twice) | ASCII whitespace read; the first of two read; signs, other characters, 0 and above 100,000 not recorded |
+| The stand-in's own check counts what it receives | `test_the_stand_in_refuses_what_it_receives_longer_than_its_limit` | CRLF and a character outside the plane counted 2 |
+| The answer box counts as the form sends it | `frontend/e2e/question-limits.spec.ts` (desktop and mobile) | "6/1000 (a line break counts as two)"; "1001/1000" in red at the browser's own 1000 |
+| Every other flow unchanged | the 29 suites the change touches; the regression set of 85 files | pass (`docs/implementation-status.md`) |
+| Each part is needed | 16 changes, one at a time, the named tests run, the file restored (`docs/implementation-status.md`) | each fails the tests named for its part |
+
 ## A Workday-style work entry's length limits are read, and your record held to them (D157, 2026-11-13; local only)
 
 Nothing here ran against a real page. Branch `workday-entry-limits`. The runs drive the runner

@@ -54,6 +54,38 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## An ordinary question's length limit is read as the browser reads it, and your answer held to it as its form sends it (D158, 2026-11-13; local only)
+
+Rank 25 of the automation loop (D157's limit). Product changes:
+
+- `app/modules/preparation/forms.py`: `read_maxlength` (one reading of `maxlength`, as the
+  browser reads it, shared with D157's Workday reader), `_question_limit` (an ordinary
+  question's limit, recorded from 1 to 100,000), `sent_len` counting a line break however it is
+  written (LF, CR, CRLF) as two and never failing on a broken character, `one_line_breaks`;
+  `_Node.twice` holds each repeated attribute's first value, which the reader takes.
+- `app/modules/preparation/resolver.py`: `validate_value` holds a text answer to its limit as
+  its form sends it and refuses a line break in a one-line box; `normalize_input` keeps a text
+  area's line breaks as LF and refuses half a surrogate pair; `_no_longer_fits` makes an answer
+  you gave that no longer fits a checkpoint, optional or not.
+- `app/modules/preparation/router.py`: `_fit_to_field` fits a draft to its field before it is
+  offered; a cached draft that no longer fits is replaced.
+- `frontend/src/components/AnswerInput.jsx`: `sentLength`, the answer box's count.
+- The base stand-in (`fixtures/ats_receiver/receiver.py`): `LIMITS`, `too_long`, its server's
+  own check at submit.
+
+No migration, no new state or reason code; `SCHEMA_VERSION` stays 3 (the content's shape is
+unchanged). Nothing was run against a real page. `scripts/validate.sh all` was not run (it runs
+the whole backend and e2e suites); ruff, `tsc --noEmit` and `npm run lint` were.
+
+| Check (branch `question-limits`, from D157's branch at 1bba52c) | Command | Result |
+|---|---|---|
+| The first version's tests | `pytest tests/test_question_limits.py tests/test_workday_entry_limits.py` (JUnit), on the working tree before f5422e9; `ruff check .`, `ruff format .`; `npx tsc --noEmit`, `npm run lint`; `npx playwright test e2e/question-limits.spec.ts` (desktop and mobile) | exit 0, 121 passed in 37 s; clean; exit 0, exit 0; exit 0, 2 passed |
+| Two independent reviews | on f5422e9 | no blocker in either; both found the draft check counting characters, a lone CR counted short and a `maxlength` written twice read as its last value; see D158 |
+| After the reviews | the same two files (JUnit) on the working tree before 8f7cc1d; ruff; then 29 suites (`test_answer_brain`, `test_answer_brain_rules`, `test_answers_that_do_not_fit`, `test_approval_reasons`, `test_auto_apply`, `test_bank_edit`, `test_bank_import`, `test_bank_races`, `test_bank_scope`, `test_bank_scope_api`, `test_capture_refusals`, `test_drafting`, `test_drafting_provider`, `test_execution_failures`, `test_execution_validation`, `test_fixture_provider`, `test_form_scope_labels`, `test_generated_documents`, `test_greenhouse_dom`, `test_input_binding`, `test_package_contract`, `test_preparation`, `test_question_limits`, `test_resolver`, `test_sections_review`, `test_sending`, `test_workday_entry_details`, `test_workday_entry_limits`, `test_workday_experience`) on its content; `tsc --noEmit`, `npm run lint` and the browser test on 8f7cc1d | exit 0, 146 passed; clean; exit 0, 2565 passed in 18.3 min; exit 0, exit 0, exit 0 (2 passed) |
+| Each part changed in turn | 15 changes on 8f7cc1d, one at a time (a worktree of its own), the named tests run, the file restored; and the answer box's count changed back to `text.length` with the browser test run | exit 1 for each: all 15 fail the test named for their part; the browser test fails ("5/1000" where "6/1000" is expected); each file restored |
+| The regression set | `pytest` on 85 files (D157's 84 with `test_question_limits.py`; JUnit), in a copy of the branch at 8f7cc1d | exit 0; 2522 passed in 75.6 min |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_question_limits.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 89 passed in 45 s; ruff formatted nothing, found nothing, and the format check passed |
+
 ## A Workday-style work entry's length limits are read, and your record held to them (D157, 2026-11-13; local only)
 
 Rank 24 of the automation loop (D155's limit). Product changes:
