@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from playwright.sync_api import Error as PWError
 
 from app.modules.execution.adapters import dropdowns
+from app.modules.execution.adapters import fixture_ats as fa
 from app.modules.preparation import gh_readonly as ro
 from app.modules.preparation.forms import ENTRY_PARTS, LIMITED_FIELDS, MAX_LIMIT, sent_len
 from app.modules.preparation.structured_sections import FieldResult, RowResult, SectionResult
@@ -351,6 +352,35 @@ class SectionFillError(Refused):
     force a value onto a form that no longer matches what was approved."""
 
 
+class NotTyped(SectionFillError):
+    """D162: an entry's box refused before anything was typed into it: it never got focus
+    (`limit` None), or its limit then would cut the value (`limit`, as the form counts it)."""
+
+    def __init__(self, message: str, limit: int | None = None):
+        super().__init__(message)
+        self.limit = limit
+
+
+class NotChosen(SectionFillError):
+    """D162: a list (a combobox) left before any of its options was clicked: no single option
+    reads the approved text, its list did not settle or changed, or the option is not shown or
+    records another id. Nothing of the value was given to the page, so the control is never
+    recorded as entered (`apply_section_plan`); the stop is the section's, as before."""
+
+
+def check_at_focus(loc, text: str, timeout_ms: int, what: str) -> None:
+    """D162: an entry's box given focus and its limit read then, as an answer's box is
+    (`fixture_ats.limit_at_focus`): NotTyped when it never got focus, or would cut `text`
+    (counted as its form sends it). Nothing is typed before."""
+    got = fa.limit_at_focus(loc, timeout_ms)
+    if got is None:
+        raise NotTyped(f"{what} could not be given focus")
+    limit, applies = got
+    if applies and isinstance(limit, int) and 0 <= limit < sent_len(text):
+        raise NotTyped(f"{what} is longer than the page now accepts ({limit} characters as the "
+                       "form sends them)", limit)  # fmt: skip
+
+
 def _present(page, selector: str, wait_ms: int = 0) -> bool:
     loc = page.locator(selector)
     if wait_ms:
@@ -368,6 +398,7 @@ def _click_add_another(page, section_root: str, timeout_ms: int) -> None:
 
 def _fill_text(page, selector: str, value, readback, timeout_ms: int) -> None:
     loc = page.locator(selector).first
+    check_at_focus(loc, str(value), timeout_ms, selector)  # D162: never typed cut, nor elsewhere
     loc.fill(str(value), timeout=timeout_ms)
     got = (loc.input_value() or "").strip()
     if got != (readback or ""):
@@ -526,7 +557,7 @@ def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
     loc.scroll_into_view_if_needed(timeout=timeout_ms)
     cid = loc.get_attribute("id") or ""
     if not cid or page.evaluate(ro._PRE_JS, cid) is None:  # the probe's record starts here
-        raise SectionFillError(f"{selector}: cannot be found by its id")
+        raise NotChosen(f"{selector}: cannot be found by its id")
     data: list = []
     done: set[int] = set()
 
@@ -544,7 +575,7 @@ def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
     try:
         pre = page.evaluate(ro._PROBE_JS, cid)
         if pre is None:
-            raise SectionFillError(f"{selector}: cannot be found by its id")
+            raise NotChosen(f"{selector}: cannot be found by its id")
         loc.click(timeout=timeout_ms)
         got = page.evaluate(_LIST_JS, cid)
         if got is None or not got["named"] or not got["open"]:
@@ -554,26 +585,26 @@ def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
                 box.first.click(timeout=timeout_ms)
         try:
             options = _settled_list(page, selector, cid, pre, data, done, late)
-        except SectionFillError:
+        except SectionFillError as e:
             _close_list(page, loc)
-            raise
+            raise NotChosen(str(e)) from e
         hits = [k for k, (text, _, _) in enumerate(options) if text == want_text]
         if len(hits) != 1:
             _close_list(page, loc)
             n = len(hits)
-            raise SectionFillError(f"{selector}: {n} options read the approved text exactly")
+            raise NotChosen(f"{selector}: {n} options read the approved text exactly")
         _, exposed, shown = options[hits[0]]
         if not shown:
             _close_list(page, loc)
-            raise SectionFillError(f"{selector}: the approved option is not shown")
+            raise NotChosen(f"{selector}: the approved option is not shown")
         if want_id is not None and exposed is not None and exposed != want_id:
             _close_list(page, loc)
-            raise SectionFillError(f"{selector}: the approved option records another id")
+            raise NotChosen(f"{selector}: the approved option records another id")
         choice = page.evaluate_handle(_CHOICE_JS, [cid, hits[0]])
         option = choice.get_property("el").as_element()
         if choice.get_property("options").json_value() != options or option is None:
             _close_list(page, loc)
-            raise SectionFillError(f"{selector}: its list changed before the choice")
+            raise NotChosen(f"{selector}: its list changed before the choice")
         option.click(timeout=timeout_ms)
     finally:
         page.remove_listener("request", on_request)
@@ -630,10 +661,17 @@ def apply_section_plan(
             for op in row.ops:
                 if before_op is not None:
                     before_op()
-                _apply_op(page, op, timeout_ms, late)
-                entered.append({"row": row.row, "field": op.field})
-                if on_entered is not None:  # D137: reported as soon as it is entered
-                    on_entered(entered[-1])
+                refused = False
+                try:
+                    _apply_op(page, op, timeout_ms, late)
+                except (NotTyped, NotChosen):
+                    refused = True  # D162: nothing was typed or chosen: nothing to record
+                    raise
+                finally:  # D162 review: the page may hold it, or part of it, whatever else happened
+                    if not refused:
+                        entered.append({"row": row.row, "field": op.field})
+                        if on_entered is not None:  # D137: reported as soon as it is entered
+                            on_entered(entered[-1])
     except SectionFillError as e:
         # Preserve what was already entered (disclosed on the form) so a mid-fill stop is never
         # reported as "nothing disclosed": the caller records these and abandons the attempt.

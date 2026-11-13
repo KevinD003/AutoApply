@@ -14,6 +14,7 @@ from app.modules.execution.adapters.form_entries import ENTRIES_JS, NAMES_JS, se
 from app.modules.execution.faults import fault
 from app.modules.preparation.forms import (
     BOT_CHECK_KEY,
+    LIVE_LIMIT_JS,
     TEXT_TYPES,
     ExtractionError,
     FieldType,
@@ -42,7 +43,6 @@ def _sel(key: str) -> str:
 # (the page's markup or its script), as D157 reads a work entry's; and its `maxlength` attribute
 # as written (the first of two, which the browser keeps): what reading the form again records
 # (`forms.question_limit`).
-_LIVE_LIMIT = "(e) => [e.maxLength, e.getAttribute('maxlength')]"
 _TYPED_TEXT = {t.value for t in TEXT_TYPES}
 # D159: whether any control of a name holds something: a box or a choice ticked, a list with a
 # chosen value, a file or text (the page's own hidden values and its buttons aside).
@@ -126,8 +126,43 @@ def number_text(n) -> str:
 
 def _over_limit(limit, text: str) -> bool:
     """D159: a text longer, as its form sends it (D158: a line break or an emoji counting two),
-    than a control's live limit (`_LIVE_LIMIT`)."""
+    than a control's live limit (`forms.LIVE_LIMIT_JS`)."""
     return isinstance(limit, int) and not isinstance(limit, bool) and 0 <= limit < sent_len(text)
+
+
+# D162 review: a box is given focus as Playwright gives it, and waited for as filling waits for a
+# box (it may be disabled, hidden or inert for a moment, say until an upload ends); `focus()` alone
+# says nothing when the box cannot take focus, and what is typed then goes to whichever box has it.
+_TAKE_FOCUS = """(e) => { HTMLElement.prototype.focus.call(e);
+  return Node.prototype.getRootNode.call(e).activeElement === e; }"""
+_FOCUSED_LIMIT = (
+    "(e) => [...(" + LIVE_LIMIT_JS + ")(e), Node.prototype.getRootNode.call(e).activeElement === e]"
+)
+
+
+def limit_at_focus(loc, timeout_ms: float | None = None) -> tuple[int, bool] | None:
+    """D162 review: the box given focus (waited for until the page's default timeout, or
+    `timeout_ms`), then its limit read as the browser reads it (`LIVE_LIMIT_JS`) while it still
+    has focus: (limit, whether the browser holds typing to a limit there), or None when the box
+    never got focus or lost it at once (the page kept it disabled, hidden or inert, or moved focus
+    elsewhere, say into a dialog): nothing may be typed then."""
+    handle = loc.element_handle(timeout=timeout_ms)
+    try:
+        loc.page.wait_for_function(_TAKE_FOCUS, arg=handle, timeout=timeout_ms)
+        limit, _, applies, focused = handle.evaluate(_FOCUSED_LIMIT)
+    except PWTimeout:
+        return None
+    finally:
+        handle.dispose()
+    return (limit, applies) if focused else None
+
+
+def section_not_typed(e, disclosures: list) -> "StoppedAfterDisclosure":
+    """D162: the stop for a section's entry refused before it was typed (`NotTyped`): one that
+    never got focus, or one its box's limit would cut then, naming the limit."""
+    if e.limit is None:
+        return FocusStopped(FOCUS_LOST, list(disclosures))
+    return LimitStopped(SECTION_LIMIT_AT_FOCUS.format(limits=e.limit), list(disclosures))
 
 
 def limits_verdict(over: list[tuple[int, bool]]):
@@ -348,8 +383,10 @@ class FixtureAtsAdapter(ReportsDisclosures):
 
     def _limits_fit(self, page: Page) -> str | None:
         """D159: each approved typed answer within the limit its control has now (`maxLength`, as
-        the browser reads it, whatever set it), counted as its form sends it (D158). One that no
-        longer fits stops the attempt, naming the limit (a number, never the question):
+        the browser reads it, whatever set it; D162: read through the browser's own definitions,
+        where the browser holds typing to a limit at all, `LIVE_LIMIT_JS`), counted as its form
+        sends it (D158). One that no longer fits stops the attempt, naming the limit (a number,
+        never the question):
           * where its `maxlength` reads as that limit (`forms.question_limit`), a changed form:
             before anything is entered, D132's pause; reading the form again records it (a new
             version) and the answer is then yours to shorten (D158). Set by the page's script
@@ -367,10 +404,10 @@ class FixtureAtsAdapter(ReportsDisclosures):
             try:
                 if loc.count() != 1:
                     continue
-                limit, written = loc.evaluate(_LIVE_LIMIT)
+                limit, written, applies = loc.evaluate(LIVE_LIMIT_JS)
             except PWError:
                 continue  # filling and the readback report it
-            if _over_limit(limit, v["text"]):
+            if applies and _over_limit(limit, v["text"]):
                 over.append((limit, question_limit(written) == limit))
         return limits_verdict(over)
 
@@ -392,6 +429,9 @@ class FixtureAtsAdapter(ReportsDisclosures):
                 continue
             try:
                 self._fill_one(page, a)
+            except StoppedAfterDisclosure as e:  # D162 review: stopped at this box
+                e.disclosures[:0] = disclosures  # the uploads before it were sent too
+                raise
             except PWTimeout:
                 raise
             except PWError:
@@ -461,23 +501,42 @@ class FixtureAtsAdapter(ReportsDisclosures):
         elif t == "multiselect":
             loc.select_option(value=[o["option"] for o in v["options"]])
         elif t == "number":
-            loc.fill(number_text(v["number"]))  # D159: exactly
+            self._type(loc, number_text(v["number"]))  # D159: exactly
         elif t == "date":
-            loc.fill(v["date"])
-        elif self._fits_now(loc, v["text"]):
-            loc.fill(v["text"])
+            self._type(loc, v["date"])
+        else:
+            self._type(loc, v["text"])
         return None
 
+    def _type(self, loc, text: str) -> None:
+        """D162: a value typed only into its own box, once that box has focus, and never one its
+        limit would cut then; filling stops there, naming the limit (`LimitStopped`). A number or
+        a date too (D162 review: a page may make its box a text box with a limit); a real number
+        or date box holds nothing typed to its `maxlength`, so it is held to no limit."""
+        over = self._cut_at_focus(loc, text)
+        if over is not None:
+            raise LimitStopped(LIMIT_AT_FOCUS.format(limits=over))
+        loc.fill(text)
+
     @staticmethod
-    def _fits_now(loc, text: str) -> bool:
+    def _cut_at_focus(loc, text: str) -> int | None:
         """D159: the control's own limit, read once it has focus and right before its value is
         typed (a page's script may lower it after the form was checked, or as the control gets
-        focus): a value it would cut then is never typed, so a page that saves as you type never
-        holds it cut, and the readback reports the answer: nothing is sent. A page that lowers
-        it while the value is being typed still cuts it; the readback stops that too."""
-        loc.focus()
-        limit, _ = loc.evaluate(_LIVE_LIMIT)
-        return not _over_limit(limit, text)
+        focus), as the browser reads it (D161, D162: `LIVE_LIMIT_JS`, where the browser holds
+        typing to a limit at all): the limit that would cut the value, or None. Such a value is
+        never typed, and filling stops there, naming the limit (`LimitStopped`): a page that saves
+        as you type never holds it cut, and no later answer is entered (D162; before, filling went
+        on and the readback reported the answer, naming no limit). A page that lowers it while the
+        value is being typed (in `beforeinput`), or cuts what is typed by its own script, still
+        cuts it; the readback stops that. D162 review: read once the box has focus for certain
+        (`limit_at_focus`): a box the page keeps disabled, hidden or inert, or whose focus it
+        moves elsewhere (a dialog's), is never typed into, and filling stops there
+        (`FocusStopped`); before, the value went to whichever box had focus."""
+        got = limit_at_focus(loc)
+        if got is None:
+            raise FocusStopped(FOCUS_LOST)
+        limit, applies = got
+        return limit if applies and _over_limit(limit, text) else None
 
     # -- verify -----------------------------------------------------------------------------
     def readback(self, page: Page) -> list[str]:
@@ -927,6 +986,39 @@ class StoppedAfterDisclosure(RuntimeError):
     def __init__(self, message: str, disclosures: list[dict] | None = None):
         super().__init__(message)
         self.disclosures = list(disclosures or [])
+
+
+# D161 review (the Greenhouse pilot), D162 (every adapter): a value the page's limit would cut once
+# its box has focus is never typed, and filling stops there, naming the limit (a number, never the
+# question), so you know what to shorten; no read of the form records a limit the page sets only
+# then.
+LIMIT_AT_FOCUS = (
+    "an answer is longer than the employer's page accepts once its box has focus ({limits} "
+    "characters as the form sends them); it was not typed, and filling stopped there: shorten it, "
+    "or apply on the employer's site"
+)
+# D162: the same for a part of your work history or education (a section's entry, your profile's).
+SECTION_LIMIT_AT_FOCUS = (
+    "a part of your work history or education is longer than the employer's page accepts once "
+    "its box has focus ({limits} characters as the form sends them); it was not typed, and "
+    "filling stopped there: shorten it in your profile, or apply on the employer's site"
+)
+# D162 review: a box that never got focus is never typed into: what is typed then goes to whichever
+# box has focus (the box before it, or a dialog the page opened).
+FOCUS_LOST = (
+    "a box could not be given focus before its answer was typed (the page kept it disabled, "
+    "hidden or inert, or moved focus elsewhere); nothing was typed into it, and filling stopped "
+    "there: apply on the employer's site"
+)
+
+
+class LimitStopped(StoppedAfterDisclosure):
+    """D161 review, D162: filling stopped at a value its box's limit would cut; never retried.
+    What was disclosed before it is recorded as it was made (D137)."""
+
+
+class FocusStopped(StoppedAfterDisclosure):
+    """D162 review: filling stopped at a box that never got focus; never retried."""
 
 
 class UploadFailed(StoppedAfterDisclosure):

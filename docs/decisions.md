@@ -7708,7 +7708,8 @@ audit-inventory and export-completeness guards are updated and pass.
   - **Before each value is typed** (`_fill_one`, `_fits_now`): the control's own limit is read
     once the control has focus (a page may lower it then); a value it would cut is never typed,
     and the readback reports the answer: nothing is sent. A number is typed exactly
-    (`number_text`).
+    (`number_text`). (D162: filling stops there, naming the limit, `_cut_at_focus`; a box is
+    typed into only once it has focus.)
   - **The readback** (`readback`, `form_entries`): every answer is also read as the application
     form (`APPLICATION_FORM`, the hosted adapters' `FORM`) would send it, read passively from the
     form's own list of controls as Chromium's submission picks them (its form owner, disabled
@@ -8081,7 +8082,8 @@ audit-inventory and export-completeness guards are updated and pass.
     stop on a page that would not have asked it. Kept: skipping it would let a question the page
     then shows stop only after everything was entered.
   - The base adapter's check before typing (D159) still goes on filling after a value it
-    withholds, and its readback reports the answer; the pilot now stops at once.
+    withholds, and its readback reports the answer; the pilot now stops at once. (D162: every
+    adapter stops at once now, naming the limit.)
   - NoEfforts' page reader is not the browser's parser (D160): markup the two read differently can
     make the capture read a lock, a `type` or a `maxlength` unlike Chromium (a fieldset the parser
     moves out of a table, `<legend/>`): a stricter check, or a pause no read ends, never a value
@@ -8091,3 +8093,120 @@ audit-inventory and export-completeness guards are updated and pass.
     own request (another client) may be served otherwise.
   - Whether a real Greenhouse board's pages carry `maxlength`, and whether its server holds an
     answer to it, is unknown. **Never seen on a real page.**
+
+## D162 — Every other adapter stops at a value its box would cut, naming the limit, and types only into a box that has focus (2026-11-13)
+
+- **Context:** rank 29 of the automation loop (`docs/automation-loop.md`), D161's "Not built":
+  the base adapter's check before typing (D159) still went on filling after a value it withheld,
+  and its readback reported the answer; the pilot stopped at once. Local stand-ins only; nothing
+  real was run. No migration, no new state, reason code, gate, permission or retry. Every
+  package, fingerprint and version stays as it was (`SCHEMA_VERSION` 3, `EXTRACTION_VERSION`,
+  the adapter versions): the rules only stop more, and an approval given before means what it
+  meant. D159's check before anything is entered (a pause, or a plain stop) is otherwise as it
+  was.
+- **Problem** (measured on the stand-ins, `test_before_d162_...`):
+  - The base adapter (`FixtureAtsAdapter._fill_one`: the base stand-in, Greenhouse classic, the
+    Lever-, Ashby- and Workday-style adapters, the Workday-style wizard's pages and the questions
+    a Workday-style page shows, D148) withheld a value its box's limit would cut once the box had
+    focus (D159), then went on filling: later answers were typed into a page that saves as you
+    type, for an attempt certain to stop, and the readback stopped it with "N field(s) did not
+    keep their values", naming no limit to shorten to.
+  - Its check before anything is entered (`_limits_fit`) read `maxLength` and `getAttribute`
+    through the element (a page redefining them on the box changed what it read), and held a
+    number box to its `maxlength`, which the browser ignores.
+  - A Workday-style work entry's limit (D157) was read before its box had focus.
+- **Decided:**
+  - **Every adapter stops at a value its box would cut** (`FixtureAtsAdapter._type`,
+    `_cut_at_focus`; `LimitStopped` and `LIMIT_AT_FOCUS`, moved from the pilot's adapter, which
+    uses them unchanged): right before each typed value, once its box has focus, the box's limit
+    is read; a value it would cut is never typed, and filling stops there, naming the limit (a
+    number, never the question). A number or a date too (review): a page may make its box a text
+    box with a limit; a real number or date box holds nothing typed to its `maxlength`, so it is
+    held to none. What was disclosed before stays recorded as it was made (D137), and the stop
+    carries the uploads made before it (review), as an upload's own stop does, in every fill
+    loop: the base's, Greenhouse classic's, the hosted forms', a Workday-style page's own
+    questions (D148), and the pilot's (its stop for a box that never got focus included).
+  - **The live limit is read one way** (`forms.LIVE_LIMIT_JS`, moved from the pilot's capture;
+    `forms.LIMITED_INPUTS`, a list of its own, review): through the browser's own definitions,
+    and only where the browser holds typing to a limit at all (a text area, or an input of a text
+    type). `_limits_fit` reads it so too.
+  - **A box is typed into only once it has focus** (review; `fixture_ats.limit_at_focus`): the
+    check gives the box focus as Playwright does and waits until it has it, as filling waits for
+    a box (until the page's default timeout, 20 seconds in a run; a work entry's box, the
+    entry's own 3 seconds), then reads its limit while it still has focus. A box the page keeps disabled, hidden or inert, or whose focus it moves
+    elsewhere at once (back to the box before it, or into a dialog it opened), is never typed
+    into: filling stops there (`FocusStopped`, `FOCUS_LOST`). Before, Playwright's `focus()` did
+    nothing on such a box, its limit was read without focus, and `fill` typed the value into
+    whichever box had focus (measured: the box before it held "Samabc"; the dialog's own box held
+    the answer). A box locked for a moment (until an upload ends) is waited for, then read and
+    typed.
+  - **Work entries** (the Workday-style ones, D157; review: the pilot's education and employment
+    entries, D120, which the live adapter shares): each box is checked the same way before it is
+    typed (`greenhouse_sections.check_at_focus`, `NotTyped`). A refusal stops the attempt naming
+    the limit (`SECTION_LIMIT_AT_FOCUS`: shorten it in your profile) or the focus (`FOCUS_LOST`),
+    through `fixture_ats.section_not_typed`, where it read "an entry did not appear or did not
+    keep its value" (Workday-style) or "does not read back the approved value" (the pilot). A box
+    refused before anything was typed is not recorded as entered; one that failed after typing
+    still is (the page may hold it, D137). Nor is a pilot's list (a combobox) left before any of
+    its options was clicked (`NotChosen`: none matching, its list unsettled or changed); one whose
+    choice does not show after the click still is.
+  - **Wording** (review): `LIMIT_AT_FOCUS` ends "shorten it, or apply on the employer's site";
+    it said "and approve it again", which a wizard's stop (pages already sent) does not allow.
+  - **The stand-ins** (FIXTURE ASSUMPTIONS, reset between tests): Greenhouse classic's
+    `gh_limit_on_focus` ("Why are you interested" lowered to 20 as its box gets focus); the
+    Workday-style `wd_limit_on_focus` ({CSS selector: limit}: the page lowers the limit of a box
+    it matches as the box gets focus, an entry added later included, on the single page and the
+    wizard).
+- **What an approved run now does differently:**
+  - An application whose box lowers its limit below its answer as it gets focus stops there,
+    naming the limit, with nothing of that answer typed and no later answer entered; it went on
+    filling and stopped at the readback, naming none. On the Workday-style wizard the pages sent
+    before it stay sent, and every approval is retired (D156), as before.
+  - A number or date answer whose box the page makes a text box with a limit is held to it.
+  - A box that does not take focus within the page's default timeout stops the attempt
+    (`FOCUS_LOST`) instead of its value going to another box.
+  - A work entry's stop names the limit, or the focus, and says to shorten it in your profile.
+- **Reviews:** two independent reviews of the first version (fc4caf3). **Neither found a
+  blocker:** in every probe the receiver's acceptances held nothing cut or unapproved, and every
+  stop ended the attempt for good.
+  - **Both found:** a Workday-style work entry's limit stop became "your work history could not
+    be entered ... (an entry did not appear or did not keep its value)": no number, a false
+    reason; and the control was recorded as entered though nothing was typed. Fixed, with tests
+    through the runner on the single page and the wizard.
+  - **The second found:** the limit was read "once its box has focus" without checking the box
+    had it: a box disabled, hidden or inert at that moment, or a dialog the page opened, got the
+    value typed cut or into another box (measured through the runner: a "Why us" disabled until
+    the résumé's upload ended was saved cut, and filling went on). Not a regression (D159's check
+    and the pilot's did the same); fixed (`limit_at_focus`, `FocusStopped`).
+  - **The first found:** a number answer went in unchecked (cut, and filling went on). Fixed for
+    numbers and dates.
+  - **Both noted:** the pilot's education and employment entries had no check at focus (before
+    D162, outside the diff): fixed. The wizard's wording: fixed. `LIMITED_INPUTS` tied to D159's
+    `dirname` list, two browser behaviours that only coincide, with a test asserting the
+    coupling: a list of its own. The base adapter's stop carried no uploads (the runner lost
+    nothing: D137 records each as it is made): it carries them now. The removal runs: reading
+    `localName` through the element failed no test: tested now.
+  - **Both noted, recorded below:** a page that redefines what the read uses for every element;
+    `LIMIT_UNREADABLE`'s wording after a wizard's Next (before D162).
+  - **After the pull request was opened:** D120's own test of a stop in the middle of a section
+    (`test_greenhouse_sections_browser.py`, which neither the suites run here nor the regression
+    set ran) found that the fix round recorded a pilot's education list as entered when none of
+    its options was chosen (a school no option reads): nothing of the value had reached the page.
+    Fixed (`NotChosen`).
+  - **The removal runs** (25 changes on a52cc10, each part changed in turn): each fails the
+    tests named for its part (52 of the 72 named tests, over the runs); the uploads a stop
+    carries, which D161 could not observe through the runner, are observed by calling each
+    adapter's own `fill`.
+- **Not built:**
+  - A page that redefines `maxLength`, `type`, `localName` or `getAttribute` for every element (on
+    their prototypes), or the functions the read calls (`Object.getOwnPropertyDescriptor`,
+    `Array.prototype.includes`), can fool the live read (measured), as a page can cut what is
+    typed by its own script: the readback stops what is then held cut.
+  - The read of the limit and the typing are two steps: a page that lowers the limit between
+    them, or while the value is typed (in `beforeinput`), still cuts it; the readback stops it.
+  - A typed answer whose box refuses typing (a Playwright error) is still left for the readback,
+    and filling goes on (D159): nothing of it is typed.
+  - `LIMIT_UNREADABLE`'s advice after a wizard's Next ("approve it again") contradicts the
+    wizard's own stop, whose pages were sent (before D162).
+  - Whether a real employer's page lowers a limit as a box gets focus, or keeps a box from taking
+    focus, is unknown. **Never seen on a real page.**

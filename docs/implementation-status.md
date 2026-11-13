@@ -54,6 +54,41 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## Every other adapter stops at a value its box would cut, naming the limit, and types only into a box that has focus (D162, 2026-11-13; local only)
+
+Rank 29 of the automation loop (D161's "Not built"). Product changes:
+
+- `app/modules/execution/adapters/fixture_ats.py`: `_type` for a text, a number and a date;
+  `_cut_at_focus` reads the limit once the box has focus for certain (`limit_at_focus`);
+  `LimitStopped` and `LIMIT_AT_FOCUS` (moved from the pilot's adapter), `FocusStopped`,
+  `FOCUS_LOST`, `SECTION_LIMIT_AT_FOCUS`, `section_not_typed`; `_limits_fit` reads the live limit
+  as the browser does; the stop at a box carries the uploads made before it (`fill`).
+- `app/modules/preparation/forms.py`: `LIVE_LIMIT_JS` and `LIMITED_INPUTS` (moved from the
+  pilot's capture, `preparation/greenhouse_dom.py`, which imports them).
+- `app/modules/execution/adapters/greenhouse_sections.py`: `check_at_focus` and `NotTyped`, before
+  each entry's box is typed; a box refused before typing is not recorded as entered.
+- `app/modules/execution/adapters/workday_sections.py`: `_give` uses `check_at_focus`; `apply`
+  records no box refused before typing.
+- `app/modules/execution/adapters/workday.py`, `greenhouse_dom.py`: a refused entry is the stop
+  that names it (`section_not_typed`); `hosted_form.py`, `greenhouse.py`, `workday.py` and
+  `greenhouse_dom.py`: the stop at a box carries the uploads made before it.
+- The stand-ins: `fixtures/ats_receiver/greenhouse_like.py` (`gh_limit_on_focus`),
+  `workday_like.py` (`wd_limit_on_focus`; `receiver.py` resets it).
+
+No migration, no new state, reason code or gate. `SCHEMA_VERSION` stays 3, and so do
+`EXTRACTION_VERSION` and the adapter versions (D162 says why). Nothing was run against a real
+page. `scripts/validate.sh all` was not run (it runs the whole backend and e2e suites); ruff was.
+
+| Check (branch `base-limits`, from D161's branch at a6bea08) | Command | Result |
+|---|---|---|
+| The first version's tests | `test_limit_stops.py` (JUnit) on fc4caf3; the suites the change touches; ruff | on the working tree: four suites the change touches first (`test_pilot_limits.py`, `test_sent_as_approved.py`, `test_workday_entry_limits.py`, `test_question_limits.py`): exit 0, 315 passed; `test_limit_stops.py` twice: exit 0, 17 passed; on fc4caf3, the suites the change touches, 87 files in two runs: exit 0, 1661 and 1810 passed; ruff clean |
+| Two independent reviews | on fc4caf3 | no blocker; both: a work entry's stop named no limit and gave a false reason, the box recorded as entered though nothing was typed; the second: the limit read "at focus" without the box having it (a value typed cut or into another box); the first: a number unchecked; see D162 |
+| After the reviews | `test_limit_stops.py` (JUnit) on the working tree as the fixes grew; 12 suites the fixes touch (`test_workday_entry_limits.py`, `test_workday_experience.py`, `test_greenhouse_sections_e2e.py`, `test_greenhouse_sections_hardening.py`, `test_pilot_limits.py`, `test_sent_as_approved.py`, `test_outside_controls.py`, `test_workday_wizard.py`, `test_workday_entry_details.py`, `test_workday_follow_up.py`, `test_section_widgets.py`, `test_question_limits.py`) on the working tree; on a52cc10, the 22 touched suites the regression set does not run; ruff | exit 1 (2 failed: the two Workday-style runner tests started their browser while the module's own was open; moved before those tests), then exit 0: 29, 36, 40 and 43 passed; the 12 suites: exit 1, 762 passed and 1 failed (D149's browser-error test: a box disabled before typing is now refused, not recorded; split in two, both pass); on a52cc10, the 22 suites: exit 0, 1083 passed; ruff clean |
+| Each part changed in turn | 25 changes on a52cc10, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 25 fail the tests named for their part (52 of the 72 named tests, over the runs); each file restored, the tree clean after. Nothing left out: the uploads a stop carries are observed by calling each adapter's own `fill` |
+| The regression set | `pytest` on 89 files (D161's 88 with `test_limit_stops.py`; JUnit), in a copy of the branch at a52cc10 | exit 0, 2840 passed (87 minutes) |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_limit_stops.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 88 passed in 75 s; ruff formatted nothing, found nothing, and the format check passed |
+| After the pull request was opened | `test_greenhouse_sections_browser.py` among D163's related suites on d8d4abe (D162 unchanged in it); after the fix (`NotChosen`), the Greenhouse section suites, `test_section_widgets.py`, `test_section_list_settle.py`, `test_limit_stops.py` and `test_pilot_limits.py` (9 files, JUnit); ruff | exit 1: 1 failed (a pilot's education list recorded as entered when none of its options was chosen; D162 says why); then exit 0, 254 passed; ruff clean |
+
 ## The Greenhouse pilot holds an answer to the length limit its page shows (D161, 2026-11-13; local only)
 
 Rank 28 of the automation loop (D158's and D159's limit for the pilot). Product changes:
@@ -146,7 +181,8 @@ Rank 26 of the automation loop (D158's limits). Product changes:
   as Chromium's submission picks it (`ENTRIES_JS`), and the exact comparison (`sends`).
 - `app/modules/execution/adapters/fixture_ats.py`: `_sendable_now` (`_charset_refused`,
   `_limits_fit`, naming the limit; readable: a changed form, otherwise `LIMIT_UNREADABLE`) from
-  `schema_matches`; `_fits_now` before each value is typed, once the control has focus;
+  `schema_matches`; `_fits_now` (D162: `_cut_at_focus`) before each value is typed, once the
+  control has focus;
   `number_text`; the readback reads every answer as the form would send it (`_form_entries`,
   `APPLICATION_FORM`), a refused question by what it holds (`_HOLDS`).
 - `app/modules/execution/adapters/hosted_form.py`, `greenhouse.py`: their application form;

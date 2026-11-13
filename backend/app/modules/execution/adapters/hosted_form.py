@@ -26,6 +26,7 @@ from app.modules.execution.adapters.fixture_ats import (
     ACK_SHOWN,
     FixtureAtsAdapter,
     Outcome,
+    StoppedAfterDisclosure,
     UploadFailed,
     file_alone,
     upload_evidence,
@@ -88,6 +89,9 @@ class HostedFormAdapter(FixtureAtsAdapter):
             self._progress()
             try:
                 self._fill_one(page, a)
+            except StoppedAfterDisclosure as e:  # D162 review: stopped at this box
+                e.disclosures[:0] = disclosures  # the uploads before it were sent too
+                raise
             except PWTimeout:
                 raise
             except PWError:

@@ -53,7 +53,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D158 an ordinary question's length limit read as the browser reads it, and your answer held to it as its form sends it | merged (#67, d12e954, tree as predicted); its PR CI passed all four jobs on cfb83f9 |
 | D159 an ordinary answer read back as its form would send it; a control whose form would send something else refused when the form is read | merged (#68, 07cccd9, tree as predicted); its PR CI passed all four jobs on f7163ad |
 | D160 a control the page gives its application form from outside its markup read as a question; the form must send nothing NoEfforts did not read, by the click on its own button | merged (#69, 9263994, tree as predicted); its PR CI passed all four jobs on 9322579 |
-| D161 the Greenhouse pilot holds an answer to the length limit its page shows | branch `pilot-limits` (from D160's branch); reviewed twice; not merged |
+| D161 the Greenhouse pilot holds an answer to the length limit its page shows | merged (#70, 1bbe408, tree as predicted); its PR CI passed all four jobs on a6bea08 |
+| D162 every other adapter stops at a value its box would cut, naming the limit, and types only into a box that has focus | branch `base-limits` (from D161's branch); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -375,7 +376,24 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
 
-- **D161 (branch `pilot-limits`, not merged).** Rank 28, D158's and D159's limit for the
+- **D162 (branch `base-limits`, not merged).** Rank 29, D161's "Not built":
+  - the gap: the base adapter (every adapter but the pilot) withheld a value its box's
+    limit would cut once it had focus, then went on filling (later answers typed into a
+    page that saves as you type), and the readback's stop named no limit; the box's
+    focus was never checked, so a value could go to another box;
+  - every adapter stops there, naming the limit (a text, a number, a date); the live
+    limit is read as the browser reads it; a box is typed into only once it has focus
+    (`FocusStopped` otherwise); work entries, the Workday-style ones and the pilot's, are
+    checked the same way, the stop naming the limit, and a box refused before typing is
+    not recorded; every stop at a box carries the uploads made before it;
+  - two independent reviews, no blocker; both: a work entry's stop named no limit and gave
+    a false reason; the second: the box's focus never checked (a value typed cut or into
+    another box); the first: a number unchecked. Fixed (a52cc10), each with a test; the
+    rest recorded in D162;
+  - 25 removal runs on a52cc10, each failing the tests named for its part; the regression set on
+    a52cc10: 2840 passed.
+
+- **D161 (merged, #70).** Rank 28, D158's and D159's limit for the
   Greenhouse pilot:
   - the gap: the pilot's capture recorded no page limit, so an answer longer than a page's
     `maxlength` was approved, typed cut by the browser after the résumé's upload (a page
@@ -602,9 +620,11 @@ something else when the form is read, and holds an answer to the limit its page 
 **D160** (rank 27, #69) reads a control the page gives the form from outside
 its markup as a question (refused), and stops an attempt whose form would send a control
 no read shows, or whose final click would send another form or elsewhere.
-**D161** (rank 28, on its branch) holds the Greenhouse pilot's answers to the length
+**D161** (rank 28, #70) holds the Greenhouse pilot's answers to the length
 limit its page shows: read at capture and held to before you approve, checked again
 before anything is entered and before each value is typed.
+**D162** (rank 29, on its branch) has every other adapter stop at a value its box would
+cut, naming the limit, and type only into a box that has focus.
 Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
@@ -701,10 +721,16 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D161 (branch `pilot-limits`):** the new tests, the suites the change touches, the
+- **D162 (branch `base-limits`):** the new tests, the suites the change touches, the
   removal runs and the regression set, locally (Tests run below). Not tested: any real
-  page; whether a real board's pages carry `maxlength`; a limit the page lowers while a
-  value is typed (the readback stops it).
+  page; whether a real page lowers a limit as a box gets focus or keeps a box from taking
+  it; a page that redefines what the live read uses for every element (the readback
+  stops what is then held cut).
+- **D161:** merged (#70, 1bbe408, tree as predicted); its PR CI passed all four
+  jobs on a6bea08. Locally: the new tests, the suites the change touches, the
+  removal runs and the regression set (Tests run below). Not tested: any real page;
+  whether a real board's pages carry `maxlength`; a limit the page lowers while a value
+  is typed (the readback stops it).
 - **D160:** merged (#69, 9263994, tree as predicted); its PR CI passed all four
   jobs on 9322579. Locally: the new tests, the suites the change touches, the
   removal runs and the regression set (Tests run below). Not tested: any real page; the
@@ -1029,6 +1055,11 @@ action.
 | D161, after the reviews: `test_pilot_limits.py` (JUnit) on the working tree before 017d9ff and e71bbea, and on 29cc94f and c8cdc59; the suites the change touches (65 files) in two runs on e71bbea | exit 0: 75 and 85 passed (the working tree before 017d9ff and e71bbea), 86 on 29cc94f and 90 on c8cdc59; the 65 files on e71bbea: exit 0 for both, 977 and 1224 passed; the 15 of them the regression set does not run, on c8cdc59: exit 0, 407 passed; ruff clean |
 | D161, each part changed in turn: 30 changes on c8cdc59, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 30 fail the tests named for their part (84 of the 296 named tests, over the runs); each file restored. A first run, on 29cc94f, of 29 changes found two that failed none: the capture's ASCII case-folding of `type` (the tests' types read alike unfolded) and the survey's decoding (Chromium hands Playwright a document's body already decoded); cases added (c8cdc59), and a 30th change, Unicode's lowercasing for ASCII's, run with them. Left out: a stop before typing carrying the uploads made before it, which no run can observe (D137 records each as it is made) |
 | D161, the regression set: `pytest` on 88 files (D160's 87 with `test_pilot_limits.py`; JUnit), in a copy of the branch at c8cdc59 | exit 0, 2797 passed (87 minutes) |
+| D162, the first version: `test_limit_stops.py` (JUnit) twice and four suites the change touches first (`test_pilot_limits.py`, `test_sent_as_approved.py`, `test_workday_entry_limits.py`, `test_question_limits.py`), on the working tree; the suites the change touches, 87 files in two runs on fc4caf3 | exit 0: 17 passed twice; 315 passed; 1661 and 1810 passed; ruff clean |
+| D162, after the reviews: `test_limit_stops.py` (JUnit) on the working tree as the fixes grew; 12 suites the fixes touch (`test_workday_entry_limits.py`, `test_workday_experience.py`, `test_greenhouse_sections_e2e.py`, `test_greenhouse_sections_hardening.py`, `test_pilot_limits.py`, `test_sent_as_approved.py`, `test_outside_controls.py`, `test_workday_wizard.py`, `test_workday_entry_details.py`, `test_workday_follow_up.py`, `test_section_widgets.py`, `test_question_limits.py`) on the working tree; on a52cc10, the 22 touched suites the regression set does not run; ruff | exit 1 (2 failed: the two Workday-style runner tests started their browser while the module's own was open; moved before those tests), then exit 0: 29, 36, 40 and 43 passed; the 12 suites: exit 1, 762 passed and 1 failed (D149's browser-error test: a box disabled before typing is now refused, not recorded; split in two, both pass); on a52cc10, the 22 suites: exit 0, 1083 passed; ruff clean |
+| D162, each part changed in turn: 25 changes on a52cc10, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 25 fail the tests named for their part (52 of the 72 named tests, over the runs); each file restored, the tree clean after. Nothing left out: the uploads a stop carries are observed by calling each adapter's own `fill` |
+| D162, the regression set: `pytest` on 89 files (D161's 88 with `test_limit_stops.py`; JUnit), in a copy of the branch at a52cc10 | exit 0, 2840 passed (87 minutes) |
+| D162, after the pull request was opened: `test_greenhouse_sections_browser.py` among D163's related suites on d8d4abe; after the fix (`NotChosen`), the Greenhouse section suites, `test_section_widgets.py`, `test_section_list_settle.py`, `test_limit_stops.py` and `test_pilot_limits.py` (9 files, JUnit) | exit 1: 1 failed (a pilot's education list recorded as entered when none of its options was chosen); then exit 0, 254 passed |
 
 ## Failed approaches and rejected designs
 
@@ -1144,10 +1175,10 @@ action.
 
 ## Exact next action
 
-1. D161 (branch `pilot-limits`, rank 28, D158's and D159's limit for the Greenhouse pilot:
-   the length limit its page shows): its pull request. Candidates after it: education on
-   Workday; the Greenhouse pilot's own reads of what its form sends (D159's attributes,
-   D160's controls and final click).
+1. D162 (branch `base-limits`, rank 29, D161's "Not built": every other adapter stops at a
+   value its box would cut, and types only into a box that has focus): its pull request.
+   Candidates after it: education on Workday; the Greenhouse pilot's own reads of what its
+   form sends (D159's attributes, D160's controls and final click).
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it
