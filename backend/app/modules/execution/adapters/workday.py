@@ -152,7 +152,8 @@ EDUCATION_PREFILLED = (
 )
 EDUCATION_NOT_ENTERED = (
     "your education could not be entered on the employer's form as approved (an entry did not "
-    "appear or did not keep its value): apply on the employer's site"
+    "appear, an approved option could no longer be chosen, or a value was not kept): apply on "
+    "the employer's site"
 )
 _STOPS = {  # a section's kind -> (unusable, entries beyond, prefilled, not entered)
     "employment": (SECTION_UNUSABLE, SECTION_ENTRIES_BEYOND, SECTION_PREFILLED,

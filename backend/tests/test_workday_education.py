@@ -188,8 +188,10 @@ def test_both_sections_on_one_page_are_read_each_as_its_own():
 
 
 def test_an_empty_entry_already_there_offering_the_template_s_options_is_read():
-    (sec,) = workday.extract_schema(stand_in("education_entry_at_load")).sections
+    schema = workday.extract_schema(stand_in("education_entry_at_load"))
+    (sec,) = schema.sections
     assert sec.kind == "education"
+    assert not [f for f in schema.fields if f.key.startswith("edu[")]
 
 
 TEMPLATE = re.compile(r'<template id="education-entry">.*?</template>', re.S)
@@ -220,14 +222,18 @@ def education_on_the_last_page(html: str) -> str:
     return html.replace(last, last + section, 1)
 
 
-def work_inside_education(html: str) -> str:
-    """education_and_experience's Work Experience section (FA7, before the Education one) moved
-    inside the Education section."""
-    start = html.index('<div id="work-experience"')
+WORK_START = '<div id="work-experience"'
+
+
+def nested(inner: str) -> str:
+    """education_and_experience's page with the section that starts `inner` moved inside the
+    other one (FA7's and FA9's markup: each section ends SECTION_END)."""
+    html = stand_in("education_and_experience")
+    start = html.index(inner)
     end = html.index(SECTION_END, start) + len(SECTION_END)
-    work, html = html[start:end], html[:start] + html[end:]
+    moved, html = html[start:end], html[:start] + html[end:]
     assert html.count(SECTION_END) == 1
-    return html.replace(SECTION_END, SECTION_END.replace("<button", f"{work}<button"), 1)
+    return html.replace(SECTION_END, SECTION_END.replace("<button", f"{moved}<button"), 1)
 
 
 def at_load(old: str, new: str, count: int = 1):
@@ -373,8 +379,12 @@ CANNOT_FILL = {
     "the section's id used twice": lambda h: h.replace(
         "</form>", '<p id="education"></p></form>', 1
     ),
-    "a work section inside it": lambda h: work_inside_education(
-        stand_in("education_and_experience")
+    "a work section inside it": lambda h: nested(WORK_START),
+    "inside a work section": lambda h: nested(SECTION_START),
+    "a section inside it": lambda h: h.replace(
+        SECTION_END,
+        SECTION_END.replace("<button", '<div data-wd-section="skills"></div><button'),
+        1,
     ),
     "the section on the wizard's review page": education_on_the_last_page,
     "an entry at load numbered from 1": at_load('name="edu[0].', 'name="edu[1].', count=5),
@@ -413,9 +423,12 @@ def test_a_placeholder_disabled_chosen_and_hidden_is_the_empty_option():
     assert [(o.id, o.text) for o in sec.disciplines] == DISCIPLINES
 
 
-def test_a_work_section_inside_the_education_one_is_both_checkpoints():
-    """D163 review: neither reader takes a section nested in the other."""
-    schema = workday.extract_schema(work_inside_education(stand_in("education_and_experience")))
+@pytest.mark.parametrize(
+    "inner", [WORK_START, SECTION_START], ids=["work-inside-education", "education-inside-work"]
+)
+def test_a_work_section_inside_the_education_one_is_both_checkpoints(inner):
+    """D163 review: neither reader takes a section nested in the other, either way."""
+    schema = workday.extract_schema(nested(inner))
     assert schema.sections == []
     keys = {f.key for f in schema.fields}
     assert {workday.WORK_KEY, workday.EDUCATION_KEY} <= keys
@@ -723,6 +736,7 @@ def test_an_option_a_person_could_not_choose_is_never_chosen(page, how):  # noqa
     on_add(page, f"const o = {DEGREE_OPTION}; {how};")
     with pytest.raises(ws.NotChosen) as e:
         ws.apply(page, ws.plan(FROZEN), ROOT, timeout_ms=500)
+    assert str(e.value).startswith("education: degree_id:")
     assert e.value.entered == [{"row": 0, "field": "school_name_id"}]
     assert page.locator('[name="edu[0].degree"]').input_value() == ""
 
@@ -780,6 +794,7 @@ def test_an_education_entry_beyond_the_plan_is_found(page):  # noqa: F811
         ("an entry holding a choice", EDUCATION_PREFILLED),
         ("an entry that cannot be typed into", EDUCATION_UNUSABLE),
     ],
+    ids=["no-section", "an-entry-beyond", "an-entry-holding-a-choice", "an-entry-not-typable"],
 )
 def test_before_anything_is_entered_each_stop_names_your_education(page, monkeypatch, case, stop):  # noqa: F811
     """D163 reviews: the adapter's own checks before anything is entered (the form's own
