@@ -35,7 +35,13 @@ Deliberately OUT OF SCOPE here (the isolated remaining gaps, not guessed):
 import re
 from dataclasses import dataclass, field
 
-from app.modules.preparation.forms import ENTRY_PARTS, normalize
+from app.modules.preparation.forms import (
+    ENTRY_PARTS,
+    LIMITED_FIELDS,
+    MAX_LIMIT,
+    normalize,
+    utf16_len,
+)
 from app.modules.profiles.models import Approval
 from app.modules.profiles.resume_parse import DATES_NOTE
 
@@ -332,11 +338,34 @@ def _part_field(name: str, record, label: str, *, required: bool, lines: bool) -
 
 
 EMPLOYMENT_PARTS = ENTRY_PARTS  # D155: as SectionSpec.parts, sorted
+# D157: what each limited field is called when your record's is too long for the page.
+_LIMIT_LABELS = {"company_name": "employer", "description": "role description",
+                 "location": "location", "title": "job title"}  # fmt: skip
+assert tuple(sorted(_LIMIT_LABELS)) == LIMITED_FIELDS
 
 
-def resolve_employment_row(record, parts=(), required_parts=()) -> RowResult:
+def _within(fields: dict, limits: dict) -> dict:
+    """D157: a resolved field whose text is longer than the page accepts (`maxlength`, counted as
+    the browser counts it, `utf16_len`) becomes yours to shorten: never cut, never sent cut. Its
+    length and the limit are named, never its text."""
+    for name, limit in limits.items():
+        fr = fields.get(name)
+        if fr is None or fr.status != "resolved" or not isinstance(fr.display, str):
+            continue
+        n = utf16_len(fr.display)
+        if n > limit:
+            fields[name] = FieldResult(
+                name, "needs_user",
+                explanation=f"The employer's form accepts at most {limit} characters for the "
+                f"{_LIMIT_LABELS[name]}, and this record's has {n}; shorten it in your profile.",
+            )  # fmt: skip
+    return fields
+
+
+def resolve_employment_row(record, parts=(), required_parts=(), limits=None) -> RowResult:
     """D120's five fields; D155: and the parts a section's entry asks beyond them (`parts`, from
-    EMPLOYMENT_PARTS), only when it asks them, so every other section resolves as before."""
+    EMPLOYMENT_PARTS), only when it asks them, so every other section resolves as before. D157:
+    each held to the page's length limit, where it has one (`limits`, by field name)."""
     is_current = getattr(record, "is_current", False)
     fields = {
         "company_name": _text_field("company_name", record, "employer", "employer"),
@@ -375,7 +404,7 @@ def resolve_employment_row(record, parts=(), required_parts=()) -> RowResult:
             "description", record, "role description",
             required="description" in required_parts, lines=True,
         )  # fmt: skip
-    return RowResult(str(record.id), "employment", fields)
+    return RowResult(str(record.id), "employment", _within(fields, limits or {}))
 
 
 # -- section reconciliation ------------------------------------------------------------------
@@ -390,13 +419,15 @@ def resolve_section(
     options: EducationOptions | None = None,
     parts: tuple = (),
     required_parts: tuple = (),
+    limits: dict | None = None,
 ) -> SectionResult:
     """Resolve one structured section from the owner's approved records, in record order. An
     unsupported section kind, or an education section with no option lists to match against,
     is returned as an explicit checkpoint (`supported=False`) rather than guessed."""
     if kind not in SUPPORTED_KINDS:
         return SectionResult(kind, [], supported=False, reason=f"Unsupported section '{kind}'.")
-    if (parts or required_parts) and kind != "employment":  # D155: never ignored silently
+    limits = dict(limits or {})
+    if (parts or required_parts or limits) and kind != "employment":  # D155: never ignored silently
         return SectionResult(
             kind, [], supported=False, reason="The section's entries ask something unknown."
         )
@@ -411,8 +442,14 @@ def resolve_section(
             )
         return SectionResult(kind, [resolve_education_row(r, options) for r in approved])
     unknown = set(parts) - set(EMPLOYMENT_PARTS)
-    if unknown or not set(required_parts) <= set(parts):  # never a part guessed at
+    bad_limits = (not set(limits) <= set(LIMITED_FIELDS)  # D157: never a limit guessed at
+                  or not set(limits) & set(EMPLOYMENT_PARTS) <= set(parts)
+                  or any(isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= MAX_LIMIT
+                         for v in limits.values()))  # fmt: skip
+    if unknown or bad_limits or not set(required_parts) <= set(parts):  # never a part guessed at
         return SectionResult(
             kind, [], supported=False, reason="The section's entries ask something unknown."
         )
-    return SectionResult(kind, [resolve_employment_row(r, parts, required_parts) for r in approved])
+    return SectionResult(
+        kind, [resolve_employment_row(r, parts, required_parts, limits) for r in approved]
+    )

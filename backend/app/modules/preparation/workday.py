@@ -60,6 +60,7 @@ from app.modules.preparation.forms import (
     _ARIA_WIDGETS,
     _VOID,
     ENTRY_PARTS,
+    MAX_LIMIT,
     UNKNOWN_TRIGGER,
     Condition,
     FieldType,
@@ -180,7 +181,36 @@ def _usable_within(n: _Node, top: _Node | None) -> bool:
 
 
 # Constraints on a typed value NoEfforts would not honour (it types the approved value whole).
-_CONSTRAINTS = ("maxlength", "minlength", "pattern")
+# D157: a length limit (`maxlength`) is read instead (`_limit`), and your record held to it.
+_CONSTRAINTS = ("minlength", "pattern")
+# D157: an entry's typed parts whose limit is recorded, by the frozen row's field names; a date
+# is always MM/YYYY, so its control must accept 7 characters and its limit is not recorded.
+_LIMITED = {"title": "title", "company": "company_name", "location": "location",
+            "description": "description"}  # fmt: skip
+_MONTH_YEAR_LEN = len("MM/YYYY")
+
+
+def _limit(n: _Node) -> int | None | bool:
+    """D157: a control's `maxlength`: None when it has none, the number when it is a whole
+    number from 1 to MAX_LIMIT, False otherwise (a limit NoEfforts cannot read is never
+    guessed)."""
+    raw = n.attrs.get("maxlength")
+    if raw is None:
+        return None
+    raw = raw.strip()
+    if not raw.isdigit() or not raw.isascii() or not 1 <= int(raw) <= MAX_LIMIT:
+        return False
+    return int(raw)
+
+
+def _limits(controls: list[_Node]) -> dict[str, int]:
+    """D157: an entry's length limits, by its parts' names on the page."""
+    out = {}
+    for n in controls:
+        limit = _limit(n)
+        if isinstance(limit, int) and not isinstance(limit, bool):
+            out[_WORK_NAME.fullmatch(n.attrs.get("name", ""))[2]] = limit
+    return out
 
 
 def _work_control_ok(n: _Node, index: str, template: _Node | None) -> bool:
@@ -203,6 +233,12 @@ def _work_control_ok(n: _Node, index: str, template: _Node | None) -> bool:
         return False  # the page says how a date is written, and it is the way NoEfforts writes it
     tag, kind, filled = _WORK_CONTROLS[m[2]]
     if n.tag != tag or (kind and n.attrs.get("type", "text").lower() != kind):
+        return False
+    # D157: a length limit only on a typed part, one NoEfforts can read, and on a date one that
+    # lets MM/YYYY be typed whole.
+    limit = _limit(n)
+    if limit is False or (limit is not None and (kind == "checkbox" or (
+            m[2] in ("from", "to") and limit < _MONTH_YEAR_LEN))):  # fmt: skip
         return False
     if (n.attrs.get("value") and kind != "checkbox") or "checked" in n.attrs or n.all_text():
         return False  # a value at load is never trusted (as PREFILLED_KEY)
@@ -302,6 +338,9 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
     # place, from what the template's parts resolved to).
     if any(_optional_parts(c) != _optional_parts(entry) for c in by_index.values()):
         return None, True
+    # D157: and limits each part's length exactly as the template does.
+    if any(_limits(c) != _limits(entry) for c in by_index.values()):
+        return None, True
     page = next((a for a in root.ancestors() if "data-wizard-page" in a.attrs), None)
     # D155: the template's Location and Role Description (each once, `_entry_ok`), and which of
     # them the page requires.
@@ -315,6 +354,7 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
             required=root.attrs.get("aria-required", "").lower() == "true",
             parts=parts,
             required_parts=[p for p in parts if asked[p]],
+            limits={_LIMITED[p]: v for p, v in _limits(entry).items() if p in _LIMITED},
         )
     except ValidationError:  # a page name too long to record: never an error of capture
         return None, True

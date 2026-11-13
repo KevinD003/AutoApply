@@ -263,7 +263,7 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
             section(),
             entry().replace(
                 'name="work[__i__].title" type="text"',
-                'name="work[__i__].title" type="text" maxlength="5"',
+                'name="work[__i__].title" type="text" minlength="5"',
             ),
         ),
         form_page(
@@ -332,7 +332,7 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
         "section-in-a-disabled-fieldset",
         "a-control-in-a-disabled-fieldset",
         "a-control-aria-disabled",
-        "maxlength",
+        "minlength",  # D157: a length limit (maxlength) is read: test_workday_entry_limits.py
         "pattern",
         "a-required-box",
         "a-date-without-its-format",

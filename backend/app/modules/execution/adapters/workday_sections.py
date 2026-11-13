@@ -43,6 +43,7 @@ from app.modules.execution.adapters.greenhouse_sections import (
     section_from_content,
     section_root,
 )
+from app.modules.preparation.forms import utf16_len
 
 KIND = "employment"
 # A frozen employment field -> how it is entered, and the part of the control's name.
@@ -71,11 +72,13 @@ def _control(root: str, i: int, part: str) -> str:
     return f'{root} [name="work[{i}].{part}"]'
 
 
-def _op(i: int, field: str, kind: str, selector: str, fr) -> FillOp:
+def _op(i: int, field: str, kind: str, selector: str, fr, limit: int | None = None) -> FillOp:
     if kind in ("text", "lines"):
         text = fr.display
         if not isinstance(text, str) or not text.strip():
             raise Refused(f"{field}: resolved value carries no display text")
+        if limit is not None and utf16_len(text) > limit:  # D157: the browser would cut it
+            raise Refused(f"{field}: longer than the page accepts")
         if "\r" in text:
             raise Refused(f"{field}: a carriage return is never typed")
         if kind == "text" and "\n" in text:
@@ -105,6 +108,7 @@ def plan(data: object) -> SectionPlan:
         raise Refused("the section has unresolved fields; it stays a checkpoint")
     root = section_root(data)
     asked = set(data.get("parts") or ())  # validated with the section (section_from_content)
+    limits = data.get("limits") or {}  # D157: likewise
     rows = []
     for i, row in enumerate(section.rows):
         ops: list[FillOp] = []
@@ -117,7 +121,7 @@ def plan(data: object) -> SectionPlan:
                 continue
             if fr.status != "resolved":
                 raise Refused(f"{KIND} field {field} is {fr.status}")
-            ops.append(_op(i, field, kind, selector, fr))
+            ops.append(_op(i, field, kind, selector, fr, limits.get(field)))
         rows.append(
             RowPlan(
                 row=i,

@@ -12,7 +12,7 @@ import re
 from html.parser import HTMLParser
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_serializer, model_validator
+from pydantic import BaseModel, Field, StrictInt, model_serializer, model_validator
 
 # v2 (D80): a search-as-you-type control (role=combobox or aria-autocomplete) is unsupported,
 # never a text box; with `challenges`, a CAPTCHA or bot check on the page is a required
@@ -145,6 +145,18 @@ class SectionOptionSpec(BaseModel):
 ENTRY_PARTS = ("description", "location")
 EntryPart = Literal["description", "location"]
 assert ENTRY_PARTS == tuple(sorted(EntryPart.__args__))
+# D157: the frozen employment fields whose text an entry's page may limit in length (`maxlength`
+# on its control), by the frozen row's names, sorted; a date is always MM/YYYY (capture refuses a
+# date control that limits it below 7).
+LIMITED_FIELDS = ("company_name", "description", "location", "title")
+MAX_LIMIT = 100_000
+
+
+def utf16_len(text: str) -> int:
+    """D157: a text's length as the browser counts it for `maxlength`: UTF-16 code units (a
+    character outside the Basic Multilingual Plane counts 2), a line break as NoEfforts writes
+    it (LF) 1."""
+    return len(text.encode("utf-16-le")) // 2
 
 
 class SectionSpec(BaseModel):
@@ -172,6 +184,22 @@ class SectionSpec(BaseModel):
     # other section's stored schema and fingerprint are unchanged.
     parts: list[EntryPart] = Field(default_factory=list, max_length=2)
     required_parts: list[EntryPart] = Field(default_factory=list, max_length=2)
+    # D157: the longest text the page accepts in an entry's typed parts (`maxlength`), by frozen
+    # field name (LIMITED_FIELDS); a Location or Role Description limit only where the entry
+    # asks it. Written only when set, so every other section's stored schema and fingerprint are
+    # unchanged.
+    limits: dict[str, StrictInt] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _limits_known(self):
+        if self.limits and (
+            self.kind != "employment"
+            or not set(self.limits) <= set(LIMITED_FIELDS)
+            or not set(self.limits) & set(ENTRY_PARTS) <= set(self.parts)
+            or any(not 1 <= v <= MAX_LIMIT for v in self.limits.values())
+        ):
+            raise ValueError("an entry's limits are an employment section's, on its typed parts")
+        return self
 
     @model_validator(mode="after")
     def _parts_known(self):
@@ -194,6 +222,10 @@ class SectionSpec(BaseModel):
                 out.pop("parts", None)
             if not out.get("required_parts"):
                 out.pop("required_parts", None)
+            if out.get("limits"):  # D157: sorted, so the same limits always dump the same
+                out["limits"] = dict(sorted(out["limits"].items()))
+            else:
+                out.pop("limits", None)
         return out
 
 
@@ -289,6 +321,8 @@ def form_fingerprint(schema: FormSchema) -> str:
                  if s.step or s.required else [])  # fmt: skip
         if s.parts:  # D155: only when set, so every other section's is unchanged
             extra.append(json.dumps({"parts": s.parts, "required_parts": s.required_parts}))
+        if s.limits:  # D157: likewise
+            extra.append(json.dumps({"limits": s.limits}, sort_keys=True))
         parts.append("|".join(["section", s.kind, s.root, *opts, *extra]))
     if schema.wizard:  # D142: added only for a wizard, so every other form's is unchanged
         # The pages' names in order and which question is on which page: never which page is

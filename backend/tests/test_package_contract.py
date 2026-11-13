@@ -194,6 +194,16 @@ SHAPES[3] = SHAPES[3] | {
     ".sections[].rows[].fields.location.value",
     ".sections[].rows[].fields.location.value.text",
 }
+# D157: a section whose entry's typed parts carry a length limit (the Workday-style stand-in's
+# Work Experience, `maxlength`) names each limit by the frozen row's field. Present only for such
+# a section, which no package built before D157 has, so no existing package's content or hash
+# changes: recorded under version 3, deliberately (as D142, D149 and D155).
+SHAPES[3] = SHAPES[3] | {
+    ".sections[].limits.company_name",
+    ".sections[].limits.description",
+    ".sections[].limits.location",
+    ".sections[].limits.title",
+}
 
 
 @pytest.fixture(scope="module")
@@ -338,6 +348,24 @@ def _contents(api, receiver, monkeypatch) -> list[dict]:
     (sec,) = content["sections"]
     assert sec["parts"] == ["description", "location"]
     assert [r["fields"]["location"]["status"] for r in sec["rows"]] == ["resolved", "omitted"]
+    assert "limits" not in sec
+    out.append(content)
+    # D157: the same section with a length limit on each typed part, which both records fit.
+    receiver.config(wizard="experience_limits")
+    try:
+        posting = {"url": f"{BASE}/workday/examplehealth/R-1570001", "title": "Limits",
+                   "employer": "Example Health"}  # fmt: skip
+        job = api.post("/jobs", json=posting).json()
+        r = api.post(f"/jobs/{job['job']['id']}/form/workday")
+        assert r.status_code == 201, r.text
+    finally:
+        receiver.config(wizard=None)
+    app = api.post("/applications", json={"job_id": job["job"]["id"]}).json()
+    content = api.get(f"/applications/{app['id']}/package").json()["package"]["content"]
+    (sec,) = content["sections"]
+    assert sec["limits"] == {"company_name": 40, "description": 200, "location": 30, "title": 40}
+    assert {f["status"] for r in sec["rows"] for f in r["fields"].values()} <= {
+        "resolved", "omitted"}, sec["rows"]  # fmt: skip
     out.append(content)
     return out
 
