@@ -53,6 +53,50 @@ compact summary built from the same consolidation, so list and detail never disa
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+## An ordinary answer is read back as its form would send it, and a control whose form would send something else is refused when the form is read (D159, 2026-11-13; local only)
+
+Rank 26 of the automation loop (D158's limits). Product changes:
+
+- `app/modules/preparation/forms.py`: `sent_otherwise` (D155's rule, now read as Chromium reads
+  the tag: `wrap` hard, physical or on; `dirname` where Chromium sends a field, even empty;
+  `form` always) refuses a question as `SENT_OTHERWISE` in every branch of
+  `extract_form_schema` (typed, list, group, box), after the reasons read before it;
+  `sent_rule` switches it off for Greenhouse classic's cross-check; `question_limit` is public.
+- `app/modules/preparation/greenhouse.py`: the job data compared with the page as read without
+  the rule, then the page's refusal and its own length limit adopted (`_as_on_page`).
+- `app/modules/preparation/workday.py`: a work entry's control read by the same `sent_otherwise`.
+- `app/modules/preparation/router.py`: a form whose limits changed is a new version, and ends a
+  pause (`_option_values`).
+- `app/modules/execution/adapters/form_entries.py` (new): what a form would send, read passively
+  as Chromium's submission picks it (`ENTRIES_JS`), and the exact comparison (`sends`).
+- `app/modules/execution/adapters/fixture_ats.py`: `_sendable_now` (`_charset_refused`,
+  `_limits_fit`, naming the limit; readable: a changed form, otherwise `LIMIT_UNREADABLE`) from
+  `schema_matches`; `_fits_now` before each value is typed, once the control has focus;
+  `number_text`; the readback reads every answer as the form would send it (`_form_entries`,
+  `APPLICATION_FORM`), a refused question by what it holds (`_HOLDS`).
+- `app/modules/execution/adapters/hosted_form.py`, `greenhouse.py`: their application form;
+  the hosted adapters read a refused question through the base readback; Greenhouse classic reads
+  one D159 refused, and checks the character set and limits.
+- `app/modules/execution/adapters/workday_sections.py`: a work entry read by the passive read,
+  its control in the form it is in.
+- The stand-ins (`fixtures/ats_receiver/receiver.py`: `cfg["sends"]`, `page_limits`, autosave
+  lengths; `greenhouse_like.py`: `gh_limit_served`, `gh_limit_at_load`, `gh_wrap_page_text`).
+
+No migration, no new state or reason code; `SCHEMA_VERSION` stays 3 (the content's shape is
+unchanged), and so do `EXTRACTION_VERSION` and the adapter versions (D159 says why). Nothing was
+run against a real page. `scripts/validate.sh all` was not run (it runs the whole backend and e2e
+suites); ruff was.
+
+| Check (branch `sent-as-approved`, from D158's branch at cfb83f9) | Command | Result |
+|---|---|---|
+| The first version's tests | `pytest tests/test_sent_as_approved.py` (JUnit) on the working tree before b8512c9; `ruff check .`, `ruff format --check .` | exit 0, 43 passed; ruff clean |
+| The suites the first version touches | 36 files in two runs on the content of b8512c9 (`test_execution`, `test_execution_failures`, `test_execution_validation`, `test_execution_security`, `test_execution_routing`, `test_question_limits`, `test_greenhouse_adapter`, `test_lever_adapter`, `test_ashby_adapter`, `test_lever_fixture`, `test_workday_ashby_fixtures`, `test_disclosure_evidence`, `test_upload_evidence`, `test_rehearsal`, `test_recovery_hardening`, `test_provider_reuse`, `test_self_identification_ledger`, `test_sent_as_approved`; `test_workday_adapter`, `test_workday_wizard`, `test_workday_follow_up`, `test_workday_experience`, `test_workday_entry_details`, `test_workday_entry_limits`, `test_wizard_next_checks`, `test_form_change_loop`, `test_capture_refusals`, `test_page_own_checks`, `test_conditional_questions`, `test_preparation`, `test_package_contract`, `test_version_diff`, `test_schema_v3`, `test_greenhouse_api_coverage`, `test_form_scope_labels`, `test_resolver`) | exit 0 for both: 427 and 1169 passed |
+| Two independent reviews | on b8512c9 | a blocker in both (the readback's `FormData` let a page send the application) and one more in the second (Greenhouse classic sending page text in a refused question); see D159 |
+| After the reviews | `test_sent_as_approved.py` (JUnit) on the working tree before 5468717; then the same 36 files in two runs on its content; ruff | exit 0, 78 passed; exit 0 for both: 462 and 1173 passed; `ruff check .` clean, and `ruff format .` then reformatted 2 files (f616163: a docstring and the new tests reindented, no code change) |
+| The first removal run | 28 changes on f616163, one at a time, as below | 27 fail the tests named for their part. m07 (`sent_rule=False` removed) passed the test first named for it, `test_greenhouse_classic_keeps_its_cross_check_where_the_page_refuses_a_question`, which, read again, passed with the first version's order too: its list lost the question's help, so the help was the difference. The list now keeps it, and the test checks that the type alone differs (15a8560, 0ba83e0); m07 now names `test_greenhouse_classic_refuses_it_as_its_page_reads_it`, and m29 (the first version's order) the strengthened test; both tests on 0ba83e0: exit 0, 2 passed |
+| Each part changed in turn | 29 changes on 0ba83e0 (5468717's code, formatted, with the test above strengthened; merging main in changed no file), one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 29 fail the tests named for their part (69 of the 110 named tests, over the runs); each file restored |
+| The regression set | `pytest` on 86 files (D158's 85 with `test_sent_as_approved.py`; JUnit), in a copy of the branch at f616163 (since then only one test in `test_sent_as_approved.py` changed; the file is run in full with the records) | exit 0; 2604 passed in 88.5 min |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_sent_as_approved.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 123 passed in 99 s; ruff formatted nothing, found nothing, and the format check passed |
 
 ## An ordinary question's length limit is read as the browser reads it, and your answer held to it as its form sends it (D158, 2026-11-13; local only)
 
