@@ -52,7 +52,49 @@ compact summary built from the same consolidation, so list and detail never disa
 | `7da9a29`, `292ecb9` | Submission UI browser tests; card polling fix (B3); e2e worker supervisor (B4) |
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
-Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.## A control the page gives its application form from outside its markup is read as a question, and the form must send nothing NoEfforts did not read, by the click on its own button (D160, 2026-11-13; local only)
+
+Rank 27 of the automation loop (D159's limit). Product changes:
+
+- `app/modules/preparation/forms.py`: `given_from_outside` and `owned_nodes` (a listed control
+  outside the application form's markup whose `form` names the form, resolved as the browser
+  resolves it), read with the form's questions and refused as `GIVEN_FROM_OUTSIDE`;
+  `FORM_REFUSALS`.
+- `app/modules/preparation/greenhouse.py`: Greenhouse classic adopts either refusal from its
+  page. `app/modules/preparation/workday.py`: an entry's control given from outside counted in
+  the work history (D149's checkpoint).
+- `app/modules/execution/adapters/form_entries.py`: `NAMES_JS` (the form's own controls,
+  counted per name, the parser's and custom ones apart), `unread`; `ELEMENTS` (the form's
+  controls through the browser's definitions); a custom element named by its attribute.
+- `app/modules/execution/adapters/fixture_ats.py`: `_sendable_now` now first `_unread_controls`
+  (`UNREAD_CONTROLS`, `FORM_UNREADABLE`), `_click_target` (`CLICK_ELSEWHERE`, again in
+  `page_would_refuse`, where a final button that cannot be read still fails closed, 9838d26) and
+  `_refused_holding` (`REFUSED_HOLDS`); the runner's own read failing
+  is a plain stop; `file_alone` in the readback; the character set and D154's read through the
+  browser's definitions; `form_selector`.
+- `app/modules/execution/adapters/hosted_form.py`, `greenhouse.py`: their form selector, the
+  file readback (`file_alone`), Greenhouse classic's own read failing a plain stop.
+  `greenhouse_dom.py`: the pilot keeps its own reads (no check of the final button's form).
+- The stand-ins (`fixtures/ats_receiver/receiver.py`: `cfg["sends"]` and the page's
+  `before_form`, `form_tail`, `button_attrs`, `outside` slots; `lever_like.py`,
+  `greenhouse_like.py`: `hidden_twin`, Greenhouse classic's `outside_unlabelled` and
+  `gh_wrap_text_on_input`).
+
+No migration, no new state; one new refusal reason (`GIVEN_FROM_OUTSIDE`); `SCHEMA_VERSION` stays
+3 (the content's shape is unchanged), and so do `EXTRACTION_VERSION` and the adapter versions
+(D160 says why). Nothing was run against a real page. `scripts/validate.sh all` was not run (it
+runs the whole backend and e2e suites); ruff was.
+
+| Check (branch `outside-controls`, from D159's branch at 0ba83e0) | Command | Result |
+|---|---|---|
+| The first version's tests | `pytest tests/test_outside_controls.py` (JUnit) on the working tree before 515fe33; the adapter suites (`test_execution`, `test_lever_adapter`, `test_ashby_adapter`, `test_greenhouse_adapter`, `test_workday_adapter`, `test_workday_wizard`, `test_sent_as_approved`); ruff | exit 0, 45 passed; exit 0, 255 passed; ruff clean |
+| Two independent reviews | on 515fe33 | a blocker in the second (the final click sent its button's own form or address; since D154); both: controls compared by name, the capture resolving `form` unlike the browser, the check failing open; see D160 |
+| After the reviews | `test_outside_controls.py` (JUnit) on the working tree before 70e0ee3; 37 files in two runs (D159's 36 and `test_outside_controls`) on e86abb9; the files that failed, again on the working tree before 937cc2f; the 37 files on 937cc2f; ruff | exit 0, 98 passed; exit 1 for both on e86abb9: 33 and 14 failed (the Greenhouse pilot stopped at every final click by the new check of the button's form, which it inherited from the base adapter; D159's Greenhouse classic test now stopped before anything is entered), fixed in 937cc2f; those files again on the working tree before 937cc2f: exit 0, 312 and 140 passed; the 37 files on 937cc2f: exit 0 for both, 564 and 1173 passed; ruff clean |
+| Each part changed in turn | 25 changes on 787e337, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 25 fail the tests named for their part (52 of the 72 named tests, over the runs); each file restored. A first run, on 937cc2f, found four to correct: three named no test (their cases' ids hold spaces), and the base readback's file check passed the test named for it (a hidden value there at load stops the attempt before the upload): a case added, the value added once "Why us" is typed (787e337) |
+| The regression set | `pytest` on 87 files (D159's 86 with `test_outside_controls.py`; JUnit), in a copy of the branch at 937cc2f (since then one test case and its stand-in mode added; the file is run in full with the records) | exit 1; 2641 passed, 65 failed in 81.9 min (all in `test_page_refusal_read.py`; fixed in 9838d26, next row) |
+| After the regression set | the fix (9838d26): `test_page_refusal_read.py`, `test_page_own_checks.py` and `test_outside_controls.py` (JUnit) on the working tree; the change removed again in a worktree of its own, the test named for it run; the 37 files with `test_page_refusal_read.py` in two runs on 9838d26 | exit 0, 194 passed; without the fix, exit 1 (the test named for it fails); exit 0 for both on 9838d26: 633 and 1173 passed |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_outside_controls.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 147 passed in 104 s; ruff formatted nothing, found nothing, and the format check passed |
+
 ## An ordinary answer is read back as its form would send it, and a control whose form would send something else is refused when the form is read (D159, 2026-11-13; local only)
 
 Rank 26 of the automation loop (D158's limits). Product changes:
