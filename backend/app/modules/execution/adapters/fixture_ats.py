@@ -1,5 +1,6 @@
 """Adapter for the local synthetic ATS receiver (fixtures/ats_receiver). Fixture-only."""
 
+import time
 from dataclasses import dataclass
 from functools import partial
 from urllib.parse import urljoin, urlsplit
@@ -266,20 +267,9 @@ class FixtureAtsAdapter(ReportsDisclosures):
         at each step). None, or why not. Reads only: nothing is clicked. Waiting here, before
         the readback and the check after filling, means what the page changed while it kept the
         button disabled is read back and checked like any other change."""
-        waited = 0
-        try:
-            while True:
-                btn = self.final_button(page)
-                if btn is None or btn.count() != 1:
-                    return SUBMIT_UNIDENTIFIED
-                if self.leave_out(page) or _usable(btn):
-                    return None
-                if waited >= FINAL_READY_MS:
-                    return FINAL_BUTTON_UNAVAILABLE
-                page.wait_for_timeout(_READY_STEP_MS)
-                waited += _READY_STEP_MS
-        except PWError:
-            return REFUSAL_UNREAD
+        return button_ready(
+            page, lambda: self.final_button(page), lambda: self.leave_out(page), FINAL_CLICK
+        )
 
     def page_would_refuse(self, page: Page) -> str | None:
         """D154: right before the send gate (after the checks after filling), what the page
@@ -290,19 +280,9 @@ class FixtureAtsAdapter(ReportsDisclosures):
         button's form, `_REFUSAL_JS`); or the page could not be read (fail closed). Each is a
         stop with nothing sent, where the click would have been refused after the send gate (an
         unknown outcome, or a rejection after `sending`)."""
-        try:
-            btn = self.final_button(page)
-            if btn is None or btn.count() != 1:
-                return SUBMIT_UNIDENTIFIED
-            leave = self.leave_out(page)
-            if not leave and not _usable(btn):
-                return FINAL_BUTTON_UNAVAILABLE
-            got = btn.evaluate(_REFUSAL_JS, leave)
-        except PWError:
-            return REFUSAL_UNREAD
-        if not got:
-            return SUBMIT_UNIDENTIFIED  # the button belongs to no form
-        return PageRefusal.of(got)
+        return would_refuse(
+            lambda: self.final_button(page), lambda: self.leave_out(page), FINAL_CLICK
+        )
 
     # -- submit -----------------------------------------------------------------------------
     def send_watch_seconds(self, timeout_ms: int) -> int:
@@ -445,12 +425,18 @@ _READY_STEP_MS = 100
 #  - a mark on the control that still has focus, on an element holding it or held by it, never
 #    counts: a page that checks a field when focus leaves it checks that one only at the click
 #    (Playwright's typing leaves focus there), so its mark may be stale. Value-based states are
-#    read from the current value and always count.
+#    read from the current value and always count. D156: "held by it" only when what has focus
+#    is a control or a widget, never a container (a page's section focused when it is shown).
 #  - `aria-invalid="true"` counts on a shown element of the form; a group of radios, and a
 #    marked element with a counted one inside or around it, count once.
 #  - `leave`: ids filled only at a checkpoint; they, and any element holding one or held by
 #    one, never count.
-_REFUSAL_JS = """(b, leave) => {
+#  - D156, `within` (a selector): only elements inside what it matches count (a wizard's pages
+#    already filled). The argument is `leave`, or {leave, within}.
+_REFUSAL_JS = """(b, arg) => {
+  const leave = Array.isArray(arg) ? arg : (arg.leave || []);
+  const within = Array.isArray(arg) ? null : (arg.within || null);
+  const inScope = (e) => !within || !!e.closest(within);
   const form = b.form;
   if (!form) return null;
   const submits = (b.localName === 'button' && b.type === 'submit')
@@ -466,7 +452,12 @@ _REFUSAL_JS = """(b, leave) => {
   const out = (e) => left.some((l) => l === e || l.contains(e) || e.contains(l));
   const a = document.activeElement;
   const focus = a && a !== document.body && a !== document.documentElement ? a : null;
-  const nearFocus = (e) => !!focus && (e === focus || e.contains(focus) || focus.contains(e));
+  const WIDGET = new RegExp('^(combobox|listbox|textbox|searchbox|spinbutton|slider|radiogroup'
+    + '|radio|checkbox|switch|option|grid|tree|treegrid)$');
+  const widget = !!focus && (focus.matches('input, select, textarea, button, [contenteditable]')
+    || WIDGET.test((focus.getAttribute('role') || '').trim().toLowerCase()));
+  const nearFocus = (e) => !!focus
+    && (e === focus || e.contains(focus) || (widget && focus.contains(e)));
   const VALUE = ['typeMismatch', 'patternMismatch', 'tooLong', 'tooShort', 'rangeUnderflow',
                  'rangeOverflow', 'stepMismatch', 'badInput'];
   const n = {native, required: 0, refused: 0, marked: 0};
@@ -478,7 +469,7 @@ _REFUSAL_JS = """(b, leave) => {
     return true;
   };
   for (const e of form.elements) {
-    if (out(e)) continue;
+    if (out(e) || !inScope(e)) continue;
     const v = e.validity;
     // a form-associated custom element exposes no validity of its own: its state is :invalid
     if (!(v ? e.willValidate && !v.valid : e.matches(':invalid'))) continue;
@@ -494,7 +485,8 @@ _REFUSAL_JS = """(b, leave) => {
   }
   const marks = new Set(form.querySelectorAll('[aria-invalid]'));
   for (const e of form.elements) if (e.hasAttribute('aria-invalid')) marks.add(e);
-  const flagged = [...marks].filter((e) => !out(e) && !counted.includes(e) && !nearFocus(e)
+  const flagged = [...marks].filter((e) => !out(e) && inScope(e) && !counted.includes(e)
+    && !nearFocus(e)
     && (e.getAttribute('aria-invalid') || '').trim().toLowerCase() === 'true' && shown(e))
     // one field once: not part of a control already counted, nor inside another flagged one
     .filter((e) => !counted.some((c) => c.contains(e) || e.contains(c)));
@@ -512,12 +504,83 @@ def _usable(btn) -> bool:
     return btn.is_visible() and btn.is_enabled(timeout=1000)
 
 
+@dataclass(frozen=True)
+class ClickChecks:
+    """D156: what the checks before a click say, by the click they guard (the final click,
+    D154; a wizard page's Next, `workday.NEXT_CLICK`): the button cannot be identified, it is
+    not shown and enabled, the page could not be read, and the page's own refusal."""
+
+    unidentified: str
+    unavailable: str
+    unread: str
+    refusal: type
+
+
+def button_ready(
+    page: Page,
+    find,
+    leave_out,
+    why: ClickChecks,
+    *,
+    limit_ms: int | None = None,
+    wait_found: bool = False,
+    progress=None,
+) -> str | None:
+    """D154, D156: the button `find()` locates can be identified (exactly one) and is shown and
+    enabled, or becomes so within `limit_ms` (FINAL_READY_MS by default; time elapsed, not
+    pauses counted), or the page asks for a checkpoint first (`leave_out()`, looked for again
+    at each step). With `wait_found`, a button not there yet (or there twice, as while the page
+    draws it again) is waited for too, within the same time. `progress()` is called between
+    two looks (the runner renews the attempt's lease from it). None, or why not (`why`). Reads
+    only."""
+    deadline = time.monotonic() + (FINAL_READY_MS if limit_ms is None else limit_ms) / 1000
+    try:
+        while True:
+            btn = find()
+            found = btn is not None and btn.count() == 1
+            if not found and not wait_found:
+                return why.unidentified
+            if found and (leave_out() or _usable(btn)):
+                return None
+            if time.monotonic() >= deadline:
+                return why.unavailable if found else why.unidentified
+            page.wait_for_timeout(_READY_STEP_MS)
+            if progress is not None:
+                progress()
+    except PWError:
+        return why.unread
+
+
+def would_refuse(find, leave_out, why: ClickChecks) -> str | None:
+    """D154, D156: what the page itself would refuse at a click on the button `find()`
+    locates, read without acting on it (`_REFUSAL_JS`, from one read of the button's form).
+    None, or why not (`why`): the button cannot be identified (none, several, or in no form) or
+    is not shown and enabled (unless the page first asks for a checkpoint, `leave_out()`); the
+    page's own checks would refuse the click (`why.refusal`, counts only); or the page could
+    not be read (fail closed)."""
+    try:
+        btn = find()
+        if btn is None or btn.count() != 1:
+            return why.unidentified
+        leave = leave_out()
+        if not leave and not _usable(btn):
+            return why.unavailable
+        got = btn.evaluate(_REFUSAL_JS, leave)
+    except PWError:
+        return why.unread
+    if not got:
+        return why.unidentified  # the button belongs to no form
+    return why.refusal.of(got)
+
+
 class PageRefusal(str):
     """D154: the page's own checks would refuse the final click, found before the send gate.
     `counts` are numbers only, never a field's key, label or value: fields it requires left
     empty, values it does not accept (type, pattern, length, range, step), and fields it marks
-    as not valid (a custom error its script set, or `aria-invalid`)."""
+    as not valid (a custom error its script set, or `aria-invalid`). D156: a subclass names
+    another click (`WHAT`)."""
 
+    WHAT = PAGE_WOULD_REFUSE
     counts: dict
 
     def __new__(cls, *, required: int = 0, refused: int = 0, marked: int = 0):
@@ -530,7 +593,7 @@ class PageRefusal(str):
             )
             if p
         ]
-        s = super().__new__(cls, f"{PAGE_WOULD_REFUSE} ({'; '.join(parts)})")
+        s = super().__new__(cls, f"{cls.WHAT} ({'; '.join(parts)})")
         s.counts = {"required": required, "refused": refused, "marked": marked}
         return s
 
@@ -538,6 +601,11 @@ class PageRefusal(str):
     def of(cls, got: dict) -> "PageRefusal | None":
         r, v, m = (int(got.get(k) or 0) for k in ("required", "refused", "marked"))
         return cls(required=r, refused=v, marked=m) if (r or v or m) else None
+
+
+FINAL_CLICK = ClickChecks(
+    SUBMIT_UNIDENTIFIED, FINAL_BUTTON_UNAVAILABLE, REFUSAL_UNREAD, PageRefusal
+)
 
 
 class StoppedAfterDisclosure(RuntimeError):

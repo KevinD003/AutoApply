@@ -95,7 +95,19 @@ tenant:
        focus_validation (the page marks a field `aria-invalid` when focus leaves it empty,
        clears the mark when focus leaves it filled, and cancels its own submission while any
        field is marked; the terms box has focus at load). The request is GET /_fx/wait on the
-       page's own origin (receiver.py). None was observed on a real Workday tenant.
+       page's own origin (receiver.py). D156, before a wizard page's Next: next_disabled (page
+       2's Next stays disabled), next_late_enable (page 1's Next disabled until 3 s after its
+       last answer), next_late_rewrite (the same, when the page also rewrites Address Line 1),
+       next_needs_answers (a page's Next disabled while a required field of its page that is
+       shown is empty) and next_aria (the page marks the phone `aria-invalid` when it holds
+       spaces, and a page's Next refuses while a field of its page that is shown is marked: an
+       error listed, nothing sent), next_aria_last (the same for City, page 1's last field,
+       while not written in capitals); on the wizard, focus_validation focuses page 1's City at
+       load (the terms box is on a page not shown), counts the marks it sets (window.fxMarks)
+       and a page's Next refuses as next_aria's. The wizard's Next is a script's button
+       (type=button), whose click the browser never validates; custom_error's Next sends its
+       page all the same, as the Next of every other setting. None was observed on a real
+       Workday tenant.
 cfg["wizard"] values: plain; drift (a required q.weekends on page 4 at load); already_applied
 (shown at open instead of the form); step_error (the page-2 draft is answered 422 with errors);
 step_timeout (the page-2 draft reply waits cfg["delay_s"]); late_question (the page-2 reply
@@ -184,7 +196,15 @@ shift.addEventListener('change', {on});"""
 # "button_disabled" (the submit button stays disabled), "button_late_enable" (disabled until a
 # second after the last answer), "late_invalid" (a wizard: on the review page, the page's script
 # refuses page 1's phone) and "slow_after_entry" (an answer starts a request answered
-# cfg page_check_delay_ms later); "late_follow_up" is the follow-up's (`_follow_up`).
+# cfg page_check_delay_ms later); "late_follow_up" is the follow-up's (`_follow_up`). D156, the
+# wizard's Next: "next_disabled" (page 2's Next stays disabled), "next_late_enable" (page 1's
+# Next disabled until 3 s after its last answer), "next_late_rewrite" (the same, and then the
+# page rewrites Address Line 1), "next_needs_answers" (a page's Next disabled while a required
+# field of its page that is shown is empty) and "next_aria" (the page marks the phone
+# `aria-invalid` when it holds spaces, and a page's Next refuses while a field of its page that
+# is shown is marked), "next_aria_last" (the same for City, page 1's last field, while not in
+# capitals); on the wizard, "focus_validation" focuses page 1's City at load, and a
+# page's Next refuses as next_aria's.
 _PAGE_CHECK_JS = """
 (() => {
   const CHECK = %CHECK%;
@@ -233,14 +253,102 @@ _PAGE_CHECK_JS = """
     form.addEventListener('focusout', (e) => {
       const el = e.target;
       if (!el.matches || !el.matches('input:not([type=hidden]):not([type=file]), select')) return;
-      if (empty(el)) el.setAttribute('aria-invalid', 'true');
-      else el.removeAttribute('aria-invalid');
+      if (empty(el)) {
+        el.setAttribute('aria-invalid', 'true');
+        window.fxMarks = (window.fxMarks || 0) + 1;  // D156: how many it set (tests read it)
+      } else el.removeAttribute('aria-invalid');
     });
     form.addEventListener('submit', (e) => {
       if (form.querySelector('[aria-invalid="true"]')) e.preventDefault();
     });
     const terms = form.querySelector('[name="terms_ack"]');
     if (terms) terms.focus();
+  }
+  // D156, FA8: before a wizard page's Next. With refuseMarked, a page's Next refuses while a
+  // field of its page that is shown is marked `aria-invalid`: an error listed, nothing sent.
+  const st = document.querySelector('[data-draft-status]');
+  const nextOf = (i) => form.querySelector(`section[data-wizard-page="${i}"] [data-wizard-next]`);
+  const visible = (e) => (e.checkVisibility ? e.checkVisibility() : !!e.offsetParent);
+  const refuseMarked = () => {
+    for (const nxt of form.querySelectorAll('[data-wizard-next]')) {
+      nxt.addEventListener('click', (e) => {
+        const sec = nxt.closest('section[data-wizard-page]');
+        if (![...sec.querySelectorAll('[aria-invalid="true"]')].some(visible)) return;
+        e.stopImmediatePropagation();
+        const ul = document.createElement('ul');
+        ul.dataset.wizardErrors = '';
+        const li = document.createElement('li');
+        li.textContent = 'Correct the fields marked on this page';
+        ul.append(li);
+        sec.append(ul);
+        if (st) { st.dataset.draftPage = sec.dataset.wizardPage; st.dataset.draftStatus = 'error'; }
+      }, {capture: true});
+    }
+  };
+  if (CHECK === 'next_disabled' && nextOf(2)) nextOf(2).disabled = true;
+  if ((CHECK === 'next_late_enable' || CHECK === 'next_late_rewrite') && nextOf(1)) {
+    // page 1's Next disabled until 3 s after its last answer; next_late_rewrite also rewrites
+    // Address Line 1 then (a value set by script: no event, nothing re-armed)
+    const first = form.querySelector('section[data-wizard-page="1"]');
+    const nxt = nextOf(1);
+    nxt.disabled = true;
+    let t = null;
+    const later = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        if (CHECK === 'next_late_rewrite') document.getElementById('line1').value = 'Changed';
+        nxt.disabled = false;
+      }, 3000);
+    };
+    first.addEventListener('input', later);
+    first.addEventListener('change', later);
+  }
+  if (CHECK === 'next_aria' && phone) {
+    // the page marks the phone when it holds spaces, as its own script checks it
+    const rule = () => {
+      if (/\\s/.test(phone.value)) phone.setAttribute('aria-invalid', 'true');
+      else phone.removeAttribute('aria-invalid');
+    };
+    phone.addEventListener('input', rule);
+    phone.addEventListener('change', rule);
+    refuseMarked();
+  }
+  if (CHECK === 'next_aria_last') {
+    // the page marks City, the field NoEfforts fills last on page 1, while it is not written in
+    // capitals, as its own script checks it; a page's Next refuses as next_aria's
+    const city = document.getElementById('city');
+    const rule = () => {
+      if (city.value && city.value !== city.value.toUpperCase()) {
+        city.setAttribute('aria-invalid', 'true');
+      } else city.removeAttribute('aria-invalid');
+    };
+    city.addEventListener('input', rule);
+    city.addEventListener('change', rule);
+    refuseMarked();
+  }
+  if (CHECK === 'focus_validation' && form.dataset.wizardPages) {
+    // the wizard: when page 1 is shown, the page focuses its City field (the last NoEfforts
+    // fills), and a page's Next refuses while a field of its page is marked
+    const city = document.getElementById('city');
+    if (city) city.focus();
+    refuseMarked();
+  }
+  if (CHECK === 'next_needs_answers') {
+    // a page's Next is disabled while a required field of its page that is shown is empty
+    const fields = 'input[required], select[required], textarea[required]';
+    const update = () => {
+      for (const nxt of form.querySelectorAll('[data-wizard-next]')) {
+        const sec = nxt.closest('section[data-wizard-page]');
+        nxt.disabled = [...sec.querySelectorAll(fields)].some((el) => visible(el)
+          && ((el.type === 'checkbox' || el.type === 'radio')
+            ? !sec.querySelector(`[name="${el.name}"]:checked`) : !el.value));
+      }
+    };
+    form.addEventListener('input', update);
+    form.addEventListener('change', update);
+    new MutationObserver(update).observe(form, {subtree: true, attributes: true,
+                                                attributeFilter: ['hidden', 'required']});
+    update();
   }
   if (CHECK === 'slow_after_entry') {
     let once = false;

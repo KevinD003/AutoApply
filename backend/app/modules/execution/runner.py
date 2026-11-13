@@ -13,7 +13,8 @@ hold the application); NoEfforts never runs that application again.
 D154: after a page's answers are entered, what they started is waited for before the checks
 (`_settle`), then the submit button (`adapter.final_ready`); and right before the send gate,
 what the page itself would refuse at the final click is read without acting on it
-(`adapter.page_would_refuse`): a stop with nothing sent.
+(`adapter.page_would_refuse`): a stop with nothing sent. D156: the same before each wizard
+page's Next (`adapter.next_ready`, `adapter.next_would_refuse`), that page never sent.
 """
 
 import hashlib
@@ -54,7 +55,11 @@ from app.modules.execution.adapters.greenhouse_dom import (
     GreenhouseLiveAdapter,
 )
 from app.modules.execution.adapters.lever import LeverFixtureAdapter
-from app.modules.execution.adapters.workday import WorkdayFixtureAdapter
+from app.modules.execution.adapters.workday import (
+    NEXT_REFUSAL_UNREAD,
+    NEXT_UNAVAILABLE,
+    WorkdayFixtureAdapter,
+)
 from app.modules.execution.browser import IsolationUnavailable, browser_session
 from app.modules.execution.faults import fault, run_clock
 from app.modules.execution.models import ExecutionAttempt
@@ -87,6 +92,9 @@ _POLL_MS = 25
 # design), images, media and fonts (they change no control's behaviour), pings and beacons.
 _TRACKED = frozenset({"document", "script", "stylesheet", "xhr", "fetch"})
 NOT_READY = "the form's page was still loading after 8 seconds"
+# D156: how long a wizard page's Next is waited for once its answers settled; None means the
+# navigation time limit, as long as its click waited for it before D156 (tests shorten it).
+NEXT_READY_MS: int | None = None
 # D154: the requests the page started while the answers were entered never finished.
 STILL_LOADING = "the page was still loading 8 seconds after the answers were entered"
 # D111: the browser followed a redirect of a request only a path-limited rule admits (the
@@ -357,7 +365,9 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             settled = True
             try:
                 if content.get("wizard"):  # D142: page by page, up to the review page
-                    stopped = _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat)
+                    stopped = _wizard_pages(
+                        aid, worker, gen, adapter, page, eg, recorded, beat, stop_if_requested
+                    )
                     if stopped:
                         return stopped
                     disclosures = []  # every page's evidence is recorded as it was made
@@ -547,7 +557,9 @@ LEFT_FORM = {
 }
 
 
-def _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat) -> str | None:
+def _wizard_pages(
+    aid, worker, gen, adapter, page, eg, recorded, beat, stop_if_requested
+) -> str | None:
     """D142: pages 1 to N-1 of a multi-page wizard, forward only, after the disclosure gate (which
     authorized filling page 1). For each page: a gate before filling it (from page 2), filling it
     (documents first), a readback of every page so far recorded as evidence `step`, a gate before
@@ -557,13 +569,16 @@ def _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat) -> str | 
     record. D148: before the gate for a page's Next, the questions that page shows by its own
     logic must be what was entered (`page_follow_ups`). D154: what filling a page started is
     waited for before its checks (`_settle`); a page still loading ends the attempt there, its
-    Next never clicked. Returns None when the review page is
-    reached, or the runner's result once the attempt
-    has ended: `abandoned` (any refusal or finding; `svc.abandon` says pages may be saved at the
-    employer and retires every approval), `unknown` (the page left the form after a Next:
-    quarantined, the employer may hold the application) or `lost_authority`. Never a pause,
-    never `fail_safe`, never a second click. LostAuthority and StoppedAfterDisclosure propagate
-    to the runner, which ends the attempt as for any other step."""
+    Next never clicked. D156: then its Next, shown and enabled, before the readback
+    (`adapter.next_ready`), and right before the gate for its Next, what the page itself would
+    refuse at that click (`adapter.next_would_refuse`), as D154 before the final click: either
+    ends the attempt with that page never sent (`_refused`). Returns None when the review page
+    is reached, or the runner's result once the attempt has ended: `abandoned` (any refusal or
+    finding; `svc.abandon` says pages may be saved at the employer and retires every approval),
+    `unknown` (the page left the form after a Next: quarantined, the employer may hold the
+    application) or `lost_authority`. Never a pause, never `fail_safe`, never a second click.
+    LostAuthority and StoppedAfterDisclosure propagate to the runner, which ends the attempt as
+    for any other step."""
     s = get_settings()
     pages = len(adapter.content["wizard"]["pages"])
 
@@ -595,6 +610,14 @@ def _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat) -> str | 
         if not settled:
             svc.abandon(aid, worker, gen, STILL_LOADING)
             return "abandoned"
+        # D156: its Next, waited for now (before the readback, as D154's submit button), as long
+        # as its click waited for it before. A Next kept disabled for a question the page showed
+        # after an earlier answer is said as D148 says it (the check after filling, read-only).
+        refused = adapter.next_ready(page, i, NEXT_READY_MS or s.navigation_timeout_seconds * 1000)
+        if refused:
+            if refused == NEXT_UNAVAILABLE:
+                refused = adapter.page_follow_ups(page, i) or refused
+            return _refused(aid, worker, gen, refused, stop_if_requested)
         mismatches = adapter.readback_through(page, i)
         # How many fields so far kept their values, never which (the posting's field keys).
         checked = len(adapter.page_answers(*range(1, i + 1)))
@@ -609,6 +632,11 @@ def _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat) -> str | 
         if follow_up:
             svc.abandon(aid, worker, gen, follow_up)
             return "abandoned"
+        # D156: what the page itself would refuse at this Next (a field it marks as not valid, a
+        # Next it keeps hidden or disabled), read without acting on it: this page never sent.
+        refused = adapter.next_would_refuse(page, i)
+        if refused:
+            return _refused(aid, worker, gen, refused, stop_if_requested)
         beat()
         fault(f"before_next_gate_{i}")
         if gate(i, "next"):
@@ -653,8 +681,11 @@ def _refused(aid, worker, gen, reason: str, stop_if_requested) -> str:
     click (`adapter.final_ready`, `adapter.page_would_refuse`): abandoned with nothing sent,
     every live approval retired (D132), never a pause or a retry. A page that could not be read
     while the worker is being stopped (its browser closed with it) ends as the stop does (D150,
-    StopRequested), where the stop is honoured."""
-    if reason == REFUSAL_UNREAD:
+    StopRequested), where the stop is honoured. D156: likewise before a wizard page's Next
+    (`adapter.next_ready`, `adapter.next_would_refuse`), that page never sent; on a wizard the
+    stop is D142's, for good (every approval retired as `wizard_draft_at_employer`, the pages
+    already sent with Next said)."""
+    if reason in (REFUSAL_UNREAD, NEXT_REFUSAL_UNREAD):
         stop_if_requested()
     svc.abandon(aid, worker, gen, str(reason), retire_every="stopped_after_entry")
     return "abandoned"

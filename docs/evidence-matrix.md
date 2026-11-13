@@ -9,6 +9,38 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Before each wizard page's Next, what the page itself would refuse stops the attempt with that page never sent (D156, 2026-11-13; local only)
+
+Nothing here ran against a real page. Branch `wizard-next-checks`. The runs drive the runner
+against the Workday-style stand-in's wizard (FIXTURE ASSUMPTIONS FA1-FA8, cfg `page_check`),
+with the receiver's ledger as the oracle (its draft rows, acceptances and the POSTs it logged);
+or drive the two checks on pages set in Chromium. All in `tests/test_wizard_next_checks.py`
+unless named.
+
+| Claim | Test | Result |
+|---|---|---|
+| A page whose script marks a field as not valid is never sent | `test_a_field_the_page_marks_stops_the_wizard_before_that_pages_next` (`custom_error`; the page's own Next would send it) | `abandoned` before page 1's Next: no draft row, no gate for that Next, no click; the read after the page's readback; counts only. Before D156: pages 1 to 4 saved at the employer, then the final click found refused |
+| A Next the page refuses while a field is marked is never clicked | `test_a_next_the_page_refuses_while_a_field_is_marked_is_never_clicked` (`next_aria`) | stopped before the gate; no click recorded. Before D156: clicked, "the employer's page showed an error after a page's Next" |
+| A mark on the field filled last counts, once focus left it | `test_a_mark_on_the_field_filled_last_counts_once_focus_left_it` (`next_aria_last`) | stopped before the gate (with focus still there: not counted, clicked, refused) |
+| A value the final click's own validation refuses stops before its page is sent | `test_a_value_the_final_clicks_validation_refuses_stops_before_its_page_is_sent` (`pattern`) | stopped before page 1's Next, nothing sent. Before D156 (and in D156's first version): pages 1 to 4 sent, then stopped before the send gate |
+| What only the review page refuses is left to the final click | `test_a_value_the_review_page_alone_refuses_is_left_to_the_final_click` (`late_invalid`) | pages 1 to 4 sent; stopped before the send gate (D154) |
+| A Next the page keeps disabled stops before its gate | `test_a_next_the_page_keeps_disabled_stops_before_its_gate` (`next_disabled`, page 2) | page 1 sent, page 2 never; no gate for page 2's Next and no click; no readback of page 2. Before D156: the click waited 20 s and was recorded as unanswered ("does not know whether that page was saved") |
+| A Next kept disabled for a question the page showed says so | `test_a_next_kept_disabled_for_a_question_the_page_showed_says_so` (`next_needs_answers`, `follow_up_revealed_required`) | D148's reason (the question the page revealed requires an answer), page 4 never sent |
+| A Next enabled later is waited for, as long as its click waited | `test_a_next_enabled_3_s_after_the_pages_last_answer_is_waited_for` (`next_late_enable`, the final button's limit shortened to 1 s) | `confirmed`, one acceptance |
+| What the page changes while it keeps its Next disabled is read back | `test_what_the_page_changes_while_it_keeps_its_next_disabled_is_read_back` (`next_late_rewrite`) | "1 field(s) did not keep their values"; page 1 never sent |
+| A mark the page clears when focus leaves a field is cleared before the read | `test_a_mark_the_page_clears_when_focus_leaves_the_field_is_cleared_before_the_read` (`focus_validation`) | the page marked City once while it was filled; at the read City has no mark and no focus; `confirmed` |
+| A page that cannot be read before a Next is the stop's while the worker is being stopped | `test_a_next_unreadable_while_the_worker_is_being_stopped_ends_as_the_stop` (both reads, each with and without a stop request) | the stop's reason; otherwise the unread reason, every approval retired |
+| On a page: the Next is its page's one button, shown and enabled, waited for within its own limit | `test_the_next_is_its_own_pages_one_button` (none, two, owned by no form), `test_a_next_hidden_or_disabled_is_unavailable` (3), `test_a_next_the_page_enables_or_draws_later_is_waited_for_and_the_lease_renewed` | as stated; the lease renewed while waiting; a Next drawn late waited for |
+| On a page: which marks count before a Next | `test_on_a_scripts_next_only_the_pages_marks_on_fields_shown_count`, `test_a_mark_on_the_field_that_has_focus_is_not_counted`, `test_marks_inside_a_part_of_the_page_that_has_focus_count` (also the final click's read), `test_a_next_that_is_the_browsers_validated_submission_counts_every_page` | only the page's own marks on fields shown, never on what has focus unless that is a container; a native Next (refused at capture) counts every page |
+| On a page: the final click's validation for the pages filled so far | `test_what_the_final_click_would_refuse_on_the_pages_filled_so_far_is_read_before_a_next` | by kind, pages 1 to i only, where the final click is the browser's own validated submission; never with `novalidate` or `formnovalidate`; never a mark on what has focus |
+| Focus leaves a filled page; the read is passive | `test_focus_leaves_what_has_it_once_a_page_is_filled`, `test_the_read_is_passive_and_names_counts_only` | focus on the body, the page's own blur handled once; no `invalid` or focus event fired by the read; counts only |
+| A failed Next click is still reported as possibly sent | `test_workday_wizard.py::test_a_next_whose_click_fails_says_the_page_may_have_been_saved` | the click reached and failed; "does not know whether that page was saved" (before 04350e6 the test passed without reaching the click) |
+| Every other flow unchanged | the 11 suites the change touches; the regression set of 83 files | pass (`docs/implementation-status.md`) |
+| Each part is needed | 17 changes, one at a time, the named tests run, the file restored (`docs/implementation-status.md`) | each fails the tests named for its part |
+
+In D154's section, "Before each wizard page's Next, the page's own marks are not read" describes
+the runner before D156.
+
 ## A Workday-style work entry's Location and Role Description come from your record (D155, 2026-11-12; local only)
 
 Nothing here ran against a real page. Branch `workday-entry-details`. The runs drive the runner
