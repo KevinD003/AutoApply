@@ -51,7 +51,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D156 before each wizard page's Next, what the page itself would refuse stops the attempt with that page never sent | merged (#65, 682ada4, tree as predicted); its PR CI passed all four jobs on 8dd15fe |
 | D157 a Workday-style work entry's length limits are read, and your record held to them | merged (#66, d3eab19, tree as predicted); its PR CI passed all four jobs on 6746239 |
 | D158 an ordinary question's length limit read as the browser reads it, and your answer held to it as its form sends it | merged (#67, d12e954, tree as predicted); its PR CI passed all four jobs on cfb83f9 |
-| D159 an ordinary answer read back as its form would send it; a control whose form would send something else refused when the form is read | branch `sent-as-approved` (from D158's branch); reviewed twice; not merged |
+| D159 an ordinary answer read back as its form would send it; a control whose form would send something else refused when the form is read | merged (#68, 07cccd9, tree as predicted); its PR CI passed all four jobs on f7163ad |
+| D160 a control the page gives its application form from outside its markup read as a question; the form must send nothing NoEfforts did not read, by the click on its own button | branch `outside-controls` (from D159's branch); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -373,7 +374,26 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
 
-- **D159 (branch `sent-as-approved`, not merged).** Rank 26, D158's limits:
+- **D160 (branch `outside-controls`, not merged).** Rank 27, D159's limit:
+  - the gap: the browser sends every control in the form's own list, and a read took only
+    the controls inside the form's markup: a control given from outside by `form`, one
+    the HTML parser gives the form, or a custom element's value went with the
+    application unapproved; the final click submitted its button's own form, to the
+    button's own address, unchecked (since D154);
+  - a control given from outside is read and refused, resolved as the browser resolves
+    it; before anything is entered, and again after filling, a control no read shows, a
+    click that would send another form or elsewhere, a form not singled out or
+    unreadable, and a question left blank that holds the page's text each stop the
+    attempt plainly; a file question's form must send the file alone;
+  - two independent reviews: the second found a blocker (the final click's own form and
+    address, since D154); both: controls compared by name, the capture resolving `form`
+    unlike the browser, the check failing open. Fixed (70e0ee3, 937cc2f), each with a
+    test; the rest recorded in D160;
+  - 25 removal runs on 787e337, each failing the test named for its part; the regression
+    set found one more (the final button read outside D154's fail-closed handling),
+    fixed (9838d26) with D154's own test.
+
+- **D159 (merged, #68).** Rank 26, D158's limits:
   - the gap: the readback read what each control shows, never what its form sends, so a
     text area made to hard-wrap, a control given to another form or disabled, a choice
     disabled once chosen and a number past six digits each reached the employer changed;
@@ -555,9 +575,12 @@ click's own validation would refuse what the pages filled so far hold. **D157** 
 24, #66) reads a Workday-style work entry's length limits and holds your
 record to them, counted as the form sends them. **D158** (rank 25, #67) holds
 every provider's ordinary answer to its page's limit the same way, and makes an answer
-you gave that no longer fits a checkpoint. **D159** (rank 26, on its branch) reads every
+you gave that no longer fits a checkpoint. **D159** (rank 26, #68) reads every
 ordinary answer back as its form would send it, refuses a control whose form would send
 something else when the form is read, and holds an answer to the limit its page has now.
+**D160** (rank 27, on its branch) reads a control the page gives the form from outside
+its markup as a question (refused), and stops an attempt whose form would send a control
+no read shows, or whose final click would send another form or elsewhere.
 Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
@@ -654,10 +677,15 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D159 (branch `sent-as-approved`):** the new tests, the suites the change touches, the
+- **D160 (branch `outside-controls`):** the new tests, the suites the change touches, the
   removal runs and the regression set, locally (Tests run below). Not tested: any real
-  page; the Greenhouse pilot (unchanged); a page that changes a control while an answer is
-  typed or after the readback; a control outside the form's markup given to it.
+  page; the Greenhouse pilot (its own reads); a control the page gives its form, or a
+  custom element it defines, during the final click's own events.
+- **D159:** merged (#68, 07cccd9, tree as predicted); its PR CI passed all four
+  jobs on f7163ad. Locally: the new tests, the suites the change touches, the removal
+  runs and the regression set (Tests run below). Not tested: any real page; the
+  Greenhouse pilot (unchanged); a page that changes a control while an answer is typed
+  or after the readback; a control outside the form's markup given to it (D160 since).
 - **D158:** merged (#67, d12e954, tree as predicted); its PR CI passed all four jobs on
   cfb83f9. Locally: the new tests, the suites the change touches, the removal runs, the
   browser test and the regression set (Tests run below). Not tested: any real page or
@@ -963,6 +991,11 @@ action.
 | D159, the first removal run: 28 changes on f616163 | 27 fail the tests named for their part; m07 passed the test first named for it (`keeps_its_cross_check`), which passed with the first version's order too (its list lost the question's help); the test strengthened (15a8560, 0ba83e0) |
 | D159, each part changed in turn: 29 changes on 0ba83e0, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 29 fail the tests named for their part (69 of the 110 named tests, over the runs); each file restored |
 | D159, the regression set: `pytest` on 86 files (D158's 85 with `test_sent_as_approved.py`; JUnit), in a copy of the branch at f616163 (since then only one test in `test_sent_as_approved.py` changed; the file is run in full with the records) | exit 0; 2604 passed in 88.5 min |
+| D160, the first version: `test_outside_controls.py` (JUnit) on the working tree before 515fe33; the adapter suites (7 files) | exit 0: 45 passed; 255 passed |
+| D160, after the reviews: `test_outside_controls.py` (JUnit) on the working tree before 70e0ee3; 37 files in two runs on e86abb9, the files that failed again before 937cc2f, and the 37 on 937cc2f | exit 0, 98 passed; exit 1 for both on e86abb9: 33 and 14 failed (the Greenhouse pilot stopped at every final click by the new check of the button's form, which it inherited from the base adapter; D159's Greenhouse classic test now stopped before anything is entered), fixed in 937cc2f; those files again on the working tree before 937cc2f: exit 0, 312 and 140 passed; the 37 files on 937cc2f: exit 0 for both, 564 and 1173 passed; ruff clean |
+| D160, each part changed in turn: 25 changes on 787e337, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 25 fail the tests named for their part (52 of the 72 named tests, over the runs); each file restored. A first run, on 937cc2f, found four to correct: three named no test (their cases' ids hold spaces), and the base readback's file check passed the test named for it (a hidden value there at load stops the attempt before the upload): a case added, the value added once "Why us" is typed (787e337) |
+| D160, the regression set: `pytest` on 87 files (D159's 86 with `test_outside_controls.py`; JUnit), in a copy of the branch at 937cc2f (since then one test case and its stand-in mode added; the file is run in full with the records) | exit 1; 2641 passed, 65 failed in 81.9 min (all in `test_page_refusal_read.py`; fixed in 9838d26, next row) |
+| D160, after the regression set: the fix (9838d26): `test_page_refusal_read.py`, `test_page_own_checks.py` and `test_outside_controls.py` (JUnit) on the working tree; the change removed again in a worktree of its own, the test named for it run; the 37 files with `test_page_refusal_read.py` in two runs on 9838d26 | exit 0, 194 passed; without the fix, exit 1 (the test named for it fails); exit 0 for both on 9838d26: 633 and 1173 passed |
 
 ## Failed approaches and rejected designs
 
@@ -1078,10 +1111,10 @@ action.
 
 ## Exact next action
 
-1. D159 (branch `sent-as-approved`, rank 26, D158's limits: an ordinary answer read back
-   as its form would send it): its pull request. Candidates after it: a control outside the
-   form's markup that the page gives to it, read as a question or refused; education on
-   Workday.
+1. D160 (branch `outside-controls`, rank 27, D159's limit: a control the page gives its
+   form from outside the form's markup): its pull request. Candidates after it: education on
+   Workday; the Greenhouse pilot's own reads of what its form sends (D159 and D160 left them
+   as they were).
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it
