@@ -390,7 +390,8 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     both: an option the page hides captured, chosen and sent, tests left failing, few new
     rules pinned; options read unlike the browser (a pause that never ends); a degree
     matched to a qualified option. Fixed, each with a test; the rest recorded in D163;
-  - 33 removal runs on 70e81bb, each failing the tests named for its part; the regression set on 70e81bb: @REGRESSLOOP@.
+  - 33 removal runs on 70e81bb, each failing the tests named for its part; the regression set
+    on 70e81bb: 2936 passed.
 
 - **D162 (merged, #71).** Rank 29, D161's "Not built":
   - the gap: the base adapter (every adapter but the pilot) withheld a value its box's
@@ -1087,7 +1088,7 @@ action.
 | D163, the first version: `test_workday_education.py` (JUnit) on the working tree and on d8d4abe; the 8 Workday-style suites on d8d4abe | on the working tree: exit 1, 47 passed and 1 failed (the stand-in's change after page 2 was saved chose the approved school itself: it now changes it to another, `CHANGED_SCHOOL`), then exit 0, 48 passed; on d8d4abe, the 8 Workday-style suites: exit 1, 459 passed and 2 failed (D149's two cases that used "education" as a section of another kind, now read: they use one NoEfforts does not read, cd5f689; then 51 passed); ruff clean |
 | D163, after the reviews: `test_workday_education.py` and `test_structured_sections.py` (JUnit) on the working tree as the fixes grew; the 22 suites the fixes touch, in two runs, on the content of 2dbee1c (`test_workday_experience.py`, `test_workday_wizard.py`, `test_worker_stop.py`, `test_limit_stops.py`, `test_workday_entry_details.py`, `test_workday_entry_limits.py`, `test_workday_follow_up.py`, `test_wizard_next_checks.py`; `test_greenhouse_sections.py`, `test_greenhouse_sections_browser.py`, `test_workday_adapter.py`, `test_workday_ashby_fixtures.py`, `test_sent_as_approved.py`, `test_sending.py`, `test_page_own_checks.py`, `test_outside_controls.py`, `test_disclosure_evidence.py`, `test_execution_failures.py`, `test_execution_routing.py`, `test_provider_reuse.py`, `test_recovery_hardening.py`, `test_self_identification_ledger.py`); on 70e81bb's content, the two suites again and the two worker-stop entry tests; ruff | exit 0: 105 passed; the 22 suites: exit 0, 502 and 460 passed; on 70e81bb's content: exit 0, 108 passed, and the worker-stop tests 2 passed; ruff clean |
 | D163, each part changed in turn: 33 changes on 70e81bb, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 33 fail the tests named for their part (54 failures among the 807 tests run, over the runs; three also fail cases close to theirs); each file restored, the tree clean after |
-| D163, the regression set: `pytest` on 90 files (D162's 89 with `test_workday_education.py`; JUnit), in a copy of the branch at 70e81bb | @REGRESS@ |
+| D163, the regression set: `pytest` on 90 files (D162's 89 with `test_workday_education.py`; JUnit), in a copy of the branch at 70e81bb | exit 0, 2936 passed (85 minutes) |
 
 ## Failed approaches and rejected designs
 
