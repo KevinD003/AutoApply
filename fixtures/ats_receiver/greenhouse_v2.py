@@ -49,7 +49,8 @@ D161, in the ordinary page of any mode: cfg gh2_limits ({id: a `maxlength` value
 turn}), gh2_limit_js / gh2_limit_on_focus / gh2_limit_on_input ({id: the limit the page's own script sets once
 loaded, as the control gets focus, or once something is typed}) and gh2_types ({id: the input's
 type}), gh2_limit_once_typed ({id: limit set once anything is typed}) and gh2_unlock ([ids
-served disabled, enabled by the page's script]) on a typed question's control, and gh2_autosave ([ids]: the page saves those questions as they
+served disabled, enabled by the page's script]), gh2_readonly_focus ([ids served read-only until
+they have focus]) on a typed question's control, and gh2_autosave ([ids]: the page saves those questions as they
 are typed, their length only, POST /gh2/{board}/jobs/{id}/autosave, a disclosure) (FIXTURE
 ASSUMPTIONS, never seen on a real page),
 gh2_sections (D120: an Education section; D141: cfg sections "education,employment" adds an
@@ -652,7 +653,8 @@ def _limit_script(cfg) -> str:
     page has loaded (`cfg["gh2_limit_js"]`), as its control gets focus (`cfg["gh2_limit_on_focus"]`), or
     once something is typed into it (`cfg["gh2_limit_on_input"]`) or into any of the form's
     controls (`cfg["gh2_limit_once_typed"]`), each {id: limit}: none is in the page as served. And
-    it enables a control served disabled (`cfg["gh2_unlock"]`, [ids])."""
+    it enables a control served disabled (`cfg["gh2_unlock"]`, [ids]), or one served read-only as
+    it gets focus (`cfg["gh2_readonly_focus"]`, [ids]: a common guard against autofill)."""
     js = [f"document.getElementById({json.dumps(qid)}).maxLength = {int(n)};"
           for qid, n in ((cfg or {}).get("gh2_limit_js") or {}).items()]
     js += [f"document.getElementById({json.dumps(qid)}).addEventListener({json.dumps(event)}, "
@@ -664,6 +666,9 @@ def _limit_script(cfg) -> str:
            for qid, n in ((cfg or {}).get("gh2_limit_once_typed") or {}).items()]
     js += [f"document.getElementById({json.dumps(qid)}).disabled = false;"
            for qid in ((cfg or {}).get("gh2_unlock") or [])]
+    js += [f"document.getElementById({json.dumps(qid)}).addEventListener('focus', "
+           f"(e) => {{ e.target.removeAttribute('readonly'); }});"
+           for qid in ((cfg or {}).get("gh2_readonly_focus") or [])]
     return f"<script>{''.join(js)}</script>" if js else ""
 
 
@@ -795,7 +800,9 @@ def _render(q, mode, cfg=None) -> str:
                 f'{_limit_attr(qid, cfg)}>')
     else:
         itype = ((cfg or {}).get("gh2_types") or {}).get(qid, itype)  # D161: another input type
-        unlock = " disabled" if qid in ((cfg or {}).get("gh2_unlock") or []) else ""
+        unlock = (" disabled" if qid in ((cfg or {}).get("gh2_unlock") or [])
+                  else " readonly" if qid in ((cfg or {}).get("gh2_readonly_focus") or [])
+                  else "")  # fmt: skip
         body = (f'{_label(qid, label_text, star)}<input type="{itype}" id="{qid}"{areq}'
                 f'{_limit_attr(qid, cfg)}{unlock}>')
     if qid == "phone" and mode == "gh2_phone_country":

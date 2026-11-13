@@ -1029,15 +1029,17 @@ def _length_limit(page, f, c, recorded) -> dict | str:
     the adapter checks before typing), and as the pilot's capture records it from the page as
     served (`capture_records`: what your answer is held to before you approve). Where the two
     differ, the page sets or changes its limit by its own scripts, writes it so that no read
-    records it, or was served otherwise to the capture's own request. Numbers only; nothing is
-    clicked, typed or focused."""
+    records it, locks and fills the control itself (D129: never typed), or was served otherwise
+    to the capture's own request. Numbers only; nothing is clicked, typed or focused."""
     from app.modules.preparation import greenhouse_dom as gdom
 
-    if c is None or f.type not in TEXT_TYPES or not _SAFE_ID.fullmatch(c.id):
+    if f.type not in TEXT_TYPES:
         return "not_applicable"
+    if c is None or not _SAFE_ID.fullmatch(c.id):
+        return "not_observable"  # no one control of its own: no limit to read
     loc = page.locator(f'[id="{c.id}"]')
     if loc.count() != 1:
-        return "not_applicable"
+        return "not_observable"
     limit, _, applies = loc.evaluate(gdom.LIVE_LIMIT_JS)
     return {
         "browser_reads": limit if applies and isinstance(limit, int) and limit >= 0 else None,

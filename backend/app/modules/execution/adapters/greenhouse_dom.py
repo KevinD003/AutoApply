@@ -249,6 +249,20 @@ class LocationStopped(StoppedAfterDisclosure):
     """D104: the location search stopped the attempt; never retried."""
 
 
+# D161 review: a value the page's limit would cut once its box has focus is never typed, and
+# filling stops there, naming the limit (a number, never the question), so you know what to
+# shorten; no read of the form records a limit the page sets only then.
+LIMIT_AT_FOCUS = (
+    "an answer is longer than the employer's page accepts once its box has focus ({limits} "
+    "characters as the form sends them); it was not typed, and filling stopped there: shorten it "
+    "and approve it again, or apply on the employer's site"
+)
+
+
+class LimitStopped(StoppedAfterDisclosure):
+    """D161 review: filling stopped at a value its box's limit would cut; never retried."""
+
+
 def _text(value: dict) -> str:
     """What a text-like control holds for an approved value (text, or a number as typed)."""
     if "text" in value:
@@ -528,15 +542,16 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         return limits_verdict(over)
 
     @staticmethod
-    def _fits_here(loc, text: str) -> bool:
+    def _cut_at_focus(loc, text: str) -> int | None:
         """D161: D159's check once the control has focus, right before its value is typed (a
-        page's script may lower its limit after the form was checked, or as it gets focus): a
-        value the control would cut then is never typed, and the readback reports the answer,
-        so nothing is sent. A page that lowers it while the value is typed still cuts it; the
-        readback stops that too."""
+        page's script may lower its limit after the form was checked, or as it gets focus): the
+        limit that would cut the value, or None. Such a value is never typed: filling stops there,
+        naming the limit (`LimitStopped`). A page that lowers it while the value is being typed
+        (in `beforeinput`), or cuts what is typed by its own script, still cuts it; the readback
+        stops that."""
         loc.focus()
         limit, _, applies = loc.evaluate(dom.LIVE_LIMIT_JS)
-        return not (applies and _over_limit(limit, text))
+        return limit if applies and _over_limit(limit, text) else None
 
     def _identity_prefill_refusal(self, page: Page, fields, controls) -> str | None:
         """D129: before disclosure, a locked (disabled or read-only) identity field the page
@@ -730,8 +745,10 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                     self._choose(page, a)
                 elif a["key"] not in self._trusted_prefill:
                     loc, text = _by_id(page, a["key"]), _text(a["value"])
-                    if self._fits_here(loc, text):  # D161: never typed cut
-                        loc.fill(text)
+                    over = self._cut_at_focus(loc, text)  # D161: never typed cut
+                    if over is not None:
+                        raise LimitStopped(LIMIT_AT_FOCUS.format(limits=over), disclosures)
+                    loc.fill(text)
                 # else D129: a locked field, pre-filled with the approved identity and verified
                 # before disclosure -- the page will not let it be edited; never overwritten.
             except PWTimeout:
@@ -739,7 +756,11 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             except PWError:
                 continue  # readback reports it
         self._fill_sections(page, disclosures)
-        self._fill_shown_by_page(page)
+        try:
+            self._fill_shown_by_page(page)
+        except LimitStopped as e:
+            e.disclosures[:0] = disclosures  # the uploads before it were sent too
+            raise
         return disclosures
 
     def _fill_shown_by_page(self, page: Page) -> None:
@@ -761,8 +782,9 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             if loc.count() != 1 or not loc.is_visible():
                 continue  # not asked: nothing is entered
             try:
-                if not self._fits_here(loc, _text(a["value"])):  # D161: never typed cut
-                    continue  # shown and not entered: the check after filling stops it
+                over = self._cut_at_focus(loc, _text(a["value"]))  # D161: never typed cut
+                if over is not None:
+                    raise LimitStopped(LIMIT_AT_FOCUS.format(limits=over))
                 loc.fill(_text(a["value"]))
             except PWTimeout:
                 raise

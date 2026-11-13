@@ -71,8 +71,8 @@ def without_d161(monkeypatch) -> None:
     """D161's parts switched off: the capture records no limit, and the adapter checks none."""
     monkeypatch.setattr(dom, "control_limit", lambda f, c: None)
     monkeypatch.setattr(adapter.GreenhouseDomAdapter, "_limits_fit", lambda self, page: None)
-    monkeypatch.setattr(adapter.GreenhouseDomAdapter, "_fits_here",
-                        staticmethod(lambda loc, text: True))  # fmt: skip
+    monkeypatch.setattr(adapter.GreenhouseDomAdapter, "_cut_at_focus",
+                        staticmethod(lambda loc, text: None))  # fmt: skip
 
 
 def a_job(api) -> str:
@@ -171,11 +171,6 @@ def test_the_pilot_records_a_typed_question_s_limit_as_the_browser_reads_it(writ
     assert recorded(gh2_limits={NAME: written})[NAME] == want
 
 
-def test_before_d161_the_pilot_recorded_no_limit(monkeypatch):
-    monkeypatch.setattr(dom, "control_limit", lambda f, c: None)
-    assert recorded(gh2_limits={NAME: "3"})[NAME] is None
-
-
 @pytest.mark.parametrize(
     "type_, want",
     [("text", 3), ("search", 3), ("SEARCH", 3), ("url", 3), ("tel", 3), ("email", 3),
@@ -201,6 +196,16 @@ def test_a_limit_is_recorded_only_where_the_browser_holds_typing_to_it(type_, wa
      ('<input id="c" maxlength="3" readonly>', True),
      ('<fieldset disabled><input id="c" maxlength="3"></fieldset>', True),
      ('<div inert><input id="c" maxlength="3"></div>', True),
+     # except one the page locks and fills itself (D129): nothing is typed into it
+     ('<input id="c" maxlength="3" disabled value="x">', False),
+     ('<input id="c" maxlength="3" readonly value="x">', False),
+     ('<textarea id="c" maxlength="3" readonly>x</textarea>', False),
+     ('<input id="c" maxlength="3" inert value="x">', False),
+     ('<div inert><input id="c" maxlength="3" value="x"></div>', False),
+     ('<fieldset disabled><input id="c" maxlength="3" value="x"></fieldset>', False),
+     ('<fieldset disabled><legend><input id="c" maxlength="3" value="x"></legend></fieldset>',
+      True),  # inside the first legend: not locked
+     ('<input id="c" maxlength="3" value="x">', True),  # filled, not locked
      ('<select id="c" maxlength="3"></select>', False)],
 )  # fmt: skip
 def test_the_capture_reads_which_controls_hold_typing_to_a_limit(markup, limited):
@@ -224,13 +229,16 @@ def test_a_limit_only_the_page_s_script_sets_is_not_recorded():
     assert recorded(gh2_limit_js={NAME: 3})[NAME] is None
 
 
-def test_a_locked_control_s_limit_is_recorded_too():
-    """D161 review: a control served locked and unlocked by the page's script is typed into and
-    held to the limit it was served with; skipping locked controls left a pause no read of the
-    form could end. A page that pre-fills a locked field with a value longer than its own limit
-    (D129's identity field) makes that answer a checkpoint: never seen."""
+def test_a_locked_control_s_limit_is_recorded_unless_the_page_fills_it():
+    """D161 reviews: a control served locked and unlocked by the page's script (disabled until
+    shown, read-only until it has focus) is typed into, and held to the limit it was served
+    with; skipping every locked control left a pause no read of the form could end. One the page
+    locks and fills itself is never typed (D129's pre-filled email): no answer of yours is held
+    to its limit."""
     assert recorded(gh2_unlock=[NAME], gh2_limits={NAME: "3"})[NAME] == 3
-    assert recorded(mode="gh2_email_locked_match", gh2_limits={"email": "4"})["email"] == 4
+    assert recorded(gh2_readonly_focus=[NAME], gh2_limits={NAME: "3"})[NAME] == 3
+    assert recorded(mode="gh2_email_locked_match", gh2_limits={"email": "4"})["email"] is None
+    assert recorded(mode="gh2_email_locked_empty", gh2_limits={"email": "4"})["email"] == 4
 
 
 def test_the_limit_of_a_question_the_page_shows_later_is_recorded():
@@ -339,8 +347,11 @@ def test_a_limit_lowered_as_the_control_gets_focus_is_never_typed_cut(api, recei
     as it is typed: it is never typed (no save of it at all), and nothing is sent."""
     app_id = make(api)
     receiver.config(gh2_limit_on_focus={NAME: 3}, gh2_autosave=[NAME])
-    assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
     assert receiver.ledger()["accepted"] == 0 and saves(receiver, NAME) == []
+    # D161 review: filling stops there, naming the limit, so you know what to shorten
+    assert adapter.LIMIT_AT_FOCUS.format(limits=3) in attempt(aid).outcome_detail
 
 
 def test_before_d161_a_limit_lowered_on_focus_left_the_page_holding_it_cut(
@@ -356,12 +367,14 @@ def test_before_d161_a_limit_lowered_on_focus_left_the_page_holding_it_cut(
 
 def test_a_question_the_page_shows_is_not_entered_when_its_limit_is_lowered_on_focus(api, receiver):
     """D135: "Which team" is shown by your earlier answer and entered last; the page lowers its
-    limit as it gets focus: it is not entered (no save of it), and the check after filling stops
-    the attempt (shown, and not entered)."""
+    limit as it gets focus: it is not entered (no save of it), and filling stops there, naming
+    the limit."""
     app_id = application(api, worked_before="Yes", team="Support team")
     receiver.config(gh2_limit_on_focus={TEAM: 3}, gh2_autosave=[TEAM])
-    assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
     assert receiver.ledger()["accepted"] == 0 and saves(receiver, TEAM) == []
+    assert adapter.LIMIT_AT_FOCUS.format(limits=3) in attempt(aid).outcome_detail
 
 
 def test_before_d161_the_question_the_page_shows_was_typed_cut(api, receiver, monkeypatch):
@@ -382,12 +395,19 @@ def test_a_limit_lowered_once_the_answer_is_typed_stops_before_the_send_gate(api
     assert receiver.ledger()["accepted"] == 0 and saves(receiver, NAME) == [5]
 
 
+UNLOCKS = [{"gh2_unlock": [NAME]}, {"gh2_readonly_focus": [NAME]}]
+
+
 @MAKE
-def test_a_control_the_page_unlocks_is_held_to_the_limit_it_was_served_with(api, receiver, make):
-    """D161 review: served disabled with a limit of 3 and enabled by the page's script. Before
-    the fix the capture recorded no limit, "Sammy" was approved, and the attempt paused for a
-    form no read of it could change. Now the limit is yours before approval."""
-    receiver.config(gh2_unlock=[NAME], gh2_limits={NAME: "3"}, gh2_autosave=[NAME])
+@pytest.mark.parametrize("lock", UNLOCKS, ids=["disabled_until_loaded", "readonly_until_focus"])
+def test_a_control_the_page_unlocks_is_held_to_the_limit_it_was_served_with(
+    api, receiver, make, lock
+):
+    """D161 reviews: served disabled (enabled by the page's script) or read-only until it has
+    focus (a common guard against autofill), with a limit of 3. Before the fix the capture
+    recorded no limit, "Sammy" was approved, and the attempt paused for a form no read of it
+    could change. Now the limit is yours before approval."""
+    receiver.config(**lock, gh2_limits={NAME: "3"}, gh2_autosave=[NAME])
     app_id = make(api, name="Sam")
     r = api.put(f"/applications/{app_id}/answers", json={"key": NAME, "value": {"text": "Sammy"}})
     assert r.status_code == 400 and "5/3 characters as the form sends them" in r.text
@@ -436,15 +456,22 @@ def survey(monkeypatch):
 def test_the_survey_reports_each_typed_question_s_limit_as_the_browser_and_capture_read_it(
     receiver, survey
 ):
-    receiver.config(gh2_limits={NAME: "3", "first_name": "3.0"}, gh2_limit_js={"question_8103": 7})
+    limits = {NAME: "3", "first_name": "3.0", "last_name": "3"}
+    receiver.config(gh2_limits=limits, gh2_types={"last_name": "number"},
+                    gh2_limit_js={"question_8103": 7})  # fmt: skip
     got = survey()
     assert got[NAME] == {"browser_reads": 3, "capture_records": 3}
     assert got["first_name"] == {"browser_reads": 3, "capture_records": None}  # no read records
     assert got["question_8103"] == {"browser_reads": 7, "capture_records": None}  # its script's
-    assert got["last_name"] == {"browser_reads": None, "capture_records": None}
+    assert got["last_name"] == {"browser_reads": None, "capture_records": None}  # a number box
     assert got["question_8101"] == "not_applicable"  # a list
     assert got["resume"] == "not_applicable"  # a file
     assert receiver.ledger()["disclosures"] == []
+
+
+def test_the_survey_says_which_typed_question_has_no_control_to_read(receiver, survey):
+    receiver.config(mode="gh2_missing_control")
+    assert survey()["question_8103"] == "not_observable"
 
 
 def test_the_survey_says_what_it_could_not_read_of_the_page_as_served(
@@ -543,17 +570,19 @@ def answer(key, value, kind="text", **kw):
 
 
 def test_what_the_check_holds_to_the_live_limit(chromium):
-    """Typed text only: a text area as an input; not a number, not the location search's text
-    (a search the page answers with its own suggestion, D104); after filling, not a question
-    the page did not show (D135)."""
+    """Typed text only: a text area as an input; not a number, not a box whose type the browser
+    holds to no limit, not the location search's text (a search the page answers with its own
+    suggestion, D104); after filling, not a question the page did not show (D135)."""
     page = chromium.new_page()
     try:
         page.set_content('<form><input id="a" maxlength="3"><textarea id="b" maxlength="3">'
-                         '</textarea><input id="location" maxlength="3"></form>')  # fmt: skip
+                         '</textarea><input id="location" maxlength="3">'
+                         '<input id="n" type="number" maxlength="3"></form>')  # fmt: skip
         over = {"text": "abcd"}
         assert limits_fit(page, [answer("a", over)])
         assert limits_fit(page, [answer("b", over, "textarea")])
         assert limits_fit(page, [answer("a", {"number": 12345})]) is None
+        assert limits_fit(page, [answer("n", over)]) is None  # a number box limits nothing
         assert limits_fit(page, [answer("location", over, widget="location_search")]) is None
         hidden = answer("a", over, condition={"key": "unknown-trigger", "any_of": ["?"]})
         assert limits_fit(page, [hidden])  # before filling: it may be shown and typed
@@ -571,10 +600,11 @@ def test_the_check_before_typing_reads_the_limit_once_the_control_has_focus(chro
             'a.addEventListener("focus", () => { a.maxLength = 3; });'
             'b.addEventListener("focus", () => { b.maxLength = 3; });</script>'
         )
-        assert adapter.GreenhouseDomAdapter._fits_here(page.locator("#a"), "abc")
-        assert not adapter.GreenhouseDomAdapter._fits_here(page.locator("#a"), "abcd")
+        cut = adapter.GreenhouseDomAdapter._cut_at_focus
+        assert cut(page.locator("#a"), "abc") is None
+        assert cut(page.locator("#a"), "abcd") == 3
         # counted as the form sends it (D158): an emoji counts two
-        assert not adapter.GreenhouseDomAdapter._fits_here(page.locator("#a"), "ab\U0001f600")
-        assert adapter.GreenhouseDomAdapter._fits_here(page.locator("#b"), "123456")
+        assert cut(page.locator("#a"), "ab\U0001f600") == 3
+        assert cut(page.locator("#b"), "123456") is None
     finally:
         page.close()

@@ -211,7 +211,8 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                     # D161: the v2 approximation's limits and saves as you type
                     "gh2_limits": None, "gh2_limit_js": None, "gh2_limit_on_focus": None,
                     "gh2_limit_on_input": None, "gh2_types": None, "gh2_autosave": None,
-                    "gh2_limit_once_typed": None, "gh2_unlock": None})
+                    "gh2_limit_once_typed": None, "gh2_unlock": None,
+                    "gh2_readonly_focus": None})
         return {"ok": True}
 
     @app.get("/_fx/wait")
