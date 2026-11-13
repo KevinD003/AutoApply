@@ -292,7 +292,7 @@ _PAGE_CHECK_JS = """
   if (CHECK === 'next_aria' && phone) {
     // the page marks the phone when it holds spaces, as its own script checks it
     const rule = () => {
-      if (/\s/.test(phone.value)) phone.setAttribute('aria-invalid', 'true');
+      if (/\\s/.test(phone.value)) phone.setAttribute('aria-invalid', 'true');
       else phone.removeAttribute('aria-invalid');
     };
     phone.addEventListener('input', rule);

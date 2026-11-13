@@ -564,18 +564,24 @@ def test_a_next_whose_click_fails_says_the_page_may_have_been_saved():
     from app.modules.execution.adapters.fixture_ats import StoppedAfterDisclosure
     from app.modules.execution.adapters.workday import NEXT_INTERRUPTED, WorkdayFixtureAdapter
 
+    clicked = []
+
     class Gone:  # a page that breaks at the click
         def locator(self, _selector):
             return self
 
         def click(self, **_kw):
+            clicked.append(1)
             raise PWError("the page went away")
 
     handed = []
     stub = SimpleNamespace(_hand_over=lambda: handed.append(1), FORM="form", PAGE_KIND="k")
+    # D156: the Next is found as the checks before its gate find it (the adapter's own code)
+    stub.next_button = lambda page, i: WorkdayFixtureAdapter.next_button(stub, page, i)
     with pytest.raises(StoppedAfterDisclosure) as stopped:
         WorkdayFixtureAdapter.click_next(stub, Gone(), 2, 1000)
     assert handed == [1]  # marked as possibly sent before the click was made
+    assert clicked == [1] and isinstance(stopped.value.__cause__, PWError)  # the click's own
     assert str(stopped.value) == NEXT_INTERRUPTED
     assert "does not know whether that page was saved" in NEXT_INTERRUPTED
     assert stopped.value.disclosures == [{"kind": "draft_page", "page": 2, "ack": "none"}]
