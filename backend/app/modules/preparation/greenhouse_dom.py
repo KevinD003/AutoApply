@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass, field
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation.forms import (
     KEY_PATTERN,
+    TEXT_TYPES,
     UNKNOWN_TRIGGER,
     Condition,
     ExtractionError,
@@ -31,6 +32,7 @@ from app.modules.preparation.forms import (
     SectionSpec,
     _Node,
     _TreeBuilder,
+    question_limit,
 )
 
 # v2: a visible page control the job data does not list becomes a blocking field at capture
@@ -57,6 +59,10 @@ from app.modules.preparation.forms import (
 # every section control back before the send gate. A v5 worker would type into it and read back
 # its input, which a react-select page leaves empty, so it can never claim a package approved
 # under v6.
+# D161 (no new version): a typed question's length limit, as its page shows it, is recorded
+# (`control_limit`) and the adapter holds each typed answer to the limit its control has now.
+# Both only stop more: a v6 worker types an answer that fits whole, and one cut by the page is
+# stopped by its readback, as before; an approval given before means what it meant.
 EXTRACTION_VERSION = "greenhouse-dom-v6"
 # D136: what the DOM adapter (execution/adapters/greenhouse_dom.py) fills, by field type; a choice
 # only as an ARIA combobox. Anything else is decided here, at capture, never after an approval:
@@ -110,6 +116,94 @@ class Control:
     group_key: int | None = None
     group_name: str | None = None
     group_required: bool = False  # D130: aria-required="true" on the enclosing group
+    # D161: its `maxlength` attribute as the browser keeps it (the first of two), and whether
+    # the browser holds what is typed into it to that limit (`limits_typing`). A locked control is
+    # read the same (the page's script may unlock it before anything is typed: a box read-only
+    # until it has focus, a question disabled until shown), except one the page as served both
+    # locks and fills itself (`_page_filled`: D129's identity field, never typed).
+    maxlength: str | None = None
+    limited: bool = False
+
+
+# D161: the input types whose `maxlength` limits what is typed (a text area's does too); on any
+# other (a number, a date, a file) the browser ignores it. A `type` the browser does not know,
+# or none, is a text input.
+LIMITED_INPUTS = frozenset({"text", "search", "url", "tel", "email", "password"})
+_INPUT_TYPES = LIMITED_INPUTS | {
+    "hidden", "date", "month", "week", "time", "datetime-local", "number", "range", "color",
+    "checkbox", "radio", "file", "submit", "image", "reset", "button",
+}  # fmt: skip
+_ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+
+
+# D161: a control's length limit now, read in the page (the adapter, before anything is entered and
+# before each value is typed; the read-only survey): its limit as the browser reads it
+# (`maxLength`, -1 for none), whatever set it (the page's markup or its script); its `maxlength`
+# attribute as written (the first of two, which the browser keeps), which is what a read of the
+# form records (`question_limit`); and whether the browser holds what is typed into it to a limit
+# at all (`limits_typing`; `type` read as the browser normalises it).
+# Read through the browser's own definitions, as D160's reads of the form: a page that redefines
+# `maxLength`, `getAttribute` or `type` on the element itself cannot change what is read.
+LIVE_LIMIT_JS = """(e) => {
+  const get = (P, k) => Object.getOwnPropertyDescriptor(P, k).get.call(e);
+  const tag = Object.getOwnPropertyDescriptor(Element.prototype, 'localName').get.call(e);
+  const P = tag === 'textarea' ? HTMLTextAreaElement.prototype
+    : tag === 'input' ? HTMLInputElement.prototype : null;
+  if (P === null) return [-1, null, false];
+  const written = Element.prototype.getAttribute.call(e, 'maxlength');
+  const applies = tag === 'textarea'
+    || %s.includes(get(HTMLInputElement.prototype, 'type'));
+  return [get(P, 'maxLength'), written, applies];
+}""" % ("[" + ", ".join(f"'{t}'" for t in sorted(LIMITED_INPUTS)) + "]")
+
+
+def limits_typing(tag: str, type_attr: str | None) -> bool:
+    """D161: whether the browser holds what is typed into this control to its `maxlength`: a text
+    area, or an input whose `type` (the first of two, matched ASCII case-insensitively, as the
+    browser reads it) is a text type, or one the browser does not know."""
+    if tag == "textarea":
+        return True
+    if tag != "input":
+        return False
+    t = (type_attr or "").translate(_ASCII_LOWER)
+    return (t if t in _INPUT_TYPES else "text") in LIMITED_INPUTS
+
+
+def _locked(n: _Node) -> bool:
+    """D161: a control nothing can be typed into, as the browser reads the page: `disabled` or
+    `readonly` on it, `inert` on it or around it, or a disabled fieldset around it (outside that
+    fieldset's first legend)."""
+    if "disabled" in n.attrs or "readonly" in n.attrs or "inert" in n.attrs:
+        return True
+    up = list(n.ancestors())
+    for a in up:
+        if "inert" in a.attrs:
+            return True
+        if a.tag == "fieldset" and "disabled" in a.attrs:
+            legend = next((c for c in a.children if isinstance(c, _Node) and c.tag == "legend"),
+                          None)  # fmt: skip
+            if legend is None or legend not in up:
+                return True
+    return False
+
+
+def _page_filled(n: _Node) -> bool:
+    """D161 review: a control the page as served locks and fills itself (an input's `value`, the
+    first of two; a text area's text), as D129's pre-filled identity field: nothing is typed
+    into it, so its limit holds no answer of yours."""
+    filled = n.all_text() if n.tag == "textarea" else n.twice.get("value", n.attrs.get("value"))
+    return bool(filled) and _locked(n)
+
+
+def control_limit(f: FormField, c: "Control | None") -> int | None:
+    """D161: the length limit a typed question's page shows on its control, read as the browser
+    reads it (`forms.question_limit`, D158), where the browser applies it to what is typed; None
+    otherwise (no limit, one written so that no read records it, or a control it limits nothing
+    on). Recorded as the question's `max_length`, which your answer is held to before you approve
+    (D158) and which the form's version holds (D159)."""
+    if c is None or f.type not in TEXT_TYPES or not c.limited:
+        return None
+    return question_limit(c.maxlength)
 
 
 @dataclass
@@ -216,6 +310,9 @@ def snapshot(html: str) -> list[Control]:
                 group_key=order[id(grp)] if grp is not None else None,
                 group_name=gname,
                 group_required=grp is not None and grp.attrs.get("aria-required") == "true",
+                maxlength=n.twice.get("maxlength", n.attrs.get("maxlength")),  # D161
+                limited=limits_typing(n.tag, n.twice.get("type", n.attrs.get("type")))
+                and not _page_filled(n),
             )
         )
     return out
@@ -770,6 +867,11 @@ def build_schema(api: dict, page_html: str, *, stand_ins: bool = False
         elif m.hidden_at_load and f.type != FieldType.unsupported:
             # Shown by page logic we cannot see: its condition is unknown, never a guess.
             f = f.model_copy(update={"condition": Condition(key=UNKNOWN_TRIGGER, any_of=["?"])})
+        page_limit = control_limit(f, m.control) if m.status == "mapped" else None
+        if page_limit is not None:
+            # D161: the limit its page shows, read as the browser reads it (the job data states
+            # none): your answer is held to it before you approve (D158), as its form sends it.
+            f = f.model_copy(update={"max_length": min(page_limit, f.max_length or page_limit)})
         fields.append(f)
     taken = {f.key for f in fields}
     phone = phone_country_field(from_api.fields, controls, page_html, taken) if stand_ins else None

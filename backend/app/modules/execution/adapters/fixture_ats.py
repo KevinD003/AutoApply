@@ -130,6 +130,21 @@ def _over_limit(limit, text: str) -> bool:
     return isinstance(limit, int) and not isinstance(limit, bool) and 0 <= limit < sent_len(text)
 
 
+def limits_verdict(over: list[tuple[int, bool]]):
+    """D159: the stop for typed answers longer than their controls' live limits, each given with
+    whether a read of the form records that limit (`forms.question_limit`): every one recorded,
+    D132's pause (reading the form again records them); any other, a plain stop naming the
+    limits. None when no answer is over (D161: the Greenhouse pilot's check gives the same)."""
+    if not over:
+        return None
+    limits = ", ".join(str(n) for n in sorted({n for n, _ in over}))
+    if all(readable for _, readable in over):
+        return FormChanged(f"{FORM_CHANGED} ({len(over)} answer(s) longer than the page now "
+                           f"accepts: {limits} characters as the form sends them)",
+                           changed=len(over))  # fmt: skip
+    return LIMIT_UNREADABLE.format(limits=limits)
+
+
 def _sent_strings(content: dict):
     """D159: the text of every approved answer as its form sends it: typed text and the values
     of the options chosen (numbers and dates are digits)."""
@@ -357,14 +372,7 @@ class FixtureAtsAdapter(ReportsDisclosures):
                 continue  # filling and the readback report it
             if _over_limit(limit, v["text"]):
                 over.append((limit, question_limit(written) == limit))
-        if not over:
-            return None
-        limits = ", ".join(str(n) for n in sorted({n for n, _ in over}))
-        if all(readable for _, readable in over):
-            return FormChanged(f"{FORM_CHANGED} ({len(over)} answer(s) longer than the page now "
-                               f"accepts: {limits} characters as the form sends them)",
-                               changed=len(over))  # fmt: skip
-        return LIMIT_UNREADABLE.format(limits=limits)
+        return limits_verdict(over)
 
     # -- fill -------------------------------------------------------------------------------
     def fill(self, page: Page) -> list[dict]:
