@@ -220,6 +220,30 @@ _DIRNAME_TYPES = ("text", "search", "tel", "url", "email", "password")
 _INPUT_TYPES = frozenset((*_DIRNAME_TYPES, "hidden", "number", "range", "color", "checkbox",
                           "radio", "file", "submit", "image", "reset", "button", "date", "month",
                           "week", "time", "datetime-local"))  # fmt: skip
+# D161, D162: the input types whose `maxlength` limits what is typed (measured; the same as
+# `dirname`'s), a text area's too; on any other (a number, a date, a file) the browser ignores it.
+LIMITED_INPUTS = frozenset(_DIRNAME_TYPES)
+
+# D161 (the Greenhouse pilot), D162 (every adapter): a control's length limit now, read in the
+# page (before anything is entered, right before its value is typed, and by the read-only survey):
+# its limit as the browser reads it (`maxLength`, -1 for none), whatever set it (the page's markup
+# or its script); its `maxlength` attribute as written (the first of two, which the browser keeps),
+# which is what a read of the form records (`question_limit`); and whether the browser holds what
+# is typed into it to a limit at all (a text area, or an input whose `type`, as the browser
+# normalises it, is one of LIMITED_INPUTS). Read through the browser's own definitions, as D160's
+# reads of the form: a page that redefines `maxLength`, `getAttribute`, `type` or `localName` on
+# the element itself cannot change what is read.
+LIVE_LIMIT_JS = """(e) => {
+  const get = (P, k) => Object.getOwnPropertyDescriptor(P, k).get.call(e);
+  const tag = Object.getOwnPropertyDescriptor(Element.prototype, 'localName').get.call(e);
+  const P = tag === 'textarea' ? HTMLTextAreaElement.prototype
+    : tag === 'input' ? HTMLInputElement.prototype : null;
+  if (P === null) return [-1, null, false];
+  const written = Element.prototype.getAttribute.call(e, 'maxlength');
+  const applies = tag === 'textarea'
+    || %s.includes(get(HTMLInputElement.prototype, 'type'));
+  return [get(P, 'maxLength'), written, applies];
+}""" % ("[" + ", ".join(f"'{t}'" for t in sorted(LIMITED_INPUTS)) + "]")
 
 
 def _ascii_lower(s: str) -> str:

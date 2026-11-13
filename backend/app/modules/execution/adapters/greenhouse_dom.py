@@ -43,9 +43,11 @@ from app.modules.execution.adapters.fixture_ats import (
     ACK_NONE,
     ACK_SHOWN,
     FORM_CHANGED,
+    LIMIT_AT_FOCUS,
     ConditionalRequired,
     FixtureAtsAdapter,
     FormChanged,
+    LimitStopped,
     Outcome,
     StoppedAfterDisclosure,
     UploadFailed,
@@ -247,20 +249,6 @@ def _place(s: str | None) -> str:
 
 class LocationStopped(StoppedAfterDisclosure):
     """D104: the location search stopped the attempt; never retried."""
-
-
-# D161 review: a value the page's limit would cut once its box has focus is never typed, and
-# filling stops there, naming the limit (a number, never the question), so you know what to
-# shorten; no read of the form records a limit the page sets only then.
-LIMIT_AT_FOCUS = (
-    "an answer is longer than the employer's page accepts once its box has focus ({limits} "
-    "characters as the form sends them); it was not typed, and filling stopped there: shorten it "
-    "and approve it again, or apply on the employer's site"
-)
-
-
-class LimitStopped(StoppedAfterDisclosure):
-    """D161 review: filling stopped at a value its box's limit would cut; never retried."""
 
 
 def _text(value: dict) -> str:
@@ -540,18 +528,6 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
             if applies and _over_limit(limit, v["text"]):
                 over.append((limit, question_limit(written) == limit))
         return limits_verdict(over)
-
-    @staticmethod
-    def _cut_at_focus(loc, text: str) -> int | None:
-        """D161: D159's check once the control has focus, right before its value is typed (a
-        page's script may lower its limit after the form was checked, or as it gets focus): the
-        limit that would cut the value, or None. Such a value is never typed: filling stops there,
-        naming the limit (`LimitStopped`). A page that lowers it while the value is being typed
-        (in `beforeinput`), or cuts what is typed by its own script, still cuts it; the readback
-        stops that."""
-        loc.focus()
-        limit, _, applies = loc.evaluate(dom.LIVE_LIMIT_JS)
-        return limit if applies and _over_limit(limit, text) else None
 
     def _identity_prefill_refusal(self, page: Page, fields, controls) -> str | None:
         """D129: before disclosure, a locked (disabled or read-only) identity field the page

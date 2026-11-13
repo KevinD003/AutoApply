@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass, field
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation.forms import (
     KEY_PATTERN,
+    LIMITED_INPUTS,
     TEXT_TYPES,
     UNKNOWN_TRIGGER,
     Condition,
@@ -33,6 +34,9 @@ from app.modules.preparation.forms import (
     _Node,
     _TreeBuilder,
     question_limit,
+)
+from app.modules.preparation.forms import (
+    LIVE_LIMIT_JS as LIVE_LIMIT_JS,  # D162: read here by the pilot and the read-only survey
 )
 
 # v2: a visible page control the job data does not list becomes a blocking field at capture
@@ -125,10 +129,9 @@ class Control:
     limited: bool = False
 
 
-# D161: the input types whose `maxlength` limits what is typed (a text area's does too); on any
-# other (a number, a date, a file) the browser ignores it. A `type` the browser does not know,
-# or none, is a text input.
-LIMITED_INPUTS = frozenset({"text", "search", "url", "tel", "email", "password"})
+# D161: the input types whose `maxlength` limits what is typed (`forms.LIMITED_INPUTS`; a text
+# area's does too); on any other (a number, a date, a file) the browser ignores it. A `type` the
+# browser does not know, or none, is a text input.
 _INPUT_TYPES = LIMITED_INPUTS | {
     "hidden", "date", "month", "week", "time", "datetime-local", "number", "range", "color",
     "checkbox", "radio", "file", "submit", "image", "reset", "button",
@@ -136,25 +139,8 @@ _INPUT_TYPES = LIMITED_INPUTS | {
 _ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
 
 
-# D161: a control's length limit now, read in the page (the adapter, before anything is entered and
-# before each value is typed; the read-only survey): its limit as the browser reads it
-# (`maxLength`, -1 for none), whatever set it (the page's markup or its script); its `maxlength`
-# attribute as written (the first of two, which the browser keeps), which is what a read of the
-# form records (`question_limit`); and whether the browser holds what is typed into it to a limit
-# at all (`limits_typing`; `type` read as the browser normalises it).
-# Read through the browser's own definitions, as D160's reads of the form: a page that redefines
-# `maxLength`, `getAttribute` or `type` on the element itself cannot change what is read.
-LIVE_LIMIT_JS = """(e) => {
-  const get = (P, k) => Object.getOwnPropertyDescriptor(P, k).get.call(e);
-  const tag = Object.getOwnPropertyDescriptor(Element.prototype, 'localName').get.call(e);
-  const P = tag === 'textarea' ? HTMLTextAreaElement.prototype
-    : tag === 'input' ? HTMLInputElement.prototype : null;
-  if (P === null) return [-1, null, false];
-  const written = Element.prototype.getAttribute.call(e, 'maxlength');
-  const applies = tag === 'textarea'
-    || %s.includes(get(HTMLInputElement.prototype, 'type'));
-  return [get(P, 'maxLength'), written, applies];
-}""" % ("[" + ", ".join(f"'{t}'" for t in sorted(LIMITED_INPUTS)) + "]")
+# D161: a control's length limit now, read in the page as the browser reads it, is
+# `forms.LIVE_LIMIT_JS` (D162: every adapter's; imported above, for the pilot and the survey).
 
 
 def limits_typing(tag: str, type_attr: str | None) -> bool:

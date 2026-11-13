@@ -300,6 +300,9 @@ if (next) next.addEventListener('click', () => {{ location.href = next.dataset.n
                             ' value="Text the page wrote (fictional)">', 1)
     if sends == "gh_limit_at_load":
         body += "<script>document.getElementById('question_7007').maxLength = 20;</script>"
+    if sends == "gh_limit_on_focus":  # D162: lowered as its box gets focus, after the form's check
+        body += ("<script>document.getElementById('question_7007').addEventListener('focus', "
+                 "(e) => { e.target.maxLength = 20; });</script>")
     if sends == "gh_wrap_page_text":
         body += ("<script>document.getElementById('question_7007').value = 'Text the page wrote "
                  "itself (fictional), long enough to wrap twice.';</script>")

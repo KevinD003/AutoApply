@@ -44,7 +44,7 @@ from app.modules.execution.adapters.greenhouse_sections import (
     section_from_content,
     section_root,
 )
-from app.modules.preparation.forms import sent_len
+from app.modules.preparation.forms import LIVE_LIMIT_JS, sent_len
 
 KIND = "employment"
 # A frozen employment field -> how it is entered, and the part of the control's name.
@@ -146,8 +146,9 @@ def _click_add(page, root: str, timeout_ms: int) -> None:
 
 
 # D157: the length the control accepts now (`maxLength`, -1 for none), whatever set it: a page's
-# script may limit the entry it adds after the form was read.
-_LIVE_LIMIT = "(e) => e.maxLength"
+# script may limit the entry it adds after the form was read. D162: as the browser reads it
+# (`forms.LIVE_LIMIT_JS`: through its own definitions, where it holds typing to a limit at all),
+# once the control has focus (a page may lower it then).
 
 
 def _give(page, op: FillOp, timeout_ms: int) -> None:
@@ -156,10 +157,15 @@ def _give(page, op: FillOp, timeout_ms: int) -> None:
         loc.set_checked(bool(op.value), timeout=timeout_ms)
     else:
         # D157: never a value the control would cut, refused before it is typed (a page that
-        # saves as you type would save it cut), counted as its form sends it
-        limit = loc.evaluate(_LIVE_LIMIT, timeout=timeout_ms)
-        if isinstance(limit, int) and limit >= 0 and sent_len(str(op.value)) > limit:
-            raise SectionFillError(f"{KIND}: {op.field} is longer than the page now accepts")
+        # saves as you type would save it cut), counted as its form sends it; D162: naming the
+        # limit, read once the control has focus
+        loc.focus(timeout=timeout_ms)
+        limit, _, applies = loc.evaluate(LIVE_LIMIT_JS, timeout=timeout_ms)
+        if applies and isinstance(limit, int) and 0 <= limit < sent_len(str(op.value)):
+            raise SectionFillError(
+                f"{KIND}: {op.field} is longer than the page now accepts ({limit} characters as "
+                "the form sends them)"
+            )
         loc.fill(str(op.value), timeout=timeout_ms)
         # D155: focus leaves it, as it would for a person, so a page that reacts on `change`
         # does so now, before the readback, not at the next click
