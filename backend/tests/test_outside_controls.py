@@ -642,9 +642,9 @@ def adapter_of(cls):
 
 @pytest.mark.parametrize("name", list(ADAPTERS))
 def test_each_adapter_reads_its_own_page_without_a_stop_and_stops_what_no_read_shows(
-    page,
+    page,  # noqa: F811
     receiver,
-    name,  # noqa: F811
+    name,
 ):
     """D160 reviews: each adapter, on its own stand-in's page as served: its form singled out,
     every control read, its final click on that form. Then the same page given a custom element,
