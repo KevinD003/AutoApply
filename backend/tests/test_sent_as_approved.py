@@ -217,14 +217,21 @@ def gh_page(**cfg) -> tuple[dict, str]:
 def test_greenhouse_classic_keeps_its_cross_check_where_the_page_refuses_a_question():
     """D159 review: the refusal was adopted before the job data and the page were compared, so a
     page control of another type (a list where the job data says text area) passed. They are
-    compared as the page reads without D159's rule, then the refusal is taken."""
+    compared as the page reads without D159's rule, then the refusal is taken. The list keeps
+    the question's wording, help and requirement, so its type is the only difference."""
     api_json, html = gh_page()
     textarea = html[html.index('<textarea id="question_7007"') :]
     textarea = textarea[: textarea.index("</textarea>") + len("</textarea>")]
-    as_list = ('<select id="question_7007" name="question_7007" form="elsewhere">'
-               '<option value="1">One</option></select>')  # fmt: skip
+    as_list = ('<select id="question_7007" name="question_7007" form="elsewhere" '
+               'aria-describedby="question_7007_help"><option value="1">One</option></select>')  # fmt: skip
+    listed = html.replace(textarea, as_list)
+    page_q = {f.key: f for f in gh.rendered_schema(listed, sent_rule=False).fields}["question_7007"]
+    api_q = {f.key: f for f in gh.schema_from_api(api_json).fields}["question_7007"]
+    assert page_q.type == FieldType.select and api_q.type == FieldType.textarea
+    assert (page_q.label, page_q.help_text, page_q.required) == (
+        api_q.label, api_q.help_text, api_q.required)  # fmt: skip
     with pytest.raises(gh.SchemaMismatch, match="1 different"):
-        gh.build_schema(api_json, html.replace(textarea, as_list))
+        gh.build_schema(api_json, listed)
 
 
 def test_greenhouse_classic_holds_an_answer_to_its_page_s_own_limit():
