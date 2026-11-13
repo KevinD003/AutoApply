@@ -393,17 +393,19 @@ def _twice(attrs: list[tuple[str, str | None]]) -> frozenset[str]:
     return frozenset(k for k in names if names.count(k) > 1)
 
 
-def _whole_number(raw: str | None) -> int | None:
-    """An attribute's whole number written in ASCII digits, None otherwise, never an error of
-    capture whatever the page writes (D157: `int()` failed on a digit such as a superscript two,
-    and on more digits than Python converts, and read other scripts' digits the browser does
-    not)."""
+def _whole_number(raw: str | None, top: int = 100_000) -> int | None:
+    """An attribute's whole number written in ASCII digits, from 1 to `top` (`FormField`'s own
+    bounds for `max_length`), None otherwise: never an error of reading the form, whatever the
+    page writes. D157: `int()` failed on a digit such as a superscript two and on more digits
+    than Python converts, read other scripts' digits the browser does not, and a limit of 0 or
+    above `top` (some page frameworks write 524288) failed `FormField` and so the whole form; such
+    a limit is not recorded, and the readback still stops a value the browser cut."""
     if not raw or not (raw.isascii() and raw.isdigit()):
         return None
-    try:
-        return int(raw)
-    except ValueError:  # more digits than Python converts
+    digits = raw.lstrip("0")
+    if not digits or len(digits) > len(str(top)) or int(digits) > top:
         return None
+    return int(digits)
 
 
 class _TreeBuilder(HTMLParser):

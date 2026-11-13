@@ -213,13 +213,20 @@ def test_an_entry_on_the_page_with_another_constraint_is_one_checkpoint(attrs):
 
 @pytest.mark.parametrize("written, read_as", [
     ("40", 40),
+    ("040", 40),
+    ("100000", 100_000),
     ("²", None),
     ("٤٠", None),
     ("9" * 5000, None),
-], ids=["digits", "superscript", "other-digits", "thousands-of-digits"])  # fmt: skip
+    ("0", None),
+    ("100001", None),
+    ("524288", None),
+], ids=["digits", "leading-zero", "largest", "superscript", "other-digits", "thousands-of-digits",
+        "zero", "too-large", "framework-default"])  # fmt: skip
 def test_an_ordinary_question_s_limit_never_breaks_reading_the_form(written, read_as):
     """D157, found by its review: `int()` failed on a superscript two and on more digits than
-    Python converts, and read other scripts' digits the browser does not."""
+    Python converts, and read other scripts' digits the browser does not; a limit of 0 or above
+    `FormField`'s bound failed the whole form. Such a limit is not recorded."""
     html = (f'<form><label for="n">Nickname</label><input id="n" name="nickname" type="text" '
             f'maxlength="{written}"></form>')  # fmt: skip
     (field,) = extract_form_schema(html).fields
