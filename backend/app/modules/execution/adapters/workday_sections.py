@@ -44,6 +44,7 @@ from playwright.sync_api import Error as PWError
 from app.modules.execution.adapters.form_entries import ENTRIES_JS
 from app.modules.execution.adapters.greenhouse_sections import (
     FillOp,
+    NotChosen,
     NotTyped,
     Refused,
     RowPlan,
@@ -210,18 +211,37 @@ def _click_add(page, root: str, timeout_ms: int, kind: str = KIND) -> None:
 # once the control has focus (a page may lower it then).
 
 
-def _give(page, op: FillOp, timeout_ms: int, kind: str = KIND) -> None:
+def _what(op: FillOp) -> str:
+    """What a stop calls the control: its kind of entry and its field (D163: by its name)."""
+    kind = "education" if '[name="edu[' in op.selector else KIND
+    return f"{kind}: {op.field}"
+
+
+# D163: a list's option of a value, and whether a person could choose it now: the list enabled,
+# exactly one option of that value, enabled, and shown (not `hidden`, not styled away).
+_CHOOSABLE = """(e, value) => {
+  const options = [...e.options].filter((o) => o.value === value);
+  if (e.disabled || options.length !== 1) return false;
+  const o = options[0], style = getComputedStyle(o);
+  return !o.disabled && !o.hidden && style.display !== 'none' && style.visibility !== 'hidden';
+}"""
+
+
+def _give(page, op: FillOp, timeout_ms: int) -> None:
     loc = page.locator(op.selector).first
     if op.kind == "checkbox":
         loc.set_checked(bool(op.value), timeout=timeout_ms)
-    elif op.kind == "select":  # D163: its option, by value; nothing is typed
+    elif op.kind == "select":
+        # D163 review: its option chosen by value, only one a person could choose now; nothing is
+        # typed, and a list left unchosen is never recorded as entered (`NotChosen`).
+        if not loc.evaluate(_CHOOSABLE, str(op.value), timeout=timeout_ms):
+            raise NotChosen(f"{_what(op)}: the approved option cannot be chosen now")
         loc.select_option(value=str(op.value), timeout=timeout_ms)
-        loc.blur(timeout=timeout_ms)
     else:
         # D157: never a value the control would cut, refused before it is typed (a page that
         # saves as you type would save it cut), counted as its form sends it; D162: read once
         # the control has focus for certain, the stop naming the limit (`NotTyped`)
-        check_at_focus(loc, str(op.value), timeout_ms, f"{kind}: {op.field}")
+        check_at_focus(loc, str(op.value), timeout_ms, _what(op))
         loc.fill(str(op.value), timeout=timeout_ms)
         # D155: focus leaves it, as it would for a person, so a page that reacts on `change`
         # does so now, before the readback, not at the next click
@@ -244,15 +264,19 @@ _SUBMITTED = (
 
 
 # D163: a list's one chosen option, as the browser holds it: its value and its shown text (None
-# when none or several are chosen).
-_CHOSEN = """(e) => e.selectedOptions.length === 1
-  ? [e.selectedOptions[0].value, e.selectedOptions[0].text] : null"""
+# when none or several are chosen, or, D163 review, when the page hides the one chosen).
+_CHOSEN = """(e) => {
+  if (e.selectedOptions.length !== 1) return null;
+  const o = e.selectedOptions[0], style = getComputedStyle(o);
+  if (o.hidden || style.display === 'none' || style.visibility === 'hidden') return null;
+  return [o.value, o.text];
+}"""
 
 
 def _holds(page, op: FillOp) -> bool:
     """The control holds exactly what was approved (a box: ticked as approved), and a typed one
     is what its form would send, once and exactly (D155). D163: a list holds one option, of the
-    approved value and text, and its form sends that value, once."""
+    approved value and text, shown, and its form sends that value, once."""
     try:
         loc = page.locator(op.selector)
         if loc.count() != 1:
@@ -322,9 +346,9 @@ def apply(page, entries: SectionPlan, root: str, *, timeout_ms: int = 3000, on_e
                     progress()
                 refused = False
                 try:
-                    _give(page, op, timeout_ms, kind)
-                except NotTyped:
-                    refused = True  # D162: refused before anything was typed: nothing to record
+                    _give(page, op, timeout_ms)
+                except (NotTyped, NotChosen):
+                    refused = True  # D162, D163: nothing typed or chosen: nothing to record
                     raise
                 finally:  # the page may hold it, or part of it, whatever else happened
                     if not refused:

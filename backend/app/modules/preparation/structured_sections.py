@@ -143,10 +143,16 @@ def _ref(record, record_type: str, attr: str, value) -> dict:
 # -- option matching -------------------------------------------------------------------------
 
 
+# D163 review: a trailing parenthetical that is an abbreviation, as written ("M.B.A.", "Ph.D.",
+# "MBA"); never a qualifier ("(Other)", "(No Degree)"), which would match a bare "Other".
+_ABBREVIATION = re.compile(r"(?:[A-Za-z]{1,4}\.\s?){1,5}|[A-Z]{2,6}")
+
+
 def _degree_keys(text: str) -> set[str]:
     """Match keys for a degree label, grounded only in the label's own text: the normalized
     text, the text with/without a trailing 'degree', and a trailing parenthetical abbreviation
-    (so 'Master of Business Administration (M.B.A.)' also matches 'MBA' / 'M.B.A.')."""
+    (so 'Master of Business Administration (M.B.A.)' also matches 'MBA' / 'M.B.A.'; D163 review:
+    only one written as an abbreviation, `_ABBREVIATION`)."""
     n = normalize(text)
     if not n:
         return set()
@@ -155,9 +161,9 @@ def _degree_keys(text: str) -> set[str]:
         keys.add(n[: -len(" degree")].strip())
     else:
         keys.add(f"{n} degree")
-    m = re.search(r"\(([^)]+)\)\s*$", n)
-    if m:
-        keys.add(re.sub(r"[.\s]", "", m.group(1)))
+    m = re.search(r"\(([^)]+)\)\s*$", text or "")
+    if m and _ABBREVIATION.fullmatch(m.group(1).strip()):
+        keys.add(re.sub(r"[.\s]", "", m.group(1)).lower())
     # A dots/spaces-stripped form, so a typed abbreviation ("M.B.A.") reduces to the same token
     # ("mba") as the option's own parenthetical abbreviation.
     stripped = re.sub(r"[.\s]", "", n)

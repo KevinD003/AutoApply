@@ -149,8 +149,9 @@ page whose Role Description is limited otherwise). D163, FA9: education (the Edu
 page 2), education_required (the page requires an entry), education_and_experience (both
 sections on page 2), education_entry_at_load (one empty entry already there at load),
 education_unknown_control (an entry also asks a required "Overall Result (GPA)"),
-education_parse (a resume upload adds an education entry with values of its own) and
-education_changed_after_next (once page 2 is saved, the page changes its first entry's school).
+education_parse (a resume upload adds an education entry with values of its own),
+education_changed_after_next (once page 2 is saved, the page changes its first entry's school)
+and education_add_broken (Add adds nothing).
 The single page's mode wd_experience puts the Work Experience section on its My Experience
 section, and wd_education the Education section.
 """
@@ -518,7 +519,7 @@ def _work_errors(fields: dict, required: bool, parts_required: bool = False,
 # D163, FA9: the Education section, by wizard variant (the single page's mode is "wd_education").
 EDU_VARIANTS = ("education", "education_required", "education_and_experience",
                 "education_entry_at_load", "education_unknown_control", "education_parse",
-                "education_changed_after_next")  # fmt: skip
+                "education_changed_after_next", "education_add_broken")  # fmt: skip
 # The lists' options: (value, text); each value an id of the page's own (fixture design).
 EDU_SCHOOLS = (("sch-101", "State University"), ("sch-102", "Metro College"),
                ("sch-103", "Riverside Institute of Technology"))  # fmt: skip
@@ -571,11 +572,13 @@ def _edu_section(variant: str | None) -> tuple[str, str, str]:
               f'<button type="button" data-wd-add>{"Add Another" if at_load else "Add"}</button>'
               "</div>")  # fmt: skip
     template = f'<template id="education-entry">{entry}</template>'
+    broken = "return -1;" if variant == "education_add_broken" else ""
     script = """
 const eduSection = document.getElementById('education');
 const eduEntries = eduSection.querySelector('[data-wd-entries]');
 const eduAdd = eduSection.querySelector('[data-wd-add]');
 window.addEducationEntry = () => {
+  """ + broken + """
   const i = eduEntries.querySelectorAll('[data-wd-entry]').length;
   const tpl = document.getElementById('education-entry').innerHTML;
   eduEntries.insertAdjacentHTML('beforeend',

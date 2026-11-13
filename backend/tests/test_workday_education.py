@@ -21,6 +21,7 @@ import pytest
 from app.modules.execution import runner
 from app.modules.execution.adapters import workday_sections as ws
 from app.modules.execution.adapters.greenhouse_sections import Refused
+from app.modules.execution.adapters.hosted_form import HostedFormAdapter
 from app.modules.execution.adapters.workday import (
     EDUCATION_ENTRIES_BEYOND,
     EDUCATION_NOT_ENTERED,
@@ -205,6 +206,43 @@ def in_template(old: str, new: str, count: int = 1):
     return change
 
 
+SECTION_START = '<div id="education" role="group"'
+SECTION_END = '<div data-wd-entries></div><button type="button" data-wd-add>Add</button></div>'
+
+
+def education_on_the_last_page(html: str) -> str:
+    """The section moved to the wizard's review page (FA9's markup)."""
+    start = html.index(SECTION_START)
+    end = html.index(SECTION_END, start) + len(SECTION_END)
+    section, html = html[start:end], html[:start] + html[end:]
+    last = '<section data-step="Review" data-wizard-page="5" hidden>'
+    assert last in html
+    return html.replace(last, last + section, 1)
+
+
+def work_inside_education(html: str) -> str:
+    """education_and_experience's Work Experience section (FA7, before the Education one) moved
+    inside the Education section."""
+    start = html.index('<div id="work-experience"')
+    end = html.index(SECTION_END, start) + len(SECTION_END)
+    work, html = html[start:end], html[:start] + html[end:]
+    assert html.count(SECTION_END) == 1
+    return html.replace(SECTION_END, SECTION_END.replace("<button", f"{work}<button"), 1)
+
+
+def at_load(old: str, new: str, count: int = 1):
+    """A change to the entry already on the page at load (education_entry_at_load), never to
+    the template."""
+
+    def change(html: str) -> str:
+        served = stand_in("education_entry_at_load")
+        cut = served.index('<template id="education-entry">')
+        assert old in served[:cut], old
+        return served[:cut].replace(old, new, count) + served[cut:]
+
+    return change
+
+
 CANNOT_FILL = {
     "an entry asks something more": lambda h: stand_in("education_unknown_control"),
     "a list of several choices": in_template(
@@ -264,6 +302,90 @@ CANNOT_FILL = {
     "no Add button": lambda h: h.replace(
         '<button type="button" data-wd-add>Add</button></div>', "</div>", 1
     ),
+    # D163 reviews: each rule of the reader, pinned
+    "an option hidden": in_template('<option value="sch-102">', '<option value="sch-102" hidden>'),
+    "an option styled away": in_template(
+        '<option value="sch-103">', '<option value="sch-103" style="display: none">'
+    ),
+    "an option's value written twice": in_template(
+        '<option value="sch-101">', '<option value="sch-101" value="sch-109">'
+    ),
+    "an option holding an element": in_template(
+        '<option value="sch-101">State University</option>',
+        '<option value="sch-101"><b>State</b> University</option>',
+    ),
+    "an option without text": in_template(
+        '<option value="deg-9">Other</option>', '<option value="deg-9"></option>'
+    ),
+    "an option's text split": in_template(
+        '<option value="sch-102">Metro College</option>',
+        '<option value="sch-102">Metro<!-- x --> College</option>',
+    ),
+    "an option's value a character reference": in_template(
+        '<option value="sch-101">', '<option value="sch&amp;101">'
+    ),
+    "an option's value with a space": in_template(
+        '<option value="sch-102">', '<option value="sch 102">'
+    ),
+    "a list depending on another": in_template(
+        'name="edu[__i__].discipline" required',
+        'name="edu[__i__].discipline" required data-cascade-from="edu[__i__].degree"',
+    ),
+    "a list with a length limit": in_template(
+        'name="edu[__i__].school" required', 'name="edu[__i__].school" required maxlength="20"'
+    ),
+    "a date with a pattern": in_template(
+        'name="edu[__i__].from" type="text"', 'name="edu[__i__].from" type="text" pattern="[0-9/]+"'
+    ),
+    "a date with a minimum length": in_template(
+        'name="edu[__i__].to" type="text"', 'name="edu[__i__].to" type="text" minlength="7"'
+    ),
+    "a date holding a value": in_template(
+        'name="edu[__i__].to" type="text"', 'name="edu[__i__].to" type="text" value="01/2020"'
+    ),
+    "a template date read-only": in_template(
+        'name="edu[__i__].from" type="text"', 'name="edu[__i__].from" type="text" readonly'
+    ),
+    "a template list disabled": in_template(
+        'name="edu[__i__].degree" required', 'name="edu[__i__].degree" required disabled'
+    ),
+    "a template list hidden": in_template(
+        '<select id="edu-__i__-degree"', '<select hidden id="edu-__i__-degree"'
+    ),
+    "a custom control in an entry": in_template(
+        "</div>", '<div role="listbox" aria-label="Honours"></div></div>'
+    ),
+    "an Add that submits": lambda h: h.replace(
+        '<button type="button" data-wd-add>Add</button>',
+        '<button type="submit" data-wd-add>Add</button>',
+        1,
+    ),
+    "an Add disabled": lambda h: h.replace(
+        '<button type="button" data-wd-add>Add</button>',
+        '<button type="button" data-wd-add disabled>Add</button>',
+        1,
+    ),
+    "a button not reading Add": lambda h: h.replace(
+        '<button type="button" data-wd-add>Add</button>',
+        '<button type="button" data-wd-add>Remove</button>',
+        1,
+    ),
+    "the section's id used twice": lambda h: h.replace(
+        "</form>", '<p id="education"></p></form>', 1
+    ),
+    "a work section inside it": lambda h: work_inside_education(
+        stand_in("education_and_experience")
+    ),
+    "the section on the wizard's review page": education_on_the_last_page,
+    "an entry at load numbered from 1": at_load('name="edu[0].', 'name="edu[1].', count=5),
+    "an entry at load offering another school": at_load(
+        '<option value="sch-103">Riverside Institute of Technology</option>',
+        '<option value="sch-103">Riverside Institute of Technology</option>'
+        '<option value="sch-104">Hill College</option>',
+    ),
+    "an entry at load that cannot be typed into": at_load(
+        'name="edu[0].degree" required', 'name="edu[0].degree" required disabled'
+    ),
 }
 
 
@@ -276,6 +398,27 @@ def test_any_other_education_is_one_required_checkpoint(change):
     (cp,) = [f for f in schema.fields if f.key == workday.EDUCATION_KEY]
     assert cp.required and cp.type == FieldType.unsupported
     assert cp.unsupported_reason == workday.EDUCATION_REASON
+
+
+def test_a_placeholder_disabled_chosen_and_hidden_is_the_empty_option():
+    """D163 review: a common placeholder (disabled, `selected` and hidden) is the empty option
+    the browser shows chosen at load: the section is read, with the same options."""
+    html = in_template(
+        '<option value="">Select One</option>',
+        '<option value="" disabled selected hidden>Select One</option>',
+        3,
+    )(stand_in("education"))
+    (sec,) = workday.extract_schema(html).sections
+    assert [(o.id, o.text) for o in sec.schools] == SCHOOLS
+    assert [(o.id, o.text) for o in sec.disciplines] == DISCIPLINES
+
+
+def test_a_work_section_inside_the_education_one_is_both_checkpoints():
+    """D163 review: neither reader takes a section nested in the other."""
+    schema = workday.extract_schema(work_inside_education(stand_in("education_and_experience")))
+    assert schema.sections == []
+    keys = {f.key for f in schema.fields}
+    assert {workday.WORK_KEY, workday.EDUCATION_KEY} <= keys
 
 
 def test_an_education_section_never_makes_the_work_history_a_checkpoint():
@@ -419,6 +562,27 @@ def test_a_choice_the_page_changes_after_its_page_was_saved_is_never_sent_on(api
     assert step["mismatched"] == 1
 
 
+def test_an_entry_that_will_not_appear_stops_naming_your_education(api, receiver):
+    app_id = education_application(api, receiver, "education_add_broken", records=(BACHELOR,))
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    led = receiver.ledger()
+    assert draft_pages(led) == [1] and posts(led, "/apply") == 0
+    assert EDUCATION_NOT_ENTERED in attempt(aid).outcome_detail
+    assert entered(aid) == []
+
+
+def test_a_page_showing_an_entry_after_approval_stops_naming_your_education(api, receiver):
+    """Approved with no entry on the page and no education; the page now shows an empty one
+    (the same form: an empty entry is read as before): stopped before anything is entered."""
+    app_id = education_application(api, receiver, records=())
+    receiver.config(wizard="education_entry_at_load")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert receiver.ledger()["disclosures"] == []
+    assert EDUCATION_ENTRIES_BEYOND in attempt(aid).outcome_detail
+
+
 def test_a_section_changed_after_approval_pauses_before_anything_is_entered(api, receiver):
     app_id = education_application(api, receiver)
     receiver.config(wizard="education_unknown_control")
@@ -534,16 +698,121 @@ def test_the_readback_holds_each_list_to_its_value_and_its_shown_text(page):  # 
         "section:education:0:school_name_id", "section:education:0:degree_id"]  # fmt: skip
 
 
-def test_an_option_the_list_no_longer_has_stops_with_what_was_entered(page):  # noqa: F811
+def on_add(page, js: str) -> None:  # noqa: F811
+    """The page runs `js` (`i`: the new entry's index) on each entry its Add adds."""
+    page.evaluate(
+        """(js) => { const add = window.addEducationEntry, run = new Function('i', js);
+        window.addEducationEntry = () => { const i = add(); run(i); return i; }; }""",
+        js,
+    )
+
+
+DEGREE_OPTION = 'document.querySelector(`[name="edu[${i}].degree"] option[value="deg-3"]`)'
+
+
+@pytest.mark.parametrize(
+    "how",
+    ["o.remove()", "o.hidden = true", "o.style.display = 'none'", "o.disabled = true"],
+    ids=["removed", "hidden", "styled-away", "disabled"],
+)
+def test_an_option_a_person_could_not_choose_is_never_chosen(page, how):  # noqa: F811
+    """D163 reviews: the approved degree's option is gone, hidden or disabled once its entry is
+    added (as a list depending on another answer would be): never chosen, never recorded as
+    entered, and the stop says so (`NotChosen`)."""
     page.set_content(section_page())
-    page.evaluate("""() => { const add = window.addEducationEntry;
-      window.addEducationEntry = () => { const i = add();
-        document.querySelector(`[name="edu[${i}].degree"] option[value="deg-3"]`).remove();
-        return i; }; }""")
-    with pytest.raises(ws.SectionFillError) as e:
+    on_add(page, f"const o = {DEGREE_OPTION}; {how};")
+    with pytest.raises(ws.NotChosen) as e:
         ws.apply(page, ws.plan(FROZEN), ROOT, timeout_ms=500)
-    assert e.value.entered == [{"row": 0, "field": "school_name_id"},
-                               {"row": 0, "field": "degree_id"}]  # fmt: skip
+    assert e.value.entered == [{"row": 0, "field": "school_name_id"}]
+    assert page.locator('[name="edu[0].degree"]').input_value() == ""
+
+
+CHOSEN_SCHOOL = "document.querySelector('[name=\"edu[0].school\"]').selectedOptions[0]"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        f"{CHOSEN_SCHOOL}.hidden = true",
+        f"{CHOSEN_SCHOOL}.disabled = true",
+        "const x = document.createElement('input'); x.type = 'hidden'; x.name = 'edu[0].school';"
+        " x.value = 'sch-103'; document.querySelector('form').append(x)",
+    ],
+    ids=["hidden", "disabled", "sent-twice"],
+)
+def test_a_chosen_option_the_page_then_hides_disables_or_doubles_is_found(page, change):  # noqa: F811
+    """D163 reviews: once chosen, the page hides the option (a person no longer sees it),
+    disables it (its form sends nothing for the list) or adds a second control of the list's
+    name (its form sends two values): each found by the readback."""
+    page.set_content(section_page())
+    ws.apply(page, ws.plan(FROZEN), ROOT)
+    page.evaluate(f"() => {{ {change}; }}")
+    assert ws.readback(page, ws.plan(FROZEN), ROOT) == ["section:education:0:school_name_id"]
+
+
+def test_a_date_its_box_would_cut_once_it_has_focus_is_never_typed(page):  # noqa: F811
+    """D162, for an education date: its box lowers its limit to 3 as it gets focus: never typed,
+    the stop naming the limit, only the lists chosen before it recorded as entered."""
+    page.set_content(section_page())
+    on_add(page, "const b = document.querySelector(`[name=\"edu[${i}].from\"]`);"
+                 " b.addEventListener('focus', () => { b.maxLength = 3; });")  # fmt: skip
+    with pytest.raises(ws.NotTyped) as e:
+        ws.apply(page, ws.plan(FROZEN), ROOT)
+    assert e.value.limit == 3
+    assert e.value.entered == [
+        {"row": 0, "field": f} for f in ("school_name_id", "degree_id", "discipline_id")
+    ]
+    assert page.locator('[name="edu[0].from"]').input_value() == ""
+
+
+def test_an_education_entry_beyond_the_plan_is_found(page):  # noqa: F811
+    page.set_content(section_page())
+    ws.apply(page, ws.plan(FROZEN), ROOT)
+    page.evaluate("() => window.addEducationEntry()")
+    assert ws.readback(page, ws.plan(FROZEN), ROOT) == ["section:education:1:entry"]
+
+
+@pytest.mark.parametrize(
+    "case, stop",
+    [
+        ("no section", EDUCATION_UNUSABLE),
+        ("an entry beyond", EDUCATION_ENTRIES_BEYOND),
+        ("an entry holding a choice", EDUCATION_PREFILLED),
+        ("an entry that cannot be typed into", EDUCATION_UNUSABLE),
+    ],
+)
+def test_before_anything_is_entered_each_stop_names_your_education(page, monkeypatch, case, stop):  # noqa: F811
+    """D163 reviews: the adapter's own checks before anything is entered (the form's own
+    checks, HostedFormAdapter's, pass here), each naming your education."""
+    monkeypatch.setattr(HostedFormAdapter, "schema_matches", lambda self, page: None)
+    rows = [] if case == "an entry beyond" else FROZEN["rows"]
+    adapter = WorkdayFixtureAdapter(
+        {"answers": [], "documents": [], "destination": {"url": "http://fixture.test/"},
+         "sections": [{**FROZEN, "rows": rows}]}, {}
+    )  # fmt: skip
+    page.set_content("<form></form>" if case == "no section" else section_page())
+    if case != "no section":
+        page.evaluate("() => window.addEducationEntry()")
+    if case == "an entry holding a choice":
+        page.locator('[name="edu[0].school"]').select_option("sch-102")
+    if case == "an entry that cannot be typed into":
+        page.locator('[name="edu[0].to"]').evaluate("(b) => { b.readOnly = true; }")
+    assert adapter.schema_matches(page) == stop
+
+
+def test_capture_reads_an_option_s_text_as_the_browser_does(page):  # noqa: F811
+    """D163 reviews: an option's text with a tab, a line break and a no-break space, read by
+    capture as Chromium reads it (`option.text`: ASCII whitespace collapsed, nothing else)."""
+    html = in_template(
+        '<option value="sch-101">State University</option>',
+        '<option value="sch-101">\tState \n University&nbsp;Campus </option>',
+    )(stand_in("education"))
+    (sec,) = workday.extract_schema(html).sections
+    page.set_content(html)
+    texts = page.evaluate("""() => [...document.getElementById('education-entry').content
+      .querySelector('[name="edu[__i__].school"]').options].slice(1).map((o) => o.text)""")
+    assert [o.text for o in sec.schools] == texts
+    assert texts[0] == "State University Campus"
 
 
 def test_before_anything_is_entered_an_education_entry_holding_a_choice_is_found(page):  # noqa: F811

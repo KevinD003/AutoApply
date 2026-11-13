@@ -188,6 +188,10 @@ EDUCATION_REASON = (
     "employer's site"
 )
 _ASCII_SPACE = re.compile(r"[\t\n\f\r ]+")
+# D163 review: an option's value NoEfforts records and chooses by: plain ASCII, so the page reader
+# and the browser read it alike (no character reference, line break or other character either
+# might read otherwise), and no separator of the form's fingerprint ("=", "|").
+_PLAIN_VALUE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,199}")
 
 
 def _button_like(n: _Node) -> bool:
@@ -401,10 +405,12 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
 def _option_list(n: _Node) -> list[tuple[str, str]] | None:
     """D163: a list's options as (value, text), read as the browser reads them, or None when
     NoEfforts would not choose from it: one choice only (no `multiple`); its first option the
-    empty one (`value=""`, not disabled, which the browser shows chosen at load); every other
-    option with a value of its own (written once, unique, never empty) and text (its own, ASCII
-    whitespace collapsed as the browser's `text`), none disabled, chosen at load or labelled
-    otherwise (`label`); options only, never a group."""
+    empty one (`value=""`), which the browser shows chosen at load (D163 review: a placeholder
+    disabled and `selected`, or hidden, is one too); every other option with a value of its own
+    (written once, unique, plain: `_PLAIN_VALUE`) and text (one run of its own, ASCII whitespace
+    collapsed as the browser's `text`), none disabled, hidden (D148's markup signals, D163
+    review: a person could not choose it), chosen at load or labelled otherwise (`label`);
+    options only, never a group."""
     if "multiple" in n.attrs or n.twice:
         return None
     kids = [c for c in n.children if isinstance(c, _Node)]
@@ -413,17 +419,20 @@ def _option_list(n: _Node) -> list[tuple[str, str]] | None:
     if len(kids) < 2 or any(c.tag != "option" for c in kids):
         return None
     first, rest = kids[0], kids[1:]
-    if first.attrs.get("value") != "" or "disabled" in first.attrs or first.twice:
+    if (first.attrs.get("value") != "" or first.twice
+            or ("disabled" in first.attrs and "selected" not in first.attrs)):  # fmt: skip
         return None
     out = []
     for o in rest:
         if (o.twice or "value" not in o.attrs or "disabled" in o.attrs or "selected" in o.attrs
-                or "label" in o.attrs
+                or "label" in o.attrs or _hides(o.attrs)
                 or any(isinstance(c, _Node) for c in o.children)):  # fmt: skip
             return None
-        text = _ASCII_SPACE.sub(" ", "".join(c for c in o.children if isinstance(c, str)))
-        text, value = text.strip(" "), o.attrs["value"]
-        if not value or not text:
+        runs = [c for c in o.children if isinstance(c, str)]
+        if len(runs) != 1:  # D163 review: text split (a comment between) reads otherwise
+            return None
+        text, value = _ASCII_SPACE.sub(" ", runs[0]).strip(" "), o.attrs["value"]
+        if not _PLAIN_VALUE.fullmatch(value) or not text:
             return None
         out.append((value, text))
     if len({v for v, _ in out}) != len(out):
@@ -431,17 +440,20 @@ def _option_list(n: _Node) -> list[tuple[str, str]] | None:
     return out
 
 
-def _edu_control_ok(n: _Node, part: str, template: _Node | None) -> bool:
+def _edu_control_ok(n: _Node, part: str, top: _Node) -> bool:
     """D163: one control of an education entry: of its part's kind, holding nothing (a list: its
     empty option), sending exactly what is entered into it (`forms.sent_otherwise`), with no
-    constraint NoEfforts would not honour; a date saying MM/YYYY and accepting it whole. In the
-    template, also shown and editable. Every part is always entered, so the page may require
-    any of them."""
-    if template is not None and ("readonly" in n.attrs or "disabled" in n.attrs
-                                 or not _usable_within(n, template)):  # fmt: skip
+    constraint NoEfforts would not honour; a date saying MM/YYYY and accepting it whole; shown
+    and editable within `top` (the template; D163 review: or, for an entry already on the page,
+    the section, as nothing of an education entry is hidden by design); never a list that
+    depends on another answer (`data-cascade-from`). Every part is always entered, so the page
+    may require any of them."""
+    if "readonly" in n.attrs or "disabled" in n.attrs or not _usable_within(n, top):
         return False
     tag, kind, _ = _EDU_CONTROLS[part]
     if n.tag != tag or n.twice or any(c in n.attrs for c in _CONSTRAINTS) or sent_otherwise(n):
+        return False
+    if "data-cascade-from" in n.attrs:  # D163 review: a list that depends on another answer
         return False
     if tag == "select":
         return "maxlength" not in n.attrs and _option_list(n) is not None
@@ -453,7 +465,7 @@ def _edu_control_ok(n: _Node, part: str, template: _Node | None) -> bool:
     return not n.attrs.get("value") and not n.all_text()
 
 
-def _edu_entry(controls: list[_Node], index: str, template: _Node | None) -> dict | None:
+def _edu_entry(controls: list[_Node], index: str, top: _Node) -> dict | None:
     """D163: an education entry's controls, each part once and every one there, each known
     (`_edu_control_ok`): its three lists' options by part, or None."""
     parts: dict[str, _Node] = {}
@@ -461,7 +473,7 @@ def _edu_entry(controls: list[_Node], index: str, template: _Node | None) -> dic
         m = _EDU_NAME.fullmatch(n.attrs.get("name", ""))
         if not m or m[1] != index or m[2] not in _EDU_CONTROLS or m[2] in parts:
             return None
-        if not _edu_control_ok(n, m[2], template):
+        if not _edu_control_ok(n, m[2], top):
             return None
         parts[m[2]] = n
     if set(parts) != set(_EDU_CONTROLS):
@@ -525,7 +537,8 @@ def _education_section(html: str) -> tuple[SectionSpec | None, bool]:
     for n in controls:  # entries already on the page: empty ones only, numbered 0, 1, ...
         by_index.setdefault(_EDU_NAME.fullmatch(n.attrs["name"])[1], []).append(n)
     if sorted(by_index, key=int) != [str(i) for i in range(len(by_index))] or not all(
-        _edu_entry(c, i, None) == lists for i, c in by_index.items()
+        _edu_entry(c, i, root) == lists
+        for i, c in by_index.items()  # D163 review: usable too
     ):
         return None, True
     page = next((a for a in root.ancestors() if "data-wizard-page" in a.attrs), None)
