@@ -27,15 +27,24 @@ the section's one button, "Add" (then "Add Another"), found by its text as captu
     anything is entered, `entry_indices` and `entries_now` let the adapter refuse a page that
     already shows more entries than were approved, or entries it cannot type into or that
     already hold values.
+
+D163: the stand-in's Education entries (FIXTURE ASSUMPTION FA9) the same way, from a frozen
+education section (D120's rows: your approved education, each school, degree and field of study
+matched to exactly one option of the entry's lists when the form was read, else a checkpoint):
+entry i's controls are named `edu[i].<part>`; School, Degree and Field of Study are lists
+(`<select>`), each set to the frozen option by its value and read back by its value and its shown
+text; From and To typed as MM/YYYY.
 Nothing here maps, guesses or infers a value: it only enters what resolution established."""
 
 import re
+from dataclasses import dataclass
 
 from playwright.sync_api import Error as PWError
 
 from app.modules.execution.adapters.form_entries import ENTRIES_JS
 from app.modules.execution.adapters.greenhouse_sections import (
     FillOp,
+    NotChosen,
     NotTyped,
     Refused,
     RowPlan,
@@ -46,7 +55,7 @@ from app.modules.execution.adapters.greenhouse_sections import (
     section_from_content,
     section_root,
 )
-from app.modules.preparation.forms import sent_len
+from app.modules.preparation.forms import normalize, sent_len
 
 KIND = "employment"
 # A frozen employment field -> how it is entered, and the part of the control's name.
@@ -64,18 +73,66 @@ _PART_FIELDS = (
     ("location", "text", "location"),
     ("description", "lines", "description"),
 )
+# D163: a frozen education field -> how it is entered (a list: its option, by value), and the
+# part of the control's name.
+_EDUCATION_FIELDS = (
+    ("school_name_id", "choice", "school"),
+    ("degree_id", "choice", "degree"),
+    ("discipline_id", "choice", "discipline"),
+    ("start_date", "month_year", "from"),
+    ("end_date", "month_year", "to"),
+)
+
+
+@dataclass(frozen=True)
+class EntryKind:
+    """D163: one kind of entry this module enters: its frozen section kind, the prefix of its
+    controls' names (`<prefix>[i].<part>`), its fields and optional parts (D155), the part whose
+    control proves an entry is on the page, and what it is called in a stop."""
+
+    kind: str
+    prefix: str
+    fields: tuple
+    part_fields: tuple
+    anchor: str
+    what: str
+
+
+KINDS = {
+    "employment": EntryKind("employment", "work", _FIELDS, _PART_FIELDS, "title", "work history"),
+    "education": EntryKind("education", "edu", _EDUCATION_FIELDS, (), "school", "education"),
+}
 _ADD = re.compile(r"\s*add(?:\s+another)?\s*", re.IGNORECASE)  # read whole (fullmatch)
-_ENTRY_NAME = re.compile(r"^work\[(\d+)\]\.")
+
+
+def entry_kind(kind: object) -> EntryKind:
+    """The kind of entry a frozen section holds, or Refused (this form enters no other)."""
+    if kind not in KINDS:
+        raise Refused(f"a {kind} section is not entered on this form")
+    return KINDS[kind]
+
+
+def _entry_name(kind: str) -> re.Pattern:
+    return re.compile(rf"^{re.escape(entry_kind(kind).prefix)}\[(\d+)\]\.")
+
+
 # Every control in the section that a click could act on (capture allows exactly one: its Add).
 _BUTTONS = ("button", "input[type=button]", "input[type=submit]", "input[type=reset]",
             "input[type=image]", "[role=button]")  # fmt: skip
 
 
-def _control(root: str, i: int, part: str) -> str:
-    return f'{root} [name="work[{i}].{part}"]'
+def _control(root: str, i: int, part: str, prefix: str = "work") -> str:
+    return f'{root} [name="{prefix}[{i}].{part}"]'
 
 
 def _op(i: int, field: str, kind: str, selector: str, fr, limit: int | None = None) -> FillOp:
+    if kind == "choice":  # D163: a list's option, by its frozen value, shown as its frozen text
+        oid = fr.value.get("id") if isinstance(fr.value, dict) else None
+        if not isinstance(oid, str) or not oid:
+            raise Refused(f"{field}: the chosen option carries no value")
+        if not isinstance(fr.display, str) or not fr.display.strip():
+            raise Refused(f"{field}: the chosen option carries no text")
+        return FillOp(i, field, "select", selector, oid, fr.display, oid)
     if kind in ("text", "lines"):
         text = fr.display
         if not isinstance(text, str) or not text.strip():
@@ -103,10 +160,10 @@ def _op(i: int, field: str, kind: str, selector: str, fr, limit: int | None = No
 
 def plan(data: object) -> SectionPlan:
     """The entries to make from a frozen section (validated first, as on Greenhouse), or Refused:
-    an employment section only, every field resolved or intentionally omitted."""
+    an employment or (D163) an education section only, every field resolved or intentionally
+    omitted."""
     section = section_from_content(data)  # refuses malformed or unknown content
-    if section.kind != KIND:
-        raise Refused(f"a {section.kind} section is not entered on this form")
+    k = entry_kind(section.kind)
     if not section.ready():
         raise Refused("the section has unresolved fields; it stays a checkpoint")
     root = section_root(data)
@@ -115,35 +172,36 @@ def plan(data: object) -> SectionPlan:
     rows = []
     for i, row in enumerate(section.rows):
         ops: list[FillOp] = []
-        blank = [_control(root, i, part) for field, _, part in _PART_FIELDS if field not in asked]
-        for field, kind, part in (*_FIELDS, *(f for f in _PART_FIELDS if f[0] in asked)):
+        blank = [_control(root, i, part, k.prefix)
+                 for field, _, part in k.part_fields if field not in asked]  # fmt: skip
+        for field, kind, part in (*k.fields, *(f for f in k.part_fields if f[0] in asked)):
             fr = row.fields.get(field)
-            selector = _control(root, i, part)
+            selector = _control(root, i, part, k.prefix)
             if fr is None or fr.status == "omitted":
                 blank.append(selector)
                 continue
             if fr.status != "resolved":
-                raise Refused(f"{KIND} field {field} is {fr.status}")
+                raise Refused(f"{k.kind} field {field} is {fr.status}")
             ops.append(_op(i, field, kind, selector, fr, limits.get(field)))
         rows.append(
             RowPlan(
                 row=i,
                 record_id=row.record_id,
-                anchor=_control(root, i, "title"),
+                anchor=_control(root, i, k.anchor, k.prefix),
                 add_another_first=True,
                 ops=tuple(ops),
                 blank=tuple(blank),
             )
         )
-    return SectionPlan(kind=KIND, rows=tuple(rows))
+    return SectionPlan(kind=k.kind, rows=tuple(rows))
 
 
-def _click_add(page, root: str, timeout_ms: int) -> None:
+def _click_add(page, root: str, timeout_ms: int, kind: str = KIND) -> None:
     """The section's one button, by its text (as capture reads it, never its accessible name):
     exactly one control in the section can be clicked, and it reads Add or Add Another."""
     buttons = page.locator(", ".join(f"{root} {b}" for b in _BUTTONS))
     if buttons.count() != 1 or not _ADD.fullmatch(buttons.first.inner_text() or ""):
-        raise SectionFillError(f"{KIND}: the section has no single Add button")
+        raise SectionFillError(f"{kind}: the section has no single Add button")
     buttons.first.click(timeout=timeout_ms)
 
 
@@ -153,15 +211,37 @@ def _click_add(page, root: str, timeout_ms: int) -> None:
 # once the control has focus (a page may lower it then).
 
 
+def _what(op: FillOp) -> str:
+    """What a stop calls the control: its kind of entry and its field (D163: by its name)."""
+    kind = "education" if '[name="edu[' in op.selector else KIND
+    return f"{kind}: {op.field}"
+
+
+# D163: a list's option of a value, and whether a person could choose it now: the list enabled,
+# exactly one option of that value, enabled, and shown (not `hidden`, not styled away).
+_CHOOSABLE = """(e, value) => {
+  const options = [...e.options].filter((o) => o.value === value);
+  if (e.disabled || options.length !== 1) return false;
+  const o = options[0], style = getComputedStyle(o);
+  return !o.disabled && !o.hidden && style.display !== 'none' && style.visibility !== 'hidden';
+}"""
+
+
 def _give(page, op: FillOp, timeout_ms: int) -> None:
     loc = page.locator(op.selector).first
     if op.kind == "checkbox":
         loc.set_checked(bool(op.value), timeout=timeout_ms)
+    elif op.kind == "select":
+        # D163 review: its option chosen by value, only one a person could choose now; nothing is
+        # typed, and a list left unchosen is never recorded as entered (`NotChosen`).
+        if not loc.evaluate(_CHOOSABLE, str(op.value), timeout=timeout_ms):
+            raise NotChosen(f"{_what(op)}: the approved option cannot be chosen now")
+        loc.select_option(value=str(op.value), timeout=timeout_ms)
     else:
         # D157: never a value the control would cut, refused before it is typed (a page that
         # saves as you type would save it cut), counted as its form sends it; D162: read once
         # the control has focus for certain, the stop naming the limit (`NotTyped`)
-        check_at_focus(loc, str(op.value), timeout_ms, f"{KIND}: {op.field}")
+        check_at_focus(loc, str(op.value), timeout_ms, _what(op))
         loc.fill(str(op.value), timeout=timeout_ms)
         # D155: focus leaves it, as it would for a person, so a page that reacts on `change`
         # does so now, before the readback, not at the next click
@@ -183,15 +263,32 @@ _SUBMITTED = (
 )
 
 
+# D163: a list's one chosen option, as the browser holds it: its value and its shown text (None
+# when none or several are chosen, or, D163 review, when the page hides the one chosen).
+_CHOSEN = """(e) => {
+  if (e.selectedOptions.length !== 1) return null;
+  const o = e.selectedOptions[0], style = getComputedStyle(o);
+  if (o.hidden || style.display === 'none' || style.visibility === 'hidden') return null;
+  return [o.value, o.text];
+}"""
+
+
 def _holds(page, op: FillOp) -> bool:
     """The control holds exactly what was approved (a box: ticked as approved), and a typed one
-    is what its form would send, once and exactly (D155)."""
+    is what its form would send, once and exactly (D155). D163: a list holds one option, of the
+    approved value and text, shown, and its form sends that value, once."""
     try:
         loc = page.locator(op.selector)
         if loc.count() != 1:
             return False
         if op.kind == "checkbox":
             return loc.first.is_checked() == bool(op.value)
+        if op.kind == "select":
+            chosen = loc.first.evaluate(_CHOSEN)
+            if not chosen or chosen[0] != op.value or normalize(chosen[1]) != normalize(
+                    op.readback):  # fmt: skip
+                return False
+            return page.evaluate(_SUBMITTED, op.selector) == [op.value]
         if loc.first.input_value() != op.readback:
             return False
         return page.evaluate(_SUBMITTED, op.selector) == [op.readback]
@@ -235,22 +332,23 @@ def apply(page, entries: SectionPlan, root: str, *, timeout_ms: int = 3000, on_e
     Refused) when an entry will not appear, a control does not hold exactly its value, or the
     browser fails: what was entered before is on the error (`entered`)."""
     entered: list[dict] = []
+    kind = entries.kind
     try:
         for row in entries.rows:
             if progress is not None:
                 progress()
             if not _present(page, row.anchor):
-                _click_add(page, root, timeout_ms)
+                _click_add(page, root, timeout_ms, kind)
                 if not _present(page, row.anchor, wait_ms=timeout_ms):
-                    raise SectionFillError(f"{KIND} entry {row.row} did not appear after Add")
+                    raise SectionFillError(f"{kind} entry {row.row} did not appear after Add")
             for op in row.ops:
                 if progress is not None:
                     progress()
                 refused = False
                 try:
                     _give(page, op, timeout_ms)
-                except NotTyped:
-                    refused = True  # D162: refused before anything was typed: nothing to record
+                except (NotTyped, NotChosen):
+                    refused = True  # D162, D163: nothing typed or chosen: nothing to record
                     raise
                 finally:  # the page may hold it, or part of it, whatever else happened
                     if not refused:
@@ -258,12 +356,12 @@ def apply(page, entries: SectionPlan, root: str, *, timeout_ms: int = 3000, on_e
                         if on_entered is not None:
                             on_entered(entered[-1])
                 if not _holds(page, op):
-                    raise SectionFillError(f"{KIND} entry {row.row}: {op.field} did not keep it")
+                    raise SectionFillError(f"{kind} entry {row.row}: {op.field} did not keep it")
     except SectionFillError as e:
         e.entered = entered
         raise
     except PWError as e:
-        failed = SectionFillError(f"{KIND}: the browser failed ({type(e).__name__})")
+        failed = SectionFillError(f"{kind}: the browser failed ({type(e).__name__})")
         failed.entered = entered
         raise failed from e
     return entered
@@ -274,12 +372,12 @@ _ENTRY_NAMES = """(root) => [...document.querySelectorAll(`${root} [name]`)].map
 # as their markup stands (hidden by their own attributes or an element's between them and the
 # section, read-only, disabled or `aria-disabled`), and how many already hold a value (one a
 # script put there is a property, which no markup shows).
-_ENTRIES_NOW = """(root) => {
+_ENTRIES_NOW = """([root, prefix]) => {
   const top = document.querySelector(root);
   const hiding = /(^|;)\\s*(display\\s*:\\s*none|visibility\\s*:\\s*hidden)/i;
   const stops = (e) => e.hidden || e.getAttribute('aria-hidden') === 'true'
     || e.getAttribute('aria-disabled') === 'true' || hiding.test(e.getAttribute('style') || '');
-  const controls = [...top.querySelectorAll('[name^="work["]')];
+  const controls = [...top.querySelectorAll(`[name^="${prefix}["]`)];
   return {
     inoperable: controls.filter((c) => {
       if (c.readOnly || c.matches(':disabled')) return true;
@@ -291,20 +389,20 @@ _ENTRIES_NOW = """(root) => {
 }"""
 
 
-def entries_now(page, root: str) -> dict | None:
+def entries_now(page, root: str, kind: str = KIND) -> dict | None:
     """Before anything is entered: of the entries already on the page, how many controls cannot
     be typed into as their markup stands (D148's signals, never computed style: on a wizard the
-    section's page is not shown yet) and how many hold a value; None when the page does not
-    have exactly one such section."""
+    section's page is not shown yet) and how many hold a value (D163: a list holding an option
+    other than its empty one); None when the page does not have exactly one such section."""
     try:
         if page.locator(root).count() != 1:
             return None
-        return page.evaluate(_ENTRIES_NOW, root)
+        return page.evaluate(_ENTRIES_NOW, [root, entry_kind(kind).prefix])
     except PWError:
         return None
 
 
-def entry_indices(page, root: str) -> set[int] | None:
+def entry_indices(page, root: str, kind: str = KIND) -> set[int] | None:
     """The entries the section shows now, by index (hidden pages included); None when the page
     does not have exactly one such section."""
     try:
@@ -313,7 +411,8 @@ def entry_indices(page, root: str) -> set[int] | None:
         names = page.evaluate(_ENTRY_NAMES, root)
     except PWError:
         return None
-    return {int(m[1]) for n in names if (m := _ENTRY_NAME.match(n or ""))}
+    name = _entry_name(kind)
+    return {int(m[1]) for n in names if (m := name.match(n or ""))}
 
 
 def readback(page, entries: SectionPlan, root: str) -> list[str]:
@@ -321,20 +420,21 @@ def readback(page, entries: SectionPlan, root: str) -> list[str]:
     the section shows no entry beyond the plan. What does not match, as "section:<kind>:<row>:
     <field or part>" (never a value)."""
     bad: list[str] = []
+    kind = entries.kind
     for row in entries.rows:
         for op in row.ops:
             unticked_but_required = op.kind == "checkbox" and not op.value and _required(
                 page, op.selector)  # fmt: skip
             if not _holds(page, op) or unticked_but_required:
-                bad.append(f"section:{KIND}:{row.row}:{op.field}")
+                bad.append(f"section:{kind}:{row.row}:{op.field}")
         for selector in row.blank:
             if not _empty(page, selector) or _required(page, selector):
                 part = selector.rsplit(".", 1)[-1].rstrip('"]')
-                bad.append(f"section:{KIND}:{row.row}:{part}")
-    found = entry_indices(page, root)
+                bad.append(f"section:{kind}:{row.row}:{part}")
+    found = entry_indices(page, root, kind)
     if found is None:
-        bad.append(f"section:{KIND}:root")
+        bad.append(f"section:{kind}:root")
         return bad
     beyond = found - set(range(len(entries.rows)))
-    bad.extend(f"section:{KIND}:{i}:entry" for i in sorted(beyond))
+    bad.extend(f"section:{kind}:{i}:entry" for i in sorted(beyond))
     return bad

@@ -65,6 +65,24 @@ def test_degree_matches_exactly_and_by_grounded_variant():
     assert ss.match_degree("M.B.A.", o.degrees).text.startswith("Master of Business")
 
 
+def test_a_trailing_qualifier_is_never_read_as_an_abbreviation():
+    """D163 review: only a trailing parenthetical written as an abbreviation ("Ph.D.", "MBA") is
+    a key of its own; a qualifier ("(Other)", "(No Degree)") never is, so a bare "Other" or "No
+    Degree" matches only an option that says so."""
+    degrees = (
+        ss.SectionOption("d1", "Bachelor's Degree (Other)"),
+        ss.SectionOption("d2", "Other"),
+        ss.SectionOption("d3", "Doctor of Philosophy (Ph.D.)"),
+        ss.SectionOption("d4", "Master of Business Administration (MBA)"),
+    )
+    assert ss.match_degree("Other", degrees).id == "d2"
+    assert ss.match_degree("Other", degrees[:1]) is None
+    no_degree = (ss.SectionOption("x", "High School (No Degree)"),)
+    assert ss.match_degree("No Degree", no_degree) is None
+    assert [ss.match_degree(q, degrees).id for q in ("PhD", "Ph.D.", "MBA", "m.b.a.")] == [
+        "d3", "d3", "d4", "d4"]  # fmt: skip
+
+
 def test_degree_without_a_defensible_match_is_none():
     o = options()
     assert ss.match_degree("Postgraduate Diploma", o.degrees) is None
