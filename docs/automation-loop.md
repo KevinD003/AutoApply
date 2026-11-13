@@ -54,7 +54,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D159 an ordinary answer read back as its form would send it; a control whose form would send something else refused when the form is read | merged (#68, 07cccd9, tree as predicted); its PR CI passed all four jobs on f7163ad |
 | D160 a control the page gives its application form from outside its markup read as a question; the form must send nothing NoEfforts did not read, by the click on its own button | merged (#69, 9263994, tree as predicted); its PR CI passed all four jobs on 9322579 |
 | D161 the Greenhouse pilot holds an answer to the length limit its page shows | merged (#70, 1bbe408, tree as predicted); its PR CI passed all four jobs on a6bea08 |
-| D162 every other adapter stops at a value its box would cut, naming the limit, and types only into a box that has focus | branch `base-limits` (from D161's branch); reviewed twice; not merged |
+| D162 every other adapter stops at a value its box would cut, naming the limit, and types only into a box that has focus | merged (#71, 3ecbd65, tree as predicted); its PR CI passed all four jobs on b8e7de4 |
+| D163 a Workday-style Education section filled from your approved education | branch `workday-education` (from D162's branch); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -376,7 +377,22 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
 
-- **D162 (branch `base-limits`, not merged).** Rank 29, D161's "Not built":
+- **D163 (branch `workday-education`, not merged).** Rank 30, education on Workday:
+  - the gap: a Workday-style page's Education section was the work history checkpoint
+    (D149 read any second section so), so no education was ever entered there;
+  - the stand-in's Education section (FA9: native lists of the page's own ids, MM/YYYY
+    dates) is read with its lists' options, your approved education frozen into them
+    (D120's rows, shown and diffed as D140's), each entry added by the section's button,
+    each option chosen by its value only as a person could choose it, each date typed after
+    D162's check, everything read back as its form sends it; anything else about education
+    is one checkpoint, and every stop names your education;
+  - two independent reviews: no value the owner did not approve reached the receiver;
+    both: an option the page hides captured, chosen and sent, tests left failing, few new
+    rules pinned; options read unlike the browser (a pause that never ends); a degree
+    matched to a qualified option. Fixed, each with a test; the rest recorded in D163;
+  - 33 removal runs on 70e81bb, each failing the tests named for its part; the regression set on 70e81bb: @REGRESSLOOP@.
+
+- **D162 (merged, #71).** Rank 29, D161's "Not built":
   - the gap: the base adapter (every adapter but the pilot) withheld a value its box's
     limit would cut once it had focus, then went on filling (later answers typed into a
     page that saves as you type), and the readback's stop named no limit; the box's
@@ -623,8 +639,10 @@ no read shows, or whose final click would send another form or elsewhere.
 **D161** (rank 28, #70) holds the Greenhouse pilot's answers to the length
 limit its page shows: read at capture and held to before you approve, checked again
 before anything is entered and before each value is typed.
-**D162** (rank 29, on its branch) has every other adapter stop at a value its box would
+**D162** (rank 29, #71) has every other adapter stop at a value its box would
 cut, naming the limit, and type only into a box that has focus.
+**D163** (rank 30, on its branch) fills a Workday-style Education section from your
+approved education.
 Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
@@ -721,8 +739,14 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D162 (branch `base-limits`):** the new tests, the suites the change touches, the
+- **D163 (branch `workday-education`):** the new tests, the suites the change touches, the
   removal runs and the regression set, locally (Tests run below). Not tested: any real
+  page (no real Workday education section was observed; its lists may be search prompts,
+  which NoEfforts never fills); a page that moves an option between lists (the stop comes
+  after disclosure); omitted `</option>` tags (a checkpoint).
+- **D162:** merged (#71, 3ecbd65, tree as predicted); its PR CI passed all four
+  jobs on b8e7de4. Locally: the new tests, the suites the change touches, the
+  removal runs and the regression set (Tests run below). Not tested: any real
   page; whether a real page lowers a limit as a box gets focus or keeps a box from taking
   it; a page that redefines what the live read uses for every element (the readback
   stops what is then held cut).
@@ -1060,6 +1084,10 @@ action.
 | D162, each part changed in turn: 25 changes on a52cc10, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 25 fail the tests named for their part (52 of the 72 named tests, over the runs); each file restored, the tree clean after. Nothing left out: the uploads a stop carries are observed by calling each adapter's own `fill` |
 | D162, the regression set: `pytest` on 89 files (D161's 88 with `test_limit_stops.py`; JUnit), in a copy of the branch at a52cc10 | exit 0, 2840 passed (87 minutes) |
 | D162, after the pull request was opened: `test_greenhouse_sections_browser.py` among D163's related suites on d8d4abe; after the fix (`NotChosen`), the Greenhouse section suites, `test_section_widgets.py`, `test_section_list_settle.py`, `test_limit_stops.py` and `test_pilot_limits.py` (9 files, JUnit) | exit 1: 1 failed (a pilot's education list recorded as entered when none of its options was chosen); then exit 0, 254 passed |
+| D163, the first version: `test_workday_education.py` (JUnit) on the working tree and on d8d4abe; the 8 Workday-style suites on d8d4abe | on the working tree: exit 1, 47 passed and 1 failed (the stand-in's change after page 2 was saved chose the approved school itself: it now changes it to another, `CHANGED_SCHOOL`), then exit 0, 48 passed; on d8d4abe, the 8 Workday-style suites: exit 1, 459 passed and 2 failed (D149's two cases that used "education" as a section of another kind, now read: they use one NoEfforts does not read, cd5f689; then 51 passed); ruff clean |
+| D163, after the reviews: `test_workday_education.py` and `test_structured_sections.py` (JUnit) on the working tree as the fixes grew; the 22 suites the fixes touch, in two runs, on the content of 2dbee1c (`test_workday_experience.py`, `test_workday_wizard.py`, `test_worker_stop.py`, `test_limit_stops.py`, `test_workday_entry_details.py`, `test_workday_entry_limits.py`, `test_workday_follow_up.py`, `test_wizard_next_checks.py`; `test_greenhouse_sections.py`, `test_greenhouse_sections_browser.py`, `test_workday_adapter.py`, `test_workday_ashby_fixtures.py`, `test_sent_as_approved.py`, `test_sending.py`, `test_page_own_checks.py`, `test_outside_controls.py`, `test_disclosure_evidence.py`, `test_execution_failures.py`, `test_execution_routing.py`, `test_provider_reuse.py`, `test_recovery_hardening.py`, `test_self_identification_ledger.py`); on 70e81bb's content, the two suites again and the two worker-stop entry tests; ruff | exit 0: 105 passed; the 22 suites: exit 0, 502 and 460 passed; on 70e81bb's content: exit 0, 108 passed, and the worker-stop tests 2 passed; ruff clean |
+| D163, each part changed in turn: 33 changes on 70e81bb, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 33 fail the tests named for their part (54 failures among the 807 tests run, over the runs; three also fail cases close to theirs); each file restored, the tree clean after |
+| D163, the regression set: `pytest` on 90 files (D162's 89 with `test_workday_education.py`; JUnit), in a copy of the branch at 70e81bb | @REGRESS@ |
 
 ## Failed approaches and rejected designs
 
@@ -1175,10 +1203,10 @@ action.
 
 ## Exact next action
 
-1. D162 (branch `base-limits`, rank 29, D161's "Not built": every other adapter stops at a
-   value its box would cut, and types only into a box that has focus): its pull request.
-   Candidates after it: education on Workday; the Greenhouse pilot's own reads of what its
-   form sends (D159's attributes, D160's controls and final click).
+1. D163 (branch `workday-education`, rank 30, education on Workday: a Workday-style
+   Education section filled from your approved education): its pull request. Candidates
+   after it: the Greenhouse pilot's own reads of what its form sends (D159's attributes,
+   D160's controls and final click); languages, websites and skills on Workday.
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it
