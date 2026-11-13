@@ -73,6 +73,7 @@ from app.modules.preparation.forms import (
     _TreeBuilder,
     extract_form_schema,
     read_maxlength,
+    sent_otherwise,
 )
 
 _FIXTURE = re.compile(r"^/workday/(?P<tenant>[a-z0-9-]{1,64})/(?P<req>R-[0-9]{4,12})(?:/apply)?/?$")
@@ -244,10 +245,9 @@ def _work_control_ok(n: _Node, index: str, template: _Node | None) -> bool:
     if (n.attrs.get("value") and kind != "checkbox") or "checked" in n.attrs or n.all_text():
         return False  # a value at load is never trusted (as PREFILLED_KEY)
     # D155: what the browser sends is what was typed: no hard wrapping (line breaks you never
-    # wrote), no direction field (`dirname`) and no other form (`form`).
-    wrap = n.attrs.get("wrap")
-    if (n.tag == "textarea" and wrap is not None and wrap.strip().lower() not in ("", "soft")
-            or "dirname" in n.attrs or "form" in n.attrs):  # fmt: skip
+    # wrote), no direction field (`dirname`) and no other form (`form`). D159: the rule every
+    # question's control is read by (`forms.sent_otherwise`).
+    if sent_otherwise(n):
         return False
     # A box left unticked for a past role must never be required (the browser would block the
     # final click). D155: a required Location or Role Description is entered from your record,

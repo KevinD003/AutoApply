@@ -7608,7 +7608,8 @@ audit-inventory and export-completeness guards are updated and pass.
   retired as any content change does, and an attempt queued before stops at the gate with
   nothing sent (`failed_safe`). Forms already captured keep their recorded limits: a re-capture
   stores a new version only when the fingerprint or the options change, and `max_length` is in
-  neither, so the new reading reaches newly captured forms only.
+  neither, so the new reading reaches newly captured forms only. (D159: a form whose limits
+  changed is now a new version.)
 - **`SCHEMA_VERSION` stays 3:** the package content's shape is unchanged.
 - **Reviews:** two independent reviews of the first version (f5422e9), no blocker in either.
   - Both found the draft check still counting characters (a draft was offered that accepting
@@ -7633,3 +7634,167 @@ audit-inventory and export-completeness guards are updated and pass.
   - Greenhouse's questions come from its Job Board API, which states no limit: nothing changes
     there.
   - Never seen on a real page: how a real employer's server counts what it receives is unknown.
+
+## D159 — An ordinary answer is read back as its form would send it, and a control whose form would send something else is refused when the form is read (2026-11-13)
+
+- **Context:** rank 26 of the automation loop (`docs/automation-loop.md`), D158's limits ("a
+  limit the page changes after the form was read is not noticed until the readback, and the
+  control's own limit is not read before an ordinary answer is typed"; "a text area that
+  hard-wraps sends line breaks never typed; neither is read at capture"). Local stand-ins only;
+  nothing real was run. No migration, no new state, reason code, gate, permission or retry. The
+  Greenhouse pilot's adapter (`greenhouse_dom`, `greenhouse_live`) is unchanged: its page's
+  script sends what each control holds, which its readback reads.
+- **Problem:**
+  - The readback compared what each control shows (`input_value`, a ticked box), never what its
+    form would send. A text area made to hard-wrap sent line breaks you never wrote; a control
+    given to another form, or disabled, sent nothing; each after a readback that passed: on the
+    base stand-in the application was confirmed and the ledger held your text with line breaks
+    inserted, or nothing under the question (`test_before_d159_the_employer_received_something_else`).
+  - A page whose own markup hard-wraps a text area, sends a direction field (`dirname`) or gives
+    a control to another form (`form`) was read as an ordinary question; D155 refused these only
+    on a Workday-style work entry.
+  - A limit the page lowered after the form was read was found only by the readback, after the
+    value was typed cut (a page that saves as you type kept it cut), and reading the form again
+    stored nothing new: a form's limits were in neither its fingerprint nor its version.
+  - A number was typed as `f"{n:g}"`, six significant digits: 12345678 was typed, read back and
+    sent as 1.23457e+07 (found by the review; before D159).
+  - D155's readback of a work entry read the control's own form's data, so a control given to
+    another form that exists passed; and it built a `FormData` (see Reviews).
+- **Decided:**
+  - **Reading the form** (`forms.sent_otherwise`, `SENT_OTHERWISE`; every capture reading pages
+    with `extract_form_schema`: pasted pages, Lever-, Ashby- and Workday-style, Greenhouse's
+    classic page view, and the runner's own read of the live page before and after filling): a
+    question whose control's form would not send exactly what is typed is refused
+    (`unsupported`: a required one a checkpoint, an optional one left blank, D136), read as
+    Chromium, the browser every attempt runs in, reads the tag (measured; an attribute written
+    twice by its first value):
+    - a text area whose `wrap` is hard, physical or on (any case; Chromium hard-wraps on these,
+      not on off, virtual or a value with spaces);
+    - `dirname`, even empty, on a text area or a typed box (text, search, tel, url, email,
+      password, or a type Chromium does not know, which is text); not on a number, a date, a
+      choice, a list or a file, where Chromium sends no direction field;
+    - `form`, whatever it names (one naming its own form is refused too).
+    One choice of a group carrying it refuses the group. The check comes after the reasons read
+    before it (a password, a one-time code, a search box), so their wording and fingerprints are
+    unchanged; pages without these attributes read exactly as before (the 5 registered fixtures
+    and the base stand-in, checked by the second review). D155's work-entry rule is the same
+    function, so a Role Description whose `wrap` is off, virtual or spaced is now read (D155
+    refused every value but soft).
+  - **Greenhouse classic** (`greenhouse.build_schema`, `_as_on_page`): the job data and the page
+    are compared as the page reads without D159's rule (`sent_rule=False`), so a control of
+    another type still makes them disagree; then the page's refusal is adopted, and its own
+    length limit where the job data states none (the job data never states one; the page's was
+    never read before D159).
+  - **A form whose limits changed is a new version** (`router._option_values`, as D132 does for
+    option values): reading it again stores the new limits and ends a pause it caused; the
+    resolver then holds your answer to the new limit (D158). D158's "a re-capture keeps the
+    stored version" no longer holds for a limit. The fingerprint and the field fingerprints are
+    unchanged, so answers and consents bound to them (C7) are kept.
+  - **Before anything is entered, and again after filling** (`FixtureAtsAdapter._sendable_now`
+    from `schema_matches`: the base, Greenhouse classic, Lever-, Ashby- and Workday-style
+    adapters, the wizard's pages included):
+    - **the form's character set** (`_charset_refused`): a form that sends in another set than
+      UTF-8 (its `accept-charset`, else the page's own; UTF-16 is sent as UTF-8) sends a
+      character it cannot encode as something else ("☕" as "&#9749;"); any answer holding a
+      character outside ASCII stops there, a plain stop (a read of the form cannot show it);
+    - **each typed answer's limit** (`_limits_fit`): held to the limit its control has now
+      (`maxLength`, as the browser reads it, whatever set it), counted as its form sends it
+      (D158). One that no longer fits stops the attempt, naming the limit (a number, never the
+      question). Where the control's `maxlength` reads as that limit, a changed form: before
+      anything is entered, D132's pause, and reading the form again records it (one only the
+      page's script sets ends the read "unexplained": shorten the answer and try again); where
+      it is written as the reader never reads it ("500.0", "+500"), a plain stop, since no read
+      would ever record it. After filling, either stops before the send gate.
+  - **Before each value is typed** (`_fill_one`, `_fits_now`): the control's own limit is read
+    once the control has focus (a page may lower it then); a value it would cut is never typed,
+    and the readback reports the answer: nothing is sent. A number is typed exactly
+    (`number_text`).
+  - **The readback** (`readback`, `form_entries`): every answer is also read as the application
+    form (`APPLICATION_FORM`, the hosted adapters' `FORM`) would send it, read passively from the
+    form's own list of controls as Chromium's submission picks them (its form owner, disabled
+    controls and fieldsets, checked choices, selected options, a control inside a `datalist`,
+    which Chromium sends unlike the standard): never by building a `FormData`, whose `formdata`
+    event a page may send the form from (see Reviews). A typed answer, a list or a box must have
+    exactly one control of its name and the form must send exactly the approved value, once; a
+    choice exactly the approved option(s); a question left unanswered, or one NoEfforts does not
+    fill (unsupported, whatever its control: a box, a list, a group), nothing (a value the page
+    put under its name would be sent unapproved). Where the passive read cannot know the value
+    sent (a text area that hard-wraps and holds text, a file, a form-associated custom element,
+    a direction field), it reads it as unknown, never as the approved value. Greenhouse
+    classic's readback now reads a question it refused this way (it skipped every unsupported
+    question).
+  - **A work entry** (`workday_sections._SUBMITTED`): read by the same passive read, and its
+    control must belong to the form it is in.
+  - **The stand-ins** (`fixtures/ats_receiver`): the base page's `cfg["sends"]` ("Why us" made to
+    hard-wrap, given to another form, disabled, doubled, or limited, by its markup or its script,
+    at load, on focus or once an answer is typed; a page that sends from `formdata`; a choice it
+    disables once chosen; a form in ISO-8859-1; refused optional controls) and `page_limits`
+    (its server checks its page's limit); Greenhouse classic's (`gh_limit_served`,
+    `gh_limit_at_load`, `gh_wrap_page_text`). Autosave records the length the page saved, never
+    the text.
+- **What an approved run now does differently:**
+  - An application whose form would send an answer otherwise than approved stops before the send
+    gate (after filling: every approval retired, as any stop there), or never starts (a refused
+    control, a non-UTF-8 form with an answer outside ASCII, a lowered limit), where it was
+    confirmed with the employer holding something else.
+  - A form captured before D159 holding a control D159 refuses reads as changed at its next run
+    (the runner's own read of the page refuses it): D132's pause, nothing entered; read again,
+    the question is refused (optional: left blank; required: yours on the employer's site).
+  - A form whose stored limits were read under an older rule (before D158: `" 500"`, a limit
+    written twice) becomes a new version on its next read although the page did not change: the
+    package changes (`form_version`), its approval is retired, an attempt queued before stops at
+    its gate with nothing sent; answers and consents are kept (measured by the second review).
+  - **`SCHEMA_VERSION` stays 3** (the content's shape is unchanged; `max_length` and
+    `unsupported_reason` are already part of it), and so do `EXTRACTION_VERSION` and the adapter
+    versions, deliberately, as for D145 and D154 to D158: the rules only stop more, and an
+    approval given before means what it meant; what the new reading changes is found at the next
+    run, as above.
+- **Reviews:** two independent reviews of the first version (b8512c9).
+  - **Both found a blocker:** the readback built `new FormData(form)`, which fires the form's
+    `formdata` event; a page sending from it (the event exists for scripts that send a form
+    themselves) received your whole application during a rehearsal, which must never submit,
+    and an unapproved value before an attempt stopped at its readback (both measured on the
+    base stand-in's ledger). D155's work-entry readback did the same on the Workday-style
+    wizard. Fixed by the passive read.
+  - **The second also found a blocker:** Greenhouse classic's readback skipped unsupported
+    questions, so a text area it refused, into which the page wrote its own text, was sent with
+    it. Fixed.
+  - **The first also found:** numbers typed with six significant digits (before D159); choices
+    read back by what they show (a group the page disables once chosen was confirmed and sent
+    without your answer); a limit set on focus typed cut. Each fixed.
+  - **Both found:** an optional box or group refused when the form is read failing every attempt
+    after its data was entered (read back as text); a limit a read of the form can never record
+    (set by a script, written "500.0", any Greenhouse classic page) leaving a pause no read could
+    end, and never naming the limit; untested paths (Greenhouse classic's limit check, the
+    unanswered branch). Each fixed with a test.
+  - **The second also found:** a form in another character set sending characters changed (fixed:
+    refused before anything is entered); `wrap` and `dirname` refused where Chromium sends as
+    typed (fixed: read as Chromium does; `form` naming its own form is still refused); Greenhouse
+    classic's refusal hiding a type disagreement (fixed: compared as read without the rule); the
+    deploy effect of limits in the version (recorded above); the versions left unchanged
+    (recorded above).
+  - Each is fixed with a test (5468717), or recorded below.
+  - **The removal runs** (each part changed in turn) found a test that did not show its finding:
+    Greenhouse classic's cross-check test passed with the refusal adopted before the comparison
+    too, since the list it put on the page lost the question's help. The list now keeps it, so
+    the type is the only difference (15a8560).
+- **Not built:**
+  - **The Greenhouse pilot** (`greenhouse_dom`, `greenhouse_live`): its capture neither refuses
+    these attributes nor reads a page limit, and its readback reads what each control holds,
+    which its page's script sends (how a real page builds its request was never observed). An
+    answer longer than a real page's limit is still typed cut, then stopped by its readback.
+  - A control outside the application form's markup that the page gives to it (`form` naming
+    it, or markup the browser re-nests into it) is never read as a question: what it holds is
+    sent with your application.
+  - A page that lowers a limit, makes a text area hard-wrap or gives a control to another form
+    while the answer is being typed, or between the readback and the final click, is found by
+    the readback or the read after filling where they still run, not otherwise.
+  - The reads run in the page's own context, as every readback does: a page that redefines the
+    properties read can make them say anything.
+  - A non-UTF-8 form refuses every answer outside ASCII, even one its character set could send
+    intact (an accent in windows-1252).
+  - A group whose `required` sits on a choice other than the first is read as optional (before
+    D159 too): left blank, the page's own validation stops it before the send gate (D154). A
+    question refused while hidden at load on the Workday-style page loses "shown by the page"
+    and, if required, blocks approval although it may never be shown.
+  - Never seen on a real page.

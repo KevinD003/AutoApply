@@ -135,11 +135,13 @@ def describe(attrs: str) -> str:
 
 @pytest.mark.parametrize("template", [
     describe(' wrap="hard"'),
-    describe(' wrap=" HARD " cols="20"'),
-    describe(' wrap="off"'),
+    describe(' wrap="HARD" cols="20"'),
+    describe(' wrap="physical"'),  # D159: Chromium hard-wraps on it too, and on "on"
     entry(loc=' dirname="work[__i__].location.dir"'),
+    entry(loc=' dirname=""'),  # D159: Chromium sends a field with no name
     entry(loc=' form="workday-application"'),
-], ids=["wrap-hard", "wrap-hard-spaced", "wrap-other", "dirname", "form"])  # fmt: skip
+], ids=["wrap-hard", "wrap-hard-capitals", "wrap-physical", "dirname", "dirname-empty",
+        "form"])  # fmt: skip
 def test_a_control_whose_form_would_send_otherwise_than_typed_is_one_checkpoint(template):
     """D155 review: a text area that hard-wraps (line breaks you never wrote), a direction field
     sent beside a value, or a control tied to a form by name: what the employer would receive
@@ -148,8 +150,12 @@ def test_a_control_whose_form_would_send_otherwise_than_typed_is_one_checkpoint(
     assert schema.sections == [] and fields[workday.WORK_KEY].required
 
 
-def test_a_soft_wrapping_role_description_is_read():
-    schema, _ = read(form_page(section(), describe(' wrap="soft"')))
+@pytest.mark.parametrize("wrap", ["soft", "off", "virtual", " HARD "])
+def test_a_soft_wrapping_role_description_is_read(wrap):
+    """D159: `wrap` read as Chromium reads it: "off", "virtual" and a value with spaces around
+    "hard" do not hard-wrap (measured), so the description is sent as typed. D155 refused every
+    value but soft."""
+    schema, _ = read(form_page(section(), describe(f' wrap="{wrap}"')))
     assert schema.sections[0].parts == ["description", "location"]
 
 

@@ -27,7 +27,7 @@ from app.modules.execution.adapters.fixture_ats import (
     upload_evidence,
 )
 from app.modules.execution.faults import fault
-from app.modules.preparation.forms import Condition, FieldType, FormField, Option
+from app.modules.preparation.forms import SENT_OTHERWISE, Condition, FieldType, FormField, Option
 from app.modules.preparation.greenhouse import comparable, rendered_schema
 
 # Bot checks are a stop condition: never solved, bypassed or waited out.
@@ -77,6 +77,7 @@ def approved_fields(content: dict) -> list[FormField]:
 
 class GreenhouseHostedAdapter(FixtureAtsAdapter):
     name = "greenhouse_hosted"
+    APPLICATION_FORM = "form#application_form"  # D159: what it would send is read from it
     # The hosted confirmation page shows no application id; this is the evidence available.
     confirmation_strength = "employer_confirmation_page"
     _filled = False  # set once filling starts; the submit button must then be enabled
@@ -122,7 +123,7 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
             return "the form's submit button cannot be identified"
         if self._filled and button.is_disabled():
             return SUBMIT_DISABLED  # S5 (D62): never clicked; nothing else on the page is either
-        return None
+        return self._sendable_now(page)  # D159
 
     # -- fill -------------------------------------------------------------------------------
     def fill(self, page: Page) -> list[dict]:
@@ -183,8 +184,9 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
         plain = []
         for a in self.content["answers"]:
             self._progress()
-            if a["type"] == FieldType.unsupported.value:
-                continue
+            if (a["type"] == FieldType.unsupported.value
+                    and a.get("unsupported_reason") != SENT_OTHERWISE):  # fmt: skip
+                continue  # the page's own hidden values, or a type no adapter fills
             if a["type"] == "file":
                 key = a["key"]
                 hidden = page.locator(f"#{key}_attachment_id")
