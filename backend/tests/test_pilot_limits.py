@@ -198,6 +198,9 @@ def test_a_limit_is_recorded_only_where_the_browser_holds_typing_to_it(type_, wa
      ('<input id="c" maxlength="3" disabled>', False),  # nothing is typed into a locked control
      ('<input id="c" maxlength="3" readonly>', False),
      ('<textarea id="c" maxlength="3" readonly></textarea>', False),
+     ('<fieldset disabled><input id="c" maxlength="3"></fieldset>', False),
+     ('<fieldset disabled><legend><input id="c" maxlength="3"></legend></fieldset>', True),
+     ('<div inert><input id="c" maxlength="3"></div>', False),
      ('<select id="c" maxlength="3"></select>', False)],
 )  # fmt: skip
 def test_the_capture_reads_which_controls_hold_typing_to_a_limit(markup, limited):
@@ -428,6 +431,41 @@ def test_a_limit_is_recorded_exactly_where_the_browser_cuts_what_is_typed(chromi
         assert c.limited == cut
         limit, written, applies = loc.evaluate(dom.LIVE_LIMIT_JS)
         assert (applies, limit, written) == (cut, 3, "3")
+    finally:
+        page.close()
+
+
+LOCKS = [  # (markup, whether the browser lets nothing be typed into #c)
+    ('<input id="c" maxlength="3">', False),
+    ('<input id="c" maxlength="3" disabled>', True),
+    ('<input id="c" maxlength="3" readonly>', True),
+    ('<fieldset disabled><input id="c" maxlength="3"></fieldset>', True),
+    ('<fieldset disabled><legend><input id="c" maxlength="3"></legend></fieldset>', False),
+    (
+        '<fieldset disabled><legend>x</legend><legend><input id="c" maxlength="3"></legend>'
+        "</fieldset>",
+        True,
+    ),
+    (
+        '<fieldset disabled><fieldset><legend><input id="c" maxlength="3"></legend></fieldset>'
+        "</fieldset>",
+        True,
+    ),
+    ('<div inert><input id="c" maxlength="3"></div>', True),
+]
+
+
+@pytest.mark.parametrize("markup, locked", LOCKS)
+def test_a_control_is_read_as_locked_as_the_browser_locks_it(chromium, markup, locked):
+    page = chromium.new_page()
+    try:
+        page.set_content(f"<form>{markup}</form>")
+        got = page.locator("#c").evaluate(
+            "e => e.matches(':disabled') || e.readOnly || e.closest('[inert]') !== null"
+        )
+        assert got == locked
+        (c,) = dom.snapshot(f"<form>{markup}</form>")
+        assert c.limited == (not locked)
     finally:
         page.close()
 

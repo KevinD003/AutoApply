@@ -118,8 +118,8 @@ class Control:
     group_required: bool = False  # D130: aria-required="true" on the enclosing group
     # D161: its `maxlength` attribute as the browser keeps it (the first of two), and whether
     # it limits what is typed into it: the browser applies a limit to its kind of control
-    # (`limits_typing`), and the page lets you type into it (neither `disabled` nor `readonly`:
-    # a locked field the page fills itself, as D129's identity field, is never typed).
+    # (`limits_typing`), and the page lets you type into it (`_locked`: a locked field the page
+    # fills itself, as D129's identity field, is never typed).
     maxlength: str | None = None
     limited: bool = False
 
@@ -159,6 +159,24 @@ def limits_typing(tag: str, type_attr: str | None) -> bool:
         return False
     t = (type_attr or "").translate(_ASCII_LOWER)
     return (t if t in _INPUT_TYPES else "text") in LIMITED_INPUTS
+
+
+def _locked(n: _Node) -> bool:
+    """D161: a control nothing can be typed into, as the browser reads the page: `disabled` or
+    `readonly` on it, a disabled fieldset around it (outside that fieldset's first legend), or an
+    `inert` element around it."""
+    if "disabled" in n.attrs or "readonly" in n.attrs:
+        return True
+    up = list(n.ancestors())
+    for a in up:
+        if "inert" in a.attrs:
+            return True
+        if a.tag == "fieldset" and "disabled" in a.attrs:
+            legend = next((c for c in a.children if isinstance(c, _Node) and c.tag == "legend"),
+                          None)  # fmt: skip
+            if legend is None or legend not in up:
+                return True
+    return False
 
 
 def control_limit(f: FormField, c: "Control | None") -> int | None:
@@ -278,8 +296,7 @@ def snapshot(html: str) -> list[Control]:
                 group_required=grp is not None and grp.attrs.get("aria-required") == "true",
                 maxlength=n.twice.get("maxlength", n.attrs.get("maxlength")),  # D161
                 limited=limits_typing(n.tag, n.twice.get("type", n.attrs.get("type")))
-                and "disabled" not in n.attrs
-                and "readonly" not in n.attrs,
+                and not _locked(n),
             )
         )
     return out
