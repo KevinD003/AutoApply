@@ -18,6 +18,7 @@ from html.parser import HTMLParser
 from urllib.parse import parse_qs, urlsplit
 
 from app.modules.preparation.forms import (
+    SENT_OTHERWISE,
     Condition,
     FieldType,
     FormField,
@@ -234,6 +235,18 @@ def comparable(fields: list[FormField]) -> dict[str, str]:
     }
 
 
+def _refused_on_page(f: FormField, on_page: dict[str, FormField]) -> FormField:
+    """D159: a question whose control on the page would not send exactly what is typed into it
+    (`forms.sent_otherwise`) is refused as the page reads it, whatever type the job data gives
+    it: never filled, a required one a checkpoint. Its wording and requirement are still compared
+    with the job data's."""
+    page = on_page.get(f.key)
+    if page is None or page.unsupported_reason != SENT_OTHERWISE:
+        return f
+    return f.model_copy(update={"type": FieldType.unsupported, "unsupported_reason": SENT_OTHERWISE,
+                                "options": [], "max_length": None, "accept": None})  # fmt: skip
+
+
 def build_schema(api: dict, hosted_html: str) -> FormSchema:
     """Combine and cross-check the two views; raises SchemaMismatch on any difference."""
     from_api = schema_from_api(api)
@@ -242,7 +255,9 @@ def build_schema(api: dict, hosted_html: str) -> FormSchema:
     on_page = {f.key: f for f in dom.fields}
     # The job data only says consent is required; its wording is what the page shows.
     fields = [
-        on_page[f.key] if f.key == CONSENT_KEY and f.key in on_page else f
+        on_page[f.key]
+        if f.key == CONSENT_KEY and f.key in on_page
+        else _refused_on_page(f, on_page)  # D159
         for f in (f.model_copy(update={"condition": conds.get(f.key)}) for f in from_api.fields)
     ]
     a, d = comparable(fields), comparable(dom.fields)

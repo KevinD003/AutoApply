@@ -167,9 +167,11 @@ def _give(page, op: FillOp, timeout_ms: int) -> None:
 
 # D155: what the form would send under the control's name: the values its submission builds
 # (a hard-wrapping text area's line breaks, a control of another form or a disabled one, a second
-# control of the same name), never what the control shows.
+# control of the same name), never what the control shows. D159: the form the entry is in, which
+# the control must belong to: one given to another form (`form`) was read in that form's data,
+# and passed.
 _SUBMITTED = """(sel) => { const e = document.querySelector(sel);
-  if (!e || !e.form || !e.name) return null;
+  if (!e || !e.name || !e.form || e.form !== e.closest('form')) return null;
   return new FormData(e.form).getAll(e.name).map((v) => (typeof v === 'string' ? v : null)); }"""
 
 

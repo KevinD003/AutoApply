@@ -188,11 +188,12 @@ def _store_form(db, user, job, schema: FormSchema, source, ref, extraction) -> d
 
 
 def _option_values(fields) -> list:
-    """Each question's option values, in order (labels are in the fingerprint already)."""
+    """Each question's option values, in order (labels are in the fingerprint already), and D159
+    its length limit (`max_length`), which neither the fingerprint nor the options hold."""
     return [
-        [f["key"], [o["value"] for o in f.get("options") or []]]
+        [f["key"], [o["value"] for o in f.get("options") or []], f.get("max_length")]
         if isinstance(f, dict)
-        else [f.key, [o.value for o in f.options]]
+        else [f.key, [o.value for o in f.options], f.max_length]
         for f in fields
     ]
 
@@ -200,14 +201,17 @@ def _option_values(fields) -> list:
 def _same_values(stored: dict, schema: FormSchema) -> bool:
     """D132: an employer can change an option's value and keep its label; the adapter compares
     values, the fingerprint only labels. Such a form is a new version, so a pause it caused can
-    end (its answers carry the values)."""
+    end (its answers carry the values). D159: so is a form whose length limits changed: the
+    attempt pauses before anything is entered when an approved answer no longer fits the page's
+    limit, and the new version holds your answer to the new limit (D158), so that pause ends
+    too. Neither changes the fingerprint, to which answers and consents are bound (C7)."""
     return _option_values((stored or {}).get("fields") or []) == _option_values(schema.fields)
 
 
 def _resolve_pauses(db, user, job, form: JobForm) -> None:
-    """D132: a form version that differs from the one an application paused on (by fingerprint or
-    option values) ends that pause; the package is rebuilt from it next. A version equal to the
-    paused one (the employer changed the form back) ends nothing."""
+    """D132: a form version that differs from the one an application paused on (by fingerprint,
+    option values or, D159, length limits) ends that pause; the package is rebuilt from it next.
+    A version equal to the paused one (the employer changed the form back) ends nothing."""
     from app.modules.execution.models import PAUSE_UNRESOLVED, ApplicationPause
 
     pauses = db.scalars(

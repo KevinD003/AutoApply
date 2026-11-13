@@ -122,7 +122,7 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
             return "the form's submit button cannot be identified"
         if self._filled and button.is_disabled():
             return SUBMIT_DISABLED  # S5 (D62): never clicked; nothing else on the page is either
-        return None
+        return self._limits_fit(page)  # D159
 
     # -- fill -------------------------------------------------------------------------------
     def fill(self, page: Page) -> list[dict]:

@@ -192,6 +192,30 @@ def one_line_breaks(text: str) -> str:
     return _LINE_BREAK.sub("\n", text)
 
 
+# D159: why a question's control is refused when the form is read (`sent_otherwise`).
+SENT_OTHERWISE = (
+    "a control whose form would not send exactly what is typed into it (it adds line breaks of "
+    "its own, sends your text's direction as a field of its own, or belongs to another form): "
+    "NoEfforts does not fill it"
+)
+
+
+def sent_otherwise(n: "_Node") -> bool:
+    """D155 (a work entry's controls), D159 (every question's): the control's form would not send
+    exactly what is typed into it, read from its tag as the browser reads it (an attribute written
+    twice, by its first value):
+      * a text area that hard-wraps: the form inserts line breaks you never wrote where the text
+        wraps on the screen (the browser does on `wrap="hard"`; every value but soft, empty or
+        none is refused rather than read);
+      * `dirname`: the form sends your text's direction as a field of its own;
+      * `form`: the control may belong to another form, or to none, and the application form
+        would not send it."""
+    wrap = n.twice.get("wrap", n.attrs.get("wrap"))
+    if n.tag == "textarea" and wrap is not None and wrap.strip().lower() not in ("", "soft"):
+        return True
+    return "dirname" in n.attrs or "form" in n.attrs
+
+
 class SectionSpec(BaseModel):
     """D120: a captured structured education/employment section -- its kind, the DOM container the
     executor scopes 'Add another' to, and (for education) the option lists its comboboxes offer.
@@ -569,10 +593,20 @@ def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> Fo
             continue
         required = "required" in n.attrs or n.attrs.get("aria-required") == "true"
         common = dict(key=name, step=step_of(n))
+
+        def refused(label: str, help_text: str | None, req: bool, common=common) -> FormField:
+            """D159: a question whose control's form would not send exactly what is typed into
+            it (`sent_otherwise`): never filled, a required one a checkpoint (D136)."""
+            return FormField(label=label, help_text=help_text, type=FieldType.unsupported,
+                             required=req, unsupported_reason=SENT_OTHERWISE, **common)  # fmt: skip
+
         if itype in ("radio", "checkbox"):
             group = next((a for a in n.ancestors() if a.tag == "fieldset"), None)
             members = [m for m in nodes if m.tag == "input" and m.attrs.get("name") == name]
             if itype == "checkbox" and len(members) == 1 and group is None:
+                if sent_otherwise(n):
+                    fields.append(refused(label_of(n), help_of(n), required))
+                    continue
                 fields.append(
                     FormField(
                         label=label_of(n),
@@ -597,6 +631,9 @@ def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> Fo
             req = (
                 required or "required" in group.attrs or group.attrs.get("aria-required") == "true"
             )
+            if any(sent_otherwise(m) for m in members):  # D159: one choice is enough
+                fields.append(refused(legend.all_text(), help_of(group) or help_of(n), req))
+                continue
             fields.append(
                 FormField(
                     label=legend.all_text(),
@@ -609,6 +646,9 @@ def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> Fo
             )
             continue
         if n.tag == "select":
+            if sent_otherwise(n):  # D159
+                fields.append(refused(label_of(n), help_of(n), required))
+                continue
             opts = [
                 Option(value=o.attrs.get("value", o.all_text()), label=o.all_text())
                 for o in n.walk()
@@ -661,6 +701,9 @@ def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> Fo
                     **common,
                 )
             )
+            continue
+        if sent_otherwise(n):  # D159: after the reasons above, which keep their fingerprints
+            fields.append(refused(label_of(n), help_of(n), required))
             continue
         ftype = (
             FieldType.textarea

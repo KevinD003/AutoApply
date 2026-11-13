@@ -12,9 +12,11 @@ from playwright.sync_api import TimeoutError as PWTimeout
 from app.modules.execution.faults import fault
 from app.modules.preparation.forms import (
     BOT_CHECK_KEY,
+    TEXT_TYPES,
     FormSchema,
     extract_form_schema,
     form_fingerprint,
+    sent_len,
 )
 from app.modules.preparation.sending import sendable_view
 
@@ -29,6 +31,30 @@ class Outcome:
 
 def _sel(key: str) -> str:
     return f'[name="{key}"]'
+
+
+# D159: the length a control accepts now (`maxLength`, -1 for none), as the browser reads it,
+# whatever set it (the page's markup or its script), as D157 reads a work entry's.
+_LIVE_LIMIT = "(e) => e.maxLength"
+_TYPED_TEXT = {t.value for t in TEXT_TYPES}
+# D159: what the application form (the one its final button submits) would send now: each name's
+# values as its submission builds them (a hard-wrapping text area's added line breaks; nothing
+# for a control of another form or a disabled one; one value per control of the name), never
+# what a control shows. Building it fires the form's `formdata` event, as a submission would.
+_FORM_ENTRIES = """(btn) => { const f = btn.form; if (!f) return null; const out = {};
+  for (const [k, v] of new FormData(f)) {
+    (out[k] = out[k] || []).push(typeof v === 'string' ? v : null); }
+  return out; }"""
+
+
+# The answers the readback reads by what is chosen or attached; every other one is typed.
+_CHOSEN_OR_FILE = ("file", "radio", "checkbox_group", "checkbox", "select", "multiselect")
+
+
+def _over_limit(limit, text: str) -> bool:
+    """D159: a text longer, as its form sends it (D158: a line break or an emoji counting two),
+    than a control's live limit (`_LIVE_LIMIT`)."""
+    return isinstance(limit, int) and not isinstance(limit, bool) and 0 <= limit < sent_len(text)
 
 
 class ReportsDisclosures:
@@ -111,6 +137,30 @@ class FixtureAtsAdapter(ReportsDisclosures):
             )
         if live.action and urljoin(page.url, live.action) != dest["submit_url"]:
             return "the form now submits to a different address"
+        return self._limits_fit(page)
+
+    def _limits_fit(self, page: Page) -> str | None:
+        """D159: each approved typed answer within the limit its control has now (`maxLength`, as
+        the browser reads it, whatever set it), counted as its form sends it (D158). Checked with
+        the form, before anything is entered (and again after filling). One that no longer fits is
+        a changed form: before anything is entered, D132's pause; reading the form again records
+        the new limit (a new version, D159) and the answer is then yours to shorten (D158). A
+        control that is not exactly one is left to filling and the readback."""
+        over = 0
+        for a in self.content["answers"]:
+            v = a["value"]
+            if a["type"] not in _TYPED_TEXT or not isinstance(v, dict):
+                continue
+            loc = page.locator(_sel(a["key"]))
+            try:
+                if loc.count() != 1:
+                    continue
+                over += _over_limit(loc.evaluate(_LIVE_LIMIT), v["text"])
+            except PWError:
+                continue  # filling and the readback report it
+        if over:
+            return FormChanged(f"{FORM_CHANGED} ({over} answer(s) longer than the page now "
+                               "accepts)", changed=over)  # fmt: skip
         return None
 
     # -- fill -------------------------------------------------------------------------------
@@ -203,18 +253,42 @@ class FixtureAtsAdapter(ReportsDisclosures):
             loc.fill(f"{v['number']:g}")
         elif t == "date":
             loc.fill(v["date"])
-        else:
+        elif not _over_limit(loc.evaluate(_LIVE_LIMIT), v["text"]):
+            # D159: the control's own limit read right before its value is typed (a page's
+            # script may have lowered it since the form was checked): a value it would cut is
+            # never typed, so a page that saves as you type never holds it cut; the readback
+            # reports the answer, and nothing is sent.
             loc.fill(v["text"])
         return None
 
     # -- verify -----------------------------------------------------------------------------
     def readback(self, page: Page) -> list[str]:
-        """Read the controls' actual values and compare with the approved package."""
+        """Read the controls' actual values and compare with the approved package. D159: a typed
+        answer (text, a number, a date) also as the application form would send it
+        (`_form_entries`, `_sends`)."""
         bad = []
+        entries: dict | None = None
+        built = False
         for a in self.content["answers"]:
             self._progress()
             key, t, v = a["key"], a["type"], a["value"]
             loc = page.locator(_sel(key))
+            if t not in _CHOSEN_OR_FILE:  # typed (an unsupported one too: it must stay empty)
+                if not built:
+                    entries, built = self._form_entries(page), True
+                if t == "number":
+                    want = f"{v['number']:g}" if v else ""
+                elif t == "date":
+                    want = v["date"] if v else ""
+                else:
+                    want = v["text"] if v else ""
+                # D159: exactly one control of the name (a second one, anywhere on the page, is a
+                # mismatch, never the browser's strict-mode error), holding the approved value,
+                # which is what its form would send.
+                if not (loc.count() == 1 and loc.input_value() == want
+                        and self._sends(entries, key, want)):  # fmt: skip
+                    bad.append(key)
+                continue
             if t == "file":
                 ok = v is None or bool(page.locator("#resume_upload_id").input_value())
             elif t == "radio":
@@ -231,18 +305,36 @@ class FixtureAtsAdapter(ReportsDisclosures):
                 ok = loc.is_checked() == bool(v and v["checked"])
             elif t == "select":
                 ok = loc.input_value() == (v["option"] if v else "")
-            elif t == "multiselect":
+            else:  # multiselect
                 got = loc.evaluate("e => Array.from(e.selectedOptions).map(o => o.value)")
                 ok = set(got) == ({o["option"] for o in v["options"]} if v else set())
-            elif t == "number":
-                ok = loc.input_value() == (f"{v['number']:g}" if v else "")
-            elif t == "date":
-                ok = loc.input_value() == (v["date"] if v else "")
-            else:
-                ok = loc.input_value() == (v["text"] if v else "")
             if not ok:
                 bad.append(key)
         return bad
+
+    def _form_entries(self, page: Page) -> dict | None:
+        """D159: what the application form, the one its final button submits, would send now
+        (`_FORM_ENTRIES`). None when that button is not exactly one or has no form: every typed
+        answer then fails the readback."""
+        try:
+            btn = self.final_button(page)
+            if btn is None or btn.count() != 1:
+                return None
+            return btn.evaluate(_FORM_ENTRIES)
+        except PWError:
+            return None
+
+    @staticmethod
+    def _sends(entries: dict | None, key: str, want: str) -> bool:
+        """D159: the form would send exactly the approved value under the question's name, and
+        once: a text area that hard-wraps (line breaks it adds), a control given to another form
+        or disabled (nothing sent), a second control of the name (two values) all fail it. A
+        question left unanswered: nothing but empty values under its name (a value the page put
+        in a control of the same name would be sent unapproved)."""
+        if entries is None:
+            return False
+        got = entries.get(key, [])
+        return all(g == "" for g in got) if want == "" else got == [want]
 
     # -- before the send gate (D154) ---------------------------------------------------------
     def final_button(self, page: Page):

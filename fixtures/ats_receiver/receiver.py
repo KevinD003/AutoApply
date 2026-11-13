@@ -45,9 +45,16 @@ REQUIRED = ["first_name", "last_name", "email", "phone", "country", "city", "wor
 LIMITS = {"why_us": 1000}
 
 
-def too_long(fields: dict) -> list[str]:
-    """D158: the fields this page's server refuses as longer than its limit (`LIMITS`)."""
-    return [k for k, n in LIMITS.items()
+def page_limits(cfg: dict) -> dict:
+    """D159: the limits of the page this server serves now: with cfg["sends"] "limit_served" its
+    "Why us" box is limited to 500, in its markup and here."""
+    return {**LIMITS, "why_us": 500} if cfg.get("sends") == "limit_served" else LIMITS
+
+
+def too_long(fields: dict, limits: dict | None = None) -> list[str]:
+    """D158: the fields this page's server refuses as longer than its limit (`LIMITS`, or the
+    page's own now, `page_limits`)."""
+    return [k for k, n in (limits or LIMITS).items()
             if len(str(fields.get(k) or "").encode("utf-16-le")) // 2 > n]  # fmt: skip
 
 # C6 (D51): mode "bank_question" adds this required, stable question to the "Questions" section:
@@ -104,7 +111,8 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
            "verify_delay_s": 0.0,  # D143: the code is accepted, its reply arrives this much later
            "wizard": None,  # D142: the Workday-style wizard variant (workday_like.py)
            # D154: a page's own checks before its final click (workday_like.py, greenhouse_v2.py)
-           "page_check": None, "page_check_delay_ms": 800}
+           "page_check": None, "page_check_delay_ms": 800,
+           "sends": None}  # D159: what this page's form sends, changed (page_form)
 
     def admin(tok: str | None):
         if tok != admin_token:
@@ -195,7 +203,8 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                     # D142: the Workday-style wizard variant, so none leaks into the next test
                     "wizard": None,
                     # D154: a page's own checks before its final click
-                    "page_check": None, "page_check_delay_ms": 800})
+                    "page_check": None, "page_check_delay_ms": 800,
+                    "sends": None})  # D159
         return {"ok": True}
 
     @app.get("/_fx/wait")
@@ -225,9 +234,12 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
     async def autosave(slug: str, request: Request):
         body = await request.json()
         # Field name only: the point is to count that data left the browser before submit.
+        # D159: and the length the page saved, when it says (a number, never the text).
+        detail = {"field": str(body.get("field"))[:100]}
+        if type(body.get("length")) is int:
+            detail["length"] = body["length"]
         ledger.run("insert into disclosures (kind,slug,detail,created_at) values (?,?,?,?)",
-                   ("autosave", slug, json.dumps({"field": str(body.get("field"))[:100]}),
-                    time.time()))
+                   ("autosave", slug, json.dumps(detail), time.time()))
         return {"saved": True}
 
     @app.post("/apply/{slug}/upload")
@@ -286,7 +298,7 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
             missing.append("education")
         if not fields.get("resume_upload_id"):
             missing.append("resume")
-        missing += too_long(fields)  # D158
+        missing += too_long(fields, page_limits(cfg))  # D158, D159
         if mode == "validation_fail" or missing:
             return HTMLResponse(page_msg("Please fix the errors",
                                          f"Missing or invalid: {', '.join(missing) or 'phone'}",
@@ -411,6 +423,45 @@ def page_form(slug, token, cfg):
                      " const b = document.createElement('button'); b.type = 'submit';"
                      " b.id = 'fx-submit-2'; b.textContent = 'Submit';"
                      " document.getElementById('application').append(b); });\n")
+    # D159: what the form sends for "Why us", changed (cfg["sends"]), by its markup ("_served":
+    # the page as it is fetched, read when the form is captured) or by its script ("_at_load", or
+    # once "Why us", or with "limit_on_input" the first name, is typed: after the form is checked).
+    sends = cfg.get("sends")
+    why_attrs = f'maxlength="{page_limits(cfg)["why_us"]}"'
+    if sends == "hard_wrap_served":
+        why_attrs += ' wrap="hard" cols="20"'
+    if sends == "limit_at_load":
+        js_extra += "document.getElementById('why_us').maxLength = 500;\n"
+    if sends == "hard_wrap_at_load":
+        js_extra += ("{ const w = document.getElementById('why_us'); w.setAttribute('wrap', 'hard');"
+                     " w.cols = 20; }\n")
+    if sends == "limit_on_input":  # and the page saves "Why us" as it is typed (its length only)
+        js_extra += (
+            "document.getElementById('first_name').addEventListener('input', () => {"
+            " document.getElementById('why_us').maxLength = 500; });\n"
+            "document.getElementById('why_us').addEventListener('input', (e) => fetch("
+            f"'/apply/{slug}/autosave', {{method: 'POST', headers: {{'Content-Type': "
+            "'application/json'}, body: JSON.stringify({field: 'why_us', "
+            "length: e.target.value.length})}));\n")
+    on_input = {
+        "hard_wrap_on_input": "w.setAttribute('wrap', 'hard'); w.cols = 20;",
+        "other_form_on_input": ("const o = document.createElement('form'); o.id = 'fx-other';"
+                                " document.body.append(o); w.setAttribute('form', 'fx-other');"),
+        "disabled_on_input": "setTimeout(() => { w.disabled = true; }, 0);",
+        "twin_on_input": ("const h = document.createElement('input'); h.type = 'hidden';"
+                          " h.name = 'why_us'; h.value = '';"
+                          " document.getElementById('application').append(h);"),
+    }.get(sends)
+    if sends == "twin_unanswered":  # "Why us" left unanswered: the page adds its own value
+        js_extra += ("{ let done = false; document.getElementById('first_name').addEventListener("
+                     "'input', () => { if (done) return; done = true;"
+                     " const h = document.createElement('input'); h.type = 'hidden';"
+                     " h.name = 'why_us'; h.value = 'Text the page wrote (fictional)';"
+                     " document.getElementById('application').append(h); }); }\n")
+    if on_input:
+        js_extra += ("{ const w = document.getElementById('why_us'); let done = false;"
+                     " w.addEventListener('input', () => { if (done) return; done = true; "
+                     f"{on_input} }}); }}\n")
     # D154: a button of the form that is not its submit button (the final click is still one)
     other_button = ""
     if cfg.get("page_check") == "other_button":
@@ -472,7 +523,7 @@ def page_form(slug, token, cfg):
 <option value="board">Job board</option><option value="referral">Referral</option>
 <option value="site">Company website</option><option value="other">Other</option></select>
 <label for="why_us">Why do you want to work at Example Health Clinic?</label>
-<textarea id="why_us" name="why_us" maxlength="1000"></textarea>
+<textarea id="why_us" name="why_us" {why_attrs}></textarea>
 {extra}
 </section>
 <section data-step="Voluntary self-identification">
