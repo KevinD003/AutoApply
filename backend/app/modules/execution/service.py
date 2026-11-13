@@ -1224,10 +1224,12 @@ RETIRED = {
     # D132: the employer's form no longer matched this package when it ran.
     "form_changed": "The employer's form no longer matched this package when it ran. Read the "
     "form again under Questions, answer what is new, then approve again.",
-    # D132: the page no longer matched after your answers were entered on it; nothing was
-    # submitted. Entering them again is a new decision.
+    # D132: the page no longer matched after your answers were entered on it; D154: or it kept
+    # loading after them, or would have refused the final click. Nothing was submitted.
+    # Entering them again is a new decision.
     "stopped_after_entry": "Used by an attempt that entered your answers on the employer's page "
-    "and stopped before submitting, because the page then no longer matched. Approve again to "
+    "and stopped before submitting, because of what the page did once they were entered (it no "
+    "longer matched, kept loading, or would have refused the final click). Approve again to "
     "run it again.",
     # D142: an attempt entered the application on a multi-page form; it is never run again.
     "wizard_draft_at_employer": "Used by an attempt that entered this application on the "

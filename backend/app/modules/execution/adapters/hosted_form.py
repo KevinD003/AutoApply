@@ -147,10 +147,13 @@ class HostedFormAdapter(FixtureAtsAdapter):
         return bad
 
     # -- submit -----------------------------------------------------------------------------
+    def final_button(self, page: Page):
+        return page.locator(self.SUBMIT)
+
     def submit(self, page: Page, timeout_ms: int) -> Outcome:
         try:
             with page.expect_navigation(timeout=timeout_ms) as nav:
-                page.locator(self.SUBMIT).click()
+                self.final_button(page).click()
             resp = nav.value
         except PWTimeout:
             return Outcome("unknown", "no response from the employer within the time limit")

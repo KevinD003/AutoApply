@@ -10,6 +10,10 @@ D142: a multi-page wizard is filled one page at a time between the disclosure ga
 send gate (`_wizard_pages`): forward only, each step behind a gate that commits before it, and
 anything unexpected ends the attempt for good (`abandoned`, or `unknown` when the employer may
 hold the application); NoEfforts never runs that application again.
+D154: after a page's answers are entered, what they started is waited for before the checks
+(`_settle`), then the submit button (`adapter.final_ready`); and right before the send gate,
+what the page itself would refuse at the final click is read without acting on it
+(`adapter.page_would_refuse`): a stop with nothing sent.
 """
 
 import hashlib
@@ -17,6 +21,7 @@ import logging
 import time
 import traceback
 import uuid
+from functools import partial
 from urllib.parse import urlsplit
 
 from sqlalchemy import select
@@ -35,6 +40,7 @@ from app.modules.execution.adapters.fixture_ats import (
     ACK_ERROR,
     ACK_LEFT_FORM,
     ACK_NONE,
+    REFUSAL_UNREAD,
     ConditionalRequired,
     FixtureAtsAdapter,
     FormChanged,
@@ -74,12 +80,15 @@ log = logging.getLogger("noefforts.execution")
 
 
 SETTLE_LOAD_MS = 8000  # how long a form's page may take to finish loading what it needs
+SETTLE_ENTRY_MS = 8000  # D154: and what entering a page's answers started
 QUIET_MS = 100  # nothing it needs in flight for this long: the page is ready
 _POLL_MS = 25
 # What a form's own set-up waits on. Not waited on: WebSockets and event streams (open by
 # design), images, media and fonts (they change no control's behaviour), pings and beacons.
 _TRACKED = frozenset({"document", "script", "stylesheet", "xhr", "fetch"})
 NOT_READY = "the form's page was still loading after 8 seconds"
+# D154: the requests the page started while the answers were entered never finished.
+STILL_LOADING = "the page was still loading 8 seconds after the answers were entered"
 # D111: the browser followed a redirect of a request only a path-limited rule admits (the
 # pilot's locale files), which the page's fetch guard should have prevented.
 LOCALE_REDIRECTED = "a request for one of the page's locale files was redirected"
@@ -110,7 +119,9 @@ class _Loading:
             self.page.remove_listener(event, fn)
 
 
-def _settle(page, loading: _Loading, honour_stop: bool = False) -> bool:
+def _settle(
+    page, loading: _Loading, honour_stop: bool = False, limit_ms: int | None = None
+) -> bool:
     """Wait until the page has finished the requests it made by itself (its scripts, a locale
     file): a control may only respond once they have arrived, and on a busy machine they come
     late (CI #133). True as soon as none has been in flight for QUIET_MS; False if the page is
@@ -118,7 +129,7 @@ def _settle(page, loading: _Loading, honour_stop: bool = False) -> bool:
     typed, clicked, sent or repeated. D150: with `honour_stop` (the first page, before anything
     is entered) a stop request ends the wait (StopRequested); never after a page's Next, whose
     outcome the reads after this wait decide."""
-    deadline = time.monotonic() + SETTLE_LOAD_MS / 1000
+    deadline = time.monotonic() + (SETTLE_LOAD_MS if limit_ms is None else limit_ms) / 1000
     quiet_since = None
     while True:
         if honour_stop:
@@ -343,6 +354,7 @@ def run_attempt(attempt_id: str, worker: str) -> str:
             phase = "after_disclosure"
             fault("after_disclosure_gate")
             recorded = _record_as_made(aid, worker, gen, adapter)
+            settled = True
             try:
                 if content.get("wizard"):  # D142: page by page, up to the review page
                     stopped = _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat)
@@ -350,7 +362,17 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                         return stopped
                     disclosures = []  # every page's evidence is recorded as it was made
                 else:
-                    disclosures = adapter.fill(page)
+                    # D154: what the page itself starts while the answers are entered (a
+                    # question it shows after a request) is waited for before anything is
+                    # read back or checked, as when the form opened (`_settle`).
+                    loading = _Loading(page)
+                    adapter.on_settle = partial(_settle, page, loading, limit_ms=SETTLE_ENTRY_MS)
+                    try:
+                        disclosures = adapter.fill(page)
+                        settled = _settle(page, loading, limit_ms=SETTLE_ENTRY_MS)
+                    finally:
+                        adapter.on_settle = None
+                        loading.close()
             except StoppedAfterDisclosure as e:  # an upload, D104's search, or a page's Next
                 _log_cause(aid, e)
                 _record_disclosures(aid, worker, gen, _not_yet(e.disclosures, recorded))
@@ -362,6 +384,14 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                 honour_stop[0] = False
             for d in _not_yet(disclosures, recorded):
                 svc.record_evidence(aid, worker, gen, "disclosure", d)
+            if not settled:
+                svc.abandon(aid, worker, gen, STILL_LOADING, retire_every="stopped_after_entry")
+                return "abandoned"
+            # D154: the submit button, waited for now (before the readback and the check after
+            # filling, so what the page changed meanwhile is read back and checked as well).
+            refused = adapter.final_ready(page)
+            if refused:
+                return _refused(aid, worker, gen, refused, stop_if_requested)
             mismatches = adapter.readback(page)
             # How many fields kept their values, never which (the posting's field keys).
             svc.record_evidence(
@@ -389,6 +419,15 @@ def run_attempt(attempt_id: str, worker: str) -> str:
                     return "abandoned"
                 svc.abandon(aid, worker, gen, str(reason), retire_every="stopped_after_entry")
                 return "abandoned"
+            # D154: what the page itself would refuse at the final click (the browser's own
+            # validation of the form, fields the page marks as not valid, a submit button it
+            # keeps hidden or disabled), read without acting on it: a stop with nothing sent,
+            # where the click would have been refused after the send gate (an unknown outcome,
+            # or a rejection after `sending`). Before the recheck evidence, so a rehearsal of a
+            # page that would refuse the click is never recorded.
+            refused = adapter.page_would_refuse(page)
+            if refused:
+                return _refused(aid, worker, gen, refused, stop_if_requested)
             svc.record_evidence(aid, worker, gen, "recheck", rehearsal.RECHECK_MATCHED)
             denied = eg.proxy_denied()
             if eg.blocked or denied:
@@ -516,7 +555,9 @@ def _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat) -> str | 
     checks that the form now shows the next page and is still the approved form. Each gate commits
     its `step_authorized` event before the action, so a worker lost after a click leaves the
     record. D148: before the gate for a page's Next, the questions that page shows by its own
-    logic must be what was entered (`page_follow_ups`). Returns None when the review page is
+    logic must be what was entered (`page_follow_ups`). D154: what filling a page started is
+    waited for before its checks (`_settle`); a page still loading ends the attempt there, its
+    Next never clicked. Returns None when the review page is
     reached, or the runner's result once the attempt
     has ended: `abandoned` (any refusal or finding; `svc.abandon` says pages may be saved at the
     employer and retires every approval), `unknown` (the page left the form after a Next:
@@ -541,8 +582,19 @@ def _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat) -> str | 
             if gate(i, "fill"):
                 return "abandoned"
             beat()
-        for d in _not_yet(adapter.fill_page(page, i), recorded):
+        loading = _Loading(page)  # D154: what the page's answers started, before its checks
+        adapter.on_settle = partial(_settle, page, loading, limit_ms=SETTLE_ENTRY_MS)
+        try:
+            filled = adapter.fill_page(page, i)
+            settled = _settle(page, loading, limit_ms=SETTLE_ENTRY_MS)
+        finally:
+            adapter.on_settle = None
+            loading.close()
+        for d in _not_yet(filled, recorded):
             svc.record_evidence(aid, worker, gen, "disclosure", d)
+        if not settled:
+            svc.abandon(aid, worker, gen, STILL_LOADING)
+            return "abandoned"
         mismatches = adapter.readback_through(page, i)
         # How many fields so far kept their values, never which (the posting's field keys).
         checked = len(adapter.page_answers(*range(1, i + 1)))
@@ -594,6 +646,18 @@ def _wizard_pages(aid, worker, gen, adapter, page, eg, recorded, beat) -> str | 
             svc.abandon(aid, worker, gen, str(reason))
             return "abandoned"
     return None
+
+
+def _refused(aid, worker, gen, reason: str, stop_if_requested) -> str:
+    """D154: a stop before the send gate for what the page itself would refuse at the final
+    click (`adapter.final_ready`, `adapter.page_would_refuse`): abandoned with nothing sent,
+    every live approval retired (D132), never a pause or a retry. A page that could not be read
+    while the worker is being stopped (its browser closed with it) ends as the stop does (D150,
+    StopRequested), where the stop is honoured."""
+    if reason == REFUSAL_UNREAD:
+        stop_if_requested()
+    svc.abandon(aid, worker, gen, str(reason), retire_every="stopped_after_entry")
+    return "abandoned"
 
 
 def _stop(aid, worker, gen, reason: str, plain) -> None:

@@ -203,8 +203,11 @@ class GreenhouseHostedAdapter(FixtureAtsAdapter):
         return bad
 
     # -- submit -----------------------------------------------------------------------------
+    def final_button(self, page: Page):
+        return page.locator(_SUBMIT)
+
     def submit(self, page: Page, timeout_ms: int) -> Outcome:
-        return self._click(page, page.locator(_SUBMIT), timeout_ms)
+        return self._click(page, self.final_button(page), timeout_ms)
 
     def _code_entry(self, page: Page) -> str | None:
         """How the page takes the code: one input, or one box per character (S5, D62)."""

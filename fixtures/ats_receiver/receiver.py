@@ -92,7 +92,9 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
            "fh_mode": "normal", "fh_rate_limit": 1000, "upload_fail_field": None,
            "upload_delay_s": 0.0, "verify_drop": False, "inbox_mode": "normal", "email_codes": None,
            "verify_delay_s": 0.0,  # D143: the code is accepted, its reply arrives this much later
-           "wizard": None}  # D142: the Workday-style wizard variant (workday_like.py)
+           "wizard": None,  # D142: the Workday-style wizard variant (workday_like.py)
+           # D154: a page's own checks before its final click (workday_like.py, greenhouse_v2.py)
+           "page_check": None, "page_check_delay_ms": 800}
 
     def admin(tok: str | None):
         if tok != admin_token:
@@ -181,8 +183,17 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                     "cdn": None, "variant": None, "widget_bad": None, "redirect_away": None,
                     "ll_code": None, "ll_code_value": None, "ll_invalid": None,
                     # D142: the Workday-style wizard variant, so none leaks into the next test
-                    "wizard": None})
+                    "wizard": None,
+                    # D154: a page's own checks before its final click
+                    "page_check": None, "page_check_delay_ms": 800})
         return {"ok": True}
+
+    @app.get("/_fx/wait")
+    async def fx_wait():
+        """D154: a request a stand-in page makes after an answer, answered after
+        cfg["page_check_delay_ms"] (what a page may load before it reacts to an answer)."""
+        await asyncio.sleep(cfg["page_check_delay_ms"] / 1000)
+        return {}
 
     @app.post("/_admin/inbox")
     async def inbox_add(request: Request, x_admin_token: str | None = Header(None)):
@@ -383,6 +394,16 @@ def page_form(slug, token, cfg):
     if tamper == "checkbox":  # the page unticks the box
         js_extra += ("document.querySelector('[name=privacy_ack]').addEventListener('change', "
                      "e => { e.target.checked = false; });\n")
+    if cfg.get("page_check") == "two_submit":  # D154: an answer adds a second submit button
+        js_extra += ("document.getElementById('application').addEventListener('input', () => {"
+                     " if (document.getElementById('fx-submit-2')) return;"
+                     " const b = document.createElement('button'); b.type = 'submit';"
+                     " b.id = 'fx-submit-2'; b.textContent = 'Submit';"
+                     " document.getElementById('application').append(b); });\n")
+    # D154: a button of the form that is not its submit button (the final click is still one)
+    other_button = ""
+    if cfg.get("page_check") == "other_button":
+        other_button = '<button type="button" id="fx-save-later">Save for later</button>\n'
     # C8 (D61): the self-identification question required, as some boards make it.
     eeo_required = " required" if cfg["mode"] == "required_eeo" else ""
     hostile = ""
@@ -452,7 +473,7 @@ def page_form(slug, token, cfg):
 <section data-step="Review">
 <label><input type="checkbox" name="privacy_ack" required> I have read and agree to the privacy notice.</label>
 </section>
-<button type="submit" id="submit-application">Submit application</button>
+{other_button}<button type="submit" id="submit-application">Submit application</button>
 </form>
 {hostile}
 <script>

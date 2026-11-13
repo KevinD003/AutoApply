@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.core.db import SessionLocal
 from app.modules.execution import runner
+from app.modules.execution.adapters.fixture_ats import FINAL_BUTTON_UNAVAILABLE
 from app.modules.execution.models import ApplicationPause, Evidence, ExecutionAttempt
 from app.modules.preparation import greenhouse as gh
 from app.modules.preparation.forms import FieldType
@@ -544,11 +545,13 @@ def test_no_cookie_banner_or_i_agree_button_is_ever_clicked(api, receiver):
 
 def test_a_submit_button_waiting_for_an_unlisted_click_stops_before_the_final_click(api, receiver):
     """R11.8: the submit button stays disabled until "I agree" is clicked: NoEfforts clicks
-    neither and stops before the send gate."""
+    neither and stops before the send gate. D154: the button is waited for after filling, before
+    the readback, so the stop is the wait's (the adapter's own "still disabled" check comes
+    after it)."""
     aid = queue(api, gh_application(api))
     receiver.config(mode="gh_consent_blocking")
     assert runner.run_attempt(aid, "w1") == "abandoned"
-    assert "still disabled" in attempt(aid).outcome_detail
+    assert FINAL_BUTTON_UNAVAILABLE in attempt(aid).outcome_detail
     led = receiver.ledger()
     assert led["accepted"] == 0 and kinds(led) == {"upload": 1}  # no click recorded
     assert attempt(aid).send_started_at is None

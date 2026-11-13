@@ -1,0 +1,330 @@
+"""D154: before the send gate, what the page itself would refuse at the final click stops the
+attempt with nothing sent; after a page's answers are entered, what they started is waited for
+before the checks, then the submit button. Through the runner against the stand-ins' FIXTURE
+ASSUMPTIONS (FA8 in fixtures/ats_receiver/workday_like.py, the page_check settings of
+greenhouse_v2.py and of the receiver's own form), never a real page. The receiver's own ledger
+is the oracle for what reached the employer: its acceptances, its draft rows and the POSTs it
+logged, never NoEfforts' tables. Synthetic candidate data only.
+
+Before D154 the stopping cases below reached the final click (the browser refused it: no
+request, `unknown`, quarantined; the page's own script refused it: `rejected` after `sending`;
+it could not be made: `unknown`), or sent what the page later refused (`rejected`); a rehearsal
+of such a page was recorded as passing. The cases that end `confirmed` show what is never
+stopped."""
+
+import uuid
+
+import pytest
+from sqlalchemy import select
+
+from app.core.db import SessionLocal
+from app.modules.execution import runner, stopping
+from app.modules.execution.adapters import fixture_ats as fa
+from app.modules.execution.adapters.workday import WorkdayFixtureAdapter
+from app.modules.execution.models import ApplicationPause, RehearsalRecord
+from tests.execution_harness import Receiver, attempt, prepared_application, queue
+from tests.test_execution_security import open_checkpoint, start_worker
+from tests.test_greenhouse_dom import v2_application
+from tests.test_workday_adapter import fresh_url, workday_application
+from tests.test_workday_follow_up import FOLLOW_UP, follow_up_application, page_4
+from tests.test_workday_wizard import approvals, draft_pages, posts, wizard_application
+
+CODE = "AB12CD34"
+
+
+@pytest.fixture(scope="module")
+def receiver():
+    r = Receiver()
+    yield r
+    r.stop()
+
+
+@pytest.fixture(autouse=True)
+def _reset(receiver):
+    receiver.reset()
+
+
+def run(api, app_id: str) -> tuple[str, str]:
+    aid = queue(api, app_id)
+    return runner.run_attempt(aid, "w1"), aid
+
+
+def nothing_sent(led, path: str) -> bool:
+    """No acceptance and no final POST logged by the receiver."""
+    return led["accepted"] == 0 and posts(led, path) == 0
+
+
+def stopped_after_entry(aid: str, app_id: str) -> bool:
+    """Abandoned before the send gate, every approval retired with the stop (D132)."""
+    att = attempt(aid)
+    found = approvals(app_id)
+    return (
+        att.state == "abandoned"
+        and att.disclosure_started_at is not None
+        and att.send_started_at is None
+        and bool(found)
+        and all(a.invalidated_at is not None for a in found)
+    )
+
+
+def single(api, receiver, check: str, **kw) -> str:
+    """A Workday-style single page with this check, captured, answered and approved."""
+    receiver.config(page_check=check)
+    return workday_application(api, url=fresh_url(), **kw)
+
+
+# ---------------------------------------------------------------------------- Workday-style
+
+
+@pytest.mark.parametrize("check, part", [
+    ("pattern", "1 value(s) it does not accept"),
+    ("custom_error", "1 field(s) it marks as not valid"),
+], ids=["pattern", "custom_error"])  # fmt: skip
+def test_a_value_the_browser_would_refuse_stops_before_the_send_gate(api, receiver, check, part):
+    app_id = single(api, receiver, check)
+    out, aid = run(api, app_id)
+    assert out == "abandoned"
+    assert nothing_sent(receiver.ledger(), "/apply")
+    assert stopped_after_entry(aid, app_id)
+    detail = attempt(aid).outcome_detail
+    assert fa.PAGE_WOULD_REFUSE in detail and part in detail
+    assert "phone" not in detail.lower() and "555" not in detail  # counts only
+
+
+def test_a_submit_button_the_page_keeps_disabled_stops_before_the_send_gate(
+    api, receiver, monkeypatch
+):
+    monkeypatch.setattr(fa, "FINAL_READY_MS", 2000, raising=False)
+    app_id = single(api, receiver, "button_disabled")
+    out, aid = run(api, app_id)
+    assert out == "abandoned" and fa.FINAL_BUTTON_UNAVAILABLE in attempt(aid).outcome_detail
+    assert nothing_sent(receiver.ledger(), "/apply") and stopped_after_entry(aid, app_id)
+
+
+def test_a_submit_button_enabled_a_second_after_the_last_answer_is_waited_for(api, receiver):
+    app_id = single(api, receiver, "button_late_enable")
+    out, _ = run(api, app_id)
+    assert out == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+
+
+def test_what_the_page_changes_while_it_keeps_submit_disabled_is_read_back(api, receiver):
+    """The page rewrites a field a second after the last answer, as it enables Submit: the
+    button is waited for before the readback, which so sees the rewritten field."""
+    app_id = single(api, receiver, "late_rewrite")
+    out, aid = run(api, app_id)
+    assert out == "abandoned" and "did not keep their values" in attempt(aid).outcome_detail
+    assert nothing_sent(receiver.ledger(), "/apply")
+
+
+def test_a_mark_the_page_would_clear_when_focus_leaves_the_field_is_not_counted(api, receiver):
+    """The page marks a field `aria-invalid` when focus leaves it empty and cancels its own
+    submission while a field is marked. The terms box had focus at load and was left empty;
+    it is filled last and keeps focus, so its mark stays until the final click, when the page
+    checks it again and clears it."""
+    app_id = single(api, receiver, "focus_validation")
+    out, _ = run(api, app_id)
+    assert out == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+
+
+def test_a_follow_up_shown_after_a_request_pauses_for_your_answer(api, receiver):
+    """D148's limit: the page reacts to the shift only once its request is answered. The wait
+    after filling sees the follow-up shown and required, with no approved answer: the single
+    page pauses so you can answer it (D135), with nothing sent."""
+    receiver.config(page_check="late_follow_up")
+    app_id = follow_up_application(api, receiver, "follow_up_revealed_required", single=True)
+    out, aid = run(api, app_id)
+    assert out == "abandoned"
+    assert nothing_sent(receiver.ledger(), "/apply")
+    with SessionLocal() as db:
+        pause = db.scalar(select(ApplicationPause).where(
+            ApplicationPause.application_id == uuid.UUID(app_id)))  # fmt: skip
+        assert (pause.kind, pause.status, pause.detail) == (
+            "conditional_required", "open", {"required": 1})  # fmt: skip
+    assert attempt(aid).send_started_at is None
+
+
+def test_a_follow_up_shown_after_a_request_stops_a_wizard_before_its_pages_next(api, receiver):
+    """On a wizard the same follow-up, on page 4, ends the attempt before page 4's Next (a
+    wizard never pauses, D142): page 4 is never sent."""
+    receiver.config(page_check="late_follow_up")
+    app_id = follow_up_application(api, receiver, "follow_up_revealed_required")
+    out, aid = run(api, app_id)
+    assert out == "abandoned"
+    led = receiver.ledger()
+    assert draft_pages(led) == [1, 2, 3] and nothing_sent(led, "/apply")
+    assert attempt(aid).outcome_detail.endswith(fa.CONDITIONAL_REQUIRED)
+
+
+@pytest.mark.parametrize("single_page", [True, False], ids=["single_page", "wizard"])
+def test_an_answered_follow_up_shown_after_a_request_is_entered(api, receiver, single_page):
+    """The page's reaction to the other answers is waited for before the follow-ups are entered,
+    so an approved answer to one the page shows after a request is entered and sent."""
+    receiver.config(page_check="late_follow_up")
+    app_id = follow_up_application(api, receiver, "follow_up_revealed_required",
+                                   detail="Friday and Saturday", single=single_page)  # fmt: skip
+    out, _ = run(api, app_id)
+    assert out == "confirmed"
+    led = receiver.ledger()
+    assert led["accepted"] == 1
+    sent = led["acceptances"][0]["fields"] if single_page else page_4(led)
+    assert sent[FOLLOW_UP] == "Friday and Saturday"
+
+
+def test_a_wizard_whose_review_page_refuses_an_earlier_page_stops_before_the_send_gate(
+    api, receiver
+):
+    """The browser validates every page of the form at the final click, the hidden ones too:
+    on the review page the page's script refuses page 1's phone."""
+    receiver.config(page_check="late_invalid")
+    app_id = wizard_application(api, receiver, "plain")
+    out, aid = run(api, app_id)
+    assert out == "abandoned"
+    led = receiver.ledger()
+    assert draft_pages(led) == [1, 2, 3, 4] and nothing_sent(led, "/apply")
+    assert "1 field(s) it marks as not valid" in attempt(aid).outcome_detail
+
+
+@pytest.mark.parametrize("wizard", [None, "plain"], ids=["single_page", "wizard"])
+def test_a_page_still_loading_after_the_answers_stops_before_its_checks(
+    api, receiver, monkeypatch, wizard
+):
+    monkeypatch.setattr(runner, "SETTLE_ENTRY_MS", 1500, raising=False)  # not the wait at open
+    receiver.config(page_check="slow_after_entry", page_check_delay_ms=15000, wizard=wizard)
+    app_id = workday_application(api, url=fresh_url())
+    out, aid = run(api, app_id)
+    assert out == "abandoned" and runner.STILL_LOADING in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert draft_pages(led) == [] and nothing_sent(led, "/apply")
+    assert stopped_after_entry(aid, app_id)
+
+
+@pytest.mark.parametrize("stopping_now", [True, False], ids=["worker_stopping", "not_stopping"])
+def test_a_page_unreadable_while_the_worker_is_being_stopped_ends_as_the_stop(
+    api, receiver, monkeypatch, stopping_now
+):
+    """D150: stopping the worker closes its browser, so the read before the send gate can fail
+    then: that is the stop's, ended as the stop is. Otherwise an unreadable page is a refusal
+    like any other (fail closed), every approval retired."""
+
+    def unread(self, page):
+        if stopping_now:
+            stopping.request()
+        return fa.REFUSAL_UNREAD
+
+    app_id = single(api, receiver, None)
+    monkeypatch.setattr(WorkdayFixtureAdapter, "page_would_refuse", unread)
+    try:
+        out, aid = run(api, app_id)
+    finally:
+        stopping.clear()
+    assert out == "abandoned" and nothing_sent(receiver.ledger(), "/apply")
+    detail = attempt(aid).outcome_detail
+    if stopping_now:
+        assert runner.STOP_REQUESTED in detail and fa.REFUSAL_UNREAD not in detail
+    else:
+        assert fa.REFUSAL_UNREAD in detail and stopped_after_entry(aid, app_id)
+
+
+def test_a_rehearsal_of_a_page_that_would_refuse_the_click_is_never_recorded(api, receiver):
+    app_id = single(api, receiver, "custom_error", scope="disclose_only")
+    out, aid = run(api, app_id)
+    assert out == "abandoned" and fa.PAGE_WOULD_REFUSE in attempt(aid).outcome_detail
+    with SessionLocal() as db:
+        assert db.scalar(select(RehearsalRecord).where(
+            RehearsalRecord.attempt_id == uuid.UUID(aid))) is None  # fmt: skip
+    assert nothing_sent(receiver.ledger(), "/apply")
+
+
+# ---------------------------------------------------------------------------- the receiver's form
+
+
+def test_a_second_submit_button_stops_before_the_send_gate(api, receiver):
+    """The receiver's own form (the base adapter, whose check after filling does not count
+    submit buttons): an answer adds a second one, which the click could not tell apart."""
+    receiver.config(page_check="two_submit")
+    app_id = prepared_application(api, receiver)
+    out, aid = run(api, app_id)
+    assert out == "abandoned" and fa.SUBMIT_UNIDENTIFIED in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and posts(led, "/submit") == 0
+    assert stopped_after_entry(aid, app_id)
+
+
+def test_a_forms_other_buttons_are_never_taken_for_its_submit_button(api, receiver):
+    """The receiver's own form with a button that does not submit it ("Save for later"): the
+    final click is still identified, and made once."""
+    receiver.config(page_check="other_button")
+    app_id = prepared_application(api, receiver)
+    out, _aid = run(api, app_id)
+    assert out == "confirmed"
+    led = receiver.ledger()
+    assert led["accepted"] == 1 and posts(led, "/submit") == 1
+
+
+# ---------------------------------------------------------------------------- Greenhouse v2
+
+
+def v2(api, receiver, check: str) -> str:
+    """The v2 stand-in's application, captured and approved, then the check switched on (the
+    page as it is at the run)."""
+    app_id = v2_application(api)
+    receiver.config(page_check=check)
+    return app_id
+
+
+@pytest.mark.parametrize("check", ["aria_invalid", "check_validity"])
+def test_a_field_the_pages_own_script_refuses_stops_before_the_send_gate(api, receiver, check):
+    app_id = v2(api, receiver, check)
+    out, aid = run(api, app_id)
+    assert out == "abandoned"
+    assert nothing_sent(receiver.ledger(), "/submit") and stopped_after_entry(aid, app_id)
+    detail = attempt(aid).outcome_detail
+    assert "1 field(s) it marks as not valid" in detail and "example" not in detail
+
+
+def test_a_hidden_field_a_novalidate_page_never_reads_is_not_counted(api, receiver):
+    """The page decides (`novalidate`): a hidden field its markup would refuse is never read or
+    sent by the page, and the application goes through."""
+    app_id = v2(api, receiver, "hidden_invalid")
+    out, _ = run(api, app_id)
+    assert out == "confirmed" and receiver.ledger()["accepted"] == 1
+
+
+def test_a_v2_submit_button_kept_disabled_stops_before_the_send_gate(api, receiver, monkeypatch):
+    monkeypatch.setattr(fa, "FINAL_READY_MS", 2000, raising=False)
+    app_id = v2(api, receiver, "button_disabled")
+    out, aid = run(api, app_id)
+    assert out == "abandoned" and fa.FINAL_BUTTON_UNAVAILABLE in attempt(aid).outcome_detail
+    assert nothing_sent(receiver.ledger(), "/submit")
+
+
+def test_a_v2_submit_button_enabled_a_second_later_is_waited_for(api, receiver):
+    app_id = v2(api, receiver, "button_late_enable")
+    out, _ = run(api, app_id)
+    assert out == "confirmed" and receiver.ledger()["accepted"] == 1
+
+
+def test_security_code_boxes_shown_before_the_click_are_left_for_the_checkpoint(api, receiver):
+    """D116: the code's boxes appear once the address is typed, required by the page here, and
+    Submit stays disabled until they are full; they are filled only from your checkpoint, so
+    they never count against the form and the button is not waited for."""
+    receiver.config(
+        mode="gh2_live_like",
+        ll_code="before_click",
+        ll_code_value=CODE,
+        ll_invalid=False,
+        upload_fail_field=None,
+        page_check="code_boxes_required",
+    )
+    app_id = v2_application(api)  # captured as it declares itself (no submit address)
+    aid = queue(api, app_id)
+    w = start_worker(aid, "w-d154")
+    cp = open_checkpoint(api, app_id, 1)
+    r = api.post(f"/applications/{app_id}/checkpoints/{cp['id']}/code",
+                 json={"round": 1, "code": CODE})  # fmt: skip
+    assert r.status_code == 202
+    out, err = w.communicate(timeout=90)
+    assert out.strip() == "confirmed", err[-800:]
+    assert receiver.ledger()["accepted"] == 1
