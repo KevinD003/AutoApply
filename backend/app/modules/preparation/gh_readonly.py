@@ -26,6 +26,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from app.modules.preparation import greenhouse as gh
+from app.modules.preparation.forms import TEXT_TYPES, ExtractionError
 
 PROVIDER = "greenhouse_readonly"  # its registry entry (providers/registry.py)
 API_HOST = "boards-api.greenhouse.io"
@@ -822,7 +823,7 @@ def observe_page(
         dom = page.evaluate(DOM_STATS_JS)
         ready = page.evaluate("() => document.readyState")
         if api_json is not None and not bot_check:
-            evidence = mapping_evidence(page, html, api_json)
+            evidence = mapping_evidence(page, html, api_json, served=_served_html(resp))
         inspection = None
         if latched:  # D111: latched while the page was read: no inspection action
             raise Stop(latched[0])
@@ -992,16 +993,68 @@ def _observation(m, f) -> tuple[str, list[str]]:
     return "unique", []
 
 
-def mapping_evidence(page, html: str, api_json: dict) -> dict:
+def _served_html(resp) -> str | None:
+    """D161: the page as it was served, which is what the Greenhouse pilot's capture reads (its
+    page without its scripts), from the response the browser already received: no new request.
+    None where it cannot be read."""
+    try:
+        return resp.text() if resp is not None else None
+    except Exception:  # noqa: BLE001 - not observable; never a stop
+        return None
+
+
+def _served_limits(fields, served: str | None) -> dict:
+    """D161: each typed question's length limit as the pilot's capture records it from the page
+    as served (`greenhouse_dom.control_limit`, on the control the capture maps): a number, None
+    for none, or "not_observable" where the served page cannot be read or does not map it."""
+    from app.modules.preparation import greenhouse_dom as gdom
+
+    try:
+        controls = gdom.snapshot(served) if served is not None else None
+    except ExtractionError:
+        controls = None
+    if controls is None:
+        return {}
+    return {
+        f.key: gdom.control_limit(f, m.control)
+        for f, m in zip(fields, gdom.map_fields(fields, controls), strict=True)
+        if m.status == "mapped"
+    }
+
+
+def _length_limit(page, f, c, recorded) -> dict | str:
+    """D161: a typed question's length limit: as the browser reads it on the loaded page, where
+    it holds what is typed into the control to one (`browser_reads`, None for none: the limit
+    the adapter checks before typing), and as the pilot's capture records it from the page as
+    served (`capture_records`: what your answer is held to before you approve). Where the two
+    differ, the page sets or changes its limit by its own scripts, or writes it so that no
+    read records it. Numbers only; nothing is clicked, typed or focused."""
+    from app.modules.preparation import greenhouse_dom as gdom
+
+    if c is None or f.type not in TEXT_TYPES or not _SAFE_ID.fullmatch(c.id):
+        return "not_applicable"
+    loc = page.locator(f'[id="{c.id}"]')
+    if loc.count() != 1:
+        return "not_applicable"
+    limit, _, applies = loc.evaluate(gdom.LIVE_LIMIT_JS)
+    return {
+        "browser_reads": limit if applies and isinstance(limit, int) and limit >= 0 else None,
+        "capture_records": recorded,
+    }
+
+
+def mapping_evidence(page, html: str, api_json: dict, served: str | None = None) -> dict:
     """Per API field, from the loaded DOM only (reads and visibility checks; nothing is clicked,
     typed or focused): one observation (absent / unique / ambiguous / incompatible /
     not_observable) and the checks behind it, each true, false, "not_observable_at_load" or
     "not_applicable". Plus the page controls no API field names. The mapping rules are the
-    adapter's own (greenhouse_dom.map_fields); nothing is relaxed here."""
+    adapter's own (greenhouse_dom.map_fields); nothing is relaxed here. D161: with `served` (the
+    page as served), each typed question's length limit (`_length_limit`)."""
     from app.modules.preparation import greenhouse_dom as gdom
 
     fields = gh.schema_from_api(api_json).fields
     controls = gdom.snapshot(html)
+    recorded = _served_limits(fields, served)
 
     def visible(cid: str):
         if not _SAFE_ID.fullmatch(cid):
@@ -1063,6 +1116,7 @@ def mapping_evidence(page, html: str, api_json: dict) -> dict:
             "required_evidence": "not_applicable"
             if c is None or f.type.value == "unsupported"
             else gdom.required_evidence(f.required, signals),
+            "length_limit": _length_limit(page, f, c, recorded.get(f.key, "not_observable")),
         }  # fmt: skip
         per_field.append(entry)
     keys = {f.key.removesuffix("[]") for f in fields}
@@ -1376,6 +1430,8 @@ _OUTPUT_WORDS = {
     # D152: the adapter's settle rule at the last read ("pending" and "not_applicable" are
     # already words of the output: no new word a posting's label could match)
     "settle_rule", "list_quiet", "equal_reads", "met", "settle_rule_counts", "not_met",
+    # D161: a typed question's length limit (numbers; "not_observable" is already a word)
+    "length_limit", "browser_reads", "capture_records",
 }  # fmt: skip
 VOCAB = frozenset(
     _OUTPUT_WORDS | STANDARD_NAMES | {f"{n}[]" for n in STANDARD_NAMES} | GH_TYPES
