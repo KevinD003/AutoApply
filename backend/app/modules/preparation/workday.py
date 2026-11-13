@@ -40,9 +40,11 @@ your approved work history: `SectionSpec(kind="employment")` with its page and w
 requires an entry, and its entries' controls are not questions of their own. Only that exact
 structure is read (`_work_section`): one section with an id and one "Add" button, entries built
 from a template outside the form whose controls are exactly the ones NoEfforts fills (title,
-company, current, from, to) and two it leaves empty (location, description, never required), and
-no value in any entry at load. Anything else about work history is one required checkpoint
-(`WORK_KEY`): apply on the employer's site, never a guess and never left out silently.
+company, current, from, to) and, D155, any of Location and Role Description (entered from your
+record when it holds them: `parts`, and those the page requires, `required_parts`), every entry
+already on the page asking them as the template does, and no value in any entry at load.
+Anything else about work history is one required checkpoint (`WORK_KEY`): apply on the
+employer's site, never a guess and never left out silently.
 
 A parsed resume that fills fields after an upload is caught at execution by the readback of
 every field NoEfforts leaves unanswered (`hosted_form.HostedFormAdapter`)."""
@@ -57,6 +59,7 @@ from pydantic import ValidationError
 from app.modules.preparation.forms import (
     _ARIA_WIDGETS,
     _VOID,
+    ENTRY_PARTS,
     UNKNOWN_TRIGGER,
     Condition,
     FieldType,
@@ -133,7 +136,9 @@ def _hidden_in_page(html: str) -> set[str]:
 
 
 # D149: the Work Experience section (FA7). An entry's controls, by the last part of their name
-# (work[i].<part>): (tag, input type, filled by NoEfforts). One not filled is never required.
+# (work[i].<part>): (tag, input type, always entered). D155: Location and Role Description are
+# entered when your record holds them (`_OPTIONAL_PARTS`); the page may require them, and then a
+# record without one blocks approval. Any other part is always entered.
 _WORK_NAME = re.compile(r"work\[(\d+|__i__)\]\.([a-z_]+)")  # always read whole (fullmatch)
 _WORK_ANY = re.compile(r"^work\[")  # any control named as an entry's
 _WORK_CONTROLS = {
@@ -145,6 +150,7 @@ _WORK_CONTROLS = {
     "to": ("input", "text", True),
     "description": ("textarea", None, False),
 }
+_OPTIONAL_PARTS = ENTRY_PARTS  # sorted, as SectionSpec.parts
 _ADD = re.compile(r"^add(?: another)?$", re.IGNORECASE)
 _ROOT_ID = re.compile(r"[A-Za-z][\w-]{0,99}")  # always read whole (fullmatch)
 WORK_REASON = (
@@ -179,8 +185,10 @@ _CONSTRAINTS = ("maxlength", "minlength", "pattern")
 
 def _work_control_ok(n: _Node, index: str, template: _Node | None) -> bool:
     """One control of an entry (the template's index `__i__`, or an entry's own): a part NoEfforts
-    knows, of its kind, holding nothing, and never required when NoEfforts leaves it empty. In
-    the template, also shown and editable. An entry on the page is not held to that here: the
+    knows, of its kind, holding nothing, sending exactly what is typed into it, and never
+    required when NoEfforts may leave it empty (a past role's box; D155: a Location or Role
+    Description may be, as it is entered from your record or blocks approval). In the template,
+    also shown and editable. An entry on the page is not held to that here: the
     page hides a current role's To once its box is ticked, and capture cannot tell an entry the
     page showed at load from one NoEfforts added; the adapter checks the entries already on the
     page before anything is entered (execution/adapters/workday_sections.py)."""
@@ -198,10 +206,30 @@ def _work_control_ok(n: _Node, index: str, template: _Node | None) -> bool:
         return False
     if (n.attrs.get("value") and kind != "checkbox") or "checked" in n.attrs or n.all_text():
         return False  # a value at load is never trusted (as PREFILLED_KEY)
-    required = "required" in n.attrs or n.attrs.get("aria-required", "").lower() == "true"
+    # D155: what the browser sends is what was typed: no hard wrapping (line breaks you never
+    # wrote), no direction field (`dirname`) and no other form (`form`).
+    wrap = n.attrs.get("wrap")
+    if (n.tag == "textarea" and wrap is not None and wrap.strip().lower() not in ("", "soft")
+            or "dirname" in n.attrs or "form" in n.attrs):  # fmt: skip
+        return False
     # A box left unticked for a past role must never be required (the browser would block the
-    # final click); a part NoEfforts leaves empty must never be required either.
-    return not required or (filled and m[2] != "current")
+    # final click). D155: a required Location or Role Description is entered from your record,
+    # or the package cannot be approved without it (`required_parts`).
+    return not _required(n) or (filled and m[2] != "current") or m[2] in _OPTIONAL_PARTS
+
+
+def _required(n: _Node) -> bool:
+    return "required" in n.attrs or n.attrs.get("aria-required", "").lower() == "true"
+
+
+def _optional_parts(controls: list[_Node]) -> dict[str, bool]:
+    """D155: an entry's Location and Role Description, each with whether the page requires it."""
+    out = {}
+    for n in controls:
+        part = _WORK_NAME.fullmatch(n.attrs.get("name", ""))[2]
+        if part in _OPTIONAL_PARTS:
+            out[part] = _required(n)
+    return out
 
 
 def _entry_ok(controls: list[_Node], index: str, template: _Node | None) -> bool:
@@ -269,13 +297,24 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
         _entry_ok(c, i, None) for i, c in by_index.items()
     ):
         return None, True
+    # D155: an entry already on the page asks Location and Role Description exactly as the
+    # template does, each required only where the template's is (NoEfforts fills that entry in
+    # place, from what the template's parts resolved to).
+    if any(_optional_parts(c) != _optional_parts(entry) for c in by_index.values()):
+        return None, True
     page = next((a for a in root.ancestors() if "data-wizard-page" in a.attrs), None)
+    # D155: the template's Location and Role Description (each once, `_entry_ok`), and which of
+    # them the page requires.
+    asked = _optional_parts(entry)
+    parts = [p for p in _OPTIONAL_PARTS if p in asked]
     try:
         spec = SectionSpec(
             kind="employment",
             root=f"#{rid}",
             step=(page.attrs.get("data-step") or None) if page is not None else None,
             required=root.attrs.get("aria-required", "").lower() == "true",
+            parts=parts,
+            required_parts=[p for p in parts if asked[p]],
         )
     except ValidationError:  # a page name too long to record: never an error of capture
         return None, True

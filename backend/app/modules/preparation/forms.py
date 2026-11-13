@@ -10,6 +10,7 @@ import hashlib
 import json
 import re
 from html.parser import HTMLParser
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_serializer, model_validator
 
@@ -139,6 +140,13 @@ class SectionOptionSpec(BaseModel):
     text: str = Field(min_length=1, max_length=500)
 
 
+# D155: the parts a work history entry may ask beyond those always entered (the Workday-style
+# stand-in's Location and Role Description), sorted: the one list every layer uses.
+ENTRY_PARTS = ("description", "location")
+EntryPart = Literal["description", "location"]
+assert ENTRY_PARTS == tuple(sorted(EntryPart.__args__))
+
+
 class SectionSpec(BaseModel):
     """D120: a captured structured education/employment section -- its kind, the DOM container the
     executor scopes 'Add another' to, and (for education) the option lists its comboboxes offer.
@@ -158,6 +166,21 @@ class SectionSpec(BaseModel):
     # section's stored schema and fingerprint are unchanged.
     step: str | None = Field(default=None, min_length=1, max_length=200)
     required: bool = False
+    # D155: the parts an entry asks beyond those always entered, which NoEfforts enters from your
+    # record when it holds them (the Workday-style stand-in's Location and Role Description),
+    # and those of them the page requires; sorted, each once. Written only when set, so every
+    # other section's stored schema and fingerprint are unchanged.
+    parts: list[EntryPart] = Field(default_factory=list, max_length=2)
+    required_parts: list[EntryPart] = Field(default_factory=list, max_length=2)
+
+    @model_validator(mode="after")
+    def _parts_known(self):
+        if (self.parts != sorted(set(self.parts))
+                or self.required_parts != sorted(set(self.required_parts))
+                or not set(self.required_parts) <= set(self.parts)
+                or (self.parts and self.kind != "employment")):  # fmt: skip
+            raise ValueError("an entry's parts are an employment section's, sorted and each once")
+        return self
 
     @model_serializer(mode="wrap")
     def _dump(self, handler):
@@ -167,6 +190,10 @@ class SectionSpec(BaseModel):
                 out.pop("step", None)
             if not out.get("required"):
                 out.pop("required", None)
+            if not out.get("parts"):
+                out.pop("parts", None)
+            if not out.get("required_parts"):
+                out.pop("required_parts", None)
         return out
 
 
@@ -260,6 +287,8 @@ def form_fingerprint(schema: FormSchema) -> str:
         # as one JSON value, so no page name can read as another page and requirement.
         extra = ([json.dumps({"required": s.required, "step": s.step})]
                  if s.step or s.required else [])  # fmt: skip
+        if s.parts:  # D155: only when set, so every other section's is unchanged
+            extra.append(json.dumps({"parts": s.parts, "required_parts": s.required_parts}))
         parts.append("|".join(["section", s.kind, s.root, *opts, *extra]))
     if schema.wizard:  # D142: added only for a wizard, so every other form's is unchanged
         # The pages' names in order and which question is on which page: never which page is

@@ -178,6 +178,22 @@ SHAPES[3] = SHAPES[3] | {".wizard.pages[]"}
 # that page. Present only for such a section, which no package built before D149 has, so no
 # existing package's content or hash changes: recorded under version 3, deliberately (as D142).
 SHAPES[3] = SHAPES[3] | {".sections[].step"}
+# D155: a section whose entry asks Location and Role Description (the Workday-style stand-in's
+# Work Experience) names them, and each of its rows carries them: your record's text, or omitted
+# (no value, hence ".value" as a leaf) when the record holds none. Present only for such a
+# section, which no package built before D155 has, so no existing package's content or hash
+# changes: recorded under version 3, deliberately (as D142 and D149).
+SHAPES[3] = SHAPES[3] | {
+    ".sections[].parts[]",
+    ".sections[].rows[].fields.description.status",
+    ".sections[].rows[].fields.description.display",
+    ".sections[].rows[].fields.description.value",
+    ".sections[].rows[].fields.description.value.text",
+    ".sections[].rows[].fields.location.status",
+    ".sections[].rows[].fields.location.display",
+    ".sections[].rows[].fields.location.value",
+    ".sections[].rows[].fields.location.value.text",
+}
 
 
 @pytest.fixture(scope="module")
@@ -268,7 +284,8 @@ def _contents(api, receiver, monkeypatch) -> list[dict]:
     api.post(f"/profile/education/{edu['id']}/approve")
     emp = api.post("/profile/employment", json={
         "employer": "Example Health", "title": "Clinic Assistant", "start_date": "2019-01-01",
-        "is_current": True}).json()  # fmt: skip
+        "is_current": True, "location": "Springfield (fictional)",
+        "description": "Intake.\nRota lead (fictional)."}).json()  # fmt: skip
     api.post(f"/profile/employment/{emp['id']}/approve")
     job = api.post("/jobs", json={"title": "Sections", "employer": "Example Health"}).json()["job"]
     form = {"title": "Sections (fictional)", "fields": [
@@ -299,7 +316,12 @@ def _contents(api, receiver, monkeypatch) -> list[dict]:
     assert content["wizard"]["pages"][-1] == "Review", content.get("wizard")
     out.append(content)
     # D149: a wizard whose My Experience page carries the Work Experience section, frozen with
-    # its page and the current employment record above.
+    # its page and the current employment record above. D155: its entry asks Location and Role
+    # Description, which that record holds and a past one, added here, does not.
+    past = api.post("/profile/employment", json={
+        "employer": "River Clinic", "title": "Night Nurse", "start_date": "2015-03-01",
+        "end_date": "2018-12-01", "is_current": False}).json()  # fmt: skip
+    api.post(f"/profile/employment/{past['id']}/approve")
     receiver.config(wizard="experience")
     try:
         posting = {"url": f"{BASE}/workday/examplehealth/R-1490001", "title": "Experience",
@@ -313,6 +335,9 @@ def _contents(api, receiver, monkeypatch) -> list[dict]:
     content = api.get(f"/applications/{app['id']}/package").json()["package"]["content"]
     assert [(x["kind"], x["step"]) for x in content["sections"]] == [
         ("employment", "My Experience")], content.get("sections")  # fmt: skip
+    (sec,) = content["sections"]
+    assert sec["parts"] == ["description", "location"]
+    assert [r["fields"]["location"]["status"] for r in sec["rows"]] == ["resolved", "omitted"]
     out.append(content)
     return out
 

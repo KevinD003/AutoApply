@@ -556,6 +556,8 @@ const SECTION_FIELD = {
   current: "Current role",
   start_date: "Start",
   end_date: "End",
+  location: "Location",
+  description: "Role description",
 };
 const ROW_CHANGE = { added: "added", removed: "removed", changed: "changed" };
 const sectionShown = (x) => (x === null ? "—" : x.status === "omitted" ? "not sent" : (x.display ?? "—"));
@@ -582,7 +584,9 @@ function SectionsCard({ sections }) {
                     {Object.entries(r.fields).map(([name, f]) => (
                       <div key={name} className="flex flex-wrap gap-x-3">
                         <dt className="min-w-24 text-ink-muted">{SECTION_FIELD[name] ?? name}</dt>
-                        <dd>{f.status === "omitted" ? (name === "end_date" ? "Not sent (current role)" : "Not sent") : f.display}</dd>
+                        <dd className={name === "description" ? "whitespace-pre-wrap" : undefined}>
+                          {f.status === "omitted" ? (name === "end_date" ? "Not sent (current role)" : "Not sent") : f.display}
+                        </dd>
                       </div>
                     ))}
                   </dl>
@@ -660,7 +664,7 @@ function DiffToggle({ appId, from, to, label }) {
               {sec.reordered && <span> (order changed)</span>}
               <ul className="ml-3">
                 {sec.rows.map((r) => (
-                  <li key={r.record_id}>
+                  <li key={r.record_id} className="whitespace-pre-wrap">
                     {r.label ?? "A record"} ({ROW_CHANGE[r.change] ?? r.change})
                     {r.change === "changed" &&
                       ": " + r.fields.map((f) => `${SECTION_FIELD[f.field] ?? f.field} ${sectionShown(f.before)} → ${sectionShown(f.after)}`).join("; ")}

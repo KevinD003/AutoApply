@@ -392,7 +392,8 @@ def _resolve_sections(
     form that actually has a section (a stand-in today) carries any specs here, so a form without
     one produces no ``sections`` key and its package content and hash are unchanged. D149: a
     section on a wizard's page is frozen with that page (`step`), and one the page requires with
-    no approved record blocks approval."""
+    no approved record blocks approval. D155: a section whose entry asks Location or Role
+    Description is frozen with them (`parts`) and each row with your record's own."""
     from app.modules.execution.adapters import greenhouse_sections as gs
     from app.modules.preparation import structured_sections as ss
 
@@ -406,7 +407,13 @@ def _resolve_sections(
                 degrees=tuple(ss.SectionOption(o.id, o.text) for o in spec.degrees),
                 disciplines=tuple(ss.SectionOption(o.id, o.text) for o in spec.disciplines),
             )
-        result = ss.resolve_section(spec.kind, records, options=options)
+        result = ss.resolve_section(
+            spec.kind,
+            records,
+            options=options,
+            parts=tuple(getattr(spec, "parts", None) or ()),
+            required_parts=tuple(getattr(spec, "required_parts", None) or ()),
+        )
         if getattr(spec, "required", False) and result.supported and not result.rows:
             key = f"section:{spec.kind}"
             unresolved.append(key)
@@ -416,6 +423,8 @@ def _resolve_sections(
             frozen_section = gs.section_to_content(result, root=spec.root)
             if getattr(spec, "step", None):  # D149: only a wizard's section has one
                 frozen_section["step"] = spec.step
+            if getattr(spec, "parts", None):  # D155: only a section whose entry asks them
+                frozen_section["parts"] = list(spec.parts)
             frozen.append(frozen_section)
             continue
         if not result.supported:

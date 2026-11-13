@@ -22,7 +22,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 
 | What | Where |
 |---|---|
-| `main` | 4f804be (tree 783c3eb, as predicted): #62 D153. Before it, bfaeb1f (tree 6e1adb3): #61 D152; cb399c4 (tree 377825e): #60 D151; 3d826a6 (tree 67f29ac): #59 D150; 570a393 (tree 16e34b4): #58 D149; dd5d164 (tree 1c6df86): #57 D148; b7f6c45 (tree 4f77573): #56 D147; 688c776 (tree c0865f1): #55 D146; 45c8229 (tree 0df08ea): #54 D145; 099642c (tree 33b8b0d): #53 D144; 9346c8e (tree fd09e77): #52 D143; 25d04ea (tree a3054b8): #51 D142; 98fe380 (tree b75d64c): #50 D141; 3df7d0d (tree a625f26): #49 D140; 4585c59 (tree fac890a): #48 D139; a7f8742 (tree af2f25f): #47 D138; e2fd286 (tree 1d69376): #46 D137; 32c8f7c (tree 201ddbd): #45 D136; 53b28af (tree fe5c8c3): #44 D135 (main CI #269 green on all four jobs); 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
+| `main` | de74606 (tree aa76d42, as predicted): #63 D154. Before it, 4f804be (tree 783c3eb): #62 D153; bfaeb1f (tree 6e1adb3): #61 D152; cb399c4 (tree 377825e): #60 D151; 3d826a6 (tree 67f29ac): #59 D150; 570a393 (tree 16e34b4): #58 D149; dd5d164 (tree 1c6df86): #57 D148; b7f6c45 (tree 4f77573): #56 D147; 688c776 (tree c0865f1): #55 D146; 45c8229 (tree 0df08ea): #54 D145; 099642c (tree 33b8b0d): #53 D144; 9346c8e (tree fd09e77): #52 D143; 25d04ea (tree a3054b8): #51 D142; 98fe380 (tree b75d64c): #50 D141; 3df7d0d (tree a625f26): #49 D140; 4585c59 (tree fac890a): #48 D139; a7f8742 (tree af2f25f): #47 D138; e2fd286 (tree 1d69376): #46 D137; 32c8f7c (tree 201ddbd): #45 D136; 53b28af (tree fe5c8c3): #44 D135 (main CI #269 green on all four jobs); 2e10418 (tree 3a18998): #43 D134 (main CI #267 green on all four jobs); da7ac61 (tree d2214b6): #41 D133 (main CI #265 green); ab671e1: #42, the receiver's reset in one transaction (main CI #263: the backend job failed, not investigated; every later run passed); c19c683: #40 D132 (main CI #260 green) |
 | D131 follow-up (the review's remaining findings) | merged (#39, bd38529); main CI #254 passed all four jobs |
 | D132 form-change pause and questions tab | merged (#40, c19c683); main CI #260 passed all four jobs |
 | D133 reuse and suggestion guards | merged (#41, da7ac61); its PR CI passed all four jobs on 360f34c, and main CI #265 on da7ac61 |
@@ -46,7 +46,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D151 a section's combobox chooses only from a list that has settled | merged (#60, cb399c4, tree as predicted); its PR CI passed all four jobs on 9c39774 |
 | D152 the read-only survey publishes whether each list met the adapter's settle rule | merged (#61, bfaeb1f, tree as predicted); its PR CI passed all four jobs on 5f4fe33 |
 | D153 a list judged by the page's record of changes to a list; the option chosen from one read | merged (#62, 4f804be, tree as predicted); its PR CI passed all four jobs on 2d53b77 |
-| D154 what the page itself would refuse at the final click stops before the send gate; filling waits for what the answers started | branch `page-own-checks` (from D153's branch, then `main` with #62); reviewed twice; not merged |
+| D154 what the page itself would refuse at the final click stops before the send gate; filling waits for what the answers started | merged (#63, de74606, tree as predicted); its PR CI passed all four jobs on 056729c |
+| D155 a Workday-style work entry's Location and Role Description come from your record | branch `workday-entry-details` (from D154's branch, then `main` with #63); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -68,7 +69,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 merged (#47): a gh2 look-alike naming a country is neither reused nor suggested | D138 merged (#47): "Preferred shift" never saved or reused |
 | 5 | Conditional question | fx on the v1 fixture; D135 merged (#44), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | D148 merged (#57; stand-in FA6, receiver ledger): a typed follow-up the page shows after an earlier answer is answerable, entered only when shown, never waited for; a shown required one without an answer pauses a single page and stops a wizard page before its Next; a hidden one the page still requires, or one it removes, stops the attempt; a choice hidden at load is still never filled (a hidden file input is uploaded as before); D154 on its branch: one the page shows after a request is waited for, entered when answered, and otherwise pauses a single page or stops a wizard page before its Next (FA8, receiver ledger) |
 | 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger); D145 (branch): a dropdown whose list keeps being re-rendered is refused however slowly it is read (the page's own record of its last change to a list), before anything is entered, and a location search whose suggestions keep changing chooses no place (gh2 stand-ins; receiver ledger); D152 merged (#61): the read-only survey publishes whether each list met that rule at its last read (gh2 stand-ins; code only, no run); D153 merged (#62): a page busy elsewhere no longer has its lists refused, one whose style sheets or control keep changing has them refused before anything is entered, and an option is chosen only from one read of the list that is still the approved one (gh2 stand-ins; receiver ledger) | fx at capture |
-| 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger); D151 on its branch: a section combobox chooses only from a list that has settled, by the dropdown's rule, and a list that keeps changing, posts or fails to load stops the section (gh2 stand-ins, receiver ledger) | D149 on its branch (stand-in FA7, receiver ledger): the Work Experience entries on My Experience filled from your approved work history (employment), each added by the section's own button and read back, no entry beyond the approved ones sent, a required section waiting for your approved work history; anything else about work history a checkpoint; education, languages, websites and skills not built |
+| 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger); D151 on its branch: a section combobox chooses only from a list that has settled, by the dropdown's rule, and a list that keeps changing, posts or fails to load stops the section (gh2 stand-ins, receiver ledger) | D149 merged (#58; stand-in FA7, receiver ledger): the Work Experience entries on My Experience filled from your approved work history (employment), each added by the section's own button and read back, no entry beyond the approved ones sent, a required section waiting for your approved work history; D155 on its branch: an entry's Location and Role Description from your record where the entry asks them (blank: not sent; required and blank: yours to add), what the form would send read back; anything else about work history a checkpoint; education, languages, websites and skills not built |
 | 8 | Answer edits invalidate approvals | fx; D138 merged (#47): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger); D140 merged (#49): an education or employment edit retires the approval at once; on the education stand-in, approved again, the new degree is sent, and an edit while a worker fills is stopped at the send gate (receiver ledger) | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; D143 merged (#52): on gh2 by id a worker killed before anything was sent is run again once, and one killed after entering data, at the send gate, around the final click or after the employer's receipt is never run again; a run past its budget stops before the final click (gh2 by id and the pilot stand-in; receiver ledger); D144 merged (#53): the sweeper runs on a worker of its own, so it is not held up by attempts waiting for codes (real workers, generic form; receiver ledger) | partial; D142 merged (#51): on the wizard stand-in a lost or killed worker leaves the record of each page's Next, is never taken over, and the application is never run again (receiver ledger); D143 merged (#52): the same kills on the single-page form and on the wizard's review page, and a wizard past its budget stops for good (receiver ledger) |
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus; D139 merged (#48): self-identification on gh2 (by id and pilot) up to the ledger: off or unmatched never sent, a label or a decline label sent, your per-application "Don't disclose" beats it, a required one without a match waits; a change retires its approvals at once (queued, held by a worker, under the standing rule: nothing withdrawn is sent) | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify"; D139 merged (#48): self-identification sent as each option's own value, each question only from the label naming its category, a bare "No" or two labels never used, a decline only where the choices name a category, a required gender without a match waits; withdrawal and change retire the approval (single page; the Workday decline wording is a fixture assumption) |
@@ -368,7 +369,24 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
 
-- **D154 (branch `page-own-checks`, not merged).** Rank 21, what the page itself would
+- **D155 (branch `workday-entry-details`, not merged).** Rank 22, D149's limit:
+  - the gap: a Workday-style work entry was sent with its Location and Role Description
+    empty whatever your record held, and a page requiring either was refused when the
+    form was read;
+  - capture names the parts the entry asks and those the page requires; resolution takes
+    them from your record's own text (blank: not sent, or yours to add where required; a
+    location with a line break, or a description still holding the resume reader's note:
+    yours to fix); they are frozen with the package, entered, left (focus moves off) and
+    read back, and what each control's form would send is read too; the section is read
+    again after the page's uploads; `SCHEMA_VERSION` stays 3, the new paths recorded;
+  - two independent reviews: the safety review found three blockers (the package-shape
+    pin not updated; a hard-wrapping Role Description sending line breaks never approved;
+    entries already on the page asking the parts otherwise, stopping only after values
+    were entered), the second two of them. Fixed (756a401), each with a test; the rest
+    recorded in D155;
+  - 33 removal runs on 756a401, each failing the test named for its part.
+
+- **D154 (merged, #63).** Rank 21, what the page itself would
   refuse at the final click:
   - the gap (D148's proposal): a final click the page's own checks refuse was found only
     after the send gate (the browser refused a native submission: `unknown`, quarantined;
@@ -451,8 +469,10 @@ that has settled, by the dropdown's rule. **D152** (rank 18, #61) has the
 read-only survey publish whether each list met that rule. **D153** (rank 19, #62)
 judges a list by the page's record of changes to a list instead of changes
 anywhere on the page, and chooses an option only from one read of the list. **D154**
-(rank 21, on its branch) stops before the send gate an attempt whose final click the page
-itself would refuse, and waits for the page's reaction to the answers before the checks. Every ranked
+(rank 21, #63) stops before the send gate an attempt whose final click the page
+itself would refuse, and waits for the page's reaction to the answers before the checks.
+**D155** (rank 22, on its branch) sends a Workday-style work entry's Location and Role
+Description from your record where the entry asks them. Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
 
@@ -548,9 +568,14 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D154 (branch `page-own-checks`):** the new tests (and against the code before it and
+- **D155 (branch `workday-entry-details`):** the new tests, the suites the change touches,
+  the removal runs and the regression set, locally (Tests run below). Not tested: any real
+  page; a Location typed into a search-as-you-type list; a page limiting a role
+  description's length (still refused at capture); education on Workday.
+- **D154:** merged (#63, de74606, tree as predicted); its PR CI passed all four jobs on
+  056729c. Locally: the new tests (and against the code before it and
   its first version), the suites the change touches, the removal runs and the regression
-  set, locally (Tests run below). Not tested: any real page; a page that cancels its submit
+  set (Tests run below). Not tested: any real page; a page that cancels its submit
   button's click and sends by script; validation a page runs only at the click; controls in
   a shadow root; a reaction on a timer or to the last text field's `change`.
 - **D153:** merged (#62, 4f804be, tree as predicted); its PR CI passed all four jobs on
@@ -802,6 +827,13 @@ action.
 | D154, e687fff (two tests the regression set found): `test_forbidden_capabilities.py` and `test_greenhouse_adapter.py` on 5db60c8, then with `test_page_refusal_read.py` after the fix; `test_bank_edit.py` | exit 1, 2 failed, 177 passed (both reproduced); exit 0, 247 passed; exit 0, 15 passed |
 | D154, the suites that read the repository, outside both runs: `pytest` on 14 files (`test_api_tokens`, `test_applications`, `test_authorizations`, `test_drafting`, `test_drafting_provider`, `test_email_reminders`, `test_fit`, `test_freehire_discovery`, `test_job_signals`, `test_lever`, `test_path_a`, `test_repo_hygiene`, `test_resolver`, `test_runtime_dependencies`; JUnit), on e687fff | exit 0; 875 passed in 3.9 min |
 | D154, after its records: the document tests and `test_page_refusal_read.py`; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 113 passed; ruff formatted nothing, found nothing, and the format check passed |
+| D155, the first version: `test_workday_entry_details.py` (JUnit), then the 11 suites it touches most, on the working tree before 35cfa5f; `npx tsc --noEmit`, `npm run lint` | exit 0, 44 passed; exit 0, 428 passed in 10.7 min (5 expectations of `test_workday_experience.py` updated first); exit 0; exit 0 |
+| D155, the first version, each part changed in turn: 22 changes on 35cfa5f, one at a time, the file restored | exit 1 for each: all 22 fail a test, each the one named for its part |
+| D155, after the reviews: `pytest` on 14 files (the 11, `test_package_contract`, `test_version_diff`, `test_resume_facts`; JUnit), on the working tree before 756a401; ruff, `npx tsc --noEmit`, `npm run lint`; then the new tests and `test_package_contract.py` after ruff's import order | exit 0; 470 passed in 13.8 min; all clean; exit 0, 66 passed |
+| D155, each part changed in turn: 33 changes on 756a401, one at a time, the file restored | exit 1 for each: all 33 fail a test, each the one named for its part |
+| D155, the regression set: `pytest` on 82 files (D154's 81 with `test_workday_entry_details.py`; JUnit), in a copy of the branch at 756a401, restarted once (the container restarted during the first run) | exit 0; 2350 passed in 73.4 min |
+| D155, `main` with #63 merged in (e9a7333): the code unchanged from 756a401, the documents D154's records (compared file by file) | as stated |
+| D155, after its records: the document tests and `test_workday_entry_details.py`; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 108 passed in 63 s; ruff formatted nothing, found nothing, and the format check passed |
 
 ## Failed approaches and rejected designs
 
@@ -917,8 +949,9 @@ action.
 
 ## Exact next action
 
-1. D154 (branch `page-own-checks`, rank 21): its pull request (D153 merged as #62). Candidates: Location and Role Description from your record; education on Workday; the
-   page's own marks read before each wizard page's Next (D154's limit).
+1. D155 (branch `workday-entry-details`, rank 22): its pull request (D154 merged as #63). Then D156
+   (branch `wizard-next-checks`, rank 23, D154's limit: the page's own checks read before each
+   wizard page's Next). Candidate after it: education on Workday.
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it

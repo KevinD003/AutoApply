@@ -178,7 +178,8 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
     schema, fields = read(form_page(section()))
     (sec,) = schema.sections
     assert sec.model_dump() == {"kind": "employment", "root": ROOT, "schools": [],
-                                "degrees": [], "disciplines": []}  # fmt: skip
+                                "degrees": [], "disciplines": [],
+                                "parts": ["description", "location"]}  # fmt: skip
     assert set(fields) == {"resume"}  # no work[...] control is a question
     schema, fields = read(form_page(section(entry("0") + entry("1"))))  # empty entries at load
     assert len(schema.sections) == 1 and set(fields) == {"resume"}
@@ -190,7 +191,6 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
     "html",
     [
         form_page(section(), entry(extra='<input name="work[__i__].reason" type="text">')),
-        form_page(section(), entry(loc=" required")),  # a control NoEfforts leaves empty, required
         form_page(section(), entry().replace('name="work[__i__].current"', 'name="work[__i__].x"')),
         form_page(section(), entry().replace('type="checkbox"', 'type="text"')),
         form_page(section(), entry(value=' value="01/2020"')),  # a template that fills every entry
@@ -234,13 +234,6 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
         form_page(section(), entry(extra='<input name="work[__i__].title" type="text">')),
         form_page(section(entry("0").replace("</textarea>", "Text at load</textarea>"))),
         form_page(section(add='<button type="button">Add</button><div role="textbox"></div>')),
-        form_page(
-            section(),
-            entry().replace(
-                'type="text">\n<label><input name="work[__i__].c',
-                'type="text" aria-required="true">\n<label><input name="work[__i__].c',
-            ),
-        ),
         form_page(section().replace('id="work-experience"', 'id="work-experience\n"')),
         form_page(section().replace('id="work-experience"', f'id="w{"x" * 200}"')),
         form_page(f'<div data-wizard-page="2" data-step="{"P" * 201}">{section()}</div>'),
@@ -298,7 +291,6 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
     ],
     ids=[
         "unknown-control",
-        "left-empty-required",
         "a-part-missing",
         "a-part-of-another-kind",
         "template-value",
@@ -330,7 +322,6 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
         "a-part-twice",
         "description-text-at-load",
         "custom-control-in-section",
-        "left-empty-aria-required",
         "id-with-newline",
         "id-too-long",
         "page-name-too-long",
@@ -468,8 +459,8 @@ def test_on_a_wizard_the_section_is_on_its_page(api, receiver):
     assert r.status_code == 201, r.text
     schema = r.json()["schema"]
     assert schema["sections"] == [{"kind": "employment", "root": ROOT, "schools": [],
-                                   "degrees": [], "disciplines": [],
-                                   "step": "My Experience"}]  # fmt: skip
+                                   "degrees": [], "disciplines": [], "step": "My Experience",
+                                   "parts": ["description", "location"]}]  # fmt: skip
     assert not any(f["key"].startswith("work") for f in schema["fields"])
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
@@ -502,11 +493,15 @@ def test_the_package_freezes_your_work_history_on_its_page(api, receiver):
     got = [{k: f["display"] for k, f in r["fields"].items()} for r in sec["rows"]]
     assert got == [
         {"company_name": "Example Health", "title": "Clinic Assistant", "start_date": "01/2019",
-         "current": "Current", "end_date": None},
+         "current": "Current", "end_date": None, "location": None, "description": None},
         {"company_name": "River Clinic", "title": "Night Nurse", "start_date": "03/2015",
-         "current": "Not current", "end_date": "12/2018"},
+         "current": "Not current", "end_date": "12/2018", "location": None, "description": None},
     ]  # fmt: skip
     assert sec["rows"][0]["fields"]["end_date"]["status"] == "omitted"
+    # D155: the entry asks Location and Role Description; these records hold neither, so
+    # neither is sent
+    assert sec["parts"] == ["description", "location"]
+    assert {r["fields"][k]["status"] for r in sec["rows"] for k in sec["parts"]} == {"omitted"}
 
 
 def test_a_section_the_page_requires_needs_your_approved_work_history(api, receiver):
@@ -581,16 +576,17 @@ def test_a_required_section_is_sent_with_your_entry(api, receiver):
 
 @pytest.mark.parametrize("records", [(CURRENT,), ()], ids=["one-record", "no-record"])
 def test_an_entry_a_parsed_resume_adds_is_never_sent(api, receiver, records):
-    """The resume's parse adds an entry with values of its own (a description NoEfforts leaves
-    empty; with no record, the whole entry): page 2 is read back before its Next, which is never
-    clicked."""
+    """The resume's parse adds an entry with values of its own (with no record, an entry beyond
+    the approved ones): D155 review, the section is read again after the page's uploads, so the
+    attempt stops before anything is typed into it, and page 2's Next is never clicked."""
     app_id = experience_application(api, receiver, "experience_parse", records=records)
     aid = queue(api, app_id)
     assert runner.run_attempt(aid, "w1") == "abandoned"
     led = receiver.ledger()
     assert draft_pages(led) == [1] and posts(led, "/apply") == 0
-    (step,) = [r for r in rows(aid, "step") if r["page"] == 2]
-    assert step["mismatched"] >= 1
+    want = SECTION_PREFILLED if records else SECTION_ENTRIES_BEYOND
+    assert want in attempt(aid).outcome_detail
+    assert not [d for d in rows(aid, "disclosure") if d.get("kind") == "section_field"]
 
 
 @pytest.mark.parametrize("records, sent", [((CURRENT,), 1), ((CURRENT, PAST), 2)],

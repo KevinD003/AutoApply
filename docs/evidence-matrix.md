@@ -9,6 +9,40 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A Workday-style work entry's Location and Role Description come from your record (D155, 2026-11-12; local only)
+
+Nothing here ran against a real page. Branch `workday-entry-details`. The runs drive the runner
+against the Workday-style stand-in's Work Experience section (FA7: the wizard's My Experience
+page, and the single page), with the receiver's ledger as the oracle (its page-2 draft rows and
+its acceptances); or read capture, the spec, resolution and the frozen content alone; or drive
+the section's executor on a page set in Chromium.
+
+| Claim | Test | Result |
+|---|---|---|
+| Your record's location and role description are sent where the entry asks them | `test_workday_entry_details.py::test_your_location_and_role_description_are_sent_on_their_page`, `test_on_the_single_page_they_are_sent_too` | `confirmed`; the page-2 draft row (the single page's acceptance) holds the record's location and its role description with its line breaks; a role with no description on its record is sent empty. Before D155: both always empty |
+| A page that requires them sends yours | `test_a_page_that_requires_them_sends_yours` (`experience_parts_required`) | `confirmed`, one acceptance, the page's own checks satisfied. Before D155: the form was refused when it was read |
+| A page that requires one your record lacks blocks approval | `test_a_page_that_requires_one_your_record_lacks_blocks_approval` | the package lists the record's field as unresolved; approval refused; nothing reached the receiver |
+| Capture names the parts the entry asks, and which the page requires | `test_the_entry_s_location_and_role_description_are_named_with_the_section`, `test_a_page_that_requires_them_is_read_not_refused` (`required`, `aria-required`, Role Description), `test_an_entry_that_asks_neither_names_neither` | `parts`, `required_parts` as asked; none for an entry without them (and no `parts` key) |
+| The spec accepts only known parts, sorted and once; they are part of the form, and written only when named | `test_a_section_names_only_known_parts_sorted_and_once` (5), `test_the_parts_are_part_of_the_form_and_written_only_when_named` | refused; four distinct fingerprints; a section without parts dumps as before |
+| Resolution takes your record's own text, never a guess | `test_your_record_s_location_and_role_description_are_resolved_as_written`, `test_nothing_on_your_record_is_never_sent_and_never_guessed` (4), `test_a_part_the_page_requires_and_your_record_lacks_is_yours_to_add`, `test_a_location_with_a_line_break_is_yours_to_fix`, `test_a_section_asking_a_part_never_named_is_not_supported`, `test_a_section_that_does_not_ask_them_resolves_as_before` | resolved as written (line breaks as one LF); blank: not sent; required and blank: yours to add; a location with a line break: yours to fix; an unknown part: unsupported; a section without parts: the five fields only |
+| Frozen content carries them only where the section names them; Greenhouse never plans such a section | `test_frozen_parts_it_cannot_enter_exactly_are_refused` (11, each refused by the check it names: rows carry part fields only where the case is about one), `test_greenhouse_never_plans_a_section_that_names_parts` | refused |
+| The plan enters what the row holds and keeps the rest empty | `test_the_plan_enters_the_parts_your_record_holds`, `test_the_plan_leaves_empty_what_your_record_does_not_hold`, `test_a_section_frozen_before_d155_is_planned_as_before` | as stated |
+| On the page: entered and read back exactly | `test_both_are_entered_and_read_back_exactly`, `test_a_role_description_the_page_changes_is_found`, `test_one_your_record_does_not_hold_stays_empty_and_is_checked` | exact values (the role description with LF); a change found by the readback; an empty part stays empty and a value the page puts there is found |
+| An edit to your location retires the approval; an edit to your role description is in the version diff | `test_an_edit_to_your_location_retires_the_approval`, `test_an_edit_to_your_role_description_is_in_the_version_diff` | every approval retired; approved again, the new location is sent; the diff names the role description field only, before and after |
+| What the employer would receive is what was typed | `test_a_control_whose_form_would_send_otherwise_than_typed_is_one_checkpoint` (a hard-wrapping text area, twice; another `wrap`; `dirname`; `form`), `test_a_soft_wrapping_role_description_is_read`; on the page, `test_what_the_form_would_send_is_read_back_not_only_what_the_control_shows` (hard wrap set after filling), `test_a_control_its_form_would_not_send_is_found` | refused when the form is read (the work history checkpoint); a soft-wrapping one read; after filling, the readback finds a value its form would send otherwise, while the control still shows the approved text |
+| An entry already on the page asks its parts as the template does | `test_an_entry_on_the_page_that_asks_its_parts_otherwise_is_one_checkpoint` (lacking one; requiring one alone; asking one the template does not), `test_an_entry_on_the_page_asking_its_parts_as_the_template_does_is_read` | refused when the form is read (before D155's review: accepted, then stopped after values were entered); one asking them as the template does is read |
+| An entry a parsed resume adds or fills is never adopted | `test_an_entry_a_parsed_resume_fills_is_never_adopted`; `test_workday_experience.py::test_an_entry_a_parsed_resume_adds_is_never_sent` (one record, none) | `abandoned` before anything is typed into the section (the work history values reason; with no record, the entries-beyond reason); page 1 saved, page 2 never sent; before the review: with every part on your record, the parse's entry was filled over and sent |
+| A page reacting when focus leaves a field reacts before the readback | `test_a_page_that_rewrites_a_value_when_focus_leaves_it_stops_the_entry` | the entry stops at the rewritten control |
+| The resume reader's note is never sent as your words | `test_a_role_description_still_holding_the_resume_reader_s_note_is_yours_to_edit` | yours to edit, first line or later |
+| Approvals given before D155, and a page that starts requiring a part, pause | `test_an_approval_given_before_d155_pauses_before_anything_is_entered` (approved on a capture without parts, simulated), `test_a_page_that_starts_requiring_them_after_approval_pauses` | `failed_safe`, a pause open, nothing reached the receiver |
+| Parts are NoEfforts' own | `test_a_form_given_by_hand_never_names_parts` | the manual form endpoint refuses them (400) |
+| The stand-in's own refusal (the oracle) | `test_the_stand_in_refuses_an_entry_without_a_part_it_requires` | an entry without its Location refused in `experience_parts_required`, accepted elsewhere |
+| Greenhouse's sections and every other form unchanged; the new paths recorded under `SCHEMA_VERSION` 3 | `test_workday_experience.py::test_a_greenhouse_section_reads_and_fingerprints_as_before`, `test_package_contract.py::test_the_package_shape_is_the_one_recorded_for_its_schema_version` (a section with a record holding both parts and one holding neither), the 14 suites the change touches and the regression set of 82 files | pass (`docs/implementation-status.md`) |
+| Each part is needed | 33 changes, one at a time, the named tests run, the file restored (`docs/implementation-status.md`) | each fails the tests named for its part |
+
+In D149's section, "Location and Role Description are never entered" describes the adapter
+before D155.
+
 ## Before the send gate, what the page itself would refuse at the final click stops the attempt; filling waits for what the answers started (D154, 2026-11-12; local only)
 
 Nothing here ran against a real page. Branch `page-own-checks`. The runs drive the runner against

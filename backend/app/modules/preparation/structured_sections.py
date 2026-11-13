@@ -35,8 +35,9 @@ Deliberately OUT OF SCOPE here (the isolated remaining gaps, not guessed):
 import re
 from dataclasses import dataclass, field
 
-from app.modules.preparation.forms import normalize
+from app.modules.preparation.forms import ENTRY_PARTS, normalize
 from app.modules.profiles.models import Approval
+from app.modules.profiles.resume_parse import DATES_NOTE
 
 _BAD_DATE_ORDER = "This record's start date is after its end date; fix it in your profile."
 
@@ -295,7 +296,47 @@ def _text_field(name: str, record, attr, label: str) -> FieldResult:
     )  # fmt: skip
 
 
-def resolve_employment_row(record) -> RowResult:
+def _part_field(name: str, record, label: str, *, required: bool, lines: bool) -> FieldResult:
+    """D155: a part an entry asks beyond the five always sent (Location, Role Description), from
+    your record's own text, never inferred. Blank on the record: not sent, unless the page
+    requires it (then the owner's to add). `lines`: a text area takes line breaks (each
+    written as one LF, as a text area's value holds them); a text box does not."""
+    text = getattr(record, name, None)
+    if not text or not text.strip():
+        if required:
+            return FieldResult(
+                name, "needs_user",
+                explanation=f"The employer's form requires a {label} for each role, and this "
+                "record has none; add it in your profile.",
+            )  # fmt: skip
+        return FieldResult(name, "omitted", explanation=f"No {label} on this record: none is sent.")
+    if lines:
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        if any(line.startswith(DATES_NOTE) for line in text.split("\n")):
+            return FieldResult(
+                name, "needs_user",
+                explanation=f"This record's {label} still holds the note NoEfforts added when "
+                "it read your resume (\"Dates as written\"); edit it in your profile.",
+            )  # fmt: skip
+    elif "\n" in text or "\r" in text:
+        return FieldResult(
+            name, "needs_user",
+            explanation=f"This record's {label} has a line break, which a form cannot hold; "
+            "fix it in your profile.",
+        )  # fmt: skip
+    return FieldResult(
+        name, "resolved", value={"text": text}, display=text, source="profile_fact",
+        explanation=f"From your record's {label}.",
+        fact_refs=[_ref(record, "employment", name, getattr(record, name))],
+    )  # fmt: skip
+
+
+EMPLOYMENT_PARTS = ENTRY_PARTS  # D155: as SectionSpec.parts, sorted
+
+
+def resolve_employment_row(record, parts=(), required_parts=()) -> RowResult:
+    """D120's five fields; D155: and the parts a section's entry asks beyond them (`parts`, from
+    EMPLOYMENT_PARTS), only when it asks them, so every other section resolves as before."""
     is_current = getattr(record, "is_current", False)
     fields = {
         "company_name": _text_field("company_name", record, "employer", "employer"),
@@ -325,6 +366,15 @@ def resolve_employment_row(record) -> RowResult:
     ):
         for k in ("start_date", "end_date"):
             fields[k] = FieldResult(k, "needs_user", explanation=_BAD_DATE_ORDER)
+    if "location" in parts:
+        fields["location"] = _part_field(
+            "location", record, "location", required="location" in required_parts, lines=False
+        )
+    if "description" in parts:
+        fields["description"] = _part_field(
+            "description", record, "role description",
+            required="description" in required_parts, lines=True,
+        )  # fmt: skip
     return RowResult(str(record.id), "employment", fields)
 
 
@@ -338,12 +388,18 @@ def resolve_section(
     records: list,
     *,
     options: EducationOptions | None = None,
+    parts: tuple = (),
+    required_parts: tuple = (),
 ) -> SectionResult:
     """Resolve one structured section from the owner's approved records, in record order. An
     unsupported section kind, or an education section with no option lists to match against,
     is returned as an explicit checkpoint (`supported=False`) rather than guessed."""
     if kind not in SUPPORTED_KINDS:
         return SectionResult(kind, [], supported=False, reason=f"Unsupported section '{kind}'.")
+    if (parts or required_parts) and kind != "employment":  # D155: never ignored silently
+        return SectionResult(
+            kind, [], supported=False, reason="The section's entries ask something unknown."
+        )
     approved = [r for r in records if _approved(r)]
     if kind == "education":
         if options is None:
@@ -354,4 +410,9 @@ def resolve_section(
                 reason="Education option lists were not captured; this section stays a checkpoint.",
             )
         return SectionResult(kind, [resolve_education_row(r, options) for r in approved])
-    return SectionResult(kind, [resolve_employment_row(r) for r in approved])
+    unknown = set(parts) - set(EMPLOYMENT_PARTS)
+    if unknown or not set(required_parts) <= set(parts):  # never a part guessed at
+        return SectionResult(
+            kind, [], supported=False, reason="The section's entries ask something unknown."
+        )
+    return SectionResult(kind, [resolve_employment_row(r, parts, required_parts) for r in approved])
