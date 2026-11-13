@@ -8,6 +8,34 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
+## An ordinary answer is read back as its form would send it, and a control whose form would send something else is refused when the form is read (D159, 2026-11-13; local only)
+
+Nothing here ran against a real page. Branch `sent-as-approved`. The runs drive the API and the
+runner against the base stand-in (its "Why us" text area, limited to 1000; `cfg["sends"]`) and
+Greenhouse classic's stand-in, with the receiver's ledger as the oracle (its acceptances, the
+page's own saves as it is typed, and the requests it received); or read pages at capture; or
+drive the readback in Chromium on a page of its own, against Chromium's own `FormData` for the
+same page. All in `tests/test_sent_as_approved.py` unless named.
+
+| Claim | Test | Result |
+|---|---|---|
+| Before D159 the employer received something else | `test_before_d159_the_employer_received_something_else` (3 modes; D159's checks switched off) | `confirmed`, and the acceptance holds your text with line breaks inserted, or nothing under the question |
+| What the form would send is read back, and nothing else is sent | `test_what_the_form_would_send_is_read_back_and_nothing_else_is_sent` (hard wrap, another form, disabled, a second control: each made once "Why us" is typed), `test_a_value_the_page_puts_under_an_unanswered_question_s_name_is_never_sent` | `abandoned`, no acceptance |
+| A page that sends from `formdata` receives nothing from the readback | `test_a_page_that_sends_from_formdata_receives_nothing_from_the_readback` (a rehearsal), `test_a_stop_after_filling_sends_nothing_through_the_page_s_formdata`; `test_the_form_is_read_as_the_browser_would_send_it_without_its_formdata_event`, `test_a_work_entry_is_read_back_without_its_form_s_formdata_event` (Chromium) | `rehearsed` and `abandoned` with no acceptance and no request to submit (the first version: an acceptance in each); no `formdata` event; the passive read equals Chromium's own `FormData` for the same page wherever it knows the value |
+| A choice is read as its form would send it | `test_a_choice_the_page_disables_once_chosen_is_never_taken_as_sent` | `abandoned`, no acceptance (before: `confirmed` without your answer) |
+| A refused question is never filled, and an optional one never stops the run | `test_a_text_area_that_hard_wraps_when_the_form_is_read_is_left_blank`, `test_an_optional_choice_refused_when_the_form_is_read_is_left_blank` (a box, a group), `test_greenhouse_classic_never_sends_page_text_in_a_question_it_refused` | `confirmed`, nothing under the question; on Greenhouse classic, page text in it stops the run (`abandoned`, no acceptance) |
+| Refused when the form is read, as Chromium sends | `test_a_text_area_that_hard_wraps_is_refused_when_the_form_is_read` (14 spellings), `test_a_control_given_to_a_form_by_name_is_refused` (9 controls), `test_a_control_whose_dirname_sends_a_field_of_its_own_is_refused` (9 controls, named and empty), `test_a_refused_question_keeps_whether_the_page_requires_it`, `test_a_reason_read_before_keeps_its_wording`; `test_workday_entry_details.py` (D155's cases, as Chromium reads them) | hard, physical and on refused, off, virtual and spaced values read; `dirname` refused where Chromium sends a field; `form` always; one field per group |
+| Greenhouse classic: the page's refusal and limit, the cross-check kept | `test_greenhouse_classic_refuses_it_as_its_page_reads_it`, `test_greenhouse_classic_keeps_its_cross_check_where_the_page_refuses_a_question`, `test_greenhouse_classic_holds_an_answer_to_its_page_s_own_limit` | refused; a control of another type, alike in all else, still a disagreement (with the refusal adopted first, as the first version did, it was not); the page's limit recorded |
+| A form whose limit changed is a new version | `test_a_form_whose_limit_changed_is_a_new_version` | read again unchanged: the same version; lowered: the next, holding the new limit |
+| A lowered limit stops before anything is entered | `test_an_answer_longer_than_the_page_now_accepts_pauses_before_anything_is_entered`, `test_reading_the_form_again_records_the_new_limit_and_your_shorter_answer_is_sent`, `test_greenhouse_classic_pauses_on_a_limit_its_page_lowers_and_a_read_records_it`, `test_greenhouse_classic_pauses_on_a_limit_its_page_s_script_sets` | D132's pause naming the limit, nothing in the ledger; read again: a new version, the pause resolved, the answer yours to shorten (D158); the shorter one `confirmed` |
+| A limit no read would record is a plain stop | `test_a_limit_no_read_of_the_form_would_record_stops_plainly_naming_it` ("500.0") | `failed_safe`, no pause, nothing in the ledger, the limit named |
+| A value the control would cut is never typed | `test_a_limit_lowered_while_the_answers_are_typed_never_gets_a_cut_answer` (once the first name is typed; on focus) | `abandoned`, no acceptance, no save of the answer by the page (before: saved cut, 500 characters) |
+| A form in another character set never sends an answer changed | `test_a_form_in_another_character_set_never_sends_an_answer_changed` | an answer with "☕": `failed_safe`, nothing entered; a plain one: `confirmed` |
+| A number is typed exactly | `test_a_number_is_typed_exactly`, `test_a_number_is_typed_and_read_back_exactly_in_the_browser` | 12345678 typed and held as 12345678 (before: 1.23457e+07) |
+| A work entry's control must belong to its form | `test_an_entry_control_given_to_another_form_on_the_page_is_found` | found (before: passed when the other form exists) |
+| The comparison is exact | `test_sends_is_exact` | one value once; an unanswered question nothing but empty |
+| Every other flow unchanged | the suites the change touches; the regression set | pass (`docs/implementation-status.md`) |
+| Each part is needed | 29 changes, one at a time, the named tests run, the file restored (`docs/implementation-status.md`) | each fails the tests named for its part |
 
 ## An ordinary question's length limit is read as the browser reads it, and your answer held to it as its form sends it (D158, 2026-11-13; local only)
 

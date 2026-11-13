@@ -49,8 +49,9 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D154 what the page itself would refuse at the final click stops before the send gate; filling waits for what the answers started | merged (#63, de74606, tree as predicted); its PR CI passed all four jobs on 056729c |
 | D155 a Workday-style work entry's Location and Role Description come from your record | merged (#64, f8c1297, tree as predicted); its PR CI passed all four jobs on 54ad68e |
 | D156 before each wizard page's Next, what the page itself would refuse stops the attempt with that page never sent | merged (#65, 682ada4, tree as predicted); its PR CI passed all four jobs on 8dd15fe |
-| D157 a Workday-style work entry's length limits are read, and your record held to them | branch `workday-entry-limits` (from D156's branch); reviewed twice; PR #66 |
-| D158 an ordinary question's length limit read as the browser reads it, and your answer held to it as its form sends it | branch `question-limits` (from D157's branch); reviewed twice; not merged |
+| D157 a Workday-style work entry's length limits are read, and your record held to them | merged (#66, d3eab19, tree as predicted); its PR CI passed all four jobs on 6746239 |
+| D158 an ordinary question's length limit read as the browser reads it, and your answer held to it as its form sends it | merged (#67, d12e954, tree as predicted); its PR CI passed all four jobs on cfb83f9 |
+| D159 an ordinary answer read back as its form would send it; a control whose form would send something else refused when the form is read | branch `sent-as-approved` (from D158's branch); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -372,7 +373,28 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
 
-- **D158 (branch `question-limits`, not merged).** Rank 25, D157's limit:
+- **D159 (branch `sent-as-approved`, not merged).** Rank 26, D158's limits:
+  - the gap: the readback read what each control shows, never what its form sends, so a
+    text area made to hard-wrap, a control given to another form or disabled, a choice
+    disabled once chosen and a number past six digits each reached the employer changed;
+    a limit the page lowered after the form was read cut the answer as it was typed, and
+    reading the form again stored nothing new;
+  - a control whose form would not send what is typed is refused when the form is read,
+    as Chromium reads its tag; a form whose limits changed is a new version; before
+    anything is entered, the form's character set and each answer's live limit are
+    checked; each value's limit is read again once its control has focus; every answer
+    is read back as the form would send it, read passively; numbers are typed exactly;
+  - two independent reviews: both found a blocker (building a `FormData` fires the
+    form's `formdata` event, from which a page received the application during a
+    rehearsal; D155's work-entry readback did the same), the second another (Greenhouse
+    classic sending page text in a refused question). Fixed (5468717), each with
+    a test; the rest recorded in D159;
+  - 29 removal runs on 0ba83e0, each failing the test named for its part;
+    a first run of 28, on f616163, found a test that passed with the first version's order
+    too (Greenhouse classic's cross-check, whose list lost the question's help): it now shows
+    the type alone (15a8560).
+
+- **D158 (merged, #67).** Rank 25, D157's limit:
   - the gap: an ordinary question's answer (every provider) was held to the page's limit
     by its characters: one the browser would cut passed, and one whose line breaks its
     form sends as CRLF passed and could be refused by the employer after the final click;
@@ -387,7 +409,7 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
   - 16 removal runs on 8f7cc1d (one in the browser), each failing the test named for
     its part.
 
-- **D157 (branch `workday-entry-limits`, PR #66).** Rank 24, D155's limit:
+- **D157 (merged, #66).** Rank 24, D155's limit:
   - the gap: a Workday-style work entry whose typed part carries a length limit
     (`maxlength`) made the whole form one checkpoint, even when every record fits;
   - capture reads the limit, only as the browser reads it, keyed by the frozen row's
@@ -530,10 +552,13 @@ itself would refuse, and waits for the page's reaction to the answers before the
 Description from your record where the entry asks them. **D156** (rank 23, #65)
 stops a wizard page before its Next when the page itself would refuse it, or when the final
 click's own validation would refuse what the pages filled so far hold. **D157** (rank
-24, PR #66) reads a Workday-style work entry's length limits and holds your
-record to them, counted as the form sends them. **D158** (rank 25, on its branch) holds
+24, #66) reads a Workday-style work entry's length limits and holds your
+record to them, counted as the form sends them. **D158** (rank 25, #67) holds
 every provider's ordinary answer to its page's limit the same way, and makes an answer
-you gave that no longer fits a checkpoint. Every ranked
+you gave that no longer fits a checkpoint. **D159** (rank 26, on its branch) reads every
+ordinary answer back as its form would send it, refuses a control whose form would send
+something else when the form is read, and holds an answer to the limit its page has now.
+Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
 
@@ -629,12 +654,18 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D158 (branch `question-limits`):** the new tests, the suites the change touches, the
-  removal runs, the browser test and the regression set, locally (Tests run below). Not
-  tested: any real page or employer's server; a limit changed after the form was read;
-  a page in another character set.
-- **D157 (branch `workday-entry-limits`, PR #66):** the new tests, the suites the change
-  touches, the removal runs and the regression set, locally (Tests run below). Not
+- **D159 (branch `sent-as-approved`):** the new tests, the suites the change touches, the
+  removal runs and the regression set, locally (Tests run below). Not tested: any real
+  page; the Greenhouse pilot (unchanged); a page that changes a control while an answer is
+  typed or after the readback; a control outside the form's markup given to it.
+- **D158:** merged (#67, d12e954, tree as predicted); its PR CI passed all four jobs on
+  cfb83f9. Locally: the new tests, the suites the change touches, the removal runs, the
+  browser test and the regression set (Tests run below). Not tested: any real page or
+  employer's server; a limit changed after the form was read (D159 since); a page in
+  another character set (D159 since).
+- **D157:** merged (#66, d3eab19, tree as predicted); its PR CI passed all four jobs on
+  6746239. Locally: the new tests, the suites the change touches, the removal runs and
+  the regression set (Tests run below). Not
   tested: any real page; a real Workday tenant's limits; an ordinary question's limit
   counted as the form sends it (still by code points).
 - **D156:** merged (#65, 682ada4, tree as predicted); its PR CI passed all four jobs on
@@ -927,6 +958,11 @@ action.
 | D158, each part changed in turn: 15 changes on 8f7cc1d, one at a time (a worktree of its own), the file restored; the answer box's count changed back, the browser test run | exit 1 for each: all 15 fail the test named for their part; the browser test fails; each file restored |
 | D158, the regression set: `pytest` on 85 files (D157's 84 with `test_question_limits.py`; JUnit), in a copy of the branch at 8f7cc1d | exit 0; 2522 passed in 75.6 min |
 | D158, after its records: the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_question_limits.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 89 passed in 45 s; ruff formatted nothing, found nothing, and the format check passed |
+| D159, the first version: `test_sent_as_approved.py` (JUnit) on the working tree before b8512c9; then 36 files in two runs on its content | exit 0: 43 passed; 427 and 1169 passed |
+| D159, after the reviews: `test_sent_as_approved.py` (JUnit) on the working tree before 5468717; then the same 36 files in two runs on its content | exit 0, 78 passed; exit 0 for both: 462 and 1173 passed; `ruff check .` clean, and `ruff format .` then reformatted 2 files (f616163: a docstring and the new tests reindented, no code change) |
+| D159, the first removal run: 28 changes on f616163 | 27 fail the tests named for their part; m07 passed the test first named for it (`keeps_its_cross_check`), which passed with the first version's order too (its list lost the question's help); the test strengthened (15a8560, 0ba83e0) |
+| D159, each part changed in turn: 29 changes on 0ba83e0, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 29 fail the tests named for their part (69 of the 110 named tests, over the runs); each file restored |
+| D159, the regression set: `pytest` on 86 files (D158's 85 with `test_sent_as_approved.py`; JUnit), in a copy of the branch at f616163 (since then only one test in `test_sent_as_approved.py` changed; the file is run in full with the records) | exit 0; 2604 passed in 88.5 min |
 
 ## Failed approaches and rejected designs
 
@@ -1042,10 +1078,10 @@ action.
 
 ## Exact next action
 
-1. D157 (branch `workday-entry-limits`, rank 24): its pull request, #66. Then D158 (branch
-   `question-limits`, rank 25, D157's limit: an ordinary question's limit held as its form
-   sends it): its pull request. Candidates after them: the page's own limit read before each
-   ordinary answer is typed (as D157 does for a work entry); education on Workday.
+1. D159 (branch `sent-as-approved`, rank 26, D158's limits: an ordinary answer read back
+   as its form would send it): its pull request. Candidates after it: a control outside the
+   form's markup that the page gives to it, read as a question or refused; education on
+   Workday.
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it
