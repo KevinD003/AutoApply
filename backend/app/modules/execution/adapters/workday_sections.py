@@ -36,15 +36,17 @@ from playwright.sync_api import Error as PWError
 from app.modules.execution.adapters.form_entries import ENTRIES_JS
 from app.modules.execution.adapters.greenhouse_sections import (
     FillOp,
+    NotTyped,
     Refused,
     RowPlan,
     SectionFillError,
     SectionPlan,
     _present,
+    check_at_focus,
     section_from_content,
     section_root,
 )
-from app.modules.preparation.forms import LIVE_LIMIT_JS, sent_len
+from app.modules.preparation.forms import sent_len
 
 KIND = "employment"
 # A frozen employment field -> how it is entered, and the part of the control's name.
@@ -157,15 +159,9 @@ def _give(page, op: FillOp, timeout_ms: int) -> None:
         loc.set_checked(bool(op.value), timeout=timeout_ms)
     else:
         # D157: never a value the control would cut, refused before it is typed (a page that
-        # saves as you type would save it cut), counted as its form sends it; D162: naming the
-        # limit, read once the control has focus
-        loc.focus(timeout=timeout_ms)
-        limit, _, applies = loc.evaluate(LIVE_LIMIT_JS, timeout=timeout_ms)
-        if applies and isinstance(limit, int) and 0 <= limit < sent_len(str(op.value)):
-            raise SectionFillError(
-                f"{KIND}: {op.field} is longer than the page now accepts ({limit} characters as "
-                "the form sends them)"
-            )
+        # saves as you type would save it cut), counted as its form sends it; D162: read once
+        # the control has focus for certain, the stop naming the limit (`NotTyped`)
+        check_at_focus(loc, str(op.value), timeout_ms, f"{KIND}: {op.field}")
         loc.fill(str(op.value), timeout=timeout_ms)
         # D155: focus leaves it, as it would for a person, so a page that reacts on `change`
         # does so now, before the readback, not at the next click
@@ -250,12 +246,17 @@ def apply(page, entries: SectionPlan, root: str, *, timeout_ms: int = 3000, on_e
             for op in row.ops:
                 if progress is not None:
                     progress()
+                refused = False
                 try:
                     _give(page, op, timeout_ms)
-                finally:  # the page may hold it, or part of it, whatever happened
-                    entered.append({"row": row.row, "field": op.field})
-                    if on_entered is not None:
-                        on_entered(entered[-1])
+                except NotTyped:
+                    refused = True  # D162: refused before anything was typed: nothing to record
+                    raise
+                finally:  # the page may hold it, or part of it, whatever else happened
+                    if not refused:
+                        entered.append({"row": row.row, "field": op.field})
+                        if on_entered is not None:
+                            on_entered(entered[-1])
                 if not _holds(page, op):
                     raise SectionFillError(f"{KIND} entry {row.row}: {op.field} did not keep it")
     except SectionFillError as e:

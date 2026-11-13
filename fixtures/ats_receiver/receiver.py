@@ -204,7 +204,7 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                     "cdn": None, "variant": None, "widget_bad": None, "redirect_away": None,
                     "ll_code": None, "ll_code_value": None, "ll_invalid": None,
                     # D142: the Workday-style wizard variant, so none leaks into the next test
-                    "wizard": None,
+                    "wizard": None, "wd_limit_on_focus": None,
                     # D154: a page's own checks before its final click
                     "page_check": None, "page_check_delay_ms": 800,
                     "sends": None,  # D159

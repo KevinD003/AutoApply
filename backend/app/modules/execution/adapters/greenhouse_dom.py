@@ -53,6 +53,7 @@ from app.modules.execution.adapters.fixture_ats import (
     UploadFailed,
     _over_limit,
     limits_verdict,
+    section_not_typed,
     upload_evidence,
 )
 from app.modules.execution.adapters.greenhouse import (
@@ -723,10 +724,13 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                     loc, text = _by_id(page, a["key"]), _text(a["value"])
                     over = self._cut_at_focus(loc, text)  # D161: never typed cut
                     if over is not None:
-                        raise LimitStopped(LIMIT_AT_FOCUS.format(limits=over), disclosures)
+                        raise LimitStopped(LIMIT_AT_FOCUS.format(limits=over))
                     loc.fill(text)
                 # else D129: a locked field, pre-filled with the approved identity and verified
                 # before disclosure -- the page will not let it be edited; never overwritten.
+            except StoppedAfterDisclosure as e:  # D161, D162 review: its limit, or no focus
+                e.disclosures[:0] = disclosures  # the uploads before it were sent too
+                raise
             except PWTimeout:
                 raise
             except PWError:
@@ -734,7 +738,7 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         self._fill_sections(page, disclosures)
         try:
             self._fill_shown_by_page(page)
-        except LimitStopped as e:
+        except StoppedAfterDisclosure as e:  # its limit, or no focus (D162 review)
             e.disclosures[:0] = disclosures  # the uploads before it were sent too
             raise
         return disclosures
@@ -787,6 +791,8 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                     page, plan, root, on_entered=entered, before_op=self._progress,
                     late=self._stand_in,
                 )  # fmt: skip
+            except gsections.NotTyped as e:  # D162: refused before it was typed, naming it
+                raise section_not_typed(e, disclosures) from e
             except gsections.Refused as e:
                 # What was entered before the refusal is already in `disclosures`.
                 raise StoppedAfterDisclosure(str(e), list(disclosures)) from e

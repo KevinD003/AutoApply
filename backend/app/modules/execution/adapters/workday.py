@@ -75,6 +75,7 @@ from app.modules.execution.adapters.fixture_ats import (
     _sel,
     button_ready,
     draft_evidence,
+    section_not_typed,
     would_refuse,
 )
 from app.modules.execution.adapters.greenhouse import CHALLENGE_SELECTORS
@@ -315,6 +316,9 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
                 continue  # shown but not editable: never waited for (the check after stops)
             try:
                 self._fill_one(page, a)
+            except StoppedAfterDisclosure as e:  # D162 review: stopped at this box
+                e.disclosures[:0] = disclosures  # the uploads before it were sent too
+                raise
             except PWTimeout:
                 raise
             except PWError:
@@ -350,6 +354,8 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
             try:
                 ws.apply(page, ws.plan(sec), root, on_entered=entered,
                          progress=self._progress)  # fmt: skip
+            except ws.NotTyped as e:  # D162: refused before it was typed, naming the limit
+                raise section_not_typed(e, disclosures) from e
             except ws.Refused as e:
                 raise StoppedAfterDisclosure(SECTION_NOT_ENTERED, list(disclosures)) from e
 

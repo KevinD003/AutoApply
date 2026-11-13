@@ -521,6 +521,19 @@ def _page(title: str, body: str, kind: str, status: int = 200) -> HTMLResponse:
     )
 
 
+def _limit_on_focus(cfg: dict) -> str:
+    """D162 (FIXTURE ASSUMPTION, never seen on a real page): `cfg["wd_limit_on_focus"]`, {CSS
+    selector: limit}: the page's script lowers the limit of a box it matches as the box gets
+    focus (an entry added later included), after the form was checked."""
+    rules = (cfg or {}).get("wd_limit_on_focus") or {}
+    if not rules:
+        return ""
+    return ("<script>document.addEventListener('focusin', (e) => { const rules = "
+            + json.dumps(rules) + "; for (const [sel, n] of Object.entries(rules))"
+            " if (e.target.matches && e.target.matches(sel)) e.target.maxLength = n; });"
+            "</script>")  # fmt: skip
+
+
 def _yes_no(name: str, legend: str, required: bool) -> str:
     opts = "".join(f'<label><input type="radio" name="{name}" value="{v}"> {v}</label>'
                    for v in YES_NO)  # fmt: skip
@@ -679,7 +692,7 @@ for (const input of document.querySelectorAll('input[type=file][data-wd-file]'))
     }} catch (e) {{ st.textContent = 'Upload failed'; st.dataset.attachmentError = '1'; }}
   }});
 }}{follow_up_js}{work_js}{check_js}
-</script>"""
+</script>""" + _limit_on_focus(cfg)
     return _page(f"{title} — {employer}", body, "form")
 
 
@@ -867,7 +880,7 @@ for (const btn of form.querySelectorAll('[data-wizard-next]')) {{
     status.dataset.draftStatus = 'saved';
   }});
 }}{follow_up_js}{work_js}{check_js}
-</script>"""
+</script>""" + _limit_on_focus(cfg)
     return _page(f"{title} — {employer}", body, "form")
 
 

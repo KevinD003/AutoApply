@@ -940,12 +940,21 @@ def test_a_section_whose_one_button_is_not_its_add_is_never_clicked(page):
 
 def test_a_browser_error_while_entering_is_the_section_s_stop(page):
     """D149 review: a control the page made uneditable fails in the browser; that is the
-    section's stop, with the control reported as entered, never an internal error."""
+    section's stop, with the control reported as entered, never an internal error. D162: one
+    made read-only once it has focus fails so as it is typed (the page may hold part of it); one
+    disabled before never gets focus, and is refused before anything is typed: not reported."""
+    title = '[name="work[0].title"]'
     page.set_content(section_page(entries=entry("0")))
-    page.evaluate("""() => document.querySelector('[name="work[0].title"]').disabled = true""")
+    page.locator(title).evaluate("(t) => t.addEventListener('focus', () => { t.readOnly = true; })")
     with pytest.raises(ws.SectionFillError) as e:
         ws.apply(page, ws.plan(frozen([frozen_row()])), ROOT, timeout_ms=300)
+    assert not isinstance(e.value, ws.NotTyped)
     assert e.value.entered == [{"row": 0, "field": "title"}]
+    page.set_content(section_page(entries=entry("0")))
+    page.locator(title).evaluate("(t) => { t.disabled = true; }")
+    with pytest.raises(ws.NotTyped) as e:
+        ws.apply(page, ws.plan(frozen([frozen_row()])), ROOT, timeout_ms=300)
+    assert e.value.entered == [] and e.value.limit is None
 
 
 @pytest.mark.parametrize("change", [

@@ -220,9 +220,10 @@ _DIRNAME_TYPES = ("text", "search", "tel", "url", "email", "password")
 _INPUT_TYPES = frozenset((*_DIRNAME_TYPES, "hidden", "number", "range", "color", "checkbox",
                           "radio", "file", "submit", "image", "reset", "button", "date", "month",
                           "week", "time", "datetime-local"))  # fmt: skip
-# D161, D162: the input types whose `maxlength` limits what is typed (measured; the same as
-# `dirname`'s), a text area's too; on any other (a number, a date, a file) the browser ignores it.
-LIMITED_INPUTS = frozenset(_DIRNAME_TYPES)
+# D161, D162: the input types whose `maxlength` limits what is typed, as measured in Chromium (a
+# text area's does too); on any other (a number, a date, a file) the browser ignores it. A list of
+# its own: that it equals `dirname`'s is a coincidence of two browser behaviours.
+LIMITED_INPUTS = frozenset({"text", "search", "url", "tel", "email", "password"})
 
 # D161 (the Greenhouse pilot), D162 (every adapter): a control's length limit now, read in the
 # page (before anything is entered, right before its value is typed, and by the read-only survey):
@@ -232,7 +233,9 @@ LIMITED_INPUTS = frozenset(_DIRNAME_TYPES)
 # is typed into it to a limit at all (a text area, or an input whose `type`, as the browser
 # normalises it, is one of LIMITED_INPUTS). Read through the browser's own definitions, as D160's
 # reads of the form: a page that redefines `maxLength`, `getAttribute`, `type` or `localName` on
-# the element itself cannot change what is read.
+# the element itself cannot change what is read. One that redefines them for every element (on
+# their prototypes) or the functions this read calls can, as a page can cut what is typed by its
+# own script: the readback stops what is then held cut (D162 reviews, measured).
 LIVE_LIMIT_JS = """(e) => {
   const get = (P, k) => Object.getOwnPropertyDescriptor(P, k).get.call(e);
   const tag = Object.getOwnPropertyDescriptor(Element.prototype, 'localName').get.call(e);
