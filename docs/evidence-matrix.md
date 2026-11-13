@@ -7,7 +7,33 @@ Python 3.12.3, PostgreSQL 16.15, Redis 7.0.15, Celery 5.6.3 / kombu 5.6.2 / redi
 with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
-no code or database with NoEfforts. "Mock" marks anything simulated.## A control the page gives its application form from outside its markup is read as a question, and the form must send nothing NoEfforts did not read, by the click on its own button (D160, 2026-11-13; local only)
+no code or database with NoEfforts. "Mock" marks anything simulated.
+
+## The Greenhouse pilot holds an answer to the length limit its page shows (D161, 2026-11-13; local only)
+
+Nothing here ran against a real page. Branch `pilot-limits`. The runs drive the API and the
+runner, by id (`greenhouse_dom`) and through the pilot (`greenhouse_live`), against the second
+Greenhouse-style stand-in (its limits, the scripts that set them, its locks and its saves as you
+type are fixture assumptions), with the receiver's ledger as the oracle (its acceptances, its
+uploads and the page's saves); or read pages at capture; or compare with Chromium's own behaviour;
+or run the read-only survey on the stand-in. All in `tests/test_pilot_limits.py`.
+
+| Claim | Test | Result |
+|---|---|---|
+| Before D161 the pilot typed an answer cut, after the résumé's upload | `test_before_d161_an_answer_past_the_page_s_limit_was_typed_cut_after_the_upload` (2), `test_before_d161_a_limit_lowered_on_focus_left_the_page_holding_it_cut`, `test_before_d161_the_question_the_page_shows_was_typed_cut` | `abandoned` after one upload, the page holding 3 of the answer's characters |
+| The capture records a typed question's limit as the browser reads it | `test_the_pilot_records_a_typed_question_s_limit_as_the_browser_reads_it` (10), `test_the_limit_of_a_question_the_page_shows_later_is_recorded` | ASCII digits, whitespace around them, the first of two; a sign, a decimal point, another script's digit, 0 or more than the browser reads: none |
+| Only where the browser holds typing to it | `test_a_limit_is_recorded_only_where_the_browser_holds_typing_to_it` (8), `test_the_capture_reads_which_controls_hold_typing_to_a_limit` (19), `test_only_a_typed_answer_is_held_to_a_limit` (3), `test_a_limit_is_recorded_exactly_where_the_browser_cuts_what_is_typed` (14, Chromium), `test_a_limit_only_the_page_s_script_sets_is_not_recorded` | a text type, the first `type`, ASCII case aside (capitals; the Kelvin sign is no `k`); not a number or a date; a locked control too, except one the page locks and fills itself; recorded exactly where Chromium cuts what is typed |
+| A locked control the page unlocks | `test_a_locked_control_s_limit_is_recorded_unless_the_page_fills_it`, `test_a_control_served_locked_and_unlocked_by_the_page_is_cut_as_typed` (Chromium), `test_a_control_the_page_unlocks_is_held_to_the_limit_it_was_served_with` (4) | disabled until loaded, read-only until it has focus: the limit is yours before approval; "Sam" sent, the page saving 3 characters |
+| Held to it before you approve | `test_an_answer_longer_than_the_page_s_limit_is_yours_to_shorten_before_approval` (2), `test_an_answer_at_the_page_s_limit_is_sent_whole` (2) | refused when saved, naming 5/3; the shorter one sent; one at the limit sent whole |
+| A limit the page shows now stops before anything is entered | `test_a_limit_the_page_s_script_lowers_pauses_before_anything_is_entered` (2), `test_a_limit_written_so_no_read_records_it_stops_plainly_naming_it` (2), `test_reading_the_form_again_records_the_limit_the_page_now_shows` | `failed_safe`, no upload; D132's pause naming the limit, or a plain stop; read again, a new version, the shorter answer sent |
+| Never typed cut | `test_a_limit_lowered_as_the_control_gets_focus_is_never_typed_cut` (2), `test_a_question_the_page_shows_is_not_entered_when_its_limit_is_lowered_on_focus`, `test_the_check_before_typing_reads_the_limit_once_the_control_has_focus` (Chromium) | `abandoned` naming the limit, no save of the answer at all; the résumé's upload before it recorded |
+| After filling | `test_a_limit_lowered_once_the_answer_is_typed_stops_before_the_send_gate` (2), `test_after_filling_a_question_the_page_did_not_show_is_not_held_to_its_limit` | `abandoned`, nothing sent; a question never shown left alone, `confirmed` |
+| What the live check holds | `test_what_the_check_holds_to_the_live_limit` (Chromium), `test_the_live_read_goes_through_the_browser_s_own_definitions` (Chromium), `test_a_locked_prefilled_email_is_not_held_to_a_limit_the_page_sets` | typed text, a text area as a box; not a number, a number box, the location search's text; the page's own `maxLength`, `getAttribute` and `type` ignored; D129's locked email `confirmed`, sent as the page holds it |
+| The survey reports it | `test_the_survey_reports_each_typed_question_s_limit_as_the_browser_and_capture_read_it`, `test_the_survey_reads_a_page_served_with_a_byte_that_is_no_utf8`, `test_the_page_as_served_is_decoded_as_the_capture_decodes_it`, `test_the_survey_says_which_typed_question_has_no_control_to_read`, `test_the_survey_says_what_it_could_not_read_of_the_page_as_served` | the browser's and the capture's reading, numbers only, through the privacy guard, nothing disclosed; "not_applicable" for a list or a file; "not_observable" where there is no control or the page as served cannot be read; the page as served decoded as the capture decodes it, a byte that is no UTF-8 replaced |
+| Every other flow unchanged | the suites the change touches; the regression set | pass (`docs/implementation-status.md`) |
+| Each part is needed | 30 changes, one at a time, the named tests run, the file restored (`docs/implementation-status.md`) | each fails the tests named for its part |
+
+## A control the page gives its application form from outside its markup is read as a question, and the form must send nothing NoEfforts did not read, by the click on its own button (D160, 2026-11-13; local only)
 
 Nothing here ran against a real page. Branch `outside-controls`. The runs drive the API and the
 runner against the base stand-in (`cfg["sends"]`), Lever-style and Greenhouse classic's, with

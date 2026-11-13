@@ -888,10 +888,18 @@ What it does and does not say:
   opening made any data request (published apart) and compares the options.
 - **"Not met"** can be a list the adapter would already have chosen from earlier in its window.
   Reads 500 ms apart are stricter than the adapter's 250 ms.
+- **The privacy check:** the new keys add a few common words to the summary (quiet, reads,
+  settle, rule). The check refuses the whole summary when a posting's label of four or more
+  letters appears in it. So a posting with a label that is exactly one of those words would
+  have its summary withheld: it fails closed, but would waste the run.
+
+Run #11's "11 lists were read completely" was judged by the survey's own test, so whether those
+lists meet the adapter's rule is not known. Finding out needs a new run, which needs the owner's
+new approval; none is requested here.
 
 **Since D161 (2026-11-13; code only, no run):** the mapping evidence also publishes, per typed
-question, its length limit (`length_limit`, numbers only; "not_applicable" for any other question
-or a control not found once):
+question, its length limit (`length_limit`, numbers only; "not_applicable" for a question nothing
+is typed into, "not_observable" for one without a control of its own):
 - `browser_reads`: the limit the browser holds typing into its control to on the loaded page
   (`maxLength`, where the browser applies one to that kind of control), or none;
 - `capture_records`: the limit the pilot's capture records from the page as served, without its
@@ -902,18 +910,16 @@ or a control not found once):
 What it does and does not say:
 - **The two agree:** the capture holds your answer to the page's limit before you approve, and
   the adapter checks the same limit before typing.
-- **`browser_reads` alone:** the page sets or changes the limit with its scripts, or writes it so
-  that no read records it; the adapter's check before anything is entered stops such an
-  attempt (a pause, or a plain stop naming the limit).
+- **`browser_reads` alone, or the two differ:** the page sets or changes the limit with its
+  scripts, writes it so that no read records it, or locks and fills the control itself (D129's
+  identity field, never typed), or the capture's own request (another client) was served
+  another page. The adapter's check before anything is entered stops an attempt whose answer
+  exceeds the limit the browser reads (a pause, or a plain stop naming it), except on that
+  identity field.
 - **Neither** says how the employer's server counts what it receives.
-- **The privacy check:** the new keys add a few common words to the summary (quiet, reads,
-  settle, rule). The check refuses the whole summary when a posting's label of four or more
-  letters appears in it. So a posting with a label that is exactly one of those words would
-  have its summary withheld: it fails closed, but would waste the run.
-
-Run #11's "11 lists were read completely" was judged by the survey's own test, so whether those
-lists meet the adapter's rule is not known. Finding out needs a new run, which needs the owner's
-new approval; none is requested here.
+- **The privacy check** (as D152's above): the new keys add five words to the summary (length,
+  limit, browser, capture, records), so a posting with a label, an option or a department that
+  is exactly one of them would have its summary withheld: it fails closed.
 
 ## Deliverable: the comparison (once A/B are separately approved and run)
 

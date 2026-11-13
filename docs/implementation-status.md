@@ -52,7 +52,40 @@ compact summary built from the same consolidation, so list and detail never disa
 | `7da9a29`, `292ecb9` | Submission UI browser tests; card polling fix (B3); e2e worker supervisor (B4) |
 | `2d3d3c1`, `6c850d7`, `416cf70`, `bae5120` | CI: redis-server, submission e2e, compose logs; Docker web config (B6); smoke script |
 
-Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.## A control the page gives its application form from outside its markup is read as a question, and the form must send nothing NoEfforts did not read, by the click on its own button (D160, 2026-11-13; local only)
+Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
+
+## The Greenhouse pilot holds an answer to the length limit its page shows (D161, 2026-11-13; local only)
+
+Rank 28 of the automation loop (D158's and D159's limit for the pilot). Product changes:
+
+- `app/modules/preparation/greenhouse_dom.py`: `Control.maxlength` and `Control.limited`
+  (`snapshot`), `limits_typing`, `_locked`, `_page_filled`, `control_limit`, `LIVE_LIMIT_JS`;
+  `build_schema` records a typed question's limit as its `max_length`.
+- `app/modules/execution/adapters/greenhouse_dom.py`: `_limits_fit` last in `schema_matches`
+  (before anything is entered, and after filling); `_cut_at_focus` before each value is typed
+  (`fill`, `_fill_shown_by_page`), `LimitStopped` and `LIMIT_AT_FOCUS`.
+- `app/modules/execution/adapters/fixture_ats.py`: `limits_verdict`, D159's verdict, shared.
+- `app/modules/preparation/gh_readonly.py`: each typed question's `length_limit` in
+  `mapping_evidence` (`_length_limit`, `_served_limits`, `_served_html`); three words added to
+  the published vocabulary; `docs/greenhouse-readonly-compatibility-proposal.md` documents them.
+- The stand-in (`fixtures/ats_receiver/greenhouse_v2.py`: the `gh2_` limit, lock, type,
+  autosave and byte settings and the autosave route; `receiver.py` resets them).
+
+No migration, no new state, reason code or gate. `SCHEMA_VERSION` stays 3, and so do
+`EXTRACTION_VERSION` (greenhouse-dom-v6) and the adapter versions (D161 says why). Nothing was
+run against a real page. `scripts/validate.sh all` was not run (it runs the whole backend and
+e2e suites); ruff was.
+
+| Check (branch `pilot-limits`, from D160's branch at 9838d26) | Command | Result |
+|---|---|---|
+| The first version's tests | the capture's tests (`pytest tests/test_pilot_limits.py -k ...`, JUnit) on the working tree before 566cf9f and d05d9da; the file on 8f9fcdb's working tree, three times; ruff | exit 0: 34 and 37 passed; exit 1: 13 failed (the stand-in's new settings leaked into later tests, its reset not knowing them; the Chromium tests' browser running around the others' own), then 2 (a rename that reached the stop's wording), then exit 0: 79 passed (42852a2); ruff clean |
+| Two independent reviews | on 42852a2 | no blocker; both: a locked control's limit not recorded, leaving a pause no read ends; filling going on after a withheld value, the stop naming no limit; see D161 |
+| After the reviews | `test_pilot_limits.py` (JUnit) on the working tree before 017d9ff and e71bbea, and on 29cc94f; the suites the change touches, 65 files in two runs on e71bbea; ruff | exit 0: 75 and 85 passed (the working tree before 017d9ff and e71bbea), 86 on 29cc94f and 90 on c8cdc59; the 65 files on e71bbea: exit 0 for both, 977 and 1224 passed; the 15 of them the regression set does not run, on c8cdc59: exit 0, 407 passed; ruff clean |
+| Each part changed in turn | 30 changes on c8cdc59, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 30 fail the tests named for their part (84 of the 296 named tests, over the runs); each file restored. A first run, on 29cc94f, of 29 changes found two that failed none: the capture's ASCII case-folding of `type` (the tests' types read alike unfolded) and the survey's decoding (Chromium hands Playwright a document's body already decoded); cases added (c8cdc59), and a 30th change, Unicode's lowercasing for ASCII's, run with them. Left out: a stop before typing carrying the uploads made before it, which no run can observe (D137 records each as it is made) |
+| The regression set | `pytest` on 88 files (D160's 87 with `test_pilot_limits.py`; JUnit), in a copy of the branch at c8cdc59 | exit 0, 2797 passed (87 minutes) |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_pilot_limits.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 135 passed in 137 s; ruff formatted nothing, found nothing, and the format check passed |
+
+## A control the page gives its application form from outside its markup is read as a question, and the form must send nothing NoEfforts did not read, by the click on its own button (D160, 2026-11-13; local only)
 
 Rank 27 of the automation loop (D159's limit). Product changes:
 

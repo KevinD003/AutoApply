@@ -7783,6 +7783,8 @@ audit-inventory and export-completeness guards are updated and pass.
     these attributes nor reads a page limit, and its readback reads what each control holds,
     which its page's script sends (how a real page builds its request was never observed). An
     answer longer than a real page's limit is still typed cut, then stopped by its readback.
+    (D161: the page's limit is read at capture, and held to before anything is entered and
+    before each value is typed.)
   - A control outside the application form's markup that the page gives to it (`form` naming
     it, or markup the browser re-nests into it) is never read as a question: what it holds is
     sent with your application. (D160: read and refused, or the attempt stopped.)
@@ -7936,3 +7938,156 @@ audit-inventory and export-completeness guards are updated and pass.
   - The reads run in the page's own context: a page that redefines the browser's own
     definitions can make them say anything.
   - Never seen on a real page.
+
+## D161 — The Greenhouse pilot holds an answer to the length limit its page shows (2026-11-13)
+
+- **Context:** rank 28 of the automation loop (`docs/automation-loop.md`), D158's and D159's limit
+  for the pilot ("its capture neither refuses these attributes nor reads a page limit ... An
+  answer longer than a real page's limit is still typed cut, then stopped by its readback").
+  Local stand-ins only; nothing real was run. No migration, no new state, reason code, gate,
+  permission or retry. The pilot's own reads of what its form sends (D159's attributes, D160's
+  controls and click) are unchanged: its page's script sends what its controls hold, and how a
+  real page builds its request was never observed.
+- **Problem** (measured on the second Greenhouse-style stand-in, `test_before_d161_...`):
+  - The pilot's capture (`greenhouse_dom.build_schema`, for a real job board through
+    `_capture_live` and for the stand-ins) recorded no `max_length`, so an answer longer than a
+    page's `maxlength` was approved. The browser cut it as it was typed, after the résumé had
+    been uploaded (a page that saves as you type held it cut), and the readback stopped the
+    attempt only then.
+  - The pilot read no live limit, before anything was entered or before typing (D159's checks
+    are the base adapter's, which the pilot does not use): a limit the page lowered as a box got
+    focus was typed cut, an ordinary question's or one the page shows (D135) alike.
+- **Decided:**
+  - **Capture** (`greenhouse_dom.snapshot`, `limits_typing`, `_page_filled`, `control_limit`):
+    each control's `maxlength` as the browser keeps it (the first of two), and whether the browser
+    holds what is typed into it to that limit: a text area, or an input whose `type` (the first
+    of two, matched ASCII case-insensitively; one the browser does not know, or none, is text) is
+    text, search, url, tel, email or password; never a number, a date or a file (measured against
+    Chromium). A typed question's limit is read as D158 reads one (`question_limit`) and recorded
+    as its `max_length` (the stricter, were the job data to state one): your answer is held to it
+    before you approve (D158), and it is part of the form's version (D159).
+    - A locked control's limit is recorded too: the page's script may unlock it before anything is
+      typed (a box read-only until it has focus, a common guard against autofill; a question
+      disabled until shown). Except a control the page as served both locks (`_locked`: `disabled`
+      or `readonly` on it, `inert` on it or around it, a disabled fieldset around it outside that
+      fieldset's first legend, as Chromium reads them) and fills itself (its `value`, the first of
+      two, or a text area's text): D129's pre-filled identity field, into which nothing is typed.
+  - **Before anything is entered, and again after filling** (`GreenhouseDomAdapter._limits_fit`,
+    last in `schema_matches`, before D135's pause): each approved typed answer within the limit its
+    control has now (`LIVE_LIMIT_JS`: the browser's `maxLength`, where the browser holds typing to
+    a limit at all; read through the browser's own definitions, as D160's reads of the form, so a
+    page that redefines `maxLength`, `type` or `getAttribute` on the element changes nothing),
+    counted as its form sends it (D158). A limit a read of the form records gives D132's pause
+    (reading the form again records it; your answer is then yours to shorten); any other, a plain
+    stop naming it (`fixture_ats.limits_verdict`, the base adapter's D159 verdict, now shared).
+    After filling, either stops the attempt before the send gate. Not checked: a locked identity
+    field the page filled with the approved value (D129), never typed; the location search's text
+    (D104, local stand-ins only), a search the page answers with its own suggestion; after
+    filling, a question the page did not show (D135), never entered (the readback requires it
+    empty).
+  - **Before each value is typed** (`_cut_at_focus`, in `fill` and for a question the page shows,
+    D135): the limit is read once the control has focus (a page may lower it then). A value it
+    would cut is never typed: filling stops there, naming the limit (`LimitStopped`,
+    `LIMIT_AT_FOCUS`), and the uploads made before it stay recorded as sent (D137).
+  - **The read-only survey** (`gh_readonly.mapping_evidence`): each typed question's
+    `length_limit`: as the browser reads it on the loaded page (`browser_reads`), and as the
+    pilot's capture records it from the page as served (`capture_records`: from the response the
+    browser already received, so no new request, decoded as the capture decodes it, mapped as the
+    capture maps it); `not_applicable` for a question nothing is typed into, `not_observable` for
+    one without a control of its own or where the page as served cannot be read. Numbers and
+    three words of its published vocabulary, through its privacy guard (a posting with a label,
+    an option or a department that is exactly one of the keys' new words, such as "limit", has
+    its summary withheld: it fails closed, as D152 recorded for its own). The next permitted run
+    shows whether a real board's pages carry limits, and whether the capture reads them. Its
+    paragraph in `docs/greenhouse-readonly-compatibility-proposal.md` had split D152's list; it
+    follows D152's now.
+  - **The stand-in** (`fixtures/ats_receiver/greenhouse_v2.py`, FIXTURE ASSUMPTIONS, each reset
+    between tests): `cfg` limits as written (`gh2_limits`, written twice too), set by the page's
+    script once loaded, as a box gets focus, once something is typed into it or into the form
+    (`gh2_limit_js`, `gh2_limit_on_focus`, `gh2_limit_on_input`, `gh2_limit_once_typed`), a box's
+    type (`gh2_types`), a box served disabled and enabled by the page's script (`gh2_unlock`) or
+    read-only until it has focus (`gh2_readonly_focus`), a page that saves a question as it is
+    typed (`gh2_autosave`, its length only, to a route the ledger records), and a page served with
+    a byte that is no UTF-8 (`gh2_bad_byte`).
+- **What an approved run now does differently:**
+  - A pilot form whose page shows a limit is held to it before you approve: an answer longer than
+    it is yours to shorten, where it was approved and stopped after the résumé's upload.
+  - An application whose page now shows a limit its answer exceeds stops before anything is
+    entered (D132's pause, or a plain stop naming the limit), where it was typed cut after the
+    upload; one whose box lowers its limit as it gets focus stops there, naming the limit, with
+    nothing of that answer typed.
+  - A box read-only until it has focus is now typed into (the check before typing gives it focus
+    first); before, filling waited for it to become editable until it timed out. Its limit is
+    recorded and held as above.
+  - A pilot form captured before D161 whose page writes a limit reads as a new version when it is
+    read again (the limit is part of the version, D159): the package changes and its approval is
+    retired; answers and consents are kept; a pending draft for that question is refused when
+    accepted (its `max_chars` changed). An approval given before runs as before while its answers
+    fit the page's limits (the automatic rule never reads a form again by itself).
+  - **`EXTRACTION_VERSION` (greenhouse-dom-v6) and the adapter versions stay**, as for D158 to
+    D160: the rules only stop more, and an approval given before means what it meant.
+    `SCHEMA_VERSION` stays 3 (`max_length` is already part of the content).
+- **Reviews:** two independent reviews of the first version (42852a2). **Neither found a
+  blocker:** in every probe, no cut or unapproved value reached the receiver's acceptances; each
+  part D161 adds can only stop an attempt, and the readback still runs after all of them.
+  - **Both found:** a locked control whose limit the first version did not record (it skipped
+    every locked control) left a pause no read of the form could end: a box served read-only
+    until it has focus, or disabled until the page's script enables it, with a limit your answer
+    exceeds was approved, then paused before anything was entered, and reading the form again
+    stored nothing new (measured on the stand-in). Fixed: only a control the page both locks and
+    fills records no limit. The second also found that the check before typing made such a box
+    fillable (it gives the box focus first), so its limit must hold; it does now.
+  - **Both found:** when the check before typing withheld a value, filling went on (later answers
+    typed into a page that saves as you type) and the stop never named the limit ("1 field(s)
+    did not keep their values"): no number to shorten to. Fixed (`LimitStopped`).
+  - **Both found:** after filling, a question the page did not show (D135) was held to its hidden
+    control's limit, a stop for a question never entered. Fixed. Before anything is entered it is
+    still checked (recorded below).
+  - **Both found:** `inert` on the control itself was not read as a lock (Chromium types nothing
+    into it); the live read could be fooled by `maxLength` redefined on the element. Each fixed.
+    Both also reasoned that the survey read the page as served strictly as UTF-8, where the
+    capture replaces a byte it cannot read; it decodes as the capture does now. Measured since:
+    Chromium hands Playwright a document's body already decoded (such a byte arrives replaced),
+    so the strict read could not fail there.
+  - **The first also found:** the check's skips for a widget's answer and a value that is no
+    text untested. Tested now.
+  - **The second also found:** a typed question without a control of its own read
+    `not_applicable` in the survey (now `not_observable`); no test failed with the check's or the
+    survey's "where the browser holds typing to a limit" removed (tested now: a number box); one
+    `before_d161` test asserting only its own patch (removed).
+  - **Both noted, recorded here:** the version effect (above); limits a page lowers while a value
+    is typed; the parser's differences; the survey's two reads (below). The first also noted
+    that `Control.type` and `hidden` read a `type` written twice by its last value, lowercased
+    beyond ASCII (before D161; recorded below).
+  - Each is fixed with a test (017d9ff, e71bbea, 29cc94f), or recorded below.
+  - **The removal runs** (each part changed in turn) found two tests that did not show their
+    part: the capture's ASCII case-folding of `type` (the tests used "TEXT" and "SEARCH", read
+    alike with no folding at all) and the survey's decoding (the test through Chromium, above).
+    Cases added (c8cdc59): a type in capitals and one with the Kelvin sign, which Unicode's
+    lowercasing would read as "checkbox", against Chromium; the decoding tested on the function
+    itself. Not changed in the runs: a stop before typing carrying the uploads made before it,
+    which no run can observe (D137 records each as it is made).
+- **Not built:**
+  - The pilot's own reads of what its form sends (D159's attributes, D160's controls given from
+    outside and the final click's form): its page's script sends what its controls hold.
+  - A limit only the page's script sets is not recorded (the capture reads the page as served):
+    the live check stops the attempt, and reading the form again records nothing new; shorten
+    the answer and try again, as D159 for the other adapters. The same holds for a control the
+    page serves locked and filled, then unlocks for you to type.
+  - A limit the page lowers while a value is typed (in `beforeinput`), or a page that cuts what is
+    typed by its own script, still cuts it; the readback stops that before the send gate.
+  - Before anything is entered, a question the page shows by its own logic (D135) is held to its
+    control's limit, although the page may never show it (that is not known then): a pause or
+    stop on a page that would not have asked it. Kept: skipping it would let a question the page
+    then shows stop only after everything was entered.
+  - The base adapter's check before typing (D159) still goes on filling after a value it
+    withholds, and its readback reports the answer; the pilot now stops at once.
+  - NoEfforts' page reader is not the browser's parser (D160): markup the two read differently can
+    make the capture read a lock, a `type` or a `maxlength` unlike Chromium (a fieldset the parser
+    moves out of a table, `<legend/>`): a stricter check, or a pause no read ends, never a value
+    typed cut unnoticed. `Control.type` and `hidden` still read a `type` written twice by its last
+    value (before D161).
+  - The survey's `capture_records` reads the page from the browser's own response; the capture's
+    own request (another client) may be served otherwise.
+  - Whether a real Greenhouse board's pages carry `maxlength`, and whether its server holds an
+    answer to it, is unknown. **Never seen on a real page.**
