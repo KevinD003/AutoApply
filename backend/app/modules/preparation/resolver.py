@@ -54,6 +54,7 @@ from app.modules.preparation.forms import (
     FormField,
     Option,
     normalize,
+    sent_len,
 )
 from app.modules.profiles.models import Approval, TriState
 
@@ -1865,8 +1866,13 @@ def validate_value(f: FormField, value: dict | None) -> str | None:
         t = value.get("text")
         if not isinstance(t, str) or not t.strip():
             return "expected text"
-        if f.max_length and len(t) > f.max_length:
-            return f"longer than the form allows ({len(t)}/{f.max_length} characters)"
+        # D158: counted as its form sends it (`sent_len`): a line break or a character outside
+        # the Basic Multilingual Plane counts 2, never less than the browser's own count
+        if f.max_length and sent_len(t) > f.max_length:
+            return (
+                f"longer than the form allows ({sent_len(t)}/{f.max_length} characters as "
+                "the form sends them: a line break or an emoji counts as two)"
+            )
         if f.type == FieldType.email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", t):
             return "not an email address"
         if f.type == FieldType.url and not re.match(r"^https?://", t):

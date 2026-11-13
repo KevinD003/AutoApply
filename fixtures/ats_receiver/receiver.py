@@ -39,6 +39,16 @@ create table if not exists requests (id integer primary key, method text, path t
 
 REQUIRED = ["first_name", "last_name", "email", "phone", "country", "city", "work_auth_us",
             "sponsorship_us", "hear_about", "privacy_ack"]
+# D158: the page's own length limits (its `maxlength`), which its server checks too, on what it
+# receives: UTF-16 code units, a line break (sent as CRLF) counting 2, where the browser's own
+# `maxlength` counts one.
+LIMITS = {"why_us": 1000}
+
+
+def too_long(fields: dict) -> list[str]:
+    """D158: the fields this page's server refuses as longer than its limit (`LIMITS`)."""
+    return [k for k, n in LIMITS.items()
+            if len(str(fields.get(k) or "").encode("utf-16-le")) // 2 > n]  # fmt: skip
 
 # C6 (D51): mode "bank_question" adds this required, stable question to the "Questions" section:
 # the question every saved-answer test reuses (how you heard about a job is never reused).
@@ -276,6 +286,7 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
             missing.append("education")
         if not fields.get("resume_upload_id"):
             missing.append("resume")
+        missing += too_long(fields)  # D158
         if mode == "validation_fail" or missing:
             return HTMLResponse(page_msg("Please fix the errors",
                                          f"Missing or invalid: {', '.join(missing) or 'phone'}",

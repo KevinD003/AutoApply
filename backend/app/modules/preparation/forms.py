@@ -154,6 +154,26 @@ LIMITED_FIELDS = ("company_name", "description", "location", "title")
 MAX_LIMIT = 2_147_483_647
 
 
+_ASCII_WHITESPACE = " \t\n\f\r"  # what the browser skips before a number, and nothing else
+
+
+def read_maxlength(raw: str | None) -> int | None | bool:
+    """A control's `maxlength` as the browser reads it (D157; D158 for every question): None when
+    it has none, the number when it is written in ASCII digits (ASCII whitespace around them),
+    from 1 to MAX_LIMIT; False otherwise, a limit NoEfforts cannot read as the browser does and
+    never guesses (a sign, any other character, another script's digits, 0, or more than the
+    browser reads)."""
+    if raw is None:
+        return None
+    digits = raw.strip(_ASCII_WHITESPACE)
+    if not (digits.isascii() and digits.isdigit()):
+        return False
+    digits = digits.lstrip("0")
+    if not digits or len(digits) > len(str(MAX_LIMIT)) or int(digits) > MAX_LIMIT:
+        return False  # 0, or more than the browser reads
+    return int(digits)
+
+
 def sent_len(text: str) -> int:
     """D157: a text's length as its form sends it, which a limit (`maxlength`) is held to: UTF-16
     code units, as the browser counts them (a character outside the Basic Multilingual Plane
@@ -393,19 +413,18 @@ def _twice(attrs: list[tuple[str, str | None]]) -> frozenset[str]:
     return frozenset(k for k in names if names.count(k) > 1)
 
 
-def _whole_number(raw: str | None, top: int = 100_000) -> int | None:
-    """An attribute's whole number written in ASCII digits, from 1 to `top` (`FormField`'s own
-    bounds for `max_length`), None otherwise: never an error of reading the form, whatever the
-    page writes. D157: `int()` failed on a digit such as a superscript two and on more digits
-    than Python converts, read other scripts' digits the browser does not, and a limit of 0 or
-    above `top` (some page frameworks write 524288) failed `FormField` and so the whole form; such
-    a limit is not recorded, and the readback still stops a value the browser cut."""
-    if not raw or not (raw.isascii() and raw.isdigit()):
+def _question_limit(raw: str | None, top: int = 100_000) -> int | None:
+    """An ordinary question's `maxlength` (`FormField.max_length`), read as the browser reads it
+    (`read_maxlength`; D158: ASCII whitespace around the digits too, as the browser skips it)
+    and recorded only from 1 to `top` (`FormField`'s own bounds), None otherwise: never an error
+    of reading the form, whatever the page writes (D157: a superscript digit, more digits than
+    Python converts, another script's digits, 0, or above `top` as some page frameworks write).
+    A limit not recorded is not checked before approval; the readback still stops a value the
+    browser cut."""
+    limit = read_maxlength(raw)
+    if isinstance(limit, bool) or limit is None or limit > top:
         return None
-    digits = raw.lstrip("0")
-    if not digits or len(digits) > len(str(top)) or int(digits) > top:
-        return None
-    return int(digits)
+    return limit
 
 
 class _TreeBuilder(HTMLParser):
@@ -643,7 +662,7 @@ def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> Fo
                 help_text=help_of(n),
                 type=ftype,
                 required=required,
-                max_length=_whole_number(maxlen),
+                max_length=_question_limit(maxlen),
                 accept=n.attrs.get("accept") if ftype == FieldType.file else None,
                 **common,
             )

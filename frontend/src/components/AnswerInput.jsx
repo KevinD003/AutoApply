@@ -4,6 +4,12 @@ import { useState } from "react";
 
 import { Button, inputCls } from "./ui";
 
+/** D158: a text's length as its form sends it, the count the page's limit holds it to: UTF-16
+ * code units (`String.length`, an emoji counting two), each line break two (sent as CRLF). */
+export function sentLength(text) {
+  return text.length + (text.match(/\n/g) ?? []).length;
+}
+
 /** Builds the canonical answer value for a question from a type-appropriate control.
  * offerReuse shows "Reuse for this exact question" (only where the caller sends save_to_bank). */
 export default function AnswerInput({ q, onSave, busy, offerReuse = false }) {
@@ -66,8 +72,9 @@ export default function AnswerInput({ q, onSave, busy, offerReuse = false }) {
       <div>
         <textarea id={id} aria-label={q.label} className={inputCls} rows={4} value={text} maxLength={q.max_length ?? undefined} onChange={(e) => setText(e.target.value)} />
         {q.max_length && (
-          <p className="text-right text-xs text-ink-faint">
-            {text.length}/{q.max_length}
+          <p className={`text-right text-xs ${sentLength(text) > q.max_length ? "text-danger-ink" : "text-ink-faint"}`}>
+            {sentLength(text)}/{q.max_length}
+            {text.includes("\n") && " (a line break counts as two)"}
           </p>
         )}
       </div>
