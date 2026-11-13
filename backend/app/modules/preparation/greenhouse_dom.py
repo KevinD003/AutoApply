@@ -117,9 +117,10 @@ class Control:
     group_name: str | None = None
     group_required: bool = False  # D130: aria-required="true" on the enclosing group
     # D161: its `maxlength` attribute as the browser keeps it (the first of two), and whether
-    # it limits what is typed into it: the browser applies a limit to its kind of control
-    # (`limits_typing`), and the page lets you type into it (`_locked`: a locked field the page
-    # fills itself, as D129's identity field, is never typed).
+    # the browser holds what is typed into it to that limit (`limits_typing`). A locked control
+    # (disabled or read-only, as served) is read the same: the page's script may unlock it before
+    # anything is typed, and a field the page fills and keeps locked (D129's identity field) is
+    # never typed, so its limit is never checked before typing.
     maxlength: str | None = None
     limited: bool = False
 
@@ -141,12 +142,19 @@ _ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrst
 # attribute as written (the first of two, which the browser keeps), which is what a read of the
 # form records (`question_limit`); and whether the browser holds what is typed into it to a limit
 # at all (`limits_typing`; `type` read as the browser normalises it).
-LIVE_LIMIT_JS = (
-    "(e) => [e.maxLength, e.getAttribute('maxlength'), e.localName === 'textarea' || "
-    "(e.localName === 'input' && ["
-    + ", ".join(f"'{t}'" for t in sorted(LIMITED_INPUTS))
-    + "].includes(e.type))]"
-)
+# Read through the browser's own definitions, as D160's reads of the form: a page that redefines
+# `maxLength`, `getAttribute` or `type` on the element itself cannot change what is read.
+LIVE_LIMIT_JS = """(e) => {
+  const get = (P, k) => Object.getOwnPropertyDescriptor(P, k).get.call(e);
+  const tag = Object.getOwnPropertyDescriptor(Element.prototype, 'localName').get.call(e);
+  const P = tag === 'textarea' ? HTMLTextAreaElement.prototype
+    : tag === 'input' ? HTMLInputElement.prototype : null;
+  if (P === null) return [-1, null, false];
+  const written = Element.prototype.getAttribute.call(e, 'maxlength');
+  const applies = tag === 'textarea'
+    || %s.includes(get(HTMLInputElement.prototype, 'type'));
+  return [get(P, 'maxLength'), written, applies];
+}""" % ("[" + ", ".join(f"'{t}'" for t in sorted(LIMITED_INPUTS)) + "]")
 
 
 def limits_typing(tag: str, type_attr: str | None) -> bool:
@@ -159,24 +167,6 @@ def limits_typing(tag: str, type_attr: str | None) -> bool:
         return False
     t = (type_attr or "").translate(_ASCII_LOWER)
     return (t if t in _INPUT_TYPES else "text") in LIMITED_INPUTS
-
-
-def _locked(n: _Node) -> bool:
-    """D161: a control nothing can be typed into, as the browser reads the page: `disabled` or
-    `readonly` on it, a disabled fieldset around it (outside that fieldset's first legend), or an
-    `inert` element around it."""
-    if "disabled" in n.attrs or "readonly" in n.attrs:
-        return True
-    up = list(n.ancestors())
-    for a in up:
-        if "inert" in a.attrs:
-            return True
-        if a.tag == "fieldset" and "disabled" in a.attrs:
-            legend = next((c for c in a.children if isinstance(c, _Node) and c.tag == "legend"),
-                          None)  # fmt: skip
-            if legend is None or legend not in up:
-                return True
-    return False
 
 
 def control_limit(f: FormField, c: "Control | None") -> int | None:
@@ -295,8 +285,7 @@ def snapshot(html: str) -> list[Control]:
                 group_name=gname,
                 group_required=grp is not None and grp.attrs.get("aria-required") == "true",
                 maxlength=n.twice.get("maxlength", n.attrs.get("maxlength")),  # D161
-                limited=limits_typing(n.tag, n.twice.get("type", n.attrs.get("type")))
-                and not _locked(n),
+                limited=limits_typing(n.tag, n.twice.get("type", n.attrs.get("type"))),
             )
         )
     return out

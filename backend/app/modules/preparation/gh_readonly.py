@@ -995,10 +995,11 @@ def _observation(m, f) -> tuple[str, list[str]]:
 
 def _served_html(resp) -> str | None:
     """D161: the page as it was served, which is what the Greenhouse pilot's capture reads (its
-    page without its scripts), from the response the browser already received: no new request.
-    None where it cannot be read."""
-    try:
-        return resp.text() if resp is not None else None
+    page without its scripts), from the response the browser already received: no new request
+    (the capture's own request may be served otherwise: another client). None where it cannot be
+    read."""
+    try:  # decoded as the capture decodes it (`live.read_posting`)
+        return resp.body().decode("utf-8", "replace") if resp is not None else None
     except Exception:  # noqa: BLE001 - not observable; never a stop
         return None
 
@@ -1027,8 +1028,9 @@ def _length_limit(page, f, c, recorded) -> dict | str:
     it holds what is typed into the control to one (`browser_reads`, None for none: the limit
     the adapter checks before typing), and as the pilot's capture records it from the page as
     served (`capture_records`: what your answer is held to before you approve). Where the two
-    differ, the page sets or changes its limit by its own scripts, or writes it so that no
-    read records it. Numbers only; nothing is clicked, typed or focused."""
+    differ, the page sets or changes its limit by its own scripts, writes it so that no read
+    records it, or was served otherwise to the capture's own request. Numbers only; nothing is
+    clicked, typed or focused."""
     from app.modules.preparation import greenhouse_dom as gdom
 
     if c is None or f.type not in TEXT_TYPES or not _SAFE_ID.fullmatch(c.id):

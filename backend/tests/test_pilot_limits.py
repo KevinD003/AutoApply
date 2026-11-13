@@ -38,6 +38,7 @@ import greenhouse_v2  # noqa: E402
 
 BOARD, JOB = "northwind", "5020001"
 NAME = "preferred_name"  # a required typed question, answered by you ("Sammy")
+TEAM = "question_8105"  # "Which team did you work in?", shown once you worked there before
 
 
 @pytest.fixture(scope="module")
@@ -195,12 +196,11 @@ def test_a_limit_is_recorded_only_where_the_browser_holds_typing_to_it(type_, wa
      ('<input id="c" type="text" type="number" maxlength="3">', True),
      ('<input id="c" type="date" maxlength="3">', False),
      ('<textarea id="c" maxlength="3"></textarea>', True),
-     ('<input id="c" maxlength="3" disabled>', False),  # nothing is typed into a locked control
-     ('<input id="c" maxlength="3" readonly>', False),
-     ('<textarea id="c" maxlength="3" readonly></textarea>', False),
-     ('<fieldset disabled><input id="c" maxlength="3"></fieldset>', False),
-     ('<fieldset disabled><legend><input id="c" maxlength="3"></legend></fieldset>', True),
-     ('<div inert><input id="c" maxlength="3"></div>', False),
+     # a locked control too: the page's script may unlock it before anything is typed (below)
+     ('<input id="c" maxlength="3" disabled>', True),
+     ('<input id="c" maxlength="3" readonly>', True),
+     ('<fieldset disabled><input id="c" maxlength="3"></fieldset>', True),
+     ('<div inert><input id="c" maxlength="3"></div>', True),
      ('<select id="c" maxlength="3"></select>', False)],
 )  # fmt: skip
 def test_the_capture_reads_which_controls_hold_typing_to_a_limit(markup, limited):
@@ -224,9 +224,13 @@ def test_a_limit_only_the_page_s_script_sets_is_not_recorded():
     assert recorded(gh2_limit_js={NAME: 3})[NAME] is None
 
 
-def test_a_locked_prefilled_email_records_no_limit():
-    """D129: a real account pre-fills a disabled email; nothing is typed into it."""
-    assert recorded(mode="gh2_email_locked_match", gh2_limits={"email": "4"})["email"] is None
+def test_a_locked_control_s_limit_is_recorded_too():
+    """D161 review: a control served locked and unlocked by the page's script is typed into and
+    held to the limit it was served with; skipping locked controls left a pause no read of the
+    form could end. A page that pre-fills a locked field with a value longer than its own limit
+    (D129's identity field) makes that answer a checkpoint: never seen."""
+    assert recorded(gh2_unlock=[NAME], gh2_limits={NAME: "3"})[NAME] == 3
+    assert recorded(mode="gh2_email_locked_match", gh2_limits={"email": "4"})["email"] == 4
 
 
 def test_the_limit_of_a_question_the_page_shows_later_is_recorded():
@@ -350,9 +354,6 @@ def test_before_d161_a_limit_lowered_on_focus_left_the_page_holding_it_cut(
     assert saves(receiver, NAME) == [3]
 
 
-TEAM = "question_8105"  # "Which team did you work in?", shown once you worked there before
-
-
 def test_a_question_the_page_shows_is_not_entered_when_its_limit_is_lowered_on_focus(api, receiver):
     """D135: "Which team" is shown by your earlier answer and entered last; the page lowers its
     limit as it gets focus: it is not entered (no save of it), and the check after filling stops
@@ -379,6 +380,29 @@ def test_a_limit_lowered_once_the_answer_is_typed_stops_before_the_send_gate(api
     receiver.config(gh2_limit_on_input={NAME: 3}, gh2_autosave=[NAME])
     assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
     assert receiver.ledger()["accepted"] == 0 and saves(receiver, NAME) == [5]
+
+
+@MAKE
+def test_a_control_the_page_unlocks_is_held_to_the_limit_it_was_served_with(api, receiver, make):
+    """D161 review: served disabled with a limit of 3 and enabled by the page's script. Before
+    the fix the capture recorded no limit, "Sammy" was approved, and the attempt paused for a
+    form no read of it could change. Now the limit is yours before approval."""
+    receiver.config(gh2_unlock=[NAME], gh2_limits={NAME: "3"}, gh2_autosave=[NAME])
+    app_id = make(api, name="Sam")
+    r = api.put(f"/applications/{app_id}/answers", json={"key": NAME, "value": {"text": "Sammy"}})
+    assert r.status_code == 400 and "5/3 characters as the form sends them" in r.text
+    assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
+    assert sent(receiver)[NAME] == "Sam" and saves(receiver, NAME) == [3]
+
+
+def test_after_filling_a_question_the_page_did_not_show_is_not_held_to_its_limit(api, receiver):
+    """D161 review: "Which team" is answered but not shown (you never worked there), so it is
+    never entered and nothing is sent for it; the page lowers its limit once anything is typed.
+    The check after filling leaves it alone, as the readback does."""
+    app_id = application(api, worked_before="No", team="Support team")
+    receiver.config(gh2_limit_once_typed={TEAM: 3})
+    assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
+    assert TEAM not in sent(receiver)
 
 
 def test_a_locked_prefilled_email_is_not_held_to_a_limit_the_page_sets(api, receiver):
@@ -475,37 +499,66 @@ def test_a_limit_is_recorded_exactly_where_the_browser_cuts_what_is_typed(chromi
         page.close()
 
 
-LOCKS = [  # (markup, whether the browser lets nothing be typed into #c)
-    ('<input id="c" maxlength="3">', False),
-    ('<input id="c" maxlength="3" disabled>', True),
-    ('<input id="c" maxlength="3" readonly>', True),
-    ('<fieldset disabled><input id="c" maxlength="3"></fieldset>', True),
-    ('<fieldset disabled><legend><input id="c" maxlength="3"></legend></fieldset>', False),
-    (
-        '<fieldset disabled><legend>x</legend><legend><input id="c" maxlength="3"></legend>'
-        "</fieldset>",
-        True,
-    ),
-    (
-        '<fieldset disabled><fieldset><legend><input id="c" maxlength="3"></legend></fieldset>'
-        "</fieldset>",
-        True,
-    ),
-    ('<div inert><input id="c" maxlength="3"></div>', True),
-]
-
-
-@pytest.mark.parametrize("markup, locked", LOCKS)
-def test_a_control_is_read_as_locked_as_the_browser_locks_it(chromium, markup, locked):
+def test_a_control_served_locked_and_unlocked_by_the_page_is_cut_as_typed(chromium):
+    """The oracle for recording a locked control's limit: once the page's script unlocks it, the
+    browser holds what is typed to the limit it was served with."""
+    html = '<form><input id="c" maxlength="3" disabled></form><script>c.disabled = false;</script>'
     page = chromium.new_page()
     try:
-        page.set_content(f"<form>{markup}</form>")
-        got = page.locator("#c").evaluate(
-            "e => e.matches(':disabled') || e.readOnly || e.closest('[inert]') !== null"
+        page.set_content(html)
+        page.locator("#c").fill("abcdef")
+        assert page.locator("#c").input_value() == "abc"
+        (c,) = dom.snapshot(html)
+        assert (c.limited, c.maxlength) == (True, "3")
+    finally:
+        page.close()
+
+
+def test_the_live_read_goes_through_the_browser_s_own_definitions(chromium):
+    """D161 review: a page that redefines `maxLength`, `getAttribute` or `type` on the element
+    itself cannot change what the check before typing reads."""
+    page = chromium.new_page()
+    try:
+        page.set_content(
+            '<input id="c" maxlength="3"><div id="d"></div><script>'
+            "Object.defineProperty(c, 'maxLength', {get: () => -1});"
+            "c.getAttribute = () => null;"
+            "Object.defineProperty(c, 'type', {get: () => 'number'});</script>"
         )
-        assert got == locked
-        (c,) = dom.snapshot(f"<form>{markup}</form>")
-        assert c.limited == (not locked)
+        assert page.locator("#c").evaluate(dom.LIVE_LIMIT_JS) == [3, "3", True]
+        assert page.locator("#d").evaluate(dom.LIVE_LIMIT_JS) == [-1, None, False]
+    finally:
+        page.close()
+
+
+def limits_fit(page, answers, filled=False, shown=()):
+    a = object.__new__(adapter.GreenhouseDomAdapter)
+    a.content = {"answers": answers}
+    a._trusted_prefill, a._filled, a._shown_filled = set(), filled, set(shown)
+    return a._limits_fit(page)
+
+
+def answer(key, value, kind="text", **kw):
+    return {"key": key, "type": kind, "value": value, **kw}
+
+
+def test_what_the_check_holds_to_the_live_limit(chromium):
+    """Typed text only: a text area as an input; not a number, not the location search's text
+    (a search the page answers with its own suggestion, D104); after filling, not a question
+    the page did not show (D135)."""
+    page = chromium.new_page()
+    try:
+        page.set_content('<form><input id="a" maxlength="3"><textarea id="b" maxlength="3">'
+                         '</textarea><input id="location" maxlength="3"></form>')  # fmt: skip
+        over = {"text": "abcd"}
+        assert limits_fit(page, [answer("a", over)])
+        assert limits_fit(page, [answer("b", over, "textarea")])
+        assert limits_fit(page, [answer("a", {"number": 12345})]) is None
+        assert limits_fit(page, [answer("location", over, widget="location_search")]) is None
+        hidden = answer("a", over, condition={"key": "unknown-trigger", "any_of": ["?"]})
+        assert limits_fit(page, [hidden])  # before filling: it may be shown and typed
+        assert limits_fit(page, [hidden], filled=True) is None  # not shown: never entered
+        assert limits_fit(page, [hidden], filled=True, shown=["a"])
     finally:
         page.close()
 

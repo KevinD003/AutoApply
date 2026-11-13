@@ -497,7 +497,8 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
         either stops the attempt before the send gate (`limits_verdict`, as the base adapter's).
         Not checked: a locked identity field the page filled with the approved value (D129),
         never typed; the location search's text (D104, local stand-ins only), a search the page
-        answers with its own suggestion."""
+        answers with its own suggestion; after filling, a question the page did not show (D135),
+        never entered."""
         over: list[tuple[int, bool]] = []
         for a in self.content["answers"]:
             v = a["value"]
@@ -509,6 +510,12 @@ class GreenhouseDomAdapter(FixtureAtsAdapter):
                 or a["key"] in self._trusted_prefill
             ):
                 continue
+            if (
+                self._filled
+                and shown_by_page(a.get("condition") or {}, a["type"])
+                and a["key"] not in self._shown_filled
+            ):
+                continue  # D135: not shown, so never entered; the readback requires it empty
             loc = _by_id(page, a["key"])
             try:
                 if loc.count() != 1:
