@@ -112,6 +112,18 @@ tenant:
        (type=button), whose click the browser never validates; custom_error's Next sends its
        page all the same, as the Next of every other setting. None was observed on a real
        Workday tenant.
+  FA9  (D163) My Experience carries an Education section, the Work Experience section's way: a
+       <div data-wd-section="education"> on its page with no entry at load and one button,
+       "Add" (then "Add Another"), that appends an entry built from a <template> outside the
+       form. An entry's controls are named edu[i].school, .degree and .discipline (lists:
+       <select>, an empty "Select One" option first, then EDU_SCHOOLS, EDU_DEGREES and
+       EDU_DISCIPLINES, each option's value an id of the page's own) and .from and .to (text,
+       MM/YYYY, "To (Actual or Expected)"); all are required. A Next saves the entries with the
+       rest of their page, and the page's own checks then refuse an entry missing a value, a
+       value no option of its list has, or a date not written MM/YYYY (the draft row is written
+       first, FA3); a section the page requires refuses a page without an entry. No real Workday
+       education section was observed: on a real Workday page School, Degree and Field of Study
+       may be search prompts, which NoEfforts never fills (a checkpoint).
 cfg["wizard"] values: plain; drift (a required q.weekends on page 4 at load); already_applied
 (shown at open instead of the form); step_error (the page-2 draft is answered 422 with errors);
 step_timeout (the page-2 draft reply waits cfg["delay_s"]); late_question (the page-2 reply
@@ -133,8 +145,14 @@ nothing), experience_add_once (Add adds the first entry only) and experience_cha
 experience_parts_required (D155: an entry's Location and Role Description are required too),
 experience_limits (D157: an entry's typed parts limited in length, WORK_LIMITS, which the page's
 own checks enforce too) and experience_limits_at_load (the same, with one entry already on the
-page whose Role Description is limited otherwise). The
-single page's mode wd_experience puts the section on its My Experience section.
+page whose Role Description is limited otherwise). D163, FA9: education (the Education section on
+page 2), education_required (the page requires an entry), education_and_experience (both
+sections on page 2), education_entry_at_load (one empty entry already there at load),
+education_unknown_control (an entry also asks a required "Overall Result (GPA)"),
+education_parse (a resume upload adds an education entry with values of its own) and
+education_changed_after_next (once page 2 is saved, the page changes its first entry's school).
+The single page's mode wd_experience puts the Work Experience section on its My Experience
+section, and wd_education the Education section.
 """
 
 import asyncio
@@ -383,7 +401,8 @@ WORK_VARIANTS = ("experience", "experience_required", "experience_parse",
                  "experience_entry_at_load", "experience_unknown_control",
                  "experience_add_broken", "experience_add_once",
                  "experience_changed_after_next", "experience_parts_required",
-                 "experience_limits", "experience_limits_at_load")  # fmt: skip
+                 "experience_limits", "experience_limits_at_load",
+                 "education_and_experience")  # fmt: skip  # D163: both sections on page 2
 # D157, FA7: the length limits (`maxlength`) of an entry's typed parts in experience_limits; in
 # experience_limits_at_load the entry already on the page limits its Role Description to 100.
 WORK_LIMITS = {"title": 40, "company": 40, "location": 30, "from": 7, "to": 7, "description": 200}
@@ -493,6 +512,94 @@ def _work_errors(fields: dict, required: bool, parts_required: bool = False,
                    if got(c) and not _MONTH_YEAR.fullmatch(got(c))]  # fmt: skip
         errors += [f"Work Experience {i + 1}: {c} is too long" for c, n in (limits or {}).items()
                    if len(got(c).encode("utf-16-le")) // 2 > n]  # fmt: skip
+    return errors
+
+
+# D163, FA9: the Education section, by wizard variant (the single page's mode is "wd_education").
+EDU_VARIANTS = ("education", "education_required", "education_and_experience",
+                "education_entry_at_load", "education_unknown_control", "education_parse",
+                "education_changed_after_next")  # fmt: skip
+# The lists' options: (value, text); each value an id of the page's own (fixture design).
+EDU_SCHOOLS = (("sch-101", "State University"), ("sch-102", "Metro College"),
+               ("sch-103", "Riverside Institute of Technology"))  # fmt: skip
+EDU_DEGREES = (("deg-1", "High School"), ("deg-2", "Associate's Degree"),
+               ("deg-3", "Bachelor's Degree"), ("deg-4", "Master's Degree"),
+               ("deg-5", "Doctor of Philosophy (Ph.D.)"), ("deg-9", "Other"))  # fmt: skip
+EDU_DISCIPLINES = (("dis-11", "Computer Science"), ("dis-12", "Mathematics"),
+                   ("dis-13", "Nursing"), ("dis-14", "Biology"))  # fmt: skip
+EDU_LISTS = {"school": EDU_SCHOOLS, "degree": EDU_DEGREES, "discipline": EDU_DISCIPLINES}
+_EDU_NAME = re.compile(r"edu\[(\d+)\]\.[a-z_]+")
+# What the resume parse puts in the education entry it adds (education_parse; fixture design).
+PARSED_EDUCATION = {"school": "sch-103", "degree": "deg-2", "discipline": "dis-14",
+                    "from": "09/2010", "to": "06/2012"}  # fmt: skip
+CHANGED_SCHOOL = "sch-103"  # education_changed_after_next
+
+
+def _edu_select(i: str, part: str, label: str) -> str:
+    options = "".join(f'<option value="{v}">{html.escape(x)}</option>' for v, x in EDU_LISTS[part])
+    return (f'<label for="edu-{i}-{part}">{label}</label>'
+            f'<select id="edu-{i}-{part}" name="edu[{i}].{part}" required>'
+            f'<option value="">Select One</option>{options}</select>')
+
+
+def _edu_entry(i: str, n: str, extra: bool = False) -> str:
+    """FA9: one entry; `i` its index in the control names, `n` its number on the page."""
+    gpa = (f'<label for="edu-{i}-gpa">Overall Result (GPA)</label><input id="edu-{i}-gpa" '
+           f'name="edu[{i}].gpa" type="text" required>' if extra else "")  # fmt: skip
+    return f"""<div data-wd-entry="{i}"><h4>Education {n}</h4>
+{_edu_select(i, "school", "School or University")}
+{_edu_select(i, "degree", "Degree")}
+{_edu_select(i, "discipline", "Field of Study")}
+<label for="edu-{i}-from">From</label>
+<input id="edu-{i}-from" name="edu[{i}].from" type="text" placeholder="MM/YYYY" required>
+<label for="edu-{i}-to">To (Actual or Expected)</label>
+<input id="edu-{i}-to" name="edu[{i}].to" type="text" placeholder="MM/YYYY" required>{gpa}</div>"""
+
+
+def _edu_section(variant: str | None) -> tuple[str, str, str]:
+    """FA9: the section's markup (on My Experience), its entry template (outside the form) and
+    its script; nothing for any other variant."""
+    if variant not in EDU_VARIANTS:
+        return "", "", ""
+    required = ' aria-required="true"' if variant == "education_required" else ""
+    at_load = _edu_entry("0", "1") if variant == "education_entry_at_load" else ""
+    entry = _edu_entry("__i__", "__n__", extra=variant == "education_unknown_control")
+    markup = (f'<div id="education" role="group" aria-labelledby="education-label" '
+              f'data-wd-section="education" data-wd-entry-template="education-entry"{required}>'
+              f'<h3 id="education-label">Education{" *" if required else ""}</h3>'
+              f"<div data-wd-entries>{at_load}</div>"
+              f'<button type="button" data-wd-add>{"Add Another" if at_load else "Add"}</button>'
+              "</div>")  # fmt: skip
+    template = f'<template id="education-entry">{entry}</template>'
+    script = """
+const eduSection = document.getElementById('education');
+const eduEntries = eduSection.querySelector('[data-wd-entries]');
+const eduAdd = eduSection.querySelector('[data-wd-add]');
+window.addEducationEntry = () => {
+  const i = eduEntries.querySelectorAll('[data-wd-entry]').length;
+  const tpl = document.getElementById('education-entry').innerHTML;
+  eduEntries.insertAdjacentHTML('beforeend',
+    tpl.replaceAll('__i__', String(i)).replaceAll('__n__', String(i + 1)));
+  eduAdd.textContent = 'Add Another';
+  return i;
+};
+eduAdd.addEventListener('click', () => window.addEducationEntry());"""
+    return markup, template, script
+
+
+def _edu_errors(fields: dict, required: bool) -> list[str]:
+    """FA9: what the page's own checks refuse in the Education entries it was sent: a value
+    missing, one no option of its list has, or a date not written MM/YYYY."""
+    found = sorted({int(m[1]) for k in fields if (m := _EDU_NAME.fullmatch(k))})
+    errors = ["Add your education"] if required and not found else []
+    for i in found:
+        got = {c: str(fields.get(f"edu[{i}].{c}", ""))
+               for c in ("school", "degree", "discipline", "from", "to")}  # fmt: skip
+        errors += [f"Education {i + 1}: enter {c}" for c, v in got.items() if not v]
+        errors += [f"Education {i + 1}: choose a listed {c}" for c, opts in EDU_LISTS.items()
+                   if got[c] and got[c] not in {v for v, _ in opts}]  # fmt: skip
+        errors += [f"Education {i + 1}: write {c} as MM/YYYY" for c in ("from", "to")
+                   if got[c] and not _MONTH_YEAR.fullmatch(got[c])]  # fmt: skip
     return errors
 
 
@@ -611,6 +718,8 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
                                          late=cfg.get("page_check") == "late_follow_up")
     work, work_template, work_js = _work_section(  # D149, FA7
         "experience" if mode == "wd_experience" else None)
+    edu, edu_template, edu_js = _edu_section(  # D163, FA9
+        "education" if mode == "wd_education" else None)
     phone_check, check_js = _page_check(cfg)  # D154, FA8
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
@@ -638,6 +747,7 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 {_file("resume", "Resume/CV", True)}
 {_file("cover_letter", "Cover Letter", False)}
 {work}
+{edu}
 </section>
 <section data-step="Application Questions">
 {_yes_no("q.work_eligibility", "Are you legally authorized to work in the United States?", True)}
@@ -669,6 +779,7 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 <button type="submit" data-automation-id="bottom-navigation-next-button">Submit</button>
 </form>
 {work_template}
+{edu_template}
 <script>
 for (const input of document.querySelectorAll('input[type=file][data-wd-file]')) {{
   input.addEventListener('change', async () => {{
@@ -691,7 +802,7 @@ for (const input of document.querySelectorAll('input[type=file][data-wd-file]'))
       }}
     }} catch (e) {{ st.textContent = 'Upload failed'; st.dataset.attachmentError = '1'; }}
   }});
-}}{follow_up_js}{work_js}{check_js}
+}}{follow_up_js}{work_js}{edu_js}{check_js}
 </script>""" + _limit_on_focus(cfg)
     return _page(f"{title} — {employer}", body, "form")
 
@@ -719,6 +830,7 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
                                          late=cfg.get("page_check") == "late_follow_up")
     on_page_4 = "" if variant == "page_shift" else eligibility
     work, work_template, work_js = _work_section(variant)  # D149, FA7
+    edu, edu_template, edu_js = _edu_section(variant)  # D163, FA9
     phone_check, check_js = _page_check(cfg)  # D154, FA8
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
@@ -750,6 +862,7 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 <label for="exp_details">Additional details (optional)</label>
 <input id="exp_details" name="exp.details" type="text">
 {work}
+{edu}
 {_NEXT}
 </section>
 <section data-step="Voluntary Disclosures" data-wizard-page="3" hidden>
@@ -784,6 +897,7 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
 </form>
 <template id="late-question">{late}</template>
 {work_template}
+{edu_template}
 <script>
 for (const input of document.querySelectorAll('input[type=file][data-wd-file]')) {{
   input.addEventListener('change', async () => {{
@@ -808,6 +922,13 @@ for (const input of document.querySelectorAll('input[type=file][data-wd-file]'))
         const i = window.addWorkEntry();
         for (const [k, v] of Object.entries(entry)) {{
           const el = document.querySelector(`[name="work[${{i}}].${{k}}"]`);
+          if (el) el.value = v;
+        }}
+      }}
+      for (const entry of (j.edu_entries || [])) {{  // D163: an education entry (FA9)
+        const i = window.addEducationEntry();
+        for (const [k, v] of Object.entries(entry)) {{
+          const el = document.querySelector(`[name="edu[${{i}}].${{k}}"]`);
           if (el) el.value = v;
         }}
       }}
@@ -879,7 +1000,7 @@ for (const btn of form.querySelectorAll('[data-wizard-next]')) {{
     progress.textContent = `Page ${{i + 1}} of ${{pages}}`;
     status.dataset.draftStatus = 'saved';
   }});
-}}{follow_up_js}{work_js}{check_js}
+}}{follow_up_js}{work_js}{edu_js}{check_js}
 </script>""" + _limit_on_focus(cfg)
     return _page(f"{title} — {employer}", body, "form")
 
@@ -945,6 +1066,8 @@ def mount(app, ledger, cfg, accept) -> None:
                              "address--city": "Shelbyville (fictional)"}  # fmt: skip
         if cfg.get("wizard") == "experience_parse" and field == "resume":
             out["entries"] = [PARSED_ENTRY]  # D149, FA7 (fixture design)
+        if cfg.get("wizard") == "education_parse" and field == "resume":
+            out["edu_entries"] = [PARSED_EDUCATION]  # D163, FA9 (fixture design)
         if cfg.get("wizard") == "parse_current_page" and field == "resume":
             # D142: the parse fills the optional field on the upload's own page (FIXTURE
             # ASSUMPTION), which NoEfforts leaves unanswered.
@@ -983,6 +1106,10 @@ def mount(app, ledger, cfg, accept) -> None:
                                   WORK_LIMITS if variant in LIMITED_VARIANTS else None)
             if errors:
                 return JSONResponse({"errors": errors}, status_code=422)
+        if variant in EDU_VARIANTS and page == 2:  # D163, FA9
+            errors = _edu_errors(fields, variant == "education_required")
+            if errors:
+                return JSONResponse({"errors": errors}, status_code=422)
         if variant == "step_error" and page == 2:
             return JSONResponse({"errors": ["Enter your work history (fixture design)"]},
                                 status_code=422)  # fmt: skip
@@ -1001,6 +1128,8 @@ def mount(app, ledger, cfg, accept) -> None:
             out["reveal"] = LATE_QUESTION
         if variant == "experience_changed_after_next" and page == 2:
             out["change"] = {"work[0].title": CHANGED_TITLE}  # D149, FA7
+        if variant == "education_changed_after_next" and page == 2:
+            out["change"] = {"edu[0].school": CHANGED_SCHOOL}  # D163, FA9
         if variant == "next_stays" and page == 2:
             out["stay"] = True  # saved, but the page does not move on (FA5)
         return out
@@ -1040,6 +1169,8 @@ def mount(app, ledger, cfg, accept) -> None:
             missing += _work_errors(fields, wizard == "experience_required",
                                     wizard == "experience_parts_required",
                                     WORK_LIMITS if wizard in LIMITED_VARIANTS else None)
+        if mode == "wd_education" or wizard in EDU_VARIANTS:  # D163, FA9
+            missing += _edu_errors(fields, wizard == "education_required")
         if wizard:  # D142, FA4: every page before Review was saved under this form token
             saved = {d["page"] for d in drafted_pages(slug, token)}
             missing += [f"page {i}" for i in range(1, len(WIZARD_PAGES)) if i not in saved]

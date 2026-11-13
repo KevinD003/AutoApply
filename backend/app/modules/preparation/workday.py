@@ -46,6 +46,14 @@ already on the page asking them as the template does, and no value in any entry 
 Anything else about work history is one required checkpoint (`WORK_KEY`): apply on the
 employer's site, never a guess and never left out silently.
 
+D163: the stand-in's Education section (FIXTURE ASSUMPTION FA9) is read the same way as an
+education section (`_education_section`), D120's rows filled from your approved education:
+`SectionSpec(kind="education")` with its page, whether the page requires an entry, and the
+options of the entry's three lists (School, Degree, Field of Study), each `<option value>` with
+its text, which your record's values are matched to exactly once (else a checkpoint before
+approval, as on Greenhouse). An entry's controls are exactly those lists and its From and To
+(MM/YYYY); anything else about education is one required checkpoint (`EDUCATION_KEY`).
+
 A parsed resume that fills fields after an upload is caught at execution by the readback of
 every field NoEfforts leaves unanswered (`hosted_form.HostedFormAdapter`)."""
 
@@ -65,6 +73,7 @@ from app.modules.preparation.forms import (
     FieldType,
     FormField,
     FormSchema,
+    SectionOptionSpec,
     SectionSpec,
     WizardSpec,
     _application_form,
@@ -82,6 +91,7 @@ _REAL_HOST = re.compile(r"^[a-z0-9-]+\.(?:wd\d+\.myworkdayjobs\.com|myworkdaysit
 _REAL_REQ = re.compile(r"_(?P<req>[A-Z]*-?\d[\w-]*)/?$", re.IGNORECASE)
 MULTI_STEP_KEY, PREFILLED_KEY = "multi_step", "prefilled_values"
 WORK_KEY = "work_experience"  # D149: work history NoEfforts cannot fill exactly as it is
+EDUCATION_KEY = "education_history"  # D163: education NoEfforts cannot fill exactly as it is
 STEP_SELECTOR = "[data-workday-progress], [data-automation-id=pageFooterNextButton]"
 # D142: the stand-in wizard's markers (any one of them makes the page a wizard to check).
 WIZARD_MARKERS = ("data-wizard-pages", "data-wizard-page", "data-wizard-next",
@@ -161,6 +171,23 @@ WORK_REASON = (
     "NoEfforts does not fill, already holds a value, or cannot be added): apply on the "
     "employer's site"
 )
+# D163: the Education section (FA9). An entry's controls, by the last part of their name
+# (edu[i].<part>): three lists, each set to the option your record matches, and the dates.
+_EDU_NAME = re.compile(r"edu\[(\d+|__i__)\]\.([a-z_]+)")  # always read whole (fullmatch)
+_EDU_ANY = re.compile(r"^edu\[")  # any control named as an entry's
+_EDU_CONTROLS = {
+    "school": ("select", None, True),
+    "degree": ("select", None, True),
+    "discipline": ("select", None, True),
+    "from": ("input", "text", True),
+    "to": ("input", "text", True),
+}
+EDUCATION_REASON = (
+    "an education section NoEfforts cannot fill exactly as it is (an entry asks something "
+    "NoEfforts does not fill, already holds a value, or cannot be added): apply on the "
+    "employer's site"
+)
+_ASCII_SPACE = re.compile(r"[\t\n\f\r ]+")
 
 
 def _button_like(n: _Node) -> bool:
@@ -295,8 +322,13 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
     inside = nodes if form is None else owned_nodes(nodes, form)
     controls = [n for n in inside if n.tag in ("input", "select", "textarea")
                 and _WORK_ANY.match(n.attrs.get("name", ""))]  # fmt: skip
-    sections = [n for n in inside if "data-wd-section" in n.attrs]
-    markers = [n for n in inside if "data-wd-add" in n.attrs or "data-wd-entry-template" in n.attrs]
+    # D163: the Education section, and what is in it, is its own (`_education_section`); any
+    # other section, of a kind NoEfforts does not read, is still this checkpoint.
+    education = [n for n in inside if n.attrs.get("data-wd-section") == "education"]
+    sections = [n for n in inside if "data-wd-section" in n.attrs and n not in education]
+    markers = [n for n in inside
+               if ("data-wd-add" in n.attrs or "data-wd-entry-template" in n.attrs)
+               and not any(e is n or e in n.ancestors() for e in education)]  # fmt: skip
     if not sections:
         return None, bool(controls or markers)  # entries outside any section: never guessed
     root = sections[0]
@@ -308,6 +340,7 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
         len(sections) != 1
         or root.attrs["data-wd-section"] != "work"  # another kind of section: never read as one
         or any(n is not root and root not in n.ancestors() for n in markers)
+        or any(e in root.ancestors() or root in e.ancestors() for e in education)  # D163
         or not _ROOT_ID.fullmatch(rid)
         or sum(1 for n in nodes if n.attrs.get("id") == rid) != 1
         or len(buttons) != 1
@@ -361,6 +394,152 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
             limits=_limits(entry),
         )
     except ValidationError:  # a page name too long to record: never an error of capture
+        return None, True
+    return spec, False
+
+
+def _option_list(n: _Node) -> list[tuple[str, str]] | None:
+    """D163: a list's options as (value, text), read as the browser reads them, or None when
+    NoEfforts would not choose from it: one choice only (no `multiple`); its first option the
+    empty one (`value=""`, not disabled, which the browser shows chosen at load); every other
+    option with a value of its own (written once, unique, never empty) and text (its own, ASCII
+    whitespace collapsed as the browser's `text`), none disabled, chosen at load or labelled
+    otherwise (`label`); options only, never a group."""
+    if "multiple" in n.attrs or n.twice:
+        return None
+    kids = [c for c in n.children if isinstance(c, _Node)]
+    if any(isinstance(c, str) and c.strip() for c in n.children):
+        return None
+    if len(kids) < 2 or any(c.tag != "option" for c in kids):
+        return None
+    first, rest = kids[0], kids[1:]
+    if first.attrs.get("value") != "" or "disabled" in first.attrs or first.twice:
+        return None
+    out = []
+    for o in rest:
+        if (o.twice or "value" not in o.attrs or "disabled" in o.attrs or "selected" in o.attrs
+                or "label" in o.attrs
+                or any(isinstance(c, _Node) for c in o.children)):  # fmt: skip
+            return None
+        text = _ASCII_SPACE.sub(" ", "".join(c for c in o.children if isinstance(c, str)))
+        text, value = text.strip(" "), o.attrs["value"]
+        if not value or not text:
+            return None
+        out.append((value, text))
+    if len({v for v, _ in out}) != len(out):
+        return None
+    return out
+
+
+def _edu_control_ok(n: _Node, part: str, template: _Node | None) -> bool:
+    """D163: one control of an education entry: of its part's kind, holding nothing (a list: its
+    empty option), sending exactly what is entered into it (`forms.sent_otherwise`), with no
+    constraint NoEfforts would not honour; a date saying MM/YYYY and accepting it whole. In the
+    template, also shown and editable. Every part is always entered, so the page may require
+    any of them."""
+    if template is not None and ("readonly" in n.attrs or "disabled" in n.attrs
+                                 or not _usable_within(n, template)):  # fmt: skip
+        return False
+    tag, kind, _ = _EDU_CONTROLS[part]
+    if n.tag != tag or n.twice or any(c in n.attrs for c in _CONSTRAINTS) or sent_otherwise(n):
+        return False
+    if tag == "select":
+        return "maxlength" not in n.attrs and _option_list(n) is not None
+    if n.attrs.get("type", "text").lower() != kind or n.attrs.get("placeholder") != "MM/YYYY":
+        return False
+    limit = _limit(n)
+    if limit is False or (limit is not None and limit < _MONTH_YEAR_LEN):
+        return False
+    return not n.attrs.get("value") and not n.all_text()
+
+
+def _edu_entry(controls: list[_Node], index: str, template: _Node | None) -> dict | None:
+    """D163: an education entry's controls, each part once and every one there, each known
+    (`_edu_control_ok`): its three lists' options by part, or None."""
+    parts: dict[str, _Node] = {}
+    for n in controls:
+        m = _EDU_NAME.fullmatch(n.attrs.get("name", ""))
+        if not m or m[1] != index or m[2] not in _EDU_CONTROLS or m[2] in parts:
+            return None
+        if not _edu_control_ok(n, m[2], template):
+            return None
+        parts[m[2]] = n
+    if set(parts) != set(_EDU_CONTROLS):
+        return None
+    return {p: _option_list(parts[p]) for p in ("school", "degree", "discipline")}
+
+
+def _education_section(html: str) -> tuple[SectionSpec | None, bool]:
+    """D163: the Education section (FA9) as an education section with its lists' options, or
+    whether the page has education NoEfforts cannot fill exactly (True: `EDUCATION_KEY`'s
+    checkpoint). (None, False): no education at all. Read on the generic extractor's own tree
+    and form, by the same rules as the Work Experience section (`_work_section`): one section,
+    with an id the document uses once, shown and enabled at load, whose one clickable control is
+    its enabled, shown "Add" button, within no other section and holding none; a template outside
+    the form whose controls are exactly the entry's (`_edu_entry`), no button or custom control
+    in an entry; entries already there only empty, numbered from 0 and offering the template's
+    options."""
+    b = _TreeBuilder()
+    b.feed(html)
+    nodes = list(b.root.walk())
+    form = _application_form(nodes)
+    inside = nodes if form is None else owned_nodes(nodes, form)
+    controls = [n for n in inside if n.tag in ("input", "select", "textarea")
+                and _EDU_ANY.match(n.attrs.get("name", ""))]  # fmt: skip
+    sections = [n for n in inside if n.attrs.get("data-wd-section") == "education"]
+    if not sections:
+        return None, bool(controls)  # entries outside any section: never guessed
+    root = sections[0]
+    rid = root.attrs.get("id", "")
+    buttons = [n for n in root.walk() if _button_like(n)]  # the section's Add, and nothing else
+    tid = root.attrs.get("data-wd-entry-template", "")
+    templates = [n for n in nodes if n.tag == "template" and tid and n.attrs.get("id") == tid]
+    if (
+        len(sections) != 1
+        or any("data-wd-section" in a.attrs for a in root.ancestors())
+        or any("data-wd-section" in n.attrs for n in root.walk())
+        or not _ROOT_ID.fullmatch(rid)
+        or sum(1 for n in nodes if n.attrs.get("id") == rid) != 1
+        or len(buttons) != 1
+        or buttons[0].attrs.get("type", "submit").lower() != "button"
+        or "disabled" in buttons[0].attrs
+        or not _usable_within(buttons[0], root)
+        or not _ADD.match(buttons[0].all_text())
+        or len(templates) != 1
+        or any(_button_like(n) for n in templates[0].walk())
+        or any(root not in n.ancestors() for n in controls)
+        or not _usable_within(root, form)  # hidden or disabled at load (a wizard page is not)
+    ):
+        return None, True
+    entry = [n for n in templates[0].walk() if n.tag in ("input", "select", "textarea")]
+    lists = _edu_entry(entry, "__i__", templates[0])
+    if lists is None:
+        return None, True
+    if any((n.attrs.get("role") or "").lower() in _ARIA_WIDGETS
+           for n in (*root.walk(), *templates[0].walk())):  # fmt: skip
+        return None, True  # a custom control in an entry: nothing NoEfforts can operate
+    if any(not (m := _EDU_NAME.fullmatch(n.attrs["name"])) or not m[1].isdigit()
+           for n in controls):  # fmt: skip
+        return None, True  # a control named as an entry's but not one, or a template inside
+    by_index: dict[str, list[_Node]] = {}
+    for n in controls:  # entries already on the page: empty ones only, numbered 0, 1, ...
+        by_index.setdefault(_EDU_NAME.fullmatch(n.attrs["name"])[1], []).append(n)
+    if sorted(by_index, key=int) != [str(i) for i in range(len(by_index))] or not all(
+        _edu_entry(c, i, None) == lists for i, c in by_index.items()
+    ):
+        return None, True
+    page = next((a for a in root.ancestors() if "data-wizard-page" in a.attrs), None)
+    try:
+        spec = SectionSpec(
+            kind="education",
+            root=f"#{rid}",
+            step=(page.attrs.get("data-step") or None) if page is not None else None,
+            required=root.attrs.get("aria-required", "").lower() == "true",
+            schools=[SectionOptionSpec(id=v, text=x) for v, x in lists["school"]],
+            degrees=[SectionOptionSpec(id=v, text=x) for v, x in lists["degree"]],
+            disciplines=[SectionOptionSpec(id=v, text=x) for v, x in lists["discipline"]],
+        )
+    except ValidationError:  # a page name, an option or a list too long to record
         return None, True
     return spec, False
 
@@ -557,17 +736,24 @@ def _wizard_problem(scan: _Scan, schema: FormSchema) -> str | None:
     return None
 
 
+def _entry_control(name: str) -> bool:
+    """D149, D163: a control named as a Work Experience or an Education entry's: the section's,
+    never a question of its own."""
+    return bool(_WORK_ANY.match(name) or _EDU_ANY.match(name))
+
+
 def extract_schema(html: str) -> FormSchema:
     """The generic extractor (documented CAPTCHAs included), then the Workday-style
     checkpoints above. D142: a wizard that passes `_wizard_problem` is recorded as
     `schema.wizard`; one that does not is the several-pages checkpoint."""
     scan = _Scan()
     scan.feed(html)
-    # D149: an entry's controls are the section's, never questions of their own, and never read
-    # by the generic extractor (however many entries, labelled or not).
+    # D149, D163: an entry's controls are the section's, never questions of their own, and never
+    # read by the generic extractor (however many entries, labelled or not).
     schema = extract_form_schema(_CASCADE.sub(_as_picker, html), challenges=True,
-                                 skip=_WORK_ANY.match)  # fmt: skip
+                                 skip=_entry_control)  # fmt: skip
     work, work_problem = _work_section(html)
+    education, education_problem = _education_section(html)  # D163
     keys = {f.key for f in schema.fields}
     hidden = _hidden_in_page(html)
     for f in schema.fields:
@@ -582,14 +768,21 @@ def extract_schema(html: str) -> FormSchema:
             schema.wizard = WizardSpec(pages=[step for _, step in scan.wizard_sections])
         else:
             wizard_refused = True
+    pages = schema.wizard.pages[:-1] if schema.wizard else []
     if work is not None:  # D149: on a wizard's page before its review page, or on a single page
-        pages = schema.wizard.pages[:-1] if schema.wizard else []
         if (work.step in pages) if schema.wizard else work.step is None:
             schema.sections = [*schema.sections, work]
         else:
             work_problem = True
+    if education is not None:  # D163: likewise
+        if (education.step in pages) if schema.wizard else education.step is None:
+            schema.sections = [*schema.sections, education]
+        else:
+            education_problem = True
     if work_problem:
         _add_checkpoint(schema, WORK_KEY, "Work Experience", WORK_REASON)
+    if education_problem:
+        _add_checkpoint(schema, EDUCATION_KEY, "Education", EDUCATION_REASON)
     if scan.steps > 1 or scan.next_button or wizard_refused:
         _add_checkpoint(schema, MULTI_STEP_KEY, "An application on several pages",
                         MULTI_STEP_REASON)  # fmt: skip

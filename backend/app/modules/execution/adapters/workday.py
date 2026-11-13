@@ -49,6 +49,10 @@ into or that already hold values: stops that leave nothing at the employer. An e
 not appear or a control that does not keep its value once entering began stops it with what was
 entered recorded.
 
+D163: the stand-in's Education section (FIXTURE ASSUMPTION FA9), captured as an education section
+with its lists' options, is entered the same way from your approved education (`workday_sections`:
+each list set to its frozen option, the dates typed), and every stop above names your education.
+
 D156: before each wizard page's Next, what D154 reads before the final click. Once the page is
 filled, focus leaves what has it (`_leave_focus`); after the page has settled, its Next is
 waited for (shown and enabled, `next_ready`) before the readback; and right before the gate for
@@ -135,6 +139,34 @@ SECTION_NOT_ENTERED = (
     "your work history could not be entered on the employer's form as approved (an entry did "
     "not appear or did not keep its value): apply on the employer's site"
 )
+# D163: the same stops for the Education section.
+EDUCATION_UNUSABLE = "the approved education cannot be entered on this form as it was approved"
+EDUCATION_ENTRIES_BEYOND = (
+    "the employer's form already shows more education entries than you approved, and NoEfforts "
+    "never removes one: add your education to your profile and approve it, or apply on the "
+    "employer's site"
+)
+EDUCATION_PREFILLED = (
+    "the employer's form already holds education values NoEfforts did not enter (a previous "
+    "application or a parsed resume): apply on the employer's site"
+)
+EDUCATION_NOT_ENTERED = (
+    "your education could not be entered on the employer's form as approved (an entry did not "
+    "appear or did not keep its value): apply on the employer's site"
+)
+_STOPS = {  # a section's kind -> (unusable, entries beyond, prefilled, not entered)
+    "employment": (SECTION_UNUSABLE, SECTION_ENTRIES_BEYOND, SECTION_PREFILLED,
+                   SECTION_NOT_ENTERED),
+    "education": (EDUCATION_UNUSABLE, EDUCATION_ENTRIES_BEYOND, EDUCATION_PREFILLED,
+                  EDUCATION_NOT_ENTERED),
+}  # fmt: skip
+
+
+def _stops(sec: dict) -> tuple[str, str, str, str]:
+    """D163: the stops that name what the section holds (work history, or education)."""
+    return _STOPS.get(sec.get("kind"), _STOPS["employment"])
+
+
 # D156: what the page itself would refuse at a wizard page's Next, read before its gate.
 NEXT_UNIDENTIFIED = "a page's Next button cannot be identified"
 NEXT_UNAVAILABLE = (
@@ -243,16 +275,17 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
             return reason
         if not self._filled:
             for sec in self.content.get("sections") or []:  # D149: plain stops, nothing entered
+                unusable, beyond, prefilled, _ = _stops(sec)
                 if not self._section_usable(sec):
-                    return SECTION_UNUSABLE
-                found = ws.entry_indices(page, ws.section_root(sec))
-                now = ws.entries_now(page, ws.section_root(sec))
+                    return unusable
+                found = ws.entry_indices(page, ws.section_root(sec), sec["kind"])
+                now = ws.entries_now(page, ws.section_root(sec), sec["kind"])
                 if found is None or now is None or now["inoperable"]:
-                    return SECTION_UNUSABLE
+                    return unusable
                 if any(i >= len(sec["rows"]) for i in found):
-                    return SECTION_ENTRIES_BEYOND
+                    return beyond
                 if now["holding"]:
-                    return SECTION_PREFILLED
+                    return prefilled
             for a in self.content["answers"]:
                 cond = a.get("condition") or {}
                 if (a["key"] in self._shown_by_page and a["value"] is not None
@@ -344,20 +377,22 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
             # add an entry or fill one; what was checked before anything was entered is checked
             # again here, so such an entry is never filled in and adopted.
             root = ws.section_root(sec)
-            found, now = ws.entry_indices(page, root), ws.entries_now(page, root)
+            unusable, beyond, prefilled, not_entered = _stops(sec)  # D163: naming what it holds
+            found = ws.entry_indices(page, root, sec["kind"])
+            now = ws.entries_now(page, root, sec["kind"])
             if found is None or now is None or now["inoperable"]:
-                raise StoppedAfterDisclosure(SECTION_UNUSABLE, list(disclosures))
+                raise StoppedAfterDisclosure(unusable, list(disclosures))
             if any(i >= len(sec["rows"]) for i in found):
-                raise StoppedAfterDisclosure(SECTION_ENTRIES_BEYOND, list(disclosures))
+                raise StoppedAfterDisclosure(beyond, list(disclosures))
             if now["holding"]:
-                raise StoppedAfterDisclosure(SECTION_PREFILLED, list(disclosures))
+                raise StoppedAfterDisclosure(prefilled, list(disclosures))
             try:
                 ws.apply(page, ws.plan(sec), root, on_entered=entered,
                          progress=self._progress)  # fmt: skip
             except ws.NotTyped as e:  # D162: refused before it was typed, naming the limit
                 raise section_not_typed(e, disclosures) from e
             except ws.Refused as e:
-                raise StoppedAfterDisclosure(SECTION_NOT_ENTERED, list(disclosures)) from e
+                raise StoppedAfterDisclosure(not_entered, list(disclosures)) from e
 
     def _shown(self, page: Page, key: str) -> bool:
         """The page shows this question now: one of its controls is visible. Found as filling
