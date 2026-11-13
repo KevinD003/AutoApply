@@ -55,7 +55,11 @@ from app.modules.execution.adapters.greenhouse_dom import (
     GreenhouseLiveAdapter,
 )
 from app.modules.execution.adapters.lever import LeverFixtureAdapter
-from app.modules.execution.adapters.workday import NEXT_REFUSAL_UNREAD, WorkdayFixtureAdapter
+from app.modules.execution.adapters.workday import (
+    NEXT_REFUSAL_UNREAD,
+    NEXT_UNAVAILABLE,
+    WorkdayFixtureAdapter,
+)
 from app.modules.execution.browser import IsolationUnavailable, browser_session
 from app.modules.execution.faults import fault, run_clock
 from app.modules.execution.models import ExecutionAttempt
@@ -88,6 +92,9 @@ _POLL_MS = 25
 # design), images, media and fonts (they change no control's behaviour), pings and beacons.
 _TRACKED = frozenset({"document", "script", "stylesheet", "xhr", "fetch"})
 NOT_READY = "the form's page was still loading after 8 seconds"
+# D156: how long a wizard page's Next is waited for once its answers settled; None means the
+# navigation time limit, as long as its click waited for it before D156 (tests shorten it).
+NEXT_READY_MS: int | None = None
 # D154: the requests the page started while the answers were entered never finished.
 STILL_LOADING = "the page was still loading 8 seconds after the answers were entered"
 # D111: the browser followed a redirect of a request only a path-limited rule admits (the
@@ -603,9 +610,13 @@ def _wizard_pages(
         if not settled:
             svc.abandon(aid, worker, gen, STILL_LOADING)
             return "abandoned"
-        # D156: its Next, waited for now (before the readback, as D154's submit button).
-        refused = adapter.next_ready(page, i)
+        # D156: its Next, waited for now (before the readback, as D154's submit button), as long
+        # as its click waited for it before. A Next kept disabled for a question the page showed
+        # after an earlier answer is said as D148 says it (the check after filling, read-only).
+        refused = adapter.next_ready(page, i, NEXT_READY_MS or s.navigation_timeout_seconds * 1000)
         if refused:
+            if refused == NEXT_UNAVAILABLE:
+                refused = adapter.page_follow_ups(page, i) or refused
             return _refused(aid, worker, gen, refused, stop_if_requested)
         mismatches = adapter.readback_through(page, i)
         # How many fields so far kept their values, never which (the posting's field keys).
@@ -670,8 +681,10 @@ def _refused(aid, worker, gen, reason: str, stop_if_requested) -> str:
     click (`adapter.final_ready`, `adapter.page_would_refuse`): abandoned with nothing sent,
     every live approval retired (D132), never a pause or a retry. A page that could not be read
     while the worker is being stopped (its browser closed with it) ends as the stop does (D150,
-    StopRequested), where the stop is honoured. D156: the same before a wizard page's Next
-    (`adapter.next_ready`, `adapter.next_would_refuse`), that page never sent."""
+    StopRequested), where the stop is honoured. D156: likewise before a wizard page's Next
+    (`adapter.next_ready`, `adapter.next_would_refuse`), that page never sent; on a wizard the
+    stop is D142's, for good (every approval retired as `wizard_draft_at_employer`, the pages
+    already sent with Next said)."""
     if reason in (REFUSAL_UNREAD, NEXT_REFUSAL_UNREAD):
         stop_if_requested()
     svc.abandon(aid, worker, gen, str(reason), retire_every="stopped_after_entry")

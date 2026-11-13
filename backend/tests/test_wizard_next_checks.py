@@ -1,27 +1,34 @@
 """D156: before each Workday-style wizard page's Next, what D154 reads before the final click.
-After the page's answers have settled its Next is waited for (shown and enabled), before the
-readback; right before the gate for the Next, what the page itself would refuse at that click is
-read without acting on it (D154's one read of the button's form: for a script's button, as the
-stand-in's, only the page's own marks on fields shown, never on the one that has focus). Either
-stops the attempt with that page never sent.
+Once the page is filled, focus leaves what has it; after its answers have settled, its Next is
+waited for (shown and enabled, as long as its click waited for it), before the readback; right
+before the gate for the Next, what the page itself would refuse is read without acting on it:
+at that click (D154's one read of the button's form: for a script's button, as the stand-in's,
+only the page's own marks on fields shown, never on what has focus), and at the final click for
+the pages filled so far, where the browser validates it. Each stops the attempt with that page
+never sent.
 
 Through the runner against the Workday-style stand-in's wizard (FIXTURE ASSUMPTIONS FA1-FA8 in
 fixtures/ats_receiver/workday_like.py, cfg page_check), never a real page: the receiver's own
 ledger is the oracle for what reached the employer (its draft rows, acceptances and the POSTs it
 logged). The last cases drive the two checks on pages set in Chromium (synthetic markup only).
 
-Before D156: a page whose script marks a field was sent with Next, and the attempt was stopped
-only before the final click, every page saved at the employer as a draft; a Next the page
-refused by its own script was clicked (the page "showed an error"); a Next it kept disabled was
-waited for until the navigation time limit and recorded as a click the page "did not answer"."""
+Before D156: a page whose script marks a field, or a value the final click's validation refuses,
+was sent with Next, and the attempt was stopped only before the final click, every page saved at
+the employer as a draft; a Next the page refused by its own script was clicked (the page "showed
+an error"); a Next it kept disabled was waited for until the navigation time limit and recorded
+as a click the page "did not answer"."""
+
+import time
 
 import pytest
 
 from app.modules.execution import runner, stopping
 from app.modules.execution.adapters import fixture_ats as fa
 from app.modules.execution.adapters import workday as wd
+from app.modules.execution.adapters.fixture_ats import CONDITIONAL_REQUIRED
 from app.modules.execution.adapters.workday import WorkdayFixtureAdapter
 from tests.execution_harness import Receiver, attempt, queue
+from tests.test_workday_follow_up import follow_up_application
 from tests.test_workday_wizard import (
     all_retired_for_wizard,
     draft_pages,
@@ -61,6 +68,12 @@ def nothing_sent(led) -> bool:
     return not draft_pages(led) and posts(led, "/apply") == 0 and led["accepted"] == 0
 
 
+def read_back(aid: str) -> list[int]:
+    """The pages whose readback was recorded (`step` evidence): a stop before a page's readback
+    leaves none for it, a stop after it one."""
+    return [r["page"] for r in rows(aid, "step")]
+
+
 # ---------------------------------------------------------------------------- through the runner
 
 
@@ -78,6 +91,7 @@ def test_a_field_the_page_marks_stops_the_wizard_before_that_pages_next(api, rec
     assert "up to 0 page(s) were sent there with Next" in detail
     assert "phone" not in detail.lower() and "555" not in detail  # counts only
     assert steps(aid) == [] and sent_with_next(aid) == []  # no gate for it, no click
+    assert read_back(aid) == [1]  # read right before the gate: after the readback
     assert all_retired_for_wizard(app_id)
 
 
@@ -91,15 +105,28 @@ def test_a_next_the_page_refuses_while_a_field_is_marked_is_never_clicked(api, r
     detail = attempt(aid).outcome_detail
     assert wd.NEXT_WOULD_REFUSE in detail and "1 field(s) it marks as not valid" in detail
     assert runner.NEXT_NOT_SAVED[fa.ACK_ERROR] not in detail
-    assert steps(aid) == [] and sent_with_next(aid) == []
+    assert steps(aid) == [] and sent_with_next(aid) == [] and read_back(aid) == [1]
     assert all_retired_for_wizard(app_id)
+
+
+def test_a_mark_on_the_field_filled_last_counts_once_focus_left_it(api, receiver):
+    """The page marks City, the field filled last on page 1, while it is not in capitals, and
+    its Next refuses while a field of its page is marked. Once the page is filled focus leaves
+    City, so its mark is read before the Next (with focus still there it was not counted, the
+    Next was clicked and refused: "showed an error")."""
+    out, aid, app_id = checked(api, receiver, "next_aria_last")
+    assert out == "abandoned"
+    assert nothing_sent(receiver.ledger())
+    detail = attempt(aid).outcome_detail
+    assert wd.NEXT_WOULD_REFUSE in detail and "1 field(s) it marks as not valid" in detail
+    assert steps(aid) == [] and sent_with_next(aid) == []
 
 
 def test_a_next_the_page_keeps_disabled_stops_before_its_gate(api, receiver, monkeypatch):
     """Page 2's Next stays disabled: page 1 was sent, page 2 never is, and its Next is never
     clicked. Before D156 the click waited until the navigation time limit and was recorded as a
     Next the page did not answer ("does not know whether that page was saved")."""
-    monkeypatch.setattr(fa, "FINAL_READY_MS", 2000, raising=False)
+    monkeypatch.setattr(runner, "NEXT_READY_MS", 2000, raising=False)
     out, aid, app_id = checked(api, receiver, "next_disabled")
     assert out == "abandoned"
     led = receiver.ledger()
@@ -110,10 +137,30 @@ def test_a_next_the_page_keeps_disabled_stops_before_its_gate(api, receiver, mon
     assert runner.NEXT_NOT_SAVED[fa.ACK_NONE] not in detail
     assert steps(aid) == [(1, "next"), (2, "fill")]  # page 2's Next never authorized
     assert [d["page"] for d in sent_with_next(aid)] == [1]
+    assert read_back(aid) == [1]  # waited for before page 2's readback
     assert all_retired_for_wizard(app_id)
 
 
-def test_a_next_enabled_a_second_after_the_pages_last_answer_is_waited_for(api, receiver):
+def test_a_next_kept_disabled_for_a_question_the_page_showed_says_so(api, receiver, monkeypatch):
+    """A page's Next is disabled while a required field of its page is empty, and page 4 shows a
+    required question after the shift answer, with no approved answer: the stop says so (D148's
+    reason, read when the Next is not usable), not only that the Next stayed disabled."""
+    monkeypatch.setattr(runner, "NEXT_READY_MS", 2000, raising=False)
+    receiver.config(page_check="next_needs_answers")
+    app_id = follow_up_application(api, receiver, "follow_up_revealed_required")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    led = receiver.ledger()
+    assert draft_pages(led) == [1, 2, 3] and posts(led, "/draft/4") == 0
+    detail = attempt(aid).outcome_detail
+    assert CONDITIONAL_REQUIRED in detail and wd.NEXT_UNAVAILABLE not in detail
+    assert (4, "next") not in steps(aid) and read_back(aid) == [1, 2, 3]
+
+
+def test_a_next_enabled_3_s_after_the_pages_last_answer_is_waited_for(api, receiver, monkeypatch):
+    """As long as its click waited for it before D156 (the navigation time limit), not the final
+    button's 10 s (shortened here to 1 s, so the Next's own limit is what lets it through)."""
+    monkeypatch.setattr(fa, "FINAL_READY_MS", 1000, raising=False)
     out, aid, _ = checked(api, receiver, "next_late_enable")
     assert out == "confirmed", attempt(aid).outcome_detail
     led = receiver.ledger()
@@ -121,9 +168,9 @@ def test_a_next_enabled_a_second_after_the_pages_last_answer_is_waited_for(api, 
 
 
 def test_what_the_page_changes_while_it_keeps_its_next_disabled_is_read_back(api, receiver):
-    """Page 1's Next is enabled a second after its last answer, when the page also rewrites a
-    field left empty: the Next is waited for before the readback, which so sees the change, and
-    page 1 is never sent (with the wait after it, page 1 went with the rewritten field)."""
+    """Page 1's Next is enabled 3 s after its last answer, when the page also rewrites a field
+    left empty: the Next is waited for before the readback, which so sees the change, and page 1
+    is never sent (with the wait after it, page 1 went with the rewritten field)."""
     out, aid, _ = checked(api, receiver, "next_late_rewrite")
     assert out == "abandoned"
     assert "1 field(s) did not keep their values" in attempt(aid).outcome_detail
@@ -132,13 +179,13 @@ def test_what_the_page_changes_while_it_keeps_its_next_disabled_is_read_back(api
     assert steps(aid) == [] and sent_with_next(aid) == []
 
 
-def test_a_mark_the_page_would_clear_when_focus_leaves_the_field_is_not_counted(
+def test_a_mark_the_page_clears_when_focus_leaves_the_field_is_cleared_before_the_read(
     api, receiver, monkeypatch
 ):
     """The page focuses page 1's City at load and marks a field `aria-invalid` when focus leaves
     it empty; a page's Next refuses while a field of its page is marked. City is marked when the
-    first answer is typed, then filled last, and keeps focus (so its mark) until the click,
-    when the page checks it again and clears it: never counted."""
+    first answer is typed (focus leaves it empty), then filled last; focus then leaves it, so
+    the page checks it again and clears the mark before the read (as it would at the click)."""
     seen = []
     read = WorkdayFixtureAdapter.next_would_refuse
 
@@ -146,45 +193,59 @@ def test_a_mark_the_page_would_clear_when_focus_leaves_the_field_is_not_counted(
         if i == 1:
             seen.append(page.evaluate("""() => {
               const c = document.getElementById('city');
-              return [c.getAttribute('aria-invalid'), document.activeElement === c, !!c.value];
+              return [c.getAttribute('aria-invalid'), document.activeElement === c, !!c.value,
+                      window.fxMarks || 0];
             }"""))  # fmt: skip
         return read(self, page, i)
 
     monkeypatch.setattr(WorkdayFixtureAdapter, "next_would_refuse", spy)
     out, aid, _ = checked(api, receiver, "focus_validation")
-    assert seen == [["true", True, True]]  # marked, focused and filled when read
+    assert seen == [[None, False, True, 1]]  # marked once while filling, cleared, focus gone
     assert out == "confirmed", attempt(aid).outcome_detail
     led = receiver.ledger()
     assert draft_pages(led) == [1, 2, 3, 4] and led["accepted"] == 1
 
 
-def test_a_value_only_the_browsers_own_validation_refuses_is_left_to_the_final_click(api, receiver):
+def test_a_value_the_final_clicks_validation_refuses_stops_before_its_page_is_sent(api, receiver):
     """The phone breaks the markup's pattern. The wizard's Next is a script's button, which the
-    browser never validates, so the markup's constraints are not counted at a Next (a page
-    whose script decides may not apply them, D154); the final click, the browser's own
-    validated submission, is refused before the send gate as before."""
-    out, aid, _ = checked(api, receiver, "pattern")
+    browser never validates, but its final click is the browser's own validated submission of
+    the same form, which refuses it whatever the later pages hold: page 1 is never sent. Before
+    D156 (and in D156's first version) every page was sent, then the final click found
+    refused."""
+    out, aid, app_id = checked(api, receiver, "pattern")
+    assert out == "abandoned"
+    led = receiver.ledger()
+    assert nothing_sent(led) and posts(led, "/apply/draft/1") == 0
+    detail = attempt(aid).outcome_detail
+    assert wd.FINAL_WOULD_REFUSE_EARLY in detail and "1 value(s) it does not accept" in detail
+    assert wd.NEXT_WOULD_REFUSE not in detail and "555" not in detail
+    assert steps(aid) == [] and read_back(aid) == [1] and all_retired_for_wizard(app_id)
+
+
+def test_a_value_the_review_page_alone_refuses_is_left_to_the_final_click(api, receiver):
+    """What the page's script marks only on the review page (D154's late_invalid) is not there
+    before any Next: every page is sent, and the final click is refused before the send gate."""
+    out, aid, _ = checked(api, receiver, "late_invalid")
     assert out == "abandoned"
     led = receiver.ledger()
     assert draft_pages(led) == [1, 2, 3, 4] and posts(led, "/apply") == 0
-    detail = attempt(aid).outcome_detail
-    assert fa.PAGE_WOULD_REFUSE in detail and "1 value(s) it does not accept" in detail
-    assert wd.NEXT_WOULD_REFUSE not in detail
+    assert fa.PAGE_WOULD_REFUSE in attempt(aid).outcome_detail
 
 
+@pytest.mark.parametrize("check", ["next_ready", "next_would_refuse"])
 @pytest.mark.parametrize("stopping_now", [True, False], ids=["worker_stopping", "not_stopping"])
 def test_a_next_unreadable_while_the_worker_is_being_stopped_ends_as_the_stop(
-    api, receiver, monkeypatch, stopping_now
+    api, receiver, monkeypatch, stopping_now, check
 ):
-    """D150, as D154's: stopping the worker closes its browser, so the read before a Next can
+    """D150, as D154's: stopping the worker closes its browser, so either read before a Next can
     fail then; that is the stop's. Otherwise an unreadable page is a refusal (fail closed)."""
 
-    def unread(self, page, i):
+    def unread(self, page, i, *_limit):
         if stopping_now:
             stopping.request()
         return wd.NEXT_REFUSAL_UNREAD
 
-    monkeypatch.setattr(WorkdayFixtureAdapter, "next_would_refuse", unread)
+    monkeypatch.setattr(WorkdayFixtureAdapter, check, unread)
     receiver.config(page_check=None)
     app_id = wizard_application(api, receiver, "plain")
     aid = queue(api, app_id)
@@ -223,18 +284,26 @@ def page(_browser):
 NEXT = '<button type="button" data-wizard-next>Save and Continue</button>'
 
 
-def shim():
-    """The Workday adapter's own code for a page's Next (`next_button`, its form selector)."""
+def shim(progress=None):
+    """The Workday adapter's own code for a page's Next and for the final button (`next_button`,
+    `final_button`, `_final_would_refuse`, `_renew_lease`, its selectors)."""
 
     class Shim:
         FORM = WorkdayFixtureAdapter.FORM
+        SUBMIT = WorkdayFixtureAdapter.SUBMIT
+        on_progress = None
         next_button = WorkdayFixtureAdapter.next_button
+        final_button = WorkdayFixtureAdapter.final_button
+        _final_would_refuse = WorkdayFixtureAdapter._final_would_refuse
+        _renew_lease = WorkdayFixtureAdapter._renew_lease
 
-    return Shim()
+    s = Shim()
+    s.on_progress = progress
+    return s
 
 
-def ready(page, i=1):
-    return WorkdayFixtureAdapter.next_ready(shim(), page, i)
+def ready(page, i=1, limit_ms=300, progress=None):
+    return WorkdayFixtureAdapter.next_ready(shim(progress), page, i, limit_ms)
 
 
 def read(page, i=1):
@@ -250,9 +319,22 @@ def wizard(one: str, two: str = "", *, next1: str = NEXT, attrs: str = "") -> st
     )
 
 
-def counts(r) -> dict | None:
-    assert r is None or isinstance(r, wd.NextRefusal), r
+def counts(r, kind=wd.NextRefusal) -> dict | None:
+    assert r is None or type(r) is kind, r
     return None if r is None else {k: v for k, v in r.counts.items() if v}
+
+
+SUBMIT = '<button type="submit">Submit</button>'
+
+
+def three(one: str, two: str = "", *, attrs: str = "", submit: str = SUBMIT) -> str:
+    """Two pages and a review page with the final button, in one form; page 1 shown."""
+    return (
+        f'<form id="workday-application"{attrs}>'
+        f'<section data-wizard-page="1">{one}{NEXT}</section>'
+        f'<section data-wizard-page="2" hidden>{two}{NEXT}</section>'
+        f'<section data-wizard-page="3" hidden>{submit}</section></form>'
+    )
 
 
 def test_the_next_is_its_own_pages_one_button(page):
@@ -273,18 +355,30 @@ def test_the_next_is_its_own_pages_one_button(page):
     NEXT.replace("<button", '<button aria-disabled="true"'),
     NEXT.replace("<button", "<button hidden"),
 ], ids=["disabled", "aria_disabled", "hidden"])  # fmt: skip
-def test_a_next_hidden_or_disabled_is_unavailable(page, monkeypatch, button):
-    monkeypatch.setattr(fa, "FINAL_READY_MS", 300, raising=False)
+def test_a_next_hidden_or_disabled_is_unavailable(page, button):
     page.set_content(wizard('<input name="a" value="x">', next1=button))
-    assert ready(page) == wd.NEXT_UNAVAILABLE and read(page) == wd.NEXT_UNAVAILABLE
+    started = time.monotonic()
+    assert ready(page, limit_ms=300) == wd.NEXT_UNAVAILABLE
+    assert time.monotonic() - started < 3  # its own limit, not the final button's 10 s
+    assert read(page) == wd.NEXT_UNAVAILABLE
 
 
-def test_a_next_the_page_enables_later_is_waited_for(page):
+def test_a_next_the_page_enables_or_draws_later_is_waited_for_and_the_lease_renewed(page):
     page.set_content(wizard('<input name="a" value="x">',
                             next1=NEXT.replace("<button", "<button disabled")))  # fmt: skip
     page.evaluate("""() => setTimeout(() => {
       document.querySelector('[data-wizard-next]').disabled = false; }, 700)""")
-    assert ready(page) is None
+    renewed = []
+    assert ready(page, limit_ms=5000, progress=lambda: renewed.append(1)) is None
+    assert renewed  # the attempt's lease renewed while waiting
+    # not there yet (the page draws it again): waited for too, within the same time
+    page.set_content(wizard('<input name="a" value="x">', next1=""))
+    page.evaluate("""() => setTimeout(() => {
+      document.querySelector('section[data-wizard-page="1"]').insertAdjacentHTML('beforeend',
+        '<button type="button" data-wizard-next>Save and Continue</button>'); }, 700)""")
+    assert ready(page, limit_ms=5000) is None
+    page.set_content(wizard('<input name="a" value="x">', next1=""))
+    assert ready(page, limit_ms=300) == wd.NEXT_UNIDENTIFIED  # never drawn
 
 
 def test_on_a_scripts_next_only_the_pages_marks_on_fields_shown_count(page):
@@ -314,10 +408,89 @@ def test_a_mark_on_the_field_that_has_focus_is_not_counted(page):
     assert counts(read(page)) == {"marked": 1}
 
 
+def test_marks_inside_a_part_of_the_page_that_has_focus_count(page):
+    """A page may focus its newly shown section (for screen readers): marks inside it count, as
+    the section is no control whose check waits for focus to leave it; inside a widget that has
+    focus (a combobox holding its input) they do not. The final click's read follows the same
+    rule (D154's, narrowed here)."""
+    page.set_content(
+        wizard('<input name="a" aria-invalid="true" value="x">').replace(
+            'data-wizard-page="1"', 'data-wizard-page="1" tabindex="-1"'
+        )
+    )
+    page.focus('section[data-wizard-page="1"]')
+    assert counts(read(page)) == {"marked": 1}
+    page.set_content(
+        wizard(
+            '<div role="combobox" tabindex="0" id="cb"><input name="a" aria-invalid="true"></div>'
+        )
+    )
+    page.focus("#cb")
+    assert read(page) is None
+    page.set_content(
+        '<form id="application"><fieldset tabindex="-1" id="fs">'
+        '<input name="a" aria-invalid="true" value="x"></fieldset>'
+        '<button type="submit" formnovalidate>Submit</button></form>'
+    )
+    page.focus("#fs")
+    got = fa.would_refuse(lambda: page.locator("form#application button"), lambda: [],
+                          fa.FINAL_CLICK)  # fmt: skip
+    assert counts(got, fa.PageRefusal) == {"marked": 1}
+
+
+def test_what_the_final_click_would_refuse_on_the_pages_filled_so_far_is_read_before_a_next(
+    page,
+):
+    """The final button is the browser's own validated submission of the wizard's form: at page
+    i's Next, what it would refuse among pages 1 to i counts, shown or not, by kind (a value the
+    markup does not accept, a required field left empty, a mark), never what later pages hold,
+    nor a mark on what has focus. Not where the page's script decides the final click."""
+    page.set_content(three('<input name="tel" pattern="[0-9]+" value="555 0100">',
+                           '<input name="later" required>'))  # fmt: skip
+    r = read(page, 1)
+    assert counts(r, wd.EarlyFinalRefusal) == {"refused": 1}  # page 2's required: not yet
+    assert str(r).startswith(wd.FINAL_WOULD_REFUSE_EARLY) and "555" not in r
+    page.evaluate("() => { document.querySelector('[name=tel]').value = '5550100'; }")
+    assert read(page, 1) is None
+    page.evaluate("""() => {
+      document.querySelector('section[data-wizard-page="1"]').hidden = true;
+      document.querySelector('section[data-wizard-page="2"]').hidden = false; }""")
+    assert counts(read(page, 2), wd.EarlyFinalRefusal) == {"required": 1}  # now its own page
+    for kw in ({"attrs": " novalidate"},
+               {"submit": SUBMIT.replace("<button", "<button formnovalidate")}):  # fmt: skip
+        page.set_content(three('<input name="tel" pattern="[0-9]+" value="555 0100">', **kw))
+        assert read(page, 1) is None
+    page.set_content(three('<input name="a" value="x"><input name="b">'))
+    page.evaluate("() => document.querySelector('[name=a]').setCustomValidity('No')")
+    page.focus("[name=a]")
+    assert read(page, 1) is None  # a mark on what has focus: never counted
+    page.focus("[name=b]")
+    assert counts(read(page, 1)) == {"marked": 1}  # shown on its page: the Next's own read
+
+
+def test_focus_leaves_what_has_it_once_a_page_is_filled(page):
+    page.set_content(
+        wizard('<input name="a"><input name="b">')
+        + """<script>
+      window.left = 0;
+      document.querySelector('[name=a]').addEventListener('blur', () => { window.left++; });
+    </script>"""
+    )
+    page.fill("[name=a]", "x")  # focus stays on it, as after typing
+    WorkdayFixtureAdapter._leave_focus(shim(), page)
+    assert page.evaluate("document.activeElement === document.body")
+    assert page.evaluate("window.left") == 1
+    WorkdayFixtureAdapter._leave_focus(shim(), page)  # nothing has focus: nothing happens
+    assert page.evaluate("window.left") == 1
+
+
 def test_a_next_that_is_the_browsers_validated_submission_counts_every_page(page):
     """A Next of type=submit in a form the browser validates: every control it would refuse
     counts, the pages not shown included (the browser refuses the click for them too); with
-    `formnovalidate`, only the page's own marks, as a script's button."""
+    `formnovalidate`, only the page's own marks, as a script's button. Capture refuses such a
+    wizard (a submit button on a page before the review page: preparation/workday.py), so a
+    run meets one only if a page changed after capture, and then the form's comparison before
+    the read stops it; the read's own rule is pinned here on pages set by hand."""
     submit = NEXT.replace('type="button"', 'type="submit"')
     page.set_content(wizard('<input name="a" value="x">', '<input name="later" required>',
                             next1=submit))  # fmt: skip

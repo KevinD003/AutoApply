@@ -49,11 +49,12 @@ into or that already hold values: stops that leave nothing at the employer. An e
 not appear or a control that does not keep its value once entering began stops it with what was
 entered recorded.
 
-D156: before each wizard page's Next, what D154 reads before the final click: after the page's
-answers have settled, its Next is waited for (shown and enabled, `next_ready`) before the
-readback, and right before the gate for the Next, what the page itself would refuse at that
-click is read without acting on it (`next_would_refuse`). Either stops the attempt with that
-page never sent (the runner's `_wizard_pages`)."""
+D156: before each wizard page's Next, what D154 reads before the final click. Once the page is
+filled, focus leaves what has it (`_leave_focus`); after the page has settled, its Next is
+waited for (shown and enabled, `next_ready`) before the readback; and right before the gate for
+the Next, what the page itself would refuse is read without acting on it (`next_would_refuse`):
+at that click, and at the final click for the pages filled so far, where the browser validates
+it. Each stops the attempt with that page never sent (the runner's `_wizard_pages`)."""
 
 from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
@@ -61,6 +62,7 @@ from playwright.sync_api import TimeoutError as PWTimeout
 
 from app.modules.execution.adapters import workday_sections as ws
 from app.modules.execution.adapters.fixture_ats import (
+    _REFUSAL_JS,
     ACK_DRAFT,
     ACK_ERROR,
     ACK_LEFT_FORM,
@@ -135,11 +137,13 @@ SECTION_NOT_ENTERED = (
 # D156: what the page itself would refuse at a wizard page's Next, read before its gate.
 NEXT_UNIDENTIFIED = "a page's Next button cannot be identified"
 NEXT_UNAVAILABLE = (
-    "the page does not let a page's Next be made (its Next button stays hidden or disabled): "
-    "apply on the employer's site"
+    "the page does not let a page's Next be made (its Next button stays hidden or disabled)"
 )
 NEXT_REFUSAL_UNREAD = "the page's own checks could not be read before a page's Next"
 NEXT_WOULD_REFUSE = "the page's own checks would refuse a page's Next"
+FINAL_WOULD_REFUSE_EARLY = (
+    "the page's own checks would refuse the final click for what the pages filled so far hold"
+)
 
 
 class NextRefusal(PageRefusal):
@@ -147,6 +151,14 @@ class NextRefusal(PageRefusal):
     (counts only, as D154's `PageRefusal`)."""
 
     WHAT = NEXT_WOULD_REFUSE
+
+
+class EarlyFinalRefusal(PageRefusal):
+    """D156: the final click, the browser's own validated submission, would be refused for what
+    the wizard's pages filled so far hold, found before the next of them is sent (counts
+    only)."""
+
+    WHAT = FINAL_WOULD_REFUSE_EARLY
 
 
 NEXT_CLICK = ClickChecks(NEXT_UNIDENTIFIED, NEXT_UNAVAILABLE, NEXT_REFUSAL_UNREAD, NextRefusal)
@@ -442,12 +454,33 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
 
     def fill_page(self, page: Page, i: int) -> list[dict]:
         """Fill page i only, documents first (`fill`), its sections too (D149); its uploads'
-        evidence."""
+        evidence. D156: then focus leaves the control filled last (`_leave_focus`)."""
         self._page_step = self.content["wizard"]["pages"][i - 1]
         try:
-            return self._with_answers(self.page_answers(i), lambda: self.fill(page))
+            filled = self._with_answers(self.page_answers(i), lambda: self.fill(page))
+            self._leave_focus(page)
+            return filled
         finally:
             self._page_step = None
+
+    def _leave_focus(self, page: Page) -> None:
+        """D156: focus leaves whatever has it once a wizard page is filled (the control filled
+        last, or a part of the page the page itself focused), as D155 leaves each work entry's
+        controls: the page's reaction to that control's `change`, and its checks when focus
+        leaves it, happen now, before the page settles, its readback and the reads before its
+        Next (where a mark on what has focus never counts), and not only at the Next's click."""
+        page.evaluate(
+            """() => {
+              const a = document.activeElement;
+              if (a && a !== document.body && a !== document.documentElement && a.blur) a.blur();
+            }"""
+        )
+
+    def _renew_lease(self) -> None:
+        """D156: the runner's lease renewal while a Next is waited for (as `_progress` between
+        fields, without its fault point)."""
+        if self.on_progress is not None:
+            self.on_progress()
 
     def readback_through(self, page: Page, i: int) -> list[str]:
         """Read back pages 1 to i, every field on them, the unanswered ones included, and their
@@ -473,23 +506,59 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
         `next_would_refuse`) and for the click (`click_next`)."""
         return page.locator(f'{self.FORM} section[data-wizard-page="{i}"] [data-wizard-next]')
 
-    def next_ready(self, page: Page, i: int) -> str | None:
+    def next_ready(self, page: Page, i: int, limit_ms: int) -> str | None:
         """D156: after page i's answers are entered and the page has settled, and before they
         are read back: its Next can be identified (exactly one, on that page) and is shown and
-        enabled, or becomes so within FINAL_READY_MS (D154's `final_ready`). None, or why not.
-        Reads only. Never a checkpoint before a Next: a wizard page asks for none."""
-        return button_ready(page, lambda: self.next_button(page, i), lambda: [], NEXT_CLICK)
+        enabled, or becomes so within `limit_ms` (the runner passes the time its click waited
+        for it before D156, the navigation time limit; D154's `final_ready` waits so for the
+        final button). A Next not there yet, or there twice while the page draws it again, is
+        waited for within the same time; the attempt's lease is renewed meanwhile. None, or why
+        not. Reads only. Never a checkpoint before a Next: a wizard page asks for none."""
+        return button_ready(
+            page,
+            lambda: self.next_button(page, i),
+            lambda: [],
+            NEXT_CLICK,
+            limit_ms=limit_ms,
+            wait_found=True,
+            progress=self._renew_lease,
+        )
 
     def next_would_refuse(self, page: Page, i: int) -> str | None:
         """D156: right before the gate for page i's Next (after the checks after filling), what
-        the page itself would refuse at that click, read without acting on it (D154's
-        `page_would_refuse`, from one read of the Next's form): a Next that is the browser's own
-        validated submission counts every control the browser would refuse, shown or not; any
-        other (a script's button, as the stand-in's) only the page's own marks on fields shown,
-        never on the one that still has focus. None, or why not; each is a stop with that page
-        never sent, where the Next would have been refused after it was clicked, or would have
-        sent a page the final click is then refused for."""
-        return would_refuse(lambda: self.next_button(page, i), lambda: [], NEXT_CLICK)
+        the page itself would refuse, read without acting on it. First at that click (D154's
+        `page_would_refuse`, from one read of the Next's form): for a Next that is a script's
+        button (the stand-in's; capture refuses a wizard whose Next is a submit button, so the
+        browser never validates a Next) only the page's own marks on fields shown, never on what
+        has focus. Then at the final click, where it is the browser's own validated submission
+        (`_final_would_refuse`). None, or why not: a stop with that page never sent. A mark is
+        the page's own word, which may be stale or one the page's Next ignores; on a wizard the
+        stop ends the application (D142), fail closed."""
+        return would_refuse(
+            lambda: self.next_button(page, i), lambda: [], NEXT_CLICK
+        ) or self._final_would_refuse(page, i)
+
+    def _final_would_refuse(self, page: Page, i: int) -> str | None:
+        """D156 (both reviews): where the final click is the browser's own validated submission
+        of the wizard's form (a submit button, no `novalidate`, no `formnovalidate`), what it
+        would refuse among the controls of pages 1 to i, shown or not (D154's read of the final
+        button's form, kept to those pages): required and empty, a value the markup does not
+        accept, or marked (never on what has focus). Their values are entered for good, so the
+        final click would be refused for them whatever the later pages hold: read here, before
+        page i is sent, rather than at the review page, once every page was. None where the
+        final click is the page's script's (its marks on pages not shown are not read) or its
+        button cannot be found now (the review page's own read judges it)."""
+        pages = ", ".join(f'{self.FORM} section[data-wizard-page="{n}"]' for n in range(1, i + 1))
+        try:
+            btn = self.final_button(page)
+            if btn is None or btn.count() != 1:
+                return None
+            got = btn.evaluate(_REFUSAL_JS, {"leave": [], "within": pages})
+        except PWError:
+            return NEXT_REFUSAL_UNREAD
+        if not got or not got.get("native"):
+            return None
+        return EarlyFinalRefusal.of(got)
 
     def body_kind(self, page: Page) -> str | None:
         return page.locator("body").get_attribute(self.PAGE_KIND)

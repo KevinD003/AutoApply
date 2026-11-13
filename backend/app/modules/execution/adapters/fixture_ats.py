@@ -1,5 +1,6 @@
 """Adapter for the local synthetic ATS receiver (fixtures/ats_receiver). Fixture-only."""
 
+import time
 from dataclasses import dataclass
 from functools import partial
 from urllib.parse import urljoin, urlsplit
@@ -424,12 +425,18 @@ _READY_STEP_MS = 100
 #  - a mark on the control that still has focus, on an element holding it or held by it, never
 #    counts: a page that checks a field when focus leaves it checks that one only at the click
 #    (Playwright's typing leaves focus there), so its mark may be stale. Value-based states are
-#    read from the current value and always count.
+#    read from the current value and always count. D156: "held by it" only when what has focus
+#    is a control or a widget, never a container (a page's section focused when it is shown).
 #  - `aria-invalid="true"` counts on a shown element of the form; a group of radios, and a
 #    marked element with a counted one inside or around it, count once.
 #  - `leave`: ids filled only at a checkpoint; they, and any element holding one or held by
 #    one, never count.
-_REFUSAL_JS = """(b, leave) => {
+#  - D156, `within` (a selector): only elements inside what it matches count (a wizard's pages
+#    already filled). The argument is `leave`, or {leave, within}.
+_REFUSAL_JS = """(b, arg) => {
+  const leave = Array.isArray(arg) ? arg : (arg.leave || []);
+  const within = Array.isArray(arg) ? null : (arg.within || null);
+  const inScope = (e) => !within || !!e.closest(within);
   const form = b.form;
   if (!form) return null;
   const submits = (b.localName === 'button' && b.type === 'submit')
@@ -445,7 +452,12 @@ _REFUSAL_JS = """(b, leave) => {
   const out = (e) => left.some((l) => l === e || l.contains(e) || e.contains(l));
   const a = document.activeElement;
   const focus = a && a !== document.body && a !== document.documentElement ? a : null;
-  const nearFocus = (e) => !!focus && (e === focus || e.contains(focus) || focus.contains(e));
+  const WIDGET = new RegExp('^(combobox|listbox|textbox|searchbox|spinbutton|slider|radiogroup'
+    + '|radio|checkbox|switch|option|grid|tree|treegrid)$');
+  const widget = !!focus && (focus.matches('input, select, textarea, button, [contenteditable]')
+    || WIDGET.test((focus.getAttribute('role') || '').trim().toLowerCase()));
+  const nearFocus = (e) => !!focus
+    && (e === focus || e.contains(focus) || (widget && focus.contains(e)));
   const VALUE = ['typeMismatch', 'patternMismatch', 'tooLong', 'tooShort', 'rangeUnderflow',
                  'rangeOverflow', 'stepMismatch', 'badInput'];
   const n = {native, required: 0, refused: 0, marked: 0};
@@ -457,7 +469,7 @@ _REFUSAL_JS = """(b, leave) => {
     return true;
   };
   for (const e of form.elements) {
-    if (out(e)) continue;
+    if (out(e) || !inScope(e)) continue;
     const v = e.validity;
     // a form-associated custom element exposes no validity of its own: its state is :invalid
     if (!(v ? e.willValidate && !v.valid : e.matches(':invalid'))) continue;
@@ -473,7 +485,8 @@ _REFUSAL_JS = """(b, leave) => {
   }
   const marks = new Set(form.querySelectorAll('[aria-invalid]'));
   for (const e of form.elements) if (e.hasAttribute('aria-invalid')) marks.add(e);
-  const flagged = [...marks].filter((e) => !out(e) && !counted.includes(e) && !nearFocus(e)
+  const flagged = [...marks].filter((e) => !out(e) && inScope(e) && !counted.includes(e)
+    && !nearFocus(e)
     && (e.getAttribute('aria-invalid') || '').trim().toLowerCase() === 'true' && shown(e))
     // one field once: not part of a control already counted, nor inside another flagged one
     .filter((e) => !counted.some((c) => c.contains(e) || e.contains(c)));
@@ -503,22 +516,37 @@ class ClickChecks:
     refusal: type
 
 
-def button_ready(page: Page, find, leave_out, why: ClickChecks) -> str | None:
+def button_ready(
+    page: Page,
+    find,
+    leave_out,
+    why: ClickChecks,
+    *,
+    limit_ms: int | None = None,
+    wait_found: bool = False,
+    progress=None,
+) -> str | None:
     """D154, D156: the button `find()` locates can be identified (exactly one) and is shown and
-    enabled, or becomes so within FINAL_READY_MS, or the page asks for a checkpoint first
-    (`leave_out()`, looked for again at each step). None, or why not (`why`). Reads only."""
-    waited = 0
+    enabled, or becomes so within `limit_ms` (FINAL_READY_MS by default; time elapsed, not
+    pauses counted), or the page asks for a checkpoint first (`leave_out()`, looked for again
+    at each step). With `wait_found`, a button not there yet (or there twice, as while the page
+    draws it again) is waited for too, within the same time. `progress()` is called between
+    two looks (the runner renews the attempt's lease from it). None, or why not (`why`). Reads
+    only."""
+    deadline = time.monotonic() + (FINAL_READY_MS if limit_ms is None else limit_ms) / 1000
     try:
         while True:
             btn = find()
-            if btn is None or btn.count() != 1:
+            found = btn is not None and btn.count() == 1
+            if not found and not wait_found:
                 return why.unidentified
-            if leave_out() or _usable(btn):
+            if found and (leave_out() or _usable(btn)):
                 return None
-            if waited >= FINAL_READY_MS:
-                return why.unavailable
+            if time.monotonic() >= deadline:
+                return why.unavailable if found else why.unidentified
             page.wait_for_timeout(_READY_STEP_MS)
-            waited += _READY_STEP_MS
+            if progress is not None:
+                progress()
     except PWError:
         return why.unread
 
