@@ -60,7 +60,6 @@ from app.modules.preparation.forms import (
     _ARIA_WIDGETS,
     _VOID,
     ENTRY_PARTS,
-    MAX_LIMIT,
     UNKNOWN_TRIGGER,
     Condition,
     FieldType,
@@ -73,6 +72,7 @@ from app.modules.preparation.forms import (
     _Node,
     _TreeBuilder,
     extract_form_schema,
+    read_maxlength,
 )
 
 _FIXTURE = re.compile(r"^/workday/(?P<tenant>[a-z0-9-]{1,64})/(?P<req>R-[0-9]{4,12})(?:/apply)?/?$")
@@ -190,25 +190,11 @@ _LIMITED = {"title": "title", "company": "company_name", "location": "location",
 _MONTH_YEAR_LEN = len("MM/YYYY")
 
 
-_ASCII_WHITESPACE = " \t\n\f\r"  # what the browser skips before a number, and nothing else
-
-
 def _limit(n: _Node) -> int | None | bool:
-    """D157: a control's `maxlength`: None when it has none, the number when it is written as
-    the browser reads it, in ASCII digits only (ASCII whitespace around them), from 1 to
-    MAX_LIMIT; False otherwise, a limit NoEfforts cannot read as the browser does and never
-    guesses (with a sign, other characters or other scripts' digits; one written twice is
-    refused with its control, `_work_control_ok`)."""
-    raw = n.attrs.get("maxlength")
-    if raw is None:
-        return None
-    digits = raw.strip(_ASCII_WHITESPACE)
-    if not (digits.isascii() and digits.isdigit()):
-        return False
-    digits = digits.lstrip("0")
-    if not digits or len(digits) > len(str(MAX_LIMIT)) or int(digits) > MAX_LIMIT:
-        return False  # 0, or more than the browser reads
-    return int(digits)
+    """D157: a control's `maxlength` as the browser reads it (`forms.read_maxlength`): None, the
+    number, or False for one NoEfforts never guesses at; one written twice is refused with its
+    control (`_work_control_ok`)."""
+    return read_maxlength(n.attrs.get("maxlength"))
 
 
 def _limits(controls: list[_Node]) -> dict[str, int]:

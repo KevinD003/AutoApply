@@ -154,13 +154,42 @@ LIMITED_FIELDS = ("company_name", "description", "location", "title")
 MAX_LIMIT = 2_147_483_647
 
 
+_ASCII_WHITESPACE = " \t\n\f\r"  # what the browser skips before a number, and nothing else
+
+
+def read_maxlength(raw: str | None) -> int | None | bool:
+    """A control's `maxlength` as the browser reads it (D157; D158 for every question): None when
+    it has none, the number when it is written in ASCII digits (ASCII whitespace around them),
+    from 1 to MAX_LIMIT; False otherwise, a limit NoEfforts cannot read as the browser does and
+    never guesses (a sign, any other character, another script's digits, 0, or more than the
+    browser reads)."""
+    if raw is None:
+        return None
+    digits = raw.strip(_ASCII_WHITESPACE)
+    if not (digits.isascii() and digits.isdigit()):
+        return False
+    digits = digits.lstrip("0")
+    if not digits or len(digits) > len(str(MAX_LIMIT)) or int(digits) > MAX_LIMIT:
+        return False  # 0, or more than the browser reads
+    return int(digits)
+
+
+_LINE_BREAK = re.compile(r"\r\n|\r|\n")
+
+
 def sent_len(text: str) -> int:
     """D157: a text's length as its form sends it, which a limit (`maxlength`) is held to: UTF-16
     code units, as the browser counts them (a character outside the Basic Multilingual Plane
     counts 2), and each line break as the two the form sends (CRLF), where the browser counts
     one. Never less than the browser's own count, so a value within a limit by this count is kept
-    whole by the page, and fits a server that counts what it receives."""
-    return len(text.encode("utf-16-le")) // 2 + text.count("\n")
+    whole by the page, and fits a server that counts what it receives. D158: a line break written
+    as CRLF or as a lone CR is one line break too (the form sends each as CRLF)."""
+    return len(_LINE_BREAK.sub("\r\n", text).encode("utf-16-le", "surrogatepass")) // 2
+
+
+def one_line_breaks(text: str) -> str:
+    """D158: every line break written as one LF, as a text area holds it."""
+    return _LINE_BREAK.sub("\n", text)
 
 
 class SectionSpec(BaseModel):
@@ -351,14 +380,14 @@ class _Node:
         tag: str,
         attrs: dict[str, str],
         parent: "_Node | None",
-        twice: frozenset[str] = frozenset(),
+        twice: dict[str, str] | None = None,
     ) -> None:
         self.tag, self.attrs, self.parent = tag, attrs, parent
         self.children: list[_Node | str] = []
-        # D157: the attributes written more than once on the tag. `attrs` keeps the last; the
-        # browser keeps the first, so a check that must read the tag as the browser does refuses
-        # such a tag rather than guess.
-        self.twice = twice
+        # D157: the attributes written more than once on the tag, each with the value written
+        # first (D158), which the browser keeps where `attrs` keeps the last: a check that must
+        # read the tag as the browser does refuses such a tag, or reads that first value.
+        self.twice = twice or {}
 
     def all_text(self) -> str:
         out = []
@@ -385,27 +414,31 @@ class _Node:
 _VOID = {"input", "br", "hr", "img", "meta", "link", "area", "base", "col", "source", "wbr"}
 
 
-def _twice(attrs: list[tuple[str, str | None]]) -> frozenset[str]:
-    """D157: the attribute names a tag writes more than once (`_Node.twice`)."""
+def _twice(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
+    """D157: the attribute names a tag writes more than once, each with the value written first,
+    the one the browser keeps (D158; `_Node.twice`)."""
     names = [k for k, _ in attrs]
     if len(set(names)) == len(names):
-        return frozenset()
-    return frozenset(k for k in names if names.count(k) > 1)
+        return {}
+    first: dict[str, str] = {}
+    for k, v in attrs:
+        if names.count(k) > 1:
+            first.setdefault(k, v if v is not None else "")
+    return first
 
 
-def _whole_number(raw: str | None, top: int = 100_000) -> int | None:
-    """An attribute's whole number written in ASCII digits, from 1 to `top` (`FormField`'s own
-    bounds for `max_length`), None otherwise: never an error of reading the form, whatever the
-    page writes. D157: `int()` failed on a digit such as a superscript two and on more digits
-    than Python converts, read other scripts' digits the browser does not, and a limit of 0 or
-    above `top` (some page frameworks write 524288) failed `FormField` and so the whole form; such
-    a limit is not recorded, and the readback still stops a value the browser cut."""
-    if not raw or not (raw.isascii() and raw.isdigit()):
+def _question_limit(raw: str | None, top: int = 100_000) -> int | None:
+    """An ordinary question's `maxlength` (`FormField.max_length`), read as the browser reads it
+    (`read_maxlength`; D158: ASCII whitespace around the digits too, as the browser skips it)
+    and recorded only from 1 to `top` (`FormField`'s own bounds), None otherwise: never an error
+    of reading the form, whatever the page writes (D157: a superscript digit, more digits than
+    Python converts, another script's digits, 0, or above `top` as some page frameworks write).
+    A limit not recorded is not checked before approval; the readback still stops a value the
+    browser cut."""
+    limit = read_maxlength(raw)
+    if isinstance(limit, bool) or limit is None or limit > top:
         return None
-    digits = raw.lstrip("0")
-    if not digits or len(digits) > len(str(top)) or int(digits) > top:
-        return None
-    return int(digits)
+    return limit
 
 
 class _TreeBuilder(HTMLParser):
@@ -636,14 +669,14 @@ def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> Fo
             if itype in {t.value for t in FieldType}
             else FieldType.text
         )
-        maxlen = n.attrs.get("maxlength")
+        maxlen = n.twice.get("maxlength", n.attrs.get("maxlength"))  # D158: as the browser
         fields.append(
             FormField(
                 label=label_of(n),
                 help_text=help_of(n),
                 type=ftype,
                 required=required,
-                max_length=_whole_number(maxlen),
+                max_length=_question_limit(maxlen),
                 accept=n.attrs.get("accept") if ftype == FieldType.file else None,
                 **common,
             )

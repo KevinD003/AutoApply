@@ -53,6 +53,7 @@ from app.modules.preparation.resolver import (
     question_key,
     reuse_key,
     saved_answer_scope,
+    validate_value,
 )
 from app.modules.profiles.models import (
     Approval,
@@ -1301,6 +1302,8 @@ def request_draft(
         .order_by(AnswerDraft.created_at.desc())
         .limit(1)
     )
+    if cached is not None and validate_value(f, {"text": cached.text}) is not None:
+        cached = None  # D158: a draft accepting would refuse is never offered again
     if cached is None:
         instead = "Write this answer yourself or ask again."
         try:
@@ -1312,6 +1315,7 @@ def request_draft(
             raise _provider_failed(e, instead) from None
         try:
             text = drafting.validate_draft(req, result)
+            text = _fit_to_field(f, text)
         except drafting.InvalidDraft as e:
             record(db, user.id, "draft.rejected", "application", app.id,
                    field_ref=ref(key, user.id), reason_code=e.code)  # fmt: skip
@@ -1501,6 +1505,18 @@ def _provider_failed(e: drafting.ProviderFailed, instead: str) -> HTTPException:
         status.HTTP_502_BAD_GATEWAY,
         f"{drafting.PROVIDER_FAILURES[e.code]} Nothing was kept. {instead} (reason: {e.code})",
     )
+
+
+def _fit_to_field(f: FormField, text: str) -> str:
+    """D158: a draft as its field would take it, or InvalidDraft: on one line for a one-line box
+    (each line break a space; it is prose, never a fact), and never longer than the field's own
+    limit as its form sends it, so a draft accepting would refuse is never offered."""
+    if f.type != FieldType.textarea:
+        text = " ".join(text.split())
+    err = validate_value(f, {"text": text})
+    if err:
+        raise drafting.InvalidDraft(f"the draft does not fit this field: {err}", "too_long")
+    return text
 
 
 def _draft_request(db: Session, app: Application, f: FormField, facts) -> drafting.DraftRequest:

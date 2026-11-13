@@ -7548,3 +7548,88 @@ audit-inventory and export-completeness guards are updated and pass.
   - Spellings the browser reads but NoEfforts refuses (`+40`, `40abc`, `4 0`, `1e3`): one
     checkpoint, stricter than the browser.
   - Never seen on a real page: how a real Workday tenant limits a work entry is unobserved.
+
+## D158 — An ordinary question's length limit is read as the browser reads it, and your answer held to it as its form sends it (2026-11-13)
+
+- **Context:** rank 25 of the automation loop (`docs/automation-loop.md`), D157's limit ("an
+  ordinary question's `maxlength`, on every provider, is still counted by code points"). Local
+  stand-ins only; nothing real was run. No migration, no new state, reason code, gate,
+  permission or retry.
+- **Problem:**
+  - The resolver held a text answer to the page's `maxlength` by its characters (code points,
+    `len`). An answer the browser would cut (a character outside the Basic Multilingual Plane
+    counts 2 there) passed and was stopped only by the readback; one whose line breaks the form
+    sends as CRLF passed and could be refused by the employer's own check after the final click
+    (on the base stand-in: `rejected` after `sending`, the application `failed_terminal`).
+  - The answer box counted the same way (`text.length`, a line break once).
+  - The form reader recorded a limit only when written as plain ASCII digits (`" 40"`, which the
+    browser reads as 40, recorded nothing) and read a `maxlength` written twice as its last
+    value, where the browser keeps the first.
+- **Decided:**
+  - **Reading** (`forms.read_maxlength`, shared with D157's Workday reading): ASCII digits with
+    ASCII whitespace around them, as the browser reads them; anything else is not read. An
+    ordinary question's limit (`FormField.max_length`, `forms._question_limit`) is recorded only
+    from 1 to 100,000 (`FormField`'s own bound), otherwise not at all; the readback still stops
+    a value the browser cut. A `maxlength` written twice is read as its first value
+    (`_Node.twice` now holds each repeated attribute's first value).
+  - **Counting** (`forms.sent_len`, D157's): as the form sends it, UTF-16 code units, each line
+    break two; a line break written as CRLF or as a lone CR is one line break too (both are sent
+    as CRLF; a lone CR was counted one, CRLF three). Never less than the browser's own count.
+  - **Answers** (`resolver.validate_value`, `normalize_input`):
+    - a text answer longer than its limit as its form sends it is refused, with the count named
+      ("longer than the form allows (1001/1000 characters as the form sends them: a line break or
+      an emoji counts as two)");
+    - a one-line box (text, email, tel, url) holds no line break: refused when saved (the browser
+      makes each a space, so the readback could never match and the attempt stopped after the
+      pages it had sent);
+    - a text area's answer is kept with each line break as one LF, as the text area holds it;
+    - half of a surrogate pair is refused plainly (it failed the count with the codec's own words,
+      and without a limit a server error).
+  - **An answer you gave that no longer fits** (for this application, or saved for reuse) is a
+    checkpoint even where the question is optional (`resolver._no_longer_fits`, D78's rule).
+    Before, an optional one was left out of the package without a word (`blank_optional`) and
+    approval allowed, so the attempt sent the question empty; found by the review, made reachable
+    by the stricter count for answers saved before it.
+  - **Drafts** (`router._fit_to_field`): a draft is fitted to its field before it is offered: on
+    one line for a one-line box (its line breaks spaces: prose, never a fact), and never longer
+    than the field's limit as its form sends it (discarded as `too_long` otherwise); a cached
+    draft that no longer fits is replaced, never offered again. The drafting provider is still
+    asked for `max_chars` characters (unchanged, so every draft's input hash is unchanged).
+  - **The answer box** (`AnswerInput.jsx`, `sentLength`): counts as the form sends it, red past
+    the limit, with "(a line break counts as two)" when a line break is in it.
+  - **The base stand-in** (`fixtures/ats_receiver/receiver.py`, `LIMITS`, `too_long`): its
+    server refuses at submit a field longer than its page's limit, counting what it receives (a
+    line break, sent as CRLF, counting 2), as a server would.
+- **What an approved run now does differently:** an answer whose form would send it longer than
+  the page's limit, or a line break in a one-line box, is yours to fix before approval rather
+  than refused by the page after the final click or stopped by the readback. Answers saved
+  before D158 that no longer fit become checkpoints, even on optional questions; a package
+  holding one changes (its hash covers each answer's status and value), so its approval is
+  retired as any content change does, and an attempt queued before stops at the gate with
+  nothing sent (`failed_safe`). Forms already captured keep their recorded limits: a re-capture
+  stores a new version only when the fingerprint or the options change, and `max_length` is in
+  neither, so the new reading reaches newly captured forms only.
+- **`SCHEMA_VERSION` stays 3:** the package content's shape is unchanged.
+- **Reviews:** two independent reviews of the first version (f5422e9), no blocker in either.
+  - Both found the draft check still counting characters (a draft was offered that accepting
+    refused, and offered again from the cache), a lone carriage return counted short (approved,
+    then refused by the page's own check after the final click), and a `maxlength` written twice
+    read as its last value.
+  - The first also found an optional answer saved before the change left out of the submission
+    without a word, a line break in a one-line box accepted and then stopping the attempt, and
+    tests passing with their code removed (the stand-in's own check, the answer box's count).
+  - The second also found CRLF counted three, half a surrogate pair failing with the codec's
+    words, a limit changed after capture never noticed, and pages in another character set.
+  - Each is fixed with a test (8f7cc1d), or recorded below.
+- **Not built:**
+  - A limit the page changes after the form was read is not noticed until the readback (it is
+    not in the form's fingerprint), and the control's own limit is not read before an ordinary
+    answer is typed (D157 reads it for a Workday-style entry).
+  - A page that sends in another character set than UTF-8 (a character it cannot encode is sent
+    as a longer reference); a text area that hard-wraps (`wrap="hard"`) sends line breaks never
+    typed; neither is read at capture.
+  - The drafting provider is told characters, not the form's count; a draft past the count is
+    discarded rather than shortened.
+  - Greenhouse's questions come from its Job Board API, which states no limit: nothing changes
+    there.
+  - Never seen on a real page: how a real employer's server counts what it receives is unknown.

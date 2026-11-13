@@ -54,6 +54,8 @@ from app.modules.preparation.forms import (
     FormField,
     Option,
     normalize,
+    one_line_breaks,
+    sent_len,
 )
 from app.modules.profiles.models import Approval, TriState
 
@@ -447,6 +449,14 @@ def _unresolved(r: Resolution, f: FormField, why: str) -> Resolution:
     return r
 
 
+def _no_longer_fits(r: Resolution, why: str) -> Resolution:
+    """D158 (D78's rule): an answer you gave, for this application or saved for reuse, that no
+    longer fits the field is a checkpoint even where the question is optional: never sent, and
+    never left out without a word, since you chose to send it."""
+    r.explanation, r.status = why, "needs_user"
+    return r
+
+
 def _does_not_fit(r: Resolution, f: FormField, why: str) -> Resolution:
     """S4 (D54): the fact cannot go into this field as it is. Nothing is sent, no saved answer
     takes its place and nothing is saved; you answer it for this application (as for a fact
@@ -533,7 +543,7 @@ def _resolve_field(
     if inp is not None and r.user_input_allowed:
         err = validate_value(f, inp.value)
         if err:
-            return _unresolved(r, f, f"Your saved answer no longer fits this question: {err}")
+            return _no_longer_fits(r, f"Your saved answer no longer fits this question: {err}")
         r.status, r.value, r.display = "resolved", inp.value, display_value(f, inp.value)
         if inp.provenance == "draft_accepted" and getattr(inp, "stale", False):
             # A checkpoint even when optional: the user chose to include this text, and what it
@@ -750,7 +760,7 @@ def _phone_country(f: FormField, r: Resolution, ctx: Context) -> Resolution:
     if inp is not None:
         err = validate_value(f, inp.value)
         if err:
-            return _unresolved(r, f, f"Your saved answer no longer fits this question: {err}")
+            return _no_longer_fits(r, f"Your saved answer no longer fits this question: {err}")
         r.status, r.value, r.display = "resolved", inp.value, display_value(f, inp.value)
         r.source, r.explanation = "user_entered", "You chose this for this application."
         return r
@@ -869,7 +879,7 @@ def _location_search(f: FormField, r: Resolution, ctx: Context, intent: Intent) 
     if inp is not None and r.user_input_allowed:
         err = validate_value(f, inp.value)
         if err:
-            return _unresolved(r, f, f"Your saved answer no longer fits this question: {err}")
+            return _no_longer_fits(r, f"Your saved answer no longer fits this question: {err}")
         r.status, r.value, r.display = "resolved", inp.value, display_value(f, inp.value)
         r.source = "user_entered"
         r.explanation = "You answered this for this application." + _TYPED
@@ -1767,7 +1777,7 @@ def _from_bank(f: FormField, r: Resolution, ctx: Context) -> Resolution | None:
         value = entry.value
         err = validate_value(f, value)
         if err:
-            return _unresolved(r, f, f"Your saved answer does not fit this field: {err}")
+            return _no_longer_fits(r, f"Your saved answer does not fit this field: {err}")
     r.status, r.source, r.value = "resolved", "answer_bank", value
     r.display = display_value(f, value)
     r.explanation = "Your saved answer to this exact question."
@@ -1815,6 +1825,10 @@ def normalize_input(f: FormField, raw: dict) -> dict:
     text = raw.get("text")
     if not isinstance(text, str) or not text.strip():
         raise ValueError("expected non-empty text")
+    if any("\ud800" <= c <= "\udfff" for c in text):  # D158: half a character, never sent
+        raise ValueError("the text holds a broken character, which no form can send")
+    if f.type == FieldType.textarea:  # D158: line breaks as a text area holds them (LF)
+        text = one_line_breaks(text)
     value = {"text": text.strip()}
     err = validate_value(f, value)
     if err:
@@ -1865,8 +1879,16 @@ def validate_value(f: FormField, value: dict | None) -> str | None:
         t = value.get("text")
         if not isinstance(t, str) or not t.strip():
             return "expected text"
-        if f.max_length and len(t) > f.max_length:
-            return f"longer than the form allows ({len(t)}/{f.max_length} characters)"
+        # D158: a one-line box holds no line break (the browser makes each a space)
+        if f.type != FieldType.textarea and ("\n" in t or "\r" in t):
+            return "a line break, which this one-line box cannot hold"
+        # D158: counted as its form sends it (`sent_len`): a line break or a character outside
+        # the Basic Multilingual Plane counts 2, never less than the browser's own count
+        if f.max_length and sent_len(t) > f.max_length:
+            return (
+                f"longer than the form allows ({sent_len(t)}/{f.max_length} characters as "
+                "the form sends them: a line break or an emoji counts as two)"
+            )
         if f.type == FieldType.email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", t):
             return "not an email address"
         if f.type == FieldType.url and not re.match(r"^https?://", t):
