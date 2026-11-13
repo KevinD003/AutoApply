@@ -238,12 +238,12 @@ def comparable(fields: list[FormField]) -> dict[str, str]:
 
 def _as_on_page(f: FormField, on_page: dict[str, FormField]) -> FormField:
     """D159: a question as the page has it where the job data says nothing about it:
-      * refused, where its control on the page would not send exactly what is typed into it
-        (`forms.sent_otherwise`), whatever type the job data gives it: never filled, a required
-        one a checkpoint;
-      * held to the page's own length limit (`maxlength`, read as the browser reads it): the job
-        data states none, so a limit the page lowers is recorded when the form is read again,
-        rather than found only by the attempt. (Before D159 the page's limit was never read.)"""
+    * refused, where its control on the page would not send exactly what is typed into it
+      (`forms.sent_otherwise`), whatever type the job data gives it: never filled, a required
+      one a checkpoint;
+    * held to the page's own length limit (`maxlength`, read as the browser reads it): the job
+      data states none, so a limit the page lowers is recorded when the form is read again,
+      rather than found only by the attempt. (Before D159 the page's limit was never read.)"""
     page = on_page.get(f.key)
     if page is None:
         return f

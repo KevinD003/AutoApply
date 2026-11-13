@@ -219,8 +219,8 @@ def test_greenhouse_classic_keeps_its_cross_check_where_the_page_refuses_a_quest
     page control of another type (a list where the job data says text area) passed. They are
     compared as the page reads without D159's rule, then the refusal is taken."""
     api_json, html = gh_page()
-    textarea = html[html.index('<textarea id="question_7007"'):]
-    textarea = textarea[:textarea.index("</textarea>") + len("</textarea>")]
+    textarea = html[html.index('<textarea id="question_7007"') :]
+    textarea = textarea[: textarea.index("</textarea>") + len("</textarea>")]
     as_list = ('<select id="question_7007" name="question_7007" form="elsewhere">'
                '<option value="1">One</option></select>')  # fmt: skip
     with pytest.raises(gh.SchemaMismatch, match="1 different"):
@@ -328,9 +328,7 @@ def test_reading_the_form_again_records_the_new_limit_and_your_shorter_answer_is
 
 
 @pytest.mark.parametrize("mode", ["limit_on_input", "limit_on_focus"])
-def test_a_limit_lowered_while_the_answers_are_typed_never_gets_a_cut_answer(
-    api, receiver, mode
-):
+def test_a_limit_lowered_while_the_answers_are_typed_never_gets_a_cut_answer(api, receiver, mode):
     """The page lowers the limit once the first name is typed, after the form was checked, and
     saves "Why us" as it is typed: it is never typed (no save of it at all), and nothing is
     sent. Before D159 the page saved it cut (500 of its characters). D159 review: the same when
@@ -509,9 +507,7 @@ def gh_prepared(api, *, answer_7007=True) -> tuple[str, str]:
     return app_id, job_id
 
 
-def test_greenhouse_classic_pauses_on_a_limit_its_page_lowers_and_a_read_records_it(
-    api, receiver
-):
+def test_greenhouse_classic_pauses_on_a_limit_its_page_lowers_and_a_read_records_it(api, receiver):
     """D159 review: its own check of the page's limit was never run by a test. The page lowers
     "Why are you interested" to 20: D132's pause with nothing entered; reading the form again
     records the limit, ends the pause, and makes the answer yours to shorten."""
@@ -617,10 +613,20 @@ def test_the_form_is_read_as_the_browser_would_send_it_without_its_formdata_even
     page.set_content(ENTRIES_PAGE)
     got = page.locator("#app").evaluate(ENTRIES_JS)
     assert page.evaluate("() => window.fd") == 0  # nothing the page could act on
-    assert got == {"plain": ["typed"], "twin": ["one", "two"], "soft": ["a long line of text"],
-                   "hard": [None], "dir": ["x"], "dir.name": [None], "box_on": ["on"],
-                   "pick": ["b"], "list": ["2"], "many": ["1", "3"], "in_datalist": ["x"],
-                   "joined": ["from outside"]}
+    assert got == {
+        "plain": ["typed"],
+        "twin": ["one", "two"],
+        "soft": ["a long line of text"],
+        "hard": [None],
+        "dir": ["x"],
+        "dir.name": [None],
+        "box_on": ["on"],
+        "pick": ["b"],
+        "list": ["2"],
+        "many": ["1", "3"],
+        "in_datalist": ["x"],
+        "joined": ["from outside"],
+    }
     # Chromium's own entry list, for the same page: the same names, the same values (where the
     # passive read records None it cannot know them; the hard wrap's line breaks among them)
     real = page.evaluate("""() => { const out = {};
@@ -630,14 +636,17 @@ def test_the_form_is_read_as_the_browser_would_send_it_without_its_formdata_even
     assert set(real) == set(got)
     for name, values in got.items():
         assert [v for v in values if v is not None] == [
-            v for v, mine in zip(real[name], values, strict=True) if mine is not None]
+            v for v, mine in zip(real[name], values, strict=True) if mine is not None
+        ]
     assert real["hard"] != ["a long line of text"] and real["dir.name"] == ["ltr"]
 
 
 def test_a_work_entry_is_read_back_without_its_form_s_formdata_event(page):  # noqa: F811
     """D155's readback built a FormData too (the Workday-style wizard's work entries)."""
-    count = ("<script>window.fd = 0; document.querySelector('form')"
-             ".addEventListener('formdata', () => { window.fd++; });</script>")
+    count = (
+        "<script>window.fd = 0; document.querySelector('form')"
+        ".addEventListener('formdata', () => { window.fd++; });</script>"
+    )
     page.set_content(section_page(extra=count))
     entries = ws.plan(frozen_parts())
     ws.apply(page, entries, ROOT)
@@ -646,9 +655,11 @@ def test_a_work_entry_is_read_back_without_its_form_s_formdata_event(page):  # n
 
 
 def test_a_number_is_typed_and_read_back_exactly_in_the_browser(page):  # noqa: F811
-    page.set_content('<form id="application"><label for="s">Salary</label><input id="s" '
-                     'name="salary" type="number" step="any"><button type="submit">Go</button>'
-                     "</form>")
+    page.set_content(
+        '<form id="application"><label for="s">Salary</label><input id="s" '
+        'name="salary" type="number" step="any"><button type="submit">Go</button>'
+        "</form>"
+    )
     adapter = FixtureAtsAdapter.__new__(FixtureAtsAdapter)
     adapter.content = {"answers": [{"key": "salary", "type": "number",
                                     "value": {"number": 12345678}}]}  # fmt: skip
