@@ -9,6 +9,28 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Every other adapter stops at a value its box would cut, naming the limit, and types only into a box that has focus (D162, 2026-11-13; local only)
+
+Nothing here ran against a real page. Branch `base-limits`. The runs drive the API and the runner
+against the base stand-in, Greenhouse classic's and the Workday-style one (single page and wizard;
+the limits their scripts lower as a box gets focus, and their saves as you type, are fixture
+assumptions), with the receiver's ledger as the oracle (its acceptances, the page's saves, the
+pages a wizard sent); or fill each adapter's own stand-in page, or a page of the test's own, in
+Chromium, which is the oracle there. All in `tests/test_limit_stops.py`.
+
+| Claim | Test | Result |
+|---|---|---|
+| Before D162 filling went on past a withheld value, the stop naming no limit | `test_before_d162_filling_went_on_past_a_withheld_value_naming_no_limit` (2), `test_before_d162_greenhouse_classic_s_stop_named_no_limit` | the privacy acknowledgement after "Why us" entered and saved for an attempt certain to stop; no number in the stop |
+| Every adapter stops there, naming the limit | `test_a_value_its_box_would_cut_stops_filling_there_naming_the_limit` (2), `test_greenhouse_classic_stops_at_a_value_its_box_would_cut_naming_the_limit`, `test_each_adapter_stops_filling_at_a_value_its_box_would_cut` (5), `test_a_wizard_page_s_answer_its_box_would_cut_stops_before_the_page_is_sent` | `abandoned`, nothing accepted, no save of the answer or of any after it; the stop names 500, 20, 3 or 2; on the wizard no page sent |
+| A value that fits is typed | `test_a_value_that_fits_once_its_box_has_focus_is_typed` | both answers typed whole |
+| The stop carries the uploads before it | `test_each_adapter_s_stop_at_a_box_hands_back_the_uploads_made_before_it` (5), `test_a_workday_style_question_the_page_shows_hands_back_the_uploads_before_its_stop`, `test_the_pilot_s_stop_at_a_box_hands_back_the_uploads_made_before_it` (4) | the upload's evidence in the stop, for each adapter, a question the page shows, the pilot's limit and focus stops |
+| The live limit, as the browser reads it | `test_the_live_limit_is_read_through_the_browser_s_own_definitions`, `test_a_box_whose_type_the_browser_holds_to_no_limit_is_not_held_to_one`, `test_every_adapter_and_the_survey_read_the_limit_one_way` | `maxLength`, `localName`, `getAttribute`, `type` redefined on the box change nothing; a number box with `maxlength` held to none |
+| Typed only once the box has focus | `test_a_box_locked_for_a_moment_is_read_once_it_has_focus` (2), `test_a_box_locked_for_a_moment_is_typed_once_it_has_focus` (2), `test_a_box_that_never_gets_focus_is_never_typed_into` (3) | disabled or hidden for 400 ms: waited for, then stopped at its limit, or typed whole; inert, focus moved back at once, or kept in a dialog: `FocusStopped`, nothing typed anywhere |
+| A number and a date, as a text | `test_a_number_is_typed_only_into_a_box_that_holds_it_whole`, `test_a_date_is_typed_only_into_a_box_that_holds_it_whole` | a real number or date box typed whole; one made a text box with a limit as it gets focus: stopped, naming 3, nothing after it typed |
+| Work entries | `test_a_work_entry_its_box_would_cut_stops_naming_the_limit_and_records_nothing`, `test_a_work_entry_s_limit_is_read_once_its_box_has_focus_and_named`, `test_a_work_entry_s_limit_is_read_as_the_browser_reads_it`, `test_a_section_entry_s_box_is_checked_once_it_has_focus`, `test_a_refused_entry_is_never_recorded_as_entered_and_a_failed_one_is`, `test_the_pilot_s_entry_its_box_refuses_is_the_stop_that_names_it` (2), `test_a_section_s_refusal_before_typing_is_the_stop_that_names_it` | the Workday-style stop names 5 and says to shorten it in your profile, no entry recorded, the page with it never sent; the pilot's names 3 or the focus, carrying the uploads; a box refused before typing not recorded, one failed after typing recorded |
+| Every other flow unchanged | the suites the change touches; the regression set | pass (`docs/implementation-status.md`) |
+| Each part is needed | 25 changes, one at a time, the named tests run, the file restored (`docs/implementation-status.md`) | each fails the tests named for its part |
+
 ## The Greenhouse pilot holds an answer to the length limit its page shows (D161, 2026-11-13; local only)
 
 Nothing here ran against a real page. Branch `pilot-limits`. The runs drive the API and the
