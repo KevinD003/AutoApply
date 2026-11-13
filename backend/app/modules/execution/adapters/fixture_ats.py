@@ -8,12 +8,14 @@ from urllib.parse import urljoin, urlsplit
 from playwright.sync_api import Error as PWError
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PWTimeout
+from pydantic import ValidationError
 
-from app.modules.execution.adapters.form_entries import ENTRIES_JS, NAMES_JS, sends
+from app.modules.execution.adapters.form_entries import ENTRIES_JS, NAMES_JS, sends, unread
 from app.modules.execution.faults import fault
 from app.modules.preparation.forms import (
     BOT_CHECK_KEY,
     TEXT_TYPES,
+    ExtractionError,
     FieldType,
     FormSchema,
     extract_form_schema,
@@ -54,12 +56,14 @@ _HOLDS = """(els) => els.some((e) => {
 # D159: the character set the application form sends in: the first label of its `accept-charset`
 # the browser knows, else the page's own (`TextDecoder` names it as the browser does; building one
 # fires nothing).
-_FORM_CHARSET = """(f) => {
-  for (const t of (f.getAttribute('accept-charset') || '').split(/[\\t\\n\\f\\r ]+/)) {
+_FORM_CHARSET = """(f) => {  // D160: through the browser's definitions (named controls)
+  const charset = Element.prototype.getAttribute.call(f, 'accept-charset') || '';
+  for (const t of charset.split(/[\\t\\n\\f\\r ]+/)) {
     if (!t) continue;
     try { return new TextDecoder(t).encoding; } catch (e) { /* not a label: the next one */ }
   }
-  return document.characterSet.toLowerCase(); }"""
+  return Object.getOwnPropertyDescriptor(Document.prototype, 'characterSet').get
+    .call(document).toLowerCase(); }"""
 LIMIT_UNREADABLE = (
     "an answer is longer than the employer's page accepts ({limits} characters as the form sends "
     "them), a limit NoEfforts cannot read from the form: shorten the answer and approve it again, "
@@ -76,6 +80,40 @@ UNREAD_CONTROLS = (
     "builds with its own script, or gives the form from elsewhere on the page): what they hold "
     "would go with your application, unapproved. Apply on the employer's site"
 )
+# D160: the form the attempt reads cannot be singled out, or read at all: nothing it sends can
+# be checked. A plain stop (no pause).
+FORM_UNREADABLE = (
+    "the employer's application form cannot be read as the browser would send it: apply on "
+    "the employer's site"
+)
+# D160: the final click (or a wizard's Next) would submit another form than the one read, or to
+# another address, method, encoding or window than the form's own (the button's `form`,
+# `formaction`, `formmethod`, `formenctype`, `formtarget`).
+CLICK_ELSEWHERE = (
+    "the employer's submit button would send the application elsewhere than the form NoEfforts "
+    "read and checked (another form, address or window): apply on the employer's site"
+)
+# D160: a question NoEfforts leaves blank (refused, or one it cannot fill) already holds
+# something the page put there: the form would send it with the application, unapproved.
+REFUSED_HOLDS = (
+    "the employer's page has put something of its own in a question NoEfforts leaves blank, "
+    "which would be sent with your application: apply on the employer's site"
+)
+# D160: the button's form (a control's own property, never shadowed by the page's markup) must
+# be the one form the attempt read, and the button must not send it elsewhere.
+_CLICK_TARGET_JS = """(b, sel) => {
+  const forms = Document.prototype.querySelectorAll.call(document, sel);
+  if (forms.length !== 1 || b.form !== forms[0]) return false;
+  return !['formaction', 'formmethod', 'formenctype', 'formtarget']
+    .some((a) => Element.prototype.hasAttribute.call(b, a));
+}"""
+
+
+def file_alone(entries: dict | None, key: str) -> bool:
+    """D160: the form would send one entry under a file question's name, its file (the passive
+    read cannot know a file: None), and nothing else there (a control the page gives the form
+    under that name, which a read of the form may not show, or a hidden value of its own)."""
+    return entries is not None and entries.get(key, []) == [None]
 
 
 def number_text(n) -> str:
@@ -167,8 +205,13 @@ class FixtureAtsAdapter(ReportsDisclosures):
         return None
 
     def schema_matches(self, page: Page) -> str | None:
-        """None if the live form is the approved form; otherwise a reason."""
-        live = self.extract(page)
+        """None if the live form is the approved form; otherwise a reason. D160: a live form
+        that cannot be read at all (a control the page gives the form without a label, two
+        controls of one name) is a plain stop, never an internal error."""
+        try:
+            live = self.extract(page)
+        except (ExtractionError, ValidationError):
+            return FORM_UNREADABLE
         dest = self.content["destination"]
         if form_fingerprint(live) != dest["form_fingerprint"]:
             approved = {a["key"] for a in self.content["answers"]}
@@ -192,19 +235,61 @@ class FixtureAtsAdapter(ReportsDisclosures):
     # -- D159: what the page would make of the approved answers ------------------------------
     APPLICATION_FORM = "form#application"  # the form the final click submits
 
+    def form_selector(self) -> str:
+        return self.APPLICATION_FORM
+
     def _application_form(self, page: Page):
-        return page.locator(self.APPLICATION_FORM)
+        return page.locator(self.form_selector())
 
     def _sendable_now(self, page: Page, live: FormSchema) -> str | None:
         """D159, with the form (before anything is entered, and again after filling): the form's
         character set (`_charset_refused`), then each typed answer's limit (`_limits_fit`). D160:
         first, every control the form would send is one this read of the page (`live`) shows
-        (`_unread_controls`)."""
+        (`_unread_controls`), the final click would submit that form as it is
+        (`_click_target`), and no question NoEfforts leaves blank holds anything
+        (`_refused_holding`)."""
         return (
             self._unread_controls(page, live)
+            or self._click_target(page, self.final_button(page))
+            or self._refused_holding(page)
             or self._charset_refused(page)
             or self._limits_fit(page)
         )
+
+    def _click_target(self, page: Page, button, required: bool = False) -> str | None:
+        """D160: the button a click is made on submits its own form (`button.form`), which may
+        not be the one checked, and its own attributes may send it elsewhere. So it must belong
+        to the application form, the one form `form_selector` finds, and change nothing about
+        where or how it is sent. Before filling a button the page does not show yet (a wizard's
+        last) is left to the checks before the send gate, where it is `required`."""
+        try:
+            if button is None or button.count() != 1:
+                return SUBMIT_UNIDENTIFIED if required else None
+            return (
+                None
+                if button.evaluate(_CLICK_TARGET_JS, self.form_selector())
+                else (CLICK_ELSEWHERE)
+            )
+        except PWError:
+            return FORM_UNREADABLE
+
+    def _reads_refused(self, a: dict) -> bool:
+        """Whether the readback requires this answer's question to hold nothing: every
+        question NoEfforts does not fill (D159)."""
+        return a["type"] == FieldType.unsupported.value
+
+    def _refused_holding(self, page: Page) -> str | None:
+        """D160: a question NoEfforts leaves blank that already holds something the page put
+        there (text the page wrote in a control it gives the form): the readback would find it
+        only after every answer was entered (and a page that saves as you type kept them), so it
+        is checked before anything is entered too. A plain stop."""
+        try:
+            for a in self.content["answers"]:
+                if self._reads_refused(a) and page.eval_on_selector_all(_sel(a["key"]), _HOLDS):
+                    return REFUSED_HOLDS
+        except PWError:
+            return FORM_UNREADABLE
+        return None
 
     def _unread_controls(self, page: Page, live: FormSchema) -> str | None:
         """D160: the form sends every control in its own list (`form.elements`), wherever the
@@ -213,12 +298,17 @@ class FixtureAtsAdapter(ReportsDisclosures):
         a form-associated custom element (it sends what its script sets, under any name), or a
         control the browser gives the form that its markup does not hold. Counted passively
         (`NAMES_JS`), whatever each holds now; a section's entries are read by their own checks
-        (D149). A form that cannot be found is left to the readback, as `_charset_refused`."""
-        form = self._application_form(page)
-        if form.count() != 1:
-            return None
-        got = form.evaluate(NAMES_JS, [s.root for s in live.sections])
-        n = len(set(got["names"]) - {f.key for f in live.fields}) + got["custom"]
+        (D149). A form that cannot be singled out, or read, is a plain stop: nothing it would
+        send could be checked (D160 review: left to the readback, an attempt entered everything
+        first, and the check after filling runs after the readback)."""
+        try:
+            form = self._application_form(page)
+            if form.count() != 1:
+                return FORM_UNREADABLE
+            got = form.evaluate(NAMES_JS, [s.root for s in live.sections])
+        except PWError:
+            return FORM_UNREADABLE
+        n = unread(got, live.fields)
         return UNREAD_CONTROLS.format(n=n) if n else None
 
     def _charset_refused(self, page: Page) -> str | None:
@@ -394,8 +484,10 @@ class FixtureAtsAdapter(ReportsDisclosures):
             self._progress()
             key, t, v = a["key"], a["type"], a["value"]
             loc = page.locator(_sel(key))
-            if t == "file":
-                ok = v is None or bool(page.locator("#resume_upload_id").input_value())
+            if t == "file":  # D160: and its form sends that file alone under its name
+                ok = (v is None or bool(page.locator("#resume_upload_id").input_value())) and (
+                    file_alone(entries, key)
+                )
             elif t == FieldType.unsupported.value:
                 ok = not page.eval_on_selector_all(_sel(key), _HOLDS) and sends(entries, key, "")
             elif t == "radio":
@@ -481,7 +573,7 @@ class FixtureAtsAdapter(ReportsDisclosures):
         button's form, `_REFUSAL_JS`); or the page could not be read (fail closed). Each is a
         stop with nothing sent, where the click would have been refused after the send gate (an
         unknown outcome, or a rejection after `sending`)."""
-        return would_refuse(
+        return self._click_target(page, self.final_button(page), required=True) or would_refuse(
             lambda: self.final_button(page), lambda: self.leave_out(page), FINAL_CLICK
         )
 
@@ -642,7 +734,11 @@ _REFUSAL_JS = """(b, arg) => {
   if (!form) return null;
   const submits = (b.localName === 'button' && b.type === 'submit')
     || (b.localName === 'input' && (b.type === 'submit' || b.type === 'image'));
-  const native = submits && !form.noValidate && !b.formNoValidate;
+  // D160: the form's own properties through the browser's definitions (its named controls
+  // shadow them: a control named "elements" would leave nothing to read)
+  const P = HTMLFormElement.prototype, d = (k) => Object.getOwnPropertyDescriptor(P, k).get;
+  const elements = d('elements').call(form);
+  const native = submits && !d('noValidate').call(form) && !b.formNoValidate;
   const shown = (e) => {
     if (e.closest('[inert], [aria-hidden="true"]')) return false;
     return e.checkVisibility
@@ -669,7 +765,7 @@ _REFUSAL_JS = """(b, arg) => {
     radios.add(e.name);
     return true;
   };
-  for (const e of form.elements) {
+  for (const e of elements) {
     if (out(e) || !inScope(e)) continue;
     const v = e.validity;
     // a form-associated custom element exposes no validity of its own: its state is :invalid
@@ -684,8 +780,8 @@ _REFUSAL_JS = """(b, arg) => {
     else if (value) n.refused++;
     else n.marked++;
   }
-  const marks = new Set(form.querySelectorAll('[aria-invalid]'));
-  for (const e of form.elements) if (e.hasAttribute('aria-invalid')) marks.add(e);
+  const marks = new Set(Element.prototype.querySelectorAll.call(form, '[aria-invalid]'));
+  for (const e of elements) if (e.hasAttribute('aria-invalid')) marks.add(e);
   const flagged = [...marks].filter((e) => !out(e) && inScope(e) && !counted.includes(e)
     && !nearFocus(e)
     && (e.getAttribute('aria-invalid') || '').trim().toLowerCase() === 'true' && shown(e))

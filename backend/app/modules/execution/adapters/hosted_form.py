@@ -27,6 +27,7 @@ from app.modules.execution.adapters.fixture_ats import (
     FixtureAtsAdapter,
     Outcome,
     UploadFailed,
+    file_alone,
     upload_evidence,
 )
 from app.modules.execution.adapters.greenhouse import BOT_CHECK_AFTER_CLICK, CHALLENGE_SELECTORS
@@ -56,8 +57,8 @@ class HostedFormAdapter(FixtureAtsAdapter):
     def blocked_reason(self, page: Page) -> str | None:
         return BOT_CHECK if page.locator(CHALLENGE_SELECTORS).count() else None
 
-    def _application_form(self, page: Page):
-        return page.locator(self.FORM)  # D159: what it would send is read from it
+    def form_selector(self) -> str:
+        return self.FORM  # D159: what it would send is read from it; D160: and what is clicked
 
     def schema_matches(self, page: Page) -> str | None:
         reason = super().schema_matches(page)  # fingerprint and submit address
@@ -126,6 +127,7 @@ class HostedFormAdapter(FixtureAtsAdapter):
         unsupported one is read as the base adapter reads it, whatever its control (a box, a
         list, a group), and as its form would send it."""
         bad, plain = [], []
+        entries = None
         for a in self.content["answers"]:
             self._progress()
             key = a["key"]
@@ -135,7 +137,15 @@ class HostedFormAdapter(FixtureAtsAdapter):
                 status = page.locator(self._status(key))
                 shown = (status.evaluate("(s, ok) => s.dataset[ok] || ''", self.STATUS_OK)
                          if status.count() else "")  # fmt: skip
-                if (a["value"] is None) != (got == "") or (got and got != shown):
+                if entries is None:
+                    entries = self._form_entries(page)
+                if (
+                    (a["value"] is None) != (got == "")
+                    or (got and got != shown)
+                    or (
+                        not file_alone(entries, key)  # D160: its form sends the file alone
+                    )
+                ):
                     bad.append(key)
             else:
                 plain.append(a)

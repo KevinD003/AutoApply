@@ -511,15 +511,48 @@ def page_form(slug, token, cfg):
         js_extra += ("{ let done = false; document.getElementById('why_us').addEventListener("
                      "'input', () => { if (done) return; done = true; document.getElementById("
                      "'fx-extra').setAttribute('form', 'application'); }); }\n")
-    if sends in ("custom_control", "custom_entries"):
-        named = sends == "custom_control"
-        extra += '<fx-note name="note"></fx-note>' if named else "<fx-note></fx-note>"
+    if sends in ("custom_control", "custom_entries", "custom_on_input", "custom_clobbered"):
+        named = sends != "custom_entries"
         value = (f"'{page_text}'" if named else
                  f"(() => {{ const d = new FormData(); d.append('why_us', '{page_text}');"
                  " return d; })()")
         js_extra += ("customElements.define('fx-note', class extends HTMLElement {"
                      " static formAssociated = true; connectedCallback() {"
                      f" this.attachInternals().setFormValue({value}); }} }});\n")
+        if sends == "custom_on_input":  # added to the form once "Why us" is typed
+            js_extra += ("{ let done = false; document.getElementById('why_us').addEventListener("
+                         "'input', () => { if (done) return; done = true; const n = document"
+                         ".createElement('fx-note'); n.setAttribute('name', 'note');"
+                         " document.getElementById('why_us').after(n); }); }\n")
+        else:
+            extra += '<fx-note name="note"></fx-note>' if named else "<fx-note></fx-note>"
+        if sends == "custom_clobbered":  # a control named as the form's own property
+            extra += ('<label for="fx-elements">Elements (optional)</label>'
+                      '<select id="fx-elements" name="elements"><option value="">Select...</option>'
+                      '<option value="a">A</option></select>')
+    # D160 reviews: a control the HTML parser gives the form outside its markup (the div holding
+    # the form closes inside it); one hidden in the form under the résumé's name; a submit button
+    # that sends another form, or to another address; a second form of the application's id.
+    before_form = form_tail = button_attrs = ""
+    if sends in ("stray_twin", "stray_hidden"):
+        before_form = "<div>"
+        hidden = ' type="hidden"' if sends == "stray_hidden" else ""
+        form_tail = f'</div><input{hidden} name="{"resume" if hidden == "" else "extra"}" value="{page_text}">'
+    if sends == "hidden_twin":
+        extra += f'<input type="hidden" name="resume" value="{page_text}">'
+    if sends == "button_other_form":
+        button_attrs = ' form="fx-other"'
+        outside += (f'<form id="fx-other" action="/apply/{slug}/submit" method="post">'
+                    f'<input type="hidden" name="note" value="{page_text}"></form>')
+    if sends == "button_formaction":
+        button_attrs = f' formaction="/apply/{slug}/elsewhere"'
+    if sends == "two_forms":
+        outside += '<form id="application"></form>'
+    if sends == "outside_unlabelled":
+        outside += f'<input name="extra" form="application" value="{page_text}">'
+    if sends == "given_twin":  # given to the form under the résumé question's own name
+        outside += ('<label for="fx-twin">Resume text</label>'
+                    f'<input id="fx-twin" name="resume" form="application" value="{page_text}">')
     # D154: a button of the form that is not its submit button (the final click is still one)
     other_button = ""
     if cfg.get("page_check") == "other_button":
@@ -543,7 +576,7 @@ def page_form(slug, token, cfg):
 </head><body>
 <p role="note"><strong>SYNTHETIC TEST RECEIVER.</strong> Fictional employer. Never deploy.</p>
 <h1>Clinic Assistant — Example Health Clinic (fictional)</h1>
-<form id="application" method="post" action="/apply/{slug}/submit" enctype="multipart/form-data"{form_attrs}>
+{before_form}<form id="application" method="post" action="/apply/{slug}/submit" enctype="multipart/form-data"{form_attrs}>
 <input type="hidden" name="form_token" value="{token}">
 <input type="hidden" name="resume_upload_id" id="resume_upload_id" value="">
 <section data-step="Personal information">
@@ -593,8 +626,8 @@ def page_form(slug, token, cfg):
 <section data-step="Review">
 <label><input type="checkbox" name="privacy_ack" required> I have read and agree to the privacy notice.</label>
 </section>
-{other_button}<button type="submit" id="submit-application">Submit application</button>
-</form>
+{other_button}<button type="submit" id="submit-application"{button_attrs}>Submit application</button>
+{form_tail}</form>
 {outside}
 {hostile}
 <script>

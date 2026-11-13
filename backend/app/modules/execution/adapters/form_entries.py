@@ -21,12 +21,24 @@ here can make them say anything (a limit recorded in D159).
 D160: a form-associated custom element is named by its `name` attribute (it has no `name`
 property of its own unless its script defines one). It may also send entries under any names its
 script chooses (a list of entries as its value), which no passive read can know: `NAMES_JS`
-counts every one, and the runner stops before anything is entered when the form holds one."""
+counts every one, and the runner stops before anything is entered when the form holds one.
+The form's own properties are read through the browser's definitions (`ELEMENTS`): a control
+the page names "elements" (or "getAttribute") replaces the form's property of that name, which
+would make a read see nothing (measured by D160's reviews)."""
 
-ENTRIES_JS = """(f) => {
+from app.modules.preparation.forms import FieldType
+
+# D160: the form's controls, whatever its own controls are named (a form's named controls shadow
+# its properties, so `f.elements` may be a control of the page's).
+ELEMENTS = "Object.getOwnPropertyDescriptor(HTMLFormElement.prototype, 'elements').get.call(f)"
+
+ENTRIES_JS = (
+    """(f) => {
   const out = {};
   const add = (k, v) => { (out[k] = out[k] || []).push(v); };
-  for (const e of f.elements) {
+  for (const e of """
+    + ELEMENTS
+    + """) {
     const tag = e.localName;
     if (tag === 'fieldset' || tag === 'object' || tag === 'output' || tag === 'button') continue;
     const custom = tag.includes('-');  // D160: named by its attribute
@@ -51,29 +63,58 @@ ENTRIES_JS = """(f) => {
   }
   return out;
 }"""
+)
 
 # D160: every control the form would send, whatever it holds now (empty, unchecked or disabled:
-# the page may fill, check or enable it), by name: the names a read of the page must show. Not
-# the page's technical values (hidden inputs) nor its buttons (only the one clicked is sent), as
-# a read leaves them too; nor a control inside one of `roots` (a section whose entries their own
-# reads check, D149). A form-associated custom element is counted, not named: it sends what its
-# script sets, under names no read can know.
-NAMES_JS = """(f, roots) => {
-  const names = new Set();
-  let custom = 0;
-  for (const e of f.elements) {
+# the page may fill, check or enable it), counted by name: what a read of the page must show
+# (`unread`). Not its buttons (only the one clicked is sent), nor the page's technical values
+# (hidden inputs), as a read leaves them too; nor a control inside one of `roots` (a section
+# whose entries their own reads check, D149). Counted apart: a form-associated custom element
+# (`custom`: it sends what its script sets, under names no read can know); and a control the
+# browser gives the form although it is outside the form's markup and names no form (`stray`:
+# the HTML parser's doing, `<div><form>..</div><input>`, which no read of the markup can show),
+# a hidden one too.
+NAMES_JS = (
+    """(f, roots) => {
+  const counts = {};
+  let custom = 0, stray = 0;
+  for (const e of """
+    + ELEMENTS
+    + """) {
     const tag = e.localName;
     if (tag.includes('-')) { custom += 1; continue; }
     if (tag === 'fieldset' || tag === 'object' || tag === 'output' || tag === 'button') continue;
-    const name = e.getAttribute('name');
-    if (!name || roots.some((r) => e.closest(r))) continue;
-    if (tag === 'input' && ['submit', 'reset', 'button', 'image', 'hidden'].includes(e.type)) {
+    const type = tag === 'input' ? e.type : tag;
+    const name = Element.prototype.getAttribute.call(e, 'name');
+    if (!name || ['submit', 'reset', 'button', 'image'].includes(type)) continue;
+    if (!Node.prototype.contains.call(f, e) && !Element.prototype.hasAttribute.call(e, 'form')) {
+      stray += 1;
       continue;
     }
-    names.add(name);
+    if (type === 'hidden' || roots.some((r) => e.closest(r))) continue;
+    counts[name] = (counts[name] || 0) + 1;
   }
-  return {names: [...names], custom};
+  return {counts, custom, stray};
 }"""
+)
+# A question read as one control (a typed answer, a list, a box, a file); a group of choices,
+# or a refused question (a group too, maybe), may have several of its name.
+_SEVERAL = frozenset({FieldType.radio, FieldType.checkbox_group, FieldType.unsupported})
+
+
+def unread(got: dict, fields) -> int:
+    """D160: how many controls the form would send that the read of the page (`fields`, its
+    questions) does not show: under a name it does not read; beyond the one control of a
+    question it reads as one (a second control under a file's or a typed answer's name, which
+    no readback of that question would see); and every `custom` and `stray` one (`NAMES_JS`)."""
+    read = {f.key: f.type for f in fields}
+    n = got["custom"] + got["stray"]
+    for name, count in got["counts"].items():
+        if name not in read:
+            n += count
+        elif read[name] not in _SEVERAL:
+            n += count - 1
+    return n
 
 
 def sends(entries: dict | None, key: str, want: list[str] | str) -> bool:
