@@ -87,6 +87,7 @@ page. `scripts/validate.sh all` was not run (it runs the whole backend and e2e s
 | Each part changed in turn | 25 changes on a52cc10, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 25 fail the tests named for their part (52 of the 72 named tests, over the runs); each file restored, the tree clean after. Nothing left out: the uploads a stop carries are observed by calling each adapter's own `fill` |
 | The regression set | `pytest` on 89 files (D161's 88 with `test_limit_stops.py`; JUnit), in a copy of the branch at a52cc10 | exit 0, 2840 passed (87 minutes) |
 | After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_limit_stops.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 88 passed in 75 s; ruff formatted nothing, found nothing, and the format check passed |
+| After the pull request was opened | `test_greenhouse_sections_browser.py` among D163's related suites on d8d4abe (D162 unchanged in it); after the fix (`NotChosen`), the Greenhouse section suites, `test_section_widgets.py`, `test_section_list_settle.py`, `test_limit_stops.py` and `test_pilot_limits.py` (9 files, JUnit); ruff | exit 1: 1 failed (a pilot's education list recorded as entered when none of its options was chosen; D162 says why); then exit 0, 254 passed; ruff clean |
 
 ## The Greenhouse pilot holds an answer to the length limit its page shows (D161, 2026-11-13; local only)
 

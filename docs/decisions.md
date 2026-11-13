@@ -8147,7 +8147,9 @@ audit-inventory and export-completeness guards are updated and pass.
     through `fixture_ats.section_not_typed`, where it read "an entry did not appear or did not
     keep its value" (Workday-style) or "does not read back the approved value" (the pilot). A box
     refused before anything was typed is not recorded as entered; one that failed after typing
-    still is (the page may hold it, D137).
+    still is (the page may hold it, D137). Nor is a pilot's list (a combobox) left before any of
+    its options was clicked (`NotChosen`: none matching, its list unsettled or changed); one whose
+    choice does not show after the click still is.
   - **Wording** (review): `LIMIT_AT_FOCUS` ends "shorten it, or apply on the employer's site";
     it said "and approve it again", which a wizard's stop (pages already sent) does not allow.
   - **The stand-ins** (FIXTURE ASSUMPTIONS, reset between tests): Greenhouse classic's
@@ -8186,6 +8188,11 @@ audit-inventory and export-completeness guards are updated and pass.
     `localName` through the element failed no test: tested now.
   - **Both noted, recorded below:** a page that redefines what the read uses for every element;
     `LIMIT_UNREADABLE`'s wording after a wizard's Next (before D162).
+  - **After the pull request was opened:** D120's own test of a stop in the middle of a section
+    (`test_greenhouse_sections_browser.py`, which neither the suites run here nor the regression
+    set ran) found that the fix round recorded a pilot's education list as entered when none of
+    its options was chosen (a school no option reads): nothing of the value had reached the page.
+    Fixed (`NotChosen`).
   - **The removal runs** (25 changes on a52cc10, each part changed in turn): each fails the
     tests named for its part (52 of the 72 named tests, over the runs); the uploads a stop
     carries, which D161 could not observe through the runner, are observed by calling each

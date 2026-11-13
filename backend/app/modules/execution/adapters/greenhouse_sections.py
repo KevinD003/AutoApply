@@ -361,6 +361,13 @@ class NotTyped(SectionFillError):
         self.limit = limit
 
 
+class NotChosen(SectionFillError):
+    """D162: a list (a combobox) left before any of its options was clicked: no single option
+    reads the approved text, its list did not settle or changed, or the option is not shown or
+    records another id. Nothing of the value was given to the page, so the control is never
+    recorded as entered (`apply_section_plan`); the stop is the section's, as before."""
+
+
 def check_at_focus(loc, text: str, timeout_ms: int, what: str) -> None:
     """D162: an entry's box given focus and its limit read then, as an answer's box is
     (`fixture_ats.limit_at_focus`): NotTyped when it never got focus, or would cut `text`
@@ -550,7 +557,7 @@ def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
     loc.scroll_into_view_if_needed(timeout=timeout_ms)
     cid = loc.get_attribute("id") or ""
     if not cid or page.evaluate(ro._PRE_JS, cid) is None:  # the probe's record starts here
-        raise SectionFillError(f"{selector}: cannot be found by its id")
+        raise NotChosen(f"{selector}: cannot be found by its id")
     data: list = []
     done: set[int] = set()
 
@@ -568,7 +575,7 @@ def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
     try:
         pre = page.evaluate(ro._PROBE_JS, cid)
         if pre is None:
-            raise SectionFillError(f"{selector}: cannot be found by its id")
+            raise NotChosen(f"{selector}: cannot be found by its id")
         loc.click(timeout=timeout_ms)
         got = page.evaluate(_LIST_JS, cid)
         if got is None or not got["named"] or not got["open"]:
@@ -578,26 +585,26 @@ def _select_combobox(page, selector: str, want_text: str, want_id: str | None,
                 box.first.click(timeout=timeout_ms)
         try:
             options = _settled_list(page, selector, cid, pre, data, done, late)
-        except SectionFillError:
+        except SectionFillError as e:
             _close_list(page, loc)
-            raise
+            raise NotChosen(str(e)) from e
         hits = [k for k, (text, _, _) in enumerate(options) if text == want_text]
         if len(hits) != 1:
             _close_list(page, loc)
             n = len(hits)
-            raise SectionFillError(f"{selector}: {n} options read the approved text exactly")
+            raise NotChosen(f"{selector}: {n} options read the approved text exactly")
         _, exposed, shown = options[hits[0]]
         if not shown:
             _close_list(page, loc)
-            raise SectionFillError(f"{selector}: the approved option is not shown")
+            raise NotChosen(f"{selector}: the approved option is not shown")
         if want_id is not None and exposed is not None and exposed != want_id:
             _close_list(page, loc)
-            raise SectionFillError(f"{selector}: the approved option records another id")
+            raise NotChosen(f"{selector}: the approved option records another id")
         choice = page.evaluate_handle(_CHOICE_JS, [cid, hits[0]])
         option = choice.get_property("el").as_element()
         if choice.get_property("options").json_value() != options or option is None:
             _close_list(page, loc)
-            raise SectionFillError(f"{selector}: its list changed before the choice")
+            raise NotChosen(f"{selector}: its list changed before the choice")
         option.click(timeout=timeout_ms)
     finally:
         page.remove_listener("request", on_request)
@@ -657,8 +664,8 @@ def apply_section_plan(
                 refused = False
                 try:
                     _apply_op(page, op, timeout_ms, late)
-                except NotTyped:
-                    refused = True  # D162: refused before anything was typed: nothing to record
+                except (NotTyped, NotChosen):
+                    refused = True  # D162: nothing was typed or chosen: nothing to record
                     raise
                 finally:  # D162 review: the page may hold it, or part of it, whatever else happened
                     if not refused:
