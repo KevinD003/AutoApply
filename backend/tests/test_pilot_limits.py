@@ -191,7 +191,7 @@ def test_the_pilot_records_a_typed_question_s_limit_as_the_browser_reads_it(writ
 @pytest.mark.parametrize(
     "type_, want",
     [("text", 3), ("search", 3), ("SEARCH", 3), ("url", 3), ("tel", 3), ("email", 3),
-     ("number", None)],
+     ("number", None), ("NUMBER", None)],
 )  # fmt: skip
 def test_a_limit_is_recorded_only_where_the_browser_holds_typing_to_it(type_, want):
     """The LinkedIn question on another kind of input: `maxlength` limits nothing typed into a
@@ -488,11 +488,27 @@ def test_the_survey_reports_each_typed_question_s_limit_as_the_browser_and_captu
     assert receiver.ledger()["disclosures"] == []
 
 
-def test_the_survey_reads_the_page_as_served_as_the_capture_decodes_it(receiver, survey):
-    """D161 review: one byte that is no UTF-8 in the page as served; the capture decodes it
-    replacing it, and so does the survey (a strict read gave "not_observable")."""
+def test_the_survey_reads_a_page_served_with_a_byte_that_is_no_utf8(receiver, survey):
+    """One byte that is no UTF-8 in the page as served: read as the capture reads it. (Chromium
+    hands Playwright a document's body decoded, the byte already replaced; measured.)"""
     receiver.config(gh2_bad_byte=True, gh2_limits={NAME: "3"})
     assert survey()[NAME] == {"browser_reads": 3, "capture_records": 3}
+
+
+def test_the_page_as_served_is_decoded_as_the_capture_decodes_it():
+    """D161 review: as `live.read_posting` decodes it, a byte that is no UTF-8 replaced, never a
+    strict read (which would leave the survey nothing to read), whatever body the browser hands
+    over."""
+
+    class Served:
+        def body(self) -> bytes:
+            return b'<input id="a" maxlength="3">\xff'
+
+        def text(self) -> str:  # Playwright's own: strict
+            return self.body().decode()
+
+    assert ro._served_html(Served()) == '<input id="a" maxlength="3">\ufffd'
+    assert ro._served_html(None) is None
 
 
 def test_the_survey_says_which_typed_question_has_no_control_to_read(receiver, survey):
@@ -515,6 +531,10 @@ def test_the_survey_says_what_it_could_not_read_of_the_page_as_served(
 CASES = [  # (markup, a value to type): the browser's own behaviour is the oracle
     ('<input id="c" maxlength="3">', "abcdef"),
     ('<input id="c" type="TEXT" maxlength="3">', "abcdef"),
+    ('<input id="c" type="NUMBER" maxlength="3">', "123456"),  # case aside, a number
+    # ASCII case-folding only: with the Kelvin sign, a type the browser does not know (text),
+    # which Unicode's lowercasing would read as "checkbox"
+    ('<input id="c" type="chec\u212abox" maxlength="3">', "abcdef"),
     ('<input id="c" type="foo" maxlength="3">', "abcdef"),
     ('<input id="c" type="search" maxlength="3">', "abcdef"),
     ('<input id="c" type="url" maxlength="3">', "abcdef"),
