@@ -7438,3 +7438,113 @@ audit-inventory and export-completeness guards are updated and pass.
     timer, one passing with either read, one covering one read's stop only; wording.
   - Each is fixed with a test (04350e6, f75f728), or recorded above.
 - **Evidence (local only):** `tests/test_wizard_next_checks.py`, 26 tests (14 through the runner against the Workday-style stand-in's wizard, with the receiver's ledger as the oracle; 12 on pages set in Chromium); the 11 suites the change touches; 17 removal runs, each failing the test named for its part; the regression set of 83 files. Results by commit in `docs/implementation-status.md`, claims in `docs/evidence-matrix.md`.
+
+## D157 — A Workday-style work entry's length limits are read, and your record held to them (2026-11-13)
+
+- **Context:** rank 24 of the automation loop (`docs/automation-loop.md`), D155's limit ("a
+  page's limit on a role description's length; it is still refused at capture") and D149's
+  rule that a constraint on a typed value made the form one checkpoint. Local stand-ins only;
+  nothing real was run. No migration, no new state, reason code, gate, permission or retry.
+- **Problem:**
+  - A Workday-style Work Experience entry whose typed part carries a length limit (`maxlength`)
+    made the whole form one checkpoint (`WORK_KEY`: apply on the employer's site), even when
+    every value of your work history fits.
+  - Typed past its limit, a value is cut by the browser without a word. D155's readback finds
+    it, but only on that page, after the wizard's earlier pages were sent.
+- **Decided:**
+  - **Capture** (`preparation/workday.py`): a `maxlength` on an entry's typed part (Job Title,
+    Company, Location, Role Description) is read into `SectionSpec.limits`, keyed by the frozen
+    row's field names (`company_name`, `description`, `location`, `title`;
+    `forms.LIMITED_FIELDS`), written and fingerprinted only when set, so every other section's
+    stored schema and fingerprint are unchanged. It is read only as the browser reads it:
+    ASCII digits with ASCII whitespace around them, from 1 to 2,147,483,647 (the largest
+    Chromium reads, `forms.MAX_LIMIT`). Still refused when the form is read (one checkpoint):
+    0, an empty value, a sign, any other character or another script's digits, a larger
+    number, a limit on the box, a date limit below 7 (MM/YYYY could not be typed whole), and an
+    entry control that writes any attribute twice (the browser keeps the first, the reader the
+    last; `_Node.twice`). A date limit of 7 or more is accepted and never recorded: MM/YYYY fits
+    it. `minlength` and `pattern` stay refused, now on an entry already on the page too (before
+    D157, on the template only). An entry already on the page whose recorded limits differ from
+    the template's is refused: NoEfforts fills it in place, as resolved for the template.
+  - **Counting** (`forms.sent_len`): a length is counted as the form sends it: UTF-16 code
+    units, as the browser counts for `maxlength` (a character outside the Basic Multilingual
+    Plane counts 2), and each line break as the two the form sends (CRLF), where the browser
+    counts one. That is never less than the browser's own count, so a value within a limit by
+    it is kept whole by the page and fits a server that counts what it receives. Measured by
+    both reviews in Chromium 141 (Playwright `fill`): a text area's line break counts 1 for
+    `maxlength`, a character outside the plane 2 and never split; nothing is normalised;
+    `FormData` and a native submission both send CRLF.
+  - **Resolution** (`structured_sections._within`): a resolved field longer than its limit
+    becomes yours to shorten (`needs_user`: "The employer's form accepts at most N characters
+    for the job title, and this record's has M (a line break or an emoji counts as two);
+    shorten it in your profile."), which blocks approval as any section checkpoint does; never
+    cut, its text never in the message. Limits on a field the section does not know, on a part
+    the entry does not ask, out of range, or on any section but employment make the section
+    unsupported (a checkpoint), never a guess.
+  - **The package** (`package._resolve_sections`) freezes the section's `limits` (sorted, only
+    when set).
+  - **Frozen content** (`greenhouse_sections.validate_content_section`): `limits` is accepted
+    only on an employment section, as a non-empty mapping of known fields the section asks to
+    whole numbers in range; a resolved value longer than its limit is refused, whatever froze
+    it. Greenhouse's executor (`plan_content_section`) refuses any section with limits: its
+    form never states them.
+  - **Entering** (`execution/adapters/workday_sections.py`): the plan refuses a value longer
+    than its frozen limit (defence in depth, past the content check). Right before each value
+    is typed, the control's own limit (`maxLength`) is read and a value longer than it (as its
+    form sends it) is never typed: a limit a page's script sets on the entry it adds, after the
+    form was read, stops the entry before anything cut is entered, where a page that saves as
+    you type would have saved it cut. D155's readback still requires every value exactly.
+  - The manual form endpoint refuses `limits` set by hand (as `parts`, `widget`, `wizard`).
+  - **The generic form reader** (`forms.extract_form_schema`, every provider's ordinary
+    questions; found by the review): a `maxlength` written with a superscript digit or with more
+    digits than Python converts no longer fails the read of the form, and another script's
+    digits, which the browser does not read, are no longer read as a number (`_whole_number`).
+    A limit of 0 or above 100,000 (some page frameworks write 524288), which failed `FormField`
+    and so the whole read of the form (older than D157), is not recorded now (45937de, found
+    while checking that claim); the readback still stops a value the browser cut.
+- **What an approved run now does differently:** a Workday-style form whose entry limits its
+  typed parts is no longer one checkpoint: your work history is sent where every value fits
+  as its form sends it, and a value that does not is yours to shorten before approval. A form
+  captured before D157 keeps its fingerprint and package hash, except two kinds, which now read
+  as changed at their next run (D132's pause): one whose entry already on the page carried
+  `minlength`, `pattern` or a recorded limit the template did not (accepted before D157, when a
+  value longer than such a limit would have been cut, then stopped by the readback), and one
+  whose entry control writes an attribute twice.
+- **`SCHEMA_VERSION` stays 3, deliberately:** only a section whose page limits its entries
+  carries `limits`, so every other package has the same content and hash as before; the new
+  paths are recorded under version 3 in `tests/test_package_contract.py`
+  (`.sections[].limits.{company_name,description,location,title}`), as D142, D149 and D155
+  recorded theirs. A Workday-style package with such a section is built with them from D157 on;
+  its approval is the application's (D132), and a rebuild that changes it retires the approval
+  as any content change does.
+- **The stand-in** (FIXTURE ASSUMPTION FA7, `fixtures/ats_receiver/workday_like.py`): variant
+  `experience_limits` (each typed part limited, `WORK_LIMITS`; the page's own checks enforce
+  the limits on what they receive, a line break sent as CRLF counting 2, as a server would) and
+  `experience_limits_at_load` (an entry already on the page whose Role Description is limited
+  otherwise). D149's `maxlength` case in `test_workday_experience.py` is now `minlength`.
+- **Reviews:** two independent reviews of the first version (36be30b), no blocker in either.
+  - Both found the line-break count: a role description within the browser's count but not
+    what its form sends was approved, then refused by the page's own check after pages 1 and 2
+    were sent (run to `abandoned`); and that capture read a `maxlength` written twice, or after
+    a space other than ASCII, otherwise than the browser.
+  - The first also found the executor's own check unreachable through the plan, its UTF-16
+    count untested, the manual endpoint's refusal and the education case passing with their
+    code removed, a limit above 100,000 refused although no record could reach it, and the
+    message saying characters where it counts units.
+  - The second also found a limit a page's script sets on the entry it adds (found only by the
+    readback, after page 1 was sent), thousands of digits failing the read of the form,
+    `minlength` and `pattern` never read on an entry already on the page, the fingerprints the
+    change moves (above), and four tests passing with their code removed (the serializer's
+    order, the frozen limits' shape, the education case, the manual endpoint).
+  - Each is fixed with a test (a5870b5, and 45937de for the generic reader's bounds), or
+    recorded here. Not taken up: holding an ordinary
+    question to the same count (below).
+- **Not built:**
+  - An ordinary question's `maxlength`, on every provider, is still counted by code points
+    (`resolver.py`), so an answer holding an emoji or a line break at its limit could be cut
+    by the browser; the readback stops such an attempt on its page.
+  - A limit a page's script sets on a control after it was typed into, before the readback, is
+    found by the readback only, on that page, after the wizard's earlier pages were sent.
+  - Spellings the browser reads but NoEfforts refuses (`+40`, `40abc`, `4 0`, `1e3`): one
+    checkpoint, stricter than the browser.
+  - Never seen on a real page: how a real Workday tenant limits a work entry is unobserved.

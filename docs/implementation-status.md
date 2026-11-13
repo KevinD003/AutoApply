@@ -54,6 +54,38 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## A Workday-style work entry's length limits are read, and your record held to them (D157, 2026-11-13; local only)
+
+Rank 24 of the automation loop (D155's limit). Product changes:
+
+- `app/modules/preparation/forms.py`: `SectionSpec.limits` (validated, written sorted and
+  fingerprinted only when set), `LIMITED_FIELDS`, `MAX_LIMIT`, `sent_len` (the length as the
+  form sends it); `_Node.twice` (attributes a tag writes twice); the generic reader's
+  `maxlength` read without failing (`_whole_number`).
+- `app/modules/preparation/workday.py`: a typed part's `maxlength` read as the browser reads
+  it (`_limit`, `_limits`), refused where nothing can honour it; any attribute written twice
+  on an entry control, and `minlength` or `pattern` on an entry already on the page, refused.
+- `app/modules/preparation/structured_sections.py` (`_within`, `resolve_section`),
+  `package.py` (passes and freezes the limits), `router.py` (refuses hand-set limits).
+- `app/modules/execution/adapters/greenhouse_sections.py` (frozen limits validated, a value
+  past its limit refused, Greenhouse never plans a limited section) and `workday_sections.py`
+  (the plan's own check; the control's live limit read before each value is typed).
+- The stand-in (FIXTURE ASSUMPTION FA7): `experience_limits`, `experience_limits_at_load`.
+
+No migration, no new state or reason code; `SCHEMA_VERSION` stays 3 (the new paths recorded
+under it, as D142, D149 and D155). Nothing was run against a real page.
+`scripts/validate.sh all` was not run (it runs the whole backend and e2e suites); ruff was.
+
+| Check (branch `workday-entry-limits`, from D156's branch at 9c9788c) | Command | Result |
+|---|---|---|
+| The first version's tests | `pytest tests/test_workday_entry_limits.py` (JUnit), on the working tree before 36be30b; then with `test_package_contract.py`, `test_workday_entry_details.py`, `test_workday_experience.py`, `test_structured_sections.py`, `test_greenhouse_sections.py`; then `test_workday_experience.py` after its `maxlength` case became `minlength` | exit 0, 49 passed in 17 s; exit 1, 254 passed and the one case D157 changes; exit 0, 117 passed |
+| Two independent reviews | on 36be30b | no blocker in either; both found the line-break count and capture reading a `maxlength` otherwise than the browser; see D157 |
+| After the reviews | `pytest tests/test_workday_entry_limits.py` (JUnit) on the working tree before a5870b5; `ruff check .`, `ruff format .`; then 21 files (`test_capture_refusals`, `test_form_change_loop`, `test_form_scope_labels`, `test_greenhouse_dom`, `test_greenhouse_sections`, `test_greenhouse_sections_hardening`, `test_greenhouse_sections_package`, `test_package_contract`, `test_resolver`, `test_section_free_route`, `test_sections_review`, `test_structured_sections`, `test_workday_adapter`, `test_workday_ashby_fixtures`, `test_workday_entry_details`, `test_workday_entry_limits`, `test_workday_experience`, `test_workday_follow_up`, `test_workday_wizard`, `test_greenhouse_sections_browser`, `test_section_widgets`); then the limits and experience files on a5870b5 | exit 0, 87 passed in 31 s; clean; exit 0, 1235 passed in 12.8 min; exit 0, 214 passed in 1.9 min |
+| Each part changed in turn | 37 changes on a5870b5, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 37 fail a test, each the one named for its part; the worktree clean after |
+| The generic reader's bounds (45937de) | `pytest` on `test_workday_entry_limits`, `test_resolver`, `test_greenhouse_dom`, `test_capture_refusals`, `test_form_scope_labels` (JUnit), on the working tree before 45937de; `ruff check .`, `ruff format .`; then 4 changes on 45937de, one at a time, the named tests run, the file restored | exit 0, 783 passed in 4.3 min; clean; exit 1 for each: all 4 fail the test named for their part |
+| The regression set | `pytest` on 84 files (D156's 83 with `test_workday_entry_limits.py`; JUnit), in a copy of the branch at a5870b5 | exit 0; 2473 passed in 74.8 min |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_workday_entry_limits.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 147 passed in 61 s; ruff formatted nothing, found nothing, and the format check passed |
+
 ## Before each wizard page's Next, what the page itself would refuse stops the attempt with that page never sent (D156, 2026-11-13; local only)
 
 Rank 23 of the automation loop (D154's limit). Product changes:
