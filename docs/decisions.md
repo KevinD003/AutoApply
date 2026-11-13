@@ -7227,3 +7227,114 @@ audit-inventory and export-completeness guards are updated and pass.
     form-associated elements missed; a test timing that could flake. Each fixed with a test, or
     recorded above.
 - **Evidence (local only):** `tests/test_page_refusal_read.py` (68: the checks on pages set in Chromium, the browser's own validation the oracle) and `tests/test_page_own_checks.py` (24: through the runner against the Workday-style stand-in, single page and wizard, the second Greenhouse-style stand-in and the receiver's own form, with the receiver's ledger as the oracle), new. Against the code before D154, 18 of the 23 runner cases of 2e95220 fail; against its first version, 28 of its 91 new cases, among them the safety review's blocker; the case 5db60c8 adds passes against both, as it pins what is never stopped. The 84 suites the change touches; 49 removal runs, each failing the test named for its part (one only once 5db60c8 gave the stand-in's form a second button); the regression set of 81 files, which found two tests to update (e687fff: a name built at run time where a page runs; R11.8's wording after the button wait). Results by commit in `docs/implementation-status.md`, claims in `docs/evidence-matrix.md`.
+
+## D155 — A Workday-style work entry's Location and Role Description come from your record (2026-11-12)
+
+- **Context:** rank 22 of the automation loop (`docs/automation-loop.md`), D149's limit ("Location
+  and Role Description are never entered, though your record may hold them; a page requiring
+  either is the checkpoint"). Local stand-ins only; nothing real was run. No migration, no new
+  state, reason code, gate, permission or retry.
+- **Problem:**
+  - Your employment record holds a location and a description (`EmploymentRecord.location`,
+    `.description`, edited on the profile page), but a Workday-style Work Experience entry was
+    sent with both empty, whatever the record held.
+  - A page whose entry requires either was refused when the form was read (`WORK_KEY`: apply
+    on the employer's site), even when your record held both.
+- **Decided:**
+  - **Capture** (`preparation/workday.py`): the section names the parts its entry asks beyond
+    the five always entered (`SectionSpec.parts`: `description`, `location`; sorted, each once,
+    an employment section's only) and those of them the page requires (`required_parts`, by
+    `required` or `aria-required="true"` on the template's control). Both are written only when
+    set, as D149's `step` and `required`, so a section whose entry asks neither keeps its stored
+    schema and fingerprint; they are part of the form's fingerprint when set (so every captured
+    Work Experience section's fingerprint changes: see below). A required Location or Role
+    Description is no longer refused at capture. Still refused (`WORK_KEY`), since what the
+    employer would receive would not be what was typed: a Role Description that hard-wraps
+    (`wrap` other than soft), a `dirname` or a `form` attribute on an entry's control; and an
+    entry already on the page that asks Location or Role Description otherwise than the template
+    (absent, or required where the template's is not), which NoEfforts would fill in place.
+  - **Resolution** (`structured_sections.resolve_employment_row`, `resolve_section`): for a
+    section that names them, each row gets `location` and `description` from your record's own
+    text, never inferred. A blank value is not sent (`omitted`), unless the page requires it,
+    when it is yours to add (`needs_user`, "The employer's form requires a location for each
+    role, and this record has none"), which blocks approval as any section checkpoint does. A
+    location with a line break is yours to fix (a text box cannot hold one); a role
+    description keeps its line breaks, each written as one LF (as a text area holds them); one
+    still holding the note the resume reader writes first in a parsed role's description
+    (`resume_parse.DATES_NOTE`, "Dates as written: ...") is yours to edit, never sent as your
+    words. A part the section names that is not one of the two, a required one it does not
+    name, or parts named on an education section make the section unsupported (a checkpoint),
+    never a guess. The parts are one list (`forms.ENTRY_PARTS`).
+  - **The package** (`package._resolve_sections`) freezes the section with `parts` (only when
+    set) and each row with the two fields; the review page (D140) shows them as "Location" and
+    "Role description" (line breaks kept), and an edit to either on your record retires the
+    approval, as any edit to a record a section sends (D140).
+  - **Frozen content** (`greenhouse_sections.validate_content_section`): `location` and
+    `description` are accepted only in an employment section that names them in `parts`
+    (a non-empty, sorted list of the two, each once); anything else is refused as before.
+    Greenhouse's executor (`plan_content_section`) refuses any section that names parts: its
+    form has no such controls.
+  - **Entering** (`execution/adapters/workday_sections.plan`): a part the section names and
+    the row holds is entered and read back exactly, Location typed whole like Job Title, Role
+    Description into its text area with its line breaks; one the row does not hold, or the
+    section does not name, must stay empty (checked before the page's Next and again before
+    the send gate, as before). A section frozen before D155 (no `parts`) is planned as before.
+    Every typed control of an entry is then left (focus moves off it), so a page reacting on
+    `change` does so before the readback; and the readback also reads what the control's form
+    would send under its name (`FormData`): exactly once and exactly the approved value, which
+    catches a text area made to hard-wrap after capture, a control moved to another form or
+    disabled, and a second control of the same name.
+  - **The section read again after the page's uploads** (`workday._fill_sections`, D149's rule
+    restored): the page's documents come first on its page, and a parsed resume can add or fill
+    an entry; the entries are checked again just before anything is typed into the section, and
+    an entry holding a value, or beyond the approved ones, stops the attempt there (nothing of
+    the section entered; the page's Next never clicked). Without this, a record holding every
+    part would have filled over the parse's entry and sent it.
+  - The manual form endpoint refuses `parts` set by hand (as `widget` and `wizard`); the
+    version diff keeps a description's line breaks.
+- **What an approved run now does differently:** a Workday-style entry sends your record's
+  location and role description where the page asks them. A Workday-style form with a Work
+  Experience section captured before D155 reads as changed at its next run (its section now
+  names its parts), although the employer's page did not change: D132's pause, read the form
+  again (tested). A page whose resume parse adds or fills an entry stops before anything is
+  typed into the section, rather than at the readback.
+- **`SCHEMA_VERSION` stays 3, deliberately:** only a section whose entry asks the parts carries
+  them, so every Greenhouse package and every form without such a section has the same content
+  and hash as before; the new paths are recorded under version 3 in
+  `tests/test_package_contract.py` (`.sections[].parts[]`, `.sections[].rows[].fields.
+  {location,description}.{status,display,value,value.text}`), deliberately, as D142 and D149
+  recorded theirs. A Workday-style package with such a section is built with the two fields
+  from D155 on; its approval is the application's (D132), and a rebuild that changes it retires
+  the approval as any content change does.
+- **The stand-in** (FIXTURE ASSUMPTION FA7, `fixtures/ats_receiver/workday_like.py`): variant
+  `experience_parts_required`, whose entry's Location and Role Description are `required`, and
+  whose own checks refuse an entry without them (on the page's Next and at the final POST).
+- **Limits:**
+  - Never seen on a real page; a real Workday entry's Location may be a search-as-you-type list
+    (docs/research/workday.md), which is not this text box and stays unsupported.
+  - Leading, trailing or doubled spaces in a location are sent as written and are not visible
+    on the review page; a lone CR in a description is shown and sent as a line break.
+  - The stand-in's required parts run on the wizard only (`experience_parts_required`); the
+    single page sends optional ones.
+  - A page's limit on a role description's length (`maxlength`) is still refused at capture, as
+    D149 refused any constraint on a typed value.
+  - Education on Workday, languages, websites and skills are unchanged (D149's limits).
+- **Reviewed independently twice** (on 35cfa5f, the first version):
+  - The safety review found three blockers: the package-shape pin not updated (CI would fail,
+    and the decision to keep `SCHEMA_VERSION` unrecorded where the repository pins it); a Role
+    Description text area that hard-wraps sending line breaks never approved (the readback read
+    the control's value, not what its form sends); and an entry already on the page asking the
+    parts otherwise than the template, accepted at capture and stopping only after values were
+    entered (D149 refused it when the form was read). It also found: the entry a parsed resume
+    adds filled over and sent when the record holds every part (D149's "a page whose resume
+    parse adds an entry stops" no longer held); a page rewriting a value on `change` after the
+    readback; the diff collapsing line breaks; the resume reader's own note sent as your words;
+    four copies of the parts list; the manual endpoint accepting hand-set parts.
+  - The second review found the same two blockers (the shape pin, the hard-wrapping text area),
+    and: the entries already on the page (as above); approvals given before D155 on such a page
+    pausing, unstated and untested; test cases passing with the checks they name removed, and an
+    approval assertion a server error would pass; untested paths (the diff, the stand-in's own
+    refusal); a `dirname` attribute sending an extra field; the parse's change undocumented;
+    stale comments; parts on an education section ignored silently.
+  - Each is fixed with a test (756a401), or recorded above.
+- **Evidence (local only):** `tests/test_workday_entry_details.py`, 63 tests (through the runner against the Workday-style stand-in's Work Experience section, with the receiver's ledger as the oracle; on capture, the spec, resolution and the frozen content alone; or driving the section's executor on a page in Chromium), and changed cases in `test_workday_experience.py` and `test_package_contract.py`; the 14 suites the change touches; 33 removal runs, each failing the test named for its part; the regression set of 82 files. Results by commit in `docs/implementation-status.md`, claims in `docs/evidence-matrix.md`.

@@ -54,6 +54,50 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## A Workday-style work entry's Location and Role Description come from your record (D155, 2026-11-12; local only)
+
+Rank 22 of the automation loop (D149's limit). Product changes:
+
+- `app/modules/preparation/forms.py`: `SectionSpec.parts` and `required_parts` (written, and
+  fingerprinted, only when set); `ENTRY_PARTS`, the one list of the two parts.
+- `app/modules/preparation/workday.py`: capture names the parts the entry template asks and
+  which the page requires; refuses a hard-wrapping text area, `dirname` or `form` on an entry's
+  control, and an entry already on the page asking the parts otherwise than the template.
+- `app/modules/preparation/structured_sections.py`: `resolve_employment_row(record, parts,
+  required_parts)`: your record's own text (blank: not sent, or yours to add when required; a
+  location with a line break, or a description still holding the resume reader's note: yours to
+  fix); `resolve_section` refuses unknown parts and parts on education.
+- `app/modules/preparation/package.py`: the parts passed to resolution and frozen with the
+  section; `app/modules/preparation/router.py`: hand-set parts refused.
+- `app/modules/execution/adapters/greenhouse_sections.py`: frozen content accepts the two fields
+  only in a section that names them; Greenhouse's executor refuses such a section.
+- `app/modules/execution/adapters/workday_sections.py`: the two parts entered and read back;
+  focus leaves each typed control; the readback also reads what each control's form would send.
+- `app/modules/execution/adapters/workday.py`: the section's entries read again after the page's
+  uploads, before anything is typed into it.
+- `app/modules/profiles/resume_parse.py`: `DATES_NOTE`, the note it writes first in a parsed
+  role's description.
+- The review page labels the two fields and keeps line breaks in the version diff
+  (`frontend/src/app/(app)/applications/[id]/page.jsx`).
+- The stand-in (FIXTURE ASSUMPTION FA7): `experience_parts_required`.
+
+No migration, no new state or reason code; `SCHEMA_VERSION` stays 3, deliberately: the new
+package paths are recorded under it in `tests/test_package_contract.py` (only a section whose
+entry asks the parts carries them). Every Workday-style form with a Work Experience section
+captured before D155 reads as changed at its next run (D132's pause). Nothing was run against a
+real page. `scripts/validate.sh all` was not run (it runs the whole backend and e2e suites);
+ruff, `tsc --noEmit` and `npm run lint` were.
+
+| Check (branch `workday-entry-details`, from D154's branch at e687fff) | Command | Result |
+|---|---|---|
+| The first version's tests | `pytest tests/test_workday_entry_details.py` (JUnit), then the 11 suites it touches most (`test_greenhouse_sections`, `_browser`, `_hardening`, `test_structured_sections`, `test_workday_experience`, `test_worker_stop`, `test_sections_review`, `test_workday_wizard`, `test_workday_adapter`, `test_workday_follow_up`, `test_workday_entry_details`), on the working tree before 35cfa5f; `npx tsc --noEmit`, `npm run lint` | exit 0, 44 passed; exit 0, 428 passed in 10.7 min (5 expectations of `test_workday_experience.py` updated first: the spec names its parts, a required Location is read, the frozen rows carry the two fields); exit 0; exit 0 |
+| Each part changed in turn, the first version | 22 changes, one at a time on 35cfa5f (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 22 fail a test, each the one named for its part |
+| Two independent reviews | on 35cfa5f | the safety review: three blockers (the package-shape pin not updated, so CI would fail; a hard-wrapping Role Description sending line breaks never approved; entries already on the page asking the parts otherwise, stopping after values were entered); the second review: the first two, and the entries as a weakness; both: gaps in tests and records. Fixed (756a401), each with a test; the rest recorded in D155 |
+| After the reviews | `pytest` on 14 files (the 11 above, `test_package_contract`, `test_version_diff`, `test_resume_facts`; JUnit), on the working tree before 756a401; `ruff check .`, `ruff format --check .`, `npx tsc --noEmit`, `npm run lint`; then `test_workday_entry_details.py` and `test_package_contract.py` after ruff's import order | exit 0; 470 passed in 13.8 min; all clean; exit 0, 66 passed |
+| Each part changed in turn | 33 changes, one at a time on 756a401 (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 33 fail a test, each the one named for its part (the 22 above, on the revised code, and 11 for the reviews' fixes: the hard wrap, `dirname` and `form` refused; the entries already on the page; what the form would send; focus leaving each control; the section read again after the uploads, for each reason; the resume reader's note; parts set by hand; parts on an education section); the worktree clean after |
+| The regression set | `pytest` on 82 files (D154's 81 with `test_workday_entry_details.py`; JUnit), in a copy of the branch at 756a401, restarted once (the container restarted during the first run) | exit 0; 2350 passed in 73.4 min |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_workday_entry_details.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 108 passed in 63 s; ruff formatted nothing, found nothing, and the format check passed |
+
 ## Before the send gate, what the page itself would refuse at the final click stops the attempt; filling waits for what the answers started (D154, 2026-11-12; local only)
 
 Rank 21 of the automation loop (D148's proposal). Product changes:
