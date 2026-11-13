@@ -529,6 +529,8 @@ export default function ReviewPage() {
         </Card>
       ))}
 
+      <SectionChoicesCard appId={id} version={view.package.version} busy={busy} call={call} />
+
       {(c.sections ?? []).length > 0 && <SectionsCard sections={c.sections} />}
 
       <Card title="Version history">
@@ -561,6 +563,70 @@ const SECTION_FIELD = {
 };
 const ROW_CHANGE = { added: "added", removed: "removed", changed: "changed" };
 const sectionShown = (x) => (x === null ? "—" : x.status === "omitted" ? "not sent" : (x.display ?? "—"));
+
+const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** D164: a part of your education no option of the employer's form matches: choose one of the
+ * form's own options, for this application only (your record stays as it is, and nothing is saved
+ * for other applications). */
+function SectionChoicesCard({ appId, version, busy, call }) {
+  const [choices, setChoices] = useState(null);
+  const [picked, setPicked] = useState({});
+  useEffect(() => {
+    let live = true;
+    api(`/applications/${appId}/section-choices`)
+      .then((r) => live && setChoices(r.choices))
+      .catch(() => live && setChoices([]));
+    return () => {
+      live = false;
+    };
+  }, [appId, version]);
+  if (!choices || choices.length === 0) return null;
+  const save = (key, optionId, ok) => call(`/applications/${appId}/section-choices`, "PUT", { key, option_id: optionId }, ok);
+  return (
+    <Card title="Choose from the employer's options">
+      <p className="text-sm text-ink-muted">
+        The employer&apos;s form offers no option matching these parts of your education. Choose yours for this application only: your
+        record stays as it is, and nothing is saved for other applications.
+      </p>
+      <ul className="mt-3 space-y-3">
+        {choices.map((c) => {
+          const value = picked[c.key] ?? c.chosen?.id ?? "";
+          const id = `choice-${c.key}`;
+          return (
+            <li key={c.key} className="rounded-lg border border-hairline p-2 text-sm">
+              <label htmlFor={id} className="font-medium">
+                {capitalize(c.label)}
+              </label>
+              <p className="text-ink-muted">Your record says: {c.your_text}</p>
+              {c.stale && (
+                <p className="text-caution-ink">The option you chose no longer applies (your record or the form&apos;s options changed): choose again.</p>
+              )}
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <select id={id} className={inputCls} value={value} onChange={(e) => setPicked({ ...picked, [c.key]: e.target.value })}>
+                  <option value="">Choose one</option>
+                  {c.options.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.text}
+                    </option>
+                  ))}
+                </select>
+                <Button type="button" disabled={busy || !value || value === c.chosen?.id} onClick={() => save(c.key, value, "Chosen for this application.")}>
+                  Save
+                </Button>
+                {c.chosen && (
+                  <Button type="button" variant="secondary" disabled={busy} onClick={() => save(c.key, null, "Your choice was cleared.")}>
+                    Clear
+                  </Button>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
 
 /** D140: the education and work history this version sends, as frozen in the package (never read
  * from your live profile), so you approve what you can see. */

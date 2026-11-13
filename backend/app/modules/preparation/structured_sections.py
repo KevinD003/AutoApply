@@ -80,6 +80,28 @@ class EducationOptions:
     schools: tuple[SectionOption, ...] = ()
 
 
+@dataclass(frozen=True)
+class Choice:
+    """D164: the option you chose, for one application, for a record's field that no option
+    matches, and what it was chosen against: the option's text, and the record's version and
+    text. It applies only while all three are as they were (`_choice_field`)."""
+
+    option_id: str
+    option_text: str
+    record_version: int | None
+    record_text: str
+
+
+# D164: the fields you may choose an option for, for one application: the record's attribute, the
+# field's label, and the list it is chosen from. A field the record leaves empty is never chosen
+# for: add it to your record instead.
+CHOICE_FIELDS = {
+    "school_name_id": ("institution", "school", "schools"),
+    "degree_id": ("degree", "degree", "degrees"),
+    "discipline_id": ("field_of_study", "field of study", "disciplines"),
+}
+
+
 @dataclass
 class FieldResult:
     """One section field's resolution. `status`: resolved | needs_user | omitted. `omitted` is a
@@ -202,12 +224,46 @@ def _date_hash(d) -> dict | None:
 # -- education -------------------------------------------------------------------------------
 
 
-def _choice_field(name: str, record, record_type, attr, opt, kind_label) -> FieldResult:
-    """A field resolved to one option id (school/degree/discipline), or a checkpoint."""
+def _choice_field(
+    name: str, record, record_type, attr, opt, kind_label, options=(), choice=None
+) -> FieldResult:
+    """A field resolved to one option id (school/degree/discipline), or a checkpoint. D164: a
+    field no option matches is resolved by your choice for this application (`choice`), while
+    the option is still offered with the same text and the record is as it was when you chose."""
     text = getattr(record, attr, None)
     if not text:
         return FieldResult(name, "needs_user", explanation=f"No {kind_label} on this record.")
     if opt is None:
+        if choice is not None:
+            chosen = next((o for o in options if o.id == choice.option_id), None)
+            if (
+                chosen is not None
+                and chosen.text == choice.option_text
+                and choice.record_version == getattr(record, "version", None)
+                and choice.record_text == text
+            ):
+                return FieldResult(
+                    name,
+                    "resolved",
+                    value={"id": chosen.id},
+                    display=chosen.text,
+                    source="user_choice",
+                    explanation=(
+                        f"You chose '{chosen.text}' for your {kind_label} ({text}) for this "
+                        "application."
+                    ),
+                    fact_refs=[_ref(record, record_type, attr, text)],
+                )
+            return FieldResult(
+                name,
+                "needs_user",
+                explanation=(
+                    f"Your {kind_label} ({text}) does not match exactly one option the form "
+                    "offers, and the option you chose for this application no longer applies "
+                    "(your record or the form's options changed): choose it again."
+                ),
+                fact_refs=[_ref(record, record_type, attr, text)],
+            )
         return FieldResult(
             name,
             "needs_user",
@@ -253,32 +309,29 @@ def _bad_date_order(start, end) -> bool:
     return start is not None and end is not None and start > end
 
 
-def resolve_education_row(record, options: EducationOptions) -> RowResult:
+def matched_option(name: str, text: str | None, options: EducationOptions) -> SectionOption | None:
+    """The option a choice field's text matches by itself (D120's rules), or None."""
+    lst = CHOICE_FIELDS[name][2]
+    match = match_degree if name == "degree_id" else match_exact
+    return match(text, getattr(options, lst))
+
+
+def resolve_education_row(record, options: EducationOptions, choices=None) -> RowResult:
+    """D164: `choices` maps (record id, field) to your `Choice` for this application."""
+    choices = choices or {}
+
+    def choice_field(name: str) -> FieldResult:
+        attr, label, lst = CHOICE_FIELDS[name]
+        text = getattr(record, attr, None)
+        chosen = choices.get((str(record.id), name))
+        return _choice_field(name, record, "education", attr,
+                             matched_option(name, text, options), label,
+                             getattr(options, lst), chosen)  # fmt: skip
+
     fields = {
-        "school_name_id": _choice_field(
-            "school_name_id",
-            record,
-            "education",
-            "institution",
-            match_exact(getattr(record, "institution", None), options.schools),
-            "school",
-        ),  # fmt: skip
-        "degree_id": _choice_field(
-            "degree_id",
-            record,
-            "education",
-            "degree",
-            match_degree(getattr(record, "degree", None), options.degrees),
-            "degree",
-        ),  # fmt: skip
-        "discipline_id": _choice_field(
-            "discipline_id",
-            record,
-            "education",
-            "field_of_study",
-            match_exact(getattr(record, "field_of_study", None), options.disciplines),
-            "field of study",
-        ),  # fmt: skip
+        "school_name_id": choice_field("school_name_id"),
+        "degree_id": choice_field("degree_id"),
+        "discipline_id": choice_field("discipline_id"),
         "start_date": _date_field("start_date", record, "education", "start_date", required=True),
         "end_date": _date_field("end_date", record, "education", "end_date", required=True),
     }
@@ -286,6 +339,34 @@ def resolve_education_row(record, options: EducationOptions) -> RowResult:
         for k in ("start_date", "end_date"):
             fields[k] = FieldResult(k, "needs_user", explanation=_BAD_DATE_ORDER)
     return RowResult(str(record.id), "education", fields)
+
+
+def open_choices(records, options: EducationOptions, choices=None) -> list[dict]:
+    """D164: each approved record's field that has your text and no option matching it by itself:
+    what the form offers for it, and your choice for this application when one applies (`stale`:
+    one was made, and no longer applies). Never a field the record leaves empty."""
+    choices = choices or {}
+    out = []
+    for record in [r for r in records if _approved(r)]:
+        row = resolve_education_row(record, options, choices)
+        for name, (attr, label, lst) in CHOICE_FIELDS.items():
+            text = getattr(record, attr, None)
+            if not text or matched_option(name, text, options) is not None:
+                continue
+            fr = row.fields[name]
+            chosen = fr.status == "resolved"
+            out.append({
+                "key": f"section:education:{record.id}:{name}",
+                "record_id": str(record.id),
+                "record_version": getattr(record, "version", None),
+                "field": name,
+                "label": label,
+                "your_text": text,
+                "options": [{"id": o.id, "text": o.text} for o in getattr(options, lst)],
+                "chosen": {"id": fr.value["id"], "text": fr.display} if chosen else None,
+                "stale": not chosen and (str(record.id), name) in choices,
+            })  # fmt: skip
+    return out
 
 
 # -- employment ------------------------------------------------------------------------------
@@ -427,10 +508,12 @@ def resolve_section(
     parts: tuple = (),
     required_parts: tuple = (),
     limits: dict | None = None,
+    choices: dict | None = None,
 ) -> SectionResult:
     """Resolve one structured section from the owner's approved records, in record order. An
     unsupported section kind, or an education section with no option lists to match against,
-    is returned as an explicit checkpoint (`supported=False`) rather than guessed."""
+    is returned as an explicit checkpoint (`supported=False`) rather than guessed. D164:
+    `choices`, your choices for this application (education only)."""
     if kind not in SUPPORTED_KINDS:
         return SectionResult(kind, [], supported=False, reason=f"Unsupported section '{kind}'.")
     limits = dict(limits or {})
@@ -447,7 +530,7 @@ def resolve_section(
                 supported=False,
                 reason="Education option lists were not captured; this section stays a checkpoint.",
             )
-        return SectionResult(kind, [resolve_education_row(r, options) for r in approved])
+        return SectionResult(kind, [resolve_education_row(r, options, choices) for r in approved])
     unknown = set(parts) - set(EMPLOYMENT_PARTS)
     bad_limits = (not set(limits) <= set(LIMITED_FIELDS)  # D157: never a limit guessed at
                   or not set(limits) & set(EMPLOYMENT_PARTS) <= set(parts)
