@@ -207,7 +207,10 @@ def build_app(ledger: Ledger, admin_token: str, mail: MailSink | None = None) ->
                     "wizard": None,
                     # D154: a page's own checks before its final click
                     "page_check": None, "page_check_delay_ms": 800,
-                    "sends": None})  # D159
+                    "sends": None,  # D159
+                    # D161: the v2 approximation's limits and saves as you type
+                    "gh2_limits": None, "gh2_limit_js": None, "gh2_limit_on_focus": None,
+                    "gh2_limit_on_input": None, "gh2_types": None, "gh2_autosave": None})
         return {"ok": True}
 
     @app.get("/_fx/wait")

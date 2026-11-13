@@ -45,10 +45,10 @@ gh2_native_select (D136: question_8104 as a native <select>; gh2_native_select_o
 the same, asked as optional by the job data, the page and the server),
 gh2_eeo_required (D139: the screening job's Gender, question_8113, asked as required by the job
 data, the page and the server; a FIXTURE ASSUMPTION, never seen on a real page),
-D161, in the ordinary page of any mode: cfg limits ({id: a `maxlength` value, or a list written in
-turn}), limit_js / limit_on_focus / limit_on_input ({id: the limit the page's own script sets once
-loaded, as the control gets focus, or once something is typed}) and types ({id: the input's
-type}) on a typed question's control, and autosave ([ids]: the page saves those questions as they
+D161, in the ordinary page of any mode: cfg gh2_limits ({id: a `maxlength` value, or a list written in
+turn}), gh2_limit_js / gh2_limit_on_focus / gh2_limit_on_input ({id: the limit the page's own script sets once
+loaded, as the control gets focus, or once something is typed}) and gh2_types ({id: the input's
+type}) on a typed question's control, and gh2_autosave ([ids]: the page saves those questions as they
 are typed, their length only, POST /gh2/{board}/jobs/{id}/autosave, a disclosure) (FIXTURE
 ASSUMPTIONS, never seen on a real page),
 gh2_sections (D120: an Education section; D141: cfg sections "education,employment" adds an
@@ -636,10 +636,10 @@ _PHONE_COMPANION_JS = """
 
 
 def _limit_attr(qid, cfg) -> str:
-    """D161 (FIXTURE ASSUMPTION, never seen on a real page): `cfg["limits"]` writes a `maxlength`
+    """D161 (FIXTURE ASSUMPTION, never seen on a real page): `cfg["gh2_limits"]` writes a `maxlength`
     on a typed question's control, {id: value}; a list writes the attribute once per value, in
     order (the browser keeps the first)."""
-    raw = ((cfg or {}).get("limits") or {}).get(qid)
+    raw = ((cfg or {}).get("gh2_limits") or {}).get(qid)
     if raw is None:
         return ""
     return "".join(f' maxlength="{html.escape(str(v))}"'
@@ -648,23 +648,23 @@ def _limit_attr(qid, cfg) -> str:
 
 def _limit_script(cfg) -> str:
     """D161 (FIXTURE ASSUMPTION): the page's own script sets a typed question's limit once the
-    page has loaded (`cfg["limit_js"]`), as its control gets focus (`cfg["limit_on_focus"]`), or
-    once something is typed into it (`cfg["limit_on_input"]`), each {id: limit}: none is in the
+    page has loaded (`cfg["gh2_limit_js"]`), as its control gets focus (`cfg["gh2_limit_on_focus"]`), or
+    once something is typed into it (`cfg["gh2_limit_on_input"]`), each {id: limit}: none is in the
     page as served."""
     js = [f"document.getElementById({json.dumps(qid)}).maxLength = {int(n)};"
-          for qid, n in ((cfg or {}).get("limit_js") or {}).items()]
+          for qid, n in ((cfg or {}).get("gh2_limit_js") or {}).items()]
     js += [f"document.getElementById({json.dumps(qid)}).addEventListener({json.dumps(event)}, "
            f"(e) => {{ e.target.maxLength = {int(n)}; }});"
-           for key, event in (("limit_on_focus", "focus"), ("limit_on_input", "input"))
+           for key, event in (("gh2_limit_on_focus", "focus"), ("gh2_limit_on_input", "input"))
            for qid, n in ((cfg or {}).get(key) or {}).items()]
     return f"<script>{''.join(js)}</script>" if js else ""
 
 
 def _autosave_script(cfg, base) -> str:
-    """D161 (FIXTURE ASSUMPTION, never seen on a real page): `cfg["autosave"]`, a list of ids:
+    """D161 (FIXTURE ASSUMPTION, never seen on a real page): `cfg["gh2_autosave"]`, a list of ids:
     the page saves each of those typed questions as it is typed (only the length of what its
     control holds, to `autosave`), so the ledger shows a value the page held cut."""
-    ids = list((cfg or {}).get("autosave") or [])
+    ids = list((cfg or {}).get("gh2_autosave") or [])
     if not ids:
         return ""
     return ("<script>for (const id of " + json.dumps(ids) + ") {"
@@ -787,7 +787,7 @@ def _render(q, mode, cfg=None) -> str:
         body = (f'{_label(qid, label_text, star)}<input type="email" id="email"{attr}{areq}'
                 f'{_limit_attr(qid, cfg)}>')
     else:
-        itype = ((cfg or {}).get("types") or {}).get(qid, itype)  # D161: another input type
+        itype = ((cfg or {}).get("gh2_types") or {}).get(qid, itype)  # D161: another input type
         body = (f'{_label(qid, label_text, star)}<input type="{itype}" id="{qid}"{areq}'
                 f'{_limit_attr(qid, cfg)}>')
     if qid == "phone" and mode == "gh2_phone_country":

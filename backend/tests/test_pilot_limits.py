@@ -167,12 +167,12 @@ def test_the_pilot_records_a_typed_question_s_limit_as_the_browser_reads_it(writ
     first of two attributes; a limit written so that no read records it (a sign, a decimal
     point, another script's digit, 0, more than the browser reads) is not recorded (the adapter
     stops at it, below)."""
-    assert recorded(limits={NAME: written})[NAME] == want
+    assert recorded(gh2_limits={NAME: written})[NAME] == want
 
 
 def test_before_d161_the_pilot_recorded_no_limit(monkeypatch):
     monkeypatch.setattr(dom, "control_limit", lambda f, c: None)
-    assert recorded(limits={NAME: "3"})[NAME] is None
+    assert recorded(gh2_limits={NAME: "3"})[NAME] is None
 
 
 @pytest.mark.parametrize(
@@ -183,7 +183,7 @@ def test_before_d161_the_pilot_recorded_no_limit(monkeypatch):
 def test_a_limit_is_recorded_only_where_the_browser_holds_typing_to_it(type_, want):
     """The LinkedIn question on another kind of input: `maxlength` limits nothing typed into a
     number input, and the browser reads `type` case-insensitively."""
-    got = recorded(limits={"question_8103": "3"}, types={"question_8103": type_})
+    got = recorded(gh2_limits={"question_8103": "3"}, gh2_types={"question_8103": type_})
     assert got["question_8103"] == want
 
 
@@ -221,18 +221,18 @@ def test_only_a_typed_answer_is_held_to_a_limit(ftype):
 def test_a_limit_only_the_page_s_script_sets_is_not_recorded():
     """The capture reads the page as served, without its scripts (the adapter checks the live
     page before anything is entered, below)."""
-    assert recorded(limit_js={NAME: 3})[NAME] is None
+    assert recorded(gh2_limit_js={NAME: 3})[NAME] is None
 
 
 def test_a_locked_prefilled_email_records_no_limit():
     """D129: a real account pre-fills a disabled email; nothing is typed into it."""
-    assert recorded(mode="gh2_email_locked_match", limits={"email": "4"})["email"] is None
+    assert recorded(mode="gh2_email_locked_match", gh2_limits={"email": "4"})["email"] is None
 
 
 def test_the_limit_of_a_question_the_page_shows_later_is_recorded():
     """D135: "Which team" is hidden at load (its trigger unknown) and answerable: its limit is
     held to before you approve, as any other."""
-    schema, _ = dom.build_schema(api_json(), page_html(limits={"question_8105": "8"}),
+    schema, _ = dom.build_schema(api_json(), page_html(gh2_limits={"question_8105": "8"}),
                                  stand_ins=True)  # fmt: skip
     (f,) = [f for f in schema.fields if f.key == "question_8105"]
     assert f.max_length == 8 and f.condition is not None
@@ -247,7 +247,7 @@ def test_an_answer_longer_than_the_page_s_limit_is_yours_to_shorten_before_appro
 ):
     """Before D161 it was approved (below). Now it is refused when saved, naming the limit, and
     a shorter one is sent whole."""
-    receiver.config(limits={NAME: "3"})
+    receiver.config(gh2_limits={NAME: "3"})
     app_id = make(api, name="Sam")
     r = api.put(f"/applications/{app_id}/answers", json={"key": NAME, "value": {"text": "Sammy"}})
     assert r.status_code == 400 and "5/3 characters as the form sends them" in r.text
@@ -257,7 +257,7 @@ def test_an_answer_longer_than_the_page_s_limit_is_yours_to_shorten_before_appro
 
 @MAKE
 def test_an_answer_at_the_page_s_limit_is_sent_whole(api, receiver, make):
-    receiver.config(limits={NAME: "5"})
+    receiver.config(gh2_limits={NAME: "5"})
     app_id = make(api)
     assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
     assert sent(receiver)[NAME] == "Sammy"
@@ -274,7 +274,7 @@ def test_before_d161_an_answer_past_the_page_s_limit_was_typed_cut_after_the_upl
     page held it cut as it was typed, after the résumé had been uploaded; the readback stopped
     the attempt then."""
     without_d161(monkeypatch)
-    receiver.config(limits={NAME: "3"}, autosave=[NAME])
+    receiver.config(gh2_limits={NAME: "3"}, gh2_autosave=[NAME])
     app_id = make(api)
     assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
     assert receiver.ledger()["accepted"] == 0 and uploads(receiver) == 1
@@ -286,7 +286,7 @@ def test_a_limit_the_page_s_script_lowers_pauses_before_anything_is_entered(api,
     """Approved under no limit; the page's script then sets 3 as it loads. Before anything is
     entered (no upload, nothing typed): D132's pause, naming the limit (never the question)."""
     app_id = make(api)
-    receiver.config(limit_js={NAME: 3}, autosave=[NAME])
+    receiver.config(gh2_limit_js={NAME: 3}, gh2_autosave=[NAME])
     aid = queue(api, app_id)
     assert runner.run_attempt(aid, "w1") == "failed_safe"
     led = receiver.ledger()
@@ -301,7 +301,7 @@ def test_a_limit_written_so_no_read_records_it_stops_plainly_naming_it(api, rece
     """Written "3.0", the browser reads 3 and a read of the form nothing: a pause could never be
     ended by reading the form again. A plain stop, nothing entered."""
     app_id = make(api)
-    receiver.config(limits={NAME: "3.0"})
+    receiver.config(gh2_limits={NAME: "3.0"})
     aid = queue(api, app_id)
     assert runner.run_attempt(aid, "w1") == "failed_safe"
     assert receiver.ledger()["disclosures"] == [] and pauses(app_id) == []
@@ -313,7 +313,7 @@ def test_reading_the_form_again_records_the_limit_the_page_now_shows(api, receiv
     entered; reading the form again records it (a new version), your answer is then yours to
     shorten, and the shorter one is sent."""
     app_id = application(api)
-    receiver.config(limits={NAME: "3"})
+    receiver.config(gh2_limits={NAME: "3"})
     assert runner.run_attempt(queue(api, app_id), "w1") == "failed_safe"
     assert receiver.ledger()["disclosures"] == []
     out = api.post(f"/applications/{app_id}/form/recapture")
@@ -334,7 +334,7 @@ def test_a_limit_lowered_as_the_control_gets_focus_is_never_typed_cut(api, recei
     """The page lowers the limit as the box gets focus, after the form was checked, and saves it
     as it is typed: it is never typed (no save of it at all), and nothing is sent."""
     app_id = make(api)
-    receiver.config(limit_on_focus={NAME: 3}, autosave=[NAME])
+    receiver.config(gh2_limit_on_focus={NAME: 3}, gh2_autosave=[NAME])
     assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
     assert receiver.ledger()["accepted"] == 0 and saves(receiver, NAME) == []
 
@@ -345,7 +345,7 @@ def test_before_d161_a_limit_lowered_on_focus_left_the_page_holding_it_cut(
     """The oracle: the page saved 3 of its characters."""
     without_d161(monkeypatch)
     app_id = application(api)
-    receiver.config(limit_on_focus={NAME: 3}, autosave=[NAME])
+    receiver.config(gh2_limit_on_focus={NAME: 3}, gh2_autosave=[NAME])
     assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
     assert saves(receiver, NAME) == [3]
 
@@ -358,7 +358,7 @@ def test_a_question_the_page_shows_is_not_entered_when_its_limit_is_lowered_on_f
     limit as it gets focus: it is not entered (no save of it), and the check after filling stops
     the attempt (shown, and not entered)."""
     app_id = application(api, worked_before="Yes", team="Support team")
-    receiver.config(limit_on_focus={TEAM: 3}, autosave=[TEAM])
+    receiver.config(gh2_limit_on_focus={TEAM: 3}, gh2_autosave=[TEAM])
     assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
     assert receiver.ledger()["accepted"] == 0 and saves(receiver, TEAM) == []
 
@@ -366,7 +366,7 @@ def test_a_question_the_page_shows_is_not_entered_when_its_limit_is_lowered_on_f
 def test_before_d161_the_question_the_page_shows_was_typed_cut(api, receiver, monkeypatch):
     without_d161(monkeypatch)
     app_id = application(api, worked_before="Yes", team="Support team")
-    receiver.config(limit_on_focus={TEAM: 3}, autosave=[TEAM])
+    receiver.config(gh2_limit_on_focus={TEAM: 3}, gh2_autosave=[TEAM])
     assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
     assert saves(receiver, TEAM) == [3]
 
@@ -376,7 +376,7 @@ def test_a_limit_lowered_once_the_answer_is_typed_stops_before_the_send_gate(api
     """Typed whole, then the page lowers the limit: the check after filling stops the attempt
     before the send gate; nothing is sent."""
     app_id = make(api)
-    receiver.config(limit_on_input={NAME: 3}, autosave=[NAME])
+    receiver.config(gh2_limit_on_input={NAME: 3}, gh2_autosave=[NAME])
     assert runner.run_attempt(queue(api, app_id), "w1") == "abandoned"
     assert receiver.ledger()["accepted"] == 0 and saves(receiver, NAME) == [5]
 
@@ -385,11 +385,51 @@ def test_a_locked_prefilled_email_is_not_held_to_a_limit_the_page_sets(api, rece
     """D129: the page pre-fills a disabled email with the approved one, and its script then sets
     a limit shorter than it. Nothing is typed into it, so it is not checked: sent as the page
     holds it."""
-    receiver.config(mode="gh2_email_locked_match", limit_js={"email": 4})
+    receiver.config(mode="gh2_email_locked_match", gh2_limit_js={"email": 4})
     app_id = application(api)
     aid = queue(api, app_id)
     assert runner.run_attempt(aid, "w1") == "confirmed", attempt(aid).outcome_detail
     assert sent(receiver)["email"] == "sam.synthetic@example.com"
+
+
+# ---------------------------------------------------------------------------- the survey
+
+
+@pytest.fixture
+def survey(monkeypatch):
+    monkeypatch.setenv("NOEFFORTS_READONLY_GREENHOUSE_APPROVED", f"{BOARD}/{JOB}")
+
+    def run():
+        obs = ro.observe_page(BOARD, JOB, base=BASE, prefix="gh2", api_json=api_json())
+        text = ro.guard(ro.publishable(api_json(), {"name": "x"}, JOB, obs),
+                        ro.sensitive_values(BOARD, JOB, api_json(), None))  # fmt: skip
+        assert '"length_limit"' in text  # published as it is: numbers and the vocabulary only
+        return {f["key"]: f["length_limit"] for f in obs["mapping"]["fields"]}
+
+    return run
+
+
+def test_the_survey_reports_each_typed_question_s_limit_as_the_browser_and_capture_read_it(
+    receiver, survey
+):
+    receiver.config(gh2_limits={NAME: "3", "first_name": "3.0"}, gh2_limit_js={"question_8103": 7})
+    got = survey()
+    assert got[NAME] == {"browser_reads": 3, "capture_records": 3}
+    assert got["first_name"] == {"browser_reads": 3, "capture_records": None}  # no read records
+    assert got["question_8103"] == {"browser_reads": 7, "capture_records": None}  # its script's
+    assert got["last_name"] == {"browser_reads": None, "capture_records": None}
+    assert got["question_8101"] == "not_applicable"  # a list
+    assert got["resume"] == "not_applicable"  # a file
+    assert receiver.ledger()["disclosures"] == []
+
+
+def test_the_survey_says_what_it_could_not_read_of_the_page_as_served(
+    receiver, survey, monkeypatch
+):
+    monkeypatch.setattr(ro, "_served_html", lambda resp: None)
+    receiver.config(gh2_limits={NAME: "3"})
+    got = survey()
+    assert got[NAME] == {"browser_reads": 3, "capture_records": "not_observable"}
 
 
 # ---------------------------------------------------------------------------- Chromium
@@ -485,43 +525,3 @@ def test_the_check_before_typing_reads_the_limit_once_the_control_has_focus(chro
         assert adapter.GreenhouseDomAdapter._fits_here(page.locator("#b"), "123456")
     finally:
         page.close()
-
-
-# ---------------------------------------------------------------------------- the survey
-
-
-@pytest.fixture
-def survey(monkeypatch):
-    monkeypatch.setenv("NOEFFORTS_READONLY_GREENHOUSE_APPROVED", f"{BOARD}/{JOB}")
-
-    def run():
-        obs = ro.observe_page(BOARD, JOB, base=BASE, prefix="gh2", api_json=api_json())
-        text = ro.guard(ro.publishable(api_json(), {"name": "x"}, JOB, obs),
-                        ro.sensitive_values(BOARD, JOB, api_json(), None))  # fmt: skip
-        assert '"length_limit"' in text  # published as it is: numbers and the vocabulary only
-        return {f["key"]: f["length_limit"] for f in obs["mapping"]["fields"]}
-
-    return run
-
-
-def test_the_survey_reports_each_typed_question_s_limit_as_the_browser_and_capture_read_it(
-    receiver, survey
-):
-    receiver.config(limits={NAME: "3", "first_name": "3.0"}, limit_js={"question_8103": 7})
-    got = survey()
-    assert got[NAME] == {"browser_reads": 3, "capture_records": 3}
-    assert got["first_name"] == {"browser_reads": 3, "capture_records": None}  # no read records
-    assert got["question_8103"] == {"browser_reads": 7, "capture_records": None}  # its script's
-    assert got["last_name"] == {"browser_reads": None, "capture_records": None}
-    assert got["question_8101"] == "not_applicable"  # a list
-    assert got["resume"] == "not_applicable"  # a file
-    assert receiver.ledger()["disclosures"] == []
-
-
-def test_the_survey_says_what_it_could_not_read_of_the_page_as_served(
-    receiver, survey, monkeypatch
-):
-    monkeypatch.setattr(ro, "_served_html", lambda resp: None)
-    receiver.config(limits={NAME: "3"})
-    got = survey()
-    assert got[NAME] == {"browser_reads": 3, "capture_records": "not_observable"}
