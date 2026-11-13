@@ -54,6 +54,43 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## Before each wizard page's Next, what the page itself would refuse stops the attempt with that page never sent (D156, 2026-11-13; local only)
+
+Rank 23 of the automation loop (D154's limit). Product changes:
+
+- `app/modules/execution/adapters/fixture_ats.py`: D154's two checks shared (`button_ready`,
+  `would_refuse`, a `ClickChecks` bundle of reasons; `FINAL_CLICK` for the final click, which
+  keeps its behaviour), the wait timed by time elapsed; the one read of the button's form
+  (`_REFUSAL_JS`) can be kept to parts of the form (`within`), and the focus exemption covers
+  what a control or widget holds, never a focused container.
+- `app/modules/execution/adapters/workday.py`: `next_button` (also `click_next`'s),
+  `next_ready` (the navigation time limit, a Next not drawn yet waited for too, the lease
+  renewed), `next_would_refuse` (at that click, then `_final_would_refuse`: the final click's
+  own validation over the pages filled so far), `_leave_focus` after each page is filled; the
+  reasons `NEXT_*`, `NextRefusal`, `EarlyFinalRefusal`.
+- `app/modules/execution/runner.py`: `_wizard_pages` waits for the Next before the readback
+  (D148's reason preferred when it is not usable) and reads right before the gate for the
+  Next; `_refused` honours a stop request for the Next's unread page too; `NEXT_READY_MS`.
+- The stand-in (FIXTURE ASSUMPTION FA8): `next_disabled`, `next_late_enable`,
+  `next_late_rewrite`, `next_needs_answers`, `next_aria`, `next_aria_last`; `focus_validation`
+  on the wizard.
+
+No migration, no new state or reason code, no package change (`SCHEMA_VERSION` unchanged).
+Nothing was run against a real page. `scripts/validate.sh all` was not run (it runs the whole
+backend and e2e suites); ruff was.
+
+| Check (branch `wizard-next-checks`, from D155's branch at 756a401) | Command | Result |
+|---|---|---|
+| The first version's tests | `pytest tests/test_wizard_next_checks.py` (JUnit), on the working tree before 5050ad0; then the late-rewrite case added | exit 0, 17 passed in 37 s; exit 0, 2 passed |
+| The suites it touches | `pytest` on 11 files (`test_wizard_next_checks`, `test_page_own_checks`, `test_page_refusal_read`, `test_recovery_hardening`, `test_workday_wizard`, `test_worker_stop`, `test_workday_follow_up`, `test_workday_experience`, `test_workday_entry_details`, `test_workday_adapter`, `test_greenhouse_adapter`; JUnit), on the working tree that became 5050ad0 | exit 0; 549 passed in 18.2 min |
+| Each part changed in turn, the first version | 9 changes on 5050ad0, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 9 fail a test, each the one named for its part |
+| Two independent reviews | on 5050ad0 | no blocker in either. The safety review: an existing D143 test passing for the wrong reason, an invalid escape in the stand-in, a mark on the field filled last never counted, values the final click's validation refuses not counted at a Next, the read's place unpinned, D148's reason hidden, records; the second review: the same first two and the values the final click refuses, the Next waited for 10 s where its click had waited 20 s, marks inside a focused section never counted, the native Next unreachable yet described as supported, test gaps, wording. Fixed (04350e6, f75f728), each with a test; the rest recorded in D156 |
+| 04350e6 (the first two) | the click-failure test and the `next_aria` case (JUnit) | exit 0; 2 passed |
+| After the reviews | `pytest tests/test_wizard_next_checks.py` (JUnit), on the working tree before f75f728; `ruff check --fix .` (import order), `ruff format .`, `ruff check .`; then the 11 files on f75f728 | exit 0, 26 passed in 52 s; clean; exit 0, 557 passed in 15.4 min |
+| Each part changed in turn | 17 changes on f75f728, one at a time, the named tests run, the file restored (the 9 again, adjusted; 8 for the review fixes) | exit 1 for each: all 17 fail a test, each the one named for its part; the worktree clean after |
+| The regression set | `pytest` on 83 files (D155's 82 with `test_wizard_next_checks.py`; JUnit), in a copy of the branch at f75f728 | exit 0; 2376 passed in 73.6 min |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_wizard_next_checks.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 71 passed in 79 s; ruff formatted nothing, found nothing, and the format check passed |
+
 ## A Workday-style work entry's Location and Role Description come from your record (D155, 2026-11-12; local only)
 
 Rank 22 of the automation loop (D149's limit). Product changes:

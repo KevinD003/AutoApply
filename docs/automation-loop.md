@@ -48,6 +48,7 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D153 a list judged by the page's record of changes to a list; the option chosen from one read | merged (#62, 4f804be, tree as predicted); its PR CI passed all four jobs on 2d53b77 |
 | D154 what the page itself would refuse at the final click stops before the send gate; filling waits for what the answers started | merged (#63, de74606, tree as predicted); its PR CI passed all four jobs on 056729c |
 | D155 a Workday-style work entry's Location and Role Description come from your record | branch `workday-entry-details` (from D154's branch, then `main` with #63); reviewed twice; not merged |
+| D156 before each wizard page's Next, what the page itself would refuse stops the attempt with that page never sent | branch `wizard-next-checks` (from D155's branch, then with its records and `main` with #63); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -74,7 +75,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 9 | Recovery without duplicates | fx on the generic form; D143 merged (#52): on gh2 by id a worker killed before anything was sent is run again once, and one killed after entering data, at the send gate, around the final click or after the employer's receipt is never run again; a run past its budget stops before the final click (gh2 by id and the pilot stand-in; receiver ledger); D144 merged (#53): the sweeper runs on a worker of its own, so it is not held up by attempts waiting for codes (real workers, generic form; receiver ledger) | partial; D142 merged (#51): on the wizard stand-in a lost or killed worker leaves the record of each page's Next, is never taken over, and the application is never run again (receiver ledger); D143 merged (#52): the same kills on the single-page form and on the wizard's review page, and a wizard past its budget stops for good (receiver ledger) |
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus; D139 merged (#48): self-identification on gh2 (by id and pilot) up to the ledger: off or unmatched never sent, a label or a decline label sent, your per-application "Don't disclose" beats it, a required one without a match waits; a change retires its approvals at once (queued, held by a worker, under the standing rule: nothing withdrawn is sent) | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify"; D139 merged (#48): self-identification sent as each option's own value, each question only from the label naming its category, a bare "No" or two labels never used, a decline only where the choices name a category, a required gender without a match waits; withdrawal and change retire the approval (single page; the Workday decline wording is a fixture assumption) |
 | 11 | Upload failure preserves evidence | fx for UploadFailed; D137 merged (#46): every disclosure is recorded as it is made (receiver ledger): an unexpected error after an upload keeps its evidence (generic form, gh2 by id, the API route); a killed worker after an upload (generic form); a failure during an upload counts the document as possibly received (generic form, gh2 by id, the first Greenhouse-style page, the API route); a draft or document the API received and answered badly is recorded | fx; D137: a failure during an upload counts it as possibly received (Workday-style page); D142 merged (#51): each page's Next is recorded as disclosure evidence as it is made (wizard stand-in) |
-| 12 | Uncertain send quarantined | fx; D143 merged (#52): at the task's time limit the worker process is ended and the sweeper calls the outcome unknown (a real worker, generic form); the send lease covers the page's own wait for its answer; a code typed late in its wait is still answered under a lease (generic form); on gh2 by id a worker killed around the final click is quarantined (receiver ledger) | fx; D142 merged (#51): on the wizard stand-in, a Next after which the page shows a confirmation or "already applied" is quarantined in `submitted_unconfirmed`, as is an unknown final click; never run again (receiver ledger); D143 merged (#52): a worker killed around the final click on the single-page form, or before it on the wizard's review page, is quarantined and never run again (receiver ledger); D154 on its branch: a final click the page itself would refuse (the browser's validation, the page's marks, a button kept disabled) stops before the send gate with nothing sent, instead of a quarantine (FA8, receiver ledger) |
+| 12 | Uncertain send quarantined | fx; D143 merged (#52): at the task's time limit the worker process is ended and the sweeper calls the outcome unknown (a real worker, generic form); the send lease covers the page's own wait for its answer; a code typed late in its wait is still answered under a lease (generic form); on gh2 by id a worker killed around the final click is quarantined (receiver ledger) | fx; D142 merged (#51): on the wizard stand-in, a Next after which the page shows a confirmation or "already applied" is quarantined in `submitted_unconfirmed`, as is an unknown final click; never run again (receiver ledger); D143 merged (#52): a worker killed around the final click on the single-page form, or before it on the wizard's review page, is quarantined and never run again (receiver ledger); D154 merged (#63): a final click the page itself would refuse (the browser's validation, the page's marks, a button kept disabled) stops before the send gate with nothing sent, instead of a quarantine (FA8, receiver ledger); D156 on its branch: before each wizard page's Next, what the page would refuse at that click, or what the final click's own validation would refuse among the pages filled so far, stops the attempt with that page never sent; a Next kept disabled stops before its gate instead of being recorded as a click (FA8, receiver ledger) |
 | 13 | Cancellation respected | fx on the generic form; D134 merged (#43), on the gh2 stand-in through the pilot (receiver ledger): a pause stops what the standing rule queued, your own queued work runs on, a revocation stands; D143 merged (#52): a cancel after data was entered says what may have been entered, and a worker whose attempt was cancelled stops between fields (generic form); D150 on its branch: a request to stop the worker (`docker compose stop`, an upgrade, Ctrl-C) is honoured before the next protected step: back in the queue before anything is entered, abandoned after, the click completed past the send gate (a real Celery worker and the stand-ins, receiver ledger) | partial; D142 merged (#51): a revocation or a profile edit between wizard pages stops at the next page's gate; a cancel there is refused (`wizard_in_progress`), so a Next that submits is still quarantined (receiver ledger) |
 | 14 | Tenant isolation | fx (per-application routes) | D142 merged (#51): fx on the wizard stand-in: another account on the same posting is not refused and reaches nothing of the first (404) |
 | loop | Durable pause → answer → recheck → continue | fx, on `main` since D132 (#40): pause, read again, answer, one new run (receiver ledger) | fx (e2e), on `main` since D132 |
@@ -369,7 +370,25 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
 
-- **D155 (branch `workday-entry-details`, not merged).** Rank 22, D149's limit:
+- **D156 (branch `wizard-next-checks`, not merged).** Rank 23, D154's limit:
+  - the gap: on the Workday-style wizard each Next sends its page, and D154 read the
+    page's own checks only before the final click: a page whose script marks a field,
+    or holding a value the final click's validation refuses, was sent page after page
+    before the stop; a Next the page refused was clicked; one kept disabled was waited
+    for 20 s and recorded as a click the page did not answer;
+  - once a page is filled, focus leaves what has it; its Next is waited for (as long as
+    its click waited) before the readback; right before the gate for the Next, the page's
+    own marks at that click, and the final click's own validation over the pages filled
+    so far, are read without acting on the page. A finding stops the attempt with that
+    page never sent (on a wizard, for good);
+  - two independent reviews, no blocker in either; both found the values the final click
+    refuses not counted before a Next, an existing test passing for the wrong reason and
+    an invalid escape; the second, the Next waited for less than its click had, marks in
+    a focused section never counted. Fixed (04350e6, f75f728), each with a test; the
+    rest recorded in D156;
+  - 17 removal runs on f75f728, each failing the test named for its part.
+
+- **D155 (branch `workday-entry-details`, PR #64).** Rank 22, D149's limit:
   - the gap: a Workday-style work entry was sent with its Location and Role Description
     empty whatever your record held, and a page requiring either was refused when the
     form was read;
@@ -471,8 +490,10 @@ judges a list by the page's record of changes to a list instead of changes
 anywhere on the page, and chooses an option only from one read of the list. **D154**
 (rank 21, #63) stops before the send gate an attempt whose final click the page
 itself would refuse, and waits for the page's reaction to the answers before the checks.
-**D155** (rank 22, on its branch) sends a Workday-style work entry's Location and Role
-Description from your record where the entry asks them. Every ranked
+**D155** (rank 22, PR #64) sends a Workday-style work entry's Location and Role
+Description from your record where the entry asks them. **D156** (rank 23, on its branch)
+stops a wizard page before its Next when the page itself would refuse it, or when the final
+click's own validation would refuse what the pages filled so far hold. Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
 
@@ -568,7 +589,11 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D155 (branch `workday-entry-details`):** the new tests, the suites the change touches,
+- **D156 (branch `wizard-next-checks`):** the new tests, the suites the change touches,
+  the removal runs and the regression set, locally (Tests run below). Not tested: any real
+  page; a real Workday Next; a page that moves focus back after it is left; marks on pages
+  not shown where the final click is the page's script's.
+- **D155 (branch `workday-entry-details`, PR #64):** the new tests, the suites the change touches,
   the removal runs and the regression set, locally (Tests run below). Not tested: any real
   page; a Location typed into a search-as-you-type list; a page limiting a role
   description's length (still refused at capture); education on Workday.
@@ -834,6 +859,13 @@ action.
 | D155, the regression set: `pytest` on 82 files (D154's 81 with `test_workday_entry_details.py`; JUnit), in a copy of the branch at 756a401, restarted once (the container restarted during the first run) | exit 0; 2350 passed in 73.4 min |
 | D155, `main` with #63 merged in (e9a7333): the code unchanged from 756a401, the documents D154's records (compared file by file) | as stated |
 | D155, after its records: the document tests and `test_workday_entry_details.py`; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 108 passed in 63 s; ruff formatted nothing, found nothing, and the format check passed |
+| D156, the first version: `test_wizard_next_checks.py` (JUnit) on the working tree before 5050ad0, then the late-rewrite case; then the 11 suites it touches (JUnit) | exit 0, 17 passed; exit 0, 2 passed; exit 0, 549 passed in 18.2 min |
+| D156, the first version, each part changed in turn: 9 changes on 5050ad0, one at a time, the file restored | exit 1 for each: all 9 fail a test, each the one named for its part |
+| D156, after the reviews: `test_wizard_next_checks.py` (JUnit) on the working tree before f75f728; ruff; then the 11 suites on f75f728 | exit 0, 26 passed; clean; exit 0, 557 passed in 15.4 min |
+| D156, each part changed in turn: 17 changes on f75f728, one at a time, the file restored | exit 1 for each: all 17 fail a test, each the one named for its part |
+| D156, the regression set: `pytest` on 83 files (D155's 82 with `test_wizard_next_checks.py`; JUnit), in a copy of the branch at f75f728 | exit 0; 2376 passed in 73.6 min |
+| D156, D155's branch with its records merged in (fda61b9): the code unchanged from f75f728 (compared) | as stated |
+| D156, after its records: the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_wizard_next_checks.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 71 passed in 79 s; ruff formatted nothing, found nothing, and the format check passed |
 
 ## Failed approaches and rejected designs
 
@@ -949,9 +981,9 @@ action.
 
 ## Exact next action
 
-1. D155 (branch `workday-entry-details`, rank 22): its pull request (D154 merged as #63). Then D156
-   (branch `wizard-next-checks`, rank 23, D154's limit: the page's own checks read before each
-   wizard page's Next). Candidate after it: education on Workday.
+1. D155 (branch `workday-entry-details`, rank 22): its pull request, #64. Then D156 (branch
+   `wizard-next-checks`, rank 23, D154's limit: what the page itself would refuse, read before
+   each wizard page's Next): its pull request. Candidate after them: education on Workday.
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it

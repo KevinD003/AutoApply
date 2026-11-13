@@ -7338,3 +7338,103 @@ audit-inventory and export-completeness guards are updated and pass.
     stale comments; parts on an education section ignored silently.
   - Each is fixed with a test (756a401), or recorded above.
 - **Evidence (local only):** `tests/test_workday_entry_details.py`, 63 tests (through the runner against the Workday-style stand-in's Work Experience section, with the receiver's ledger as the oracle; on capture, the spec, resolution and the frozen content alone; or driving the section's executor on a page in Chromium), and changed cases in `test_workday_experience.py` and `test_package_contract.py`; the 14 suites the change touches; 33 removal runs, each failing the test named for its part; the regression set of 82 files. Results by commit in `docs/implementation-status.md`, claims in `docs/evidence-matrix.md`.
+
+## D156 — Before each wizard page's Next, what the page itself would refuse stops the attempt with that page never sent (2026-11-13)
+
+- **Context:** rank 23 of the automation loop (`docs/automation-loop.md`), D154's limit ("Before
+  each wizard page's Next, the page's own marks are not read; a Next the page refuses ends as
+  before (D142)"). Local stand-ins only; nothing real was run. No migration, no new state,
+  reason code, gate, permission or retry; no package change (`SCHEMA_VERSION` unchanged).
+- **Problem:** on the Workday-style wizard (D142) each Next sends its page to the employer, who
+  keeps it as a draft (FA3), and any stop after the disclosure gate ends the application for
+  good. D154 read the page's own checks only before the final click:
+  - a page whose script marks a field as not valid (a custom error, `aria-invalid`), or holding
+    a value the final click's own validation refuses (a pattern), was sent page after page,
+    every page saved at the employer before the final click was found refused;
+  - a Next the page's own script refuses while a field is marked was clicked, and the attempt
+    ended "the employer's page showed an error after a page's Next";
+  - a Next the page keeps disabled or hidden was waited for until the navigation time limit
+    (20 s) and recorded as a click the page "did not answer" ("does not know whether that page
+    was saved"), although no click was made; one that could not be identified (none, or two)
+    ended "a page's Next did not complete", likewise.
+- **Decided:** before each wizard page's Next, what D154 reads before the final click, with the
+  same code (`fixture_ats.button_ready`, `would_refuse`, one read of `_REFUSAL_JS`):
+  - **focus leaves the page once it is filled** (`WorkdayFixtureAdapter._leave_focus`): whatever
+    has focus (the control filled last, or a part of the page the page itself focused) loses
+    it, as D155 does for each work entry's controls. The page's reaction to that control's
+    `change`, and its checks when focus leaves it, then happen before the page settles, its
+    readback and the reads below, not only at the Next's click;
+  - **its Next** (`next_ready`), after the page has settled and before its readback: exactly
+    one Next on that page (`next_button`, the control `click_next` clicks), shown and enabled,
+    waited for as long as its click waited for it before D156 (the navigation time limit, by
+    time elapsed), also while it is not drawn yet or drawn twice as the page redraws it, the
+    attempt's lease renewed meanwhile. Waiting before the readback means what the page changes
+    while it keeps its Next disabled is read back like any other change. A Next kept disabled
+    for a question the page showed after an earlier answer says D148's reason (the check after
+    filling, read-only), not only that the Next stayed disabled;
+  - **right before the gate for its Next** (`next_would_refuse`), after the checks after filling
+    (the readback, D148's follow-ups, the form's comparison), two reads that act on nothing:
+    - **at that click**: for a Next that is a script's button (the stand-in's; capture refuses
+      a wizard whose Next is a submit button, so the browser never validates a Next), the page's
+      own marks (a custom error, `aria-invalid="true"`) on fields shown;
+    - **at the final click, for the pages filled so far** (`_final_would_refuse`): where the
+      final button is the browser's own validated submission of the wizard's form, what it
+      would refuse among pages 1 to i, shown or not (a value the markup does not accept, a
+      required field left empty, a mark). Those values are entered for good, so the final
+      click would be refused for them whatever the later pages hold; never what later pages
+      hold;
+  - **a mark on what has focus never counts** (D154's rule), now only where what has focus is
+    a control or a widget, or holds one: a section the page focused when it was shown hides no
+    mark inside it. This applies to the final click's read too;
+  - **any finding stops the attempt with that page never sent** (`runner._refused`):
+    `abandoned`, D142's outcome for a wizard (every approval retired as
+    `wizard_draft_at_employer`, "up to k page(s) were sent there with Next"), never a pause or
+    a retry; no gate for that Next is recorded and no click. A page that cannot be read stops
+    it too (fail closed); while the worker is being stopped, that is the stop's (D150). The
+    reasons name counts only ("the page's own checks would refuse a page's Next (1 field(s) it
+    marks as not valid)"; "... would refuse the final click for what the pages filled so far
+    hold (1 value(s) it does not accept)").
+- **What an approved run now does differently** (no adapter version change; approvals stay
+  valid): a wizard page whose own marks show a field as not valid, which holds a value the
+  final click's validation refuses, or whose Next stays hidden or disabled for the navigation
+  time limit after its answers, stops before that page is sent, instead of being sent (with
+  every later page) or recorded as a click. Every wizard page loses focus once filled, so the
+  page reacts to its last field before its readback. Since a wizard's stop is final (D142),
+  D154's fail-closed limits (a stale mark, an unreadable page) now end the application.
+- **The stand-in** (FIXTURE ASSUMPTION FA8, cfg `page_check`): `next_disabled`,
+  `next_late_enable` and `next_late_rewrite` (3 s), `next_needs_answers`, `next_aria`,
+  `next_aria_last`; on the wizard, `focus_validation` focuses page 1's City at load, counts the
+  marks it sets and refuses a page's Next while a shown field of its page is marked. The
+  wizard's Next is a script's button (`type=button`).
+- **Limits:**
+  - Only what the page states before the click is read: a Next refused by the employer's
+    server after the page was sent (D142's `step_error`), or by rules the page's script shows
+    nowhere, ends as before (the page sent, "showed an error").
+  - Where the final click is the page's script's, the marks on pages not shown are not read
+    before a Next (only at the review page, D154, where hidden marks do not count either).
+  - A Next that is a native submit button whose click the page cancels to go on by script is
+    refused at capture; one made so after capture changes the form (D132's comparison).
+  - A page that moves focus back to a field after `_leave_focus`, or whose check of a field on
+    focus loss itself fails, is read as it stands.
+  - A Next that stays disabled is waited for up to the navigation time limit (20 s) per page.
+  - Never seen on a real page; a real Workday Next was not observed.
+- **Superseded, not edited:** D154's limit "Before each wizard page's Next, the page's own marks
+  are not read; a Next the page refuses ends as before (D142)", and D154's rule that a mark held
+  by what has focus never counts, where what has focus is no control or widget.
+- **Reviewed independently twice** (on 5050ad0, the first version):
+  - The safety review found no blocker. It found: an existing D143 test passing for the wrong
+    reason (its stub had no `next_button`, so the click the test is about was never reached);
+    an invalid escape in the stand-in, as D154 had fixed; a mark on the field filled last never
+    counted (it keeps focus); values the final click's own validation refuses not counted at a
+    Next, and a docstring claiming they were; the read's place after the readback pinned by no
+    test; a Next kept disabled for a question the page showed reported without D148's reason;
+    the stand-in counting hidden marks; records missing.
+  - The second review found no blocker. It found the same first two (fixed in 04350e6 while it
+    ran); the values the final click refuses, with a read of the final button kept to the pages
+    filled so far, which it checked against every stand-in flow; the Next waited for 10 s where
+    its click had waited 20 s (and not while it was not drawn yet, counting pauses rather than
+    time, without renewing the lease); marks inside a focused section never counted; the native
+    Next unreachable (capture refuses it) yet described as supported; tests hanging on a 1 s
+    timer, one passing with either read, one covering one read's stop only; wording.
+  - Each is fixed with a test (04350e6, f75f728), or recorded above.
+- **Evidence (local only):** `tests/test_wizard_next_checks.py`, 26 tests (14 through the runner against the Workday-style stand-in's wizard, with the receiver's ledger as the oracle; 12 on pages set in Chromium); the 11 suites the change touches; 17 removal runs, each failing the test named for its part; the regression set of 83 files. Results by commit in `docs/implementation-status.md`, claims in `docs/evidence-matrix.md`.
