@@ -23,4 +23,9 @@ test("the answer box counts as the form sends it", async ({ page }, info) => {
   await expect(counter).toHaveText("6/1000 (a line break counts as two)");
   await box.fill("a\u{1F600}");
   await expect(counter).toHaveText("3/1000");
+  await expect(counter).not.toHaveClass(/text-danger-ink/);
+  // 1000 for the browser (its own maxlength lets it be typed), 1001 as the form sends it
+  await box.fill("x".repeat(998) + "\ny");
+  await expect(counter).toHaveText("1001/1000 (a line break counts as two)");
+  await expect(counter).toHaveClass(/text-danger-ink/);
 });

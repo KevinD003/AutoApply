@@ -174,13 +174,22 @@ def read_maxlength(raw: str | None) -> int | None | bool:
     return int(digits)
 
 
+_LINE_BREAK = re.compile(r"\r\n|\r|\n")
+
+
 def sent_len(text: str) -> int:
     """D157: a text's length as its form sends it, which a limit (`maxlength`) is held to: UTF-16
     code units, as the browser counts them (a character outside the Basic Multilingual Plane
     counts 2), and each line break as the two the form sends (CRLF), where the browser counts
     one. Never less than the browser's own count, so a value within a limit by this count is kept
-    whole by the page, and fits a server that counts what it receives."""
-    return len(text.encode("utf-16-le")) // 2 + text.count("\n")
+    whole by the page, and fits a server that counts what it receives. D158: a line break written
+    as CRLF or as a lone CR is one line break too (the form sends each as CRLF)."""
+    return len(_LINE_BREAK.sub("\r\n", text).encode("utf-16-le", "surrogatepass")) // 2
+
+
+def one_line_breaks(text: str) -> str:
+    """D158: every line break written as one LF, as a text area holds it."""
+    return _LINE_BREAK.sub("\n", text)
 
 
 class SectionSpec(BaseModel):
@@ -371,14 +380,14 @@ class _Node:
         tag: str,
         attrs: dict[str, str],
         parent: "_Node | None",
-        twice: frozenset[str] = frozenset(),
+        twice: dict[str, str] | None = None,
     ) -> None:
         self.tag, self.attrs, self.parent = tag, attrs, parent
         self.children: list[_Node | str] = []
-        # D157: the attributes written more than once on the tag. `attrs` keeps the last; the
-        # browser keeps the first, so a check that must read the tag as the browser does refuses
-        # such a tag rather than guess.
-        self.twice = twice
+        # D157: the attributes written more than once on the tag, each with the value written
+        # first (D158), which the browser keeps where `attrs` keeps the last: a check that must
+        # read the tag as the browser does refuses such a tag, or reads that first value.
+        self.twice = twice or {}
 
     def all_text(self) -> str:
         out = []
@@ -405,12 +414,17 @@ class _Node:
 _VOID = {"input", "br", "hr", "img", "meta", "link", "area", "base", "col", "source", "wbr"}
 
 
-def _twice(attrs: list[tuple[str, str | None]]) -> frozenset[str]:
-    """D157: the attribute names a tag writes more than once (`_Node.twice`)."""
+def _twice(attrs: list[tuple[str, str | None]]) -> dict[str, str]:
+    """D157: the attribute names a tag writes more than once, each with the value written first,
+    the one the browser keeps (D158; `_Node.twice`)."""
     names = [k for k, _ in attrs]
     if len(set(names)) == len(names):
-        return frozenset()
-    return frozenset(k for k in names if names.count(k) > 1)
+        return {}
+    first: dict[str, str] = {}
+    for k, v in attrs:
+        if names.count(k) > 1:
+            first.setdefault(k, v if v is not None else "")
+    return first
 
 
 def _question_limit(raw: str | None, top: int = 100_000) -> int | None:
@@ -655,7 +669,7 @@ def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> Fo
             if itype in {t.value for t in FieldType}
             else FieldType.text
         )
-        maxlen = n.attrs.get("maxlength")
+        maxlen = n.twice.get("maxlength", n.attrs.get("maxlength"))  # D158: as the browser
         fields.append(
             FormField(
                 label=label_of(n),
