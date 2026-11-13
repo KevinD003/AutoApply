@@ -60,6 +60,7 @@ from app.modules.preparation.forms import (
     _ARIA_WIDGETS,
     _VOID,
     ENTRY_PARTS,
+    MAX_LIMIT,
     UNKNOWN_TRIGGER,
     Condition,
     FieldType,
@@ -180,7 +181,46 @@ def _usable_within(n: _Node, top: _Node | None) -> bool:
 
 
 # Constraints on a typed value NoEfforts would not honour (it types the approved value whole).
-_CONSTRAINTS = ("maxlength", "minlength", "pattern")
+# D157: a length limit (`maxlength`) is read instead (`_limit`), and your record held to it.
+_CONSTRAINTS = ("minlength", "pattern")
+# D157: an entry's typed parts whose limit is recorded, by the frozen row's field names; a date
+# is always MM/YYYY, so its control must accept 7 characters and its limit is not recorded.
+_LIMITED = {"title": "title", "company": "company_name", "location": "location",
+            "description": "description"}  # fmt: skip
+_MONTH_YEAR_LEN = len("MM/YYYY")
+
+
+_ASCII_WHITESPACE = " \t\n\f\r"  # what the browser skips before a number, and nothing else
+
+
+def _limit(n: _Node) -> int | None | bool:
+    """D157: a control's `maxlength`: None when it has none, the number when it is written as
+    the browser reads it, in ASCII digits only (ASCII whitespace around them), from 1 to
+    MAX_LIMIT; False otherwise, a limit NoEfforts cannot read as the browser does and never
+    guesses (with a sign, other characters or other scripts' digits; one written twice is
+    refused with its control, `_work_control_ok`)."""
+    raw = n.attrs.get("maxlength")
+    if raw is None:
+        return None
+    digits = raw.strip(_ASCII_WHITESPACE)
+    if not (digits.isascii() and digits.isdigit()):
+        return False
+    digits = digits.lstrip("0")
+    if not digits or len(digits) > len(str(MAX_LIMIT)) or int(digits) > MAX_LIMIT:
+        return False  # 0, or more than the browser reads
+    return int(digits)
+
+
+def _limits(controls: list[_Node]) -> dict[str, int]:
+    """D157: the length limits an entry's typed parts hold your record to, by the frozen row's
+    field names (`_LIMITED`); a date's, which MM/YYYY fits (`_work_control_ok`), never binds."""
+    out = {}
+    for n in controls:
+        limit = _limit(n)
+        part = _WORK_NAME.fullmatch(n.attrs.get("name", ""))[2]
+        if isinstance(limit, int) and not isinstance(limit, bool) and part in _LIMITED:
+            out[_LIMITED[part]] = limit
+    return out
 
 
 def _work_control_ok(n: _Node, index: str, template: _Node | None) -> bool:
@@ -193,8 +233,11 @@ def _work_control_ok(n: _Node, index: str, template: _Node | None) -> bool:
     page showed at load from one NoEfforts added; the adapter checks the entries already on the
     page before anything is entered (execution/adapters/workday_sections.py)."""
     if template is not None and ("readonly" in n.attrs or "disabled" in n.attrs
-                                 or any(c in n.attrs for c in _CONSTRAINTS)
                                  or not _usable_within(n, template)):  # fmt: skip
+        return False
+    # A constraint on a typed value NoEfforts would not honour, on the template and on an entry
+    # already on the page alike (D157, found by its review: an entry's were never read).
+    if any(c in n.attrs for c in _CONSTRAINTS):
         return False
     m = _WORK_NAME.fullmatch(n.attrs.get("name", ""))
     if not m or m[1] != index or m[2] not in _WORK_CONTROLS:
@@ -203,6 +246,14 @@ def _work_control_ok(n: _Node, index: str, template: _Node | None) -> bool:
         return False  # the page says how a date is written, and it is the way NoEfforts writes it
     tag, kind, filled = _WORK_CONTROLS[m[2]]
     if n.tag != tag or (kind and n.attrs.get("type", "text").lower() != kind):
+        return False
+    if n.twice:  # D157: an attribute written twice, which the browser reads as its first
+        return False
+    # D157: a length limit only on a typed part, one NoEfforts can read, and on a date one that
+    # lets MM/YYYY be typed whole.
+    limit = _limit(n)
+    if limit is False or (limit is not None and (kind == "checkbox" or (
+            m[2] in ("from", "to") and limit < _MONTH_YEAR_LEN))):  # fmt: skip
         return False
     if (n.attrs.get("value") and kind != "checkbox") or "checked" in n.attrs or n.all_text():
         return False  # a value at load is never trusted (as PREFILLED_KEY)
@@ -302,6 +353,9 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
     # place, from what the template's parts resolved to).
     if any(_optional_parts(c) != _optional_parts(entry) for c in by_index.values()):
         return None, True
+    # D157: and limits each part's length exactly as the template does.
+    if any(_limits(c) != _limits(entry) for c in by_index.values()):
+        return None, True
     page = next((a for a in root.ancestors() if "data-wizard-page" in a.attrs), None)
     # D155: the template's Location and Role Description (each once, `_entry_ok`), and which of
     # them the page requires.
@@ -315,6 +369,7 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
             required=root.attrs.get("aria-required", "").lower() == "true",
             parts=parts,
             required_parts=[p for p in parts if asked[p]],
+            limits=_limits(entry),
         )
     except ValidationError:  # a page name too long to record: never an error of capture
         return None, True

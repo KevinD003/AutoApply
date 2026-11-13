@@ -47,8 +47,9 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D152 the read-only survey publishes whether each list met the adapter's settle rule | merged (#61, bfaeb1f, tree as predicted); its PR CI passed all four jobs on 5f4fe33 |
 | D153 a list judged by the page's record of changes to a list; the option chosen from one read | merged (#62, 4f804be, tree as predicted); its PR CI passed all four jobs on 2d53b77 |
 | D154 what the page itself would refuse at the final click stops before the send gate; filling waits for what the answers started | merged (#63, de74606, tree as predicted); its PR CI passed all four jobs on 056729c |
-| D155 a Workday-style work entry's Location and Role Description come from your record | branch `workday-entry-details` (from D154's branch, then `main` with #63); reviewed twice; not merged |
-| D156 before each wizard page's Next, what the page itself would refuse stops the attempt with that page never sent | branch `wizard-next-checks` (from D155's branch, then with its records and `main` with #63); reviewed twice; not merged |
+| D155 a Workday-style work entry's Location and Role Description come from your record | merged (#64, f8c1297, tree as predicted); its PR CI passed all four jobs on 54ad68e |
+| D156 before each wizard page's Next, what the page itself would refuse stops the attempt with that page never sent | branch `wizard-next-checks` (from D155's branch, then with its records and `main` with #63); reviewed twice; PR #65 |
+| D157 a Workday-style work entry's length limits are read, and your record held to them | branch `workday-entry-limits` (from D156's branch); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -370,7 +371,26 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
 
-- **D156 (branch `wizard-next-checks`, not merged).** Rank 23, D154's limit:
+- **D157 (branch `workday-entry-limits`, not merged).** Rank 24, D155's limit:
+  - the gap: a Workday-style work entry whose typed part carries a length limit
+    (`maxlength`) made the whole form one checkpoint, even when every record fits;
+  - capture reads the limit, only as the browser reads it, keyed by the frozen row's
+    fields, written and fingerprinted only when set; a value longer than it, counted as
+    the form sends it (UTF-16 units, a line break as CRLF), is yours to shorten before
+    approval, never cut; the executor reads the control's own limit before typing each
+    value; Greenhouse never plans a limited section;
+  - two independent reviews, no blocker in either; both found the line-break count (a
+    description within the browser's count but not what its form sends was approved,
+    then refused by the page after pages 1 and 2 were sent) and capture reading a
+    `maxlength` otherwise than the browser; the second, a limit a page's script sets on
+    the entry it adds and `minlength`/`pattern` never read on an entry already on the
+    page. Fixed (a5870b5), each with a test; a limit of 0 or above 100,000 on an
+    ordinary question, which failed the whole read of the form, no longer does
+    (45937de); the rest recorded in D157;
+  - 41 removal runs (37 on a5870b5, 4 on 45937de), each failing the test named for
+    its part.
+
+- **D156 (branch `wizard-next-checks`, PR #65).** Rank 23, D154's limit:
   - the gap: on the Workday-style wizard each Next sends its page, and D154 read the
     page's own checks only before the final click: a page whose script marks a field,
     or holding a value the final click's validation refuses, was sent page after page
@@ -388,7 +408,7 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     rest recorded in D156;
   - 17 removal runs on f75f728, each failing the test named for its part.
 
-- **D155 (branch `workday-entry-details`, PR #64).** Rank 22, D149's limit:
+- **D155 (merged, #64).** Rank 22, D149's limit:
   - the gap: a Workday-style work entry was sent with its Location and Role Description
     empty whatever your record held, and a page requiring either was refused when the
     form was read;
@@ -490,10 +510,12 @@ judges a list by the page's record of changes to a list instead of changes
 anywhere on the page, and chooses an option only from one read of the list. **D154**
 (rank 21, #63) stops before the send gate an attempt whose final click the page
 itself would refuse, and waits for the page's reaction to the answers before the checks.
-**D155** (rank 22, PR #64) sends a Workday-style work entry's Location and Role
-Description from your record where the entry asks them. **D156** (rank 23, on its branch)
+**D155** (rank 22, #64) sends a Workday-style work entry's Location and Role
+Description from your record where the entry asks them. **D156** (rank 23, PR #65)
 stops a wizard page before its Next when the page itself would refuse it, or when the final
-click's own validation would refuse what the pages filled so far hold. Every ranked
+click's own validation would refuse what the pages filled so far hold. **D157** (rank
+24, on its branch) reads a Workday-style work entry's length limits and holds your
+record to them, counted as the form sends them. Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
 
@@ -589,12 +611,17 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D156 (branch `wizard-next-checks`):** the new tests, the suites the change touches,
+- **D157 (branch `workday-entry-limits`):** the new tests, the suites the change
+  touches, the removal runs and the regression set, locally (Tests run below). Not
+  tested: any real page; a real Workday tenant's limits; an ordinary question's limit
+  counted as the form sends it (still by code points).
+- **D156 (branch `wizard-next-checks`, PR #65):** the new tests, the suites the change touches,
   the removal runs and the regression set, locally (Tests run below). Not tested: any real
   page; a real Workday Next; a page that moves focus back after it is left; marks on pages
   not shown where the final click is the page's script's.
-- **D155 (branch `workday-entry-details`, PR #64):** the new tests, the suites the change touches,
-  the removal runs and the regression set, locally (Tests run below). Not tested: any real
+- **D155:** merged (#64, f8c1297, tree as predicted); its PR CI passed all four jobs on
+  54ad68e. Locally: the new tests, the suites the change touches, the removal runs and
+  the regression set (Tests run below). Not tested: any real
   page; a Location typed into a search-as-you-type list; a page limiting a role
   description's length (still refused at capture); education on Workday.
 - **D154:** merged (#63, de74606, tree as predicted); its PR CI passed all four jobs on
@@ -866,6 +893,12 @@ action.
 | D156, the regression set: `pytest` on 83 files (D155's 82 with `test_wizard_next_checks.py`; JUnit), in a copy of the branch at f75f728 | exit 0; 2376 passed in 73.6 min |
 | D156, D155's branch with its records merged in (fda61b9): the code unchanged from f75f728 (compared) | as stated |
 | D156, after its records: the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_wizard_next_checks.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 71 passed in 79 s; ruff formatted nothing, found nothing, and the format check passed |
+| D157, the first version: `test_workday_entry_limits.py` (JUnit) on the working tree before 36be30b; then with 5 suites it touches; then `test_workday_experience.py` after its `maxlength` case became `minlength` | exit 0, 49 passed; exit 1, 254 passed and the one case D157 changes; exit 0, 117 passed |
+| D157, after the reviews: `test_workday_entry_limits.py` (JUnit) on the working tree before a5870b5; ruff; then 21 suites; then the limits and experience files on a5870b5 | exit 0, 87 passed; clean; exit 0, 1235 passed in 12.8 min; exit 0, 214 passed |
+| D157, each part changed in turn: 37 changes on a5870b5, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 37 fail a test, each the one named for its part; the worktree clean after |
+| D157, the generic reader's bounds (45937de): 5 suites that read forms (JUnit); 4 changes on 45937de, one at a time | exit 0, 783 passed in 4.3 min; exit 1 for each: all 4 fail the test named for their part |
+| D157, the regression set: `pytest` on 84 files (D156's 83 with `test_workday_entry_limits.py`; JUnit), in a copy of the branch at a5870b5 | exit 0; 2473 passed in 74.8 min |
+| D157, after its records: the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_workday_entry_limits.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 147 passed in 61 s; ruff formatted nothing, found nothing, and the format check passed |
 
 ## Failed approaches and rejected designs
 
@@ -981,9 +1014,10 @@ action.
 
 ## Exact next action
 
-1. D155 (branch `workday-entry-details`, rank 22): its pull request, #64. Then D156 (branch
-   `wizard-next-checks`, rank 23, D154's limit: what the page itself would refuse, read before
-   each wizard page's Next): its pull request. Candidate after them: education on Workday.
+1. D156 (branch `wizard-next-checks`, rank 23): its pull request, #65. Then D157
+   (branch `workday-entry-limits`, rank 24, D155's limit: a work entry's length limits read
+   and your record held to them): its pull request. Candidates after them: an ordinary
+   question's limit counted as the form sends it (every provider); education on Workday.
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it

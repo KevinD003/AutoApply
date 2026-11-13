@@ -81,7 +81,11 @@ tenant:
        entry. No real Workday work-history section was observed (docs/research/workday.md: My
        Experience sections can each be hidden or required, and resume parsing fills work
        experience). D155: in experience_parts_required an entry's Location and Role Description
-       are `required` too, and the page's own checks refuse an entry without them.
+       are `required` too, and the page's own checks refuse an entry without them. D157: in
+       experience_limits each typed part has a `maxlength` (WORK_LIMITS), which the page's own
+       checks enforce too, on what they receive (a line break, sent as CRLF, counting 2);
+       experience_limits_at_load adds an entry already on the page whose Role Description is
+       limited otherwise.
   FA8  (D154) a page's own checks before its final click, by cfg["page_check"], on the single
        page and the wizard alike (the form validates natively: no `novalidate`): pattern (the
        phone must be ten digits, in the markup), custom_error (the page's script refuses a phone
@@ -126,7 +130,10 @@ experience_entry_at_load (one empty entry already there at load), experience_unk
 (an entry also asks a required "Reason for leaving"), experience_add_broken (Add adds
 nothing), experience_add_once (Add adds the first entry only) and experience_changed_after_next
 (once page 2 is saved, the page changes its first entry's Job Title, as a script could), and
-experience_parts_required (D155: an entry's Location and Role Description are required too). The
+experience_parts_required (D155: an entry's Location and Role Description are required too),
+experience_limits (D157: an entry's typed parts limited in length, WORK_LIMITS, which the page's
+own checks enforce too) and experience_limits_at_load (the same, with one entry already on the
+page whose Role Description is limited otherwise). The
 single page's mode wd_experience puts the section on its My Experience section.
 """
 
@@ -375,7 +382,12 @@ def _page_check(cfg: dict) -> tuple[str, str]:
 WORK_VARIANTS = ("experience", "experience_required", "experience_parse",
                  "experience_entry_at_load", "experience_unknown_control",
                  "experience_add_broken", "experience_add_once",
-                 "experience_changed_after_next", "experience_parts_required")  # fmt: skip
+                 "experience_changed_after_next", "experience_parts_required",
+                 "experience_limits", "experience_limits_at_load")  # fmt: skip
+# D157, FA7: the length limits (`maxlength`) of an entry's typed parts in experience_limits; in
+# experience_limits_at_load the entry already on the page limits its Role Description to 100.
+WORK_LIMITS = {"title": 40, "company": 40, "location": 30, "from": 7, "to": 7, "description": 200}
+LIMITED_VARIANTS = ("experience_limits", "experience_limits_at_load")
 CHANGED_TITLE = "Changed after saving (fictional)"  # experience_changed_after_next
 _WORK_NAME = re.compile(r"work\[(\d+)\]\.[a-z_]+")
 _MONTH_YEAR = re.compile(r"(0[1-9]|1[0-2])/[0-9]{4}")
@@ -384,28 +396,31 @@ PARSED_ENTRY = {"title": "Parsed Title (fictional)", "company": "Parsed Company 
                 "from": "01/2015", "description": "Parsed from the resume (fictional)"}
 
 
-def _work_entry(i: str, n: str, extra: bool = False, parts_required: bool = False) -> str:
+def _work_entry(i: str, n: str, extra: bool = False, parts_required: bool = False,
+                limits: dict | None = None) -> str:  # fmt: skip
     """FA7: one entry; `i` its index in the control names, `n` its number on the page. D155:
-    `parts_required`, Location and Role Description required too."""
+    `parts_required`, Location and Role Description required too. D157: `limits`, each typed
+    part's `maxlength`."""
     req = " required" if parts_required else ""
+    lim = {k: f' maxlength="{v}"' for k, v in (limits or {}).items()}
     reason = (f'<label for="work-{i}-reason">Reason for leaving</label><input id="work-{i}-'
               f'reason" name="work[{i}].reason_for_leaving" type="text" required>'
               if extra else "")  # fmt: skip
     return f"""<div data-wd-entry="{i}"><h4>Work Experience {n}</h4>
 <label for="work-{i}-title">Job Title</label>
-<input id="work-{i}-title" name="work[{i}].title" type="text" required>
+<input id="work-{i}-title" name="work[{i}].title" type="text" required{lim.get("title", "")}>
 <label for="work-{i}-company">Company</label>
-<input id="work-{i}-company" name="work[{i}].company" type="text" required>
+<input id="work-{i}-company" name="work[{i}].company" type="text" required{lim.get("company", "")}>
 <label for="work-{i}-location">Location</label>
-<input id="work-{i}-location" name="work[{i}].location" type="text"{req}>
+<input id="work-{i}-location" name="work[{i}].location" type="text"{req}{lim.get("location", "")}>
 <label><input name="work[{i}].current" type="checkbox" value="1" data-wd-current> I currently
  work here</label>
 <label for="work-{i}-from">From</label>
-<input id="work-{i}-from" name="work[{i}].from" type="text" placeholder="MM/YYYY" required>
+<input id="work-{i}-from" name="work[{i}].from" type="text" placeholder="MM/YYYY" required{lim.get("from", "")}>
 <div data-wd-to><label for="work-{i}-to">To</label>
-<input id="work-{i}-to" name="work[{i}].to" type="text" placeholder="MM/YYYY" required></div>
+<input id="work-{i}-to" name="work[{i}].to" type="text" placeholder="MM/YYYY" required{lim.get("to", "")}></div>
 <label for="work-{i}-description">Role Description</label>
-<textarea id="work-{i}-description" name="work[{i}].description"{req}></textarea>{reason}</div>"""
+<textarea id="work-{i}-description" name="work[{i}].description"{req}{lim.get("description", "")}></textarea>{reason}</div>"""
 
 
 def _work_section(variant: str | None) -> tuple[str, str, str]:
@@ -414,9 +429,12 @@ def _work_section(variant: str | None) -> tuple[str, str, str]:
     if variant not in WORK_VARIANTS:
         return "", "", ""
     required = ' aria-required="true"' if variant == "experience_required" else ""
-    at_load = _work_entry("0", "1") if variant == "experience_entry_at_load" else ""
+    limits = WORK_LIMITS if variant in LIMITED_VARIANTS else None
+    at_load = (_work_entry("0", "1") if variant == "experience_entry_at_load"
+               else _work_entry("0", "1", limits={**WORK_LIMITS, "description": 100})
+               if variant == "experience_limits_at_load" else "")  # fmt: skip
     entry = _work_entry("__i__", "__n__", extra=variant == "experience_unknown_control",
-                        parts_required=variant == "experience_parts_required")
+                        parts_required=variant == "experience_parts_required", limits=limits)
     markup = (f'<div id="work-experience" role="group" aria-labelledby="work-experience-label" '
               f'data-wd-section="work" data-wd-entry-template="work-experience-entry"{required}>'
               f'<h3 id="work-experience-label">Work Experience{" *" if required else ""}</h3>'
@@ -455,9 +473,13 @@ workAdd.addEventListener('click', () => window.addWorkEntry());"""
     return markup, template, script
 
 
-def _work_errors(fields: dict, required: bool, parts_required: bool = False) -> list[str]:
+def _work_errors(fields: dict, required: bool, parts_required: bool = False,
+                 limits: dict | None = None) -> list[str]:  # fmt: skip
     """FA7: what the page's own checks refuse in the Work Experience entries it was sent. D155:
-    `parts_required`, an entry's Location and Role Description too."""
+    `parts_required`, an entry's Location and Role Description too. D157: `limits`, a part
+    longer than its limit as the page receives it: UTF-16 code units, each line break the two
+    the form sends (CRLF), where the browser's own `maxlength` counts one (the server's check,
+    stricter than the browser's)."""
     found = sorted({int(m[1]) for k in fields if (m := _WORK_NAME.fullmatch(k))})
     errors = ["Add your work experience"] if required and not found else []
     for i in found:
@@ -469,6 +491,8 @@ def _work_errors(fields: dict, required: bool, parts_required: bool = False) -> 
         errors += [f"Work Experience {i + 1}: enter {c}" for c in wanted if not got(c)]
         errors += [f"Work Experience {i + 1}: write {c} as MM/YYYY" for c in ("from", "to")
                    if got(c) and not _MONTH_YEAR.fullmatch(got(c))]  # fmt: skip
+        errors += [f"Work Experience {i + 1}: {c} is too long" for c, n in (limits or {}).items()
+                   if len(got(c).encode("utf-16-le")) // 2 > n]  # fmt: skip
     return errors
 
 
@@ -942,7 +966,8 @@ def mount(app, ledger, cfg, accept) -> None:
             return JSONResponse({"error": "session expired"}, status_code=419)
         if variant in WORK_VARIANTS and page == 2:  # D149, FA7
             errors = _work_errors(fields, variant == "experience_required",
-                                  variant == "experience_parts_required")
+                                  variant == "experience_parts_required",
+                                  WORK_LIMITS if variant in LIMITED_VARIANTS else None)
             if errors:
                 return JSONResponse({"errors": errors}, status_code=422)
         if variant == "step_error" and page == 2:
@@ -1000,7 +1025,8 @@ def mount(app, ledger, cfg, accept) -> None:
         missing = [k for k in required if not fields.get(k)]
         if mode == "wd_experience" or wizard in WORK_VARIANTS:  # D149, FA7
             missing += _work_errors(fields, wizard == "experience_required",
-                                    wizard == "experience_parts_required")
+                                    wizard == "experience_parts_required",
+                                    WORK_LIMITS if wizard in LIMITED_VARIANTS else None)
         if wizard:  # D142, FA4: every page before Review was saved under this form token
             saved = {d["page"] for d in drafted_pages(slug, token)}
             missing += [f"page {i}" for i in range(1, len(WIZARD_PAGES)) if i not in saved]

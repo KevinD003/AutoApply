@@ -147,6 +147,8 @@ def attach_form(
             if any(s.parts or s.required_parts for s in schema.sections):
                 # D155: set only by the Workday-style capture of the stand-in's Work Experience.
                 raise bad_request("Could not read the form: 'parts' is set by NoEfforts only")
+            if any(s.limits for s in schema.sections):  # D157: likewise
+                raise bad_request("Could not read the form: 'limits' is set by NoEfforts only")
     except KeyError:
         raise bad_request("Unknown fixture") from None
     except (ExtractionError, ValidationError) as e:

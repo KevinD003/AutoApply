@@ -9,6 +9,35 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A Workday-style work entry's length limits are read, and your record held to them (D157, 2026-11-13; local only)
+
+Nothing here ran against a real page. Branch `workday-entry-limits`. The runs drive the runner
+against the Workday-style stand-in's wizard (FIXTURE ASSUMPTION FA7, variants
+`experience_limits` and `experience_limits_at_load`), with the receiver's ledger as the oracle
+(its page-2 draft rows, acceptances and disclosures); or read stand-in pages at capture; or
+drive the section's executor on pages set in Chromium. All in
+`tests/test_workday_entry_limits.py` unless named.
+
+| Claim | Test | Result |
+|---|---|---|
+| Your work history within the page's limits is sent | `test_your_work_history_within_the_page_s_limits_is_sent` (`experience_limits`, two records) | the package freezes the four limits; `confirmed`, both entries in page 2's draft row, one acceptance. Before D157: the form was one checkpoint when it was read |
+| A value exactly at its limit, as its form sends it, is sent whole | `test_a_value_at_the_page_s_limit_is_sent_whole` (a title of 38 letters and an emoji, 40; a role description of 199 characters with a line break, 200 as sent) | `confirmed`; page 2's draft row holds each whole; one acceptance |
+| A record longer than the page accepts blocks approval | `test_a_record_longer_than_the_page_accepts_blocks_approval` (216 characters; 200 for the browser but 201 as sent) | one unresolved `section:employment:…:description` key; approval refused (409); no disclosure, nothing accepted. In the first version (36be30b) the second was approved, then refused by the page's own check after pages 1 and 2 were sent (both reviews) |
+| An entry on the page limited otherwise is refused when the form is read | `test_an_entry_on_the_page_limited_otherwise_is_refused_when_the_form_is_read` (`experience_limits_at_load`); `test_an_entry_on_the_page_limited_otherwise_is_one_checkpoint` (4 cases and a date's limit that fits) | `WORK_KEY` unresolved, approval refused, no disclosure; a date limit MM/YYYY fits does not count |
+| A limit is read only as the browser reads it, never an error of capture | `test_a_limit_is_read_as_the_browser_reads_it` (6 spellings), `test_a_limit_nothing_can_honour_is_one_checkpoint` (22 cases: signs, other characters and scripts, sizes, thousands of digits, an attribute written twice, a box, a date under 7, minlength, pattern), `test_a_control_s_limit_is_its_number_none_or_unreadable` | as stated; nothing larger than the browser's own limit is ever read |
+| minlength and pattern on an entry already on the page are refused | `test_an_entry_on_the_page_with_another_constraint_is_one_checkpoint` | one checkpoint (before D157 the entry was accepted) |
+| Limits are written and fingerprinted only when set | `test_limits_are_written_and_fingerprinted_only_when_set`; `test_package_contract.py` (an `experience_limits` capture; the shape recorded under version 3) | a section without limits dumps and fingerprints as before; a changed limit changes the fingerprint |
+| Length is counted as the form sends it | `test_length_is_counted_as_the_form_sends_it` (5 cases), `test_a_record_longer_than_the_page_accepts_is_yours_to_shorten` | a line break 2, a character outside the plane 2; the message names the limit and the length, never the text |
+| The spec, resolution and frozen content refuse what they do not know | `test_a_section_s_limits_are_known_fields_in_range`, `test_a_section_with_limits_never_named_is_not_supported`, `test_frozen_limits_are_checked_before_anything_is_entered` (12 cases) | refused, unsupported or a checkpoint; sorted when written |
+| Entering never types a value its page would cut | `test_a_frozen_value_within_its_limit_is_planned_and_greenhouse_never_plans_one`, `test_the_plan_holds_each_value_to_its_limit_past_the_content_check`, `test_the_executor_refuses_a_value_its_page_would_cut` (3), `test_a_limit_the_page_sets_on_the_entry_it_adds_stops_before_anything_is_cut` (Chromium) | the plan refuses past the content check; a limit the page's script sets on the entry it adds stops it before typing (the control stays empty); Greenhouse never plans a limited section |
+| Hand-set limits and the generic reader | `test_a_form_given_by_hand_never_names_limits`, `test_an_ordinary_question_s_limit_never_breaks_reading_the_form` (9) | 400; the form is read whatever the limit says, the limit recorded only as ASCII digits from 1 to 100,000 (before: a superscript digit, thousands of digits, 0 or 524288 failed the whole read) |
+| The stand-in's own check counts what it receives | `test_the_stand_in_refuses_a_part_longer_than_its_limit` | a part past its limit refused, a line break counted 2 (CRLF) |
+| Every other flow unchanged | the 21 suites the change touches; the regression set of 84 files (on a5870b5) | pass (`docs/implementation-status.md`) |
+| Each part is needed | 41 changes (37 on a5870b5, 4 on 45937de), one at a time, the named tests run, the file restored (`docs/implementation-status.md`) | each fails the tests named for its part |
+
+In D155's section, "A page's limit on a role description's length: still refused at capture"
+describes the capture before D157.
+
 ## Before each wizard page's Next, what the page itself would refuse stops the attempt with that page never sent (D156, 2026-11-13; local only)
 
 Nothing here ran against a real page. Branch `wizard-next-checks`. The runs drive the runner

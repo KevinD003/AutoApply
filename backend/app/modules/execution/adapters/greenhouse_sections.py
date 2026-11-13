@@ -28,7 +28,7 @@ from playwright.sync_api import Error as PWError
 
 from app.modules.execution.adapters import dropdowns
 from app.modules.preparation import gh_readonly as ro
-from app.modules.preparation.forms import ENTRY_PARTS
+from app.modules.preparation.forms import ENTRY_PARTS, LIMITED_FIELDS, MAX_LIMIT, sent_len
 from app.modules.preparation.structured_sections import FieldResult, RowResult, SectionResult
 
 
@@ -268,6 +268,14 @@ def validate_content_section(data: object) -> None:
                 or parts != sorted(set(parts)) or not set(parts) <= set(ENTRY_PARTS)):  # fmt: skip
             raise Refused("section parts are malformed")
         allowed = allowed | frozenset(parts)
+    limits: dict = {}
+    if "limits" in data:  # D157: written only for an entry whose page limits its typed parts
+        limits = data["limits"]
+        if (kind != "employment" or not isinstance(limits, dict) or not limits
+                or not set(limits) <= set(LIMITED_FIELDS) or not set(limits) <= allowed
+                or any(isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= MAX_LIMIT
+                       for v in limits.values())):  # fmt: skip
+            raise Refused("section limits are malformed")
     seen: set[str] = set()
     for idx, row in enumerate(rows):
         if not isinstance(row, dict):
@@ -286,6 +294,13 @@ def validate_content_section(data: object) -> None:
                 raise Refused(f"unsupported {kind} field {name!r}")
             if not (isinstance(f, dict) and isinstance(f.get("status"), str)):
                 raise Refused(f"malformed section field {name!r}")
+            # D157: never a value longer than the page accepts, whatever froze it
+            if (
+                name in limits
+                and f["status"] == "resolved"
+                and (not isinstance(f.get("display"), str) or sent_len(f["display"]) > limits[name])
+            ):
+                raise Refused(f"section field {name!r} is longer than its page accepts")
 
 
 def section_from_content(data: dict) -> SectionResult:
@@ -311,9 +326,12 @@ def section_from_content(data: dict) -> SectionResult:
 
 def plan_content_section(data: dict) -> SectionPlan:
     """Plan directly from a package content section (rebuild then plan). D155: a section whose
-    entries ask more than Greenhouse's five fields (`parts`) is never planned here."""
+    entries ask more than Greenhouse's five fields (`parts`) is never planned here; D157: nor
+    one whose page limits its entries' lengths (`limits`), which this form never states."""
     if isinstance(data, dict) and "parts" in data:
         raise Refused("the section's entries ask what this form does not have")
+    if isinstance(data, dict) and "limits" in data:
+        raise Refused("the section's entries are limited in a way this form does not state")
     return plan_section(section_from_content(data))
 
 

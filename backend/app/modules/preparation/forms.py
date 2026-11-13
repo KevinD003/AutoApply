@@ -12,7 +12,7 @@ import re
 from html.parser import HTMLParser
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_serializer, model_validator
+from pydantic import BaseModel, Field, StrictInt, model_serializer, model_validator
 
 # v2 (D80): a search-as-you-type control (role=combobox or aria-autocomplete) is unsupported,
 # never a text box; with `challenges`, a CAPTCHA or bot check on the page is a required
@@ -145,6 +145,22 @@ class SectionOptionSpec(BaseModel):
 ENTRY_PARTS = ("description", "location")
 EntryPart = Literal["description", "location"]
 assert ENTRY_PARTS == tuple(sorted(EntryPart.__args__))
+# D157: the frozen employment fields whose text an entry's page may limit in length (`maxlength`
+# on its control), by the frozen row's names, sorted; a date is always MM/YYYY (capture refuses a
+# date control that limits it below 7).
+LIMITED_FIELDS = ("company_name", "description", "location", "title")
+# The largest `maxlength` Chromium reads (a 32-bit signed integer); a larger one it ignores, and
+# capture refuses.
+MAX_LIMIT = 2_147_483_647
+
+
+def sent_len(text: str) -> int:
+    """D157: a text's length as its form sends it, which a limit (`maxlength`) is held to: UTF-16
+    code units, as the browser counts them (a character outside the Basic Multilingual Plane
+    counts 2), and each line break as the two the form sends (CRLF), where the browser counts
+    one. Never less than the browser's own count, so a value within a limit by this count is kept
+    whole by the page, and fits a server that counts what it receives."""
+    return len(text.encode("utf-16-le")) // 2 + text.count("\n")
 
 
 class SectionSpec(BaseModel):
@@ -172,6 +188,22 @@ class SectionSpec(BaseModel):
     # other section's stored schema and fingerprint are unchanged.
     parts: list[EntryPart] = Field(default_factory=list, max_length=2)
     required_parts: list[EntryPart] = Field(default_factory=list, max_length=2)
+    # D157: the longest text the page accepts in an entry's typed parts (`maxlength`), by frozen
+    # field name (LIMITED_FIELDS); a Location or Role Description limit only where the entry
+    # asks it. Written only when set, so every other section's stored schema and fingerprint are
+    # unchanged.
+    limits: dict[str, StrictInt] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _limits_known(self):
+        if self.limits and (
+            self.kind != "employment"
+            or not set(self.limits) <= set(LIMITED_FIELDS)
+            or not set(self.limits) & set(ENTRY_PARTS) <= set(self.parts)
+            or any(not 1 <= v <= MAX_LIMIT for v in self.limits.values())
+        ):
+            raise ValueError("an entry's limits are an employment section's, on its typed parts")
+        return self
 
     @model_validator(mode="after")
     def _parts_known(self):
@@ -194,6 +226,10 @@ class SectionSpec(BaseModel):
                 out.pop("parts", None)
             if not out.get("required_parts"):
                 out.pop("required_parts", None)
+            if out.get("limits"):  # D157: sorted, so the same limits always dump the same
+                out["limits"] = dict(sorted(out["limits"].items()))
+            else:
+                out.pop("limits", None)
         return out
 
 
@@ -289,6 +325,8 @@ def form_fingerprint(schema: FormSchema) -> str:
                  if s.step or s.required else [])  # fmt: skip
         if s.parts:  # D155: only when set, so every other section's is unchanged
             extra.append(json.dumps({"parts": s.parts, "required_parts": s.required_parts}))
+        if s.limits:  # D157: likewise
+            extra.append(json.dumps({"limits": s.limits}, sort_keys=True))
         parts.append("|".join(["section", s.kind, s.root, *opts, *extra]))
     if schema.wizard:  # D142: added only for a wizard, so every other form's is unchanged
         # The pages' names in order and which question is on which page: never which page is
@@ -306,11 +344,21 @@ def form_fingerprint(schema: FormSchema) -> str:
 
 
 class _Node:
-    __slots__ = ("tag", "attrs", "children", "parent", "text")
+    __slots__ = ("tag", "attrs", "children", "parent", "text", "twice")
 
-    def __init__(self, tag: str, attrs: dict[str, str], parent: "_Node | None") -> None:
+    def __init__(
+        self,
+        tag: str,
+        attrs: dict[str, str],
+        parent: "_Node | None",
+        twice: frozenset[str] = frozenset(),
+    ) -> None:
         self.tag, self.attrs, self.parent = tag, attrs, parent
         self.children: list[_Node | str] = []
+        # D157: the attributes written more than once on the tag. `attrs` keeps the last; the
+        # browser keeps the first, so a check that must read the tag as the browser does refuses
+        # such a tag rather than guess.
+        self.twice = twice
 
     def all_text(self) -> str:
         out = []
@@ -337,6 +385,29 @@ class _Node:
 _VOID = {"input", "br", "hr", "img", "meta", "link", "area", "base", "col", "source", "wbr"}
 
 
+def _twice(attrs: list[tuple[str, str | None]]) -> frozenset[str]:
+    """D157: the attribute names a tag writes more than once (`_Node.twice`)."""
+    names = [k for k, _ in attrs]
+    if len(set(names)) == len(names):
+        return frozenset()
+    return frozenset(k for k in names if names.count(k) > 1)
+
+
+def _whole_number(raw: str | None, top: int = 100_000) -> int | None:
+    """An attribute's whole number written in ASCII digits, from 1 to `top` (`FormField`'s own
+    bounds for `max_length`), None otherwise: never an error of reading the form, whatever the
+    page writes. D157: `int()` failed on a digit such as a superscript two and on more digits
+    than Python converts, read other scripts' digits the browser does not, and a limit of 0 or
+    above `top` (some page frameworks write 524288) failed `FormField` and so the whole form; such
+    a limit is not recorded, and the readback still stops a value the browser cut."""
+    if not raw or not (raw.isascii() and raw.isdigit()):
+        return None
+    digits = raw.lstrip("0")
+    if not digits or len(digits) > len(str(top)) or int(digits) > top:
+        return None
+    return int(digits)
+
+
 class _TreeBuilder(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -344,13 +415,16 @@ class _TreeBuilder(HTMLParser):
         self.cur = self.root
 
     def handle_starttag(self, tag, attrs):
-        node = _Node(tag, {k: (v if v is not None else "") for k, v in attrs}, self.cur)
+        node = _Node(tag, {k: (v if v is not None else "") for k, v in attrs}, self.cur,
+                     _twice(attrs))  # fmt: skip
         self.cur.children.append(node)
         if tag not in _VOID:
             self.cur = node
 
     def handle_startendtag(self, tag, attrs):
-        self.cur.children.append(_Node(tag, {k: (v or "") for k, v in attrs}, self.cur))
+        self.cur.children.append(
+            _Node(tag, {k: (v or "") for k, v in attrs}, self.cur, _twice(attrs))
+        )
 
     def handle_endtag(self, tag):
         n = self.cur
@@ -569,7 +643,7 @@ def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> Fo
                 help_text=help_of(n),
                 type=ftype,
                 required=required,
-                max_length=int(maxlen) if maxlen and maxlen.isdigit() else None,
+                max_length=_whole_number(maxlen),
                 accept=n.attrs.get("accept") if ftype == FieldType.file else None,
                 **common,
             )

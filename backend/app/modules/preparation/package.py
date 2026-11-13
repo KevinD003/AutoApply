@@ -413,6 +413,7 @@ def _resolve_sections(
             options=options,
             parts=tuple(getattr(spec, "parts", None) or ()),
             required_parts=tuple(getattr(spec, "required_parts", None) or ()),
+            limits=dict(getattr(spec, "limits", None) or {}),
         )
         if getattr(spec, "required", False) and result.supported and not result.rows:
             key = f"section:{spec.kind}"
@@ -425,6 +426,8 @@ def _resolve_sections(
                 frozen_section["step"] = spec.step
             if getattr(spec, "parts", None):  # D155: only a section whose entry asks them
                 frozen_section["parts"] = list(spec.parts)
+            if getattr(spec, "limits", None):  # D157: only a section whose page limits them
+                frozen_section["limits"] = dict(sorted(spec.limits.items()))
             frozen.append(frozen_section)
             continue
         if not result.supported:
