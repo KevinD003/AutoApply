@@ -28,7 +28,7 @@ from playwright.sync_api import Error as PWError
 
 from app.modules.execution.adapters import dropdowns
 from app.modules.preparation import gh_readonly as ro
-from app.modules.preparation.forms import ENTRY_PARTS, LIMITED_FIELDS, MAX_LIMIT, utf16_len
+from app.modules.preparation.forms import ENTRY_PARTS, LIMITED_FIELDS, MAX_LIMIT, sent_len
 from app.modules.preparation.structured_sections import FieldResult, RowResult, SectionResult
 
 
@@ -298,9 +298,7 @@ def validate_content_section(data: object) -> None:
             if (
                 name in limits
                 and f["status"] == "resolved"
-                and (
-                    not isinstance(f.get("display"), str) or utf16_len(f["display"]) > limits[name]
-                )
+                and (not isinstance(f.get("display"), str) or sent_len(f["display"]) > limits[name])
             ):
                 raise Refused(f"section field {name!r} is longer than its page accepts")
 

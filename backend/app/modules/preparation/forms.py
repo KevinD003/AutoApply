@@ -149,14 +149,18 @@ assert ENTRY_PARTS == tuple(sorted(EntryPart.__args__))
 # on its control), by the frozen row's names, sorted; a date is always MM/YYYY (capture refuses a
 # date control that limits it below 7).
 LIMITED_FIELDS = ("company_name", "description", "location", "title")
-MAX_LIMIT = 100_000
+# The largest `maxlength` Chromium reads (a 32-bit signed integer); a larger one it ignores, and
+# capture refuses.
+MAX_LIMIT = 2_147_483_647
 
 
-def utf16_len(text: str) -> int:
-    """D157: a text's length as the browser counts it for `maxlength`: UTF-16 code units (a
-    character outside the Basic Multilingual Plane counts 2), a line break as NoEfforts writes
-    it (LF) 1."""
-    return len(text.encode("utf-16-le")) // 2
+def sent_len(text: str) -> int:
+    """D157: a text's length as its form sends it, which a limit (`maxlength`) is held to: UTF-16
+    code units, as the browser counts them (a character outside the Basic Multilingual Plane
+    counts 2), and each line break as the two the form sends (CRLF), where the browser counts
+    one. Never less than the browser's own count, so a value within a limit by this count is kept
+    whole by the page, and fits a server that counts what it receives."""
+    return len(text.encode("utf-16-le")) // 2 + text.count("\n")
 
 
 class SectionSpec(BaseModel):
@@ -340,11 +344,21 @@ def form_fingerprint(schema: FormSchema) -> str:
 
 
 class _Node:
-    __slots__ = ("tag", "attrs", "children", "parent", "text")
+    __slots__ = ("tag", "attrs", "children", "parent", "text", "twice")
 
-    def __init__(self, tag: str, attrs: dict[str, str], parent: "_Node | None") -> None:
+    def __init__(
+        self,
+        tag: str,
+        attrs: dict[str, str],
+        parent: "_Node | None",
+        twice: frozenset[str] = frozenset(),
+    ) -> None:
         self.tag, self.attrs, self.parent = tag, attrs, parent
         self.children: list[_Node | str] = []
+        # D157: the attributes written more than once on the tag. `attrs` keeps the last; the
+        # browser keeps the first, so a check that must read the tag as the browser does refuses
+        # such a tag rather than guess.
+        self.twice = twice
 
     def all_text(self) -> str:
         out = []
@@ -371,6 +385,27 @@ class _Node:
 _VOID = {"input", "br", "hr", "img", "meta", "link", "area", "base", "col", "source", "wbr"}
 
 
+def _twice(attrs: list[tuple[str, str | None]]) -> frozenset[str]:
+    """D157: the attribute names a tag writes more than once (`_Node.twice`)."""
+    names = [k for k, _ in attrs]
+    if len(set(names)) == len(names):
+        return frozenset()
+    return frozenset(k for k in names if names.count(k) > 1)
+
+
+def _whole_number(raw: str | None) -> int | None:
+    """An attribute's whole number written in ASCII digits, None otherwise, never an error of
+    capture whatever the page writes (D157: `int()` failed on a digit such as a superscript two,
+    and on more digits than Python converts, and read other scripts' digits the browser does
+    not)."""
+    if not raw or not (raw.isascii() and raw.isdigit()):
+        return None
+    try:
+        return int(raw)
+    except ValueError:  # more digits than Python converts
+        return None
+
+
 class _TreeBuilder(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -378,13 +413,16 @@ class _TreeBuilder(HTMLParser):
         self.cur = self.root
 
     def handle_starttag(self, tag, attrs):
-        node = _Node(tag, {k: (v if v is not None else "") for k, v in attrs}, self.cur)
+        node = _Node(tag, {k: (v if v is not None else "") for k, v in attrs}, self.cur,
+                     _twice(attrs))  # fmt: skip
         self.cur.children.append(node)
         if tag not in _VOID:
             self.cur = node
 
     def handle_startendtag(self, tag, attrs):
-        self.cur.children.append(_Node(tag, {k: (v or "") for k, v in attrs}, self.cur))
+        self.cur.children.append(
+            _Node(tag, {k: (v or "") for k, v in attrs}, self.cur, _twice(attrs))
+        )
 
     def handle_endtag(self, tag):
         n = self.cur
@@ -603,7 +641,7 @@ def extract_form_schema(html: str, *, challenges: bool = False, skip=None) -> Fo
                 help_text=help_of(n),
                 type=ftype,
                 required=required,
-                max_length=int(maxlen) if maxlen and maxlen.isdigit() else None,
+                max_length=_whole_number(maxlen),
                 accept=n.attrs.get("accept") if ftype == FieldType.file else None,
                 **common,
             )

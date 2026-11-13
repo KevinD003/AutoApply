@@ -83,8 +83,9 @@ tenant:
        experience). D155: in experience_parts_required an entry's Location and Role Description
        are `required` too, and the page's own checks refuse an entry without them. D157: in
        experience_limits each typed part has a `maxlength` (WORK_LIMITS), which the page's own
-       checks enforce too; experience_limits_at_load adds an entry already on the page whose
-       Role Description is limited otherwise.
+       checks enforce too, on what they receive (a line break, sent as CRLF, counting 2);
+       experience_limits_at_load adds an entry already on the page whose Role Description is
+       limited otherwise.
   FA8  (D154) a page's own checks before its final click, by cfg["page_check"], on the single
        page and the wizard alike (the form validates natively: no `novalidate`): pattern (the
        phone must be ten digits, in the markup), custom_error (the page's script refuses a phone
@@ -476,7 +477,9 @@ def _work_errors(fields: dict, required: bool, parts_required: bool = False,
                  limits: dict | None = None) -> list[str]:  # fmt: skip
     """FA7: what the page's own checks refuse in the Work Experience entries it was sent. D155:
     `parts_required`, an entry's Location and Role Description too. D157: `limits`, a part
-    longer than its limit (counted as the browser counts it)."""
+    longer than its limit as the page receives it: UTF-16 code units, each line break the two
+    the form sends (CRLF), where the browser's own `maxlength` counts one (the server's check,
+    stricter than the browser's)."""
     found = sorted({int(m[1]) for k in fields if (m := _WORK_NAME.fullmatch(k))})
     errors = ["Add your work experience"] if required and not found else []
     for i in found:

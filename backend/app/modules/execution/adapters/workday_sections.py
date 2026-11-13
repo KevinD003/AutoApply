@@ -43,7 +43,7 @@ from app.modules.execution.adapters.greenhouse_sections import (
     section_from_content,
     section_root,
 )
-from app.modules.preparation.forms import utf16_len
+from app.modules.preparation.forms import sent_len
 
 KIND = "employment"
 # A frozen employment field -> how it is entered, and the part of the control's name.
@@ -77,7 +77,7 @@ def _op(i: int, field: str, kind: str, selector: str, fr, limit: int | None = No
         text = fr.display
         if not isinstance(text, str) or not text.strip():
             raise Refused(f"{field}: resolved value carries no display text")
-        if limit is not None and utf16_len(text) > limit:  # D157: the browser would cut it
+        if limit is not None and sent_len(text) > limit:  # D157: the page would cut it
             raise Refused(f"{field}: longer than the page accepts")
         if "\r" in text:
             raise Refused(f"{field}: a carriage return is never typed")
@@ -144,11 +144,21 @@ def _click_add(page, root: str, timeout_ms: int) -> None:
     buttons.first.click(timeout=timeout_ms)
 
 
+# D157: the length the control accepts now (`maxLength`, -1 for none), whatever set it: a page's
+# script may limit the entry it adds after the form was read.
+_LIVE_LIMIT = "(e) => e.maxLength"
+
+
 def _give(page, op: FillOp, timeout_ms: int) -> None:
     loc = page.locator(op.selector).first
     if op.kind == "checkbox":
         loc.set_checked(bool(op.value), timeout=timeout_ms)
     else:
+        # D157: never a value the control would cut, refused before it is typed (a page that
+        # saves as you type would save it cut), counted as its form sends it
+        limit = loc.evaluate(_LIVE_LIMIT, timeout=timeout_ms)
+        if isinstance(limit, int) and limit >= 0 and sent_len(str(op.value)) > limit:
+            raise SectionFillError(f"{KIND}: {op.field} is longer than the page now accepts")
         loc.fill(str(op.value), timeout=timeout_ms)
         # D155: focus leaves it, as it would for a person, so a page that reacts on `change`
         # does so now, before the readback, not at the next click

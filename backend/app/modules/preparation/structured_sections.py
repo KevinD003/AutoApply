@@ -40,7 +40,7 @@ from app.modules.preparation.forms import (
     LIMITED_FIELDS,
     MAX_LIMIT,
     normalize,
-    utf16_len,
+    sent_len,
 )
 from app.modules.profiles.models import Approval
 from app.modules.profiles.resume_parse import DATES_NOTE
@@ -346,18 +346,19 @@ assert tuple(sorted(_LIMIT_LABELS)) == LIMITED_FIELDS
 
 def _within(fields: dict, limits: dict) -> dict:
     """D157: a resolved field whose text is longer than the page accepts (`maxlength`, counted as
-    the browser counts it, `utf16_len`) becomes yours to shorten: never cut, never sent cut. Its
-    length and the limit are named, never its text."""
+    its form sends it, `sent_len`) becomes yours to shorten: never cut, never sent cut. Its length
+    and the limit are named, never its text."""
     for name, limit in limits.items():
         fr = fields.get(name)
         if fr is None or fr.status != "resolved" or not isinstance(fr.display, str):
             continue
-        n = utf16_len(fr.display)
+        n = sent_len(fr.display)
         if n > limit:
             fields[name] = FieldResult(
                 name, "needs_user",
                 explanation=f"The employer's form accepts at most {limit} characters for the "
-                f"{_LIMIT_LABELS[name]}, and this record's has {n}; shorten it in your profile.",
+                f"{_LIMIT_LABELS[name]}, and this record's has {n} (a line break or an emoji "
+                "counts as two); shorten it in your profile.",
             )  # fmt: skip
     return fields
 

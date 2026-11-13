@@ -190,26 +190,36 @@ _LIMITED = {"title": "title", "company": "company_name", "location": "location",
 _MONTH_YEAR_LEN = len("MM/YYYY")
 
 
+_ASCII_WHITESPACE = " \t\n\f\r"  # what the browser skips before a number, and nothing else
+
+
 def _limit(n: _Node) -> int | None | bool:
-    """D157: a control's `maxlength`: None when it has none, the number when it is a whole
-    number from 1 to MAX_LIMIT, False otherwise (a limit NoEfforts cannot read is never
-    guessed)."""
+    """D157: a control's `maxlength`: None when it has none, the number when it is written as
+    the browser reads it, in ASCII digits only (ASCII whitespace around them), from 1 to
+    MAX_LIMIT; False otherwise, a limit NoEfforts cannot read as the browser does and never
+    guesses (with a sign, other characters or other scripts' digits; one written twice is
+    refused with its control, `_work_control_ok`)."""
     raw = n.attrs.get("maxlength")
     if raw is None:
         return None
-    raw = raw.strip()
-    if not raw.isdigit() or not raw.isascii() or not 1 <= int(raw) <= MAX_LIMIT:
+    digits = raw.strip(_ASCII_WHITESPACE)
+    if not (digits.isascii() and digits.isdigit()):
         return False
-    return int(raw)
+    digits = digits.lstrip("0")
+    if not digits or len(digits) > len(str(MAX_LIMIT)) or int(digits) > MAX_LIMIT:
+        return False  # 0, or more than the browser reads
+    return int(digits)
 
 
 def _limits(controls: list[_Node]) -> dict[str, int]:
-    """D157: an entry's length limits, by its parts' names on the page."""
+    """D157: the length limits an entry's typed parts hold your record to, by the frozen row's
+    field names (`_LIMITED`); a date's, which MM/YYYY fits (`_work_control_ok`), never binds."""
     out = {}
     for n in controls:
         limit = _limit(n)
-        if isinstance(limit, int) and not isinstance(limit, bool):
-            out[_WORK_NAME.fullmatch(n.attrs.get("name", ""))[2]] = limit
+        part = _WORK_NAME.fullmatch(n.attrs.get("name", ""))[2]
+        if isinstance(limit, int) and not isinstance(limit, bool) and part in _LIMITED:
+            out[_LIMITED[part]] = limit
     return out
 
 
@@ -223,8 +233,11 @@ def _work_control_ok(n: _Node, index: str, template: _Node | None) -> bool:
     page showed at load from one NoEfforts added; the adapter checks the entries already on the
     page before anything is entered (execution/adapters/workday_sections.py)."""
     if template is not None and ("readonly" in n.attrs or "disabled" in n.attrs
-                                 or any(c in n.attrs for c in _CONSTRAINTS)
                                  or not _usable_within(n, template)):  # fmt: skip
+        return False
+    # A constraint on a typed value NoEfforts would not honour, on the template and on an entry
+    # already on the page alike (D157, found by its review: an entry's were never read).
+    if any(c in n.attrs for c in _CONSTRAINTS):
         return False
     m = _WORK_NAME.fullmatch(n.attrs.get("name", ""))
     if not m or m[1] != index or m[2] not in _WORK_CONTROLS:
@@ -233,6 +246,8 @@ def _work_control_ok(n: _Node, index: str, template: _Node | None) -> bool:
         return False  # the page says how a date is written, and it is the way NoEfforts writes it
     tag, kind, filled = _WORK_CONTROLS[m[2]]
     if n.tag != tag or (kind and n.attrs.get("type", "text").lower() != kind):
+        return False
+    if n.twice:  # D157: an attribute written twice, which the browser reads as its first
         return False
     # D157: a length limit only on a typed part, one NoEfforts can read, and on a date one that
     # lets MM/YYYY be typed whole.
@@ -354,7 +369,7 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
             required=root.attrs.get("aria-required", "").lower() == "true",
             parts=parts,
             required_parts=[p for p in parts if asked[p]],
-            limits={_LIMITED[p]: v for p, v in _limits(entry).items() if p in _LIMITED},
+            limits=_limits(entry),
         )
     except ValidationError:  # a page name too long to record: never an error of capture
         return None, True
