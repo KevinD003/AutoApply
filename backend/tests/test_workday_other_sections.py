@@ -199,8 +199,12 @@ def before_languages(markup: str):
 
 
 def languages_twice(html: str) -> str:
+    """A second Languages section after the first, empty as built and named by its own heading,
+    but marked required: only the rule of one section of a kind sees it (D165's removal runs)."""
     start, end = bounds(html)
-    copy = html[start:end].replace('id="languages"', 'id="languages-2"')
+    copy = (html[start:end].replace('id="languages"', 'id="languages-2"')
+            .replace("languages-label", "languages-label-2")
+            .replace(">Languages</h3>", ">Languages *</h3>"))  # fmt: skip
     return html[:end] + copy + html[end:]
 
 
@@ -398,7 +402,9 @@ def test_a_section_inside_another_is_both_checkpoints(variant, inner, outer, key
 
 def test_a_page_question_under_a_section_s_key_never_hides_it():
     """The field left empty never replaces a question of the page that has its key (that question
-    would then be left unread): the section's checkpoint replaces both."""
+    would then be left unread): a control named so is that kind's checkpoint, which replaces the
+    question. (A page question's key is its control's name, or `aria:` and an id: no other can
+    have the field's key.)"""
     html = stand_in("other_sections").replace('<label for="exp_details">',
                         '<label for="ls">Languages</label><input id="ls" name="languages_section" '
                         'type="text"><label for="exp_details">', 1)  # fmt: skip

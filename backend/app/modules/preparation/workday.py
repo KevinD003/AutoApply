@@ -936,11 +936,9 @@ def extract_schema(html: str) -> FormSchema:
         _add_checkpoint(schema, EDUCATION_KEY, "Education", EDUCATION_REASON)
     for kind, (field, on_page) in _other_sections(html).items():  # D165: left empty, or not
         key, label = other_section_key(kind), OTHER_SECTIONS[kind]
-        if (
-            field is not None
-            and ((on_page in pages) if schema.wizard else on_page is None)
-            and key not in keys  # a page question under its key is never replaced silently
-        ):
+        # A page question under its key is never replaced silently: its control is named so
+        # (a key is a control's name, or `aria:` and an id), which makes that kind a checkpoint.
+        if field is not None and ((on_page in pages) if schema.wizard else on_page is None):
             schema.fields.append(field)
         else:
             _add_checkpoint(schema, key, label, OTHER_REASON.format(label=label))
