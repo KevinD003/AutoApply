@@ -282,11 +282,11 @@ def test_capture_reads_the_section_and_never_its_controls_as_questions():
         form_page(
             section()
             + section()
-            .replace('id="work-experience"', 'id="education"')
-            .replace('data-wd-section="work"', 'data-wd-section="education"')
+            .replace('id="work-experience"', 'id="skills"')
+            .replace('data-wd-section="work"', 'data-wd-section="skills"')  # D163: not education
         ),
         form_page(section(), inside='<button type="button" data-wd-add>Add</button>'),
-        form_page("", inside='<div data-wd-section="education"></div>'),
+        form_page("", inside='<div data-wd-section="skills"></div>'),  # D163: not education
         form_page("", inside='<button type="button" data-wd-add>Add</button>'),
     ],
     ids=[

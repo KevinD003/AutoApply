@@ -54,6 +54,40 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## A Workday-style Education section is filled from your approved education (D163, 2026-11-13; local only)
+
+Rank 30 of the automation loop (education on Workday, named after D162). Product changes:
+
+- `app/modules/preparation/workday.py`: `_education_section`, `_edu_entry`, `_edu_control_ok`,
+  `_option_list` (`_PLAIN_VALUE`, `_ASCII_SPACE`), `EDUCATION_KEY`, `EDUCATION_REASON`;
+  `extract_schema` adds the education section on its page, or the Education checkpoint;
+  `_work_section` leaves the Education section and its markers alone, and refuses one nested in
+  the other; `_entry_control` skips an education entry's controls.
+- `app/modules/preparation/structured_sections.py`: `_degree_keys` takes a trailing
+  parenthetical as a key only when written as an abbreviation (`_ABBREVIATION`).
+- `app/modules/execution/adapters/workday_sections.py`: entries by kind (`EntryKind`, `KINDS`,
+  `entry_kind`; the education fields); `_give` chooses a list's option only when a person could
+  (`_CHOOSABLE`, `NotChosen`); `_holds` reads a list back (`_CHOSEN`, `_SUBMITTED`);
+  `entries_now`, `entry_indices` and `apply` by the section's kind.
+- `app/modules/execution/adapters/workday.py`: `EDUCATION_UNUSABLE`,
+  `EDUCATION_ENTRIES_BEYOND`, `EDUCATION_PREFILLED`, `EDUCATION_NOT_ENTERED`, `_stops`; the
+  checks before anything is entered and on the section's page read each section by its kind.
+- The stand-in: `fixtures/ats_receiver/workday_like.py` (FIXTURE ASSUMPTION FA9: the Education
+  section, its variants and the page's own checks of what it is sent).
+
+No migration, no new state, reason code or gate. `SCHEMA_VERSION` stays 3, and so do
+`EXTRACTION_VERSION` and the adapter versions (D163 says why). Nothing was run against a real
+page. `scripts/validate.sh all` was not run (it runs the whole backend and e2e suites); ruff was.
+
+| Check (branch `workday-education`, from D162's branch at 0ddd693) | Command | Result |
+|---|---|---|
+| The first version's tests | `test_workday_education.py` (JUnit) on the working tree and on d8d4abe; the suites the change touches; ruff | on the working tree: exit 1, 47 passed and 1 failed (the stand-in's change after page 2 was saved chose the approved school itself: it now changes it to another, `CHANGED_SCHOOL`), then exit 0, 48 passed; on d8d4abe, the 8 Workday-style suites: exit 1, 459 passed and 2 failed (D149's two cases that used "education" as a section of another kind, now read: they use one NoEfforts does not read, cd5f689; then 51 passed); ruff clean |
+| Two independent reviews | on d8d4abe | no value the owner did not approve reached the receiver; both: an option the page hides captured, chosen and sent, tests left failing, few new rules pinned; the first: a degree matched to a qualified option; both: options read unlike the browser (a pause that never ends); see D163 |
+| After the reviews | `test_workday_education.py` and `test_structured_sections.py` (JUnit) on the working tree as the fixes grew; the 22 suites the fixes touch, in two runs, on the content of 2dbee1c (`test_workday_experience.py`, `test_workday_wizard.py`, `test_worker_stop.py`, `test_limit_stops.py`, `test_workday_entry_details.py`, `test_workday_entry_limits.py`, `test_workday_follow_up.py`, `test_wizard_next_checks.py`; `test_greenhouse_sections.py`, `test_greenhouse_sections_browser.py`, `test_workday_adapter.py`, `test_workday_ashby_fixtures.py`, `test_sent_as_approved.py`, `test_sending.py`, `test_page_own_checks.py`, `test_outside_controls.py`, `test_disclosure_evidence.py`, `test_execution_failures.py`, `test_execution_routing.py`, `test_provider_reuse.py`, `test_recovery_hardening.py`, `test_self_identification_ledger.py`); on 70e81bb's content, the two suites again and the two worker-stop entry tests; ruff | exit 0: 105 passed; the 22 suites: exit 0, 502 and 460 passed; on 70e81bb's content: exit 0, 108 passed, and the worker-stop tests 2 passed; ruff clean |
+| Each part changed in turn | 33 changes on 70e81bb, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 33 fail the tests named for their part (54 failures among the 807 tests run, over the runs; three also fail cases close to theirs); each file restored, the tree clean after |
+| The regression set | `pytest` on 90 files (D162's 89 with `test_workday_education.py`; JUnit), in a copy of the branch at 70e81bb | exit 0, 2936 passed (85 minutes) |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_workday_education.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 139 passed in 106 s; ruff formatted nothing, found nothing, and the format check passed |
+
 ## Every other adapter stops at a value its box would cut, naming the limit, and types only into a box that has focus (D162, 2026-11-13; local only)
 
 Rank 29 of the automation loop (D161's "Not built"). Product changes:

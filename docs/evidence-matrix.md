@@ -9,6 +9,32 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A Workday-style Education section is filled from your approved education (D163, 2026-11-13; local only)
+
+Nothing here ran against a real page. Branch `workday-education`. The runs drive the API and the
+runner against the Workday-style stand-in's Education section (FIXTURE ASSUMPTION FA9: the
+section, its lists and their options, its entry at load, its resume parse and its change after a
+page is saved are fixture assumptions), on the single page and the wizard, with the receiver's
+ledger as the oracle (each wizard page's draft, the acceptances); or read the stand-in's markup
+at capture; or fill the section in Chromium, which is the oracle there. In
+`tests/test_workday_education.py` unless named otherwise.
+
+| Claim | Test | Result |
+|---|---|---|
+| Capture reads the section, with its lists' options, never its controls as questions | `test_capture_reads_the_section_with_its_lists_and_never_its_controls_as_questions`, `test_the_single_page_s_section_has_no_page_and_a_required_one_is_read_as_required`, `test_both_sections_on_one_page_are_read_each_as_its_own`, `test_an_empty_entry_already_there_offering_the_template_s_options_is_read`, `test_a_placeholder_disabled_chosen_and_hidden_is_the_empty_option`, `test_capture_reads_an_option_s_text_as_the_browser_does` | the three lists' ids and texts, its page and requirement; both sections read beside each other; an option's text as Chromium's `option.text` |
+| Anything else about education is one required checkpoint | `test_any_other_education_is_one_required_checkpoint` (48), `test_a_work_section_inside_the_education_one_is_both_checkpoints` (2) | no education section, the `education_history` checkpoint, required: an option hidden, disabled, written twice, holding an element, without text, split, not plain; a dependent list; each control constraint; the section's button, id, page; entries at load not numbered from 0, offering another list or unusable |
+| The work history reads as before beside it | `test_an_education_section_never_makes_the_work_history_a_checkpoint`; `test_workday_experience.py` | no work history checkpoint; D149's cases pass |
+| The options are part of the form | `test_the_section_s_options_are_part_of_the_form`, `test_a_section_changed_after_approval_pauses_before_anything_is_entered` | a relabelled option changes the fingerprint; a changed section pauses before anything is entered |
+| The package freezes your education into the page's options | `test_the_package_freezes_your_education_with_the_page_s_options`, `test_a_record_no_option_matches_is_yours_to_settle_before_approval`, `test_a_section_the_page_requires_needs_your_approved_education`, `test_an_education_edit_retires_the_approval`; `test_structured_sections.py::test_a_trailing_qualifier_is_never_read_as_an_abbreviation` | ids with their text; an unmatched school yours to settle; a required section blocks approval; an edit retires it; "Other" never matched to "Bachelor's Degree (Other)" |
+| Each entry is chosen and sent with its page, and no other | `test_each_entry_is_added_chosen_on_its_page_and_sent`, `test_on_the_single_page_each_entry_is_chosen_and_sent`, `test_both_sections_on_one_page_are_each_sent`, `test_with_no_approved_education_no_entry_is_sent`, `test_a_required_section_is_sent_with_your_entry`, `test_an_empty_entry_already_there_is_filled_in_place` | the receiver's page-2 draft and its acceptance hold exactly the approved ids and dates; no other page sends them; every control recorded as entered |
+| An entry the page adds, or changes after its page was saved, is never sent | `test_an_entry_a_parsed_resume_adds_is_never_sent`, `test_an_entry_a_parsed_resume_adds_beyond_your_education_stops_naming_it`, `test_a_choice_the_page_changes_after_its_page_was_saved_is_never_sent_on` | `abandoned`, page 2 never sent (or page 3's Next never clicked), nothing accepted |
+| Every stop names your education | `test_an_entry_that_will_not_appear_stops_naming_your_education`, `test_a_page_showing_an_entry_after_approval_stops_naming_your_education`, `test_before_anything_is_entered_each_stop_names_your_education` (4), `test_before_anything_is_entered_an_education_section_off_its_page_stops_naming_it`, `test_the_stops_name_education` | each `EDUCATION_*` stop, through the runner and the adapter's own checks; nothing recorded where nothing was entered |
+| A list is chosen only as a person could choose it, and read back as sent | `test_the_plan_chooses_each_list_by_value_and_types_the_dates`, `test_entries_are_added_chosen_and_read_back`, `test_the_readback_holds_each_list_to_its_value_and_its_shown_text`, `test_an_option_a_person_could_not_choose_is_never_chosen` (4), `test_a_chosen_option_the_page_then_hides_disables_or_doubles_is_found` (3), `test_an_education_entry_beyond_the_plan_is_found` | an option removed, hidden, styled away or disabled: `NotChosen`, the list left empty, not recorded; a relabelled, hidden, disabled or doubled choice and an entry beyond: found |
+| A date is typed only as D162 allows | `test_a_date_its_box_would_cut_once_it_has_focus_is_never_typed` | `NotTyped` naming 3; the date empty; only the three lists recorded |
+| A stop in the middle of the entries enters nothing more | `test_worker_stop.py::test_workday_education_entries_stop_at_the_next_control` | one list chosen and recorded; page 2's Next never clicked |
+| Every other flow unchanged | the suites the change touches; the regression set | pass (`docs/implementation-status.md`) |
+| Each part is needed | 33 changes, one at a time, the named tests run, the file restored (`docs/implementation-status.md`) | each fails the tests named for its part |
+
 ## Every other adapter stops at a value its box would cut, naming the limit, and types only into a box that has focus (D162, 2026-11-13; local only)
 
 Nothing here ran against a real page. Branch `base-limits`. The runs drive the API and the runner

@@ -8210,3 +8210,133 @@ audit-inventory and export-completeness guards are updated and pass.
     wizard's own stop, whose pages were sent (before D162).
   - Whether a real employer's page lowers a limit as a box gets focus, or keeps a box from taking
     focus, is unknown. **Never seen on a real page.**
+
+## D163 — A Workday-style Education section is filled from your approved education (2026-11-13)
+
+- **Context:** rank 30 of the automation loop (`docs/automation-loop.md`), the candidate named
+  after D162: education on Workday. D149 reads the Workday-style My Experience page's Work
+  Experience section; any other section there was the work history checkpoint, so no education
+  was ever entered on a Workday-style form. D120 resolves your approved education against a
+  section's own option lists and freezes it (rows of `{id}` values with each option's text),
+  and D140 shows and diffs it; until now only Greenhouse's education section was filled from it.
+  Local stand-ins only; nothing real was run. No migration, no new state, reason code, gate,
+  permission or retry. `SCHEMA_VERSION` stays 3, and so do `EXTRACTION_VERSION` and the adapter
+  versions: a form with no Education section reads and fingerprints as before, and one with an
+  Education section was the work history checkpoint before, so no approval of it exists. One
+  exception: a control named as an education entry's (`edu[...]`) on a form with no Education
+  section, a question of its own before, is now the Education checkpoint; the Workday-style
+  adapter is fixture-only, so no stored form changes.
+- **The stand-in** (FIXTURE ASSUMPTION FA9, `fixtures/ats_receiver/workday_like.py`): the
+  My Experience page may carry an Education section beside the Work Experience one: entries
+  added by the section's own button, each asking School or University, Degree and Field of
+  Study as native lists (an empty "Select One" option first, then options whose values are the
+  page's own ids) and From and To as MM/YYYY text. Variants: `education`,
+  `education_required`, `education_and_experience`, `education_entry_at_load`,
+  `education_unknown_control`, `education_parse`, `education_changed_after_next` and
+  `education_add_broken` (the wizard), and `wd_education` (the single page). No real Workday
+  education section was observed: on a real one the lists may be search prompts, which
+  NoEfforts never fills.
+- **Decided:**
+  - **Capture** (`preparation/workday.py`: `_education_section`, `_edu_entry`, `_edu_control_ok`,
+    `_option_list`): exactly that structure is read as an education section
+    (`SectionSpec(kind="education")`) with its page, its requirement and the three lists'
+    options, by the same rules as D149's section (one section, its id used once, shown and
+    enabled at load, its one button an enabled, shown "Add" that submits nothing, within no
+    other section and holding none, on a wizard page before the review page; a template outside
+    the form whose controls are exactly the entry's; no other button or custom control in an
+    entry). Each control holds nothing and sends exactly what is entered into it (D159); a date
+    says MM/YYYY and accepts it whole, with no other constraint; a list is one choice, never one
+    depending on another answer (`data-cascade-from`, review). An entry already on the page at
+    load is read only when empty, numbered from 0, offering the template's options, and usable
+    (review: shown and editable). Anything else about education is one required checkpoint
+    (`education_history`): apply on the employer's site. The entries' controls are never
+    questions of their own (`_entry_control`); the Work Experience reader leaves the Education
+    section and its markers alone, and a section nested in the other is both checkpoints.
+  - **Options are read as the browser reads them** (`_option_list`; review): the first option
+    is the empty one (a placeholder disabled, `selected` and hidden is one too); every other one
+    has a value written once and plain (`_PLAIN_VALUE`: letters, digits and `_.:/-`, never a
+    character reference, whitespace or a separator of the form's fingerprint), used once, and a
+    text of one run of its own, ASCII whitespace collapsed as `option.text` does; none disabled,
+    hidden (D148's markup signals), chosen at load (`selected`) or labelled otherwise
+    (`label`); options only, never a group. The options are part of the form (its
+    fingerprint): an option relabelled, added, removed or reordered within its list is D132's
+    pause before anything is entered.
+  - **The package** (unchanged code): D120's resolution (school and field of study exactly,
+    degree by `match_degree`) freezes each record into one row of option ids with their text, or
+    makes the field yours to settle before approval; a section the page requires blocks approval
+    without approved education; an edit to a record retires the approval (D140). D120's degree
+    match (review, `structured_sections._degree_keys`): a trailing parenthetical is a key of its
+    own only when written as an abbreviation (`_ABBREVIATION`: "Ph.D.", "MBA"); "Bachelor's
+    Degree (Other)" matched a record's "Other", and "Some College (No Degree)" its "No degree".
+  - **Filling** (`execution/adapters/workday_sections.py`, by the section's kind: `EntryKind`,
+    `KINDS`, `entry_kind`; the work entries' names, readback labels and stops unchanged): an
+    entry is added by the section's own button when not there, each list's frozen option chosen
+    by its value only when exactly one option has that value and a person could choose it now
+    (enabled and shown, `_CHOOSABLE`, review), the dates typed after D162's check at focus. A
+    list whose option cannot be chosen is never chosen and never recorded as entered
+    (`NotChosen`); the stop names your education. Each control is reported as entered as soon
+    as it was given its value (D137) and read back: a list holds one option, shown, of the
+    approved value and text, and its form sends that value once (`_CHOSEN`, `_SUBMITTED`). The
+    readback before each wizard Next and before the send gate holds every entry, and no entry
+    beyond the approved ones. Sections are filled in page order (work history, then education).
+  - **Stops before anything is entered** (`adapters/workday.py`, again on the section's page):
+    entries already there that cannot be typed into, hold a value, or go beyond the approved
+    ones stop the attempt, and every stop names your education (`EDUCATION_UNUSABLE`,
+    `EDUCATION_ENTRIES_BEYOND`, `EDUCATION_PREFILLED`, `EDUCATION_NOT_ENTERED`) where the work
+    history's name your work history (`_stops`).
+- **What an approved run now does differently:**
+  - A Workday-style page with the Education section (on the stand-in) was the work history
+    checkpoint; now each approved education record is entered there and sent with its page,
+    and no entry beyond them.
+  - With no approved education, a section the page does not require is left empty; one it
+    requires blocks approval.
+  - A control named as an education entry's outside an Education section is now the Education
+    checkpoint (it was a question of its own).
+- **Reviews:** two independent reviews of the first version (d8d4abe). In every probe the
+  receiver held only the option ids the owner approved.
+  - **Both found:** an option the page hides was captured, approved, chosen and sent: one hidden
+    in the template's markup, or one the page hid once another list was chosen (as a dependent
+    list would). Fixed: refused at capture; never chosen (`_CHOOSABLE`); a chosen option the
+    page then hides is found by the readback.
+  - **Both found:** the commit left tests failing: D149's two cases that used "education" as a
+    section of another kind (now read: they use one NoEfforts does not read, cd5f689); the
+    second: the worker-stop test's stand-in for the filler, broken by a new parameter, so a stop
+    in the middle of the work entries went unchecked (the parameter removed; an education
+    version added).
+  - **Both found:** the tests pinned few of the new rules (17 removed at once, and 4 and 2 by the
+    other review: all 48 tests still passed). Each now has its test: what a list's form sends,
+    an option written twice, holding an element or without text, the text collapsed as the
+    browser does, entries at load (numbered, offering the template's options, usable), nesting,
+    the section's id, its button, a custom control, a section off the wizard's pages, each
+    control constraint, each stop through the adapter's own checks, a focus limit on a date,
+    an entry beyond in the readback.
+  - **Capture and the browser reading an option differently** (the first: a character
+    reference without `;` in a value; the second: a line break, `&copy2`, a comment splitting the
+    text): D132's pause on every attempt, which reading the form again never ends. Refused at
+    capture (`_PLAIN_VALUE`, one text run).
+  - **The first:** D120's degree match picked a qualified option: fixed. A common placeholder
+    was a false checkpoint: read. A dependent list was accepted: refused.
+  - **The second:** an entry at load that cannot be typed into passed capture, then stopped every
+    attempt: the checkpoint at capture now.
+  - **The second's removal run:** removing the blur after choosing an option failed no test: a
+    list chosen by `select_option` never has focus, so the blur fired nothing (measured):
+    removed.
+  - **The removal runs** (33 changes on 70e81bb, each part changed in turn): each fails the
+    tests named for its part (54 failures among the 807 tests run, over the runs).
+- **Not built:**
+  - The fingerprint's encoding of a section's lists (D120's, `forms.py`) marks neither where one
+    list ends and the next begins nor, in an option's text, where the next option begins: a page
+    that moves an option from one list to another reads as the approved form; filling then
+    cannot choose the approved option and stops (`NotChosen`), on a wizard after earlier pages
+    were sent (measured by the first review). A wrong value is never sent. Changing the encoding
+    changes the fingerprint of every form with sections (the Greenhouse pilot's included).
+  - A page that marks the chosen option `selected` as an attribute reads, after filling, as an
+    option chosen at load: the Education checkpoint, so the attempt stops after disclosure (as
+    D149's typed `value` attribute).
+  - Omitted `</option>` tags (valid HTML) are refused: a false checkpoint, fail-closed.
+  - Inherited (D120): a record no option matches is yours to settle, but the page's options are
+    never shown to you, nor can you choose one; D159's character-set check reads answers only,
+    never section values.
+  - Whether a real Workday page offers its education lists as native lists at all is unknown
+    (more likely search prompts, which NoEfforts never fills: such a page stays the checkpoint).
+    **Never seen on a real page.**
