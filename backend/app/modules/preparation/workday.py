@@ -56,11 +56,13 @@ approval, as on Greenhouse). An entry's controls are exactly those lists and its
 
 D165: the stand-in's sections of a kind NoEfforts does not fill (FIXTURE ASSUMPTION FA10:
 Languages, Websites and Skills) are their own, never the work-history checkpoint. One the page
-does not require and that holds nothing but its "Add" button is a field left empty (`LEFT_EMPTY`,
-optional, on its page; `_other_sections`): never touched, shown on the review page as left empty,
-and read again with the rest of the form before each Next and the final click. Anything else
-about it (required, already holding an entry, two of a kind, hidden at load) is that kind's own
-required checkpoint (`other_section_key`): apply on the employer's site.
+does not mark required, exactly the stand-in's empty one, with nothing in the form named as one
+of its entries, is a field left empty (`LEFT_EMPTY`, optional, on its page; `_other_sections`):
+never touched, shown on the review page as left empty, and read again with the rest of the form
+before anything is entered, before each Next and before the final click. Anything else about it
+(a required mark, an entry or a control named as one anywhere in the form, two of a kind, hidden
+at load, any other markup) is that kind's own required checkpoint (`other_section_key`): apply on
+the employer's site.
 
 A parsed resume that fills fields after an upload is caught at execution by the readback of
 every field NoEfforts leaves unanswered (`hosted_form.HostedFormAdapter`)."""
@@ -86,6 +88,7 @@ from app.modules.preparation.forms import (
     WizardSpec,
     _application_form,
     _bot_check,
+    _first,
     _Node,
     _TreeBuilder,
     extract_form_schema,
@@ -196,22 +199,26 @@ EDUCATION_REASON = (
     "employer's site"
 )
 # D165: the stand-in's sections of a kind NoEfforts does not fill (FIXTURE ASSUMPTION FA10), by
-# the kind their marker names, each with the name the review page shows. One the page does not
-# require and that holds nothing is left empty (`_other_sections`); anything else about it is a
-# checkpoint of its own, never Work Experience's.
+# the kind their marker names, each with the name the review page shows and the start of its
+# entries' control names. One the page does not mark required, built exactly as the stand-in
+# builds an empty one, is left empty (`_other_sections`); anything else about it is a checkpoint
+# of its own, never Work Experience's.
 OTHER_SECTIONS = {"languages": "Languages", "websites": "Websites", "skills": "Skills"}
+OTHER_ENTRY = {"languages": "lang[", "websites": "web[", "skills": "skill["}
 LEFT_EMPTY = "left_empty_section"  # forms.WIDGETS
 LEFT_EMPTY_REASON = (
-    "a {label} section: NoEfforts does not fill it, and the page does not require it"
+    "a {label} section: NoEfforts does not fill it, and the page does not mark it required"
 )
 OTHER_REASON = (
-    "a {label} section NoEfforts does not fill, which the page requires, or which it cannot "
-    "leave empty exactly as it is (it already holds an entry or a control, or is not shown at "
-    "load): apply on the employer's site"
+    "a {label} section NoEfforts does not fill, which the page marks required, or which it "
+    "cannot leave empty exactly as it is (it holds or names an entry, or is not the empty "
+    "section NoEfforts reads): apply on the employer's site"
 )
-# D165: what a section left empty may never hold: a control, a frame or object (a document of its
-# own), or a custom element (one may be given to the form).
-_HOLDING = {"input", "select", "textarea", "output", "iframe", "object", "embed", "template"}
+# D165 review: the attributes the section's own element may carry (FA10's, exactly): a required
+# mark, a name of its own (`aria-label`) or anything else makes it that kind's checkpoint.
+_SECTION_ATTRS = {"id", "role", "aria-labelledby", "data-wd-section", "data-wd-entry-template"}
+_HEADINGS = {"h2", "h3", "h4"}
+_REQUIRED_MARKS = ("required", "aria-required", "data-required")
 
 
 def other_section_key(kind: str) -> str:
@@ -590,63 +597,100 @@ def _education_section(html: str) -> tuple[SectionSpec | None, bool]:
     return spec, False
 
 
-def _other_sections(html: str) -> dict[str, FormField | None]:
-    """D165: each section of a kind NoEfforts does not fill (FA10) on the application form, by
-    kind: the field that leaves it empty (`LEFT_EMPTY`, optional), or None for that kind's
-    checkpoint. Read on the generic extractor's own tree and form. Left empty only exactly as the
-    stand-in builds one the page does not require: one section of its kind, with an id the
-    document uses once, within no other section and holding none, shown and enabled at load,
-    neither `aria-required` nor marked so by an asterisk in its own text, and holding nothing but
-    its one "Add" button (no control, custom control, custom element, frame or editable part).
-    Its Add is never clicked, so its entries' template is never read. What the page shows or
-    asks there later is read again before each Next and before the final click, as the rest of
-    the form (D132): a section that then holds an entry, or that the page requires, is no longer
-    this field, and the attempt stops."""
+def _empty_as_built(root: _Node, label: str, nodes: list[_Node]) -> bool:
+    """D165 review: the section is exactly the stand-in's empty one (FA10), read as the browser
+    reads it: a `div` carrying only its own attributes (no required mark, no name or description
+    of its own), named by the heading inside it, whose text is exactly the section's name; that
+    heading, an empty entries list and the one plain "Add" button, in that order, and nothing
+    else (no text, control, script, frame, custom element or anything editable); no attribute
+    written twice (the browser keeps the first, the reader the last)."""
+    kids = [c for c in root.children if not (isinstance(c, str) and not c.strip())]
+    if len(kids) != 3 or not all(isinstance(c, _Node) for c in kids):
+        return False
+    head, entries, add = kids
+    hid = head.attrs.get("id", "")
+    return (
+        root.tag == "div"
+        and set(root.attrs) <= _SECTION_ATTRS
+        and root.attrs.get("role", "group") == "group"
+        and root.attrs.get("aria-labelledby") == hid != ""
+        and head.tag in _HEADINGS
+        and set(head.attrs) == {"id"}
+        and sum(1 for n in nodes if _first(n, "id") == hid) == 1
+        and all(isinstance(c, str) for c in head.children)
+        and head.all_text() == label
+        and entries.tag == "div"
+        and set(entries.attrs) == {"data-wd-entries"}
+        and all(isinstance(c, str) and not c.strip() for c in entries.children)
+        and add.tag == "button"
+        and set(add.attrs) == {"type", "data-wd-add"}
+        and add.attrs["type"].strip().lower() == "button"
+        and all(isinstance(c, str) for c in add.children)
+        and add.all_text() == "Add"
+        and not any(n.twice for n in (root, head, entries, add))
+    )
+
+
+def _other_sections(html: str) -> dict[str, tuple[FormField | None, str | None]]:
+    """D165: each kind of section NoEfforts does not fill (FA10) the application form shows or
+    names, by kind: the field that leaves it empty (`LEFT_EMPTY`, optional), or None for that
+    kind's checkpoint, with the wizard page the section is on (None: on no wizard page). Read
+    on the generic extractor's own tree and form, the controls the page gives the form from
+    outside its markup included (D160). Left empty only when: one section of its kind, within
+    no other section and holding none, shown and enabled at load, exactly the stand-in's empty
+    one (`_empty_as_built`), within nothing marked required (`required`, `aria-required`,
+    `data-required`, whatever their value); and (review) nothing in the form, hidden or given to
+    it from outside, is named as one of that kind's entries (FA10: `lang[`, `web[`, `skill[`) or
+    under the field's own key: such a control is never a question of its own (`_entry_control`),
+    and it makes that kind a checkpoint even with no section. Its Add is never clicked. What the
+    page shows or names there later is read again before anything is entered, before each Next
+    and before the final click, as the rest of the form (D132): it is then no longer this field,
+    and the attempt stops."""
     b = _TreeBuilder()
     b.feed(html)
     nodes = list(b.root.walk())
     form = _application_form(nodes)
     inside = nodes if form is None else owned_nodes(nodes, form)
-    out: dict[str, FormField | None] = {}
+    out: dict[str, tuple[FormField | None, str | None]] = {}
     for kind, label in OTHER_SECTIONS.items():
+        key = other_section_key(kind)
         roots = [n for n in inside if n.attrs.get("data-wd-section") == kind]
-        if not roots:
+        named = [n for n in inside if (n.attrs.get("name") or "").startswith(OTHER_ENTRY[kind])
+                 or n.attrs.get("name") == key]  # fmt: skip
+        if not roots and not named:
             continue
-        root = roots[0]
-        rid = root.attrs.get("id", "")
-        held = list(root.walk())
-        buttons = [n for n in held if _button_like(n)]
+        root = roots[0] if roots else None
+        page = None if root is None else next(
+            (a for a in root.ancestors() if "data-wizard-page" in a.attrs), None)  # fmt: skip
+        on_page = (page.attrs.get("data-step") or None) if page is not None else None
         if (
-            len(roots) != 1
+            root is None
+            or named
+            or len(roots) != 1
             or any("data-wd-section" in a.attrs for a in root.ancestors())
-            or any("data-wd-section" in n.attrs for n in held)
-            or not _ROOT_ID.fullmatch(rid)
-            or sum(1 for n in nodes if n.attrs.get("id") == rid) != 1
-            or root.attrs.get("aria-required", "").lower() == "true"
-            or "*" in root.all_text()  # a required mark, however it is written
-            or len(buttons) != 1
-            or buttons[0].tag != "button"
-            or buttons[0].attrs.get("type", "submit").lower() != "button"
-            or not _ADD.match(buttons[0].all_text())
-            or any(n.tag in _HOLDING or "-" in n.tag for n in held)
-            or any((n.attrs.get("role") or "").lower() in _ARIA_WIDGETS for n in (root, *held))
-            or any("contenteditable" in n.attrs for n in (root, *held))
+            or any("data-wd-section" in n.attrs for n in root.walk())
+            or any(
+                m in a.attrs for a in root.ancestors() if a is not form for m in _REQUIRED_MARKS
+            )  # fmt: skip
+            or not _empty_as_built(root, label, nodes)
             or not _usable_within(root, form)  # hidden or disabled at load (a wizard page is not)
         ):
-            out[kind] = None
+            out[kind] = (None, on_page)
             continue
-        page = next((a for a in root.ancestors() if "data-wizard-page" in a.attrs), None)
+        step = next((a.attrs["data-step"] for a in root.ancestors() if a.attrs.get("data-step")),
+                    None)  # fmt: skip
         try:
-            out[kind] = FormField(
-                key=other_section_key(kind),
+            field = FormField(
+                key=key,
                 label=label,
                 type=FieldType.unsupported,
-                step=(page.attrs.get("data-step") or None) if page is not None else None,
+                step=step,
                 unsupported_reason=LEFT_EMPTY_REASON.format(label=label),
                 widget=LEFT_EMPTY,
             )
         except ValidationError:  # a page name too long to record: never an error of capture
-            out[kind] = None
+            field = None
+        out[kind] = (field, on_page)
     return out
 
 
@@ -844,8 +888,10 @@ def _wizard_problem(scan: _Scan, schema: FormSchema) -> str | None:
 
 def _entry_control(name: str) -> bool:
     """D149, D163: a control named as a Work Experience or an Education entry's: the section's,
-    never a question of its own."""
-    return bool(_WORK_ANY.match(name) or _EDU_ANY.match(name))
+    never a question of its own. D165 review: likewise one named as an entry of a section
+    NoEfforts does not fill (`OTHER_ENTRY`), which makes that kind a checkpoint instead."""
+    return bool(_WORK_ANY.match(name) or _EDU_ANY.match(name)
+                or name.startswith(tuple(OTHER_ENTRY.values())))  # fmt: skip
 
 
 def extract_schema(html: str) -> FormSchema:
@@ -889,11 +935,11 @@ def extract_schema(html: str) -> FormSchema:
         _add_checkpoint(schema, WORK_KEY, "Work Experience", WORK_REASON)
     if education_problem:
         _add_checkpoint(schema, EDUCATION_KEY, "Education", EDUCATION_REASON)
-    for kind, field in _other_sections(html).items():  # D165: left empty, or a checkpoint
+    for kind, (field, on_page) in _other_sections(html).items():  # D165: left empty, or not
         key, label = other_section_key(kind), OTHER_SECTIONS[kind]
         if (
             field is not None
-            and ((field.step in pages) if schema.wizard else field.step is None)
+            and ((on_page in pages) if schema.wizard else on_page is None)
             and key not in keys  # a page question under its key is never replaced silently
         ):
             schema.fields.append(field)

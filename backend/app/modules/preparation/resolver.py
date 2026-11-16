@@ -850,18 +850,19 @@ def _phone_companion(f: FormField, r: Resolution) -> Resolution:
 
 def _left_empty_section(f: FormField, r: Resolution) -> Resolution:
     """D165: a section of a kind NoEfforts does not fill (the Workday-style stand-in's
-    Languages, Websites or Skills, FA10) that the page does not require and that held nothing
-    when the form was read: left empty. Nothing is asked, read from your profile, entered or
-    sent there. A required one is never this field (`FormField` refuses it; capture makes it a
-    checkpoint)."""
+    Languages, Websites or Skills, FA10) that the page does not mark required and that was
+    exactly its empty self when the form was read: left empty. Nothing is asked, read from your
+    profile or entered there. A required one is never this field (`FormField` refuses it;
+    capture makes it a checkpoint)."""
     r.user_input_allowed, r.bankable, r.draftable = False, False, False
     r.status, r.value, r.display = "blank_optional", None, None
     r.explanation = (
         f"Left empty: NoEfforts does not fill this form's {f.label} section, and the page does "
-        "not require it, so nothing is entered or sent there; this holds for this form only and "
-        "changes nothing in your profile. Before each page is sent and before submitting, the "
-        "form is read again: if the section then holds an entry or the page requires it, the "
-        "attempt stops. To include it, apply on the employer's site."
+        "not mark it required, so NoEfforts enters nothing there; this holds for this form only "
+        "and changes nothing in your profile. Before anything is entered, before each page is "
+        "sent and before submitting, the form is read again: if the section then holds anything, "
+        "a field named as one of its entries appears, or the page marks it required, the attempt "
+        "stops. To include it, apply on the employer's site."
     )
     return r
 

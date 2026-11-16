@@ -92,8 +92,8 @@ STAND_IN_WIDGETS = ("phone_country", "location_search", "location_structured")
 #   phone_left_blank     that optional phone: never entered (its second control cannot be set)
 # D165 (the Workday-style stand-in's FA10; preparation/workday.py `_other_sections`):
 #   left_empty_section   a section of a kind NoEfforts does not fill (Languages, Websites,
-#                        Skills) that the page does not require and that holds nothing: left
-#                        empty, never touched; never a required field
+#                        Skills) that the page does not mark required, exactly its empty self:
+#                        left empty, never touched; never a required field
 WIDGETS = (*STAND_IN_WIDGETS, "hidden_search", "phone_companion", "phone_left_blank",
            "left_empty_section")  # fmt: skip
 

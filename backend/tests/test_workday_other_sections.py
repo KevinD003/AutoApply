@@ -29,6 +29,8 @@ from app.modules.providers.routing import form_checkpoint
 from tests.execution_harness import Receiver, attempt, queue, synthetic_candidate
 from tests.test_package_contract import SHAPES, paths
 from tests.test_workday_adapter import fresh_url, workday_job
+from tests.test_workday_education import BACHELOR, MASTER, education
+from tests.test_workday_education import SENT as EDU_SENT
 from tests.test_workday_experience import CURRENT as WORK_CURRENT
 from tests.test_workday_experience import employment
 from tests.test_workday_wizard import approve, draft_pages, drafts, posts, rows
@@ -92,9 +94,11 @@ def test_each_section_the_page_does_not_require_is_left_empty_on_its_page():
     assert form_checkpoint(schema.model_dump(mode="json")) == []  # nothing for the route
 
 
-def test_on_the_single_page_each_is_left_empty_with_no_page():
+def test_on_the_single_page_each_is_left_empty_on_its_section():
+    """D165 review: on the single page a field's page is the page's own section, as for its
+    other questions (the generic extractor's `data-step`), so the review page groups them so."""
     got = fields_of(stand_in(mode="wd_other_sections"))
-    assert all(left_empty(got.get(f"{k}_section"), LABELS[k], None) for k in KINDS)
+    assert all(left_empty(got.get(f"{k}_section"), LABELS[k]) for k in KINDS)
     assert workday.WORK_KEY not in got
 
 
@@ -109,12 +113,33 @@ def test_these_sections_never_make_the_work_history_a_checkpoint():
     assert all(left_empty(got.get(f"{k}_section"), LABELS[k]) for k in KINDS)
 
 
+def test_beside_the_education_section_both_read_as_before():
+    """D165 review: with D163's Education section on the same page."""
+    schema = workday.extract_schema(stand_in("other_sections_and_education"))
+    assert [(s.kind, s.step) for s in schema.sections] == [("education", "My Experience")]
+    got = {f.key: f for f in schema.fields}
+    assert workday.EDUCATION_KEY not in got and workday.WORK_KEY not in got
+    assert all(left_empty(got.get(f"{k}_section"), LABELS[k]) for k in KINDS)
+
+
 def test_a_section_of_a_kind_no_reader_takes_is_still_the_work_history_checkpoint():
     html = stand_in("other_sections").replace('data-wd-section="skills"',
                                               'data-wd-section="certifications"')  # fmt: skip
     got = fields_of(html)
     assert workday.WORK_KEY in got and "skills_section" not in got
     assert left_empty(got["languages_section"], "Languages")
+
+
+def test_on_a_wizard_refused_each_is_a_checkpoint():
+    """D165 review: a wizard NoEfforts does not drive (here, page 1 without its Next) is the
+    several-pages checkpoint, and none of its sections is left empty."""
+    html = stand_in("other_sections").replace(
+        '<button type="button" data-wizard-next>Save and Continue</button>\n</section>\n'
+        '<section data-step="My Experience"',
+        '</section>\n<section data-step="My Experience"', 1)  # fmt: skip
+    got = fields_of(html)
+    assert workday.MULTI_STEP_KEY in got
+    assert all(checkpoint(got.get(f"{k}_section"), LABELS[k]) for k in KINDS)
 
 
 def test_a_section_the_page_requires_is_its_own_checkpoint():
@@ -125,23 +150,29 @@ def test_a_section_the_page_requires_is_its_own_checkpoint():
     assert workday.WORK_KEY not in got
 
 
-def test_an_entry_already_there_is_its_own_checkpoint():
+def test_an_entry_already_there_is_its_own_checkpoint_and_never_questions():
     got = fields_of(stand_in("other_sections_entry_at_load"))
     assert checkpoint(got["languages_section"], "Languages")
     assert left_empty(got["skills_section"], "Skills")
+    assert not [k for k in got if ENTRY.fullmatch(k)]  # review: the section's, never questions
 
 
 LANG = '<div id="languages" role="group" aria-labelledby="languages-label" '
 LANG_ADD = '<div data-wd-entries></div><button type="button" data-wd-add>Add</button></div>'
 LANG_HEAD = '<h3 id="languages-label">Languages</h3>'
+ADD = '<button type="button" data-wd-add>Add</button>'
+
+
+def bounds(html: str) -> tuple[int, int]:
+    start = html.index(LANG)
+    return start, html.index(LANG_ADD, start) + len(LANG_ADD)
 
 
 def in_languages(old: str, new: str):
     """A change inside the Languages section (FA10's markup) only."""
 
     def change(html: str) -> str:
-        start = html.index(LANG)
-        end = html.index(LANG_ADD, start) + len(LANG_ADD)
+        start, end = bounds(html)
         section = html[start:end]
         assert old in section, old
         return html[:start] + section.replace(old, new, 1) + html[end:]
@@ -149,98 +180,171 @@ def in_languages(old: str, new: str):
     return change
 
 
+def around_languages(before: str, after: str):
+    """The Languages section wrapped (FA10's markup)."""
+
+    def change(html: str) -> str:
+        start, end = bounds(html)
+        return html[:start] + before + html[start:end] + after + html[end:]
+
+    return change
+
+
+def before_languages(markup: str):
+    def change(html: str) -> str:
+        start, _ = bounds(html)
+        return html[:start] + markup + html[start:]
+
+    return change
+
+
 def languages_twice(html: str) -> str:
-    start = html.index(LANG)
-    end = html.index(LANG_ADD, start) + len(LANG_ADD)
+    start, end = bounds(html)
     copy = html[start:end].replace('id="languages"', 'id="languages-2"')
     return html[:end] + copy + html[end:]
 
 
 def languages_on_the_review_page(html: str) -> str:
-    start = html.index(LANG)
-    end = html.index(LANG_ADD, start) + len(LANG_ADD)
+    start, end = bounds(html)
     section, html = html[start:end], html[:start] + html[end:]
     last = '<section data-step="Review" data-wizard-page="5" hidden>'
     assert last in html
     return html.replace(last, last + section, 1)
 
 
-def languages_inside_websites(html: str) -> str:
-    start = html.index(LANG)
-    end = html.index(LANG_ADD, start) + len(LANG_ADD)
-    section, html = html[start:end], html[:start] + html[end:]
-    web = '<div data-wd-entries></div><button type="button" data-wd-add>Add</button></div>'
-    at = html.index('data-wd-section="websites"')
-    w = html.index(web, at)
-    return html[:w] + section + html[w:]
+def heading_outside(html: str) -> str:
+    """The heading that names the section moved just before it, marked required there."""
+    html = in_languages(LANG_HEAD, "")(html)
+    return before_languages('<h3 id="languages-label">Languages *</h3>')(html)
+
+
+def custom_element_section(html: str) -> str:
+    start, end = bounds(html)
+    section = html[start:end]
+    section = "<wd-section" + section[len("<div") : -len("</div>")] + "</wd-section>"
+    return html[:start] + section + html[end:]
+
+
+def after_the_form(markup: str):
+    def change(html: str) -> str:
+        assert html.count("</form>") == 1
+        return html.replace("</form>", "</form>" + markup, 1)
+
+    return change
 
 
 NOT_LEFT_EMPTY = {
+    # a required mark, however the page writes it (review)
     "aria-required": in_languages(
         'data-wd-section="languages"', 'data-wd-section="languages" aria-required="true"'
+    ),
+    "required on it": in_languages(
+        'data-wd-section="languages"', 'data-wd-section="languages" required'
+    ),
+    "data-required on it": in_languages(
+        'data-wd-section="languages"', 'data-wd-section="languages" data-required="true"'
+    ),
+    "a name of its own": in_languages(
+        'data-wd-section="languages"', 'data-wd-section="languages" aria-label="Languages *"'
+    ),
+    "a title": in_languages(
+        'data-wd-section="languages"', 'data-wd-section="languages" title="Required"'
     ),
     "an asterisk in its heading": in_languages(
         LANG_HEAD, '<h3 id="languages-label">Languages *</h3>'
     ),
-    "an asterisk anywhere in it": in_languages(
-        LANG_ADD,
-        LANG_ADD.replace(
-            "<div data-wd-entries></div>", "<div data-wd-entries></div><span>*</span>"
-        ),
+    "(required) in its heading": in_languages(
+        LANG_HEAD, '<h3 id="languages-label">Languages (required)</h3>'
     ),
+    "another asterisk in its heading": in_languages(
+        LANG_HEAD, '<h3 id="languages-label">Languages \u2217</h3>'
+    ),
+    "a mark inside its heading": in_languages(
+        LANG_HEAD, '<h3 id="languages-label">Languages<abbr title="required"></abbr></h3>'
+    ),
+    "aria-required on its heading": in_languages(
+        LANG_HEAD, '<h3 id="languages-label" aria-required="true">Languages</h3>'
+    ),
+    "its heading outside it": heading_outside,
+    "its heading's id used twice": before_languages('<span id="languages-label"></span>'),
+    "aria-required around it": around_languages('<div aria-required="true">', "</div>"),
+    "required around it": around_languages("<fieldset required>", "</fieldset>"),
+    "an attribute written twice": in_languages(
+        '<button type="button" data-wd-add>', '<button type="submit" type="button" data-wd-add>'
+    ),
+    # not the empty section NoEfforts reads
     "two of a kind": languages_twice,
-    "no id": in_languages('<div id="languages" role="group"', '<div role="group"'),
-    "an id used twice": lambda h: in_languages(
-        LANG_HEAD, LANG_HEAD + '<span id="languages"></span>'
-    )(h),
-    "hidden at load": in_languages(
-        'data-wd-section="languages"', 'data-wd-section="languages" hidden'
-    ),
-    "disabled at load": in_languages(
-        'data-wd-section="languages"', 'data-wd-section="languages" aria-disabled="true"'
-    ),
-    "no Add button": in_languages('<button type="button" data-wd-add>Add</button>', ""),
+    "a custom element": custom_element_section,
+    "hidden at load": around_languages("<div hidden>", "</div>"),
+    "disabled at load": around_languages('<div aria-disabled="true">', "</div>"),
+    "no Add button": in_languages(ADD, ""),
     "a second button": in_languages(LANG_HEAD, LANG_HEAD + '<button type="button">Help</button>'),
-    "an Add that submits": in_languages(
-        '<button type="button" data-wd-add>', '<button type="submit" data-wd-add>'
+    "an Add that is an input": in_languages(ADD, '<input type="button" data-wd-add value="Add">'),
+    "an Add that is not a button": in_languages(
+        ADD, '<div role="button" type="button" data-wd-add>Add</div>'
     ),
-    "an Add that is an input": in_languages(
-        '<button type="button" data-wd-add>Add</button>',
-        '<input type="button" data-wd-add value="Add">',
+    "an Add that submits": in_languages(ADD, ADD.replace('type="button"', 'type="submit"')),
+    "Add Another": in_languages(">Add</button>", ">Add Another</button>"),
+    "text in it": in_languages(
+        "<div data-wd-entries></div>", "<div data-wd-entries>English (fluent)</div>"
     ),
-    "an Add saying something else": in_languages(">Add</button>", ">Add a language</button>"),
-    "a control in it": in_languages(LANG_HEAD, LANG_HEAD + '<input type="hidden" name="lang_x">'),
-    "a text area in it": in_languages(
-        LANG_HEAD,
-        LANG_HEAD + '<label for="n1">Note</label><textarea id="n1" name="note"></textarea>',
-    ),
+    "a control in it": in_languages(LANG_HEAD, LANG_HEAD + '<input type="hidden" name="lx">'),
     "something editable in it": in_languages(LANG_HEAD, LANG_HEAD + "<div contenteditable></div>"),
     "a custom control in it": in_languages(LANG_HEAD, LANG_HEAD + '<div role="textbox"></div>'),
     "a custom element in it": in_languages(LANG_HEAD, LANG_HEAD + "<wd-picker></wd-picker>"),
     "a frame in it": in_languages(LANG_HEAD, LANG_HEAD + '<iframe src="about:blank"></iframe>'),
+    "a script in it": in_languages(LANG_HEAD, LANG_HEAD + "<script>window.x = 1</script>"),
     "a template in it": in_languages(LANG_HEAD, LANG_HEAD + "<template><input></template>"),
-    "inside another section": languages_inside_websites,
+    "inside another section": lambda h: moved_into(h, LANG, WEB),
     "on the review page": languages_on_the_review_page,
+    # something in the form named as one of its entries, or under its key (review)
+    "an entry's hidden value before it": before_languages(
+        '<input type="hidden" name="lang[0].language" value="lang-en">'
+    ),
+    "an entry's empty hidden field": before_languages(
+        '<input type="hidden" name="lang[0].language" value="">'
+    ),
+    "an entry's control beside it": lambda h: before_languages(
+        '<label for="l0">Language</label><input id="l0" name="lang[0].language" type="text">'
+    )(h),
+    "an entry's control given from outside the form": after_the_form(
+        '<input type="hidden" form="workday-application" name="lang[0].language" value="x">'
+    ),
+    "a hidden field under its key": before_languages(
+        '<input type="hidden" name="languages_section" value="x">'
+    ),
 }
-
-
 # On the wizard a submit button off its last page refuses the whole wizard (D142), every section on
 # it then a checkpoint: this case is read on the single page.
-ON_THE_SINGLE_PAGE = {"an Add that submits"}
+ON_THE_SINGLE_PAGE = {"an attribute written twice", "an Add that submits"}
 
 
 @pytest.mark.parametrize("change", sorted(NOT_LEFT_EMPTY))
-def test_a_section_not_exactly_one_that_holds_nothing_is_its_own_checkpoint(change):
+def test_a_section_not_exactly_its_empty_self_is_its_own_checkpoint(change):
     """Never left out on a guess: anything about a section NoEfforts does not fill that it does
-    not read exactly (required, two of a kind, not shown, holding anything but its Add, nested,
-    on a page it cannot be left empty on) is that section's checkpoint: apply on the employer's
-    site. A section the change leaves alone is read as before."""
-    single = change in ON_THE_SINGLE_PAGE
-    html = stand_in(mode="wd_other_sections") if single else stand_in("other_sections")
+    not read exactly (a required mark however written, a name or a heading of another text,
+    two of a kind, not shown, anything in it but its heading, empty list and plain Add, nested,
+    on a page it cannot be left empty on, anything in the form named as one of its entries or
+    under its key) is that section's checkpoint: apply on the employer's site. A section the
+    change leaves alone is read as before."""
+    html = stand_in(mode="wd_other_sections") if change in ON_THE_SINGLE_PAGE else stand_in(
+        "other_sections")  # fmt: skip
     got = fields_of(NOT_LEFT_EMPTY[change](html))
     assert checkpoint(got.get("languages_section"), "Languages"), got.get("languages_section")
-    assert left_empty(got.get("skills_section"), "Skills", None if single else "My Experience")
+    assert left_empty(got.get("skills_section"), "Skills")
     assert workday.WORK_KEY not in got and workday.MULTI_STEP_KEY not in got
+    assert not [k for k in got if ENTRY.fullmatch(k)]
+
+
+def test_a_kind_named_with_no_section_is_its_checkpoint():
+    """D165 review: a control named as an entry of a kind whose section the page does not show
+    is never a question of its own, nor left out silently: that kind's checkpoint."""
+    html = stand_in(mode="normal").replace(
+        "</form>", '<input type="hidden" name="skill[0].name" value="x"></form>', 1
+    )
+    got = fields_of(html)
+    assert checkpoint(got.get("skills_section"), "Skills")
+    assert "languages_section" not in got and "skill[0].name" not in got
 
 
 WEB = '<div id="websites" role="group"'
@@ -329,15 +433,17 @@ def test_a_section_left_empty_resolves_to_nothing_whatever_your_profile_holds():
 # ---------------------------------------------------------------------------- the package
 
 
-def application(api, receiver, variant="other_sections", *, single=False, approved=True,
-                work=()) -> str:  # fmt: skip
+def application(api, receiver, variant="other_sections", *, mode=None, approved=True,
+                work=(), schooling=()) -> str:  # fmt: skip
     """The sections' variant switched on (a wizard variant, or the single page's mode), your
     approved work history when given, then a Workday-style application on a posting of its own,
     captured, answered and, when `approved`, approved."""
-    receiver.config(**({"mode": "wd_other_sections"} if single else {"wizard": variant}))
+    receiver.config(**({"mode": mode} if mode else {"wizard": variant}))
     synthetic_candidate(api)
     for record in work:
         employment(api, record)
+    for record in schooling:
+        education(api, record)
     job_id = workday_job(api, url=fresh_url())
     r = api.post(f"/jobs/{job_id}/form/workday")
     assert r.status_code == 201, r.text
@@ -411,7 +517,7 @@ def test_the_sections_are_left_empty_and_the_application_is_sent(api, receiver):
 
 
 def test_on_the_single_page_they_are_left_empty_and_it_is_sent(api, receiver):
-    app_id = application(api, receiver, single=True)
+    app_id = application(api, receiver, mode="wd_other_sections")
     assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
     assert entries(accepted(receiver)) == {}
 
@@ -424,15 +530,56 @@ def test_beside_them_your_work_history_is_sent(api, receiver):
     assert entries(accepted(receiver)) == {}
 
 
+def test_beside_them_your_education_is_sent(api, receiver):
+    """D165 review: with D163's Education section on the same page."""
+    app_id = application(api, receiver, "other_sections_and_education",
+                         schooling=(MASTER, BACHELOR))  # fmt: skip
+    assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
+    (page_2,) = [d["fields"] for d in drafts(receiver.ledger()) if d["page"] == 2]
+    assert {k: v for k, v in page_2.items() if k.startswith("edu[")} == EDU_SENT
+    assert entries(page_2) == {} and entries(accepted(receiver)) == {}
+
+
+def test_a_hidden_value_the_parse_keeps_outside_a_section_stops_before_its_page_is_sent(
+    api, receiver
+):
+    """D165 review (the blocker): the resume's parse keeps a Skills value in a hidden field of
+    its own, outside the section. No question shows it (a hidden field is none) and the form's
+    own reads of what it sends leave hidden fields alone (D160): only D165's rule, that nothing
+    in the form is named as one of the section's entries, read again before page 2's Next,
+    sees it. The attempt stops, page 2 never sent."""
+    app_id = application(api, receiver, "other_sections_hidden_parse")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    led = receiver.ledger()
+    assert draft_pages(led) == [1] and posts(led, "/apply") == 0
+    assert attempt(aid).outcome_detail.endswith(f"Why: {FORM_CHANGED}")
+
+
+def test_on_the_single_page_a_hidden_value_the_parse_keeps_stops_before_the_final_click(
+    api, receiver
+):
+    """D165 review: the same on the single page, read again after filling, before the final
+    click: nothing is submitted."""
+    app_id = application(api, receiver, mode="wd_other_sections_parse")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") not in ("confirmed", "unknown")
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and posts(led, "/apply") == 0
+    assert FORM_CHANGED in attempt(aid).outcome_detail
+
+
 def test_an_entry_a_parsed_resume_adds_stops_before_its_page_is_sent(api, receiver):
     """The resume's parse adds a Skills entry with a value of its own: the form read again before
-    page 2's Next is no longer the approved one, so the attempt stops with page 2 never sent."""
+    page 2's Next is no longer the approved one, so the attempt stops with page 2 never sent.
+    (Review: the entry's controls are never new questions; D165's own rule makes the section
+    that kind's checkpoint, so the stop names no new field.)"""
     app_id = application(api, receiver, "other_sections_parse")
     aid = queue(api, app_id)
     assert runner.run_attempt(aid, "w1") == "abandoned"
     led = receiver.ledger()
     assert draft_pages(led) == [1] and posts(led, "/apply") == 0
-    assert attempt(aid).outcome_detail.endswith(f"Why: {FORM_CHANGED} (1 new field(s))")
+    assert attempt(aid).outcome_detail.endswith(f"Why: {FORM_CHANGED}")
 
 
 def test_a_section_the_page_requires_once_the_resume_is_in_stops_before_its_page_is_sent(

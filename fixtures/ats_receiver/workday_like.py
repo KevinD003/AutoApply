@@ -165,10 +165,13 @@ and education_add_broken (Add adds nothing). D165, FA10: other_sections (the thr
 page 2, none required), other_sections_required (the page requires a language at load),
 other_sections_entry_at_load (one empty Languages entry already there at load),
 other_sections_parse (a resume upload adds a Skills entry with a value of its own),
-other_sections_required_late (the page requires a language once the resume is uploaded) and
-other_sections_and_experience (with the Work Experience section, FA7).
+other_sections_required_late (the page requires a language once the resume is uploaded),
+other_sections_and_experience (with the Work Experience section, FA7),
+other_sections_and_education (with the Education section, FA9) and other_sections_hidden_parse
+(a resume upload keeps a Skills value in a hidden field of its own, outside the section).
 The single page's mode wd_experience puts the Work Experience section on its My Experience
-section, wd_education the Education section, and wd_other_sections FA10's three sections.
+section, wd_education the Education section, and wd_other_sections FA10's three sections
+(wd_other_sections_parse: with other_sections_hidden_parse's upload).
 """
 
 import asyncio
@@ -534,6 +537,7 @@ def _work_errors(fields: dict, required: bool, parts_required: bool = False,
 
 # D163, FA9: the Education section, by wizard variant (the single page's mode is "wd_education").
 EDU_VARIANTS = ("education", "education_required", "education_and_experience",
+                "other_sections_and_education",  # D165: with FA10's sections
                 "education_entry_at_load", "education_unknown_control", "education_parse",
                 "education_changed_after_next", "education_add_broken")  # fmt: skip
 # The lists' options: (value, text); each value an id of the page's own (fixture design).
@@ -626,7 +630,11 @@ def _edu_errors(fields: dict, required: bool) -> list[str]:
 # page's mode is "wd_other_sections").
 OTHER_VARIANTS = ("other_sections", "other_sections_required", "other_sections_entry_at_load",
                   "other_sections_parse", "other_sections_required_late",
-                  "other_sections_and_experience")  # fmt: skip
+                  "other_sections_and_experience", "other_sections_hidden_parse",
+                  "other_sections_and_education")  # fmt: skip
+# The single page's modes with the three sections (wd_other_sections_parse: the resume parse
+# adds a hidden Skills value outside the section, as other_sections_hidden_parse does).
+OTHER_MODES = ("wd_other_sections", "wd_other_sections_parse")
 # kind -> (its heading, the prefix of its entries' control names)
 OTHER_KINDS = {"languages": ("Languages", "lang"), "websites": ("Websites", "web"),
                "skills": ("Skills", "skill")}  # fmt: skip
@@ -829,7 +837,7 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
     edu, edu_template, edu_js = _edu_section(  # D163, FA9
         "education" if mode == "wd_education" else None)
     other, other_template, other_js = _other_sections(  # D165, FA10
-        "other_sections" if mode == "wd_other_sections" else None)
+        "other_sections" if mode in OTHER_MODES else None)
     phone_check, check_js = _page_check(cfg)  # D154, FA8
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
@@ -911,6 +919,11 @@ for (const input of document.querySelectorAll('input[type=file][data-wd-file]'))
       for (const [k, v] of Object.entries(j.parsed || {{}})) {{
         const el = document.querySelector(`[name="${{k}}"]`);
         if (el) el.value = v;
+      }}
+      for (const [k, v] of Object.entries(j.other_hidden || {{}})) {{  // D165 (FA10)
+        const h = document.createElement('input');
+        h.type = 'hidden'; h.name = k; h.value = v;
+        input.closest('section').append(h);
       }}
     }} catch (e) {{ st.textContent = 'Upload failed'; st.dataset.attachmentError = '1'; }}
   }});
@@ -1032,6 +1045,11 @@ for (const input of document.querySelectorAll('input[type=file][data-wd-file]'))
       for (const [k, v] of Object.entries(j.parsed || {{}})) {{
         const el = document.querySelector(`[name="${{k}}"]`);
         if (el) el.value = v;
+      }}
+      for (const [k, v] of Object.entries(j.other_hidden || {{}})) {{  // D165 (FA10)
+        const h = document.createElement('input');
+        h.type = 'hidden'; h.name = k; h.value = v;
+        input.closest('section').append(h);
       }}
       for (const entry of (j.entries || [])) {{  // D149: the parse adds an entry (FA7)
         const i = window.addWorkEntry();
@@ -1197,6 +1215,11 @@ def mount(app, ledger, cfg, accept) -> None:
             out["other_entries"] = {"skills": [PARSED_SKILL]}  # D165, FA10 (fixture design)
         if cfg.get("wizard") == "other_sections_required_late" and field == "resume":
             out["require_section"] = "languages"  # D165, FA10: required once the resume is in
+        if field == "resume" and (cfg.get("wizard") == "other_sections_hidden_parse"
+                                  or cfg["mode"] == "wd_other_sections_parse"):  # fmt: skip
+            # D165 review, FA10: the parse keeps a Skills value in a hidden field of its own,
+            # outside the section (fixture design).
+            out["other_hidden"] = {"skill[0].name": PARSED_SKILL["name"]}
         if cfg.get("wizard") == "parse_current_page" and field == "resume":
             # D142: the parse fills the optional field on the upload's own page (FIXTURE
             # ASSUMPTION), which NoEfforts leaves unanswered.
@@ -1304,7 +1327,7 @@ def mount(app, ledger, cfg, accept) -> None:
                                     WORK_LIMITS if wizard in LIMITED_VARIANTS else None)
         if mode == "wd_education" or wizard in EDU_VARIANTS:  # D163, FA9
             missing += _edu_errors(fields, wizard == "education_required")
-        if mode == "wd_other_sections" or wizard in OTHER_VARIANTS:  # D165, FA10
+        if mode in OTHER_MODES or wizard in OTHER_VARIANTS:  # D165, FA10
             missing += _other_errors(fields, wizard in OTHER_REQUIRED)
         if wizard:  # D142, FA4: every page before Review was saved under this form token
             saved = {d["page"] for d in drafted_pages(slug, token)}
