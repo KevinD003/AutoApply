@@ -276,7 +276,8 @@ def test_clearing_your_choice_makes_it_yours_to_settle_again(api, receiver):
 
 
 def test_your_choice_is_for_this_application_only(api, receiver):
-    """Never saved for reuse: another application for another posting asks again."""
+    """Never saved for reuse: another application for another posting asks again, with no choice
+    of the first one's, not even one that no longer applies (one application per posting)."""
     first = unlisted_application(api, receiver)
     assert choose(api, first, open_key(api, first), "sch-102").status_code == 200
     from tests.test_workday_adapter import fresh_url, workday_job
@@ -285,7 +286,8 @@ def test_your_choice_is_for_this_application_only(api, receiver):
     assert api.post(f"/jobs/{job_id}/form/workday").status_code == 201
     second = api.post("/applications", json={"job_id": job_id}).json()["id"]
     (c,) = api.get(f"/applications/{second}/section-choices").json()["choices"]
-    assert c["chosen"] is None and c["key"] in content(api, second)["unresolved"]
+    assert (c["chosen"], c["stale"]) == (None, False)
+    assert c["key"] in content(api, second)["unresolved"]
 
 
 def test_the_audit_names_the_field_never_the_option_or_your_record(api, receiver):

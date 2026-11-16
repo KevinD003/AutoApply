@@ -529,7 +529,7 @@ export default function ReviewPage() {
         </Card>
       ))}
 
-      <SectionChoicesCard key={view.package.version} appId={id} busy={busy} call={call} />
+      <SectionChoicesCard appId={id} busy={busy} call={call} />
 
       {(c.sections ?? []).length > 0 && <SectionsCard sections={c.sections} />}
 
@@ -570,8 +570,8 @@ const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
  * form's own options, for this application only (your record stays as it is, and nothing is saved
  * for other applications). */
 function SectionChoicesCard({ appId, busy, call }) {
-  // Mounted afresh for each package version (its `key`), and read again after every save or clear,
-  // whatever it returned: what you see is what the server holds (D164 review).
+  // Read again after every save or clear, whatever it returned, the option you picked reset: what
+  // you see is what the server holds (D164 review).
   const [choices, setChoices] = useState(null);
   const [error, setError] = useState(null);
   const [picked, setPicked] = useState({});
