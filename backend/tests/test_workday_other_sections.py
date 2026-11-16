@@ -266,6 +266,13 @@ NOT_LEFT_EMPTY = {
         LANG_HEAD, '<h3 id="languages-label" aria-required="true">Languages</h3>'
     ),
     "its heading outside it": heading_outside,
+    "named by a heading outside it": lambda h: in_languages(
+        'aria-labelledby="languages-label"', 'aria-labelledby="languages-required"'
+    )(before_languages('<h3 id="languages-required">Languages *</h3>')(h)),
+    "a heading that is not one": in_languages(
+        LANG_HEAD, '<span id="languages-label">Languages</span>'
+    ),
+    "another role": in_languages('role="group"', 'role="region"'),
     "its heading's id used twice": before_languages('<span id="languages-label"></span>'),
     "aria-required around it": around_languages('<div aria-required="true">', "</div>"),
     "required around it": around_languages("<fieldset required>", "</fieldset>"),
@@ -280,8 +287,18 @@ NOT_LEFT_EMPTY = {
     "no Add button": in_languages(ADD, ""),
     "a second button": in_languages(LANG_HEAD, LANG_HEAD + '<button type="button">Help</button>'),
     "an Add that is an input": in_languages(ADD, '<input type="button" data-wd-add value="Add">'),
-    "an Add that is not a button": in_languages(
-        ADD, '<div role="button" type="button" data-wd-add>Add</div>'
+    "an Add that is not a button": in_languages(ADD, '<div type="button" data-wd-add>Add</div>'),
+    "an Add with more to it": in_languages(
+        ADD, '<button type="button" data-wd-add name="lx">Add</button>'
+    ),
+    "an Add holding an element": in_languages(
+        ADD, '<button type="button" data-wd-add><span>Add</span></button>'
+    ),
+    "an entries list that is not a div": in_languages(
+        "<div data-wd-entries></div>", "<span data-wd-entries></span>"
+    ),
+    "an entries list with more to it": in_languages(
+        "<div data-wd-entries></div>", '<div data-wd-entries data-count="0"></div>'
     ),
     "an Add that submits": in_languages(ADD, ADD.replace('type="button"', 'type="submit"')),
     "Add Another": in_languages(">Add</button>", ">Add Another</button>"),

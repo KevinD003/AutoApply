@@ -637,8 +637,8 @@ def _other_sections(html: str) -> dict[str, tuple[FormField | None, str | None]]
     kind's checkpoint, with the wizard page the section is on (None: on no wizard page). Read
     on the generic extractor's own tree and form, the controls the page gives the form from
     outside its markup included (D160). Left empty only when: one section of its kind, within
-    no other section and holding none, shown and enabled at load, exactly the stand-in's empty
-    one (`_empty_as_built`), within nothing marked required (`required`, `aria-required`,
+    no other section, shown and enabled at load, exactly the stand-in's empty one (so holding no
+    section either: `_empty_as_built`), within nothing marked required (`required`, `aria-required`,
     `data-required`, whatever their value); and (review) nothing in the form, hidden or given to
     it from outside, is named as one of that kind's entries (FA10: `lang[`, `web[`, `skill[`) or
     under the field's own key: such a control is never a question of its own (`_entry_control`),
@@ -668,7 +668,6 @@ def _other_sections(html: str) -> dict[str, tuple[FormField | None, str | None]]
             or named
             or len(roots) != 1
             or any("data-wd-section" in a.attrs for a in root.ancestors())
-            or any("data-wd-section" in n.attrs for n in root.walk())
             or any(
                 m in a.attrs for a in root.ancestors() if a is not form for m in _REQUIRED_MARKS
             )  # fmt: skip
