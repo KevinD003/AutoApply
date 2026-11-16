@@ -8340,3 +8340,91 @@ audit-inventory and export-completeness guards are updated and pass.
   - Whether a real Workday page offers its education lists as native lists at all is unknown
     (more likely search prompts, which NoEfforts never fills: such a page stays the checkpoint).
     **Never seen on a real page.**
+
+## D164 — An education field no option of the employer's form matches is yours to choose from its own options, for one application (2026-11-16)
+
+- **Context:** rank 31 of the automation loop (`docs/automation-loop.md`): the dead end D163
+  inherited from D120. D120 resolves your approved education against an education section's own
+  option lists (school and field of study exactly, degree by `match_degree`); a field no option
+  matches was a checkpoint saying "choose it for this application", with nowhere to choose: the
+  page's options were never shown, and the only way out was to edit the record until its text
+  equalled an option's, which changes it for every application. Local stand-ins and manual forms
+  only; nothing real was run. No migration (a choice is an application input, kind
+  `section_choice`), no new state, reason code, gate, permission or retry. `SCHEMA_VERSION` stays
+  3: a chosen field is frozen exactly as a matched one (`{status, value: {id}, display}`), and a
+  package with no choice is as before.
+- **Where it applies:** an education section the capture reads with its lists: D120's manual
+  forms and Greenhouse stand-ins, and D163's Workday-style stand-in. The pilot's capture of a real
+  page (`greenhouse_dom`) reads no section there, so on a real page nothing changes yet.
+- **Decided:**
+  - **The fields open to a choice** (`structured_sections.open_choices`, `CHOICE_FIELDS`): each
+    approved education record's school, degree or field of study that has text (review: spaces
+    only are none) and that no option of the form's list for it matches by D120's rules
+    (`matched_option`). A field the record leaves empty is never chosen for, a match is never
+    overridden, and (review) a field whose list offers nothing you could choose (empty, or each
+    option under an id another shares) is not open: it says to apply on the employer's site.
+  - **What you choose from** (`choosable`, review): the list's own options, each under an id it
+    holds alone; two options under one id are neither offered nor applied (choosing one could
+    send the other).
+  - **Your choice** (`Choice`, `_choice_field`): one of those options, for one application,
+    stored as an application input (key `section:education:<record id>:<field>`, value `{id}`,
+    with what it was chosen against), never saved for reuse (D51). It applies only while the
+    option is still offered with the same text, the record is as it was (version and text), and
+    (review) the form is the version it was chosen against: once the form is read again as a new
+    version, a choice never applies by itself again, whatever that version offers (an option
+    dropped and restored, or a match that set it aside and was dropped). Otherwise the field is
+    yours to settle again, and the page says your choice no longer applies.
+  - **The API** (`router.py`): `GET /applications/{id}/section-choices` lists the open fields
+    (your text, the options, your choice, `stale`, the record's version, the form's id).
+    `PUT {key, option_id}` chooses, sending what the page showed you (review): your record's
+    version and text and the option's text, each compared with what the server holds then (a
+    difference: 409, nothing stored); an option the list does not offer: 400; a key not open to a
+    choice: 404. `option_id` is always sent (review: a request without it was read as a clear);
+    `null` clears the choice stored under the key, open or not (review), and a key with neither
+    is 404. Another account: 404. Audited by reference only (`application.section_choice`,
+    `application.section_choice_cleared`).
+  - **The package** (`package._resolve_sections`, `_section_choices`): reads this application's
+    choices with the form being resolved; a chosen field is frozen as a matched one (source
+    `user_choice`), shown and diffed as D140's. Choosing, changing or clearing builds the
+    package again, so an approval of the version before is retired as for any other change.
+  - **The review page** (`SectionChoicesCard`): each open field with your record's text, the
+    form's options, Save and Clear (Clear also for a choice that no longer applies), and a note
+    when one no longer applies; it reads again after every save or clear, whatever the answer,
+    with the option you picked reset (review), and shows an error reading it. The card that
+    shows the education sent says it includes the options you chose.
+- **What an approved run now does differently:** none of the approved runs changes: a choice
+  exists only where you made one. A field that was the dead end can now be settled on the review
+  page and sent as the option you chose (on the stand-ins).
+- **Reviews:** two independent reviews of the first version (16ada27). No blocker; in every probe
+  the package held only an option the form offers, for that record, field and application.
+  - **Both found:** the choice was bound to the form and the record as they were when the request
+    arrived, not as the page showed them (a record edited in another tab, an option relabelled):
+    with D113's standing rule, it could reach the employer unseen. Fixed: 409.
+  - **Both found:** a field of spaces only (which the profile keeps) was open to a choice, and
+    the package then sent an option the record does not hold. Fixed.
+  - **Both found:** the card's state after Clear (the cleared option still shown, Save still
+    enabled), and Clear never exercised by the e2e. Fixed: read again after every change, the
+    pick reset; the e2e clears a choice that no longer applies and saves after a refused one.
+  - **Both noted:** a request without `option_id` cleared the choice (now 422); a stale choice
+    came back by itself once the form offered its option again, and one a match set aside could
+    not be cleared (now bound to the form version, and cleared by its key).
+  - **The second:** the tests missed parts of the change: no degree or field of study was ever
+    chosen (offering the school list for all three passed every test), the record and option
+    checks were caught only on the resolver, and clearing an approved choice was untested. Each
+    now has its test. An empty list was still a dead end, and options sharing an id let the
+    other be sent: both fixed. The card's wording said everything shown came from your records.
+  - **The removal runs** (each part changed in turn): on 7f1d6ed, 31 of the 32 changes fail the tests named for their part (48 failures among the 90 tests run). The one that did not, the per-application filter on reading choices, passed because the test's second application was on another posting, whose form made the leaked choice stale rather than absent: the test now asserts no stale choice either, and on eee1724 the change fails it. Of 5 changes to the review card, 4 fail its e2e on desktop and mobile; the fifth, remounting the card per package version, failed nothing (reading again after each change covers it): removed in eee1724, where the 4 fail again.
+- **Not built:**
+  - Real pages: the pilot's capture reads no section on a real page, and a real Workday's
+    education lists may be search prompts, which NoEfforts never fills. **Never seen on a real
+    page.**
+  - A choice is per record and per application (D51): another application, or another record
+    with the same text, asks again.
+  - Reading the form again as a new version asks again for every choice, even when nothing about
+    education changed (fail-closed).
+  - Employment: its parts are text (D149), with nothing to choose from.
+  - On an application already sent, the card can still be used: the choice is stored and audited
+    while nothing is rebuilt (as answers are, D51).
+  - Inherited (D120): a match whose option shares its id with another is sent by that id, and
+    the manual form's schema and the Greenhouse stand-in's capture do not refuse duplicate ids
+    (the Workday-style capture does, D163).

@@ -369,6 +369,72 @@ def _approved_records(db: Session, user_id, kind: str) -> list:
     )
 
 
+# D164: your choice of an option, for one application, for a section field no option matches
+# (`structured_sections.Choice`): an input of its own, keyed as the field's checkpoint is
+# (`section:education:<record id>:<field>`), never saved for reuse.
+SECTION_CHOICE = "section_choice"
+_CHOICE_KEY = "section:education:"
+
+
+def _section_choices(db: Session, app: Application, form_id: str | None) -> dict:
+    """D164: this application's choices, by (record id, field). D164 review: each made against the
+    form as captured then (`form_id`, the latest form's id): one made against another form never
+    applies by itself again."""
+    from app.modules.preparation import structured_sections as ss
+
+    out = {}
+    rows = db.scalars(
+        select(ApplicationInput).where(
+            ApplicationInput.application_id == app.id, ApplicationInput.kind == SECTION_CHOICE
+        )
+    )
+    for i in rows:
+        rest = i.field_key[len(_CHOICE_KEY) :] if i.field_key.startswith(_CHOICE_KEY) else ""
+        record_id, _, field = rest.partition(":")
+        meta, value = i.meta or {}, i.value or {}
+        if not record_id or field not in ss.CHOICE_FIELDS or not isinstance(value.get("id"), str):
+            continue  # never a choice read from a row that is not one
+        out[(record_id, field)] = ss.Choice(
+            option_id=value["id"],
+            option_text=str(meta.get("option_text", "")),
+            record_version=meta.get("record_version"),
+            record_text=str(meta.get("record_text", "")),
+            form_current=form_id is not None and meta.get("form_id") == form_id,
+        )
+    return out
+
+
+def _education_options(spec):
+    from app.modules.preparation import structured_sections as ss
+
+    return ss.EducationOptions(
+        schools=tuple(ss.SectionOption(o.id, o.text) for o in spec.schools),
+        degrees=tuple(ss.SectionOption(o.id, o.text) for o in spec.degrees),
+        disciplines=tuple(ss.SectionOption(o.id, o.text) for o in spec.disciplines),
+    )
+
+
+def section_choices(db: Session, app: Application) -> list[dict]:
+    """D164: the education fields of the form as captured that you may choose an option for, for
+    this application (a record's text no option matches by itself), with the options it offers and
+    your choice when one applies. A form with no education section has none."""
+    from app.modules.preparation import structured_sections as ss
+
+    form = latest_form(db, app.job_id)
+    if form is None:
+        return []
+    schema = FormSchema.model_validate(form.schema)
+    specs = [s for s in (getattr(schema, "sections", None) or []) if s.kind == "education"]
+    if len(specs) != 1:
+        return []
+    records = _approved_records(db, app.user_id, "education")
+    choices = _section_choices(db, app, str(form.id))
+    out = ss.open_choices(records, _education_options(specs[0]), choices)
+    for c in out:
+        c["form_id"] = str(form.id)  # what a choice made now is made against
+    return out
+
+
 # D149: a section the page requires, with no approved record to fill it.
 SECTION_REQUIRED = {
     "employment": (
@@ -398,15 +464,13 @@ def _resolve_sections(
     from app.modules.preparation import structured_sections as ss
 
     frozen: list = []
+    form = latest_form(db, app.job_id)  # the form being resolved (build_content's)
+    choices = _section_choices(db, app, str(form.id) if form else None)  # D164: yours
     for spec in getattr(schema, "sections", None) or []:
         records = _approved_records(db, app.user_id, spec.kind)
         options = None
         if spec.kind == "education":
-            options = ss.EducationOptions(
-                schools=tuple(ss.SectionOption(o.id, o.text) for o in spec.schools),
-                degrees=tuple(ss.SectionOption(o.id, o.text) for o in spec.degrees),
-                disciplines=tuple(ss.SectionOption(o.id, o.text) for o in spec.disciplines),
-            )
+            options = _education_options(spec)
         result = ss.resolve_section(
             spec.kind,
             records,
@@ -414,6 +478,7 @@ def _resolve_sections(
             parts=tuple(getattr(spec, "parts", None) or ()),
             required_parts=tuple(getattr(spec, "required_parts", None) or ()),
             limits=dict(getattr(spec, "limits", None) or {}),
+            choices=choices if spec.kind == "education" else None,
         )
         if getattr(spec, "required", False) and result.supported and not result.rows:
             key = f"section:{spec.kind}"

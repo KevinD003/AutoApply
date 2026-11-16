@@ -529,6 +529,8 @@ export default function ReviewPage() {
         </Card>
       ))}
 
+      <SectionChoicesCard appId={id} busy={busy} call={call} />
+
       {(c.sections ?? []).length > 0 && <SectionsCard sections={c.sections} />}
 
       <Card title="Version history">
@@ -562,14 +564,115 @@ const SECTION_FIELD = {
 const ROW_CHANGE = { added: "added", removed: "removed", changed: "changed" };
 const sectionShown = (x) => (x === null ? "—" : x.status === "omitted" ? "not sent" : (x.display ?? "—"));
 
+const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** D164: a part of your education no option of the employer's form matches: choose one of the
+ * form's own options, for this application only (your record stays as it is, and nothing is saved
+ * for other applications). */
+function SectionChoicesCard({ appId, busy, call }) {
+  // Read again after every save or clear, whatever it returned, the option you picked reset: what
+  // you see is what the server holds (D164 review).
+  const [choices, setChoices] = useState(null);
+  const [error, setError] = useState(null);
+  const [picked, setPicked] = useState({});
+  const [reads, setReads] = useState(0);
+  useEffect(() => {
+    let live = true;
+    api(`/applications/${appId}/section-choices`)
+      .then((r) => {
+        if (!live) return;
+        setChoices(r.choices);
+        setError(null);
+      })
+      .catch((e) => live && setError(e));
+    return () => {
+      live = false;
+    };
+  }, [appId, reads]);
+  if (error)
+    return (
+      <Card title="Choose from the employer's options">
+        <ErrorBox error={error} />
+      </Card>
+    );
+  if (!choices || choices.length === 0) return null;
+  // A choice sends what you saw (your record's version and text, the option's text); the server
+  // refuses it when any of them changed since.
+  const put = async (c, body, ok) => {
+    await call(`/applications/${appId}/section-choices`, "PUT", { key: c.key, ...body }, ok);
+    setPicked((p) => {
+      const rest = { ...p };
+      delete rest[c.key];
+      return rest;
+    });
+    setReads((n) => n + 1);
+  };
+  const choose = (c, optionId) =>
+    put(
+      c,
+      {
+        option_id: optionId,
+        record_version: c.record_version,
+        your_text: c.your_text,
+        option_text: c.options.find((o) => o.id === optionId)?.text ?? null,
+      },
+      "Chosen for this application.",
+    );
+  return (
+    <Card title="Choose from the employer's options">
+      <p className="text-sm text-ink-muted">
+        The employer&apos;s form offers no option matching these parts of your education. Choose yours for this application only: your
+        record stays as it is, and nothing is saved for other applications.
+      </p>
+      <ul className="mt-3 space-y-3">
+        {choices.map((c) => {
+          const value = picked[c.key] ?? c.chosen?.id ?? "";
+          const id = `choice-${c.key}`;
+          return (
+            <li key={c.key} className="rounded-lg border border-hairline p-2 text-sm">
+              <label htmlFor={id} className="font-medium">
+                {capitalize(c.label)}
+              </label>
+              <p className="text-ink-muted">Your record says: {c.your_text}</p>
+              {c.stale && (
+                <p className="text-caution-ink">
+                  The option you chose no longer applies (your record or the employer&apos;s form changed): choose again, or clear it.
+                </p>
+              )}
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <select id={id} className={inputCls} value={value} onChange={(e) => setPicked({ ...picked, [c.key]: e.target.value })}>
+                  <option value="">Choose one</option>
+                  {c.options.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.text}
+                    </option>
+                  ))}
+                </select>
+                <Button type="button" disabled={busy || !value || value === c.chosen?.id} onClick={() => choose(c, value)}>
+                  Save
+                </Button>
+                {(c.chosen || c.stale) && (
+                  <Button type="button" variant="secondary" disabled={busy} onClick={() => put(c, { option_id: null }, "Your choice was cleared.")}>
+                    Clear
+                  </Button>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
+
 /** D140: the education and work history this version sends, as frozen in the package (never read
  * from your live profile), so you approve what you can see. */
 function SectionsCard({ sections }) {
   return (
     <Card title="Education and work history">
       <p className="text-sm text-ink-muted">
-        What this version sends from your approved education and employment records. Change a record in your profile and the approval of
-        this version is retired; you approve again what it then sends.
+        What this version sends from your approved education and employment records, with any option you chose for this application. Change
+        a record in your profile and the approval of this version is retired; you approve again what it then sends.
       </p>
       {sections.map((s) => (
         <div key={s.kind} className="mt-3" role="group" aria-label={SECTION_TITLE[s.kind] ?? s.kind}>

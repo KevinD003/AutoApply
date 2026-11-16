@@ -125,6 +125,8 @@ Allowed metadata per event. `-` means the event has no metadata.
 | `application.answer` | `application` | `field_ref` | reference to the question, never its key or the answer |
 | `application.consent` | `application` | `choice`, `field_ref` | the consent choice; reference to the question |
 | `application.answer_cleared` | `application` | `field_ref` | reference to the question whose answer for this application was removed (C12) |
+| `application.section_choice` | `application` | `field_ref` | reference to an education field no option of the form matches, for which you chose one of its options for this application (D164); never the option or your record |
+| `application.section_choice_cleared` | `application` | `field_ref` | reference to an education field whose chosen option for this application you cleared (D164) |
 | `application.document` | `application` | `change`, `role` | `chosen` or `cleared`; `resume` or `cover_letter` (C12); never the document's id or name |
 | `draft.created` | `application` | `cost_usd`, `field_ref`, `provider` | drafting cost; reference; the drafting provider's name |
 | `draft.provider_failed` | `application` | `field_ref`, `reason_code` | reference; the drafting provider gave no usable draft (L4, D74): `provider_refused`, `provider_incomplete`, `provider_unparseable`, `provider_timeout`, `provider_unreachable`, `provider_error`, `provider_destination_refused`; nothing it returned is kept |

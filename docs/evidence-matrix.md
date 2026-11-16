@@ -9,6 +9,30 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## An education field no option of the employer's form matches is yours to choose from its own options, for one application (D164, 2026-11-16; local only)
+
+Nothing here ran against a real page. Branch `section-choices`. The runs drive the API and the
+runner against the Workday-style stand-in's Education section (FIXTURE ASSUMPTION FA9), with the
+receiver's ledger as the oracle (page 2's draft, the acceptance); or manual forms with an
+education section (D120's stand-in), captured again with other options; or the resolver's own
+functions; or the review page in Chromium (`frontend/e2e/section-choices.spec.ts`, desktop and
+mobile), which is the oracle there. In `tests/test_section_choices.py` unless named otherwise.
+
+| Claim | Test | Result |
+|---|---|---|
+| A field no option matches is open to a choice, from its own list | `test_the_open_field_lists_the_form_s_own_options`, `test_the_open_fields_are_those_no_option_matches_with_the_form_s_options`, `test_a_degree_and_a_field_of_study_are_chosen_from_their_own_lists_and_sent` | school, degree and field of study, each with its own list's ids and texts; the key, your text, your choice |
+| Your choice is what is sent | `test_your_choice_is_sent_to_the_employer`, `test_a_degree_and_a_field_of_study_are_chosen_from_their_own_lists_and_sent`, `test_changing_your_choice_retires_the_approval_and_the_new_one_is_sent` | the receiver's page-2 draft and acceptance hold the chosen ids under the school's, degree's and field of study's own controls |
+| Never over a match, never for a field the record leaves empty | `test_a_choice_never_overrides_a_match`, `test_a_field_your_record_leaves_empty_is_never_chosen_for` (3), `test_a_field_of_spaces_only_is_never_open_to_a_choice`, `test_an_unapproved_record_has_no_open_field` | the match's id; "No school on this record." for none, empty or spaces; a degree of spaces kept by the profile: not open, PUT 404 |
+| A choice is bound to what you saw | `test_a_choice_is_bound_to_what_you_saw_and_refused_once_it_changed` (3), `test_a_request_that_does_not_say_what_it_does_is_refused` (3) | the record edited since, its text, or the option's text other than shown: 409, nothing stored; without `option_id` or what you saw: 422, a stored choice kept |
+| It applies only while the record, the option and the form are as chosen | `test_a_choice_no_longer_applies_once_the_record_or_the_option_changed` (6), `test_editing_the_record_makes_it_yours_to_settle_again_and_retires_the_approval`, `test_a_choice_never_applies_again_once_the_form_is_read_again`, `test_a_choice_a_match_set_aside_never_comes_back_and_can_be_cleared` | no longer applies, the approval retired; the same form captured again keeps it; an option dropped and restored, or a match that set it aside then dropped: never applies again, shown as such |
+| Nothing to choose from is no choice to make | `test_a_list_offering_nothing_you_could_choose_says_so` (2), `test_options_sharing_an_id_are_never_offered_or_chosen` | an empty list or one id for two options: not open, "apply on the employer's site", PUT 404; options sharing an id never offered, PUT 400, the others chosen |
+| Clearing | `test_clearing_your_choice_makes_it_yours_to_settle_again`, `test_clearing_your_choice_retires_the_approval`, `test_a_choice_set_aside_by_a_match_can_be_cleared_while_it_is` | the row deleted, the field yours again, the approval retired; a choice set aside by a match cleared by its key; a key with neither: 404 |
+| For one application and one account, audited by reference | `test_your_choice_is_for_this_application_only`, `test_another_account_cannot_see_or_choose`, `test_a_field_not_open_to_your_choice_is_not_found` (3), `test_the_audit_names_the_field_never_the_option_or_your_record` | another application holds no choice of the first, not even a stale one; another account: 404 on both; a matched field, a made-up record or another field: 404; the audit holds `field_ref` only |
+| Shown and diffed as D140's | `test_the_version_diff_names_the_option_you_chose`, `test_a_form_without_an_education_section_has_no_open_field` | the row's school before and after, as shown; no section, no open field |
+| The review page | `frontend/e2e/section-choices.spec.ts` | chosen and sent, approval enabled; the record edited: "no longer applies", approval disabled; Clear; a save from a page showing the record as it was: refused, the card read again, chosen again |
+| Every other flow unchanged | the suites the change touches; the regression set | pass (`docs/implementation-status.md`) |
+| Each part is needed | 32 changes, and 4 to the review card through the e2e, one at a time (`docs/implementation-status.md`) | each fails the tests named for its part |
+
 ## A Workday-style Education section is filled from your approved education (D163, 2026-11-13; local only)
 
 Nothing here ran against a real page. Branch `workday-education`. The runs drive the API and the
