@@ -83,13 +83,16 @@ class EducationOptions:
 @dataclass(frozen=True)
 class Choice:
     """D164: the option you chose, for one application, for a record's field that no option
-    matches, and what it was chosen against: the option's text, and the record's version and
-    text. It applies only while all three are as they were (`_choice_field`)."""
+    matches, and what it was chosen against: the option's text, the record's version and text,
+    and (review) the form as captured (`form_current`: the form is still that one). It applies
+    only while all of them are as they were (`_choice_field`); once the form is read again, a
+    choice never applies by itself again, whatever that form offers."""
 
     option_id: str
     option_text: str
     record_version: int | None
     record_text: str
+    form_current: bool = True
 
 
 # D164: the fields you may choose an option for, for one application: the record's attribute, the
@@ -231,13 +234,14 @@ def _choice_field(
     field no option matches is resolved by your choice for this application (`choice`), while
     the option is still offered with the same text and the record is as it was when you chose."""
     text = getattr(record, attr, None)
-    if not text:
+    if not text or not str(text).strip():  # D164 review: only spaces is no text
         return FieldResult(name, "needs_user", explanation=f"No {kind_label} on this record.")
     if opt is None:
         if choice is not None:
             chosen = next((o for o in options if o.id == choice.option_id), None)
             if (
-                chosen is not None
+                choice.form_current
+                and chosen is not None
                 and chosen.text == choice.option_text
                 and choice.record_version == getattr(record, "version", None)
                 and choice.record_text == text
@@ -260,7 +264,7 @@ def _choice_field(
                 explanation=(
                     f"Your {kind_label} ({text}) does not match exactly one option the form "
                     "offers, and the option you chose for this application no longer applies "
-                    "(your record or the form's options changed): choose it again."
+                    "(your record or the employer's form changed): choose it again."
                 ),
                 fact_refs=[_ref(record, record_type, attr, text)],
             )
@@ -351,7 +355,7 @@ def open_choices(records, options: EducationOptions, choices=None) -> list[dict]
         row = resolve_education_row(record, options, choices)
         for name, (attr, label, lst) in CHOICE_FIELDS.items():
             text = getattr(record, attr, None)
-            if not text or matched_option(name, text, options) is not None:
+            if not (text or "").strip() or matched_option(name, text, options) is not None:
                 continue
             fr = row.fields[name]
             chosen = fr.status == "resolved"

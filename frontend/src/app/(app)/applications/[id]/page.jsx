@@ -529,7 +529,7 @@ export default function ReviewPage() {
         </Card>
       ))}
 
-      <SectionChoicesCard appId={id} version={view.package.version} busy={busy} call={call} />
+      <SectionChoicesCard key={view.package.version} appId={id} busy={busy} call={call} />
 
       {(c.sections ?? []).length > 0 && <SectionsCard sections={c.sections} />}
 
@@ -569,20 +569,55 @@ const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 /** D164: a part of your education no option of the employer's form matches: choose one of the
  * form's own options, for this application only (your record stays as it is, and nothing is saved
  * for other applications). */
-function SectionChoicesCard({ appId, version, busy, call }) {
+function SectionChoicesCard({ appId, busy, call }) {
+  // Mounted afresh for each package version (its `key`), and read again after every save or clear,
+  // whatever it returned: what you see is what the server holds (D164 review).
   const [choices, setChoices] = useState(null);
+  const [error, setError] = useState(null);
   const [picked, setPicked] = useState({});
+  const [reads, setReads] = useState(0);
   useEffect(() => {
     let live = true;
     api(`/applications/${appId}/section-choices`)
-      .then((r) => live && setChoices(r.choices))
-      .catch(() => live && setChoices([]));
+      .then((r) => {
+        if (!live) return;
+        setChoices(r.choices);
+        setError(null);
+      })
+      .catch((e) => live && setError(e));
     return () => {
       live = false;
     };
-  }, [appId, version]);
+  }, [appId, reads]);
+  if (error)
+    return (
+      <Card title="Choose from the employer's options">
+        <ErrorBox error={error} />
+      </Card>
+    );
   if (!choices || choices.length === 0) return null;
-  const save = (key, optionId, ok) => call(`/applications/${appId}/section-choices`, "PUT", { key, option_id: optionId }, ok);
+  // A choice sends what you saw (your record's version and text, the option's text); the server
+  // refuses it when any of them changed since.
+  const put = async (c, body, ok) => {
+    await call(`/applications/${appId}/section-choices`, "PUT", { key: c.key, ...body }, ok);
+    setPicked((p) => {
+      const rest = { ...p };
+      delete rest[c.key];
+      return rest;
+    });
+    setReads((n) => n + 1);
+  };
+  const choose = (c, optionId) =>
+    put(
+      c,
+      {
+        option_id: optionId,
+        record_version: c.record_version,
+        your_text: c.your_text,
+        option_text: c.options.find((o) => o.id === optionId)?.text ?? null,
+      },
+      "Chosen for this application.",
+    );
   return (
     <Card title="Choose from the employer's options">
       <p className="text-sm text-ink-muted">
@@ -600,7 +635,9 @@ function SectionChoicesCard({ appId, version, busy, call }) {
               </label>
               <p className="text-ink-muted">Your record says: {c.your_text}</p>
               {c.stale && (
-                <p className="text-caution-ink">The option you chose no longer applies (your record or the form&apos;s options changed): choose again.</p>
+                <p className="text-caution-ink">
+                  The option you chose no longer applies (your record or the employer&apos;s form changed): choose again, or clear it.
+                </p>
               )}
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <select id={id} className={inputCls} value={value} onChange={(e) => setPicked({ ...picked, [c.key]: e.target.value })}>
@@ -611,11 +648,11 @@ function SectionChoicesCard({ appId, version, busy, call }) {
                     </option>
                   ))}
                 </select>
-                <Button type="button" disabled={busy || !value || value === c.chosen?.id} onClick={() => save(c.key, value, "Chosen for this application.")}>
+                <Button type="button" disabled={busy || !value || value === c.chosen?.id} onClick={() => choose(c, value)}>
                   Save
                 </Button>
-                {c.chosen && (
-                  <Button type="button" variant="secondary" disabled={busy} onClick={() => save(c.key, null, "Your choice was cleared.")}>
+                {(c.chosen || c.stale) && (
+                  <Button type="button" variant="secondary" disabled={busy} onClick={() => put(c, { option_id: null }, "Your choice was cleared.")}>
                     Clear
                   </Button>
                 )}

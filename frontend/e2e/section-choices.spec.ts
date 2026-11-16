@@ -2,7 +2,9 @@ import { expect, test } from "@playwright/test";
 
 // D164: a part of your education no option of the employer's form matches is yours to choose, from
 // the form's own options, for this application only; once your record changes, the choice no
-// longer applies. A fictional manual form with an education section; synthetic data.
+// longer applies, and you clear it or choose again. A choice made on a page that no longer shows
+// your record as it is now is refused, and the page shows it as it is. A fictional manual form
+// with an education section; synthetic data.
 test("you choose the employer's option for a school none matches, and it is sent as chosen", async ({ page }, info) => {
   const email = `d164.${info.project.name}.${Date.now()}@example.com`;
   const reg = await page.request.post("/api/auth/register", { data: { email, password: "synthetic-password-1" } });
@@ -64,4 +66,27 @@ test("you choose the employer's option for a school none matches, and it is sent
   await page.reload();
   await expect(card.getByText(/The option you chose no longer applies/)).toBeVisible();
   await expect(approve).toBeDisabled();
+
+  // You clear it: nothing is chosen, and the field is still yours to settle.
+  await card.getByRole("button", { name: "Clear" }).click();
+  await expect(page.getByText("Your choice was cleared.")).toBeVisible();
+  await expect(card.getByText(/The option you chose no longer applies/)).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Clear" })).toHaveCount(0);
+  await expect(card.getByLabel("School")).toHaveValue("");
+  await expect(approve).toBeDisabled();
+
+  // Your record changes again while this page shows it as it was: your choice is refused, and the
+  // page reads it again; chosen again, it applies.
+  expect((await put(`/profile/education/${edu.id}`, { ...record, end_date: "2018-07-01" })).ok()).toBeTruthy();
+  await card.getByLabel("School").selectOption({ label: "Metro College" });
+  await card.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText(/Your education record changed since this page was read/)).toBeVisible();
+  await expect(card.getByLabel("School")).toHaveValue("");
+  await expect(approve).toBeDisabled();
+  await card.getByLabel("School").selectOption({ label: "Metro College" });
+  await card.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Chosen for this application.")).toBeVisible();
+  await expect(approve).toBeEnabled();
+  const after = (await (await page.request.get(`/api/applications/${app.id}/package`)).json()).package;
+  expect(after.content.sections[0].rows[0].fields.school_name_id.value).toEqual({ id: "s2" });
 });

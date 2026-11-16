@@ -376,8 +376,10 @@ SECTION_CHOICE = "section_choice"
 _CHOICE_KEY = "section:education:"
 
 
-def _section_choices(db: Session, app: Application) -> dict:
-    """D164: this application's choices, by (record id, field)."""
+def _section_choices(db: Session, app: Application, form_id: str | None) -> dict:
+    """D164: this application's choices, by (record id, field). D164 review: each made against the
+    form as captured then (`form_id`, the latest form's id): one made against another form never
+    applies by itself again."""
     from app.modules.preparation import structured_sections as ss
 
     out = {}
@@ -397,6 +399,7 @@ def _section_choices(db: Session, app: Application) -> dict:
             option_text=str(meta.get("option_text", "")),
             record_version=meta.get("record_version"),
             record_text=str(meta.get("record_text", "")),
+            form_current=form_id is not None and meta.get("form_id") == form_id,
         )
     return out
 
@@ -425,7 +428,11 @@ def section_choices(db: Session, app: Application) -> list[dict]:
     if len(specs) != 1:
         return []
     records = _approved_records(db, app.user_id, "education")
-    return ss.open_choices(records, _education_options(specs[0]), _section_choices(db, app))
+    choices = _section_choices(db, app, str(form.id))
+    out = ss.open_choices(records, _education_options(specs[0]), choices)
+    for c in out:
+        c["form_id"] = str(form.id)  # what a choice made now is made against
+    return out
 
 
 # D149: a section the page requires, with no approved record to fill it.
@@ -457,7 +464,8 @@ def _resolve_sections(
     from app.modules.preparation import structured_sections as ss
 
     frozen: list = []
-    choices = _section_choices(db, app)  # D164: yours, for this application
+    form = latest_form(db, app.job_id)  # the form being resolved (build_content's)
+    choices = _section_choices(db, app, str(form.id) if form else None)  # D164: yours
     for spec in getattr(schema, "sections", None) or []:
         records = _approved_records(db, app.user_id, spec.kind)
         options = None

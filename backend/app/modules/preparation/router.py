@@ -1092,7 +1092,22 @@ def clear_answer(
 
 
 class SectionChoiceIn(QuestionIn):
-    option_id: str | None = Field(default=None, min_length=1, max_length=200)
+    """D164: `option_id` chooses that option, null clears your choice; it is always sent (review:
+    a request without it is refused, never read as a clear). Choosing also sends what you saw when
+    you chose: your record's version and text, and the option's text. The choice is bound to them:
+    one that changed since is refused (409), never bound to what the server holds by then."""
+
+    option_id: str | None = Field(min_length=1, max_length=200)
+    record_version: int | None = None
+    your_text: str | None = Field(default=None, max_length=500)
+    option_text: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def _what_you_saw(self) -> "SectionChoiceIn":
+        seen = (self.record_version, self.your_text, self.option_text)
+        if self.option_id is not None and any(v is None for v in seen):
+            raise ValueError("A choice names the record and the option you saw.")
+        return self
 
 
 @router.get("/applications/{app_id}/section-choices")
@@ -1115,14 +1130,14 @@ def put_section_choice(
 ) -> dict:
     """D164: choose one of the options the employer's form offers for an education field no
     option matches (`option_id`), or clear your choice (null), for this application only: never
-    saved for reuse, and never for a field your record leaves empty. The package is built again,
-    so an approval of the version before is retired as for any other change."""
+    saved for reuse, and never for a field your record leaves empty. A choice is bound to the
+    record, the option and the form you saw (409 when one changed since). The package is built
+    again, so an approval of the version before is retired as for any other change."""
     app = _owned_app(db, user, app_id)
     entry = next((c for c in pk.section_choices(db, app) if c["key"] == body.key), None)
-    if entry is None:
-        raise not_found("Education field")
     if body.option_id is None:
-        # The application first, then its input, as clear_answer does.
+        # The application first, then its input, as clear_answer does. Review: a choice stored
+        # under this key is cleared whether or not its field is open to a choice now.
         pk.lock_application(db, app.id)
         row = db.scalar(
             select(ApplicationInput).where(
@@ -1131,17 +1146,26 @@ def put_section_choice(
                 ApplicationInput.field_key == body.key,
             )
         )
+        if row is None and entry is None:
+            raise not_found("Education field")
         if row is not None:
             db.delete(row)
             record(db, user.id, "application.section_choice_cleared", "application", app.id,
                    field_ref=ref(body.key, user.id))  # fmt: skip
             db.flush()
         return _package_view(db, app, _current(db, app))
+    if entry is None:
+        raise not_found("Education field")
+    # Review: bound to what you saw. Your record, then the option, as they are now.
+    if (body.record_version, body.your_text) != (entry["record_version"], entry["your_text"]):
+        raise conflict("Your education record changed since this page was read: choose again.")
     option = next((o for o in entry["options"] if o["id"] == body.option_id), None)
     if option is None:
         raise bad_request("Choose one of the options the employer's form offers.")
+    if option["text"] != body.option_text:
+        raise conflict("The employer's form changed since this page was read: choose again.")
     meta = {"option_text": option["text"], "record_version": entry["record_version"],
-            "record_text": entry["your_text"]}  # fmt: skip
+            "record_text": entry["your_text"], "form_id": entry["form_id"]}  # fmt: skip
     _upsert_input(db, app, pk.SECTION_CHOICE, body.key, {"id": option["id"]}, meta=meta)
     record(db, user.id, "application.section_choice", "application", app.id,
            field_ref=ref(body.key, user.id))  # fmt: skip
