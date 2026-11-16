@@ -224,22 +224,61 @@ NOT_LEFT_EMPTY = {
 }
 
 
+# On the wizard a submit button off its last page refuses the whole wizard (D142), every section on
+# it then a checkpoint: this case is read on the single page.
+ON_THE_SINGLE_PAGE = {"an Add that submits"}
+
+
 @pytest.mark.parametrize("change", sorted(NOT_LEFT_EMPTY))
 def test_a_section_not_exactly_one_that_holds_nothing_is_its_own_checkpoint(change):
     """Never left out on a guess: anything about a section NoEfforts does not fill that it does
     not read exactly (required, two of a kind, not shown, holding anything but its Add, nested,
     on a page it cannot be left empty on) is that section's checkpoint: apply on the employer's
-    site. The other sections are read as before."""
-    got = fields_of(NOT_LEFT_EMPTY[change](stand_in("other_sections")))
+    site. A section the change leaves alone is read as before."""
+    single = change in ON_THE_SINGLE_PAGE
+    html = stand_in(mode="wd_other_sections") if single else stand_in("other_sections")
+    got = fields_of(NOT_LEFT_EMPTY[change](html))
     assert checkpoint(got.get("languages_section"), "Languages"), got.get("languages_section")
-    assert workday.WORK_KEY not in got
+    assert left_empty(got.get("skills_section"), "Skills", None if single else "My Experience")
+    assert workday.WORK_KEY not in got and workday.MULTI_STEP_KEY not in got
+
+
+WEB = '<div id="websites" role="group"'
+WORK = '<div id="work-experience"'
+
+
+def moved_into(html: str, inner: str, outer: str) -> str:
+    """The section that starts `inner` moved inside the one that starts `outer`, before its
+    entries (FA7's and FA10's markup: each section ends LANG_ADD)."""
+    start = html.index(inner)
+    end = html.index(LANG_ADD, start) + len(LANG_ADD)
+    moved, html = html[start:end], html[:start] + html[end:]
+    at = html.index(LANG_ADD, html.index(outer))
+    return html[:at] + moved + html[at:]
+
+
+@pytest.mark.parametrize(
+    "variant, inner, outer, keys",
+    [("other_sections", LANG, WEB, ("languages_section", "websites_section")),
+     ("other_sections_and_experience", LANG, WORK, ("languages_section", workday.WORK_KEY)),
+     ("other_sections_and_experience", WORK, LANG, ("languages_section", workday.WORK_KEY))],
+    ids=["languages-inside-websites", "languages-inside-work", "work-inside-languages"],
+)  # fmt: skip
+def test_a_section_inside_another_is_both_checkpoints(variant, inner, outer, keys):
+    """As D163 for Education: no reader takes a section nested in another, either way, and no
+    work history is filled inside a section NoEfforts leaves empty."""
+    schema = workday.extract_schema(moved_into(stand_in(variant), inner, outer))
+    got = {f.key: f for f in schema.fields}
+    assert schema.sections == []
+    for key in keys:
+        assert got[key].required and got[key].type == FieldType.unsupported, key
+        assert got[key].widget is None
 
 
 def test_a_page_question_under_a_section_s_key_never_hides_it():
-    """D165 review: the field left empty never replaces a question of the page that has its key
-    (that question would then be left unread): the section's checkpoint replaces both."""
-    html = in_languages(LANG_HEAD, LANG_HEAD)(stand_in("other_sections"))
-    html = html.replace('<label for="exp_details">',
+    """The field left empty never replaces a question of the page that has its key (that question
+    would then be left unread): the section's checkpoint replaces both."""
+    html = stand_in("other_sections").replace('<label for="exp_details">',
                         '<label for="ls">Languages</label><input id="ls" name="languages_section" '
                         'type="text"><label for="exp_details">', 1)  # fmt: skip
     got = fields_of(html)
