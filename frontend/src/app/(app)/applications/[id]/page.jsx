@@ -671,8 +671,8 @@ function SectionsCard({ sections }) {
   return (
     <Card title="Education and work history">
       <p className="text-sm text-ink-muted">
-        What this version sends from your approved education and employment records. Change a record in your profile and the approval of
-        this version is retired; you approve again what it then sends.
+        What this version sends from your approved education and employment records, with any option you chose for this application. Change
+        a record in your profile and the approval of this version is retired; you approve again what it then sends.
       </p>
       {sections.map((s) => (
         <div key={s.kind} className="mt-3" role="group" aria-label={SECTION_TITLE[s.kind] ?? s.kind}>

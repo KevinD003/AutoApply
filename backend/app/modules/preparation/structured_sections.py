@@ -33,6 +33,7 @@ Deliberately OUT OF SCOPE here (the isolated remaining gaps, not guessed):
 """
 
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 
 from app.modules.preparation.forms import (
@@ -227,6 +228,13 @@ def _date_hash(d) -> dict | None:
 # -- education -------------------------------------------------------------------------------
 
 
+def choosable(options) -> tuple[SectionOption, ...]:
+    """D164 review: the options of a list you may choose from, each under an id it holds alone
+    (two options under one id are neither: choosing one could send the other)."""
+    count = Counter(o.id for o in options)
+    return tuple(o for o in options if count[o.id] == 1)
+
+
 def _choice_field(
     name: str, record, record_type, attr, opt, kind_label, options=(), choice=None
 ) -> FieldResult:
@@ -237,8 +245,20 @@ def _choice_field(
     if not text or not str(text).strip():  # D164 review: only spaces is no text
         return FieldResult(name, "needs_user", explanation=f"No {kind_label} on this record.")
     if opt is None:
+        offered = choosable(options)
+        if not offered:  # D164 review: nothing to choose from is no choice to make
+            return FieldResult(
+                name,
+                "needs_user",
+                explanation=(
+                    f"Your {kind_label} ({text}) does not match exactly one option the form "
+                    "offers, and the form offers none you could choose for it: apply on the "
+                    "employer's site."
+                ),
+                fact_refs=[_ref(record, record_type, attr, text)],
+            )
         if choice is not None:
-            chosen = next((o for o in options if o.id == choice.option_id), None)
+            chosen = next((o for o in offered if o.id == choice.option_id), None)
             if (
                 choice.form_current
                 and chosen is not None
@@ -347,15 +367,19 @@ def resolve_education_row(record, options: EducationOptions, choices=None) -> Ro
 
 def open_choices(records, options: EducationOptions, choices=None) -> list[dict]:
     """D164: each approved record's field that has your text and no option matching it by itself:
-    what the form offers for it, and your choice for this application when one applies (`stale`:
-    one was made, and no longer applies). Never a field the record leaves empty."""
+    what the form offers for it (`choosable`), and your choice for this application when one
+    applies (`stale`: one was made, and no longer applies). Never a field the record leaves empty,
+    nor one the form offers nothing to choose from."""
     choices = choices or {}
     out = []
     for record in [r for r in records if _approved(r)]:
         row = resolve_education_row(record, options, choices)
         for name, (attr, label, lst) in CHOICE_FIELDS.items():
             text = getattr(record, attr, None)
+            offered = choosable(getattr(options, lst))
             if not (text or "").strip() or matched_option(name, text, options) is not None:
+                continue
+            if not offered:  # nothing you could choose: the field says so (`_choice_field`)
                 continue
             fr = row.fields[name]
             chosen = fr.status == "resolved"
@@ -366,7 +390,7 @@ def open_choices(records, options: EducationOptions, choices=None) -> list[dict]
                 "field": name,
                 "label": label,
                 "your_text": text,
-                "options": [{"id": o.id, "text": o.text} for o in getattr(options, lst)],
+                "options": [{"id": o.id, "text": o.text} for o in offered],
                 "chosen": {"id": fr.value["id"], "text": fr.display} if chosen else None,
                 "stale": not chosen and (str(record.id), name) in choices,
             })  # fmt: skip

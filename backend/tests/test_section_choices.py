@@ -25,6 +25,8 @@ from tests.execution_harness import Receiver, queue
 from tests.test_preparation import setup_candidate
 from tests.test_workday_education import (
     BACHELOR,
+    DEGREES,
+    DISCIPLINES,
     SCHOOLS,
     content,
     edu,
@@ -73,7 +75,14 @@ def test_without_a_choice_the_field_stays_yours_to_settle():
 
 @pytest.mark.parametrize(
     "change",
-    ["record edited", "record text changed", "option relabelled", "option gone", "form read again"],
+    [
+        "record edited",
+        "record text changed",
+        "option relabelled",
+        "option gone",
+        "form read again",
+        "option id shared",
+    ],
 )
 def test_a_choice_no_longer_applies_once_the_record_or_the_option_changed(change):
     """Chosen against your record as it was and the option as the form offered it: either
@@ -88,6 +97,10 @@ def test_a_choice_no_longer_applies_once_the_record_or_the_option_changed(change
         r.institution = "Unlisted Academy of Arts"
     elif change == "form read again":
         c = {k: dataclasses.replace(v, form_current=False) for k, v in c.items()}
+    elif change == "option id shared":
+        options = dataclasses.replace(
+            OPTIONS, schools=(*OPTIONS.schools, ss.SectionOption("sch-102", "Other University"))
+        )
     elif change == "option relabelled":
         options = ss.EducationOptions(
             schools=(ss.SectionOption("sch-102", "Metro Community College"),),
@@ -400,13 +413,18 @@ def capture(api, job_id, schools) -> None:
     assert r.status_code == 201, r.text
 
 
-def manual_application(api) -> tuple[str, str]:
+def manual_application(api, schools=(STATE, METRO)) -> tuple[str, str]:
     setup_candidate(api)
     rec = api.post("/profile/education", json=UNLISTED).json()
     assert api.post(f"/profile/education/{rec['id']}/approve").status_code == 200
     job = api.post("/jobs", json={"title": "Role", "employer": "Example Health"}).json()["job"]
-    capture(api, job["id"], [STATE, METRO])
+    capture(api, job["id"], list(schools))
     return job["id"], api.post("/applications", json={"job_id": job["id"]}).json()["id"]
+
+
+def school_key(api) -> str:
+    (rec,) = api.get("/profile/education").json()
+    return f"section:education:{rec['id']}:school_name_id"
 
 
 def school(api, app_id) -> dict | None:
@@ -462,3 +480,67 @@ def test_a_choice_set_aside_by_a_match_can_be_cleared_while_it_is(api):
     assert r.status_code == 200, r.text
     assert not stored(app_id) and r.json()["package"]["content"]["sections"]
     assert choose(api, app_id, key, None).status_code == 404
+
+
+def test_a_degree_and_a_field_of_study_are_chosen_from_their_own_lists_and_sent(api, receiver):
+    """Review: each open field offers its own list (school, degree, field of study), and each
+    choice is sent under its own control."""
+    record = UNLISTED | {"degree": "Diploma of Nursing", "field_of_study": "Nursing Science"}
+    app_id = education_application(api, receiver, records=(record,), approved=False)
+    by_field = {c["field"]: c for c in choices(api, app_id)}
+    assert {f: [(o["id"], o["text"]) for o in c["options"]] for f, c in by_field.items()} == {
+        "school_name_id": SCHOOLS, "degree_id": DEGREES, "discipline_id": DISCIPLINES}  # fmt: skip
+    for field, option in (("school_name_id", "sch-102"), ("degree_id", "deg-9"),
+                          ("discipline_id", "dis-13")):  # fmt: skip
+        r = choose(api, app_id, by_field[field]["key"], option)
+        assert r.status_code == 200, r.text
+    assert not content(api, app_id)["unresolved"]
+    assert approve(api, app_id).status_code == 200
+    assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
+    sent = edu(page_2(receiver.ledger()))
+    assert (sent["edu[0].school"], sent["edu[0].degree"], sent["edu[0].discipline"]) == (
+        "sch-102", "deg-9", "dis-13")  # fmt: skip
+
+
+def test_a_field_of_spaces_only_is_never_open_to_a_choice(api, receiver):
+    """Review: the profile keeps a degree of spaces only; it is no degree, never chosen for."""
+    app_id = education_application(api, receiver, records=(UNLISTED | {"degree": " "},),
+                                   approved=False)  # fmt: skip
+    (rec,) = api.get("/profile/education").json()
+    assert rec["degree"] == " "
+    (c,) = choices(api, app_id)
+    assert c["field"] == "school_name_id"
+    key = f"section:education:{rec['id']}:degree_id"
+    assert key in content(api, app_id)["unresolved"]
+    r = choose(api, app_id, key, "deg-3", record_version=rec["version"], your_text=" ",
+               option_text="Bachelor's Degree")  # fmt: skip
+    assert r.status_code == 404 and not stored(app_id)
+
+
+@pytest.mark.parametrize("schools", ["none", "one id for two"])
+def test_a_list_offering_nothing_you_could_choose_says_so(api, schools):
+    """Review: the form offers no school, or offers each under an id another option shares
+    (choosing one could send the other): no choice is offered, and the field says to apply on
+    the employer's site, never "choose it"."""
+    offered = {"none": [], "one id for two": [METRO, {"id": "s2", "text": "Other University"}]}
+    _, app_id = manual_application(api, offered[schools])
+    key = school_key(api)
+    assert choices(api, app_id) == []
+    c = content(api, app_id)
+    assert key in c["unresolved"]
+    (error,) = [e["message"] for e in c["validation_errors"] if e["key"] == key]
+    assert "apply on the employer's site" in error and "choose it" not in error
+    r = choose(api, app_id, key, "s2", record_version=1, your_text="Unlisted Academy",
+               option_text="Metro College")  # fmt: skip
+    assert r.status_code == 404 and not stored(app_id)
+
+
+def test_options_sharing_an_id_are_never_offered_or_chosen(api):
+    """Review: two options under one id: the others are still yours to choose from."""
+    _, app_id = manual_application(api, [STATE, METRO, {"id": "s2", "text": "Other University"}])
+    (c,) = choices(api, app_id)
+    assert c["options"] == [STATE]
+    r = choose(api, app_id, c["key"], "s2", option_text="Metro College")
+    assert r.status_code == 400 and not stored(app_id)
+    assert choose(api, app_id, c["key"], "s1").status_code == 200
+    assert school(api, app_id)["value"] == {"id": "s1"}
