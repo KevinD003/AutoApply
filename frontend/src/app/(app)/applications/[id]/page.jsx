@@ -548,7 +548,13 @@ export default function ReviewPage() {
   );
 }
 
-const SECTION_TITLE = { education: "Education", employment: "Work history" };
+const SECTION_TITLE = { education: "Education", employment: "Work history", websites: "Websites" };
+// D166: what a section of each kind sends nothing from, when it has no row.
+const SECTION_NONE = {
+  education: "you have no approved education record",
+  employment: "you have no approved employment record",
+  websites: "your approved profile has no links",
+};
 const SECTION_FIELD = {
   school_name_id: "School",
   degree_id: "Degree",
@@ -560,6 +566,7 @@ const SECTION_FIELD = {
   end_date: "End",
   location: "Location",
   description: "Role description",
+  url: "Web address",
 };
 const ROW_CHANGE = { added: "added", removed: "removed", changed: "changed" };
 const sectionShown = (x) => (x === null ? "—" : x.status === "omitted" ? "not sent" : (x.display ?? "—"));
@@ -666,19 +673,22 @@ function SectionChoicesCard({ appId, busy, call }) {
 }
 
 /** D140: the education and work history this version sends, as frozen in the package (never read
- * from your live profile), so you approve what you can see. */
+ * from your live profile), so you approve what you can see. D166: and the websites, from your
+ * profile's links. */
 function SectionsCard({ sections }) {
+  const links = sections.some((s) => s.kind === "websites");
   return (
-    <Card title="Education and work history">
+    <Card title={links ? "Education, work history and websites" : "Education and work history"}>
       <p className="text-sm text-ink-muted">
-        What this version sends from your approved education and employment records, with any option you chose for this application. Change
-        a record in your profile and the approval of this version is retired; you approve again what it then sends.
+        What this version sends from your approved education and employment records{links ? " and your profile’s links" : ""}, with any
+        option you chose for this application. Change {links ? "them" : "a record"} in your profile and the approval of this version is
+        retired; you approve again what it then sends.
       </p>
       {sections.map((s) => (
         <div key={s.kind} className="mt-3" role="group" aria-label={SECTION_TITLE[s.kind] ?? s.kind}>
           <h3 className="text-sm font-medium">{SECTION_TITLE[s.kind] ?? s.kind}</h3>
           {s.rows.length === 0 ? (
-            <p className="text-sm text-ink-muted">Nothing is sent here: you have no approved {s.kind} record.</p>
+            <p className="text-sm text-ink-muted">Nothing is sent here: {SECTION_NONE[s.kind] ?? `you have no approved ${s.kind} record`}.</p>
           ) : (
             <ol className="mt-1 space-y-2">
               {s.rows.map((r) => (

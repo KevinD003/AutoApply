@@ -34,6 +34,9 @@ matched to exactly one option of the entry's lists when the form was read, else 
 entry i's controls are named `edu[i].<part>`; School, Degree and Field of Study are lists
 (`<select>`), each set to the frozen option by its value and read back by its value and its shown
 text; From and To typed as MM/YYYY.
+D166: the stand-in's Websites entries (FIXTURE ASSUMPTION FA11) the same way, from a frozen websites
+section (your profile's links, each the web address resolution wrote, `structured_sections`):
+entry i's one control, a web address box, is named `web[i].url`, and is typed.
 Nothing here maps, guesses or infers a value: it only enters what resolution established."""
 
 import re
@@ -82,6 +85,8 @@ _EDUCATION_FIELDS = (
     ("start_date", "month_year", "from"),
     ("end_date", "month_year", "to"),
 )
+# D166: a frozen websites field -> how it is entered, and the part of the control's name.
+_WEBSITE_FIELDS = (("url", "text", "url"),)
 
 
 @dataclass(frozen=True)
@@ -101,6 +106,7 @@ class EntryKind:
 KINDS = {
     "employment": EntryKind("employment", "work", _FIELDS, _PART_FIELDS, "title", "work history"),
     "education": EntryKind("education", "edu", _EDUCATION_FIELDS, (), "school", "education"),
+    "websites": EntryKind("websites", "web", _WEBSITE_FIELDS, (), "url", "websites"),  # D166
 }
 _ADD = re.compile(r"\s*add(?:\s+another)?\s*", re.IGNORECASE)  # read whole (fullmatch)
 
@@ -160,8 +166,8 @@ def _op(i: int, field: str, kind: str, selector: str, fr, limit: int | None = No
 
 def plan(data: object) -> SectionPlan:
     """The entries to make from a frozen section (validated first, as on Greenhouse), or Refused:
-    an employment or (D163) an education section only, every field resolved or intentionally
-    omitted."""
+    an employment, (D163) an education or (D166) a websites section only, every field resolved or
+    intentionally omitted."""
     section = section_from_content(data)  # refuses malformed or unknown content
     k = entry_kind(section.kind)
     if not section.ready():
@@ -213,7 +219,7 @@ def _click_add(page, root: str, timeout_ms: int, kind: str = KIND) -> None:
 
 def _what(op: FillOp) -> str:
     """What a stop calls the control: its kind of entry and its field (D163: by its name)."""
-    kind = "education" if '[name="edu[' in op.selector else KIND
+    kind = next((k.kind for k in KINDS.values() if f'[name="{k.prefix}[' in op.selector), KIND)
     return f"{kind}: {op.field}"
 
 

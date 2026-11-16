@@ -204,6 +204,16 @@ SHAPES[3] = SHAPES[3] | {
     ".sections[].limits.location",
     ".sections[].limits.title",
 }
+# D166: a websites section (the Workday-style stand-in's Websites) carries your profile's links,
+# one row each, its web address. Present only for such a section, which no package built before
+# D166 has (D165 left that section empty: such a package, rebuilt, changes, and its approval is
+# retired), so no other package's content or hash changes: recorded under version 3,
+# deliberately (as D142, D149, D155 and D157).
+SHAPES[3] = SHAPES[3] | {
+    ".sections[].rows[].fields.url.status",
+    ".sections[].rows[].fields.url.display",
+    ".sections[].rows[].fields.url.value.text",
+}
 
 
 @pytest.fixture(scope="module")

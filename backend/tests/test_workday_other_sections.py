@@ -1,6 +1,7 @@
 """D165: the Workday-style stand-in's sections of a kind NoEfforts does not fill (FIXTURE
-ASSUMPTION FA10, fixtures/ats_receiver/workday_like.py: Languages, Websites and Skills) on the
-wizard's My Experience page and on the single page. Before D165 any of them made the page's work
+ASSUMPTION FA10, fixtures/ats_receiver/workday_like.py: Languages and Skills; D166 fills its
+Websites section from your profile's links, `test_workday_websites.py`) on the wizard's My
+Experience page and on the single page. Before D165 any of them made the page's work
 history one required checkpoint ("Work Experience"), so no such page could be applied to. Now one
 the page does not require and that holds nothing is left empty: an optional field on its page
 (`left_empty_section`), shown in the package as left empty, never touched; anything else about it
@@ -35,11 +36,11 @@ from tests.test_workday_experience import CURRENT as WORK_CURRENT
 from tests.test_workday_experience import employment
 from tests.test_workday_wizard import approve, draft_pages, drafts, posts, rows
 
-KINDS = ("languages", "websites", "skills")  # FA10, the oracle's own copy
+KINDS = ("languages", "skills")  # FA10, the oracle's own copy (D166: Websites is filled)
 KEYS = [f"{k}_section" for k in KINDS]
-LABELS = {"languages": "Languages", "websites": "Websites", "skills": "Skills"}
+LABELS = {"languages": "Languages", "skills": "Skills"}
 # An entry's control names (FA10's markup): what must never reach the employer here.
-ENTRY = re.compile(r"(lang|web|skill)\[\d+\]\.[a-z_]+")
+ENTRY = re.compile(r"(lang|skill)\[\d+\]\.[a-z_]+")
 
 
 @pytest.fixture(scope="module")
@@ -71,6 +72,11 @@ def fields_of(html: str) -> dict[str, FormField]:
     return {f.key: f for f in workday.extract_schema(html).fields}
 
 
+def others(schema) -> list[tuple[str, str | None]]:
+    """The sections read, but D166's Websites section (FA10's, filled from your links since)."""
+    return [(s.kind, s.step) for s in schema.sections if s.kind != "websites"]
+
+
 def left_empty(f: FormField | None, label: str, step: str | None = "My Experience") -> bool:
     return f is not None and (f.type, f.required, f.widget, f.label, f.step) == (
         FieldType.unsupported, False, workday.LEFT_EMPTY, label, step)  # fmt: skip
@@ -89,7 +95,7 @@ def test_each_section_the_page_does_not_require_is_left_empty_on_its_page():
     schema = workday.extract_schema(stand_in("other_sections"))
     got = {f.key: f for f in schema.fields}
     assert all(left_empty(got.get(f"{k}_section"), LABELS[k]) for k in KINDS)
-    assert schema.sections == [] and workday.WORK_KEY not in got
+    assert others(schema) == [] and workday.WORK_KEY not in got
     assert not [k for k in got if ENTRY.fullmatch(k)]  # no entry, so no entry's control
     assert form_checkpoint(schema.model_dump(mode="json")) == []  # nothing for the route
 
@@ -107,7 +113,7 @@ def test_these_sections_never_make_the_work_history_a_checkpoint():
     Experience checkpoint, on a page with no work history at all. Beside the Work Experience
     section, that section reads as before."""
     schema = workday.extract_schema(stand_in("other_sections_and_experience"))
-    assert [(s.kind, s.step) for s in schema.sections] == [("employment", "My Experience")]
+    assert others(schema) == [("employment", "My Experience")]
     got = {f.key: f for f in schema.fields}
     assert workday.WORK_KEY not in got
     assert all(left_empty(got.get(f"{k}_section"), LABELS[k]) for k in KINDS)
@@ -116,7 +122,7 @@ def test_these_sections_never_make_the_work_history_a_checkpoint():
 def test_beside_the_education_section_both_read_as_before():
     """D165 review: with D163's Education section on the same page."""
     schema = workday.extract_schema(stand_in("other_sections_and_education"))
-    assert [(s.kind, s.step) for s in schema.sections] == [("education", "My Experience")]
+    assert others(schema) == [("education", "My Experience")]
     got = {f.key: f for f in schema.fields}
     assert workday.EDUCATION_KEY not in got and workday.WORK_KEY not in got
     assert all(left_empty(got.get(f"{k}_section"), LABELS[k]) for k in KINDS)
@@ -145,7 +151,6 @@ def test_on_a_wizard_refused_each_is_a_checkpoint():
 def test_a_section_the_page_requires_is_its_own_checkpoint():
     got = fields_of(stand_in("other_sections_required"))
     assert checkpoint(got["languages_section"], "Languages")
-    assert left_empty(got["websites_section"], "Websites")
     assert left_empty(got["skills_section"], "Skills")
     assert workday.WORK_KEY not in got
 
@@ -394,7 +399,7 @@ def test_a_section_inside_another_is_both_checkpoints(variant, inner, outer, key
     work history is filled inside a section NoEfforts leaves empty."""
     schema = workday.extract_schema(moved_into(stand_in(variant), inner, outer))
     got = {f.key: f for f in schema.fields}
-    assert schema.sections == []
+    assert others(schema) == []
     for key in keys:
         assert got[key].required and got[key].type == FieldType.unsupported, key
         assert got[key].widget is None
