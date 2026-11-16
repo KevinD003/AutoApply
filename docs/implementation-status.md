@@ -54,6 +54,36 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## An education field no option of the employer's form matches is yours to choose from its own options, for one application (D164, 2026-11-16; local only)
+
+Rank 31 of the automation loop (the dead end D163 inherited from D120). Product changes:
+
+- `app/modules/preparation/structured_sections.py`: `Choice`, `CHOICE_FIELDS`, `choosable`,
+  `matched_option`, `open_choices`; `_choice_field` applies your choice, a field of spaces only is
+  none, a list with nothing you could choose says so; `resolve_education_row` and
+  `resolve_section` take your choices.
+- `app/modules/preparation/package.py`: `SECTION_CHOICE`, `_section_choices` (with the form being
+  resolved), `_education_options`, `section_choices`; `_resolve_sections` reads this application's
+  choices.
+- `app/modules/preparation/router.py`: `GET` and `PUT /applications/{id}/section-choices`
+  (`SectionChoiceIn`).
+- `frontend/src/app/(app)/applications/[id]/page.jsx`: `SectionChoicesCard`; the education card
+  says what it sends includes the options you chose.
+- `docs/audit-events.md`: `application.section_choice`, `application.section_choice_cleared`.
+
+No migration, no new state, reason code or gate. `SCHEMA_VERSION` stays 3 (D164 says why).
+Nothing was run against a real page. `scripts/validate.sh all` was not run (it runs the whole
+backend and e2e suites); ruff, tsc and eslint were.
+
+| Check (branch `section-choices`, from main at 0efe9b5; main with #72 merged in at 67aff2d) | Command | Result |
+|---|---|---|
+| The first version's tests | `test_section_choices.py` (JUnit) on the working tree, then on 16ada27's content; `section-choices.spec.ts` and `sections-review.spec.ts`; after main with #72 was merged in (67aff2d), the 11 related suites (`test_section_choices.py`, `test_sections_review.py`, `test_structured_sections.py`, `test_greenhouse_sections.py`, `test_greenhouse_sections_e2e.py`, `test_greenhouse_sections_hardening.py`, `test_greenhouse_sections_package.py`, `test_package_contract.py`, `test_schema_v3.py`, `test_version_diff.py`, `test_audit_inventory.py`); `tsc --noEmit`, `npm run lint`, ruff | exit 0: 22, then 25 passed; e2e: 4 passed; the 11 suites: exit 0, 151 passed; tsc, eslint and ruff clean |
+| Two independent reviews | on 16ada27 | no blocker; both: a choice bound to what the server held, not what the page showed; a field of spaces open; the card after Clear; the second: no degree or field of study chosen in any test, an empty list still a dead end, options sharing an id; see D164 |
+| After the reviews | `test_section_choices.py` (JUnit) on the working tree as the fixes grew (committed as cbe4ebc, 7f1d6ed and eee1724); the two e2e specs on cbe4ebc, 7f1d6ed and eee1724; on eee1724, the 7 touched suites the regression set does not run (`test_sections_review.py`, `test_greenhouse_sections.py`, `test_greenhouse_sections_browser.py`, `test_greenhouse_sections_hardening.py`, `test_greenhouse_sections_package.py`, `test_preparation.py`, `test_api_paths.py`); `tsc --noEmit`, `npm run lint`, ruff | exit 0: 37, 43 and 43 passed; e2e: 4 passed each time; the 7 suites: exit 0, 101 passed; tsc, eslint and ruff clean |
+| Each part changed in turn | 32 changes on 7f1d6ed, one at a time (a worktree of its own), the named tests run, the file restored; the one that passed again on eee1724, its test tightened; 5 changes to the review card on 7f1d6ed and 4 on eee1724, each through `section-choices.spec.ts` (desktop and mobile), the file restored | on 7f1d6ed, exit 1 for 31: each fails the tests named for its part (48 failures among the 90 tests run; one also fails a case close to its own); exit 0 for the per-application filter on reading choices, whose test's second application was on another posting (its form made the leaked choice stale, not absent): the test now asserts no stale choice either, and on eee1724 the change fails it (exit 1). The card: 4 fail on both projects; the fifth, remounting it per package version, failed nothing (reading again after each change covers it): removed in eee1724, where the 4 fail again. Each file restored, the trees clean after |
+| The regression set | `pytest` on 91 files (D163's 90 with `test_section_choices.py`; JUnit), in a copy of the branch at 7f1d6ed | exit 0, 2979 passed (105 minutes) |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_section_choices.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 88 passed in 100 s; ruff formatted nothing, found nothing, and the format check passed |
+
 ## A Workday-style Education section is filled from your approved education (D163, 2026-11-13; local only)
 
 Rank 30 of the automation loop (education on Workday, named after D162). Product changes:

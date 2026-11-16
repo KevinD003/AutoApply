@@ -55,7 +55,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D160 a control the page gives its application form from outside its markup read as a question; the form must send nothing NoEfforts did not read, by the click on its own button | merged (#69, 9263994, tree as predicted); its PR CI passed all four jobs on 9322579 |
 | D161 the Greenhouse pilot holds an answer to the length limit its page shows | merged (#70, 1bbe408, tree as predicted); its PR CI passed all four jobs on a6bea08 |
 | D162 every other adapter stops at a value its box would cut, naming the limit, and types only into a box that has focus | merged (#71, 3ecbd65, tree as predicted); its PR CI passed all four jobs on b8e7de4 |
-| D163 a Workday-style Education section filled from your approved education | branch `workday-education` (from D162's branch); reviewed twice; not merged |
+| D163 a Workday-style Education section filled from your approved education | merged (#72, 10685b5, tree as predicted); its PR CI passed all four jobs on 0efe9b5 |
+| D164 an education field no option of the form matches, chosen from its own options for one application | branch `section-choices` (from main with #72); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -377,7 +378,26 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
 
-- **D163 (branch `workday-education`, not merged).** Rank 30, education on Workday:
+- **D164 (branch `section-choices`, not merged).** Rank 31, the dead end D163 inherited
+  from D120:
+  - the gap: an education field no option of the form matches was a checkpoint saying
+    "choose it for this application", with nowhere to choose; the only way out was to
+    edit the record until its text equalled an option's;
+  - now the review page lists each such field with the form's own options for it (each
+    under an id it holds alone); your choice, for this application only and never saved
+    for reuse, is frozen as a match, shown and diffed, and applies only while the record,
+    the option and the form version are as you chose them; a choice from a page showing
+    something else is refused; a list with nothing to choose from says to apply on the
+    employer's site;
+  - two independent reviews: no blocker; both: a choice bound to what the server held,
+    not what the page showed; a field of spaces open; the card after Clear; the second:
+    no test chose a degree or field of study, an empty list still a dead end, options
+    sharing an id. Fixed, each with a test; the rest recorded in D164;
+  - 32 removal runs on 7f1d6ed, 31 failing the tests named for their part (the 32nd's
+    test tightened, failing on eee1724), and 4 changes to the review card failing its
+    e2e; the regression set on 7f1d6ed: 2979 passed.
+
+- **D163 (merged, #72).** Rank 30, education on Workday:
   - the gap: a Workday-style page's Education section was the work history checkpoint
     (D149 read any second section so), so no education was ever entered there;
   - the stand-in's Education section (FA9: native lists of the page's own ids, MM/YYYY
@@ -642,8 +662,10 @@ limit its page shows: read at capture and held to before you approve, checked ag
 before anything is entered and before each value is typed.
 **D162** (rank 29, #71) has every other adapter stop at a value its box would
 cut, naming the limit, and type only into a box that has focus.
-**D163** (rank 30, on its branch) fills a Workday-style Education section from your
+**D163** (rank 30, #72) fills a Workday-style Education section from your
 approved education.
+**D164** (rank 31, on its branch) lets you choose, for one application, the form's own
+option for an education field none matches.
 Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
@@ -740,8 +762,13 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D163 (branch `workday-education`):** the new tests, the suites the change touches, the
-  removal runs and the regression set, locally (Tests run below). Not tested: any real
+- **D164 (branch `section-choices`):** the new tests, the review page in Chromium, the
+  suites the change touches, the removal runs and the regression set, locally (Tests run
+  below). Not tested: any real page (the pilot's capture reads no section on one; a real
+  Workday's education lists may be search prompts, which NoEfforts never fills).
+- **D163:** merged (#72, 10685b5, tree as predicted); its PR CI passed all four
+  jobs on 0efe9b5. Locally: the new tests, the suites the change touches, the
+  removal runs and the regression set (Tests run below). Not tested: any real
   page (no real Workday education section was observed; its lists may be search prompts,
   which NoEfforts never fills); a page that moves an option between lists (the stop comes
   after disclosure); omitted `</option>` tags (a checkpoint).
@@ -1089,6 +1116,10 @@ action.
 | D163, after the reviews: `test_workday_education.py` and `test_structured_sections.py` (JUnit) on the working tree as the fixes grew; the 22 suites the fixes touch, in two runs, on the content of 2dbee1c (`test_workday_experience.py`, `test_workday_wizard.py`, `test_worker_stop.py`, `test_limit_stops.py`, `test_workday_entry_details.py`, `test_workday_entry_limits.py`, `test_workday_follow_up.py`, `test_wizard_next_checks.py`; `test_greenhouse_sections.py`, `test_greenhouse_sections_browser.py`, `test_workday_adapter.py`, `test_workday_ashby_fixtures.py`, `test_sent_as_approved.py`, `test_sending.py`, `test_page_own_checks.py`, `test_outside_controls.py`, `test_disclosure_evidence.py`, `test_execution_failures.py`, `test_execution_routing.py`, `test_provider_reuse.py`, `test_recovery_hardening.py`, `test_self_identification_ledger.py`); on 70e81bb's content, the two suites again and the two worker-stop entry tests; ruff | exit 0: 105 passed; the 22 suites: exit 0, 502 and 460 passed; on 70e81bb's content: exit 0, 108 passed, and the worker-stop tests 2 passed; ruff clean |
 | D163, each part changed in turn: 33 changes on 70e81bb, one at a time (a worktree of its own), the named tests run, the file restored | exit 1 for each: all 33 fail the tests named for their part (54 failures among the 807 tests run, over the runs; three also fail cases close to theirs); each file restored, the tree clean after |
 | D163, the regression set: `pytest` on 90 files (D162's 89 with `test_workday_education.py`; JUnit), in a copy of the branch at 70e81bb | exit 0, 2936 passed (85 minutes) |
+| D164, the first version: `test_section_choices.py` (JUnit) on the working tree, then on 16ada27's content; the two e2e specs; after main with #72 was merged in (67aff2d), the 11 related suites | exit 0: 22, then 25 passed; e2e: 4 passed; the 11 suites: exit 0, 151 passed |
+| D164, after the reviews: `test_section_choices.py` (JUnit) as the fixes grew (cbe4ebc, 7f1d6ed, eee1724); the two e2e specs on cbe4ebc, 7f1d6ed and eee1724; on eee1724, the 7 touched suites the regression set does not run; `tsc --noEmit`, `npm run lint`, ruff | exit 0: 37, 43 and 43 passed; e2e: 4 passed each time; the 7 suites: exit 0, 101 passed; tsc, eslint and ruff clean |
+| D164, each part changed in turn: 32 changes on 7f1d6ed, one at a time (a worktree of its own), the named tests run, the file restored; the one that passed again on eee1724; 5 changes to the review card on 7f1d6ed and 4 on eee1724, through `section-choices.spec.ts` | on 7f1d6ed, 31 of the 32 changes fail the tests named for their part (48 failures among the 90 tests run). The one that did not, the per-application filter on reading choices, passed because the test's second application was on another posting, whose form made the leaked choice stale rather than absent: the test now asserts no stale choice either, and on eee1724 the change fails it. Of 5 changes to the review card, 4 fail its e2e on desktop and mobile; the fifth, remounting the card per package version, failed nothing (reading again after each change covers it): removed in eee1724, where the 4 fail again. |
+| D164, the regression set: `pytest` on 91 files (D163's 90 with `test_section_choices.py`; JUnit), in a copy of the branch at 7f1d6ed | exit 0, 2979 passed (105 minutes) |
 
 ## Failed approaches and rejected designs
 
@@ -1204,10 +1235,11 @@ action.
 
 ## Exact next action
 
-1. D163 (branch `workday-education`, rank 30, education on Workday: a Workday-style
-   Education section filled from your approved education): its pull request. Candidates
-   after it: the Greenhouse pilot's own reads of what its form sends (D159's attributes,
-   D160's controls and final click); languages, websites and skills on Workday.
+1. D164 (branch `section-choices`, rank 31, D120's dead end: an education field no option
+   of the form matches, chosen from its own options for one application): its pull
+   request. Candidates after it: the Greenhouse pilot's own reads of what its form sends
+   (D159's attributes, D160's controls and final click); languages, websites and skills
+   on Workday.
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it
