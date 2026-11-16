@@ -127,6 +127,48 @@ test("an account gate or several pages are checkpoints: nothing is sent", async 
   }
 });
 
+test("a Languages, Websites or Skills section the page does not require is left empty, shown so, and never sent", async ({ page, request }, info) => {
+  // D165 (FIXTURE ASSUMPTION FA10): sections NoEfforts does not fill, on the single page.
+  const id = req();
+  const slug = `workday-examplehealth-${id}`;
+  const h = await candidate(page, `${info.project.name}-other`);
+  try {
+    await request.post(`${RECEIVER}/_admin/config`, { headers: { "X-Admin-Token": RECEIVER_TOKEN }, data: { mode: "wd_other_sections" } });
+    const jobId = await workdayJob(page, h, id, "Registered Nurse (other sections)");
+    await page.goto(`/jobs/${jobId}`);
+    await page.getByRole("button", { name: "Read Workday-style test form" }).click();
+    await expect(page.getByText("Workday-style application: local test approximation (fictional employer)")).toBeVisible();
+    await expect(routeCard(page).getByText("Browser adapter (local test fixture only)")).toBeVisible();
+
+    const app = await (await page.request.post("/api/applications", { headers: h, data: { job_id: jobId } })).json();
+    for (const [key, value] of [
+      ["legalName--firstName", { text: "Sam" }],
+      ["q.licence_type", { label: "RN" }],
+      ["q.shift", { label: "Nights" }],
+    ] as const) {
+      expect((await page.request.put(`/api/applications/${app.id}/answers`, { headers: h, data: { key, value } })).ok()).toBeTruthy();
+    }
+    await page.request.put(`/api/applications/${app.id}/consents`, { headers: h, data: { key: "terms_ack", choice: "agree" } });
+
+    await page.goto(`/applications/${app.id}`);
+    for (const name of ["Languages", "Websites", "Skills"]) {
+      await expect(page.getByText(`Left empty: NoEfforts does not fill this form's ${name} section`)).toBeVisible();
+    }
+    await page.getByRole("button", { name: /Approve a rehearsal of v\d+/ }).click();
+    await page.getByRole("button", { name: "Start rehearsal (nothing is submitted)" }).click();
+    await expect(badge(page, "Rehearsal finished: nothing submitted")).toBeVisible({ timeout: 60_000 });
+    await page.getByRole("button", { name: /Approve package v\d+/ }).click();
+    await page.getByRole("button", { name: "Submit approved package" }).click();
+    await expect(badge(page, "Employer receipt received")).toBeVisible({ timeout: 60_000 });
+    const l = await ledger(request, slug);
+    expect(l.accepted).toHaveLength(1);
+    expect(Object.keys(l.accepted[0].fields).filter((k) => /^(lang|web|skill)\[/.test(k))).toEqual([]);
+  } finally {
+    // The shared receiver goes back to normal even if a check above failed.
+    await request.post(`${RECEIVER}/_admin/config`, { headers: { "X-Admin-Token": RECEIVER_TOKEN }, data: { mode: "normal" } });
+  }
+});
+
 test("a real Workday posting is never read and stays a manual handoff", async ({ page, request }, info) => {
   const h = await candidate(page, `${info.project.name}-real`);
   const job = await (
