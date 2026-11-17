@@ -114,6 +114,7 @@ def test_one_the_page_requires_is_read_as_required():
 def test_an_empty_entry_already_there_is_read_as_the_section():
     schema = workday.extract_schema(stand_in("websites_entry_at_load"))
     assert websites_of(schema) == [("websites", "#websites", "My Experience", False)]
+    assert not [f.key for f in schema.fields if WEB.fullmatch(f.key)]  # never a question
 
 
 def test_beside_work_experience_and_education_each_is_read():
@@ -292,6 +293,8 @@ NOT_READ = {
                                              '<h3 id="websites-label">Web sites</h3>'),
     "its heading's id used twice": before_websites('<span id="websites-label"></span>'),
     "its id used twice": before_websites('<span id="websites"></span>'),
+    "an id it cannot be found by": lambda h: h.replace('id="websites" role="group"',
+                                                       'id="web sites" role="group"', 1),
     "two of a kind": websites_twice,
     "a custom element": custom_element_section,
     "hidden at load": around_websites("<div hidden>", "</div>"),
@@ -349,6 +352,17 @@ NOT_READ = {
     "an entry and Add": with_entry(ENTRY_0, add="Add"),
     "an entry's box written twice": with_entry(ENTRY_0.replace('type="url"',
                                                                'type="text" type="url"')),
+    "an entry with an attribute of its own": with_entry(ENTRY_0.replace(
+        '<div data-wd-entry="0">', '<div data-wd-entry="0" class="wx">')),
+    "an entry heading of another kind": with_entry(ENTRY_0.replace(
+        "<h4>Websites 1</h4>", "<h5>Websites 1</h5>")),
+    "an entry heading with an attribute": with_entry(ENTRY_0.replace(
+        "<h4>Websites 1</h4>", '<h4 id="w1">Websites 1</h4>')),
+    "an entry's label for another box": with_entry(ENTRY_0.replace(
+        '<label for="web-0-url">', '<label for="web-9-url">')),
+    "an entry's box a text area": with_entry(ENTRY_0.replace(
+        '<input id="web-0-url" name="web[0].url" type="url" required>',
+        '<textarea id="web-0-url" name="web[0].url" required></textarea>')),
     # its template not exactly the entry the stand-in builds
     "no template": in_websites('data-wd-entry-template="websites-entry"',
                                'data-wd-entry-template="websites-missing"'),
@@ -573,10 +587,11 @@ def _url(s: dict, **kw) -> None:
      lambda s: _url(s, value={"text": "https://other.example"}),
      lambda s: _url(s, value={"text": "javascript:alert(1)"}, display="javascript:alert(1)"),
      lambda s: _url(s, value={"text": "HTTPS://sam.example"}, display="HTTPS://sam.example"),
-     lambda s: _url(s, value=None)],
+     lambda s: _url(s, value=None),
+     lambda s: _url(s, value={"text": None}, display=None)],
     ids=["another field", "parts", "limits", "two rows of one identity", "omitted",
          "no url", "a value other than shown", "not a web address", "not as written",
-         "no value"],
+         "no value", "no display"],
 )  # fmt: skip
 def test_frozen_websites_content_holds_only_what_resolution_writes(tamper):
     frozen = gs.section_to_content(ss.resolve_section("websites", [profile(*LINKS)]),
@@ -728,6 +743,19 @@ def test_another_account_s_links_never_reach_your_application(api, other_api, re
     assert [r["fields"]["url"]["display"] for r in frozen_websites(after["content"])["rows"]] == (
         ADDRESSES)  # fmt: skip
     assert other_api.get(f"/applications/{app_id}/package").status_code == 404
+
+
+def test_a_section_that_now_waits_for_you_is_said_so_in_the_diff(api, receiver):
+    """D140's diff for a websites section the form gains, required, with no link: a checkpoint in
+    the new version only, frozen in neither, said as such, never "nothing changed"."""
+    app_id = application(api, receiver, "plain", approved=False, links=())
+    job_id = api.get(f"/applications/{app_id}").json()["job"]["id"]
+    receiver.config(wizard="websites_required")
+    assert api.post(f"/jobs/{job_id}/form/workday").status_code == 201
+    c = content(api, app_id)
+    assert "section:websites" in c["unresolved"]
+    diff = api.get(f"/applications/{app_id}/package/diff").json()
+    assert [(s["kind"], s["status"]) for s in diff["sections"]] == [("websites", "needs_you")]
 
 
 # ---------------------------------------------------------------------------- the ledger

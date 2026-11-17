@@ -365,9 +365,9 @@ def _approved_records(db: Session, user_id, kind: str) -> list:
         EmploymentRecord,
     )
 
-    if kind == "websites":
+    if kind == "websites":  # its links only once approved: `resolve_section` reads approval
         prof = db.scalar(select(CandidateProfile).where(CandidateProfile.user_id == user_id))
-        return [prof] if prof is not None and prof.approval_status == Approval.approved else []
+        return [prof] if prof is not None else []
     model = EducationRecord if kind == "education" else EmploymentRecord
     return list(
         db.scalars(
