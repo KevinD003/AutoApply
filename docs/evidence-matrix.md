@@ -9,6 +9,28 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A Workday-style section NoEfforts does not fill is left empty when the page does not mark it required (D165, 2026-11-16; local only)
+
+Nothing here ran against a real page. Branch `workday-other-sections`. The runs drive capture,
+the API and the runner against the Workday-style stand-in's Languages, Websites and Skills
+sections (FIXTURE ASSUMPTION FA10), with the receiver's ledger as the oracle (each page's draft,
+the acceptance); or the resolver's own function; or the review page in Chromium
+(`frontend/e2e/workday.spec.ts`, desktop and mobile). In `tests/test_workday_other_sections.py`
+unless named otherwise.
+
+| Claim | Test | Result |
+|---|---|---|
+| A section the page does not mark required, exactly its empty self, is left empty on its page | `test_each_section_the_page_does_not_require_is_left_empty_on_its_page`, `test_on_the_single_page_each_is_left_empty_on_its_section` | three optional fields (`left_empty_section`) on My Experience, no section, no work history checkpoint, nothing for the route |
+| Never the work history checkpoint; Work Experience and Education read as before | `test_these_sections_never_make_the_work_history_a_checkpoint`, `test_beside_the_education_section_both_read_as_before`, `test_a_section_of_a_kind_no_reader_takes_is_still_the_work_history_checkpoint`, `test_a_section_inside_another_is_both_checkpoints` (3) | each section beside them as before; a kind no reader takes still the work history checkpoint; nested either way, both checkpoints |
+| Anything else is that kind's checkpoint | `test_a_section_the_page_requires_is_its_own_checkpoint`, `test_an_entry_already_there_is_its_own_checkpoint_and_never_questions`, `test_a_section_not_exactly_its_empty_self_is_its_own_checkpoint` (47), `test_on_a_wizard_refused_each_is_a_checkpoint` | a required mark however written (on it, its heading or around it, a heading outside it or of other text), not its exact empty shape, two of a kind, hidden or disabled at load, on the review page: the checkpoint; the section beside it left empty |
+| Nothing in the form named as one of its entries | the same test's cases on names (5), `test_a_kind_named_with_no_section_is_its_checkpoint`, `test_a_page_question_under_a_section_s_key_never_hides_it` | a hidden value, an empty hidden field, a control beside it, one given from outside the form, one under its key: the checkpoint, never a question |
+| Left empty, nothing asked or read | `test_a_section_left_empty_resolves_to_nothing_whatever_your_profile_holds`, `test_a_field_left_empty_is_never_one_the_page_requires`, `test_the_package_shows_each_section_left_empty_and_needs_nothing_from_you`, `test_a_section_the_page_requires_blocks_approval` | `blank_optional`, your skills never read; a required one refused; the package's rows in the version-3 shape, nothing unresolved, an answer refused (400); a required one: unresolved, approval refused |
+| Nothing is sent there, the rest is | `test_the_sections_are_left_empty_and_the_application_is_sent`, `test_on_the_single_page_they_are_left_empty_and_it_is_sent`, `test_beside_them_your_work_history_is_sent`, `test_beside_them_your_education_is_sent` | confirmed; no draft or acceptance holds an entry's control; your work history and education sent as approved |
+| What the page shows or names there after approval stops the attempt | `test_a_hidden_value_the_parse_keeps_outside_a_section_stops_before_its_page_is_sent`, `test_on_the_single_page_a_hidden_value_the_parse_keeps_stops_before_the_final_click`, `test_an_entry_a_parsed_resume_adds_stops_before_its_page_is_sent`, `test_a_section_the_page_requires_once_the_resume_is_in_stops_before_its_page_is_sent`, `test_a_section_changed_after_approval_pauses_before_anything_is_entered` (2), `test_the_sections_are_part_of_the_form` | the form changed: page 2 never sent (wizard), nothing submitted (single page); changed before the run: D132's pause, nothing disclosed |
+| The review page | `frontend/e2e/workday.spec.ts` (`a Languages, Websites or Skills section the page does not require is left empty, shown so, and never sent`) | each section's explanation shown; rehearsed, approved, submitted; the acceptance holds no entry's control |
+| Every other flow unchanged | the suites the change touches; the regression set | pass (`docs/implementation-status.md`) |
+| Each part is needed | 34 changes, one at a time (`docs/implementation-status.md`) | each fails the tests named for its part |
+
 ## An education field no option of the employer's form matches is yours to choose from its own options, for one application (D164, 2026-11-16; local only)
 
 Nothing here ran against a real page. Branch `section-choices`. The runs drive the API and the

@@ -90,7 +90,12 @@ STAND_IN_WIDGETS = ("phone_country", "location_search", "location_structured")
 #   phone_companion      the one other control inside an OPTIONAL phone question's group, not
 #                        required by the page: never touched, because the phone is left blank
 #   phone_left_blank     that optional phone: never entered (its second control cannot be set)
-WIDGETS = (*STAND_IN_WIDGETS, "hidden_search", "phone_companion", "phone_left_blank")
+# D165 (the Workday-style stand-in's FA10; preparation/workday.py `_other_sections`):
+#   left_empty_section   a section of a kind NoEfforts does not fill (Languages, Websites,
+#                        Skills) that the page does not mark required, exactly its empty self:
+#                        left empty, never touched; never a required field
+WIDGETS = (*STAND_IN_WIDGETS, "hidden_search", "phone_companion", "phone_left_blank",
+           "left_empty_section")  # fmt: skip
 
 
 class FormField(BaseModel):
@@ -117,9 +122,12 @@ class FormField(BaseModel):
                  "location_structured": FieldType.unsupported,
                  "hidden_search": FieldType.unsupported,
                  "phone_companion": FieldType.unsupported,
-                 "phone_left_blank": FieldType.tel}  # fmt: skip
+                 "phone_left_blank": FieldType.tel,
+                 "left_empty_section": FieldType.unsupported}  # fmt: skip
         if self.widget is not None and shape.get(self.widget) != self.type:
             raise ValueError(f"field '{self.key}' cannot be a {self.widget} control")
+        if self.widget == "left_empty_section" and self.required:  # D165: never one it requires
+            raise ValueError(f"field '{self.key}' is a section the page requires")
         return self
 
     @model_serializer(mode="wrap")

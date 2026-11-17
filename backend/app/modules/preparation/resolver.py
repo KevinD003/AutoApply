@@ -498,6 +498,8 @@ def _resolve_field(
         return _phone_left_blank(f, _base(f, Intent("phone_left_blank")))
     if f.widget == "phone_companion":
         return _phone_companion(f, _base(f, Intent("phone_companion")))
+    if f.widget == "left_empty_section":  # D165: never from anything the label suggests
+        return _left_empty_section(f, _base(f, Intent("left_empty_section")))
     intent = _inherit(f, classify(f), parent)
     r = _base(f, intent)
     # C6 (D51): only narrows; `scope` is set only on a row that was bankable until now.
@@ -842,6 +844,25 @@ def _phone_companion(f: FormField, r: Resolution) -> Resolution:
         "Not touched: part of the optional phone/country control, which is omitted on this form "
         "(not supported for automatic filling). It is left as the page shows it; the attempt "
         "stops if the page requires it."
+    )
+    return r
+
+
+def _left_empty_section(f: FormField, r: Resolution) -> Resolution:
+    """D165: a section of a kind NoEfforts does not fill (the Workday-style stand-in's
+    Languages, Websites or Skills, FA10) that the page does not mark required and that was
+    exactly its empty self when the form was read: left empty. Nothing is asked, read from your
+    profile or entered there. A required one is never this field (`FormField` refuses it;
+    capture makes it a checkpoint)."""
+    r.user_input_allowed, r.bankable, r.draftable = False, False, False
+    r.status, r.value, r.display = "blank_optional", None, None
+    r.explanation = (
+        f"Left empty: NoEfforts does not fill this form's {f.label} section, and the page does "
+        "not mark it required, so NoEfforts enters nothing there; this holds for this form only "
+        "and changes nothing in your profile. Before anything is entered, before each page is "
+        "sent and before submitting, the form is read again: if the section then holds anything, "
+        "a field named as one of its entries appears, or the page marks it required, the attempt "
+        "stops. To include it, apply on the employer's site."
     )
     return r
 
