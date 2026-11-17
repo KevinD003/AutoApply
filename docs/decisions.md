@@ -3649,7 +3649,9 @@ changes; see D28. Fixture-only, with `real_destinations: false`.
     data, needs that person's own choice. The server owner's words cannot give it for them.
   - The worker examines every account and acts only for those whose choice is on.
 - **Not opened:** the mailbox (D101). The server holds one Gmail token, the owner's, and reading
-  it stays unauthorized (D103).
+  it stays unauthorized (D103). (D168, sole-owner mode: every account may use the Gmail
+  features with a mailbox it connects itself; the server's own token file stays the named
+  owner's.)
 - **Recorded** (`authorizations.py`, D114): the pilot's four steps for every account's own
   packages, each approved by that account or by that account's own standing rule.
   - Same end date (2026-11-06).

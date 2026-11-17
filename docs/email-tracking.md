@@ -33,7 +33,10 @@ The feature is **built but gated off**. To process a real mailbox, all of:
    needs `inbox_oauth_enabled` and a web OAuth client). The `python -m app.modules.inbox.connect`
    CLI remains an operator fallback. Either way the refresh token is a 0600 file on the server,
    never in the repo, DB, image, frontend, logs or chat; the reader prefers the app connection.
-4. The owner's account (`inbox_owner_emails`) and `NOEFFORTS_INBOX_ENABLED` for the server.
+4. The owner's account (`inbox_owner_emails`) and `NOEFFORTS_INBOX_ENABLED` for the server. In
+   sole-owner mode (D168, `NOEFFORTS_SOLE_OWNER`, on by default outside tests) every account is
+   the owner's and may use these features, each reading only a mailbox it connected itself in the
+   app; the CLI's token file (`inbox_token_file`) is read only for the account named here.
 
 Auto-apply additionally requires `InboxSettings.auto_apply = true` (off by default).
 
