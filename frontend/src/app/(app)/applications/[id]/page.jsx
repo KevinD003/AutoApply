@@ -141,9 +141,15 @@ export default function ReviewPage() {
 
   return (
     <>
-      <Link href="/tracker" className="text-sm text-brand underline">
-        ← Tracker
-      </Link>
+      <p className="flex flex-wrap gap-4 text-sm">
+        <Link href="/tracker" className="text-brand underline">
+          ← Tracker
+        </Link>
+        {/* D168: this application from start to finish, every step and why. */}
+        <Link href={`/applications/${id}/debug`} className="text-brand underline">
+          Debug this application
+        </Link>
+      </p>
       <Card title="Destination">
         <p className="text-lg font-semibold">{c.destination.title ?? "Untitled role"}</p>
         <p className="text-ink-muted">{c.destination.employer}</p>

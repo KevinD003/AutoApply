@@ -117,10 +117,20 @@ def codes_authorized() -> bool:
     return may("read_codes") and may("enter_codes")
 
 
-def is_inbox_owner(user: User) -> bool:
-    """This account is the server's inbox owner — the only account whose own mail is ever read."""
+def named_inbox_owner(user: User) -> bool:
+    """The account named in `inbox_owner_emails`: the only one the server's own mailbox token
+    (connect.py's `inbox_token_file`) is ever read for."""
     s = get_settings()
     return user.email.strip().lower() in {e.strip().lower() for e in s.inbox_owner_emails}
+
+
+def is_inbox_owner(user: User) -> bool:
+    """This account may use the Gmail features: the account named in `inbox_owner_emails`, or,
+    in sole-owner mode (D168, the owner's words: every account is the owner's), every account.
+    Each still reads only a mailbox it was given (owner_token_file)."""
+    if get_settings().sole_owner:
+        return True
+    return named_inbox_owner(user)
 
 
 def _active_consent(
@@ -232,7 +242,12 @@ def owner_token_file(db: Session, user: User) -> str:
     on the server; the connection is the same read-only Gmail either way."""
     from app.modules.connections import service as connections  # lazy: avoid an import cycle
 
-    return connections.connected_token_file(db, user) or get_settings().inbox_token_file
+    own = connections.connected_token_file(db, user)
+    if own:
+        return own
+    # D168: sole-owner mode opens the Gmail features to every account, never someone else's
+    # mailbox: the server's own token file is read only for the account named as its owner.
+    return get_settings().inbox_token_file if named_inbox_owner(user) else ""
 
 
 def reader(token_file: str = "") -> GmailReader:
@@ -776,9 +791,9 @@ def inbox_tick() -> dict:
         # D117: the owner's settings exist from the start (codes on by default), without first
         # opening the inbox page.
         owners = {e.strip().lower() for e in get_settings().inbox_owner_emails}
-        if get_settings().inbox_enabled and owners:
+        if get_settings().inbox_enabled and (owners or get_settings().sole_owner):
             for u in db.scalars(select(User)):
-                if u.email.strip().lower() in owners:
+                if is_inbox_owner(u):  # D168: every account in sole-owner mode
                     settings_of(db, u.id)
             db.commit()
         accounts = [(u.id, st.codes_enabled, st.tracking_enabled) for u, st in due(db)]

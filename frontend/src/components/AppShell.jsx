@@ -12,6 +12,7 @@ import { Loading, ErrorText } from "@/ui/primitives";
 import {
   IconBookmark,
   IconBriefcase,
+  IconBug,
   IconCompass,
   IconFileText,
   IconGear,
@@ -47,6 +48,8 @@ const SECONDARY = [
   { href: "/profile", label: "Profile", icon: IconUser },
   { href: "/preferences", label: "Preferences", icon: IconSliders },
   { href: "/account", label: "Account", icon: IconGear },
+  // D168: the whole process, start to finish, every switch and why (read-only).
+  { href: "/debug", label: "Debugger", icon: IconBug },
 ];
 const NAV = [...PRIMARY, ...SECONDARY];
 

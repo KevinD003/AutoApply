@@ -211,6 +211,9 @@ def test_d113_defaults_are_on_outside_tests_and_explicit_settings_win():
     t = Settings(_env_file=None, env="test")
     assert (t.discovery_providers, t.live_greenhouse_enabled, t.auto_apply_enabled) == (
         [], False, False)  # fmt: skip
+    # D168: sole-owner mode follows the same rule (tests/test_debug_console.py).
+    assert [Settings(_env_file=None, env=e).sole_owner for e in ("production", "test")] == [
+        True, False]  # fmt: skip
 
 
 # -- D114: every account is served; applying in someone's name needs that account's own choice --
@@ -247,7 +250,9 @@ def test_d114_the_mailbox_and_the_owner_default_stay_the_owners(api, other_api, 
     assert accounts.named("anyone@example.com", []) is True
     assert accounts.owner("anyone@example.com") is False
     src = open(inbox.__file__).read()
-    # One mailbox token on the server, the owner's: never opened to every account.
+    # One mailbox token on the server, the owner's: never opened to every account. (Sole-owner
+    # mode, D168, gives every account the Gmail features, and each reads only a mailbox it
+    # connected itself: tests/test_debug_console.py.)
     assert "app.core.accounts" not in src and "all_accounts" not in src
 
 

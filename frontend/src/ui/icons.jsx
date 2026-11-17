@@ -154,6 +154,14 @@ export const IconGear = (p) => (
   </Svg>
 );
 
+// D168: the debugger.
+export const IconBug = (p) => (
+  <Svg {...p}>
+    <rect x="7" y="7" width="10" height="13" rx="5" />
+    <path d="M9 7a3 3 0 0 1 6 0M12 11v9M7 13H3M21 13h-4M7.5 9.5 4 7M16.5 9.5 20 7M7.5 17 4 19.5M16.5 17l3.5 2.5" />
+  </Svg>
+);
+
 export const IconMore = (p) => (
   <Svg {...p}>
     <circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none" />
