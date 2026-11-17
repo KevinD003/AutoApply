@@ -331,8 +331,9 @@ def validate_content_section(data: object) -> None:
 
 def _cert_date_ok(f: object) -> tuple[int, int] | None | bool:
     """D167: a frozen certification date as resolution writes it: omitted, with nothing (None), or
-    resolved to a month and year shown as MM/YYYY ((year, month)); anything else is False. Whether
-    that month and year can be typed is the filler's own check (`workday_sections._op`)."""
+    resolved to a month of the year and a four-digit year shown as MM/YYYY ((year, month));
+    anything else is False. The filler checks the month and year it types again
+    (`workday_sections._op`)."""
     if not isinstance(f, dict):
         return False
     if f.get("status") == "omitted":
@@ -342,6 +343,8 @@ def _cert_date_ok(f: object) -> tuple[int, int] | None | bool:
         return False
     m, y = v["month"], v["year"]
     if not all(isinstance(x, int) and not isinstance(x, bool) for x in (m, y)):
+        return False
+    if not (1 <= m <= 12 and 1000 <= y <= 9999):  # removal runs: resolution writes no other
         return False
     if f.get("display") != f"{m:02d}/{y}":
         return False

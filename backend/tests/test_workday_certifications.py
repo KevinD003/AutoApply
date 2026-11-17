@@ -731,10 +731,14 @@ def test_frozen_certifications_content_holds_only_what_resolution_writes(tamper)
     """Never anything resolution does not write (D166 review's rule): a field of another kind,
     parts or limits, a repeated row, a name or date missing, other than shown, not one line, or
     needing you, a date other than a month and year as MM/YYYY, and an issued date after the
-    expiration date are refused before anything is entered."""
+    expiration date are refused before anything is entered: when the content is read
+    (`section_from_content`, the removal runs: each part of `_cert_row_ok` reached on its own),
+    and again by the filler's plan."""
     f = frozen(credential(RN["name"], date(2019, 4, 15), date(2099, 4, 30)),
                credential(FORKLIFT["name"]))  # fmt: skip
     TAMPERED[tamper](f)
+    with pytest.raises(gs.Refused):
+        gs.section_from_content(f)
     with pytest.raises(gs.Refused):
         ws.plan(f)
 
