@@ -575,7 +575,7 @@ def test_in_sole_owner_mode_an_account_reads_only_a_mailbox_it_connected(
 
 
 def test_in_sole_owner_mode_a_mailbox_gone_mid_read_is_never_the_server_s(
-    api, other_api, monkeypatch, tmp_path
+    api, other_api, receiver, monkeypatch, tmp_path
 ):
     """The account's own connection is there when its reading is allowed and gone a moment later
     (a disconnect at that moment): nothing is read, and never the server's mailbox in its place,
@@ -615,6 +615,20 @@ def test_in_sole_owner_mode_a_mailbox_gone_mid_read_is_never_the_server_s(
         inbox.settings_of(db, other.id).tracking_enabled = True
         assert inbox.check(db, other) == {"skipped": "not_connected"}
         db.commit()
+    assert built == []
+    # A code step waiting for it (synthetic: on another attempt's rows): nothing is read either.
+    authorize(monkeypatch, authorizations.INBOX)
+    _, att = submitted(api, receiver)
+    with SessionLocal() as db:
+        a = db.get(ExecutionAttempt, uuid.UUID(att))
+        other = db.query(User).filter(User.email == OTHER).one()
+        db.add(Checkpoint(attempt_id=a.id, application_id=a.application_id, user_id=other.id,
+                          status="open", expires_at=utcnow() + timedelta(minutes=10)))  # fmt: skip
+        inbox.settings_of(db, other.id).codes_enabled = True
+        db.flush()
+        seen["n"] = 0
+        assert inbox.fill_codes(db, other) == 0
+        db.rollback()
     assert built == []
     seen["n"] = 0
     out = inbox.inbox_tick()  # the worker: its list says due, then the mailbox is gone
