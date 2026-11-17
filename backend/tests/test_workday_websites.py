@@ -362,7 +362,13 @@ NOT_READ = {
         '<label for="web-0-url">', '<label for="web-9-url">')),
     "an entry's box a text area": with_entry(ENTRY_0.replace(
         '<input id="web-0-url" name="web[0].url" type="url" required>',
-        '<textarea id="web-0-url" name="web[0].url" required></textarea>')),
+        '<textarea id="web-0-url" name="web[0].url" type="url" required></textarea>')),
+    "an entry heading holding an element": with_entry(ENTRY_0.replace(
+        "<h4>Websites 1</h4>", "<h4><span>Websites 1</span></h4>")),
+    "an entry's label of another kind": with_entry(ENTRY_0.replace(
+        '<label for="web-0-url">URL</label>', '<span for="web-0-url">URL</span>')),
+    "an entry's label holding an element": with_entry(ENTRY_0.replace(
+        '<label for="web-0-url">URL</label>', '<label for="web-0-url"><b>URL</b></label>')),
     # its template not exactly the entry the stand-in builds
     "no template": in_websites('data-wd-entry-template="websites-entry"',
                                'data-wd-entry-template="websites-missing"'),
