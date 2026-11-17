@@ -8653,3 +8653,112 @@ audit-inventory and export-completeness guards are updated and pass.
     only for Websites).
   - A Social Network URLs section (LinkedIn, Facebook, Twitter fields): never read.
   - **Never seen on a real page.**
+
+## D167 — A Workday-style Certifications section is filled from your licences and certifications (2026-11-17)
+
+- **Context:** rank 34 of the automation loop (`docs/automation-loop.md`), the first candidate
+  named after D166. A Certifications section on a Workday-style page was a section of a kind no
+  reader takes: the work-history checkpoint for the whole page (D149's `_work_section`), so no
+  such page could be applied to. Workday's job application templates let an administrator
+  choose the sections an application shows, Certifications among them with Education,
+  Languages, Websites and Work Experience (search-reported, Workday's administrator
+  documentation); the fields of a candidate's Certifications entry were not found. NoEfforts
+  holds your licences and certifications (Profile, "Licences and certifications": a name, an
+  issuer, issued and expiration dates, approved; C16, D69). Local stand-ins only; nothing real
+  was run. No migration, no new state, reason code, gate, permission or retry.
+- **The stand-in** (FIXTURE ASSUMPTION FA12, `fixtures/ats_receiver/workday_like.py`): My
+  Experience may carry a Certifications section built as FA11's Websites section; entry i's
+  controls are Certification `cert[i].name` (typed, required), Certification Number
+  `cert[i].number` (typed, optional), Issued Date `cert[i].issued` and Expiration Date
+  `cert[i].expires` (typed, MM/YYYY, optional). The page's own checks refuse a page whose
+  required section has no entry, an entry without a name, a date not written MM/YYYY, and an
+  issued date after the expiration date. Variants on the wizard: `certifications`,
+  `certifications_required`, `certifications_entry_at_load`, `certifications_parse`,
+  `certifications_hidden_after_typing`, `certifications_added_after_typing`,
+  `certifications_number_after_typing` (once a name is typed the page writes a number into that
+  entry's number box), `certifications_and_experience` and `certifications_and_other_sections`;
+  the single page's `wd_certifications`, `wd_certifications_hidden_after_typing` and (review)
+  `wd_certifications_number_after_typing`; (review) `sends: "latin1_form"` makes either page's
+  form send in ISO-8859-1. A real page may offer Certification as a prompt of the employer's own
+  list; no real Workday Certifications section was observed.
+- **Decided:**
+  - **Capture** (`preparation/workday.py`: `_certifications_section`, `_cert_entry`,
+    `extract_schema`): the Certifications section is read as a certifications section
+    (`SectionSpec(kind="certifications")`, its page and whether the page requires an entry) only
+    where it is built exactly as the stand-in builds it, by D166's rule for the Websites
+    section: one section, within no other, shown and enabled at load, rendered and not inert,
+    within nothing marked required; its heading, entries list and one plain button; its own
+    required mark read (`aria-required="true"` and "Certifications *"), any other mark making it
+    a checkpoint; the entries it holds exactly as its template builds them (`_cert_entry`: its
+    heading, then each box after its label, in order, empty, numbered from 0, no limit, pattern
+    or other attribute); nothing in the form named as one of its entries but theirs (`cert[`),
+    or under its key (`certifications_section`). Anything else is its own required checkpoint:
+    apply on the employer's site. Its entries' controls are never questions; the Work Experience
+    reader leaves it alone.
+  - **What each entry is given** (`structured_sections.resolve_certification_row`): one row per
+    approved licence or certification that has not expired on the day the package is built
+    (review: C16/D69's rule, `current`, as drafts and job fit already read it and as your profile
+    says, "Expired …: not used"; one expiring that day is still sent), newest issued first,
+    undated last, then by record: its name as written (only spaces or a line break: yours to fix);
+    its issued and expiration dates as MM/YYYY, each only when the record holds it (none: not
+    sent, never guessed); an issued date after the expiration date, or (review) a year of fewer
+    than four digits, yours to fix, each message naming the credential; never a number: NoEfforts
+    holds none, and the entry's box for it is left empty and read back empty (`_CERT_NEVER`). The
+    issuer is not sent: the entry does not ask it.
+  - **The package** (`package.py`): a certifications section is frozen as the other sections are;
+    a section the page requires with none approved blocks approval (`SECTION_REQUIRED`); one it
+    does not require is frozen with no rows, nothing entered. Greenhouse never plans one, and
+    frozen content holds a row only as resolution writes it (`greenhouse_sections._cert_row_ok`).
+    Because an expired one is never sent, the package depends on the day it is built, as a draft
+    does: one that lapses between approval and the run is not in the package the gate builds, so
+    the approval is out of date and the attempt stops before anything is entered (review).
+    `SCHEMA_VERSION` stays 3: no package built before D167 changes (a form with a Certifications
+    section was a checkpoint, never approvable).
+  - **The review page** shows the rows (Certification, Issued, Expires) in a card named by what
+    it holds, with a note that no certification number is sent, a date your record does not hold
+    is not sent, and an expired one is not sent at all; the version diff names a row added,
+    removed or changed. Adding, editing, approving or deleting a credential retires an approval
+    of a package that sends a certifications section at once (`profiles/router.py`, D140's rule).
+  - **At run time** (`workday_sections`, EntryKind `certifications`, prefix `cert`): each entry
+    added by the section's button, its name and dates typed and read back, reported as a
+    disclosure at once (D137); the number box never filled and read back empty, so a number the
+    page writes stops the attempt before its page is sent; the stops of D163 and D166 name your
+    licences and certifications, and (review) so does a box's limit at focus (D162), as it now
+    names your websites. (Review) D159's character-set check reads what sections send (typed
+    text and a chosen option's value), so a name holding a character outside ASCII on a form
+    sending ISO-8859-1 stops the attempt before anything is entered, as an answer would; work
+    entries' text was outside that check before (D149).
+- **What an approved run now does differently:** a Workday-style page with a Certifications
+  section can be applied to: your current approved licences and certifications are sent there
+  (on the stand-ins); before, the whole page was the work-history checkpoint.
+- **Reviews:** two independent reviews of the first version (3c38e4c), neither finding anything
+  unapproved reaching the employer.
+  - **Both found:** an expired credential was sent, while drafts, job fit and your profile leave
+    it out ("not used"); and a year of fewer than four digits (a typo in the profile's date box)
+    resolved, was approved, and then every run refused the frozen date (measured: `failed_safe`,
+    nothing telling you about the year). Fixed: an expired one is never sent (above); such a
+    year is yours to fix, here and in work history's and education's shared date field.
+  - **The first found:** a checkpoint did not say which credential (fixed: each names it); D159's
+    character-set check did not read section text (fixed, above); the pause test asserted only a
+    stop (fixed here and in D166's test: the pause itself is checked); adding or approving a
+    credential after approval, the single page's number case, and the order among equal dates
+    were untested (tests added).
+  - **The second found:** the same expired-credential and short-year findings; a stop at a box's
+    limit named a work entry (fixed: it names the section); the wizard stand-in ignored the
+    latin1 switch (fixed).
+  - **Both noted, kept:** an empty entry already on the page with no approved credential is
+    approvable and every run stops before anything is entered (D149's rule: NoEfforts never
+    removes an entry). The first also noted, inherited from D166: a section inside a closed
+    `<details>` is read, and a run would stop when it cannot click the section's button (on the
+    wizard after page 1 was sent; reasoned, not measured).
+  - **The removal runs** (each part changed in turn): 95 of 95 caught: each change made the tests named for its part fail (294 failures among 5,296 tests run). The first pass had misses (e14, g02, g04, g06, g07, g08, g11, g12): expectations corrected, the tamper test strengthened and the date bounds restored (ccdfaa9), then every one rerun
+- **Not built:**
+  - Leaving out one credential for one application: every current approved one is sent.
+  - A Certification chosen from the employer's own list (a prompt): never read, the page stays a
+    checkpoint.
+  - A page that requires the number or a date without marking it in its markup: NoEfforts
+    leaves it empty, and the page's own checks refuse its Next (its draft written first, FA3) or
+    the final click. A limit on an entry's box: a checkpoint.
+  - The issuer: the entry does not ask it.
+  - A required mark only a style sheet or the page's script shows.
+  - **Never seen on a real page.**
