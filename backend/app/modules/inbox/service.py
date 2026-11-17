@@ -791,9 +791,9 @@ def inbox_tick() -> dict:
         # D117: the owner's settings exist from the start (codes on by default), without first
         # opening the inbox page.
         owners = {e.strip().lower() for e in get_settings().inbox_owner_emails}
-        if get_settings().inbox_enabled and (owners or get_settings().sole_owner):
+        if get_settings().inbox_enabled and owners:
             for u in db.scalars(select(User)):
-                if is_inbox_owner(u):  # D168: every account in sole-owner mode
+                if u.email.strip().lower() in owners:
                     settings_of(db, u.id)
             db.commit()
         accounts = [(u.id, st.codes_enabled, st.tracking_enabled) for u, st in due(db)]

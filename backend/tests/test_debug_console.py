@@ -139,6 +139,36 @@ def test_another_account_s_application_is_a_404(api, other_api, receiver):
     assert app_id not in seen
 
 
+def test_a_private_note_and_the_keyed_references_are_never_served(api, receiver):
+    """An outcome's note is the owner's (the application's own page shows it); an email's message
+    and thread references and an attempt's path reference are keyed digests: none is served."""
+    from app.modules.inbox.models import InboxEvent
+
+    app_id, att = submitted(api, receiver)
+    r = api.patch(f"/applications/{app_id}",
+                  json={"outcome": "interviewing", "evidence_note": "private marker note 7781"})  # fmt: skip
+    assert r.status_code == 200, r.text
+    with SessionLocal() as db:
+        me = db.query(User).filter(User.email == ME).one()
+        a = db.get(ExecutionAttempt, uuid.UUID(att))
+        a.path_ref = "pathrefmarker0001"
+        db.add(InboxEvent(user_id=me.id, message_ref="msgrefmarker0002", thread_ref="thrrefmarker3",
+                          received_at=utcnow(), sender_domain="example.com", kind="received",
+                          state="noted", application_id=uuid.UUID(app_id)))  # fmt: skip
+        db.commit()
+    r = api.get(f"/debug/applications/{app_id}")
+    assert r.status_code == 200, r.text
+    for marker in ("private marker note 7781", "pathrefmarker0001", "msgrefmarker0002",
+                   "thrrefmarker3"):  # fmt: skip
+        assert marker not in r.text, marker
+    t = r.json()
+    assert t["state_changes"][-1]["to_outcome"] == "interviewing"
+    assert [(e["sender_domain"], e["kind"]) for e in t["emails"]] == [("example.com", "received")]
+    items = api.get("/debug/activity").json()["items"]
+    assert any(i["stage"] == "email" for i in items)
+    assert "msgrefmarker0002" not in json.dumps(items)
+
+
 # ---------------------------------------------------------------- across the account's jobs
 
 
@@ -150,6 +180,38 @@ def test_activity_lists_this_account_s_steps_newest_first(api, receiver):
     assert {"state", "attempt"} <= {i["stage"] for i in mine}
     assert any(i["what"].startswith("Attempt ended: confirmed") for i in mine)
     assert len(api.get("/debug/activity", params={"limit": 2}).json()["items"]) == 2
+
+
+def test_another_account_sees_nothing_of_mine_from_any_source(api, other_api, receiver):
+    """Every kind of step the activity list reads, kept for one account, and the other account's
+    list stays empty."""
+    from app.modules.discovery.models import DiscoveredJob
+    from app.modules.execution.models import ApplicationPause
+    from app.modules.inbox.models import InboxEvent
+
+    app_id, att = submitted(api, receiver)
+    job_id = uuid.UUID(api.get(f"/applications/{app_id}").json()["job"]["id"])
+    with SessionLocal() as db:
+        me = db.query(User).filter(User.email == ME).one()
+        db.add_all([
+            AutoApplyEvent(user_id=me.id, job_id=job_id, application_id=uuid.UUID(app_id),
+                           action="skipped", reason="open_questions"),
+            ApplicationPause(user_id=me.id, application_id=uuid.UUID(app_id),
+                             attempt_id=uuid.UUID(att), kind="form_changed", status="closed",
+                             resolution="dismissed", package_version=1, package_hash="0" * 64),
+            InboxEvent(user_id=me.id, message_ref="m1", received_at=utcnow(),
+                       sender_domain="example.com", kind="received", state="noted",
+                       application_id=uuid.UUID(app_id)),
+            DiscoveredJob(user_id=me.id, provider="freehire", source_job_id="synthetic-1",
+                          fingerprint="0" * 64, normalized={}, status="linked", job_id=job_id),
+        ])  # fmt: skip
+        db.commit()
+    mine = api.get("/debug/activity").json()["items"]
+    stages = {i["stage"] for i in mine}
+    assert {"rule", "state", "attempt", "pause", "email", "discovery"} <= stages
+    synthetic_candidate(other_api)
+    assert other_api.get("/debug/activity").json()["items"] == []
+    assert other_api.get(f"/debug/applications/{app_id}").status_code == 404
 
 
 # ---------------------------------------------------------------- the server's switches
