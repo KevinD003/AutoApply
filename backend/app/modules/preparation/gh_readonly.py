@@ -545,6 +545,8 @@ def observe_page(
     Errors inside event handlers never escape (a raising handler would leave a request
     pending and print a traceback): they are recorded in `internal_errors` (type names) and
     make the caller report an internal error."""
+    from playwright.sync_api import TimeoutError as PWTimeoutError
+
     from app.core.config import get_settings
     from app.core.urlsafety import is_fixture_origin
     from app.modules.execution.adapters.greenhouse import CHALLENGE_SELECTORS
@@ -786,16 +788,22 @@ def observe_page(
             page.on("requestfailed", safe(on_locale_failed))
         if locale_rule is not None:
             page.add_init_script(script=_NO_REDIRECT_JS)
+        nav_ms = left_ms(PAGE_SECONDS * 1000)
         try:
-            resp = page.goto(url, wait_until="load", timeout=left_ms(PAGE_SECONDS * 1000))
-        except Exception:  # noqa: BLE001 - an aborted or stopped navigation; say which
+            resp = page.goto(url, wait_until="load", timeout=nav_ms)
+        except Exception as e:  # noqa: BLE001 - an aborted or stopped navigation; say which
             if stops:
                 raise Stop(stops[0]) from None
             # The interception layer refuses a redirect target on another origin before the
             # browser follows it (the proxy does the same in container mode).
             if any(_origin_of(b) != origin for b in log.blocked):
                 raise Stop("redirected to another origin") from None
-            if deadline - time.monotonic() <= 0:
+            # A timeout the overall deadline set is that deadline: the browser's own timer can
+            # fire a few milliseconds before this process's clock passes it (its event loop's
+            # clock is read once per turn), which once surfaced as a bare TimeoutError.
+            if deadline - time.monotonic() <= 0 or (
+                isinstance(e, PWTimeoutError) and nav_ms < PAGE_SECONDS * 1000
+            ):
                 raise Stop("overall time limit reached") from None
             raise
         if latched:  # D111: stopped during the page load; nothing is waited for or acted on
