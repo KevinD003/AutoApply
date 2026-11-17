@@ -377,6 +377,23 @@ def _contents(api, receiver, monkeypatch) -> list[dict]:
     assert {f["status"] for r in sec["rows"] for f in r["fields"].values()} <= {
         "resolved", "omitted"}, sec["rows"]  # fmt: skip
     out.append(content)
+    # D166: a wizard whose My Experience page carries the Websites section alone (FA11), frozen
+    # with your profile's link (setup_candidate's) as its one row.
+    receiver.config(wizard="websites")
+    try:
+        posting = {"url": f"{BASE}/workday/examplehealth/R-1660001", "title": "Websites",
+                   "employer": "Example Health"}  # fmt: skip
+        job = api.post("/jobs", json=posting).json()
+        r = api.post(f"/jobs/{job['job']['id']}/form/workday")
+        assert r.status_code == 201, r.text
+    finally:
+        receiver.config(wizard=None)
+    app = api.post("/applications", json={"job_id": job["job"]["id"]}).json()
+    content = api.get(f"/applications/{app['id']}/package").json()["package"]["content"]
+    websites = [x for x in content["sections"] if x["kind"] == "websites"]
+    assert [(x["step"], len(x["rows"])) for x in websites] == [("My Experience", 1)], websites
+    assert websites[0]["rows"][0]["fields"]["url"]["status"] == "resolved"
+    out.append(content)
     return out
 
 

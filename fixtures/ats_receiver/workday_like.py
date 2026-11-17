@@ -176,7 +176,8 @@ other_sections_and_education (with the Education section, FA9) and other_section
 (a resume upload keeps a Skills value in a hidden field of its own, outside the section). D166,
 FA11: websites_required (the page requires a website at load), websites_entry_at_load (one empty
 Websites entry already there at load) and websites_parse (a resume upload adds a Websites entry
-with a value of its own), each with FA10's three sections.
+with a value of its own), each with FA10's three sections; and websites (the Websites section
+alone).
 The single page's mode wd_experience puts the Work Experience section on its My Experience
 section, wd_education the Education section, and wd_other_sections FA10's three sections
 (wd_other_sections_parse: with other_sections_hidden_parse's upload).
@@ -640,7 +641,8 @@ OTHER_VARIANTS = ("other_sections", "other_sections_required", "other_sections_e
                   "other_sections_parse", "other_sections_required_late",
                   "other_sections_and_experience", "other_sections_hidden_parse",
                   "other_sections_and_education",
-                  "websites_required", "websites_entry_at_load", "websites_parse")  # fmt: skip
+                  "websites_required", "websites_entry_at_load", "websites_parse",
+                  "websites")  # fmt: skip
 # The single page's modes with the three sections (wd_other_sections_parse: the resume parse
 # adds a hidden Skills value outside the section, as other_sections_hidden_parse does).
 OTHER_MODES = ("wd_other_sections", "wd_other_sections_parse")
@@ -688,6 +690,8 @@ def _other_sections(variant: str | None) -> tuple[str, str, str]:
         return "", "", ""
     markup, templates = [], []
     for kind, (heading, _) in OTHER_KINDS.items():
+        if variant == "websites" and kind != "websites":
+            continue  # D166, FA11: the Websites section alone
         # at load: the one the variant requires (never once the resume is in, `_late`), and the
         # one it shows an empty entry of (D166: Websites too)
         late = variant == "other_sections_required_late"
@@ -719,8 +723,8 @@ window.requireOtherSection = (kind) => {
   document.getElementById(kind + '-label').textContent += ' *';
 };
 for (const kind of Object.keys(otherPrefix)) {
-  document.getElementById(kind).querySelector('[data-wd-add]')
-    .addEventListener('click', () => window.addOtherEntry(kind));
+  const sec = document.getElementById(kind);  // FA11: one variant has Websites alone
+  if (sec) sec.querySelector('[data-wd-add]').addEventListener('click', () => window.addOtherEntry(kind));
 }"""
     return "".join(markup), "".join(templates), script
 
