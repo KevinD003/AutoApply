@@ -363,6 +363,8 @@ NOT_READ = {
     "an entry's box a text area": with_entry(ENTRY_0.replace(
         '<input id="web-0-url" name="web[0].url" type="url" required>',
         '<textarea id="web-0-url" name="web[0].url" type="url" required></textarea>')),
+    "an entry of another element": with_entry(ENTRY_0.replace(
+        '<div data-wd-entry="0">', '<li data-wd-entry="0">').replace("</div>", "</li>")),
     "an entry heading holding an element": with_entry(ENTRY_0.replace(
         "<h4>Websites 1</h4>", "<h4><span>Websites 1</span></h4>")),
     "an entry's label of another kind": with_entry(ENTRY_0.replace(
@@ -548,6 +550,14 @@ def test_the_same_address_twice_is_one_row_and_a_blank_link_none():
     got = ss.resolve_website_rows(profile(*links))
     assert [r.fields["url"].display for r in got] == [
         "https://github.com/sam", "https://github.com/sam/", "https://github.com/Sam"]  # fmt: skip
+
+
+def test_a_link_with_another_space_around_it_is_a_checkpoint():
+    """Only ASCII spaces are dropped around a link, as its row is read too: another space there
+    (an ideographic or a no-break one) makes it a link to fix, never one quietly changed."""
+    for link in ("https://sam.example\u3000", "\u00a0https://sam.example"):
+        (row,) = ss.resolve_website_rows(profile(link))
+        assert row.fields["url"].status == "needs_user", link
 
 
 def test_a_link_that_is_not_a_web_address_is_a_checkpoint_naming_it():
