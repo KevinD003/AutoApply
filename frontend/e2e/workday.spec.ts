@@ -194,9 +194,12 @@ test("your profile's links fill a Websites section, shown on the review page and
     await page.request.put(`/api/applications/${app.id}/consents`, { headers: h, data: { key: "terms_ack", choice: "agree" } });
 
     await page.goto(`/applications/${app.id}`);
-    const card = page.locator("section", { has: page.getByRole("heading", { name: "Education, work history and websites" }) });
+    // the card is named by what it holds: this page has a Websites section alone (D166 review)
+    const card = page.locator("section", { has: page.getByRole("heading", { name: "Websites", exact: true, level: 2 }) });
     const websites = card.getByRole("group", { name: "Websites" });
-    // the address each entry is given: written with https:// where the link names no scheme
+    // the address each entry is given: written with https:// where the link names no scheme, and
+    // said so where you approve it (D166 review)
+    await expect(websites.getByText(/https:\/\/ before a link that names no scheme/)).toBeVisible();
     await expect(websites.getByText("https://github.com/sam-synthetic", { exact: true })).toBeVisible();
     await expect(websites.getByText("https://sam.example/portfolio", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: /Approve a rehearsal of v\d+/ }).click();

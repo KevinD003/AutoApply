@@ -96,6 +96,7 @@ from app.modules.preparation.forms import (
     _application_form,
     _bot_check,
     _first,
+    _inert,
     _Node,
     _TreeBuilder,
     extract_form_schema,
@@ -770,11 +771,12 @@ def _websites_section(html: str) -> tuple[SectionSpec | None, bool]:
     exactly as the stand-in builds it (`_empty_as_built`'s heading, entries list and one plain
     button, "Add", or "Add Another" once it holds an entry), its own mark of a required section
     read (FA11: `aria-required="true"` on it, and an asterisk after the heading's name), any
-    other mark making it this checkpoint; the entries it holds exactly as its template, outside
-    the form, builds them (`_website_entry`: empty, numbered from 0; NoEfforts fills one already
-    there in place, and the form read again before each Next and the final click shows the ones
-    it added); and nothing in the form named as one of its entries but theirs, or under its
-    key."""
+    other mark making it this checkpoint; (review) rendered and not inert (within no template or
+    noscript, no element between it and the document `inert`); the entries it holds exactly as
+    its template, outside the form (and within no noscript), builds them (`_website_entry`:
+    empty, numbered from 0; NoEfforts fills one already there in place, and the form read again
+    before each Next and the final click shows the ones it added); and nothing in the form named
+    as one of its entries but theirs, or under its key."""
     b = _TreeBuilder()
     b.feed(html)
     nodes = list(b.root.walk())
@@ -802,6 +804,9 @@ def _websites_section(html: str) -> tuple[SectionSpec | None, bool]:
     if (
         any("data-wd-section" in a.attrs for a in root.ancestors())
         or any(m in a.attrs for a in root.ancestors() if a is not form for m in _REQUIRED_MARKS)
+        # review: never rendered (a template's or noscript's content, D160) or inert
+        or _inert(root)
+        or any("inert" in a.attrs for a in root.ancestors())
         or root.tag != "div"
         or not set(root.attrs) <= _SECTION_ATTRS | {"aria-required"}
         or root.attrs.get("aria-required", "true") != "true"
@@ -809,6 +814,7 @@ def _websites_section(html: str) -> tuple[SectionSpec | None, bool]:
         or not _ROOT_ID.fullmatch(rid)
         or sum(1 for n in nodes if _first(n, "id") == rid) != 1
         or root.attrs.get("aria-labelledby") != hid
+        or not hid  # review: as D165's rule, never named by an empty id
         or head.tag not in _HEADINGS
         or set(head.attrs) != {"id"}
         or sum(1 for n in nodes if _first(n, "id") == hid) != 1
@@ -824,6 +830,7 @@ def _websites_section(html: str) -> tuple[SectionSpec | None, bool]:
         or add.all_text() != ("Add Another" if held else "Add")
         or any(n.twice for n in (root, head, entries, add))
         or template_box is None
+        or _inert(templates[0])
         or sum(1 for n in nodes if _first(n, "id") == tid) != 1
         or (form is not None and form in templates[0].ancestors())  # the template outside it
         or any(n not in boxes for n in named)

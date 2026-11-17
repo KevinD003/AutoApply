@@ -177,7 +177,10 @@ other_sections_and_education (with the Education section, FA9) and other_section
 FA11: websites_required (the page requires a website at load), websites_entry_at_load (one empty
 Websites entry already there at load) and websites_parse (a resume upload adds a Websites entry
 with a value of its own), each with FA10's three sections; and websites (the Websites section
-alone).
+alone). D166 review: websites_hidden_after_typing (once a website is typed, the page keeps a value
+of its own in a hidden field outside the section) and websites_added_after_typing (once a website
+is typed, the page adds a Websites entry holding a value of its own), each with FA10's sections;
+the single page's wd_websites_hidden_after_typing likewise.
 The single page's mode wd_experience puts the Work Experience section on its My Experience
 section, wd_education the Education section, and wd_other_sections FA10's three sections
 (wd_other_sections_parse: with other_sections_hidden_parse's upload).
@@ -642,10 +645,11 @@ OTHER_VARIANTS = ("other_sections", "other_sections_required", "other_sections_e
                   "other_sections_and_experience", "other_sections_hidden_parse",
                   "other_sections_and_education",
                   "websites_required", "websites_entry_at_load", "websites_parse",
-                  "websites")  # fmt: skip
+                  "websites", "websites_hidden_after_typing",
+                  "websites_added_after_typing")  # fmt: skip
 # The single page's modes with the three sections (wd_other_sections_parse: the resume parse
 # adds a hidden Skills value outside the section, as other_sections_hidden_parse does).
-OTHER_MODES = ("wd_other_sections", "wd_other_sections_parse")
+OTHER_MODES = ("wd_other_sections", "wd_other_sections_parse", "wd_websites_hidden_after_typing")
 # kind -> (its heading, the prefix of its entries' control names)
 OTHER_KINDS = {"languages": ("Languages", "lang"), "websites": ("Websites", "web"),
                "skills": ("Skills", "skill")}  # fmt: skip
@@ -659,6 +663,21 @@ OTHER_AT_LOAD = {"other_sections_entry_at_load": "languages", "websites_entry_at
 PARSED_SKILL = {"name": "Wound care (fictional)"}
 # D166, FA11: what the resume parse puts in the Websites entry it adds (websites_parse).
 PARSED_WEBSITE = {"url": "https://parsed.example/portfolio"}
+# D166 review: what the page keeps or adds once a website is typed (the *_after_typing variants).
+UNAPPROVED_WEBSITE = "https://unapproved.example/"
+_AFTER_TYPING = """
+document.addEventListener('change', (e) => {
+  if (window.webTyped || !/^web\\[\\d+\\]\\.url$/.test(e.target.name || '')) return;
+  window.webTyped = true;
+  if ('%MODE%' === 'hidden') {
+    const h = document.createElement('input');
+    h.type = 'hidden'; h.name = 'web[7].url'; h.value = '%VALUE%';
+    e.target.form.append(h);
+  } else {
+    const i = window.addOtherEntry('websites');
+    document.querySelector(`[name="web[${i}].url"]`).value = '%VALUE%';
+  }
+});"""
 _WEB_VALUE = re.compile(r"https?://\S+")
 
 
@@ -726,6 +745,10 @@ for (const kind of Object.keys(otherPrefix)) {
   const sec = document.getElementById(kind);  // FA11: one variant has Websites alone
   if (sec) sec.querySelector('[data-wd-add]').addEventListener('click', () => window.addOtherEntry(kind));
 }"""
+    after = {"websites_hidden_after_typing": "hidden", "websites_added_after_typing": "added"}
+    if variant in after:  # D166 review: the page changes once a website is typed
+        script += _AFTER_TYPING.replace("%MODE%", after[variant]).replace(
+            "%VALUE%", UNAPPROVED_WEBSITE)
     return "".join(markup), "".join(templates), script
 
 
@@ -862,7 +885,8 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
     edu, edu_template, edu_js = _edu_section(  # D163, FA9
         "education" if mode == "wd_education" else None)
     other, other_template, other_js = _other_sections(  # D165, FA10
-        "other_sections" if mode in OTHER_MODES else None)
+        None if mode not in OTHER_MODES else "websites_hidden_after_typing"
+        if mode == "wd_websites_hidden_after_typing" else "other_sections")  # fmt: skip
     phone_check, check_js = _page_check(cfg)  # D154, FA8
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>

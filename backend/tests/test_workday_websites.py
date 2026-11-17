@@ -24,6 +24,7 @@ from app.modules.execution import runner
 from app.modules.execution.adapters import greenhouse_sections as gs
 from app.modules.execution.adapters import workday as wd_adapter
 from app.modules.execution.adapters import workday_sections as ws
+from app.modules.execution.adapters.fixture_ats import FORM_CHANGED
 from app.modules.preparation import package as pk
 from app.modules.preparation import structured_sections as ss
 from app.modules.preparation import workday
@@ -47,6 +48,7 @@ LINKS = ["github.com/sam-synthetic", "https://sam.example/portfolio",
 ADDRESSES = ["https://github.com/sam-synthetic", "https://sam.example/portfolio",
              "https://www.linkedin.com/in/sam-synthetic"]  # fmt: skip
 SENT = {f"web[{i}].url": a for i, a in enumerate(ADDRESSES)}
+UNAPPROVED = "https://unapproved.example/"  # FA11: what the page keeps or adds once one is typed
 # An entry's control names (FA10's markup): Languages and Skills are never filled.
 WEB = re.compile(r"web\[\d+\]\.[a-z_]+")
 NEVER = re.compile(r"(lang|skill)\[\d+\]\.[a-z_]+")
@@ -109,7 +111,7 @@ def test_one_the_page_requires_is_read_as_required():
     assert websites_of(schema) == [("websites", "#websites", "My Experience", True)]
 
 
-def test_an_empty_entry_already_there_is_read_and_filled_in_place():
+def test_an_empty_entry_already_there_is_read_as_the_section():
     schema = workday.extract_schema(stand_in("websites_entry_at_load"))
     assert websites_of(schema) == [("websites", "#websites", "My Experience", False)]
 
@@ -236,6 +238,12 @@ def heading_outside(html: str) -> str:
     return before_websites('<h3 id="websites-label">Websites</h3>')(html)
 
 
+def template_in_a_noscript(html: str) -> str:
+    start = html.index('<template id="websites-entry">')
+    end = html.index("</template>", start) + len("</template>")
+    return html[:start] + "<noscript>" + html[start:end] + "</noscript>" + html[end:]
+
+
 def template_inside_the_form(html: str) -> str:
     start = html.index('<template id="websites-entry">')
     end = html.index("</template>", start) + len("</template>")
@@ -287,6 +295,14 @@ NOT_READ = {
     "two of a kind": websites_twice,
     "a custom element": custom_element_section,
     "hidden at load": around_websites("<div hidden>", "</div>"),
+    # review: never rendered, or inert
+    "inside a template in the form": around_websites("<template>", "</template>"),
+    "inside a noscript in the form": around_websites("<noscript>", "</noscript>"),
+    "under an inert element": around_websites("<div inert>", "</div>"),
+    "its template inside a noscript": template_in_a_noscript,
+    "named by an empty id": lambda h: in_websites('aria-labelledby="websites-label"',
+                                                  'aria-labelledby=""')(
+        in_websites('<h3 id="websites-label">', '<h3 id="">')(h)),
     "disabled at load": around_websites('<div aria-disabled="true">', "</div>"),
     "no Add button": in_websites(ADD, ""),
     "a second button": in_websites(WEB_HEAD, WEB_HEAD + '<button type="button">Help</button>'),
@@ -436,8 +452,11 @@ def test_a_page_question_under_its_key_never_hides_it():
      ("http://sam.example/a?b=1#c", "http://sam.example/a?b=1#c"),
      ("github.com/sam", "https://github.com/sam"),
      ("  https://sam.example/x  ", "https://sam.example/x"),
-     ("HTTPS://SAM.EXAMPLE", "HTTPS://SAM.EXAMPLE"),
+     ("HTTPS://SAM.EXAMPLE", "https://SAM.EXAMPLE"),
+     ("Https://sam.example/A", "https://sam.example/A"),
      ("https://sam.example:8443/p", "https://sam.example:8443/p"),
+     ("sam.example:65535/p", "https://sam.example:65535/p"),
+     ("\thttps://sam.example\n", "https://sam.example"),
      ("https://xn--80ak6aa92e.xn--p1ai/", "https://xn--80ak6aa92e.xn--p1ai/"),
      ("https://sam.example/a%20b;c=d", "https://sam.example/a%20b;c=d"),
      ("my portfolio", None),
@@ -454,14 +473,21 @@ def test_a_page_question_under_its_key_never_hides_it():
      ("http\u017f://sam.example", None),
      ("https://sam.example\u212a", None),
      ("https://sam.example.", None),
+     ("sam.example:65536/p", None),
+     ("https://sam.example:99999", None),
+     ("https://sam.example\u3000", None),
+     ("https://sam.example\x1c", None),
+     ("\u00a0https://sam.example", None),
      ("https://-sam.example", None),
      ("https://sam.example/" + "a" * 2000, None)],
 )  # fmt: skip
 def test_a_link_is_entered_as_the_web_address_it_names(link, address):
     """D166: what an entry is given for a link, or None (the checkpoint): the link as written,
-    with https:// before one that names no scheme, and nothing else changed or guessed; only
-    http or https, a host of DNS labels, and characters a web address writes as they are,
-    read in ASCII (a long s or a Kelvin sign is never read as a letter)."""
+    without the ASCII spaces around it, with https:// before one that names no scheme and
+    (review) its scheme in lower case, and nothing else changed or guessed; only http or https,
+    a host of DNS labels, a port the browser takes (review: none above 65535), and characters a
+    web address writes as they are, read in ASCII (a long s or a Kelvin sign is never read as a
+    letter, and no other space is dropped)."""
     assert ss.web_address(link) == address
 
 
@@ -496,6 +522,12 @@ def test_a_row_is_named_by_its_address_so_a_change_moves_only_its_own():
 def test_the_same_address_twice_is_one_row_and_a_blank_link_none():
     got = ss.resolve_website_rows(profile("github.com/sam", " ", "https://github.com/sam", ""))
     assert [r.fields["url"].display for r in got] == ["https://github.com/sam"]
+    # review: its scheme and host in any case are the same address; another path is another
+    links = ("https://github.com/sam", "HTTPS://GitHub.com/sam", "https://github.com/sam/",
+             "https://github.com/Sam")  # fmt: skip
+    got = ss.resolve_website_rows(profile(*links))
+    assert [r.fields["url"].display for r in got] == [
+        "https://github.com/sam", "https://github.com/sam/", "https://github.com/Sam"]  # fmt: skip
 
 
 def test_a_link_that_is_not_a_web_address_is_a_checkpoint_naming_it():
@@ -525,13 +557,26 @@ def test_a_frozen_websites_section_is_never_planned_on_greenhouse():
     ]
 
 
+def _url(s: dict, **kw) -> None:
+    s["rows"][0]["fields"]["url"].update(kw)
+
+
 @pytest.mark.parametrize(
     "tamper",
     [lambda s: s["rows"][0]["fields"].update({"title": {"status": "resolved"}}),
      lambda s: s.update({"parts": ["location"]}),
      lambda s: s.update({"limits": {"url": 40}}),
-     lambda s: s["rows"][1].update({"record_id": s["rows"][0]["record_id"]})],
-    ids=["another field", "parts", "limits", "two rows of one identity"],
+     lambda s: s["rows"][1].update({"record_id": s["rows"][0]["record_id"]}),
+     # review: never anything resolution does not write
+     lambda s: _url(s, status="omitted"),
+     lambda s: s["rows"][0].update({"fields": {}}),
+     lambda s: _url(s, value={"text": "https://other.example"}),
+     lambda s: _url(s, value={"text": "javascript:alert(1)"}, display="javascript:alert(1)"),
+     lambda s: _url(s, value={"text": "HTTPS://sam.example"}, display="HTTPS://sam.example"),
+     lambda s: _url(s, value=None)],
+    ids=["another field", "parts", "limits", "two rows of one identity", "omitted",
+         "no url", "a value other than shown", "not a web address", "not as written",
+         "no value"],
 )  # fmt: skip
 def test_frozen_websites_content_holds_only_what_resolution_writes(tamper):
     frozen = gs.section_to_content(ss.resolve_section("websites", [profile(*LINKS)]),
@@ -618,7 +663,7 @@ def test_the_package_shows_each_link_as_an_entry_and_needs_nothing_from_you(api,
     assert approve(api, app_id).status_code == 200
 
 
-def test_with_no_link_nothing_is_entered_and_nothing_held(api, receiver):
+def test_with_no_link_the_section_holds_no_entry(api, receiver):
     app_id = application(api, receiver, approved=False, links=())
     c = content(api, app_id)
     assert not c["unresolved"] and frozen_websites(c)["rows"] == []
@@ -666,6 +711,23 @@ def test_changing_your_links_retires_the_approval_at_once_and_says_what_changed(
     (sec,) = diff["sections"]
     assert sec["kind"] == "websites" and sec["status"] == "changed"
     assert [(r["label"], r["change"]) for r in sec["rows"]] == [(ADDRESSES[2], "removed")]
+
+
+def test_another_account_s_links_never_reach_your_application(api, other_api, receiver):
+    """D166 review (every query by user_id; another account's access is a 404): another account's
+    links are never your package's, a change to them retires nothing of yours, and your package
+    is not theirs to read."""
+    app_id = application(api, receiver)
+    before = api.get(f"/applications/{app_id}/package").json()["package"]
+    synthetic_candidate(other_api)
+    with_links(other_api, ["https://other.example/them"])
+    after = api.get(f"/applications/{app_id}/package").json()["package"]
+    assert (after["version"], after["content_hash"]) == (before["version"], before["content_hash"])
+    with SessionLocal() as db:
+        assert pk.active_approval(db, pk.latest_package(db, uuid.UUID(app_id))) is not None
+    assert [r["fields"]["url"]["display"] for r in frozen_websites(after["content"])["rows"]] == (
+        ADDRESSES)  # fmt: skip
+    assert other_api.get(f"/applications/{app_id}/package").status_code == 404
 
 
 # ---------------------------------------------------------------------------- the ledger
@@ -787,3 +849,74 @@ def test_an_empty_entry_shown_since_approval_is_filled_in_place(api, receiver):
     receiver.config(wizard="websites_entry_at_load")
     assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
     assert sent_web(page_2(receiver)) == SENT
+
+
+# ---------------------------------------------------------------------------- review: after typing
+
+
+def nowhere(receiver, value: str) -> bool:
+    """The value reached the employer nowhere: no page's draft, no acceptance."""
+    led = receiver.ledger()
+    return not [d for d in drafts(led) if value in d["fields"].values()] and not [
+        a for a in led["acceptances"] if value in a["fields"].values()]  # fmt: skip
+
+
+def test_a_value_the_page_keeps_once_a_website_is_typed_stops_before_its_page_is_sent(
+    api, receiver
+):
+    """D166 review: once a website is typed the page keeps a value of its own in a hidden field
+    outside the section, named as an entry's: the form read again before page 2's Next is no
+    longer the approved one (the section is then its checkpoint), so the attempt stops with page 2
+    never sent, and the value reaches the employer nowhere."""
+    app_id = application(api, receiver, "websites_hidden_after_typing")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    led = receiver.ledger()
+    assert draft_pages(led) == [1] and posts(led, "/apply") == 0
+    assert FORM_CHANGED in attempt(aid).outcome_detail
+    assert nowhere(receiver, UNAPPROVED)
+
+
+def test_on_the_single_page_a_value_kept_once_typed_stops_before_the_final_click(api, receiver):
+    app_id = application(api, receiver, mode="wd_websites_hidden_after_typing")
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") not in ("confirmed", "unknown")
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and posts(led, "/apply") == 0
+    assert FORM_CHANGED in attempt(aid).outcome_detail
+    assert nowhere(receiver, UNAPPROVED)
+
+
+def test_an_entry_the_page_adds_once_a_website_is_typed_stops_before_its_page_is_sent(
+    api, receiver
+):
+    """D166 review: once your one link is typed the page adds an entry holding a value of its
+    own: the section shows an entry beyond the plan when its page is read back, so the attempt
+    stops with page 2 never sent."""
+    app_id = application(api, receiver, "websites_added_after_typing", links=LINKS[1:2])
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    led = receiver.ledger()
+    assert draft_pages(led) == [1] and posts(led, "/apply") == 0
+    assert nowhere(receiver, UNAPPROVED)
+
+
+def test_an_entry_the_page_adds_is_given_your_next_link_and_holds_nothing_else(api, receiver):
+    """With more links, the entry the page adds is where your next link goes (an entry already
+    there is filled in place, D149): the page's own value is replaced, and only your links are
+    sent."""
+    app_id = application(api, receiver, "websites_added_after_typing")
+    assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
+    assert sent_web(page_2(receiver)) == SENT and sent_web(accepted(receiver)) == SENT
+    assert nowhere(receiver, UNAPPROVED)
+
+
+def test_a_scheme_in_capitals_is_sent_in_lower_case_and_accepted(api, receiver):
+    """D166 review: "Https://", as a phone writes it, approved as written was refused by the
+    page's own check after it was sent; it is now shown and sent in lower case."""
+    app_id = application(api, receiver, mode="wd_other_sections",
+                         links=["Https://sam.example/portfolio"])  # fmt: skip
+    rows_ = frozen_websites(content(api, app_id))["rows"]
+    assert [r["fields"]["url"]["display"] for r in rows_] == ["https://sam.example/portfolio"]
+    assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
+    assert sent_web(accepted(receiver)) == {"web[0].url": "https://sam.example/portfolio"}

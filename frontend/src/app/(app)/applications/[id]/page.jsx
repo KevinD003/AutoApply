@@ -676,17 +676,30 @@ function SectionChoicesCard({ appId, busy, call }) {
  * from your live profile), so you approve what you can see. D166: and the websites, from your
  * profile's links. */
 function SectionsCard({ sections }) {
-  const links = sections.some((s) => s.kind === "websites");
+  const has = (k) => sections.some((s) => s.kind === k);
+  const records = has("education") || has("employment");
+  const links = has("websites");
+  // D166 review: named by what it holds ("Education and work history" as before, "Websites" alone).
+  const names = ["education", "employment", "websites"].filter(has).map((k, i) => (i ? SECTION_TITLE[k].toLowerCase() : SECTION_TITLE[k]));
+  const title = names.length < 2 ? (names[0] ?? "Education and work history") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
   return (
-    <Card title={links ? "Education, work history and websites" : "Education and work history"}>
+    <Card title={title}>
       <p className="text-sm text-ink-muted">
-        What this version sends from your approved education and employment records{links ? " and your profile’s links" : ""}, with any
-        option you chose for this application. Change {links ? "them" : "a record"} in your profile and the approval of this version is
+        What this version sends from {records && "your approved education and employment records, with any option you chose for this application"}
+        {records && links && ", and from "}
+        {links && "your profile’s links"}. Change {records && !links ? "a record" : "them"} in your profile and the approval of this version is
         retired; you approve again what it then sends.
       </p>
       {sections.map((s) => (
         <div key={s.kind} className="mt-3" role="group" aria-label={SECTION_TITLE[s.kind] ?? s.kind}>
           <h3 className="text-sm font-medium">{SECTION_TITLE[s.kind] ?? s.kind}</h3>
+          {s.kind === "websites" && s.rows.length > 0 && (
+            // D166 review: what NoEfforts writes differently from your links, said where you approve it.
+            <p className="text-xs text-ink-muted">
+              Each of your profile&apos;s links, as the web address its entry is given: https:// before a link that names no scheme, and http or
+              https in lower case.
+            </p>
+          )}
           {s.rows.length === 0 ? (
             <p className="text-sm text-ink-muted">Nothing is sent here: {SECTION_NONE[s.kind] ?? `you have no approved ${s.kind} record`}.</p>
           ) : (

@@ -30,7 +30,12 @@ from app.modules.execution.adapters import dropdowns
 from app.modules.execution.adapters import fixture_ats as fa
 from app.modules.preparation import gh_readonly as ro
 from app.modules.preparation.forms import ENTRY_PARTS, LIMITED_FIELDS, MAX_LIMIT, sent_len
-from app.modules.preparation.structured_sections import FieldResult, RowResult, SectionResult
+from app.modules.preparation.structured_sections import (
+    FieldResult,
+    RowResult,
+    SectionResult,
+    web_address,
+)
 
 
 class Refused(Exception):
@@ -306,6 +311,17 @@ def validate_content_section(data: object) -> None:
                 and (not isinstance(f.get("display"), str) or sent_len(f["display"]) > limits[name])
             ):
                 raise Refused(f"section field {name!r} is longer than its page accepts")
+        if kind == "websites":  # D166 review: never anything resolution does not write
+            url = fields.get("url")
+            text = url.get("display") if isinstance(url, dict) else None
+            if (
+                set(fields) != {"url"}
+                or url.get("status") != "resolved"
+                or url.get("value") != {"text": text}
+                or not isinstance(text, str)
+                or web_address(text) != text
+            ):
+                raise Refused(f"section row {idx} is not a web address resolution wrote")
 
 
 def section_from_content(data: dict) -> SectionResult:

@@ -535,13 +535,16 @@ def resolve_employment_row(record, parts=(), required_parts=(), limits=None) -> 
 # web address writes as they are (RFC 3986's, never a space, quote or angle bracket). Read in
 # ASCII only (D161: Unicode case folding would read other letters as these).
 _WEB_ADDRESS = re.compile(
-    r"[Hh][Tt][Tt][Pp][Ss]?://"
-    r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
-    r"(?::[0-9]{1,5})?"
+    r"(?P<scheme>[Hh][Tt][Tt][Pp][Ss]?)://"
+    r"(?P<host>(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+    r"[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)"
+    r"(?::(?P<port>[0-9]{1,5}))?"
     r"(?:[/?#][A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?",
     re.ASCII,
 )
 MAX_WEB_ADDRESS = 2000  # characters: longer is never a web address NoEfforts types
+MAX_PORT = 65535  # D166 review: a box holding a higher one is refused by the browser
+_ASCII_SPACES = "\t\n\f\r "  # the spaces a web address box drops around its value
 WEBSITE_UNUSABLE = (
     "A link in your profile is not a web address NoEfforts enters in a Websites entry "
     "(http:// or https://, then a site such as example.com, with no space): “{link}”. Fix it in "
@@ -551,30 +554,42 @@ WEBSITE_UNUSABLE = (
 
 def web_address(link: str) -> str | None:
     """D166: the web address a Websites entry is given for a link of your profile, or None: the
-    link as you wrote it, without the spaces around it, with "https://" before it when it names
-    no scheme (as C10 reads a link, D58); then exactly a web address (`_WEB_ADDRESS`), no longer
-    than `MAX_WEB_ADDRESS`. Nothing else is changed or guessed."""
-    text = link.strip()
+    link as you wrote it, without the ASCII spaces around it (any other character there makes it
+    no web address), with "https://" before it when it names no scheme (as C10 reads a link,
+    D58), and (review) its scheme in lower case, as a page's own check may read it ("Https" is
+    how a phone writes it); then exactly a web address (`_WEB_ADDRESS`, a port no higher than
+    `MAX_PORT`), no longer than `MAX_WEB_ADDRESS`. Nothing else is changed or guessed."""
+    text = link.strip(_ASCII_SPACES)
     address = text if "://" in text else "https://" + text
-    if len(address) > MAX_WEB_ADDRESS or not _WEB_ADDRESS.fullmatch(address):
+    m = _WEB_ADDRESS.fullmatch(address)
+    if m is None or len(address) > MAX_WEB_ADDRESS:
         return None
-    return address
+    if m["port"] is not None and int(m["port"]) > MAX_PORT:
+        return None
+    return m["scheme"].lower() + address[m.end("scheme") :]
+
+
+def _same_address(address: str) -> str:
+    """D166 review: what makes two web addresses one (its host is read in any case)."""
+    m = _WEB_ADDRESS.fullmatch(address)
+    return address[: m.start("host")] + m["host"].lower() + address[m.end("host") :]
 
 
 def resolve_website_rows(profile) -> list[RowResult]:
     """D166: one row per link of your approved profile, in its order, each one field, `url`: the
     web address its entry is given (`web_address`), or a checkpoint (`needs_user`) for a link that
     is not one, fixed in your profile. A link that is only spaces is none; the same address twice
-    is one row (the first). A row's identity is a digest of its address (of the link as written,
-    for one that is not an address), so a link added or removed changes only its own row."""
+    (its host in any case) is one row, the first. A row's identity is a digest of its address (of
+    the link as written, for one that is not an address), so a link added or removed changes only
+    its own row."""
     rows: list[RowResult] = []
     seen: set[str] = set()
     for link in list(profile.links or []):
-        text = link.strip() if isinstance(link, str) else ""
+        text = link.strip(_ASCII_SPACES) if isinstance(link, str) else ""
         if not text:
             continue
         address = web_address(text)
-        key = address if address is not None else text
+        key = _same_address(address) if address is not None else text
         if key in seen:
             continue
         seen.add(key)
@@ -583,7 +598,9 @@ def resolve_website_rows(profile) -> list[RowResult]:
             fr = FieldResult("url", "needs_user", source="unresolved", fact_refs=ref,
                              explanation=WEBSITE_UNUSABLE.format(link=text[:200]))  # fmt: skip
         else:
-            added = "" if address == text else " (with https:// before it, as a web address has)"
+            added = ("" if address == text
+                     else " (with https:// before it, as a web address has)" if "://" not in text
+                     else " (with http or https in lower case)")  # fmt: skip
             fr = FieldResult("url", "resolved", value={"text": address}, display=address,
                              source="profile_fact", fact_refs=ref,
                              explanation=f"From your profile's links{added}.")  # fmt: skip
