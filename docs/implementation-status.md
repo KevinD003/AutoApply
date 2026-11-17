@@ -54,6 +54,31 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## A Workday-style section NoEfforts does not fill is left empty when the page does not mark it required (D165, 2026-11-16; local only)
+
+Rank 32 of the automation loop (languages, websites and skills on Workday). Product changes:
+
+- `app/modules/preparation/workday.py`: `OTHER_SECTIONS`, `OTHER_ENTRY`, `LEFT_EMPTY`,
+  `other_section_key`, `_empty_as_built`, `_other_sections`; `extract_schema` adds each section
+  left empty, or its checkpoint; `_work_section` leaves these sections alone; `_entry_control`
+  skips their entries' controls.
+- `app/modules/preparation/forms.py`: the widget `left_empty_section` (never required).
+- `app/modules/preparation/resolver.py`: `_left_empty_section`.
+- `fixtures/ats_receiver/workday_like.py`: FIXTURE ASSUMPTION FA10 and its variants.
+
+No migration, no new state, reason code, gate or executor code. `SCHEMA_VERSION` stays 3 (D165
+says why). Nothing was run against a real page. `scripts/validate.sh all` was not run (it runs the
+whole backend and e2e suites); ruff, tsc and eslint were.
+
+| Check (branch `workday-other-sections`, from section-choices at dadf16e; main with #73 merged in at 2813959) | Command | Result |
+|---|---|---|
+| The first version's tests | `test_workday_other_sections.py` (JUnit) as it grew (c7921fa, 9c02d0d); `workday.spec.ts`; the 9 suites the change touches (`test_workday_other_sections.py`, `test_workday_education.py`, `test_workday_experience.py`, `test_workday_wizard.py`, `test_workday_adapter.py`, `test_workday_ashby_fixtures.py`, `test_phone_companion.py`, `test_package_contract.py`, `test_resolver.py`); `tsc --noEmit`, `npm run lint`, ruff | exit 0: 41, then 44 passed; e2e: 8 passed; the 9 suites: exit 1, 1030 of 1032 (2 of D149's cases used "skills" as a kind no reader takes, which D165 reads: moved to "certifications", as D163 moved them off "education", 9c02d0d; both then passed); tsc, eslint and ruff clean |
+| Two independent reviews | on 9c02d0d | a blocker (the second): an entry's value kept outside the section reached the employer; both: required marks the rule did not read; see D165 |
+| After the reviews | `test_workday_other_sections.py` (JUnit) as the fixes grew (8123432, 46b2e4f, daa72b2); on 8123432, the 9 suites; ruff | exit 0: 68, 75 and 75 passed; the 9 suites: exit 0, 1059 passed; ruff clean |
+| Each part changed in turn | 34 changes on daa72b2, one at a time (a worktree of its own), the named tests run, the file restored; a first run of 35 on 46b2e4f | on daa72b2, exit 1 for each of the 34: each fails the tests named for its part (92 failures among the 1,245 tests run). The first run, of 35 on 46b2e4f, found two that no test reached alone: one section of a kind (its case copied the heading's id, which another rule caught first: the copy now has a heading of its own, marked required) and the check on the field's key (redundant with the rule on names, since a question's key is its control's name or `aria:` and an id: removed); daa72b2 holds both. Each file restored, the tree clean after |
+| The regression set | `pytest` on 92 files (D164's 91 with `test_workday_other_sections.py`; JUnit), in a copy of the branch at 8123432 (since then one redundant condition removed and test cases added: the file is run in full with the records) | exit 0, 3047 passed (101 minutes) |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_workday_other_sections.py` (JUnit); `workday.spec.ts`; `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 120 passed in 104 s; e2e: 8 passed (desktop and mobile, 1.4 minutes); ruff formatted nothing, found nothing, and the format check passed |
+
 ## An education field no option of the employer's form matches is yours to choose from its own options, for one application (D164, 2026-11-16; local only)
 
 Rank 31 of the automation loop (the dead end D163 inherited from D120). Product changes:

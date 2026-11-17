@@ -56,7 +56,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D161 the Greenhouse pilot holds an answer to the length limit its page shows | merged (#70, 1bbe408, tree as predicted); its PR CI passed all four jobs on a6bea08 |
 | D162 every other adapter stops at a value its box would cut, naming the limit, and types only into a box that has focus | merged (#71, 3ecbd65, tree as predicted); its PR CI passed all four jobs on b8e7de4 |
 | D163 a Workday-style Education section filled from your approved education | merged (#72, 10685b5, tree as predicted); its PR CI passed all four jobs on 0efe9b5 |
-| D164 an education field no option of the form matches, chosen from its own options for one application | branch `section-choices` (from main with #72); reviewed twice; not merged |
+| D164 an education field no option of the form matches, chosen from its own options for one application | merged (#73, 65c6aac, tree as predicted); its PR CI passed all four jobs on dadf16e |
+| D165 a Workday-style Languages, Websites or Skills section the page does not mark required, left empty | branch `workday-other-sections` (from D164's branch, main with #73 merged in); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -78,7 +79,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 merged (#47): a gh2 look-alike naming a country is neither reused nor suggested | D138 merged (#47): "Preferred shift" never saved or reused |
 | 5 | Conditional question | fx on the v1 fixture; D135 merged (#44), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | D148 merged (#57; stand-in FA6, receiver ledger): a typed follow-up the page shows after an earlier answer is answerable, entered only when shown, never waited for; a shown required one without an answer pauses a single page and stops a wizard page before its Next; a hidden one the page still requires, or one it removes, stops the attempt; a choice hidden at load is still never filled (a hidden file input is uploaded as before); D154 on its branch: one the page shows after a request is waited for, entered when answered, and otherwise pauses a single page or stops a wizard page before its Next (FA8, receiver ledger) |
 | 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger); D145 (branch): a dropdown whose list keeps being re-rendered is refused however slowly it is read (the page's own record of its last change to a list), before anything is entered, and a location search whose suggestions keep changing chooses no place (gh2 stand-ins; receiver ledger); D152 merged (#61): the read-only survey publishes whether each list met that rule at its last read (gh2 stand-ins; code only, no run); D153 merged (#62): a page busy elsewhere no longer has its lists refused, one whose style sheets or control keep changing has them refused before anything is entered, and an option is chosen only from one read of the list that is still the approved one (gh2 stand-ins; receiver ledger) | fx at capture |
-| 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger); D151 on its branch: a section combobox chooses only from a list that has settled, by the dropdown's rule, and a list that keeps changing, posts or fails to load stops the section (gh2 stand-ins, receiver ledger) | D149 merged (#58; stand-in FA7, receiver ledger): the Work Experience entries on My Experience filled from your approved work history (employment), each added by the section's own button and read back, no entry beyond the approved ones sent, a required section waiting for your approved work history; D155 on its branch: an entry's Location and Role Description from your record where the entry asks them (blank: not sent; required and blank: yours to add), what the form would send read back; anything else about work history a checkpoint; education, languages, websites and skills not built |
+| 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger); D151 on its branch: a section combobox chooses only from a list that has settled, by the dropdown's rule, and a list that keeps changing, posts or fails to load stops the section (gh2 stand-ins, receiver ledger) | D149 merged (#58; stand-in FA7, receiver ledger): the Work Experience entries on My Experience filled from your approved work history (employment), each added by the section's own button and read back, no entry beyond the approved ones sent, a required section waiting for your approved work history; D155 on its branch: an entry's Location and Role Description from your record where the entry asks them (blank: not sent; required and blank: yours to add), what the form would send read back; anything else about work history a checkpoint; D163 merged (#72): the Education section filled from your approved education; D164 merged (#73): an education field no option matches chosen from its own options for one application; D165 on its branch: a Languages, Websites or Skills section the page does not mark required left empty, anything else about it a checkpoint of its own (filling them not built) |
 | 8 | Answer edits invalidate approvals | fx; D138 merged (#47): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger); D140 merged (#49): an education or employment edit retires the approval at once; on the education stand-in, approved again, the new degree is sent, and an edit while a worker fills is stopped at the send gate (receiver ledger) | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; D143 merged (#52): on gh2 by id a worker killed before anything was sent is run again once, and one killed after entering data, at the send gate, around the final click or after the employer's receipt is never run again; a run past its budget stops before the final click (gh2 by id and the pilot stand-in; receiver ledger); D144 merged (#53): the sweeper runs on a worker of its own, so it is not held up by attempts waiting for codes (real workers, generic form; receiver ledger) | partial; D142 merged (#51): on the wizard stand-in a lost or killed worker leaves the record of each page's Next, is never taken over, and the application is never run again (receiver ledger); D143 merged (#52): the same kills on the single-page form and on the wizard's review page, and a wizard past its budget stops for good (receiver ledger) |
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus; D139 merged (#48): self-identification on gh2 (by id and pilot) up to the ledger: off or unmatched never sent, a label or a decline label sent, your per-application "Don't disclose" beats it, a required one without a match waits; a change retires its approvals at once (queued, held by a worker, under the standing rule: nothing withdrawn is sent) | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify"; D139 merged (#48): self-identification sent as each option's own value, each question only from the label naming its category, a bare "No" or two labels never used, a decline only where the choices name a category, a required gender without a match waits; withdrawal and change retire the approval (single page; the Workday decline wording is a fixture assumption) |
@@ -378,7 +379,26 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
 
-- **D164 (branch `section-choices`, not merged).** Rank 31, the dead end D163 inherited
+- **D165 (branch `workday-other-sections`, not merged).** Rank 32, languages, websites
+  and skills on Workday:
+  - the gap: any such section on the stand-in's My Experience page made the page's work
+    history one required checkpoint, labelled "Work Experience", so no such page could
+    be applied to;
+  - now one the page does not mark required, exactly the stand-in's empty one, with
+    nothing in the form named as one of its entries, is left empty (an optional field,
+    shown on the review page as left empty, read again with the rest of the form before
+    anything is entered, before each Next and before the final click); anything else
+    about it is that kind's own checkpoint; no executor code;
+  - two independent reviews; both found what the second called a blocker: an entry's
+    value kept outside the section (a hidden field, one a parsed resume fills) reached
+    the employer; both: required marks the rule did not read. Fixed: nothing in the form
+    may be named as one of its entries, and the section must be exactly its empty self;
+    the rest recorded in D165;
+  - 34 removal runs on daa72b2, each failing the tests named for its part (a first run
+    of 35 on 46b2e4f rebuilt one case and removed one redundant check); the regression
+    set on 8123432: 3047 passed.
+
+- **D164 (merged, #73).** Rank 31, the dead end D163 inherited
   from D120:
   - the gap: an education field no option of the form matches was a checkpoint saying
     "choose it for this application", with nowhere to choose; the only way out was to
@@ -664,8 +684,10 @@ before anything is entered and before each value is typed.
 cut, naming the limit, and type only into a box that has focus.
 **D163** (rank 30, #72) fills a Workday-style Education section from your
 approved education.
-**D164** (rank 31, on its branch) lets you choose, for one application, the form's own
+**D164** (rank 31, #73) lets you choose, for one application, the form's own
 option for an education field none matches.
+**D165** (rank 32, on its branch) leaves a Workday-style Languages, Websites or Skills
+section the page does not mark required empty, anything else about it a checkpoint.
 Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
@@ -762,10 +784,15 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D164 (branch `section-choices`):** the new tests, the review page in Chromium, the
-  suites the change touches, the removal runs and the regression set, locally (Tests run
-  below). Not tested: any real page (the pilot's capture reads no section on one; a real
-  Workday's education lists may be search prompts, which NoEfforts never fills).
+- **D165 (branch `workday-other-sections`):** the new tests, the review page in Chromium,
+  the suites the change touches, the removal runs and the regression set, locally (Tests
+  run below). Not tested: any real page (no real Workday Languages, Websites or Skills
+  section was observed); a required mark only a style sheet or the page's script shows.
+- **D164:** merged (#73, 65c6aac, tree as predicted); its PR CI passed all four
+  jobs on dadf16e. Locally: the new tests, the review page in Chromium, the suites
+  the change touches, the removal runs and the regression set (Tests run below). Not
+  tested: any real page (the pilot's capture reads no section on one; a real Workday's
+  education lists may be search prompts, which NoEfforts never fills).
 - **D163:** merged (#72, 10685b5, tree as predicted); its PR CI passed all four
   jobs on 0efe9b5. Locally: the new tests, the suites the change touches, the
   removal runs and the regression set (Tests run below). Not tested: any real
@@ -1120,6 +1147,10 @@ action.
 | D164, after the reviews: `test_section_choices.py` (JUnit) as the fixes grew (cbe4ebc, 7f1d6ed, eee1724); the two e2e specs on cbe4ebc, 7f1d6ed and eee1724; on eee1724, the 7 touched suites the regression set does not run; `tsc --noEmit`, `npm run lint`, ruff | exit 0: 37, 43 and 43 passed; e2e: 4 passed each time; the 7 suites: exit 0, 101 passed; tsc, eslint and ruff clean |
 | D164, each part changed in turn: 32 changes on 7f1d6ed, one at a time (a worktree of its own), the named tests run, the file restored; the one that passed again on eee1724; 5 changes to the review card on 7f1d6ed and 4 on eee1724, through `section-choices.spec.ts` | on 7f1d6ed, 31 of the 32 changes fail the tests named for their part (48 failures among the 90 tests run). The one that did not, the per-application filter on reading choices, passed because the test's second application was on another posting, whose form made the leaked choice stale rather than absent: the test now asserts no stale choice either, and on eee1724 the change fails it. Of 5 changes to the review card, 4 fail its e2e on desktop and mobile; the fifth, remounting the card per package version, failed nothing (reading again after each change covers it): removed in eee1724, where the 4 fail again. |
 | D164, the regression set: `pytest` on 91 files (D163's 90 with `test_section_choices.py`; JUnit), in a copy of the branch at 7f1d6ed | exit 0, 2979 passed (105 minutes) |
+| D165, the first version: `test_workday_other_sections.py` (JUnit) as it grew (on c7921fa's content, then 9c02d0d); `workday.spec.ts`; the 9 suites the change touches; `tsc --noEmit`, `npm run lint`, ruff | exit 0: 41, then 44 passed; e2e: 8 passed; the 9 suites: exit 1, 1030 of 1032 (two of D149's cases used "skills" as a kind no reader takes, which D165 reads: moved to "certifications", as D163 moved them off "education"; then passed); tsc, eslint and ruff clean |
+| D165, after the reviews: `test_workday_other_sections.py` (JUnit) as the fixes grew (8123432, 46b2e4f, daa72b2); on 8123432, the 9 suites; ruff | exit 0: 68, 75 and 75 passed; the 9 suites: exit 0, 1059 passed; ruff clean |
+| D165, each part changed in turn: 34 changes on daa72b2, one at a time (a worktree of its own), the named tests run, the file restored; a first run of 35 on 46b2e4f | on daa72b2, exit 1 for each of the 34: each fails the tests named for its part (92 failures among the 1,245 tests run). The first run, of 35 on 46b2e4f, found two that no test reached alone: one section of a kind (its case copied the heading's id, which another rule caught first: the copy now has a heading of its own, marked required) and the check on the field's key (redundant with the rule on names, since a question's key is its control's name or `aria:` and an id: removed); daa72b2 holds both. Each file restored, the tree clean after |
+| D165, the regression set: `pytest` on 92 files (D164's 91 with `test_workday_other_sections.py`; JUnit), in a copy of the branch at 8123432 | exit 0, 3047 passed (101 minutes) |
 
 ## Failed approaches and rejected designs
 
@@ -1235,11 +1266,11 @@ action.
 
 ## Exact next action
 
-1. D164 (branch `section-choices`, rank 31, D120's dead end: an education field no option
-   of the form matches, chosen from its own options for one application): its pull
-   request. Candidates after it: the Greenhouse pilot's own reads of what its form sends
-   (D159's attributes, D160's controls and final click); languages, websites and skills
-   on Workday.
+1. D165 (branch `workday-other-sections`, rank 32, languages, websites and skills on
+   Workday: a section the page does not mark required left empty): its pull request.
+   Candidates after it: filling your websites from your profile's links on Workday;
+   the Greenhouse pilot's own reads of what its form sends (D159's attributes, D160's
+   controls and final click).
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it

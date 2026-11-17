@@ -8428,3 +8428,106 @@ audit-inventory and export-completeness guards are updated and pass.
   - Inherited (D120): a match whose option shares its id with another is sent by that id, and
     the manual form's schema and the Greenhouse stand-in's capture do not refuse duplicate ids
     (the Workday-style capture does, D163).
+
+## D165 — A Workday-style section NoEfforts does not fill (Languages, Websites, Skills) is left empty when the page does not mark it required (2026-11-16)
+
+- **Context:** rank 32 of the automation loop (`docs/automation-loop.md`), from the candidates
+  named after D164: languages, websites and skills on Workday. D149 read the Workday-style My
+  Experience page's Work Experience section and D163 its Education section; a section of any other
+  kind made the page's work history one required checkpoint, labelled "Work Experience" even on a
+  page with no work history at all, so no Workday-style page carrying a Languages, Websites or
+  Skills section could be applied to. NoEfforts' profile holds no languages, and a real Workday's
+  Skills is a search prompt (docs/research/workday.md), which NoEfforts never fills: what can be
+  decided now is whether such a section blocks the application. D136's rule for a control
+  NoEfforts cannot fill is the precedent (a required one a checkpoint, an optional one left
+  blank), and D130's optional phone left blank. Local stand-ins only; nothing real was run. No
+  migration, no new state, reason code, gate, permission or retry; no executor code.
+  `SCHEMA_VERSION` stays 3, and so do the extraction and adapter versions: a form with no such
+  section reads and fingerprints as before (both reviews measured it on every stand-in variant
+  before D165), and one with such a section was the work history checkpoint before, so no
+  approval of it exists.
+- **The stand-in** (FIXTURE ASSUMPTION FA10, `fixtures/ats_receiver/workday_like.py`): My
+  Experience may carry Languages, Websites and Skills sections, the Work Experience section's way
+  (a `data-wd-section` marker, a heading naming it, no entry at load, one "Add" button appending
+  an entry from a template outside the form; an entry's controls named `lang[i]`, `web[i]` or
+  `skill[i]`). The page's own checks refuse an entry's value missing, and a Languages section the
+  page requires (`aria-required` and an asterisk) refuses a page without a language. Variants:
+  `other_sections`, `other_sections_required`, `other_sections_entry_at_load`,
+  `other_sections_parse`, `other_sections_required_late`, `other_sections_and_experience`,
+  `other_sections_and_education` and `other_sections_hidden_parse` (the wizard), and
+  `wd_other_sections` and `wd_other_sections_parse` (the single page). No real Workday page was
+  observed.
+- **Decided:**
+  - **Capture** (`preparation/workday.py`: `OTHER_SECTIONS`, `OTHER_ENTRY`, `_other_sections`,
+    `_empty_as_built`, `extract_schema`): such a section is its own, never the work history
+    checkpoint (`_work_section` leaves it and its markers alone; a work section nested in one, or
+    holding one, is both checkpoints). It is left empty (an optional field on its page, key
+    `<kind>_section`, type unsupported, widget `left_empty_section`: `forms.WIDGETS`, never
+    required) only when, read as the browser reads it: it is the one section of its kind, within
+    no other section, shown and enabled at load, on a wizard page before the review page (none
+    on a single page); it is exactly the stand-in's empty one (review): a `div` carrying only its
+    own attributes (no required mark, name, title or description of its own), named by the
+    heading inside it whose text is exactly its name ("Languages"), holding that heading, an
+    empty entries list and one plain "Add" button and nothing else, with no attribute written
+    twice; nothing around it is marked required (`required`, `aria-required`, `data-required`);
+    and (review) nothing in the form, hidden or given to it from outside its markup, is named as
+    one of that kind's entries or under the field's key. Such a control is never a question of
+    its own (`_entry_control`), and it makes that kind a checkpoint even where the page shows no
+    such section. Anything else is that kind's own required checkpoint (`OTHER_REASON`): apply on
+    the employer's site. A section of any other kind is still the work history checkpoint.
+  - **The resolver** (`resolver._left_empty_section`): `blank_optional`: nothing asked, read from
+    your profile or entered there; the explanation says the section is left empty because
+    NoEfforts does not fill it and the page does not mark it required, that the form is read
+    again before anything is entered, before each page is sent and before submitting, and to
+    apply on the employer's site to include it. An answer for it is refused (400).
+  - **At run time, no new code:** what the page shows, names or marks there after approval is
+    read again with the rest of the form (D132: the live form compared with the approved one)
+    before anything is entered, before each wizard page's Next and before the final click: the
+    section is then that kind's checkpoint, no longer the field approved. Before anything is
+    entered, D132's pause; on a wizard page already being filled, the attempt stops with that
+    page never sent; on the single page, before the final click. A hidden value a parsed resume
+    keeps outside the section is seen only by D165's rule on names (no question shows a hidden
+    field, and D160's reads of what the form sends leave hidden fields alone).
+  - **The package** (unchanged code): each section a row like any other answer (status
+    `blank_optional`, the widget, its page: on the single page its section's, as for the page's
+    other questions), shown on the review page with its explanation; nothing to settle, so
+    approval is not held, and D113's standing rule may apply to such a package as to one with any
+    optional question left blank (D130, D136). The route counts no checkpoint for it.
+- **What an approved run now does differently:** none: a page with such a section had the work
+  history checkpoint, so no such package was ever approved. A Workday-style page with an optional
+  Languages, Websites or Skills section is now applied to with that section left empty (on the
+  stand-ins).
+- **Reviews:** two independent reviews of the first version (9c02d0d).
+  - **Both found (the second a blocker):** an entry's value kept outside the section reached the
+    employer while the package said the section was left empty: a hidden field the page holds at
+    load and one a parsed resume fills after approval (measured by the second: confirmed, the
+    ledger's page-2 draft and acceptance holding it), or a visible control named as an entry, read
+    as an ordinary question you could answer (measured by the first). D149 and D163 refuse such
+    controls anywhere in the form; D165 did not. Fixed: the rule on names above; a hidden value
+    the parse keeps now stops the attempt before its page is sent, or before the final click.
+  - **Both found:** required marks the rule did not read: a heading outside the section naming
+    it, "(required)", other asterisks, `required`, `data-required`, `aria-label` or `title` on it,
+    `aria-required` on its heading or a wrapper (measured by both: approved, then the employer's
+    page refused page 2's Next after pages 1 and 2 were sent). Fixed: the exact empty shape and
+    nothing marked required around it.
+  - **The first found:** a control a script puts inside a raw-text element in the section
+    (`script`, `xmp`), which the page reader reads as text; a custom-element section and an
+    attribute written twice, each an approvable package that every run would stop. Fixed by the
+    exact shape (no such element in the section, no attribute written twice).
+  - **Both noted:** no run-time test exercised D165's own rule (an entry's controls showed up as
+    new questions); no test with Education beside these sections, nor on the single page at run
+    time; the single page's rows had no page; the explanation promised more than the checks did.
+    Each fixed (the explanation now says what is read again), with its test.
+  - **The removal runs** (each part changed in turn): on daa72b2, exit 1 for each of the 34: each fails the tests named for its part (92 failures among the 1,245 tests run). The first run, of 35 on 46b2e4f, found two that no test reached alone: one section of a kind (its case copied the heading's id, which another rule caught first: the copy now has a heading of its own, marked required) and the check on the field's key (redundant with the rule on names, since a question's key is its control's name or `aria:` and an id: removed); daa72b2 holds both. Each file restored, the tree clean after
+- **Not built:**
+  - Filling any of them: your websites (the profile's links), your skills (a real Workday's
+    Skills is a search prompt) and your languages (the profile holds none).
+  - A required mark only a style sheet or the page's own script shows (a CSS asterisk, a check
+    on submit), or text outside the section: the section is left empty, and the page's own
+    checks refuse its Next (its draft written first) or the final click.
+  - A value the page keeps in a hidden field under another name, or one a script hides inside
+    an element the page reader reads as text elsewhere in the form: D160's limit for every form.
+  - A change between the last read and a Next or the final click, as for every field (D159,
+    D160).
+  - A section outside the form that the page requires (as D149): nothing records it.
+  - **Never seen on a real page.**
