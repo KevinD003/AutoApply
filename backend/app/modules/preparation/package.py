@@ -356,9 +356,18 @@ def resolve_answers(fields: list, ctx: Context) -> list[tuple]:
 
 def _approved_records(db: Session, user_id, kind: str) -> list:
     """The owner's approved education or employment facts, newest first (a stable order gives a
-    stable row order and package hash)."""
-    from app.modules.profiles.models import Approval, EducationRecord, EmploymentRecord
+    stable row order and package hash). D166: for a websites section, the owner's profile once
+    approved, which holds the links (`structured_sections.resolve_website_rows`)."""
+    from app.modules.profiles.models import (
+        Approval,
+        CandidateProfile,
+        EducationRecord,
+        EmploymentRecord,
+    )
 
+    if kind == "websites":  # its links only once approved: `resolve_section` reads approval
+        prof = db.scalar(select(CandidateProfile).where(CandidateProfile.user_id == user_id))
+        return [prof] if prof is not None else []
     model = EducationRecord if kind == "education" else EmploymentRecord
     return list(
         db.scalars(
@@ -446,6 +455,11 @@ SECTION_REQUIRED = {
         "The employer's form requires at least one education entry, and your profile has no "
         "approved education. Add it to your profile and approve it, or apply on the employer's "
         "site."
+    ),
+    # D166: a Websites section the page requires, and no link in your approved profile.
+    "websites": (
+        "The employer's form requires at least one website, and your approved profile has no "
+        "links. Add a link to your profile, or apply on the employer's site."
     ),
 }
 
@@ -762,8 +776,9 @@ def _waits_for_you(content: dict, kind: str) -> bool:
 
 def _diff_sections(old: dict, new: dict) -> list[dict]:
     """D140: what changed in each structured section (D120), by row (an education or employment
-    record) and field, in the values the review page shows. A row is added, removed or changed;
-    `reordered` says the rows kept their values but not their order. A section that became a
+    record; D166, a link of your profile) and field, in the values the review page shows. A row
+    is added, removed or changed; `reordered` says the rows kept their values but not their
+    order. A section that became a
     checkpoint (`status` "needs_you": nothing of it is sent until you resolve it) or stopped
     being one ("resolved") is said as such, never as its records removed or added. Versions
     without sections (every package before D120's stand-in) diff to nothing here."""
@@ -806,7 +821,7 @@ def _diff_sections(old: dict, new: dict) -> list[dict]:
             out.append({"kind": kind, "status": "changed", "rows": rows, "reordered": reordered})
     for kind in sorted(
         k
-        for k in {"education", "employment"} - before.keys() - after.keys()
+        for k in {"education", "employment", "websites"} - before.keys() - after.keys()
         if _waits_for_you(old, k) != _waits_for_you(new, k)
     ):  # a checkpoint in one version only, frozen in neither: still not "nothing changed"
         status = "needs_you" if _waits_for_you(new, kind) else "resolved"
@@ -951,7 +966,8 @@ def retire_after_section_record(db: Session, user_id: uuid.UUID, kind: str) -> i
     """D140: after the owner adds, edits, approves or deletes an education or employment record,
     rebuild each package that sends those records as a section of that kind (D120). A draft or a
     generated document grounded on them is rebuilt when the package is next read, as before, and
-    the gates refuse a stale approval of it meanwhile."""
+    the gates refuse a stale approval of it meanwhile. D166: after a change to the profile, each
+    package that sends a websites section (its links)."""
     return retire_stale_approvals(
         db, user_id, lambda c: any(x.get("kind") == kind for x in c.get("sections") or [])
     )

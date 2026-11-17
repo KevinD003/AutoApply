@@ -8531,3 +8531,125 @@ audit-inventory and export-completeness guards are updated and pass.
     D160).
   - A section outside the form that the page requires (as D149): nothing records it.
   - **Never seen on a real page.**
+
+## D166 — A Workday-style Websites section is filled from your profile's links (2026-11-17)
+
+- **Context:** rank 33 of the automation loop (`docs/automation-loop.md`), the first candidate
+  named after D165: filling your websites from your profile's links on Workday. D165 left the
+  Workday-style stand-in's Websites section empty when the page does not mark it required, so
+  your websites never reached an employer through it, and one the page requires was a
+  checkpoint. A real Workday's My Experience page has a Websites section whose entries are web
+  addresses (docs/research/workday.md, the specification's `websites[0]`, type url, repeating);
+  NoEfforts' profile holds your links (Profile, "Links": one per line, portfolio, LinkedIn).
+  Local stand-ins only; nothing real was run. No migration, no new state, reason code, gate,
+  permission or retry.
+- **The stand-in** (FIXTURE ASSUMPTION FA11, `fixtures/ats_receiver/workday_like.py`): FA10's
+  Websites section, an entry's one control `web[i].url` a web address box (`type="url"`); the
+  page's own checks also refuse a value that does not start with http:// or https:// (in lower
+  case), and a Websites section the page requires (`aria-required`, and an asterisk in its
+  heading) refuses a page without a website. Variants: `websites_required`,
+  `websites_entry_at_load`, `websites_parse`, `websites_hidden_after_typing` (once a website is
+  typed the page keeps a value of its own in a hidden field outside the section) and
+  `websites_added_after_typing` (it adds an entry holding a value of its own), each with FA10's
+  three sections, and `websites` (the Websites section alone), on the wizard; the single page's
+  `wd_other_sections` and `wd_websites_hidden_after_typing`. No real Workday Websites section was
+  observed.
+- **Decided:**
+  - **Capture** (`preparation/workday.py`: `_websites_section`, `_website_entry`,
+    `extract_schema`): the Websites section is read as a websites section
+    (`SectionSpec(kind="websites")`, its page and whether the page requires an entry), no longer
+    a field left empty, only where it is built exactly as the stand-in builds it: D165's rule for
+    a section left empty, made for one NoEfforts fills. One section, within no other, shown and
+    enabled at load, within nothing marked required; a `div` carrying only its own attributes,
+    named by the heading inside it, holding that heading, its entries list and one plain button
+    ("Add", or "Add Another" once it holds an entry); its own mark of a required section read
+    (`aria-required="true"` on it, and "Websites *" as its heading), any other mark (`required`,
+    `data-required`, `aria-required` of another value, on its heading or around it, an asterisk
+    without the mark, "(required)") making it a checkpoint; (review) rendered and not inert
+    (within no template or noscript, nothing between it and the document `inert`), and named by
+    a heading with an id; the entries it holds exactly as its template, outside the form and
+    within no noscript, builds them (`_website_entry`: empty, numbered from 0, no limit or other
+    attribute); nothing in the form named as one of its entries but theirs, or under its key
+    (`websites_section`), as the browser reads a name written twice. Anything else is
+    its own required checkpoint (`WEBSITES_KEY`, D165's key for it): apply on the employer's
+    site. Its entries' controls are never questions (`_entry_control`).
+  - **What each entry is given** (`structured_sections.web_address`, `resolve_website_rows`):
+    one row per link of your approved profile, in its order: the link as you wrote it, without
+    the ASCII spaces around it (any other space there makes it no web address), with "https://"
+    before it when it names no scheme (as C10 reads a link, D58) and (review) its http or https
+    in lower case, as a page's own check may read it ("Https://" is how a phone writes it); then
+    only a web address: a host named by DNS labels, a port no higher than 65,535, then only
+    characters a web address writes as they are (RFC 3986's), read in ASCII, at most 2,000
+    characters. A link that is not one is a checkpoint naming it: fix it in your profile. The
+    same address twice (its host in any case) is one row; a blank link none. A row is named by a digest of
+    its address, so a link added or removed changes only its own row (D140's diff). Every link
+    is sent, LinkedIn's included: your links are what you list to share.
+  - **The package** (`package.py`): a websites section is frozen as the other sections are
+    (`sections`, its `step`), each row one field, `url`; a section the page requires with no
+    link blocks approval (`SECTION_REQUIRED`); one it does not require is frozen with no rows,
+    nothing entered. Greenhouse never plans one (`greenhouse_sections`: its content is read, its
+    form has none), and (review) frozen content holds a row only as resolution writes it (its
+    one field resolved, its value the address shown, a web address as written). `SCHEMA_VERSION`
+    stays 3: no package built before D166 changes. A form captured under D165 keeps its field
+    left empty until it is read again (its package unchanged); a run of an approval made then
+    stops before anything is entered, the form read again no longer the one approved (D132's
+    pause), and the form read again gives the section, approved anew.
+  - **The review page** shows the section's rows (Websites, Web address) beside your education
+    and work history, in a card named by what it holds, with a line on how a link is written as
+    a web address (review); the version diff names an entry added or removed, and a section that
+    now waits for you. A change to your profile retires an approval of a package that sends a
+    websites section at once (`profiles/router.py`, D140's rule for a record); another account's
+    change touches none of yours.
+  - **At run time** (`workday_sections`, EntryKind `websites`): each entry added by the
+    section's own button when it is not there yet, its box typed and read back as its form sends
+    it, reported as a disclosure at once (D137); an empty entry already there is filled in
+    place, as is one the page adds after a link is typed (your next link replaces its value);
+    before anything is entered, a page showing more entries than your links, or an entry holding
+    a value (a parsed resume), stops the attempt (`WEBSITES_*`); the readback of its page finds an
+    entry beyond your links, and the form read again before each Next and the final click finds
+    a value kept outside the section (D132): either stops the attempt before its page is sent.
+- **What an approved run now does differently:** a Workday-style page with a Websites section
+  sends your links there (on the stand-ins); before, it left the section empty.
+- **Reviews:** two independent reviews of the first version (97edb45).
+  - **Both found (a blocker for CI):** the package contract recorded a websites row's paths that
+    no package it builds holds (its test failed). Fixed: a stand-in page with the Websites
+    section alone (`websites`) built there.
+  - **Both found:** a link whose scheme is in capitals ("Https://") approved as written and then
+    refused by the page's own check after its data was sent (measured: on the wizard, pages 1 and
+    2 sent and the application ended; on the single page, a refused submission); and a port above
+    65,535, which the browser's box refuses. Fixed: the scheme written in lower case, the port
+    held to 65,535, with their tests (one through the ledger).
+  - **The first found:** capture reading a section never rendered (inside a template or noscript
+    in the form) or under an `inert` element (measured: page 1 sent, then the Add could not be
+    clicked) and one named by an empty id; frozen content holding what resolution never writes
+    (an omitted url, a shown value other than the one sent, a scheme in capitals); no test
+    changing the page after a link is typed; only ASCII spaces dropped around a link was not
+    true (Python's `strip` dropped others), and duplicates compared by exact text. Each fixed,
+    with its test; the after-typing variants above.
+  - **The second found:** the review page never said a link is written as a web address (a line
+    added); no cross-tenant test for the new reads (added: another account's links reach none of
+    your packages, and your package is a 404 to it); the card named "Education, work history and
+    websites" on a page with Websites alone (named by what it holds); two test names that claimed
+    more than they tested (renamed); a comment saying a D165 package is rebuilt (corrected: it
+    pauses, above).
+  - **Both noted, kept:** an empty entry already on the page with fewer links than entries is
+    approvable and every run stops before anything is entered (D149's rule for an entry it never
+    removes).
+  - **The removal runs** (each part changed in turn): on 25fc68c, exit 1 for each of the 76: each fails the tests named for its part (134 failures among the 4,375 tests run). The first run, of 77 on 76b9a52, found two no test reached alone: the check that every entry already in the section is as its template builds it (a case added: an entry with no box under "Add Another"), and the check that the template is outside the form, which was redundant (its own box is named as an entry, which is refused: removed); two of its misses were expectations of mine (a second template is also refused by its id read once; pytest names a no-break space \xa0)
+- **Not built:**
+  - Choosing which links to send for one application, or leaving the section empty while your
+    profile holds links: every link of your approved profile is sent.
+  - A Websites entry whose page limits its length (`maxlength`, `minlength`, `pattern`): a
+    checkpoint.
+  - A required mark only a style sheet or the page's script shows: with no link, nothing is
+    entered and the page's own checks refuse its Next (its draft written first) or the final
+    click.
+  - A link the browser would take that the rule refuses (an international domain written in
+    Unicode, a trailing dot, a host without a dot): a checkpoint, never typed.
+  - An empty entry already on the page with fewer links than entries: approvable, and every run
+    stops before anything is entered (NoEfforts never removes an entry, D149).
+  - D149's and D163's readers do not refuse a section never rendered or under an `inert`
+    element, as D166's does: a run stops when it cannot enter it (on the stand-ins, measured
+    only for Websites).
+  - A Social Network URLs section (LinkedIn, Facebook, Twitter fields): never read.
+  - **Never seen on a real page.**

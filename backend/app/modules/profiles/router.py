@@ -40,9 +40,18 @@ def put_profile(
     prof = db.scalar(select(CandidateProfile).where(CandidateProfile.user_id == user.id))
     if prof is None:
         prof = CandidateProfile(user_id=user.id)
-    if apply_fact_update(db, prof, body.model_dump(), entity_type="profile"):
+    changed = apply_fact_update(db, prof, body.model_dump(), entity_type="profile")
+    if changed:
         record(db, user.id, "profile.update", "profile", prof.id, version=prof.version)
     db.commit()
+    if changed:
+        # D166: your profile's links are what a websites section (D120) sends; an approval of the
+        # old ones is retired now, as D140 does after a record's change, not only at the next read
+        # or a gate.
+        from app.modules.preparation import package as pk
+
+        pk.retire_after_section_record(db, user.id, "websites")
+        db.refresh(prof)
     return prof
 
 

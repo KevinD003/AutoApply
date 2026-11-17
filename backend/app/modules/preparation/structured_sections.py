@@ -30,8 +30,13 @@ Deliberately OUT OF SCOPE here (the isolated remaining gaps, not guessed):
     stand-ins only, and a real destination refuses a section package before anything is entered.
     `SCHEMA_VERSION` is unchanged (an ordinary form has no `sections` key); D140 shows the frozen
     rows on the review page and in the version diff.
+
+D166: a websites section (the Workday-style stand-in's Websites, FIXTURE ASSUMPTION FA11), whose
+rows are your approved profile's links, one each (`resolve_website_rows`): each the web address
+a Websites entry's box is given, or a checkpoint for a link that is not one.
 """
 
+import hashlib
 import re
 from collections import Counter
 from dataclasses import dataclass, field
@@ -123,13 +128,13 @@ class FieldResult:
 @dataclass
 class RowResult:
     record_id: str
-    record_type: str  # "education" | "employment"
+    record_type: str  # "education" | "employment" | (D166) "websites"
     fields: dict  # field name -> FieldResult
 
 
 @dataclass
 class SectionResult:
-    kind: str  # "education" | "employment"
+    kind: str  # "education" | "employment" | (D166) "websites"
     rows: list  # list[RowResult]
     supported: bool = True
     reason: str = ""  # when not supported
@@ -523,9 +528,90 @@ def resolve_employment_row(record, parts=(), required_parts=(), limits=None) -> 
     return RowResult(str(record.id), "employment", _within(fields, limits or {}))
 
 
+# -- D166: websites, from your profile's links -------------------------------------------------
+
+# What a Websites entry's box is given (FA11: `type="url"`, which the browser holds to an absolute
+# address): http or https, a host named by DNS labels, an optional port, then only characters a
+# web address writes as they are (RFC 3986's, never a space, quote or angle bracket). Read in
+# ASCII only (D161: Unicode case folding would read other letters as these).
+_WEB_ADDRESS = re.compile(
+    r"(?P<scheme>[Hh][Tt][Tt][Pp][Ss]?)://"
+    r"(?P<host>(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+    r"[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)"
+    r"(?::(?P<port>[0-9]{1,5}))?"
+    r"(?:[/?#][A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?",
+    re.ASCII,
+)
+MAX_WEB_ADDRESS = 2000  # characters: longer is never a web address NoEfforts types
+MAX_PORT = 65535  # D166 review: a box holding a higher one is refused by the browser
+_ASCII_SPACES = "\t\n\f\r "  # the spaces a web address box drops around its value
+WEBSITE_UNUSABLE = (
+    "A link in your profile is not a web address NoEfforts enters in a Websites entry "
+    "(http:// or https://, then a site such as example.com, with no space): “{link}”. Fix it in "
+    "your profile, or apply on the employer's site."
+)
+
+
+def web_address(link: str) -> str | None:
+    """D166: the web address a Websites entry is given for a link of your profile, or None: the
+    link as you wrote it, without the ASCII spaces around it (any other character there makes it
+    no web address), with "https://" before it when it names no scheme (as C10 reads a link,
+    D58), and (review) its scheme in lower case, as a page's own check may read it ("Https" is
+    how a phone writes it); then exactly a web address (`_WEB_ADDRESS`, a port no higher than
+    `MAX_PORT`), no longer than `MAX_WEB_ADDRESS`. Nothing else is changed or guessed."""
+    text = link.strip(_ASCII_SPACES)
+    address = text if "://" in text else "https://" + text
+    m = _WEB_ADDRESS.fullmatch(address)
+    if m is None or len(address) > MAX_WEB_ADDRESS:
+        return None
+    if m["port"] is not None and int(m["port"]) > MAX_PORT:
+        return None
+    return m["scheme"].lower() + address[m.end("scheme") :]
+
+
+def _same_address(address: str) -> str:
+    """D166 review: what makes two web addresses one (its host is read in any case)."""
+    m = _WEB_ADDRESS.fullmatch(address)
+    return address[: m.start("host")] + m["host"].lower() + address[m.end("host") :]
+
+
+def resolve_website_rows(profile) -> list[RowResult]:
+    """D166: one row per link of your approved profile, in its order, each one field, `url`: the
+    web address its entry is given (`web_address`), or a checkpoint (`needs_user`) for a link that
+    is not one, fixed in your profile. A link that is only spaces is none; the same address twice
+    (its host in any case) is one row, the first. A row's identity is a digest of its address (of
+    the link as written, for one that is not an address), so a link added or removed changes only
+    its own row."""
+    rows: list[RowResult] = []
+    seen: set[str] = set()
+    for link in list(profile.links or []):
+        text = link.strip(_ASCII_SPACES) if isinstance(link, str) else ""
+        if not text:
+            continue
+        address = web_address(text)
+        key = _same_address(address) if address is not None else text
+        if key in seen:
+            continue
+        seen.add(key)
+        ref = [_ref(profile, "profile", "links", link)]
+        if address is None:
+            fr = FieldResult("url", "needs_user", source="unresolved", fact_refs=ref,
+                             explanation=WEBSITE_UNUSABLE.format(link=text[:200]))  # fmt: skip
+        else:
+            added = ("" if address == text
+                     else " (with https:// before it, as a web address has)" if "://" not in text
+                     else " (with http or https in lower case)")  # fmt: skip
+            fr = FieldResult("url", "resolved", value={"text": address}, display=address,
+                             source="profile_fact", fact_refs=ref,
+                             explanation=f"From your profile's links{added}.")  # fmt: skip
+        digest = hashlib.sha256(key.encode()).hexdigest()[:16]
+        rows.append(RowResult(f"link-{digest}", "websites", {"url": fr}))
+    return rows
+
+
 # -- section reconciliation ------------------------------------------------------------------
 
-SUPPORTED_KINDS = ("education", "employment")
+SUPPORTED_KINDS = ("education", "employment", "websites")
 
 
 def resolve_section(
@@ -550,6 +636,8 @@ def resolve_section(
             kind, [], supported=False, reason="The section's entries ask something unknown."
         )
     approved = [r for r in records if _approved(r)]
+    if kind == "websites":  # D166: your approved profile's links
+        return SectionResult(kind, [row for p in approved for row in resolve_website_rows(p)])
     if kind == "education":
         if options is None:
             return SectionResult(

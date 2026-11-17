@@ -134,6 +134,11 @@ tenant:
        (`aria-required`, and an asterisk in its heading) refuses a page without a language.
        NoEfforts fills none of them. No real Workday page was observed (docs/research/workday.md:
        Languages and Skills are not filled by resume parsing; Skills is a search prompt there).
+  FA11 (D166) NoEfforts fills FA10's Websites section from your profile's links: an entry's one
+       control, web[i].url, is a web address box (`type="url"`), and the page's own checks also
+       refuse a value that does not start with http:// or https:// (as a real page's validation
+       might). A Websites section the page requires (`aria-required`, and an asterisk in its
+       heading) refuses a page without a website. No real Workday Websites section was observed.
 cfg["wizard"] values: plain; drift (a required q.weekends on page 4 at load); already_applied
 (shown at open instead of the form); step_error (the page-2 draft is answered 422 with errors);
 step_timeout (the page-2 draft reply waits cfg["delay_s"]); late_question (the page-2 reply
@@ -168,7 +173,14 @@ other_sections_parse (a resume upload adds a Skills entry with a value of its ow
 other_sections_required_late (the page requires a language once the resume is uploaded),
 other_sections_and_experience (with the Work Experience section, FA7),
 other_sections_and_education (with the Education section, FA9) and other_sections_hidden_parse
-(a resume upload keeps a Skills value in a hidden field of its own, outside the section).
+(a resume upload keeps a Skills value in a hidden field of its own, outside the section). D166,
+FA11: websites_required (the page requires a website at load), websites_entry_at_load (one empty
+Websites entry already there at load) and websites_parse (a resume upload adds a Websites entry
+with a value of its own), each with FA10's three sections; and websites (the Websites section
+alone). D166 review: websites_hidden_after_typing (once a website is typed, the page keeps a value
+of its own in a hidden field outside the section) and websites_added_after_typing (once a website
+is typed, the page adds a Websites entry holding a value of its own), each with FA10's sections;
+the single page's wd_websites_hidden_after_typing likewise.
 The single page's mode wd_experience puts the Work Experience section on its My Experience
 section, wd_education the Education section, and wd_other_sections FA10's three sections
 (wd_other_sections_parse: with other_sections_hidden_parse's upload).
@@ -631,18 +643,42 @@ def _edu_errors(fields: dict, required: bool) -> list[str]:
 OTHER_VARIANTS = ("other_sections", "other_sections_required", "other_sections_entry_at_load",
                   "other_sections_parse", "other_sections_required_late",
                   "other_sections_and_experience", "other_sections_hidden_parse",
-                  "other_sections_and_education")  # fmt: skip
+                  "other_sections_and_education",
+                  "websites_required", "websites_entry_at_load", "websites_parse",
+                  "websites", "websites_hidden_after_typing",
+                  "websites_added_after_typing")  # fmt: skip
 # The single page's modes with the three sections (wd_other_sections_parse: the resume parse
 # adds a hidden Skills value outside the section, as other_sections_hidden_parse does).
-OTHER_MODES = ("wd_other_sections", "wd_other_sections_parse")
+OTHER_MODES = ("wd_other_sections", "wd_other_sections_parse", "wd_websites_hidden_after_typing")
 # kind -> (its heading, the prefix of its entries' control names)
 OTHER_KINDS = {"languages": ("Languages", "lang"), "websites": ("Websites", "web"),
                "skills": ("Skills", "skill")}  # fmt: skip
 _OTHER_NAME = re.compile(r"(lang|web|skill)\[(\d+)\]\.[a-z_]+")
-# The variants whose page requires a Languages entry (at load, or once the resume is uploaded).
-OTHER_REQUIRED = ("other_sections_required", "other_sections_required_late")
+# The variants whose page requires an entry of a kind (at load, or once the resume is uploaded).
+OTHER_REQUIRED = {"other_sections_required": "languages", "other_sections_required_late": "languages",
+                  "websites_required": "websites"}  # fmt: skip
+# The variants whose page shows an empty entry of a kind at load.
+OTHER_AT_LOAD = {"other_sections_entry_at_load": "languages", "websites_entry_at_load": "websites"}
 # What the resume parse puts in the Skills entry it adds (other_sections_parse; fixture design).
 PARSED_SKILL = {"name": "Wound care (fictional)"}
+# D166, FA11: what the resume parse puts in the Websites entry it adds (websites_parse).
+PARSED_WEBSITE = {"url": "https://parsed.example/portfolio"}
+# D166 review: what the page keeps or adds once a website is typed (the *_after_typing variants).
+UNAPPROVED_WEBSITE = "https://unapproved.example/"
+_AFTER_TYPING = """
+document.addEventListener('change', (e) => {
+  if (window.webTyped || !/^web\\[\\d+\\]\\.url$/.test(e.target.name || '')) return;
+  window.webTyped = true;
+  if ('%MODE%' === 'hidden') {
+    const h = document.createElement('input');
+    h.type = 'hidden'; h.name = 'web[7].url'; h.value = '%VALUE%';
+    e.target.form.append(h);
+  } else {
+    const i = window.addOtherEntry('websites');
+    document.querySelector(`[name="web[${i}].url"]`).value = '%VALUE%';
+  }
+});"""
+_WEB_VALUE = re.compile(r"https?://\S+")
 
 
 def _other_entry(kind: str, i: str, n: str) -> str:
@@ -673,11 +709,13 @@ def _other_sections(variant: str | None) -> tuple[str, str, str]:
         return "", "", ""
     markup, templates = [], []
     for kind, (heading, _) in OTHER_KINDS.items():
-        languages = kind == "languages"
-        required = (' aria-required="true"'
-                    if languages and variant == "other_sections_required" else "")  # fmt: skip
-        at_load = (_other_entry(kind, "0", "1")
-                   if languages and variant == "other_sections_entry_at_load" else "")  # fmt: skip
+        if variant == "websites" and kind != "websites":
+            continue  # D166, FA11: the Websites section alone
+        # at load: the one the variant requires (never once the resume is in, `_late`), and the
+        # one it shows an empty entry of (D166: Websites too)
+        late = variant == "other_sections_required_late"
+        required = ' aria-required="true"' if OTHER_REQUIRED.get(variant) == kind and not late else ""
+        at_load = _other_entry(kind, "0", "1") if OTHER_AT_LOAD.get(variant) == kind else ""
         markup.append(f'<div id="{kind}" role="group" aria-labelledby="{kind}-label" '
                       f'data-wd-section="{kind}" data-wd-entry-template="{kind}-entry"{required}>'
                       f'<h3 id="{kind}-label">{heading}{" *" if required else ""}</h3>'
@@ -704,19 +742,29 @@ window.requireOtherSection = (kind) => {
   document.getElementById(kind + '-label').textContent += ' *';
 };
 for (const kind of Object.keys(otherPrefix)) {
-  document.getElementById(kind).querySelector('[data-wd-add]')
-    .addEventListener('click', () => window.addOtherEntry(kind));
+  const sec = document.getElementById(kind);  // FA11: one variant has Websites alone
+  if (sec) sec.querySelector('[data-wd-add]').addEventListener('click', () => window.addOtherEntry(kind));
 }"""
+    after = {"websites_hidden_after_typing": "hidden", "websites_added_after_typing": "added"}
+    if variant in after:  # D166 review: the page changes once a website is typed
+        script += _AFTER_TYPING.replace("%MODE%", after[variant]).replace(
+            "%VALUE%", UNAPPROVED_WEBSITE)
     return "".join(markup), "".join(templates), script
 
 
-def _other_errors(fields: dict, required: bool) -> list[str]:
-    """FA10: what the page's own checks refuse in the sections NoEfforts does not fill: a
-    Languages section the page requires without an entry, or an entry's value missing."""
+def _other_errors(fields: dict, required: str | None) -> list[str]:
+    """FA10: what the page's own checks refuse in its Languages, Websites and Skills sections: a
+    section the page requires (`required`, its kind) without an entry, or an entry's value
+    missing; FA11: a website that does not start with http:// or https://."""
     kinds = {m[1] for k in fields if (m := _OTHER_NAME.fullmatch(k))}
-    errors = ["Add a language"] if required and "lang" not in kinds else []
-    return errors + [f"Enter {k}" for k, v in fields.items()
-                     if _OTHER_NAME.fullmatch(k) and not v]  # fmt: skip
+    errors = []
+    if required is not None and OTHER_KINDS[required][1] not in kinds:
+        errors.append({"languages": "Add a language", "websites": "Add a website",
+                       "skills": "Add a skill"}[required])  # fmt: skip
+    errors += [f"Enter {k}" for k, v in fields.items() if _OTHER_NAME.fullmatch(k) and not v]
+    return errors + [f"Enter a web address for {k}" for k, v in fields.items()
+                     if (m := _OTHER_NAME.fullmatch(k)) and m[1] == "web" and v
+                     and not _WEB_VALUE.fullmatch(v)]  # fmt: skip
 
 
 def _follow_up_required(shape: tuple[bool, bool, bool] | None, fields: dict) -> bool:
@@ -837,7 +885,8 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
     edu, edu_template, edu_js = _edu_section(  # D163, FA9
         "education" if mode == "wd_education" else None)
     other, other_template, other_js = _other_sections(  # D165, FA10
-        "other_sections" if mode in OTHER_MODES else None)
+        None if mode not in OTHER_MODES else "websites_hidden_after_typing"
+        if mode == "wd_websites_hidden_after_typing" else "other_sections")  # fmt: skip
     phone_check, check_js = _page_check(cfg)  # D154, FA8
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
@@ -1213,6 +1262,8 @@ def mount(app, ledger, cfg, accept) -> None:
             out["edu_entries"] = [PARSED_EDUCATION]  # D163, FA9 (fixture design)
         if cfg.get("wizard") == "other_sections_parse" and field == "resume":
             out["other_entries"] = {"skills": [PARSED_SKILL]}  # D165, FA10 (fixture design)
+        if cfg.get("wizard") == "websites_parse" and field == "resume":
+            out["other_entries"] = {"websites": [PARSED_WEBSITE]}  # D166, FA11 (fixture design)
         if cfg.get("wizard") == "other_sections_required_late" and field == "resume":
             out["require_section"] = "languages"  # D165, FA10: required once the resume is in
         if field == "resume" and (cfg.get("wizard") == "other_sections_hidden_parse"
@@ -1263,7 +1314,7 @@ def mount(app, ledger, cfg, accept) -> None:
             if errors:
                 return JSONResponse({"errors": errors}, status_code=422)
         if variant in OTHER_VARIANTS and page == 2:  # D165, FA10
-            errors = _other_errors(fields, variant in OTHER_REQUIRED)
+            errors = _other_errors(fields, OTHER_REQUIRED.get(variant))
             if errors:
                 return JSONResponse({"errors": errors}, status_code=422)
         if variant == "step_error" and page == 2:
@@ -1328,7 +1379,7 @@ def mount(app, ledger, cfg, accept) -> None:
         if mode == "wd_education" or wizard in EDU_VARIANTS:  # D163, FA9
             missing += _edu_errors(fields, wizard == "education_required")
         if mode in OTHER_MODES or wizard in OTHER_VARIANTS:  # D165, FA10
-            missing += _other_errors(fields, wizard in OTHER_REQUIRED)
+            missing += _other_errors(fields, OTHER_REQUIRED.get(wizard))
         if wizard:  # D142, FA4: every page before Review was saved under this form token
             saved = {d["page"] for d in drafted_pages(slug, token)}
             missing += [f"page {i}" for i in range(1, len(WIZARD_PAGES)) if i not in saved]

@@ -204,6 +204,17 @@ SHAPES[3] = SHAPES[3] | {
     ".sections[].limits.location",
     ".sections[].limits.title",
 }
+# D166: a websites section (the Workday-style stand-in's Websites) carries your profile's links,
+# one row each, its web address. Present only for a form captured since D166 with such a section,
+# which no package built before D166 has (a form captured under D165 keeps its field left empty
+# until it is read again: a run of such a package stops before anything is entered, the form read
+# again not the one approved, D132), so no other package's content or hash changes: recorded under
+# version 3, deliberately (as D142, D149, D155 and D157).
+SHAPES[3] = SHAPES[3] | {
+    ".sections[].rows[].fields.url.status",
+    ".sections[].rows[].fields.url.display",
+    ".sections[].rows[].fields.url.value.text",
+}
 
 
 @pytest.fixture(scope="module")
@@ -366,6 +377,23 @@ def _contents(api, receiver, monkeypatch) -> list[dict]:
     assert sec["limits"] == {"company_name": 40, "description": 200, "location": 30, "title": 40}
     assert {f["status"] for r in sec["rows"] for f in r["fields"].values()} <= {
         "resolved", "omitted"}, sec["rows"]  # fmt: skip
+    out.append(content)
+    # D166: a wizard whose My Experience page carries the Websites section alone (FA11), frozen
+    # with your profile's link (setup_candidate's) as its one row.
+    receiver.config(wizard="websites")
+    try:
+        posting = {"url": f"{BASE}/workday/examplehealth/R-1660001", "title": "Websites",
+                   "employer": "Example Health"}  # fmt: skip
+        job = api.post("/jobs", json=posting).json()
+        r = api.post(f"/jobs/{job['job']['id']}/form/workday")
+        assert r.status_code == 201, r.text
+    finally:
+        receiver.config(wizard=None)
+    app = api.post("/applications", json={"job_id": job["job"]["id"]}).json()
+    content = api.get(f"/applications/{app['id']}/package").json()["package"]["content"]
+    websites = [x for x in content["sections"] if x["kind"] == "websites"]
+    assert [(x["step"], len(x["rows"])) for x in websites] == [("My Experience", 1)], websites
+    assert websites[0]["rows"][0]["fields"]["url"]["status"] == "resolved"
     out.append(content)
     return out
 

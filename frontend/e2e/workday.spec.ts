@@ -20,7 +20,7 @@ async function ledger(request: APIRequestContext, slug: string) {
   };
 }
 
-async function candidate(page: Page, tag: string) {
+async function candidate(page: Page, tag: string, links: string[] = []) {
   const reg = await page.request.post("/api/auth/register", {
     data: { email: `workday.${tag}.${Date.now()}@example.com`, password: "synthetic-password-1" },
   });
@@ -31,7 +31,7 @@ async function candidate(page: Page, tag: string) {
     data: {
       full_name: "Sam Synthetic", given_name: "Sam", family_name: "Synthetic",
       contact_email: "sam.synthetic@example.com", phone: "+1 555 0100",
-      residence_country: "US", residence_city: "Springfield", links: [],
+      residence_country: "US", residence_city: "Springfield", links,
     },
   });
   await page.request.post("/api/profile/work-authorizations", {
@@ -127,8 +127,9 @@ test("an account gate or several pages are checkpoints: nothing is sent", async 
   }
 });
 
-test("a Languages, Websites or Skills section the page does not require is left empty, shown so, and never sent", async ({ page, request }, info) => {
-  // D165 (FIXTURE ASSUMPTION FA10): sections NoEfforts does not fill, on the single page.
+test("a Languages or Skills section the page does not require is left empty, shown so, and never sent", async ({ page, request }, info) => {
+  // D165 (FIXTURE ASSUMPTION FA10): sections NoEfforts does not fill, on the single page. D166: its
+  // Websites section is filled from your profile's links, and this candidate has none.
   const id = req();
   const slug = `workday-examplehealth-${id}`;
   const h = await candidate(page, `${info.project.name}-other`);
@@ -151,9 +152,10 @@ test("a Languages, Websites or Skills section the page does not require is left 
     await page.request.put(`/api/applications/${app.id}/consents`, { headers: h, data: { key: "terms_ack", choice: "agree" } });
 
     await page.goto(`/applications/${app.id}`);
-    for (const name of ["Languages", "Websites", "Skills"]) {
+    for (const name of ["Languages", "Skills"]) {
       await expect(page.getByText(`Left empty: NoEfforts does not fill this form's ${name} section`)).toBeVisible();
     }
+    await expect(page.getByText("Nothing is sent here: your approved profile has no links.")).toBeVisible();
     await page.getByRole("button", { name: /Approve a rehearsal of v\d+/ }).click();
     await page.getByRole("button", { name: "Start rehearsal (nothing is submitted)" }).click();
     await expect(badge(page, "Rehearsal finished: nothing submitted")).toBeVisible({ timeout: 60_000 });
@@ -163,6 +165,53 @@ test("a Languages, Websites or Skills section the page does not require is left 
     const l = await ledger(request, slug);
     expect(l.accepted).toHaveLength(1);
     expect(Object.keys(l.accepted[0].fields).filter((k) => /^(lang|web|skill)\[/.test(k))).toEqual([]);
+  } finally {
+    // The shared receiver goes back to normal even if a check above failed.
+    await request.post(`${RECEIVER}/_admin/config`, { headers: { "X-Admin-Token": RECEIVER_TOKEN }, data: { mode: "normal" } });
+  }
+});
+
+test("your profile's links fill a Websites section, shown on the review page and sent as approved", async ({ page, request }, info) => {
+  // D166 (FIXTURE ASSUMPTION FA11): on the single page, beside FA10's sections left empty.
+  const id = req();
+  const slug = `workday-examplehealth-${id}`;
+  const h = await candidate(page, `${info.project.name}-websites`, ["github.com/sam-synthetic", "https://sam.example/portfolio"]);
+  try {
+    await request.post(`${RECEIVER}/_admin/config`, { headers: { "X-Admin-Token": RECEIVER_TOKEN }, data: { mode: "wd_other_sections" } });
+    const jobId = await workdayJob(page, h, id, "Registered Nurse (websites)");
+    await page.goto(`/jobs/${jobId}`);
+    await page.getByRole("button", { name: "Read Workday-style test form" }).click();
+    await expect(page.getByText("Workday-style application: local test approximation (fictional employer)")).toBeVisible();
+
+    const app = await (await page.request.post("/api/applications", { headers: h, data: { job_id: jobId } })).json();
+    for (const [key, value] of [
+      ["legalName--firstName", { text: "Sam" }],
+      ["q.licence_type", { label: "RN" }],
+      ["q.shift", { label: "Nights" }],
+    ] as const) {
+      expect((await page.request.put(`/api/applications/${app.id}/answers`, { headers: h, data: { key, value } })).ok()).toBeTruthy();
+    }
+    await page.request.put(`/api/applications/${app.id}/consents`, { headers: h, data: { key: "terms_ack", choice: "agree" } });
+
+    await page.goto(`/applications/${app.id}`);
+    // the card is named by what it holds: this page has a Websites section alone (D166 review)
+    const card = page.locator("section", { has: page.getByRole("heading", { name: "Websites", exact: true, level: 2 }) });
+    const websites = card.getByRole("group", { name: "Websites" });
+    // the address each entry is given: written with https:// where the link names no scheme, and
+    // said so where you approve it (D166 review)
+    await expect(websites.getByText(/https:\/\/ before a link that names no scheme/)).toBeVisible();
+    await expect(websites.getByText("https://github.com/sam-synthetic", { exact: true })).toBeVisible();
+    await expect(websites.getByText("https://sam.example/portfolio", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /Approve a rehearsal of v\d+/ }).click();
+    await page.getByRole("button", { name: "Start rehearsal (nothing is submitted)" }).click();
+    await expect(badge(page, "Rehearsal finished: nothing submitted")).toBeVisible({ timeout: 60_000 });
+    await page.getByRole("button", { name: /Approve package v\d+/ }).click();
+    await page.getByRole("button", { name: "Submit approved package" }).click();
+    await expect(badge(page, "Employer receipt received")).toBeVisible({ timeout: 60_000 });
+    const l = await ledger(request, slug);
+    expect(l.accepted).toHaveLength(1);
+    const sent = Object.fromEntries(Object.entries(l.accepted[0].fields).filter(([k]) => /^(lang|web|skill)\[/.test(k)));
+    expect(sent).toEqual({ "web[0].url": "https://github.com/sam-synthetic", "web[1].url": "https://sam.example/portfolio" });
   } finally {
     // The shared receiver goes back to normal even if a check above failed.
     await request.post(`${RECEIVER}/_admin/config`, { headers: { "X-Admin-Token": RECEIVER_TOKEN }, data: { mode: "normal" } });

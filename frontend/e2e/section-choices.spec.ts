@@ -55,7 +55,8 @@ test("you choose the employer's option for a school none matches, and it is sent
   await expect(page.getByText("Chosen for this application.")).toBeVisible();
 
   // The package now sends the option you chose, and nothing is left for you to settle.
-  const sections = page.locator("section", { has: page.getByRole("heading", { name: "Education and work history" }) });
+  // D166 review: the card is named by what it holds (education alone here).
+  const sections = page.locator("section", { has: page.getByRole("heading", { name: "Education", exact: true, level: 2 }) });
   await expect(sections.getByRole("group", { name: "Education" }).getByText("Metro College", { exact: true })).toBeVisible();
   await expect(approve).toBeEnabled();
   const pkg = (await (await page.request.get(`/api/applications/${app.id}/package`)).json()).package;

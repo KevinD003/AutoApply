@@ -30,7 +30,12 @@ from app.modules.execution.adapters import dropdowns
 from app.modules.execution.adapters import fixture_ats as fa
 from app.modules.preparation import gh_readonly as ro
 from app.modules.preparation.forms import ENTRY_PARTS, LIMITED_FIELDS, MAX_LIMIT, sent_len
-from app.modules.preparation.structured_sections import FieldResult, RowResult, SectionResult
+from app.modules.preparation.structured_sections import (
+    FieldResult,
+    RowResult,
+    SectionResult,
+    web_address,
+)
 
 
 class Refused(Exception):
@@ -73,8 +78,12 @@ _ANCHOR = {"education": "school--{i}", "employment": "company-name-{i}"}
 _SPEC = {"education": _EDUCATION_FIELDS, "employment": _EMPLOYMENT_FIELDS}
 
 # The only field names each section kind may carry. Anything else in frozen content is unknown and
-# is refused rather than silently dropped -- we never trust a field we did not freeze.
-_FIELD_NAMES = {kind: frozenset(f[0] for f in spec) for kind, spec in _SPEC.items()}
+# is refused rather than silently dropped -- we never trust a field we did not freeze. D166: a
+# websites section (the Workday-style stand-in's, from your profile's links) carries one, its web
+# address; Greenhouse's form has none, so it is never planned here (`_SPEC`).
+_FIELD_NAMES = {kind: frozenset(f[0] for f in spec) for kind, spec in _SPEC.items()} | {
+    "websites": frozenset({"url"})
+}
 # D155: what an employment entry may ask beyond those five (the Workday-style stand-in's Location
 # and Role Description, `forms.ENTRY_PARTS`). A frozen section carries them only when it names
 # them (`parts`), and Greenhouse's executor refuses any section that does: its form has none.
@@ -218,7 +227,7 @@ def section_to_content(section: SectionResult, *, root: str) -> dict:
     never bind to a section with an unresolved field."""
     if not section.supported:
         raise Refused(section.reason or f"{section.kind} section is not supported")
-    if section.kind not in _SPEC:
+    if section.kind not in _FIELD_NAMES:  # D166: a websites section is frozen too
         raise Refused(f"unsupported section kind {section.kind!r}")
     if not section.ready():
         raise Refused(f"{section.kind} section has unresolved fields; it stays a checkpoint")
@@ -255,7 +264,7 @@ def validate_content_section(data: object) -> None:
     if not isinstance(data, dict):
         raise Refused("section content is not an object")
     kind = data.get("kind")
-    if kind not in _SPEC:
+    if kind not in _FIELD_NAMES:  # D166: a websites section's content is read too
         raise Refused(f"unsupported section kind {kind!r}")
     section_root(data)  # a frozen section always carries its validated #id root
     rows = data.get("rows", [])
@@ -302,6 +311,17 @@ def validate_content_section(data: object) -> None:
                 and (not isinstance(f.get("display"), str) or sent_len(f["display"]) > limits[name])
             ):
                 raise Refused(f"section field {name!r} is longer than its page accepts")
+        if kind == "websites":  # D166 review: never anything resolution does not write
+            url = fields.get("url")
+            text = url.get("display") if isinstance(url, dict) else None
+            if (
+                set(fields) != {"url"}
+                or url.get("status") != "resolved"
+                or url.get("value") != {"text": text}
+                or not isinstance(text, str)
+                or web_address(text) != text
+            ):
+                raise Refused(f"section row {idx} is not a web address resolution wrote")
 
 
 def section_from_content(data: dict) -> SectionResult:
