@@ -16,7 +16,7 @@ observed). Synthetic candidate data only."""
 
 import re
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -27,7 +27,12 @@ from app.modules.execution import runner
 from app.modules.execution.adapters import greenhouse_sections as gs
 from app.modules.execution.adapters import workday as wd_adapter
 from app.modules.execution.adapters import workday_sections as ws
-from app.modules.execution.adapters.fixture_ats import FORM_CHANGED
+from app.modules.execution.adapters.fixture_ats import (
+    CHARSET_REFUSED,
+    FORM_CHANGED,
+    SECTION_KIND_LIMIT_AT_FOCUS,
+    _sent_strings,
+)
 from app.modules.preparation import package as pk
 from app.modules.preparation import structured_sections as ss
 from app.modules.preparation import workday
@@ -40,24 +45,26 @@ from tests.test_workday_adapter import fresh_url, workday_job
 from tests.test_workday_education import BACHELOR, MASTER, education
 from tests.test_workday_education import SENT as EDU_SENT
 from tests.test_workday_experience import CURRENT as WORK_CURRENT
-from tests.test_workday_experience import employment
+from tests.test_workday_experience import employment, experience_application
 from tests.test_workday_other_sections import LANG, fields_of, left_empty, moved_into
 from tests.test_workday_other_sections import stand_in as _stand_in
 from tests.test_workday_wizard import approve, draft_pages, drafts, posts, rows
 
 # Your licences and certifications (synthetic), as the profile holds them.
 RN = {"name": "Registered Nurse licence (fictional board)", "issued_on": "2019-04-15",
-      "expires_on": "2027-04-30"}  # fmt: skip
+      "expires_on": "2099-04-30"}  # fmt: skip
 BLS = {"name": "Basic Life Support (fictional)", "issued_on": "2024-01-10",
-       "expires_on": "2026-01-31"}  # fmt: skip  # expired: sent with its expiration date
+       "expires_on": "2098-01-31"}  # fmt: skip
 FORKLIFT = {"name": "Forklift operator certificate (fictional)"}  # no date at all
-CREDS = (RN, FORKLIFT, BLS)  # added in this order: sent newest issued first, undated last
+EXPIRED = {"name": "Food handler certificate (fictional)", "issued_on": "2021-03-01",
+           "expires_on": "2024-03-01"}  # fmt: skip  # review: never sent (C16/D69's rule)
+CREDS = (RN, FORKLIFT, BLS, EXPIRED)  # added in this order: sent newest issued first, undated last
 NAMES = [BLS["name"], RN["name"], FORKLIFT["name"]]
 SENT = {
     "cert[0].name": BLS["name"], "cert[0].number": "", "cert[0].issued": "01/2024",
-    "cert[0].expires": "01/2026",
+    "cert[0].expires": "01/2098",
     "cert[1].name": RN["name"], "cert[1].number": "", "cert[1].issued": "04/2019",
-    "cert[1].expires": "04/2027",
+    "cert[1].expires": "04/2099",
     "cert[2].name": FORKLIFT["name"], "cert[2].number": "", "cert[2].issued": "",
     "cert[2].expires": "",
 }  # fmt: skip
@@ -572,13 +579,13 @@ def credential(name, issued=None, expires=None, *, approved: bool = True, versio
 
 
 def test_each_licence_or_certification_is_one_row_as_written():
-    rn = credential(RN["name"], date(2019, 4, 15), date(2027, 4, 30))
+    rn = credential(RN["name"], date(2019, 4, 15), date(2099, 4, 30))
     (row,) = ss.resolve_section("certifications", [rn]).rows
     assert (row.record_id, row.record_type) == (str(rn.id), "credential")
     assert {k: (f.status, f.value, f.display) for k, f in row.fields.items()} == {
         "name": ("resolved", {"text": RN["name"]}, RN["name"]),
         "issued_on": ("resolved", {"month": 4, "year": 2019}, "04/2019"),
-        "expires_on": ("resolved", {"month": 4, "year": 2027}, "04/2027"),
+        "expires_on": ("resolved", {"month": 4, "year": 2099}, "04/2099"),
     }
     assert row.fields["name"].fact_refs == [{"type": "credential", "id": str(rn.id), "version": 2,
                                              "field": "name", "value": RN["name"]}]  # fmt: skip
@@ -593,21 +600,50 @@ def test_a_date_the_record_does_not_hold_is_not_sent():
     assert dates[0].explanation == "No issued date on this record: none is sent."
 
 
-def test_an_expired_one_is_sent_with_its_expiration_date():
-    """The entry asks the expiration date: the employer sees it (and you, before you approve)."""
-    (row,) = ss.resolve_section(
-        "certifications", [credential(BLS["name"], date(2024, 1, 10), date(2026, 1, 31))]
-    ).rows
-    assert (row.fields["expires_on"].status, row.fields["expires_on"].display) == (
-        "resolved", "01/2026")  # fmt: skip
+def test_an_expired_one_is_never_a_row():
+    """D167 review: as C16/D69 leaves an expired credential out of drafts and job fit, and as your
+    profile says ("Expired …: not used"): one whose expiration date has passed on the day the
+    package is built is never sent; one expiring that day still is."""
+    day = date(2030, 6, 15)
+    rows_ = ss.resolve_section("certifications", [
+        credential("Yesterday (fictional)", expires=date(2030, 6, 14)),
+        credential("Today (fictional)", expires=date(2030, 6, 15)),
+        credential("No expiry (fictional)")], today=day).rows  # fmt: skip
+    assert [r.fields["name"].display for r in rows_] == [
+        "Today (fictional)",
+        "No expiry (fictional)",
+    ]
+    assert ss.current(credential("A", expires=date(2030, 6, 15)), day)
+    assert not ss.current(credential("A", expires=date(2030, 6, 14)), day)
 
 
-def test_an_issued_date_after_the_expiration_date_is_yours_to_fix():
-    bad = credential("Phlebotomy (fictional)", date(2022, 5, 1), date(2021, 1, 1))
+def test_an_issued_date_after_the_expiration_date_is_yours_to_fix_naming_it():
+    bad = credential("Phlebotomy (fictional)", date(2098, 5, 1), date(2097, 1, 1))
     (row,) = ss.resolve_section("certifications", [bad]).rows
     assert [row.fields[k].status for k in ("name", "issued_on", "expires_on")] == [
         "resolved", "needs_user", "needs_user"]  # fmt: skip
-    assert row.fields["issued_on"].explanation == ss._BAD_CERT_DATES
+    assert row.fields["issued_on"].explanation == (
+        "“Phlebotomy (fictional)”: its issued date (2098-05-01) is after its expiration date "
+        "(2097-01-01); fix it in your profile.")  # fmt: skip
+
+
+def test_a_year_of_fewer_than_four_digits_is_yours_to_fix():
+    """D167 review: a two-digit year typed into the profile's date box is year 19, which a form
+    given MM/YYYY never accepts: resolved, it was approved and then refused at every run. It is
+    yours to fix, naming the date; the shared date field of work history and education too."""
+    (row,) = ss.resolve_section(
+        "certifications", [credential("CPR (fictional)", date(19, 4, 15))]).rows  # fmt: skip
+    assert row.fields["issued_on"].status == "needs_user"
+    assert row.fields["issued_on"].explanation == (
+        "“CPR (fictional)”: its issued date (0019-04-15) has a year of fewer than four digits; "
+        "fix it in your profile.")  # fmt: skip
+    work = SimpleNamespace(id=uuid4(), version=1, employer="Example Health", title="Nurse",
+                           start_date=date(19, 1, 1), end_date=None, is_current=True,
+                           approval_status=Approval.approved)  # fmt: skip
+    started = ss.resolve_employment_row(work).fields["start_date"]
+    assert (started.status, started.explanation) == ("needs_user", (
+        "This record's start date (0019-01-01) has a year of fewer than four digits; fix it in "
+        "your profile."))  # fmt: skip
 
 
 @pytest.mark.parametrize("name", ["Line\nbreak", "Carriage\rreturn", "   "],
@@ -635,7 +671,7 @@ def frozen(*creds) -> dict:
 
 
 def test_a_frozen_certifications_section_is_never_planned_on_greenhouse():
-    f = frozen(credential(RN["name"], date(2019, 4, 15), date(2027, 4, 30)),
+    f = frozen(credential(RN["name"], date(2019, 4, 15), date(2099, 4, 30)),
                credential(FORKLIFT["name"]))  # fmt: skip
     assert gs.section_from_content(f).rows[0].fields["name"].display == RN["name"]
     with pytest.raises(gs.Refused, match="unknown section kind"):
@@ -645,7 +681,7 @@ def test_a_frozen_certifications_section_is_never_planned_on_greenhouse():
     got = [(r.anchor, [(o.field, o.kind, o.value) for o in r.ops], r.blank) for r in plan.rows]
     assert got == [
         (box(0, "name"), [("name", "text", RN["name"]), ("issued_on", "text", "04/2019"),
-                          ("expires_on", "text", "04/2027")], (box(0, "number"),)),
+                          ("expires_on", "text", "04/2099")], (box(0, "number"),)),
         (box(1, "name"), [("name", "text", FORKLIFT["name"])],
          (box(1, "number"), box(1, "issued"), box(1, "expires"))),
     ]  # fmt: skip
@@ -683,8 +719,10 @@ TAMPERED = {
                                                  value={"month": 1, "year": 2020}),
     "an omitted date with a display": lambda s: _f(s, "expires_on", row=1, display="01/2020"),
     "a date needing you": lambda s: _f(s, "issued_on", status="needs_user"),
-    "issued after it expires": lambda s: _f(s, "issued_on", value={"month": 5, "year": 2028},
-                                            display="05/2028"),
+    "issued after it expires": lambda s: _f(s, "issued_on", value={"month": 5, "year": 2100},
+                                            display="05/2100"),
+    "a year of fewer than four digits": lambda s: _f(s, "issued_on", value={"month": 4, "year": 19},
+                                                     display="04/19"),
 }  # fmt: skip
 
 
@@ -694,7 +732,7 @@ def test_frozen_certifications_content_holds_only_what_resolution_writes(tamper)
     parts or limits, a repeated row, a name or date missing, other than shown, not one line, or
     needing you, a date other than a month and year as MM/YYYY, and an issued date after the
     expiration date are refused before anything is entered."""
-    f = frozen(credential(RN["name"], date(2019, 4, 15), date(2027, 4, 30)),
+    f = frozen(credential(RN["name"], date(2019, 4, 15), date(2099, 4, 30)),
                credential(FORKLIFT["name"]))  # fmt: skip
     TAMPERED[tamper](f)
     with pytest.raises(gs.Refused):
@@ -774,7 +812,7 @@ def test_the_package_shows_each_one_as_an_entry_and_needs_nothing_from_you(api, 
     assert "parts" not in sec and "limits" not in sec
     assert [r["fields"]["name"]["display"] for r in sec["rows"]] == NAMES  # newest issued first
     assert [(r["fields"]["issued_on"]["display"], r["fields"]["expires_on"]["display"])
-            for r in sec["rows"]] == [("01/2024", "01/2026"), ("04/2019", "04/2027"),
+            for r in sec["rows"]] == [("01/2024", "01/2098"), ("04/2019", "04/2099"),
                                       (None, None)]  # fmt: skip
     assert "certifications_section" not in {a["key"] for a in c["answers"]}
     assert pk.SCHEMA_VERSION == 3 and paths(c) - SHAPES[3] <= {".answers[].widget", ".wizard"}
@@ -799,7 +837,7 @@ def test_one_the_page_requires_with_none_blocks_approval(api, receiver):
 
 
 def test_an_issued_date_after_its_expiration_blocks_approval_naming_it(api, receiver):
-    bad = {"name": "Phlebotomy (fictional)", "issued_on": "2022-05-01", "expires_on": "2021-01-01"}
+    bad = {"name": "Phlebotomy (fictional)", "issued_on": "2098-05-01", "expires_on": "2097-01-01"}
     app_id = application(api, receiver, approved=False, creds=(RN, bad))
     c = content(api, app_id)
     keys = sorted(e["key"] for e in c["validation_errors"])
@@ -820,12 +858,52 @@ def test_one_not_yet_approved_is_not_sent(api, receiver):
         RN["name"]]  # fmt: skip
 
 
+def test_the_same_issued_date_or_none_is_ordered_by_record(api, receiver):
+    """Review: newest issued first and undated last; among the same date (or none) a fixed order,
+    by record, so every build of the package (and its hash) is the same."""
+    same = [{"name": f"Same day {i} (fictional)", "issued_on": "2020-02-02"} for i in range(3)]
+    undated = [{"name": f"Undated {i} (fictional)"} for i in range(3)]
+    app_id = application(api, receiver, approved=False, creds=(*same, *undated))
+    ids = {c["name"]: uuid.UUID(c["id"]) for c in api.get("/profile/credentials").json()}
+
+    def by_record(group):
+        return sorted((c["name"] for c in group), key=ids.__getitem__)
+
+    assert [r["fields"]["name"]["display"] for r in frozen_certs(content(api, app_id))["rows"]] == (
+        by_record(same) + by_record(undated))  # fmt: skip
+
+
+def test_one_added_or_approved_after_approval_retires_the_approval_at_once(api, receiver):
+    """D140's rule, for a licence or certification after approval: one you add (yours, so
+    approved as you save it) or one proposed (as a resume's parse proposes it) that you approve
+    is in the package at once, and the approval of the old one is retired at once."""
+    app_id = application(api, receiver, creds=(RN,))
+
+    def names():
+        return [r["fields"]["name"]["display"] for r in frozen_certs(content(api, app_id))["rows"]]
+
+    def approved() -> bool:
+        with SessionLocal() as db:
+            return pk.active_approval(db, pk.latest_package(db, uuid.UUID(app_id))) is not None
+
+    r = api.post("/profile/credentials", json=FORKLIFT)
+    assert r.status_code == 201 and r.json()["approval_status"] == "approved", r.text
+    assert not approved() and names() == [RN["name"], FORKLIFT["name"]]
+    with SessionLocal() as db:  # proposed, as a resume's parse proposes one: not sent
+        db.get(Credential, uuid.UUID(r.json()["id"])).approval_status = Approval.proposed
+        db.commit()
+    assert names() == [RN["name"]]
+    assert approve(api, app_id).status_code == 200 and approved()
+    assert api.post(f"/profile/credentials/{r.json()['id']}/approve").status_code == 200
+    assert not approved() and names() == [RN["name"], FORKLIFT["name"]]
+
+
 def test_changing_one_retires_the_approval_at_once_and_says_what_changed(api, receiver):
     """D140's rule for a record's change, for a licence or certification: an approval of the old
     one is retired when you save, and the version diff names the entry and what changed."""
     app_id = application(api, receiver, creds=(RN, FORKLIFT))
     r = api.put(f"/profile/credentials/{mine(api, RN['name'])['id']}",
-                json=RN | {"expires_on": "2029-04-30"})  # fmt: skip
+                json=RN | {"expires_on": "2099-12-31"})  # fmt: skip
     assert r.status_code == 200, r.text
     with SessionLocal() as db:
         assert pk.active_approval(db, pk.latest_package(db, uuid.UUID(app_id))) is None
@@ -836,7 +914,7 @@ def test_changing_one_retires_the_approval_at_once_and_says_what_changed(api, re
     assert (sec["kind"], sec["status"]) == ("certifications", "changed")
     assert [(x["label"], x["change"], [(f["field"], f["before"]["display"], f["after"]["display"])
                                        for f in x["fields"]]) for x in sec["rows"]] == [
-        (RN["name"], "changed", [("expires_on", "04/2027", "04/2029")])]  # fmt: skip
+        (RN["name"], "changed", [("expires_on", "04/2099", "12/2099")])]  # fmt: skip
 
 
 def test_deleting_one_retires_the_approval_at_once(api, receiver):
@@ -937,7 +1015,7 @@ def test_one_the_page_requires_is_filled_and_sent(api, receiver):
     assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
     assert sent_certs(accepted(receiver)) == {
         "cert[0].name": RN["name"], "cert[0].number": "", "cert[0].issued": "04/2019",
-        "cert[0].expires": "04/2027"}  # fmt: skip
+        "cert[0].expires": "04/2099"}  # fmt: skip
 
 
 def test_an_empty_entry_already_there_is_filled_in_place(api, receiver):
@@ -1001,6 +1079,9 @@ def test_a_section_the_page_requires_since_approval_pauses_before_anything_is_en
     assert runner.run_attempt(aid, "w1") == "failed_safe"
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
+    assert FORM_CHANGED in attempt(aid).outcome_detail  # review: the pause itself
+    with SessionLocal() as db:
+        assert pk.unresolved_pause(db, uuid.UUID(app_id)) is not None
 
 
 def test_an_empty_entry_shown_since_approval_is_filled_in_place(api, receiver):
@@ -1009,6 +1090,82 @@ def test_an_empty_entry_shown_since_approval_is_filled_in_place(api, receiver):
     receiver.config(wizard="certifications_entry_at_load")
     assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
     assert sent_certs(page_2(receiver)) == SENT
+
+
+def test_one_that_expires_after_approval_stops_the_attempt_before_anything_is_entered(
+    api, receiver, monkeypatch
+):
+    """Review: an expired one is never sent, so the package depends on the day it is built (as a
+    draft does). One that lapses between approval and the run is not in the package the gate
+    builds, so the approval is out of date and the attempt stops before anything is entered."""
+    app_id = application(api, receiver)
+    aid = queue(api, app_id)
+    monkeypatch.setattr(ss, "utcnow", lambda: datetime(2098, 2, 1, tzinfo=UTC))  # BLS lapsed
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert "changed after approval" in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+    assert attempt(aid).disclosure_started_at is None
+    assert [r["fields"]["name"]["display"] for r in frozen_certs(content(api, app_id))["rows"]] == [
+        RN["name"], FORKLIFT["name"]]  # fmt: skip
+
+
+NON_ASCII = {"name": "Registered Nurse – Paediatrics® (fictional)", "issued_on": "2019-04-15"}
+
+
+def test_a_name_outside_ascii_on_a_form_sending_another_character_set_stops_first(api, receiver):
+    """D159's check now reads what a section sends (review): a form sending in ISO-8859-1 (the
+    browser's windows-1252) would send "–" and "®" changed, whatever the readback reads. A name
+    holding them stops the attempt before anything is entered, as an answer would."""
+    receiver.config(sends="latin1_form")
+    app_id = application(api, receiver, mode="wd_certifications", creds=(NON_ASCII,))
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert CHARSET_REFUSED.format(charset="windows-1252") in attempt(aid).outcome_detail
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+def test_sent_in_utf_8_such_a_name_reaches_the_employer_as_written(api, receiver):
+    app_id = application(api, receiver, mode="wd_certifications", creds=(NON_ASCII,))
+    assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
+    assert accepted(receiver)["cert[0].name"] == NON_ASCII["name"]
+
+
+def test_a_work_entry_outside_ascii_on_such_a_form_stops_first_too(api, receiver):
+    """The same gap, closed for D149's work entries (a title or employer as written)."""
+    receiver.config(sends="latin1_form")
+    app_id = experience_application(api, receiver, single=True, records=(
+        WORK_CURRENT | {"employer": "Clínica Example (fictional)"},))  # fmt: skip
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert CHARSET_REFUSED.format(charset="windows-1252") in attempt(aid).outcome_detail
+    assert receiver.ledger()["disclosures"] == []
+
+
+def test_what_a_section_sends_is_read_for_the_character_set_check():
+    """Typed text and a chosen option's value (an education's degree) of each frozen row, beside
+    the answers; dates are digits."""
+    content_ = {"answers": [{"value": {"text": "Sam"}}], "sections": [
+        {"rows": [{"fields": {"name": {"value": {"text": "Café licence"}},
+                              "issued_on": {"value": {"month": 4, "year": 2019}}}}]},
+        {"rows": [{"fields": {"degree": {"value": {"id": "dég-4"}}}}]}]}  # fmt: skip
+    assert list(_sent_strings(content_)) == ["Sam", "Café licence", "dég-4"]
+
+
+def test_a_name_its_box_would_cut_stops_naming_your_licences_and_certifications(api, receiver):
+    """D162's limit at focus, for a licence's name (review): the stop names what to shorten and
+    the limit, not a work entry; nothing of the entry is recorded, and the page with the entries
+    is never sent."""
+    app_id = application(api, receiver)
+    receiver.config(wd_limit_on_focus={'[name="cert[0].name"]': 10})
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    assert SECTION_KIND_LIMIT_AT_FOCUS.format(what="licences and certifications", limits=10) in (
+        attempt(aid).outcome_detail)  # fmt: skip
+    assert [d for d in rows(aid, "disclosure") if d.get("kind") == "section_field"] == []
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and draft_pages(led) == [1]
 
 
 # ---------------------------------------------------------------------------- after typing
@@ -1075,4 +1232,13 @@ def test_a_number_the_page_writes_once_a_name_is_typed_stops_before_its_page_is_
     assert runner.run_attempt(aid, "w1") == "abandoned"
     led = receiver.ledger()
     assert draft_pages(led) == [1] and posts(led, "/apply") == 0
+    assert nowhere(receiver, UNAPPROVED_NUMBER)
+
+
+def test_on_the_single_page_a_number_the_page_writes_stops_before_the_final_click(api, receiver):
+    app_id = application(api, receiver, mode="wd_certifications_number_after_typing", creds=(RN,))
+    aid = queue(api, app_id)
+    assert runner.run_attempt(aid, "w1") not in ("confirmed", "unknown")
+    led = receiver.ledger()
+    assert led["accepted"] == 0 and posts(led, "/apply") == 0
     assert nowhere(receiver, UNAPPROVED_NUMBER)

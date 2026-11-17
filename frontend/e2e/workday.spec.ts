@@ -224,8 +224,10 @@ test("your licences and certifications fill a Certifications section, shown on t
   const slug = `workday-examplehealth-${id}`;
   const h = await candidate(page, `${info.project.name}-certifications`);
   for (const cred of [
-    { name: "Registered Nurse licence (fictional board)", issued_on: "2019-04-15", expires_on: "2027-04-30" },
+    { name: "Registered Nurse licence (fictional board)", issued_on: "2019-04-15", expires_on: "2099-04-30" },
     { name: "Forklift operator certificate (fictional)" },
+    // expired: never shown as an entry, never sent (C16/D69's rule)
+    { name: "Food handler certificate (fictional)", issued_on: "2021-03-01", expires_on: "2024-03-01" },
   ]) {
     const made = await (await page.request.post("/api/profile/credentials", { headers: h, data: cred })).json();
     expect((await page.request.post(`/api/profile/credentials/${made.id}/approve`, { headers: h })).ok()).toBeTruthy();
@@ -255,8 +257,10 @@ test("your licences and certifications fill a Certifications section, shown on t
     await expect(certs.getByText(/No certification number is sent/)).toBeVisible();
     await expect(certs.getByText("Registered Nurse licence (fictional board)", { exact: true })).toBeVisible();
     await expect(certs.getByText("04/2019", { exact: true })).toBeVisible();
-    await expect(certs.getByText("04/2027", { exact: true })).toBeVisible();
+    await expect(certs.getByText("04/2099", { exact: true })).toBeVisible();
     await expect(certs.getByText("Forklift operator certificate (fictional)", { exact: true })).toBeVisible();
+    await expect(certs.getByText(/an expired licence or certification is not sent at all/)).toBeVisible();
+    await expect(certs.getByText("Food handler certificate (fictional)", { exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: /Approve a rehearsal of v\d+/ }).click();
     await page.getByRole("button", { name: "Start rehearsal (nothing is submitted)" }).click();
     await expect(badge(page, "Rehearsal finished: nothing submitted")).toBeVisible({ timeout: 60_000 });
@@ -270,7 +274,7 @@ test("your licences and certifications fill a Certifications section, shown on t
       "cert[0].name": "Registered Nurse licence (fictional board)",
       "cert[0].number": "",
       "cert[0].issued": "04/2019",
-      "cert[0].expires": "04/2027",
+      "cert[0].expires": "04/2099",
       "cert[1].name": "Forklift operator certificate (fictional)",
       "cert[1].number": "",
       "cert[1].issued": "",

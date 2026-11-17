@@ -202,6 +202,13 @@ _STOPS = {  # a section's kind -> (unusable, entries beyond, prefilled, not ente
 }  # fmt: skip
 
 
+def _limit_what(sec: dict) -> str | None:
+    """D167 review: what a section's stop at a box's limit names: your websites, or your licences
+    and certifications (your work history and education keep D162's words)."""
+    kind = sec.get("kind")
+    return ws.KINDS[kind].what if kind in ("websites", "certifications") else None
+
+
 def _stops(sec: dict) -> tuple[str, str, str, str]:
     """D163: the stops that name what the section holds (work history, education, D166,
     websites or, D167, licences and certifications)."""
@@ -431,7 +438,7 @@ class WorkdayFixtureAdapter(HostedFormAdapter):
                 ws.apply(page, ws.plan(sec), root, on_entered=entered,
                          progress=self._progress)  # fmt: skip
             except ws.NotTyped as e:  # D162: refused before it was typed, naming the limit
-                raise section_not_typed(e, disclosures) from e
+                raise section_not_typed(e, disclosures, _limit_what(sec)) from e
             except ws.Refused as e:
                 raise StoppedAfterDisclosure(not_entered, list(disclosures)) from e
 

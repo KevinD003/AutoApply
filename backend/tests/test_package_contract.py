@@ -420,7 +420,7 @@ def _contents(api, receiver, monkeypatch) -> list[dict]:
     # D167: a wizard whose My Experience page carries the Certifications section alone (FA12),
     # frozen with two approved licences and certifications: one with both dates, one with neither.
     rn = {"name": "Registered Nurse (fictional)", "issued_on": "2019-04-15",
-          "expires_on": "2027-04-30"}  # fmt: skip
+          "expires_on": "2099-04-30"}  # fmt: skip
     for cred in (rn, {"name": "Forklift operator (fictional)"}):
         made = api.post("/profile/credentials", json=cred).json()
         assert api.post(f"/profile/credentials/{made['id']}/approve").status_code == 200

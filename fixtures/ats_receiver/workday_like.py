@@ -201,8 +201,10 @@ certification is typed, the page keeps a value of its own in a hidden field outs
 certifications_added_after_typing (once one is typed, the page adds an entry holding a value of its
 own), certifications_number_after_typing (once one is typed, the page writes a number into that
 entry's number box), certifications_and_experience (with the Work Experience and Education sections, FA7 and FA9)
-and certifications_and_other_sections (with FA10's sections); the single page's wd_certifications
-and wd_certifications_hidden_after_typing.
+and certifications_and_other_sections (with FA10's sections); the single page's wd_certifications,
+wd_certifications_hidden_after_typing and (D167 review) wd_certifications_number_after_typing. D167
+review: cfg["sends"] "latin1_form" (D159's switch) makes either page's application form send in
+ISO-8859-1.
 The single page's mode wd_experience puts the Work Experience section on its My Experience
 section, wd_education the Education section, and wd_other_sections FA10's three sections
 (wd_other_sections_parse: with other_sections_hidden_parse's upload).
@@ -798,7 +800,8 @@ CERT_VARIANTS = ("certifications", "certifications_required", "certifications_en
                  "certifications_parse", "certifications_hidden_after_typing",
                  "certifications_added_after_typing", "certifications_number_after_typing",
                  "certifications_and_experience", "certifications_and_other_sections")  # fmt: skip
-CERT_MODES = ("wd_certifications", "wd_certifications_hidden_after_typing")
+CERT_MODES = ("wd_certifications", "wd_certifications_hidden_after_typing",
+              "wd_certifications_number_after_typing")  # fmt: skip  # the variant, prefixed wd_
 _CERT_NAME = re.compile(r"cert\[(\d+)\]\.([a-z_]+)")
 # What the resume parse puts in the Certifications entry it adds (certifications_parse; fixture
 # design).
@@ -903,6 +906,12 @@ def _cert_errors(fields: dict, required: bool) -> list[str]:
             if issued > expires:
                 errors.append(f"The issued date is after the expiration date for cert[{i}]")
     return errors
+
+
+def _charset(cfg: dict) -> str:
+    """D167 review (fixture design): with cfg["sends"] "latin1_form" (D159's switch on the generic
+    page) the application form sends in ISO-8859-1, as a page's `accept-charset` may make it."""
+    return ' accept-charset="ISO-8859-1"' if (cfg or {}).get("sends") == "latin1_form" else ""
 
 
 def _follow_up_required(shape: tuple[bool, bool, bool] | None, fields: dict) -> bool:
@@ -1026,13 +1035,13 @@ def _form_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
         None if mode not in OTHER_MODES else "websites_hidden_after_typing"
         if mode == "wd_websites_hidden_after_typing" else "other_sections")  # fmt: skip
     cert, cert_template, cert_js = _cert_section(  # D167, FA12
-        None if mode not in CERT_MODES else "certifications_hidden_after_typing"
-        if mode == "wd_certifications_hidden_after_typing" else "certifications")  # fmt: skip
+        mode.removeprefix("wd_") if mode in CERT_MODES else None)
+    charset = _charset(cfg)  # D167 review
     phone_check, check_js = _page_check(cfg)  # D154, FA8
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
 {progress}
-<form id="workday-application" action="{base}" method="post" enctype="multipart/form-data">
+<form id="workday-application" action="{base}" method="post" enctype="multipart/form-data"{charset}>
 <input type="hidden" name="form_token" value="{token}">
 <section data-step="My Information">
 <div id="source_label">How did you hear about us?</div>
@@ -1150,12 +1159,13 @@ def _wizard_page(tenant: str, req: str, token: str, cfg: dict) -> HTMLResponse:
     edu, edu_template, edu_js = _edu_section(variant)  # D163, FA9
     other, other_template, other_js = _other_sections(variant)  # D165, FA10
     cert, cert_template, cert_js = _cert_section(variant)  # D167, FA12
+    charset = _charset(cfg)  # D167 review
     phone_check, check_js = _page_check(cfg)  # D154, FA8
     body = f"""<h1>{html.escape(title)} — {html.escape(employer)} (Workday-shaped fixture)</h1>
 <p>Apply Manually</p>
 <div data-wizard-progress>Page 1 of {len(WIZARD_PAGES)}</div>
 <span data-draft-status="idle" data-draft-page="0"></span>
-<form id="workday-application" action="{base}" method="post" enctype="multipart/form-data"
+<form id="workday-application" action="{base}" method="post" enctype="multipart/form-data"{charset}
  data-wizard-pages="{len(WIZARD_PAGES)}" data-wizard-current="1">
 <input type="hidden" name="form_token" value="{token}">
 <section data-step="My Information" data-wizard-page="1">

@@ -157,11 +157,16 @@ def limit_at_focus(loc, timeout_ms: float | None = None) -> tuple[int, bool] | N
     return (limit, applies) if focused else None
 
 
-def section_not_typed(e, disclosures: list) -> "StoppedAfterDisclosure":
+def section_not_typed(e, disclosures: list, what: str | None = None) -> "StoppedAfterDisclosure":
     """D162: the stop for a section's entry refused before it was typed (`NotTyped`): one that
-    never got focus, or one its box's limit would cut then, naming the limit."""
+    never got focus, or one its box's limit would cut then, naming the limit. D167 review: and
+    naming what the section holds (`what`: your websites, or your licences and certifications),
+    where it is not your work history or education."""
     if e.limit is None:
         return FocusStopped(FOCUS_LOST, list(disclosures))
+    if what is not None:
+        why = SECTION_KIND_LIMIT_AT_FOCUS.format(what=what, limits=e.limit)
+        return LimitStopped(why, list(disclosures))
     return LimitStopped(SECTION_LIMIT_AT_FOCUS.format(limits=e.limit), list(disclosures))
 
 
@@ -182,7 +187,9 @@ def limits_verdict(over: list[tuple[int, bool]]):
 
 def _sent_strings(content: dict):
     """D159: the text of every approved answer as its form sends it: typed text and the values
-    of the options chosen (numbers and dates are digits)."""
+    of the options chosen (numbers and dates are digits). D167 review: and what every frozen
+    section's rows send as well: typed text (a work entry's title, a licence's name) and the value
+    of an option chosen (an education's degree)."""
     for a in content["answers"]:
         v = a["value"]
         if not isinstance(v, dict):
@@ -193,6 +200,13 @@ def _sent_strings(content: dict):
             yield v["option"]
         for o in v.get("options") or []:
             yield o["option"]
+    for section in content.get("sections") or []:
+        for row in section.get("rows") or []:
+            for f in (row.get("fields") or {}).values():
+                v = f.get("value") if isinstance(f, dict) else None
+                for part in ("text", "id") if isinstance(v, dict) else ():
+                    if isinstance(v.get(part), str):
+                        yield v[part]
 
 
 class ReportsDisclosures:
@@ -1002,6 +1016,13 @@ SECTION_LIMIT_AT_FOCUS = (
     "a part of your work history or education is longer than the employer's page accepts once "
     "its box has focus ({limits} characters as the form sends them); it was not typed, and "
     "filling stopped there: shorten it in your profile, or apply on the employer's site"
+)
+# D167 review: the same, naming what the section holds (your websites, or your licences and
+# certifications), where it is not your work history or education.
+SECTION_KIND_LIMIT_AT_FOCUS = (
+    "a part of your {what} is longer than the employer's page accepts once its box has focus "
+    "({limits} characters as the form sends them); it was not typed, and filling stopped there: "
+    "shorten it in your profile, or apply on the employer's site"
 )
 # D162 review: a box that never got focus is never typed into: what is typed then goes to whichever
 # box has focus (the box before it, or a dialog the page opened).

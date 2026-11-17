@@ -577,6 +577,8 @@ const SECTION_FIELD = {
   issued_on: "Issued",
   expires_on: "Expires",
 };
+// What the card's title names for each kind of section it holds (D167 review).
+const TITLE_PARTS = { education: ["Education"], employment: ["Work history"], websites: ["Websites"], certifications: ["Licences", "certifications"] };
 const ROW_CHANGE = { added: "added", removed: "removed", changed: "changed" };
 const sectionShown = (x) => (x === null ? "—" : x.status === "omitted" ? "not sent" : (x.display ?? "—"));
 
@@ -690,9 +692,12 @@ function SectionsCard({ sections }) {
   const certs = has("certifications");
   const links = has("websites");
   // D166 review: named by what it holds ("Education and work history" as before, "Websites" alone).
+  // D167 review: licences and certifications are two of the things named ("Websites, licences and
+  // certifications", never "Websites and licences and certifications").
   const names = ["education", "employment", "websites", "certifications"]
     .filter(has)
-    .map((k, i) => (i ? SECTION_TITLE[k].toLowerCase() : SECTION_TITLE[k]));
+    .flatMap((k) => TITLE_PARTS[k])
+    .map((x, i) => (i ? x.toLowerCase() : x));
   const title = names.length < 2 ? (names[0] ?? "Education and work history") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
   const sources = [
     records && "your approved education and employment records, with any option you chose for this application",
@@ -720,7 +725,7 @@ function SectionsCard({ sections }) {
             // D167: what NoEfforts does not send, said where you approve it.
             <p className="text-xs text-ink-muted">
               No certification number is sent: NoEfforts leaves that box empty. A date your record does not hold is not sent, and an expired
-              licence or certification is sent with its expiration date.
+              licence or certification is not sent at all.
             </p>
           )}
           {s.rows.length === 0 ? (
