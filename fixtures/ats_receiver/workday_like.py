@@ -199,7 +199,8 @@ certifications_entry_at_load (one empty entry already there at load), certificat
 resume upload adds an entry with values of its own), certifications_hidden_after_typing (once a
 certification is typed, the page keeps a value of its own in a hidden field outside the section),
 certifications_added_after_typing (once one is typed, the page adds an entry holding a value of its
-own), certifications_and_experience (with the Work Experience and Education sections, FA7 and FA9)
+own), certifications_number_after_typing (once one is typed, the page writes a number into that
+entry's number box), certifications_and_experience (with the Work Experience and Education sections, FA7 and FA9)
 and certifications_and_other_sections (with FA10's sections); the single page's wd_certifications
 and wd_certifications_hidden_after_typing.
 The single page's mode wd_experience puts the Work Experience section on its My Experience
@@ -795,15 +796,17 @@ def _other_errors(fields: dict, required: str | None) -> list[str]:
 # are CERT_MODES).
 CERT_VARIANTS = ("certifications", "certifications_required", "certifications_entry_at_load",
                  "certifications_parse", "certifications_hidden_after_typing",
-                 "certifications_added_after_typing", "certifications_and_experience",
-                 "certifications_and_other_sections")  # fmt: skip
+                 "certifications_added_after_typing", "certifications_number_after_typing",
+                 "certifications_and_experience", "certifications_and_other_sections")  # fmt: skip
 CERT_MODES = ("wd_certifications", "wd_certifications_hidden_after_typing")
 _CERT_NAME = re.compile(r"cert\[(\d+)\]\.([a-z_]+)")
 # What the resume parse puts in the Certifications entry it adds (certifications_parse; fixture
 # design).
 PARSED_CERT = {"name": "Parsed Certification (fictional)", "issued": "01/2020"}
-# What the page keeps or adds once a certification is typed (the *_after_typing variants).
+# What the page keeps or adds once a certification is typed (the *_after_typing variants), and the
+# number it writes into that entry's own number box (certifications_number_after_typing).
 UNAPPROVED_CERT = "Unapproved Certification (fictional)"
+UNAPPROVED_NUMBER = "X-0000 (fictional)"
 _CERT_AFTER_TYPING = """
 document.addEventListener('change', (e) => {
   if (window.certTyped || !/^cert\\[\\d+\\]\\.name$/.test(e.target.name || '')) return;
@@ -812,6 +815,9 @@ document.addEventListener('change', (e) => {
     const h = document.createElement('input');
     h.type = 'hidden'; h.name = 'cert[7].name'; h.value = '%VALUE%';
     e.target.form.append(h);
+  } else if ('%MODE%' === 'number') {
+    document.querySelector(`[name="${e.target.name.replace('.name', '.number')}"]`).value =
+      '%NUMBER%';
   } else {
     const i = window.addCertEntry();
     document.querySelector(`[name="cert[${i}].name"]`).value = '%VALUE%';
@@ -864,10 +870,11 @@ window.addCertEntry = () => {
 document.getElementById('certifications').querySelector('[data-wd-add]')
   .addEventListener('click', () => window.addCertEntry());"""
     after = {"certifications_hidden_after_typing": "hidden",
-             "certifications_added_after_typing": "added"}  # fmt: skip
+             "certifications_added_after_typing": "added",
+             "certifications_number_after_typing": "number"}  # fmt: skip
     if variant in after:  # the page changes once a certification is typed
-        script += _CERT_AFTER_TYPING.replace("%MODE%", after[variant]).replace(
-            "%VALUE%", UNAPPROVED_CERT)
+        script += (_CERT_AFTER_TYPING.replace("%MODE%", after[variant])
+                   .replace("%VALUE%", UNAPPROVED_CERT).replace("%NUMBER%", UNAPPROVED_NUMBER))  # fmt: skip
     return markup, template, script
 
 

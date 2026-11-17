@@ -218,6 +218,70 @@ test("your profile's links fill a Websites section, shown on the review page and
   }
 });
 
+test("your licences and certifications fill a Certifications section, shown on the review page and sent as approved", async ({ page, request }, info) => {
+  // D167 (FIXTURE ASSUMPTION FA12): on the single page.
+  const id = req();
+  const slug = `workday-examplehealth-${id}`;
+  const h = await candidate(page, `${info.project.name}-certifications`);
+  for (const cred of [
+    { name: "Registered Nurse licence (fictional board)", issued_on: "2019-04-15", expires_on: "2027-04-30" },
+    { name: "Forklift operator certificate (fictional)" },
+  ]) {
+    const made = await (await page.request.post("/api/profile/credentials", { headers: h, data: cred })).json();
+    expect((await page.request.post(`/api/profile/credentials/${made.id}/approve`, { headers: h })).ok()).toBeTruthy();
+  }
+  try {
+    await request.post(`${RECEIVER}/_admin/config`, { headers: { "X-Admin-Token": RECEIVER_TOKEN }, data: { mode: "wd_certifications" } });
+    const jobId = await workdayJob(page, h, id, "Registered Nurse (certifications)");
+    await page.goto(`/jobs/${jobId}`);
+    await page.getByRole("button", { name: "Read Workday-style test form" }).click();
+    await expect(page.getByText("Workday-style application: local test approximation (fictional employer)")).toBeVisible();
+
+    const app = await (await page.request.post("/api/applications", { headers: h, data: { job_id: jobId } })).json();
+    for (const [key, value] of [
+      ["legalName--firstName", { text: "Sam" }],
+      ["q.licence_type", { label: "RN" }],
+      ["q.shift", { label: "Nights" }],
+    ] as const) {
+      expect((await page.request.put(`/api/applications/${app.id}/answers`, { headers: h, data: { key, value } })).ok()).toBeTruthy();
+    }
+    await page.request.put(`/api/applications/${app.id}/consents`, { headers: h, data: { key: "terms_ack", choice: "agree" } });
+
+    await page.goto(`/applications/${app.id}`);
+    // the card is named by what it holds: this page has a Certifications section alone
+    const card = page.locator("section", { has: page.getByRole("heading", { name: "Licences and certifications", exact: true, level: 2 }) });
+    const certs = card.getByRole("group", { name: "Licences and certifications" });
+    // what is not sent, said where you approve it
+    await expect(certs.getByText(/No certification number is sent/)).toBeVisible();
+    await expect(certs.getByText("Registered Nurse licence (fictional board)", { exact: true })).toBeVisible();
+    await expect(certs.getByText("04/2019", { exact: true })).toBeVisible();
+    await expect(certs.getByText("04/2027", { exact: true })).toBeVisible();
+    await expect(certs.getByText("Forklift operator certificate (fictional)", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /Approve a rehearsal of v\d+/ }).click();
+    await page.getByRole("button", { name: "Start rehearsal (nothing is submitted)" }).click();
+    await expect(badge(page, "Rehearsal finished: nothing submitted")).toBeVisible({ timeout: 60_000 });
+    await page.getByRole("button", { name: /Approve package v\d+/ }).click();
+    await page.getByRole("button", { name: "Submit approved package" }).click();
+    await expect(badge(page, "Employer receipt received")).toBeVisible({ timeout: 60_000 });
+    const l = await ledger(request, slug);
+    expect(l.accepted).toHaveLength(1);
+    const sent = Object.fromEntries(Object.entries(l.accepted[0].fields).filter(([k]) => /^cert\[/.test(k)));
+    expect(sent).toEqual({
+      "cert[0].name": "Registered Nurse licence (fictional board)",
+      "cert[0].number": "",
+      "cert[0].issued": "04/2019",
+      "cert[0].expires": "04/2027",
+      "cert[1].name": "Forklift operator certificate (fictional)",
+      "cert[1].number": "",
+      "cert[1].issued": "",
+      "cert[1].expires": "",
+    });
+  } finally {
+    // The shared receiver goes back to normal even if a check above failed.
+    await request.post(`${RECEIVER}/_admin/config`, { headers: { "X-Admin-Token": RECEIVER_TOKEN }, data: { mode: "normal" } });
+  }
+});
+
 test("a real Workday posting is never read and stays a manual handoff", async ({ page, request }, info) => {
   const h = await candidate(page, `${info.project.name}-real`);
   const job = await (

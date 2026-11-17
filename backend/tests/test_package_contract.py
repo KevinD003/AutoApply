@@ -215,6 +215,28 @@ SHAPES[3] = SHAPES[3] | {
     ".sections[].rows[].fields.url.display",
     ".sections[].rows[].fields.url.value.text",
 }
+# D167: a certifications section (the Workday-style stand-in's Certifications) carries your approved
+# licences and certifications, one row each: its name, and its issued and expiration dates, each a
+# month and year, or omitted (no value, hence ".value" as a leaf) when the record holds none.
+# Present only for a form captured since D167 with such a section, which no package built before
+# D167 has (such a section was the work-history checkpoint, so nothing of it was ever frozen), so
+# no other package's content or hash changes: recorded under version 3, deliberately (as D142,
+# D149, D155, D157 and D166).
+SHAPES[3] = SHAPES[3] | {
+    ".sections[].rows[].fields.name.status",
+    ".sections[].rows[].fields.name.display",
+    ".sections[].rows[].fields.name.value.text",
+    ".sections[].rows[].fields.issued_on.status",
+    ".sections[].rows[].fields.issued_on.display",
+    ".sections[].rows[].fields.issued_on.value",
+    ".sections[].rows[].fields.issued_on.value.month",
+    ".sections[].rows[].fields.issued_on.value.year",
+    ".sections[].rows[].fields.expires_on.status",
+    ".sections[].rows[].fields.expires_on.display",
+    ".sections[].rows[].fields.expires_on.value",
+    ".sections[].rows[].fields.expires_on.value.month",
+    ".sections[].rows[].fields.expires_on.value.year",
+}
 
 
 @pytest.fixture(scope="module")
@@ -394,6 +416,29 @@ def _contents(api, receiver, monkeypatch) -> list[dict]:
     websites = [x for x in content["sections"] if x["kind"] == "websites"]
     assert [(x["step"], len(x["rows"])) for x in websites] == [("My Experience", 1)], websites
     assert websites[0]["rows"][0]["fields"]["url"]["status"] == "resolved"
+    out.append(content)
+    # D167: a wizard whose My Experience page carries the Certifications section alone (FA12),
+    # frozen with two approved licences and certifications: one with both dates, one with neither.
+    rn = {"name": "Registered Nurse (fictional)", "issued_on": "2019-04-15",
+          "expires_on": "2027-04-30"}  # fmt: skip
+    for cred in (rn, {"name": "Forklift operator (fictional)"}):
+        made = api.post("/profile/credentials", json=cred).json()
+        assert api.post(f"/profile/credentials/{made['id']}/approve").status_code == 200
+    receiver.config(wizard="certifications")
+    try:
+        posting = {"url": f"{BASE}/workday/examplehealth/R-1670001", "title": "Certifications",
+                   "employer": "Example Health"}  # fmt: skip
+        job = api.post("/jobs", json=posting).json()
+        r = api.post(f"/jobs/{job['job']['id']}/form/workday")
+        assert r.status_code == 201, r.text
+    finally:
+        receiver.config(wizard=None)
+    app = api.post("/applications", json={"job_id": job["job"]["id"]}).json()
+    content = api.get(f"/applications/{app['id']}/package").json()["package"]["content"]
+    certs = [x for x in content["sections"] if x["kind"] == "certifications"]
+    assert [(x["step"], len(x["rows"])) for x in certs] == [("My Experience", 2)], certs
+    assert [r["fields"]["issued_on"]["status"] for r in certs[0]["rows"]] == [
+        "resolved", "omitted"]  # fmt: skip
     out.append(content)
     return out
 
