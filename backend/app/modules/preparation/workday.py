@@ -71,6 +71,14 @@ stand-in builds it, by D165's rule for a section left empty, made for one NoEffo
 own mark of a required section read, its entries exactly as its template builds them, empty).
 Anything else about it is its own required checkpoint (`WEBSITES_KEY`, D165's key for it).
 
+D167: the stand-in's Certifications section (FIXTURE ASSUMPTION FA12) is read as a certifications
+section, filled from your approved licences and certifications (`_certifications_section`):
+`SectionSpec(kind="certifications")` with its page and whether the page requires an entry, by
+D166's rule, made for its entry (Certification, Certification Number, Issued Date and Expiration
+Date, exactly as its template builds them). Anything else about it is its own required checkpoint
+(`CERTIFICATIONS_KEY`); before D167 it was a section of a kind no reader takes, the work-history
+checkpoint.
+
 A parsed resume that fills fields after an upload is caught at execution by the readback of
 every field NoEfforts leaves unanswered (`hosted_form.HostedFormAdapter`)."""
 
@@ -247,6 +255,29 @@ WEBSITES_REASON = (
     "otherwise than NoEfforts reads, it holds or names an entry NoEfforts did not add, or it is "
     "not the section NoEfforts reads): apply on the employer's site"
 )
+# D167: the stand-in's Certifications section (FIXTURE ASSUMPTION FA12), filled from your approved
+# licences and certifications: each entry's Certification typed, its Certification Number left
+# empty, its Issued and Expiration Dates typed as MM/YYYY where your record holds them. Read only
+# where it is built exactly as the stand-in builds it (`_certifications_section`); anything else
+# about it is its own required checkpoint.
+CERTIFICATIONS = "certifications"
+CERTIFICATIONS_LABEL = "Certifications"
+CERTIFICATIONS_KEY = other_section_key(CERTIFICATIONS)
+_CERT_ANY = re.compile(r"^cert\[")  # any control named as an entry's
+CERTIFICATIONS_REASON = (
+    "a Certifications section NoEfforts cannot fill exactly as it is (the page marks it, or one "
+    "of an entry's boxes, required otherwise than NoEfforts reads, it holds or names an entry "
+    "NoEfforts did not add, or it is not the section NoEfforts reads): apply on the employer's "
+    "site"
+)
+# FA12: an entry's boxes, in order: (the part of its name, its label, its attributes beyond its
+# id and name). Only the Certification is required; NoEfforts never fills the number.
+_CERT_BOXES = (
+    ("name", "Certification", {"type": "text", "required": ""}),
+    ("number", "Certification Number", {"type": "text"}),
+    ("issued", "Issued Date", {"type": "text", "placeholder": "MM/YYYY"}),
+    ("expires", "Expiration Date", {"type": "text", "placeholder": "MM/YYYY"}),
+)
 
 
 _ASCII_SPACE = re.compile(r"[\t\n\f\r ]+")
@@ -390,12 +421,14 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
                 and _WORK_ANY.match(n.attrs.get("name", ""))]  # fmt: skip
     # D163: the Education section, and what is in it, is its own (`_education_section`); D165: so
     # is a section of a kind NoEfforts does not fill (`_other_sections`); D166: and the Websites
-    # section (`_websites_section`). Any other section, of a kind NoEfforts does not read, is
-    # still this checkpoint.
+    # section (`_websites_section`); D167: and the Certifications section
+    # (`_certifications_section`). Any other section, of a kind NoEfforts does not read, is still
+    # this checkpoint.
     own = [
         n
         for n in inside
-        if n.attrs.get("data-wd-section") in ("education", WEBSITES, *OTHER_SECTIONS)
+        if n.attrs.get("data-wd-section")
+        in ("education", WEBSITES, CERTIFICATIONS, *OTHER_SECTIONS)
     ]
     sections = [n for n in inside if "data-wd-section" in n.attrs and n not in own]
     markers = [n for n in inside
@@ -412,7 +445,7 @@ def _work_section(html: str) -> tuple[SectionSpec | None, bool]:
         len(sections) != 1
         or root.attrs["data-wd-section"] != "work"  # another kind of section: never read as one
         or any(n is not root and root not in n.ancestors() for n in markers)
-        or any(e in root.ancestors() or root in e.ancestors() for e in own)  # D163, D165, D166
+        or any(e in root.ancestors() or root in e.ancestors() for e in own)  # D163, D165-D167
         or not _ROOT_ID.fullmatch(rid)
         or sum(1 for n in nodes if n.attrs.get("id") == rid) != 1
         or len(buttons) != 1
@@ -850,6 +883,130 @@ def _websites_section(html: str) -> tuple[SectionSpec | None, bool]:
     return spec, False
 
 
+def _cert_entry(e: object, i: str, n: str) -> list[_Node] | None:
+    """D167: a Certifications entry exactly as the stand-in's template builds it (FA12), `i` its
+    index in the controls' names and `n` its number on the page; its four boxes, or None. Its
+    heading, then each box after its label, in `_CERT_BOXES`' order; nothing else: no value,
+    limit or other attribute, no other element or text, no attribute written twice (the browser
+    keeps the first, the reader the last)."""
+    if not isinstance(e, _Node):
+        return None
+    kids = _kids(e)
+    if len(kids) != 1 + 2 * len(_CERT_BOXES) or not all(isinstance(c, _Node) for c in kids):
+        return None
+    head, pairs = kids[0], kids[1:]
+    if not (
+        e.tag == "div"
+        and e.attrs == {"data-wd-entry": i}
+        and head.tag == "h4"
+        and not head.attrs
+        and _text_only(head)
+        and head.all_text() == f"{CERTIFICATIONS_LABEL} {n}"
+        and not any(x.twice for x in (e, head, *pairs))
+    ):
+        return None
+    boxes = []
+    for (part, text, attrs), label, box in zip(_CERT_BOXES, pairs[0::2], pairs[1::2], strict=True):
+        cid = f"cert-{i}-{part}"
+        if not (
+            label.tag == "label"
+            and label.attrs == {"for": cid}
+            and _text_only(label)
+            and label.all_text() == text
+            and box.tag == "input"
+            and box.attrs == {"id": cid, "name": f"cert[{i}].{part}", **attrs}
+        ):
+            return None
+        boxes.append(box)
+    return boxes
+
+
+def _certifications_section(html: str) -> tuple[SectionSpec | None, bool]:
+    """D167: the Certifications section (FA12) as a certifications section, filled from your
+    approved licences and certifications, or whether the page has one NoEfforts cannot fill
+    exactly (True: `CERTIFICATIONS_KEY`'s checkpoint). (None, False): no Certifications section,
+    and nothing named as one of its entries. Read on the generic extractor's own tree and form,
+    the controls the page gives the form from outside its markup included (D160), by D166's rule
+    for the Websites section: one section, within no other, shown and enabled at load, rendered
+    and not inert, within nothing marked required; built exactly as the stand-in builds it (its
+    heading, entries list and one plain button, "Add", or "Add Another" once it holds an entry),
+    its own mark of a required section read (FA12: `aria-required="true"` on it, and an asterisk
+    after the heading's name), any other mark making it this checkpoint; the entries it holds
+    exactly as its template, outside the form (and within no noscript), builds them
+    (`_cert_entry`: empty, numbered from 0; NoEfforts fills one already there in place); and
+    nothing in the form named as one of its entries but theirs, or under its key."""
+    b = _TreeBuilder()
+    b.feed(html)
+    nodes = list(b.root.walk())
+    form = _application_form(nodes)
+    inside = nodes if form is None else owned_nodes(nodes, form)
+    roots = [n for n in inside if n.attrs.get("data-wd-section") == CERTIFICATIONS]
+    named = [n for n in inside
+             if any(_CERT_ANY.match(x) or x == CERTIFICATIONS_KEY
+                    for x in (n.attrs.get("name") or "", _first(n, "name") or ""))]  # fmt: skip
+    if not roots:
+        return None, bool(named)  # an entry's control with no section: never guessed
+    root = roots[0]
+    kids = _kids(root)
+    if len(roots) != 1 or len(kids) != 3 or not all(isinstance(c, _Node) for c in kids):
+        return None, True
+    head, entries, add = kids
+    rid, hid = root.attrs.get("id", ""), head.attrs.get("id", "")
+    required = "aria-required" in root.attrs
+    held = _kids(entries)
+    each = [_cert_entry(e, str(i), str(i + 1)) for i, e in enumerate(held)]
+    boxes = [x for got in each if got for x in got]
+    tid = root.attrs.get("data-wd-entry-template", "")
+    templates = [n for n in nodes if n.tag == "template" and _first(n, "id") == tid]
+    built = _kids(templates[0]) if len(templates) == 1 else []
+    template_boxes = _cert_entry(built[0], "__i__", "__n__") if len(built) == 1 else None
+    if (
+        any("data-wd-section" in a.attrs for a in root.ancestors())
+        or any(m in a.attrs for a in root.ancestors() if a is not form for m in _REQUIRED_MARKS)
+        or _inert(root)  # never rendered (a template's or noscript's content, D160) or inert
+        or any("inert" in a.attrs for a in root.ancestors())
+        or root.tag != "div"
+        or not set(root.attrs) <= _SECTION_ATTRS | {"aria-required"}
+        or root.attrs.get("aria-required", "true") != "true"
+        or root.attrs.get("role", "group") != "group"
+        or not _ROOT_ID.fullmatch(rid)
+        or sum(1 for n in nodes if _first(n, "id") == rid) != 1
+        or root.attrs.get("aria-labelledby") != hid
+        or not hid
+        or head.tag not in _HEADINGS
+        or set(head.attrs) != {"id"}
+        or sum(1 for n in nodes if _first(n, "id") == hid) != 1
+        or not _text_only(head)
+        or head.all_text() != (f"{CERTIFICATIONS_LABEL} *" if required else CERTIFICATIONS_LABEL)
+        or entries.tag != "div"
+        or set(entries.attrs) != {"data-wd-entries"}
+        or not all(each)
+        or add.tag != "button"
+        or set(add.attrs) != {"type", "data-wd-add"}
+        or add.attrs["type"] != "button"
+        or not _text_only(add)
+        or add.all_text() != ("Add Another" if held else "Add")
+        or any(n.twice for n in (root, head, entries, add))
+        or template_boxes is None
+        or _inert(templates[0])
+        or sum(1 for n in nodes if _first(n, "id") == tid) != 1
+        or any(n not in boxes for n in named)
+        or not _usable_within(root, form)  # hidden or disabled at load (a wizard page is not)
+    ):
+        return None, True
+    page = next((a for a in root.ancestors() if "data-wizard-page" in a.attrs), None)
+    try:
+        spec = SectionSpec(
+            kind=CERTIFICATIONS,
+            root=f"#{rid}",
+            step=(page.attrs.get("data-step") or None) if page is not None else None,
+            required=required,
+        )
+    except ValidationError:  # a page name too long to record: never an error of capture
+        return None, True
+    return spec, False
+
+
 MULTI_STEP_REASON = (
     "an application on several pages: each page sends its answers to the employer on its own, "
     "which NoEfforts does not do; apply on the employer's site"
@@ -1046,8 +1203,9 @@ def _entry_control(name: str) -> bool:
     """D149, D163: a control named as a Work Experience or an Education entry's: the section's,
     never a question of its own. D165 review: likewise one named as an entry of a section
     NoEfforts does not fill (`OTHER_ENTRY`), which makes that kind a checkpoint instead. D166: and
-    a Websites entry's (`_WEB_ANY`)."""
+    a Websites entry's (`_WEB_ANY`); D167: and a Certifications entry's (`_CERT_ANY`)."""
     return bool(_WORK_ANY.match(name) or _EDU_ANY.match(name) or _WEB_ANY.match(name)
+                or _CERT_ANY.match(name)
                 or name.startswith(tuple(OTHER_ENTRY.values())))  # fmt: skip
 
 
@@ -1064,6 +1222,7 @@ def extract_schema(html: str) -> FormSchema:
     work, work_problem = _work_section(html)
     education, education_problem = _education_section(html)  # D163
     websites, websites_problem = _websites_section(html)  # D166
+    certifications, certifications_problem = _certifications_section(html)  # D167
     keys = {f.key for f in schema.fields}
     hidden = _hidden_in_page(html)
     for f in schema.fields:
@@ -1094,12 +1253,19 @@ def extract_schema(html: str) -> FormSchema:
             schema.sections = [*schema.sections, websites]
         else:
             websites_problem = True
+    if certifications is not None:  # D167: likewise
+        if (certifications.step in pages) if schema.wizard else certifications.step is None:
+            schema.sections = [*schema.sections, certifications]
+        else:
+            certifications_problem = True
     if work_problem:
         _add_checkpoint(schema, WORK_KEY, "Work Experience", WORK_REASON)
     if education_problem:
         _add_checkpoint(schema, EDUCATION_KEY, "Education", EDUCATION_REASON)
     if websites_problem:
         _add_checkpoint(schema, WEBSITES_KEY, WEBSITES_LABEL, WEBSITES_REASON)
+    if certifications_problem:
+        _add_checkpoint(schema, CERTIFICATIONS_KEY, CERTIFICATIONS_LABEL, CERTIFICATIONS_REASON)
     for kind, (field, on_page) in _other_sections(html).items():  # D165: left empty, or not
         key, label = other_section_key(kind), OTHER_SECTIONS[kind]
         # A page question under its key is never replaced silently: its control is named so

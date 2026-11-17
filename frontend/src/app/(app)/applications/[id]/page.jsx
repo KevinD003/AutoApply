@@ -548,12 +548,18 @@ export default function ReviewPage() {
   );
 }
 
-const SECTION_TITLE = { education: "Education", employment: "Work history", websites: "Websites" };
+const SECTION_TITLE = {
+  education: "Education",
+  employment: "Work history",
+  websites: "Websites",
+  certifications: "Licences and certifications", // D167
+};
 // D166: what a section of each kind sends nothing from, when it has no row.
 const SECTION_NONE = {
   education: "you have no approved education record",
   employment: "you have no approved employment record",
   websites: "your approved profile has no links",
+  certifications: "you have no approved licence or certification",
 };
 const SECTION_FIELD = {
   school_name_id: "School",
@@ -567,6 +573,9 @@ const SECTION_FIELD = {
   location: "Location",
   description: "Role description",
   url: "Web address",
+  name: "Certification", // D167
+  issued_on: "Issued",
+  expires_on: "Expires",
 };
 const ROW_CHANGE = { added: "added", removed: "removed", changed: "changed" };
 const sectionShown = (x) => (x === null ? "—" : x.status === "omitted" ? "not sent" : (x.display ?? "—"));
@@ -674,21 +683,28 @@ function SectionChoicesCard({ appId, busy, call }) {
 
 /** D140: the education and work history this version sends, as frozen in the package (never read
  * from your live profile), so you approve what you can see. D166: and the websites, from your
- * profile's links. */
+ * profile's links. D167: and the licences and certifications. */
 function SectionsCard({ sections }) {
   const has = (k) => sections.some((s) => s.kind === k);
   const records = has("education") || has("employment");
+  const certs = has("certifications");
   const links = has("websites");
   // D166 review: named by what it holds ("Education and work history" as before, "Websites" alone).
-  const names = ["education", "employment", "websites"].filter(has).map((k, i) => (i ? SECTION_TITLE[k].toLowerCase() : SECTION_TITLE[k]));
+  const names = ["education", "employment", "websites", "certifications"]
+    .filter(has)
+    .map((k, i) => (i ? SECTION_TITLE[k].toLowerCase() : SECTION_TITLE[k]));
   const title = names.length < 2 ? (names[0] ?? "Education and work history") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  const sources = [
+    records && "your approved education and employment records, with any option you chose for this application",
+    certs && "your approved licences and certifications",
+    links && "your profile’s links",
+  ].filter(Boolean);
+  const from = sources.length < 3 ? sources.join(", and from ") : `${sources.slice(0, -1).join(", from ")}, and from ${sources[sources.length - 1]}`;
   return (
     <Card title={title}>
       <p className="text-sm text-ink-muted">
-        What this version sends from {records && "your approved education and employment records, with any option you chose for this application"}
-        {records && links && ", and from "}
-        {links && "your profile’s links"}. Change {records && !links ? "a record" : "them"} in your profile and the approval of this version is
-        retired; you approve again what it then sends.
+        What this version sends from {from}. Change {(records || certs) && !links ? "a record" : "them"} in your profile and the approval of this
+        version is retired; you approve again what it then sends.
       </p>
       {sections.map((s) => (
         <div key={s.kind} className="mt-3" role="group" aria-label={SECTION_TITLE[s.kind] ?? s.kind}>
@@ -698,6 +714,13 @@ function SectionsCard({ sections }) {
             <p className="text-xs text-ink-muted">
               Each of your profile&apos;s links, as the web address its entry is given: https:// before a link that names no scheme, and http or
               https in lower case.
+            </p>
+          )}
+          {s.kind === "certifications" && s.rows.length > 0 && (
+            // D167: what NoEfforts does not send, said where you approve it.
+            <p className="text-xs text-ink-muted">
+              No certification number is sent: NoEfforts leaves that box empty. A date your record does not hold is not sent, and an expired
+              licence or certification is sent with its expiration date.
             </p>
           )}
           {s.rows.length === 0 ? (

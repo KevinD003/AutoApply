@@ -128,13 +128,13 @@ class FieldResult:
 @dataclass
 class RowResult:
     record_id: str
-    record_type: str  # "education" | "employment" | (D166) "websites"
+    record_type: str  # "education" | "employment" | (D166) "websites" | (D167) "credential"
     fields: dict  # field name -> FieldResult
 
 
 @dataclass
 class SectionResult:
-    kind: str  # "education" | "employment" | (D166) "websites"
+    kind: str  # "education" | "employment" | (D166) "websites" | (D167) "certifications"
     rows: list  # list[RowResult]
     supported: bool = True
     reason: str = ""  # when not supported
@@ -611,7 +611,61 @@ def resolve_website_rows(profile) -> list[RowResult]:
 
 # -- section reconciliation ------------------------------------------------------------------
 
-SUPPORTED_KINDS = ("education", "employment", "websites")
+# -- D167: licences and certifications, from your approved credentials --------------------------
+
+# What a Certifications entry's typed boxes are given (FA12): the credential's name as written (a
+# text box holds one line), and its issued and expiration dates as MM/YYYY. NoEfforts holds no
+# certification number: the entry's box for it is never a field here, and is left empty.
+_BAD_CERT_DATES = "This record's issued date is after its expiration date; fix it in your profile."
+_CERT_DATE_LABELS = {"issued_on": "issued date", "expires_on": "expiration date"}
+
+
+def _cert_name(record) -> FieldResult:
+    text = getattr(record, "name", None)
+    if not text or not text.strip():
+        return FieldResult("name", "needs_user", explanation="No name on this record.")
+    if "\n" in text or "\r" in text:
+        return FieldResult(
+            "name", "needs_user",
+            explanation="This record's name has a line break, which a form cannot hold; fix it "
+            "in your profile.",
+        )  # fmt: skip
+    return FieldResult(
+        "name", "resolved", value={"text": text}, display=text, source="profile_fact",
+        explanation="From your record's name.",
+        fact_refs=[_ref(record, "credential", "name", text)],
+    )  # fmt: skip
+
+
+def _cert_date(name: str, record) -> FieldResult:
+    label = _CERT_DATE_LABELS[name]
+    d = getattr(record, name, None)
+    if d is None:
+        return FieldResult(name, "omitted", explanation=f"No {label} on this record: none is sent.")
+    return FieldResult(
+        name, "resolved", value=_date_hash(d), display=f"{d.month:02d}/{d.year}",
+        source="deterministic_mapping", explanation=f"From your record's {label}.",
+        fact_refs=[_ref(record, "credential", name, d.isoformat())],
+    )  # fmt: skip
+
+
+def resolve_certification_row(record) -> RowResult:
+    """D167: one approved licence or certification as a Certifications entry (FA12): its name as
+    written, and its issued and expiration dates, each only when the record holds it (none: not
+    sent, never guessed). An issued date after the expiration date is yours to fix. An expired one
+    is sent with its expiration date, which the entry asks: you see it before you approve."""
+    fields = {
+        "name": _cert_name(record),
+        "issued_on": _cert_date("issued_on", record),
+        "expires_on": _cert_date("expires_on", record),
+    }
+    if _bad_date_order(getattr(record, "issued_on", None), getattr(record, "expires_on", None)):
+        for k in ("issued_on", "expires_on"):
+            fields[k] = FieldResult(k, "needs_user", explanation=_BAD_CERT_DATES)
+    return RowResult(str(record.id), "credential", fields)
+
+
+SUPPORTED_KINDS = ("education", "employment", "websites", "certifications")
 
 
 def resolve_section(
@@ -638,6 +692,8 @@ def resolve_section(
     approved = [r for r in records if _approved(r)]
     if kind == "websites":  # D166: your approved profile's links
         return SectionResult(kind, [row for p in approved for row in resolve_website_rows(p)])
+    if kind == "certifications":  # D167: your approved licences and certifications
+        return SectionResult(kind, [resolve_certification_row(r) for r in approved])
     if kind == "education":
         if options is None:
             return SectionResult(

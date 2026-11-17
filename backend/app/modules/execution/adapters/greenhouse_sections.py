@@ -82,7 +82,10 @@ _SPEC = {"education": _EDUCATION_FIELDS, "employment": _EMPLOYMENT_FIELDS}
 # websites section (the Workday-style stand-in's, from your profile's links) carries one, its web
 # address; Greenhouse's form has none, so it is never planned here (`_SPEC`).
 _FIELD_NAMES = {kind: frozenset(f[0] for f in spec) for kind, spec in _SPEC.items()} | {
-    "websites": frozenset({"url"})
+    "websites": frozenset({"url"}),
+    # D167: a certifications section (the Workday-style stand-in's, from your approved licences
+    # and certifications) carries a name and two dates; never planned here either.
+    "certifications": frozenset({"name", "issued_on", "expires_on"}),
 }
 # D155: what an employment entry may ask beyond those five (the Workday-style stand-in's Location
 # and Role Description, `forms.ENTRY_PARTS`). A frozen section carries them only when it names
@@ -322,6 +325,48 @@ def validate_content_section(data: object) -> None:
                 or web_address(text) != text
             ):
                 raise Refused(f"section row {idx} is not a web address resolution wrote")
+        if kind == "certifications" and not _cert_row_ok(fields):  # D167: likewise
+            raise Refused(f"section row {idx} is not a licence or certification resolution wrote")
+
+
+def _cert_date_ok(f: object) -> tuple[int, int] | None | bool:
+    """D167: a frozen certification date as resolution writes it: omitted, with nothing (None), or
+    resolved to a month and year shown as MM/YYYY ((year, month)); anything else is False."""
+    if not isinstance(f, dict):
+        return False
+    if f.get("status") == "omitted":
+        return None if f.get("value") is None and f.get("display") is None else False
+    v = f.get("value")
+    if f.get("status") != "resolved" or not isinstance(v, dict) or set(v) != {"month", "year"}:
+        return False
+    m, y = v["month"], v["year"]
+    if not all(isinstance(x, int) and not isinstance(x, bool) for x in (m, y)):
+        return False
+    if not (1 <= m <= 12 and 1000 <= y <= 9999) or f.get("display") != f"{m:02d}/{y}":
+        return False
+    return (y, m)
+
+
+def _cert_row_ok(fields: dict) -> bool:
+    """D167: a frozen licence or certification holds exactly what resolution writes: its name,
+    resolved to the one line shown, and its two dates (`_cert_date_ok`), the issued one never
+    after the expiration one."""
+    name = fields.get("name")
+    text = name.get("display") if isinstance(name, dict) else None
+    if (
+        set(fields) != {"name", "issued_on", "expires_on"}
+        or name.get("status") != "resolved"
+        or not isinstance(text, str)
+        or name.get("value") != {"text": text}
+        or not text.strip()
+        or "\n" in text
+        or "\r" in text
+    ):
+        return False
+    issued, expires = _cert_date_ok(fields["issued_on"]), _cert_date_ok(fields["expires_on"])
+    if issued is False or expires is False:
+        return False
+    return not (issued and expires and issued > expires)
 
 
 def section_from_content(data: dict) -> SectionResult:

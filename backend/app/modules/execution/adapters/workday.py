@@ -54,6 +54,9 @@ with its lists' options, is entered the same way from your approved education (`
 each list set to its frozen option, the dates typed), and every stop above names your education.
 D166: so is the stand-in's Websites section (FIXTURE ASSUMPTION FA11), from your profile's links
 (each entry's web address box typed), every stop naming your websites.
+D167: so is the stand-in's Certifications section (FIXTURE ASSUMPTION FA12), from your approved
+licences and certifications (each entry's name and dates typed, its number left empty), every stop
+naming your licences and certifications.
 
 D156: before each wizard page's Next, what D154 reads before the final click. Once the page is
 filled, focus leaves what has it (`_leave_focus`); after the page has settled, its Next is
@@ -171,6 +174,22 @@ WEBSITES_NOT_ENTERED = (
     "your websites could not be entered on the employer's form as approved (an entry did not "
     "appear or did not keep its value): apply on the employer's site"
 )
+# D167: the same stops for the Certifications section.
+CERTIFICATIONS_UNUSABLE = (
+    "your approved licences and certifications cannot be entered on this form as they were approved"
+)
+CERTIFICATIONS_ENTRIES_BEYOND = (
+    "the employer's form already shows more certification entries than your approved licences "
+    "and certifications, and NoEfforts never removes one: apply on the employer's site"
+)
+CERTIFICATIONS_PREFILLED = (
+    "the employer's form already holds certification values NoEfforts did not enter (a previous "
+    "application or a parsed resume): apply on the employer's site"
+)
+CERTIFICATIONS_NOT_ENTERED = (
+    "your licences and certifications could not be entered on the employer's form as approved "
+    "(an entry did not appear or did not keep its value): apply on the employer's site"
+)
 _STOPS = {  # a section's kind -> (unusable, entries beyond, prefilled, not entered)
     "employment": (SECTION_UNUSABLE, SECTION_ENTRIES_BEYOND, SECTION_PREFILLED,
                    SECTION_NOT_ENTERED),
@@ -178,12 +197,14 @@ _STOPS = {  # a section's kind -> (unusable, entries beyond, prefilled, not ente
                   EDUCATION_NOT_ENTERED),
     "websites": (WEBSITES_UNUSABLE, WEBSITES_ENTRIES_BEYOND, WEBSITES_PREFILLED,
                  WEBSITES_NOT_ENTERED),
+    "certifications": (CERTIFICATIONS_UNUSABLE, CERTIFICATIONS_ENTRIES_BEYOND,
+                       CERTIFICATIONS_PREFILLED, CERTIFICATIONS_NOT_ENTERED),  # D167
 }  # fmt: skip
 
 
 def _stops(sec: dict) -> tuple[str, str, str, str]:
-    """D163: the stops that name what the section holds (work history, education or, D166,
-    websites)."""
+    """D163: the stops that name what the section holds (work history, education, D166,
+    websites or, D167, licences and certifications)."""
     return _STOPS.get(sec.get("kind"), _STOPS["employment"])
 
 
