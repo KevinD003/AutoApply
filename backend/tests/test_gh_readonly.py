@@ -487,6 +487,27 @@ def test_overall_deadline_stops_a_slow_page(receiver, v2_approved):
     assert time.monotonic() - t0 < 2.9
 
 
+def test_a_page_timeout_the_deadline_set_is_the_deadline_whatever_this_clock_reads(
+    receiver, v2_approved, monkeypatch
+):
+    """CI once failed the test above with a bare TimeoutError: the navigation's timeout is what
+    is left of the overall deadline, and the browser's timer fired a few milliseconds before
+    this process's clock passed that deadline. Here this process's clock stands still (as if
+    the browser's timer were early by the whole wait): the timeout is still the overall time
+    limit, a stop, never an error."""
+    import time
+    from types import SimpleNamespace
+
+    receiver.config(mode="gh2_slow")  # the page takes 3 s to answer
+    frozen = time.monotonic()
+    monkeypatch.setattr(ro, "time", SimpleNamespace(monotonic=lambda: frozen))
+    t0 = time.monotonic()
+    with pytest.raises(ro.Stop, match="overall time limit"):
+        ro.observe_page(V2_BOARD, V2_JOB, base=BASE, prefix="gh2", api_json=v2_approved,
+                        limits=ro.Limits(observe_seconds=1.0))  # fmt: skip
+    assert time.monotonic() - t0 < 2.9
+
+
 def test_watchdog_ends_the_whole_run_with_a_fixed_line(tmp_path):
     """Hard bound on A + B together: a run stuck in any call is ended by the watchdog."""
     import subprocess
