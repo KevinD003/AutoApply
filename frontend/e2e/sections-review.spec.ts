@@ -47,7 +47,8 @@ test("the education a package sends is shown, and an edit to it is named and sho
   expect(approved.status(), await approved.text()).toBe(200);
 
   await page.goto(`/applications/${app.id}`);
-  const card = page.locator("section", { has: page.getByRole("heading", { name: "Education and work history" }) });
+  // D166 review: the card is named by what it holds (education alone here).
+  const card = page.locator("section", { has: page.getByRole("heading", { name: "Education", exact: true, level: 2 }) });
   const education = card.getByRole("group", { name: "Education" });
   await expect(education.getByText("State University", { exact: true })).toBeVisible();
   await expect(education.getByText("Bachelor's Degree", { exact: true })).toBeVisible();
