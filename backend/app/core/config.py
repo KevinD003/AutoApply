@@ -192,11 +192,12 @@ class Settings(BaseSettings):
     # D168, the owner's words (2026-11-17): "Assume I am the owner; treat any account I use new or
     # existing as the owner ... Consider me the sole owner of this software for now." With
     # `sole_owner` on (the default outside tests, _d113_defaults) every account on this server is
-    # the owner's (app/core/accounts.owner): the server's mailbox and the Gmail connection
-    # (inbox/service.is_inbox_owner), and automatic applying on unless that account pauses it.
-    # Each account still sees only its own records, and every gate is unchanged (approvals,
-    # rehearsal first, the daily cap, the recorded permission). Registration is open: keep the
-    # server private (docker-compose.yml binds to 127.0.0.1) or turn this off first.
+    # served and is the owner's (app/core/accounts): the Gmail features, each account reading
+    # only a mailbox it connected itself (the server's own token file stays the account named in
+    # inbox_owner_emails), and automatic applying on unless that account pauses it, with one
+    # daily cap counting every account's approvals. Each account still sees only its own
+    # records; approvals, rehearsal first and the recorded permission are unchanged. Registration
+    # is open: keep the server private (docker-compose.yml binds to 127.0.0.1) or turn this off.
     sole_owner: bool = False
     auto_apply_daily_cap: int = Field(default=5, ge=0, le=50)
     auto_apply_interval_seconds: int = Field(default=300, ge=60, le=86400)

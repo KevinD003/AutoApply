@@ -250,9 +250,12 @@ def owner_token_file(db: Session, user: User) -> str:
     return get_settings().inbox_token_file if named_inbox_owner(user) else ""
 
 
-def reader(token_file: str = "") -> GmailReader:
+def reader(token_file: str) -> GmailReader:
+    """A reader of exactly this token file (owner_token_file's). D168: never another one in its
+    place: with sole-owner mode every account may reach here, and "" (no mailbox of its own)
+    must stay no mailbox (GmailReader refuses it, `not_configured`), never the server's."""
     s = get_settings()
-    return GmailReader(token_file or s.inbox_token_file, s.inbox_api_base, s.inbox_token_url)
+    return GmailReader(token_file, s.inbox_api_base, s.inbox_token_url)
 
 
 def settings_of(db: Session, user_id) -> InboxSettings:
@@ -325,7 +328,11 @@ def fill_codes(db: Session, user: User, gmail: GmailReader | None = None) -> int
     ).all()
     if not waiting:
         return 0
-    gmail = gmail or reader(owner_token_file(db, user))
+    if gmail is None:
+        token_file = owner_token_file(db, user)  # D168: read once, and only what it names
+        if not token_file:
+            return 0
+        gmail = reader(token_file)
     entered = 0
     for cp in waiting:
         # D117 (legacy notes): the code can be emailed once the address is typed, before the
@@ -592,7 +599,11 @@ def check(db: Session, user: User, gmail: GmailReader | None = None, now=None) -
         return {"skipped": why or "tracking_off"}
     now = now or utcnow()
     since = st.last_checked_at or now - timedelta(days=get_settings().inbox_first_read_days)
-    gmail = gmail or reader(owner_token_file(db, user))
+    if gmail is None:
+        token_file = owner_token_file(db, user)  # D168: read once, and only what it names
+        if not token_file:
+            return {"skipped": "not_connected"}
+        gmail = reader(token_file)
     cands = _candidates(db, user.id)
     counts: dict[str, int] = {}
     try:
@@ -803,7 +814,10 @@ def inbox_tick() -> dict:
             with SessionLocal() as db:
                 user = db.get(User, user_id)
                 st = settings_of(db, user_id)
-                gmail = reader(owner_token_file(db, user))
+                token_file = owner_token_file(db, user)  # D168: read once, only what it names
+                if not token_file:
+                    continue
+                gmail = reader(token_file)
                 if codes:
                     out["codes"] += fill_codes(db, user, gmail)
                 if tracking and (st.last_checked_at is None

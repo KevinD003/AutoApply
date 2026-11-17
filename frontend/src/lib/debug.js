@@ -3,6 +3,7 @@ export const STAGE = {
   discovery: { label: "Found", tone: "slate" },
   capture: { label: "Form read", tone: "indigo" },
   package: { label: "Package", tone: "indigo" },
+  draft: { label: "AI draft", tone: "slate" },
   approval: { label: "Approval", tone: "green" },
   rule: { label: "Standing rule", tone: "amber" },
   state: { label: "Status", tone: "slate" },

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -61,6 +62,20 @@ export default function AccountPage() {
   return (
     <>
       <h1 className="font-display text-[1.7rem] font-semibold leading-[1.1] text-ink">Account</h1>
+
+      {/* D168: the whole process, start to finish, every switch and why (read-only). */}
+      <Card title="Debugger">
+        <p className="mb-3 text-sm text-ink-muted">
+          Every switch and why it is on or off, the permissions NoEfforts acts within, and each step it took for each
+          application, from finding the job to its outcome. Read-only: nothing there changes a setting or runs a step.
+        </p>
+        <Link
+          href="/debug"
+          className="inline-block min-h-10 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong"
+        >
+          Open the debugger
+        </Link>
+      </Card>
 
       <GroupHeading>Connections</GroupHeading>
       <div className="space-y-4">

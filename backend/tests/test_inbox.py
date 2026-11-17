@@ -587,7 +587,7 @@ def test_connecting_refuses_any_scope_beyond_read_only_so_no_write_scope_enters_
 
 def test_an_unknown_id_is_never_requested(connected):
     with pytest.raises(InboxUnavailable):
-        service.reader().read("../../other")
+        service.reader(get_settings().inbox_token_file).read("../../other")
 
 
 # -- D117: the owner's words "read my email ... the most recent otp ... paste it" ---------------

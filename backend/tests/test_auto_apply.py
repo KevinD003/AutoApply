@@ -256,6 +256,39 @@ def test_d114_the_mailbox_and_the_owner_default_stay_the_owners(api, other_api, 
     assert "app.core.accounts" not in src and "all_accounts" not in src
 
 
+def test_d168_in_sole_owner_mode_one_daily_cap_counts_every_account(
+    api, other_api, receiver, monkeypatch
+):
+    """Every account is the owner's (D168), so the owner's daily cap is one cap for all of them:
+    two accounts each with an application ready, a cap of 1, and only one is approved. Each
+    account's page counts every account's approvals against it."""
+    pilot_on()
+    s = get_settings()
+    monkeypatch.setattr(s, "sole_owner", True)
+    jobs = []
+    for client in (api, other_api):
+        synthetic_candidate(client)
+        jobs.append((client, v2_job(client)))
+    assert tick() == 0  # each form read; each waits for its answers
+    for client, job in jobs:
+        answer(client, app_of(client, job))
+    monkeypatch.setattr(s, "auto_apply_daily_cap", 1)
+    assert tick() == 1
+    last = sorted(events(job)[-1] for _, job in jobs)
+    assert last == [("approved_rehearsal", "rehearsal_queued"), ("skipped", "daily_cap")]
+    for client, _ in jobs:
+        state = client.get("/auto-apply").json()
+        assert (state["approved_today"], state["daily_cap"], state["cap_every_account"]) == (
+            1, 1, True)  # fmt: skip
+    # One owner again (D114): each account counts its own approvals, and another account acts
+    # once it chose to.
+    monkeypatch.setattr(s, "sole_owner", False)
+    monkeypatch.setattr(s, "all_accounts", True)
+    other_api.put("/auto-apply", json={"paused": False})
+    assert tick() == 1
+    assert [events(job)[-1][0] for _, job in jobs] == ["approved_rehearsal"] * 2
+
+
 # ------------------------------------------------------------------ D134: your pause and revocation
 
 

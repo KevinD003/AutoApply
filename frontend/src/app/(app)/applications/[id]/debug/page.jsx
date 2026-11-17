@@ -112,7 +112,7 @@ export default function ApplicationDebugPage() {
         <p className="text-ink-muted">{job.employer}</p>
         <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
           <Badge tone="indigo">{t.application.state}</Badge>
-          {t.application.outcome && <Badge tone="green">{t.application.outcome}</Badge>}
+          {t.application.outcome && t.application.outcome !== "none" && <Badge tone="green">{t.application.outcome}</Badge>}
           <span className="text-ink-faint">since {when(t.application.state_changed_at)}</span>
         </p>
         <div className="mt-3">
@@ -196,6 +196,11 @@ export default function ApplicationDebugPage() {
               render={(x) => `${x.label ?? x.key}: ${x.reason ?? "not supported"}`}
             />
             <Rows
+              label="Set by the page (a location search's value: checked after it, never filled)"
+              items={c.set_by_the_page}
+              render={(x) => `${x.label ?? x.key}: ${x.reason ?? "set by the page"}`}
+            />
+            <Rows
               label="Left empty (an optional control NoEfforts does not operate)"
               items={c.left_empty}
               render={(x) => `${x.label ?? x.key}: ${x.reason ?? "not supported"}`}
@@ -218,7 +223,19 @@ export default function ApplicationDebugPage() {
                 ["Built", when(p.created_at)],
                 ["Hash", p.content_hash],
                 ["What changed", p.change_summary],
+                ["Sent to", p.destination?.submit_url ?? p.destination?.origin],
+                ["Form version", p.destination?.form_version],
               ]}
+            />
+            <Rows
+              label="Documents"
+              items={p.documents}
+              render={(d) => `${d.display ?? d.field} (version ${d.version}, ${d.content_type ?? "file"}${d.origin ? `, ${d.origin}` : ""})`}
+            />
+            <Rows
+              label="Consents"
+              items={Object.entries(p.consents ?? {})}
+              render={([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`}
             />
             <Rows label="Waiting for you" items={p.unresolved} render={(x) => show(x)} />
             <Rows label="Checks that failed" items={p.validation_errors} render={(x) => show(x)} />
@@ -257,6 +274,14 @@ export default function ApplicationDebugPage() {
             )}
           </div>
         ))}
+      </Section>
+
+      <Section title="AI drafts" count={t.drafts.length}>
+        <Rows
+          label="Long answers drafted (their text is on the review page, where you accept them or not)"
+          items={t.drafts}
+          render={(d) => `${when(d.at)} · ${d.provider}${d.model ? ` (${d.model})` : ""}: ${d.status}`}
+        />
       </Section>
 
       <Section title="Approvals" count={t.approvals.length}>
@@ -365,19 +390,22 @@ export default function ApplicationDebugPage() {
                 }`
               }
             />
-            {a.rehearsal && (
+            {a.rehearsal_record && (
               <div>
                 <h4 className="text-sm font-medium text-ink">Rehearsal record</h4>
                 <Facts
                   items={[
-                    ["Destination", a.rehearsal.destination_class],
-                    ["Route", a.rehearsal.route],
-                    ["Adapter version", a.rehearsal.adapter_version],
-                    ["Uploads expected", a.rehearsal.uploads_expected],
-                    ["Uploads acknowledged", a.rehearsal.uploads_acknowledged],
-                    ["Read back differently", a.rehearsal.readback_mismatched],
-                    ["Re-check matched", a.rehearsal.recheck_matched],
-                    ["Blocked by the egress proxy", a.rehearsal.egress_proxy_denied],
+                    ["Recorded", when(a.rehearsal_record.recorded_at)],
+                    ["Still holds", a.rehearsal_record.status === "valid" ? "yes" : a.rehearsal_record.status],
+                    ["Withdrawn", a.rehearsal_record.revoked_at && `${when(a.rehearsal_record.revoked_at)}: ${a.rehearsal_record.revoked_reason}`],
+                    ["Destination", a.rehearsal_record.destination_class],
+                    ["Route", a.rehearsal_record.route],
+                    ["Adapter version", a.rehearsal_record.adapter_version],
+                    ["Uploads expected", a.rehearsal_record.uploads_expected],
+                    ["Uploads acknowledged", a.rehearsal_record.uploads_acknowledged],
+                    ["Read back differently", a.rehearsal_record.readback_mismatched],
+                    ["Re-check matched", a.rehearsal_record.recheck_matched],
+                    ["Blocked by the egress proxy", a.rehearsal_record.egress_proxy_denied],
                   ]}
                 />
               </div>

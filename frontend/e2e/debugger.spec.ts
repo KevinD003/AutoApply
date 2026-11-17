@@ -54,6 +54,9 @@ async function setup(page: Page, slug: string): Promise<string> {
   return app.id as string;
 }
 
+const overflow = (page: Page) =>
+  page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+
 test.beforeEach(async ({ request }) => {
   await admin(request, "config", { mode: "normal", delay_s: 0, form_delay_s: 0, idempotent: false });
 });
@@ -78,20 +81,24 @@ test("an application is traced from its form read to its receipt, and every swit
   await expect(timeline).toContainText("Attempt ended: confirmed");
   await page.locator("summary").filter({ hasText: /^Attempts \(1\)$/ }).click(); // a closed section opens on its summary
   await expect(page.getByText("Final click started", { exact: true })).toBeVisible();
-  // Never a keyed reference, a token or a code.
+  // Never a keyed reference, a token or a code; nothing wider than the screen.
   expect(await page.content()).not.toContain("ref:v2:");
+  expect(await overflow(page)).toBeLessThanOrEqual(1);
   // Read-only: the page sent nothing to the receiver.
   expect(await accepted(request, slug)).toBe(1);
 
-  // The console: every switch, the recorded permissions, the rules, and this account's activity.
+  // The console, from the Account page: every switch, the rules, and this account's activity.
   await openMoreIfMobile(page);
-  await page.getByRole("link", { name: "Debugger", exact: true }).click(); // not "← Debugger"
+  await page.getByRole("link", { name: "Account", exact: true }).click();
+  await page.getByRole("link", { name: "Open the debugger" }).click();
   await expect(page.getByRole("heading", { name: "Debugger" })).toBeVisible();
+  expect(await overflow(page)).toBeLessThanOrEqual(1);
   const features = page.getByRole("list", { name: "Features" });
   await expect(features).toContainText("Automatic applying (your standing rule)");
   await expect(features).toContainText("Applying to real Greenhouse jobs (fill and submit)");
   await expect(features).toContainText("NOEFFORTS_AUTO_APPLY_ENABLED");
-  await expect(page.getByRole("list", { name: "Recorded permissions" })).toContainText("Recorded in D");
+  // This account is not the server's owner here (sole-owner mode is off in tests).
+  await expect(page.getByText("Only the server's owner sees the recorded permissions.")).toBeVisible();
   await expect(page.getByRole("list", { name: "Rules that always apply" })).toContainText("never retried");
   const activity = page.getByRole("list", { name: "Activity" });
   await expect(activity).toContainText("Attempt ended: confirmed");

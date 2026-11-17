@@ -75,7 +75,8 @@ export default function AutoApplyCard() {
       <p className="mb-2 text-sm text-ink-muted">
         Fully answered Greenhouse applications only; the first one to each employer is a rehearsal that never submits.
         Pausing also stops what it queued that has not started sending; an application whose approval you revoke stays
-        yours. Today: {s.approved_today} of {s.daily_cap}.
+        yours. Today: {s.approved_today} of {s.daily_cap}
+        {s.cap_every_account ? " across every account" : ""}.
         {s.permission_attempts && (
           <>
             {" "}

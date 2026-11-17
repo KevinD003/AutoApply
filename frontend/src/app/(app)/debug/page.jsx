@@ -7,6 +7,13 @@ import { Badge, Card, Empty, ErrorBox, Loading } from "@/components/ui";
 import { api } from "@/lib/api";
 import { stage, when } from "@/lib/debug";
 
+// A recorded permission as the gates read it today (backend debug/service._permission).
+const PERMISSION = {
+  active: { tone: "green", label: () => "Active" },
+  ended: { tone: "red", label: (p) => `Ended ${p.ends_on}` },
+  not_started: { tone: "amber", label: (p) => `Starts ${p.given_on}` },
+};
+
 // D168: the owner's console. Every switch as it applies to this account (on or off, working or
 // not, and why), the owner's recorded permissions with their own words, the rules that always
 // apply, and each step NoEfforts took across this account's jobs. It only reads: nothing here
@@ -53,9 +60,11 @@ export default function DebuggerPage() {
               <li>
                 Every account served: <Badge tone={system.account.all_accounts ? "green" : "slate"}>{system.account.all_accounts ? "On" : "Off"}</Badge>
               </li>
-              <li className="text-ink-muted">
-                Environment: {system.environment.env} · browser isolation: {system.environment.browser_isolation}
-              </li>
+              {system.environment && (
+                <li className="text-ink-muted">
+                  Environment: {system.environment.env} · browser isolation: {system.environment.browser_isolation}
+                </li>
+              )}
             </ul>
           </Card>
 
@@ -96,7 +105,9 @@ export default function DebuggerPage() {
               Steps on real employer sites, and reading a real mailbox, run only within a permission you recorded in your own words, with its
               steps, end date and limit. A switch being on is not a permission.
             </p>
-            {system.permissions.length === 0 ? (
+            {!system.account.owner ? (
+              <Empty>Only the server&apos;s owner sees the recorded permissions.</Empty>
+            ) : system.permissions.length === 0 ? (
               <Empty>No permission is recorded.</Empty>
             ) : (
               <ul aria-label="Recorded permissions" className="divide-y divide-hairline">
@@ -104,11 +115,13 @@ export default function DebuggerPage() {
                   <li key={`${p.decision}-${p.what}-${i}`} className="py-3 text-sm">
                     <p className="flex flex-wrap items-center gap-2">
                       <span className="font-medium text-ink">{p.what}</span>
-                      <Badge tone={p.active ? "green" : "red"}>{p.active ? "Active" : `Ended ${p.ends_on}`}</Badge>
+                      <Badge tone={PERMISSION[p.state]?.tone ?? "slate"}>{PERMISSION[p.state]?.label(p) ?? p.state}</Badge>
                     </p>
                     <p className="mt-1 text-xs text-ink-faint">
                       Recorded in {p.decision}, given on {p.given_on}
                       {p.ends_on ? `, ends ${p.ends_on}` : ""} · steps: {p.actions.join(", ")}
+                      {p.max_attempts != null &&
+                        ` · attempts: ${p.attempts_used ?? 0} of ${p.max_attempts} used (every account's)`}
                     </p>
                     <blockquote className="mt-2 border-l-2 border-hairline-strong pl-3 text-ink-muted">“{p.words}”</blockquote>
                     {p.data && <p className="mt-1 text-xs text-ink-faint">Data: {p.data}</p>}
@@ -117,6 +130,27 @@ export default function DebuggerPage() {
               </ul>
             )}
           </Card>
+
+          {system.consents.length > 0 && (
+            <Card title="Your consents in the app">
+              <ul aria-label="Your consents" className="divide-y divide-hairline">
+                {system.consents.map((c, i) => (
+                  <li key={`${c.granted_at}-${i}`} className="py-3 text-sm">
+                    <p className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-ink">{c.action}</span>
+                      <Badge tone={c.active ? "green" : "slate"}>{c.active ? "In force" : c.revoked_at ? "Withdrawn" : "Ended"}</Badge>
+                    </p>
+                    <p className="mt-1 text-xs text-ink-faint">
+                      Given {when(c.granted_at)}
+                      {c.ends_on ? `, ends ${c.ends_on}` : ""}
+                      {c.revoked_at ? `, withdrawn ${when(c.revoked_at)}` : ""}
+                    </p>
+                    <blockquote className="mt-2 border-l-2 border-hairline-strong pl-3 text-ink-muted">“{c.words}”</blockquote>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           <Card title="Rules that always apply">
             <ul aria-label="Rules that always apply" className="list-disc space-y-1 pl-5 text-sm text-ink-muted">

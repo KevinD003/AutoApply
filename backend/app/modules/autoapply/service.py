@@ -118,6 +118,10 @@ def paused(db: Session, user: User) -> bool:
 # D134: one account's pause and its rule's work on each job are serialized (pg advisory lock,
 # this class and the account): a pause waits for a job being approved and queued, then stops it.
 _RULE_LOCK = 7_402_113
+# D168: in sole-owner mode one daily cap counts every account's approvals; one account's step at
+# a time from that count to its approval (this class, key 0), released when the step commits.
+# Taken after the account's own lock and before any row lock; nothing takes them the other way.
+_CAP_LOCK = 7_402_168
 
 
 def _hold(db: Session, user_id, exclusive: bool = False) -> None:
@@ -168,19 +172,22 @@ def _day_start(now: datetime) -> datetime:
 
 
 def approved_today(db: Session, user_id, now: datetime | None = None) -> int:
+    """The rule's approvals today: this account's, or every account's when `user_id` is None."""
     now = now or utcnow()
-    return int(
-        db.scalar(
-            select(func.count())
-            .select_from(AutoApplyEvent)
-            .where(
-                AutoApplyEvent.user_id == user_id,
-                AutoApplyEvent.action.in_(APPROVED),
-                AutoApplyEvent.created_at >= _day_start(now),
-            )
-        )
-        or 0
+    q = (
+        select(func.count())
+        .select_from(AutoApplyEvent)
+        .where(AutoApplyEvent.action.in_(APPROVED), AutoApplyEvent.created_at >= _day_start(now))
     )
+    if user_id is not None:
+        q = q.where(AutoApplyEvent.user_id == user_id)
+    return int(db.scalar(q) or 0)
+
+
+def cap_used(db: Session, user_id, now: datetime | None = None) -> int:
+    """What counts against the daily cap today: this account's approvals, or in sole-owner mode
+    (D168: every account is the owner's, and the cap is the owner's) every account's."""
+    return approved_today(db, None if get_settings().sole_owner else user_id, now)
 
 
 def owner_refusal(user: User) -> str | None:
@@ -401,7 +408,9 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
     if cap is not None and live.attempts_used(db, cap[1]) >= cap[0]:
         _note(db, user.id, job, app, "skipped", "permission_limit")
         return None
-    if approved_today(db, user.id, now) >= get_settings().auto_apply_daily_cap:
+    if get_settings().sole_owner:
+        db.execute(text("SELECT pg_advisory_xact_lock(:c, 0)"), {"c": _CAP_LOCK})
+    if cap_used(db, user.id, now) >= get_settings().auto_apply_daily_cap:
         _note(db, user.id, job, app, "skipped", "daily_cap")
         return None
     try:
@@ -467,7 +476,7 @@ def tick(now: datetime | None = None) -> int:
     with SessionLocal() as db:
         if restore.held(db):  # D147: restored from a backup: the relay ends what it restored
             return 0
-        if s.all_accounts:  # D114: every account; each acts only if not paused (its choice)
+        if s.all_accounts or s.sole_owner:  # D114/D168: every account, each unless paused
             users = db.scalars(select(User)).all()
         else:
             users = db.scalars(select(User).where(func.lower(User.email).in_(owners))).all()

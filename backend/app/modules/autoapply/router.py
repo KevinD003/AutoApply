@@ -43,7 +43,9 @@ def _state(db: Session, user: User) -> dict:
         "consent": service.CONSENT_TEXT,
         "unavailable": None if refusal is None else {"code": refusal, "message": WHY[refusal]},
         "daily_cap": s.auto_apply_daily_cap,
-        "approved_today": service.approved_today(db, user.id),
+        # D168: in sole-owner mode the cap counts every account's approvals (cap_used).
+        "approved_today": service.cap_used(db, user.id),
+        "cap_every_account": s.sole_owner,
         "permission_attempts": None if cap is None else {"used": used, "of": cap[0]},
         "events": [
             {
