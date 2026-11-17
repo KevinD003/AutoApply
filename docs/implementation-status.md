@@ -54,6 +54,43 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## Your profile's links fill a Workday-style Websites section (D166, 2026-11-17; local only)
+
+Rank 33 of the automation loop (filling your websites from your profile's links on Workday).
+Product changes:
+
+- `app/modules/preparation/workday.py`: `WEBSITES`, `WEBSITES_KEY`, `WEBSITES_REASON`,
+  `_website_entry`, `_websites_section`; `extract_schema` adds the section, or its checkpoint;
+  `_work_section` leaves it alone; `_entry_control` skips its entries' controls; D165's
+  `OTHER_SECTIONS` no longer names Websites.
+- `app/modules/preparation/structured_sections.py`: `web_address`, `resolve_website_rows`,
+  `resolve_section("websites")`.
+- `app/modules/preparation/package.py`: the profile as a websites section's record,
+  `SECTION_REQUIRED["websites"]`, the diff.
+- `app/modules/preparation/forms.py`: `SectionSpec.kind` may be `websites`.
+- `app/modules/execution/adapters/greenhouse_sections.py`: a websites section's content read,
+  never planned.
+- `app/modules/execution/adapters/workday_sections.py`, `workday.py`: the `websites` entry kind
+  and its stops.
+- `app/modules/execution/policy.py`: the Workday-style adapter's capability text.
+- `app/modules/profiles/router.py`: a change to the profile retires an approval of a package
+  sending a websites section at once.
+- `frontend/src/app/(app)/applications/[id]/page.jsx`: the section shown and diffed.
+- `fixtures/ats_receiver/workday_like.py`: FIXTURE ASSUMPTION FA11 and its variants.
+
+No migration, no new state, reason code or gate. `SCHEMA_VERSION` stays 3 (D166 says why).
+Nothing was run against a real page. `scripts/validate.sh all` was not run (it runs the whole
+backend and e2e suites); ruff, tsc and eslint were.
+
+| Check (branch `workday-websites`, from workday-other-sections at 2813959; main with #74 merged in at 6e3bd45) | Command | Result |
+|---|---|---|
+| The first version's tests | `test_workday_websites.py` (JUnit) on 97edb45; the 18 suites the change touches (`test_workday_websites.py`, `test_workday_other_sections.py`, `test_workday_education.py`, `test_workday_experience.py`, `test_workday_wizard.py`, `test_workday_adapter.py`, `test_workday_ashby_fixtures.py`, `test_phone_companion.py`, `test_package_contract.py`, `test_resolver.py`, `test_sections_review.py`, `test_section_choices.py`, `test_greenhouse_sections.py`, `test_greenhouse_sections_hardening.py`, `test_greenhouse_sections_package.py`, `test_structured_sections.py`, `test_profile.py`, `test_section_free_route.py`); `tsc --noEmit`, `npm run lint`, ruff | exit 0: 134 passed; the 18 suites: exit 1, 1341 of 1342 (the package contract recorded a websites row's paths that no package it builds held: a stand-in page with the Websites section alone built there, f106b46; then 3 passed); tsc, eslint and ruff clean |
+| Two independent reviews | on 97edb45 | both: the package contract's test failed, and a scheme in capitals or a port above 65,535 was approved and then refused after its data was sent; see D166 |
+| After the reviews | `test_workday_websites.py`, `test_package_contract.py` and `test_workday_other_sections.py` (JUnit) on 3e30346; `workday.spec.ts`; the cases added since (962d987, 698909a, 76b9a52, 25fc68c), each run; ruff, tsc, eslint | exit 0: 237 passed; e2e: 10 passed (desktop and mobile); each added case passed; ruff, tsc and eslint clean |
+| Each part changed in turn | 76 changes on 25fc68c, one at a time (a worktree of its own), the named tests run, the file restored; a first run of 77 on 76b9a52 | on 25fc68c, exit 1 for each of the 76: each fails the tests named for its part (134 failures among the 4,375 tests run). The first run, of 77 on 76b9a52, found two no test reached alone: the check that every entry already in the section is as its template builds it (a case added: an entry with no box under "Add Another"), and the check that the template is outside the form, which was redundant (its own box is named as an entry, which is refused: removed); two of its misses were expectations of mine (a second template is also refused by its id read once; pytest names a no-break space \xa0) |
+| The regression set | `pytest` on 93 files (D165's 92 with `test_workday_websites.py`; JUnit), in a copy of the branch at 3e30346 (since then cases added and one redundant check removed: the file is run in full with the records) | exit 0, 3,213 passed (101 minutes) |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_workday_websites.py` (JUnit); `workday.spec.ts`; `ruff format .`, `ruff check .`, `ruff format --check .` | first: exit 1, 217 of 218 (the document check: two tests cited by the names they had before the review, and the review's nine new tests not cited: the evidence rows corrected); again: exit 0, 218 passed in 152 s; e2e: 10 passed (desktop and mobile, 1.6 minutes); ruff formatted nothing, found nothing, and the format check passed |
+
 ## A Workday-style section NoEfforts does not fill is left empty when the page does not mark it required (D165, 2026-11-16; local only)
 
 Rank 32 of the automation loop (languages, websites and skills on Workday). Product changes:
