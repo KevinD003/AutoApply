@@ -145,8 +145,8 @@ def test_a_private_note_and_the_keyed_references_are_never_served(api, receiver)
     from app.modules.inbox.models import InboxEvent
 
     app_id, att = submitted(api, receiver)
-    r = api.patch(f"/applications/{app_id}",
-                  json={"outcome": "interviewing", "evidence_note": "private marker note 7781"})  # fmt: skip
+    note = {"outcome": "interviewing", "evidence_note": "private marker note 7781"}
+    r = api.patch(f"/applications/{app_id}", json=note)
     assert r.status_code == 200, r.text
     with SessionLocal() as db:
         me = db.query(User).filter(User.email == ME).one()
