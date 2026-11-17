@@ -832,7 +832,7 @@ def _websites_section(html: str) -> tuple[SectionSpec | None, bool]:
         or template_box is None
         or _inert(templates[0])
         or sum(1 for n in nodes if _first(n, "id") == tid) != 1
-        or (form is not None and form in templates[0].ancestors())  # the template outside it
+        # (a template inside the form names its box as an entry's: refused here; removal runs)
         or any(n not in boxes for n in named)
         or not _usable_within(root, form)  # hidden or disabled at load (a wizard page is not)
     ):

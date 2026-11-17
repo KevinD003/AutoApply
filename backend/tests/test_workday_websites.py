@@ -350,6 +350,8 @@ NOT_READ = {
     "an entry with a second control": with_entry(ENTRY_0.replace(
         "required></div>", 'required><input type="hidden" name="web[0].kind"></div>')),
     "an entry and Add": with_entry(ENTRY_0, add="Add"),
+    "an entry with no box": with_entry(  # removal runs: only `all(boxes)` sees it
+        '<div data-wd-entry="0"><h4>Websites 1</h4><label for="web-0-url">URL</label></div>'),
     "an entry's box written twice": with_entry(ENTRY_0.replace('type="url"',
                                                                'type="text" type="url"')),
     "an entry with an attribute of its own": with_entry(ENTRY_0.replace(
