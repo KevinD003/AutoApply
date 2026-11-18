@@ -9138,4 +9138,4 @@ audit-inventory and export-completeness guards are updated and pass.
     question Questions); queries per verdict; the count against the list; paused jobs starved by
     the time limit; dead code (`will_continue`, removed).
   - Each fixed with its test (135d1de), but those kept above.
-- **Each part is needed:** {SABRES}
+- **Each part is needed:** 48 changes on 135d1de, one at a time (worktrees of their own; the last 20 in two at once), D169's and D170's 51 tests run each time: each of the 46 changes named for a test fails it (174 failures among the 2,448 tests run). Not caught, by design: a final application examined too (the step returns at once for one, so the filter only saves the step), and the owner's preferences' explicit re-read (Kept). Earlier runs: 8 of 13 changes on e112f0c, each caught; 19 of 31 on 1422295, 18 caught (that re-read not).

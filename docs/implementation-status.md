@@ -98,9 +98,9 @@ backend suite, the full e2e suite, ruff, tsc and eslint were.
 | Two independent reviews (fd93167) | read-only, each given the code | one blocking, four should-fix, the rest minor (D170, Reviews); fixed in 135d1de with their tests, or kept with the reason |
 | After the fixes | `test_auto_apply.py` (JUnit); `ruff check .`, `ruff format --check .`, `npx tsc --noEmit`, `npm run lint` | 71 passed (210 s); clean |
 | The whole backend suite on 135d1de | `pytest` on all 179 test files in two halves run at once, each with a database and ports of its own (JUnit) | both exit 0: 7,135 passed, none failed or skipped (2,690 in 77 minutes and 4,445 in 71 minutes) |
-| Each part changed in turn (135d1de) | 48 changes, one at a time (a worktree of its own), D169's and D170's tests run, the file restored | {SABRES_SHORT} |
+| Each part changed in turn (135d1de) | 48 changes, one at a time (a worktree of its own), D169's and D170's tests run, the file restored | each of the 46 changes named for a test fails it (174 failures among the 2,448 tests run, 51 per change); not caught, by design: a final application examined too (the step returns at once for one) and the preferences' explicit re-read (D170, Kept) |
 | The full e2e suite on cf54e2a | `npx playwright test` | exit 0; 196 passed, 3 skipped (16.5 minutes), with `questions.spec.ts`'s new checks |
-| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_auto_apply.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | {DOCS} |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_auto_apply.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 116 passed in 235 s with the records; `ruff format .` formatted nothing, `ruff check .` found nothing, and the format check passed |
 
 ## The standing rule continues an application after a form change (D169, 2026-11-18; local only)
 

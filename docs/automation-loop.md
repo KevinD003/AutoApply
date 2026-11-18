@@ -1318,7 +1318,7 @@ action.
 | D170, the first version (e112f0c): its tests and touched suites; Questions e2e; 8 of 13 removal changes | 549 passed; 4 passed; each caught; then its reviews replaced the design |
 | D170, the revision (fd93167): the 20 suites it touches with the six that scan the whole repository; Questions e2e (aafb853); 19 of 31 removal changes (1422295) | exit 0, 844 passed; 4 passed; 18 caught (the preferences' re-read not, by design) |
 | D170, after both reviews' findings (135d1de): `test_auto_apply.py`; the whole backend suite (two halves at once) | 71 passed; both exit 0: 7,135 passed, none failed or skipped (2,690 in 77 minutes and 4,445 in 71 minutes) |
-| D170, each part changed in turn: 48 changes on 135d1de | {SABRES_SHORT} |
+| D170, each part changed in turn: 48 changes on 135d1de | each of the 46 changes named for a test fails it (174 failures among the 2,448 tests run, 51 per change); not caught, by design: a final application examined too (the step returns at once for one) and the preferences' explicit re-read (D170, Kept) |
 | D170, the full e2e suite on cf54e2a | exit 0; 196 passed, 3 skipped (16.5 minutes), with `questions.spec.ts`'s new checks |
 
 ## Failed approaches and rejected designs
