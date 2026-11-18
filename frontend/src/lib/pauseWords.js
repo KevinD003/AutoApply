@@ -19,6 +19,10 @@ export const RULE_WAITS = {
     "Your automatic applying could not read the employer's page again (it tries once a day); once it can, it continues this application " +
     "by itself.",
   questions: "Your automatic applying tries this version once more by itself as soon as you answer the open questions under Questions.",
+  // D171: a recorded permission for rehearsals only.
+  submit_not_permitted:
+    "This employer's rehearsal held, and your recorded permission does not cover submitting (step 4): once it does, your " +
+    "automatic applying continues this application by itself.",
 };
 
 // After D132's own "or apply on the employer's site": record it, so it is never sent twice.

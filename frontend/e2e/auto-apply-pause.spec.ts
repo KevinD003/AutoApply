@@ -42,3 +42,29 @@ test("pausing the rule says what it stopped of the work it had queued", async ({
   await expect(card.getByRole("button", { name: "Pause" })).toBeVisible();
   await expect(notice).toHaveCount(0);
 });
+
+// D171: with a recorded permission for rehearsals only, the card says the rule submits nothing.
+// The server's state is altered in the browser only (no permission is recorded in tests).
+test("a permission for rehearsals only is said on the card", async ({ page }, info) => {
+  const email = `d171.${info.project.name}.${Date.now()}@example.com`;
+  const reg = await page.request.post("/api/auth/register", { data: { email, password: "synthetic-password-1" } });
+  expect(reg.status()).toBe(201);
+  const stateSays = async (submits: boolean) => {
+    await page.unroute("**/api/auto-apply");
+    await page.route("**/api/auto-apply", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      const response = await route.fetch();
+      const json = { ...(await response.json()), active: true, paused: false, unavailable: null, submits };
+      await route.fulfill({ response, json });
+    });
+    await page.goto("/tracker");
+  };
+  const title = page.getByRole("heading", { name: "Automatically submit applications", level: 2 });
+  const card = page.locator("section", { has: title });
+  await stateSays(false);
+  await expect(card.getByText("On", { exact: true })).toBeVisible();
+  await expect(card.getByText(/Your recorded permission covers rehearsals only/)).toBeVisible();
+  await stateSays(true);
+  await expect(card.getByText("On", { exact: true })).toBeVisible();
+  await expect(card.getByText(/covers rehearsals only/)).toHaveCount(0);
+});

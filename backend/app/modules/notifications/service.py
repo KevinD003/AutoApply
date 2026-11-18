@@ -212,6 +212,10 @@ _RULE_WAITS = {
     "(it tries once a day); once it can, it continues this application by itself." + _TAKE_OVER,
     "questions": _STOPPED + "Your automatic applying tries this version once more by itself as "
     "soon as you answer the open questions under Questions." + _TAKE_OVER,
+    # D171: a recorded permission for rehearsals only.
+    "submit_not_permitted": _STOPPED + "This employer's rehearsal held, and your recorded "
+    "permission does not cover submitting (step 4): once it does, your automatic applying "
+    "continues this application by itself." + _TAKE_OVER,
 }
 _UNEXPLAINED = (
     "Reading the employer's form again showed no difference NoEfforts can see (the page's own "

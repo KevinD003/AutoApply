@@ -83,6 +83,13 @@ export default function AutoApplyCard() {
             Your recorded permission: {s.permission_attempts.used} of {s.permission_attempts.of} attempts used.
           </>
         )}
+        {s.active && s.submits === false && (
+          <>
+            {" "}
+            Your recorded permission covers rehearsals only: each employer&apos;s first application is filled and checked, and
+            nothing is submitted until it covers submitting (step 4).
+          </>
+        )}
       </p>
       {s.events.length > 0 && (
         <ul className="divide-y divide-hairline text-sm" aria-label="What automatic applying did">

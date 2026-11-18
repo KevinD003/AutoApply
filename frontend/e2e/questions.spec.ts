@@ -114,6 +114,11 @@ test("a form that changes during a run pauses; read it again, answer, and one ne
     await ruleSays("waits", "open", "declined");
     await expect(card.getByText(/while this job's signals or your preferences rule it out/)).toBeVisible();
     await expect(card.getByText(/Nothing can be approved or sent until/)).toHaveCount(0);
+    // D171: a recorded permission for rehearsals only.
+    await ruleSays("waits", "unexplained", "submit_not_permitted");
+    await expect(card.getByText(/your recorded permission does not cover submitting \(step 4\)/)).toBeVisible();
+    await expect(card.getByText(/first choose “I applied myself” for it in the Tracker/)).toBeVisible();
+    await expect(card.getByText(/or apply on the employer's site/)).toHaveCount(0);
     await ruleSays("yours", "unexplained");
     await expect(card.getByText(/Try this version again \(the page is checked again before anything is entered\), or apply on the employer's site/)).toBeVisible();
     await page.unroute("**/api/questions");

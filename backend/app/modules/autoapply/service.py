@@ -100,6 +100,9 @@ REASONS = {
     "began; automatic applying leaves it to you.",
     "approval_refused": "NoEfforts could not approve this package automatically.",
     "queue_refused": "The approved package could not be queued.",
+    # D171: a recorded permission for rehearsals only (the pilot's steps 1-3).
+    "submit_not_permitted": "This employer's rehearsal held; your recorded permission does not "
+    "cover submitting (step 4), so it is not sent until it does.",
 }
 # Network reads (capturing a job post) are tried at most once a day per job.
 RECAPTURE_AFTER = timedelta(hours=24)
@@ -590,8 +593,9 @@ def verdict(db: Session, user: User, app) -> tuple[str, str | None]:
       attempt limit used up, no approval allowed a day), the job's signals or the owner's
       preferences ruling it out ("declined"), the post unreadable since the pause began
       ("unreadable", read again once a day), or, the version to be tried once more, a question
-      waiting for the owner's answer ("questions"). Never D132's words: how to take it over
-      instead;
+      waiting for the owner's answer ("questions"); D171: its rehearsal held and the recorded
+      permission does not cover submitting ("submit_not_permitted"). Never D132's words: how to
+      take it over instead;
     - YOURS: it never will (D132's words), and that is for good: a final or revoked application,
       one begun before a restore or while one is unresolved, a job it never examines (not a post
       the pilot accepts), or what `_yours` leaves to the owner.
@@ -613,6 +617,11 @@ def verdict(db: Session, user: User, app) -> tuple[str, str | None]:
         return WAITS, "stopped"
     if _declined(db, user, job) is not None:
         return WAITS, "declined"
+    from app.modules.preparation import package as pk
+
+    latest = pk.latest_package(db, app.id)
+    if latest is not None and _submits_refused(db, app, latest):
+        return WAITS, "submit_not_permitted"  # D171: until the permission covers submitting
     current = _unresolved(pauses)
     if (
         current is not None
@@ -623,6 +632,32 @@ def verdict(db: Session, user: User, app) -> tuple[str, str | None]:
     if current is not None and current.status == "unexplained" and _questions_open(db, app):
         return WAITS, "questions"  # its next step, the try, waits for them (`open_questions`)
     return CONTINUES, None
+
+
+def _submits_refused(db: Session, app, pkg) -> bool:
+    """D171: the recorded permission does not cover submitting (the pilot's step 4) while this
+    application's next approval would be a submission (its employer path's rehearsal held, E6):
+    approved, it would only be refused at the queue (execution `enqueue`). A rehearsal it still
+    needs is approved as before; a stand-in that is not the pilot needs no permission."""
+    from app.modules.execution import rehearsal
+    from app.modules.execution.policy import execution_binding
+
+    if live.permission_refusal(("submit",)) is None:
+        return False
+    dest = pkg.content["destination"]
+    binding = execution_binding(dest, app.user_id)
+    if binding is None or binding["adapter"] != live.ADAPTER:
+        return False
+    verdict = rehearsal.prerequisite(
+        db,
+        layer="approve",
+        user_id=app.user_id,
+        destination=dest,
+        adapter=binding["adapter"],
+        adapter_version=binding["adapter_version"],
+        destination_class=rehearsal.destination_class(dest.get("origin")),
+    )
+    return verdict.status != rehearsal.UNMET
 
 
 def _questions_open(db: Session, app) -> bool:
@@ -785,6 +820,11 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
         db.execute(text("SELECT pg_advisory_xact_lock(:c, 0)"), {"c": _CAP_LOCK})
     if cap_used(db, user.id, now) >= get_settings().auto_apply_daily_cap:
         _note(db, user.id, job, app, "skipped", "daily_cap")
+        return None
+    if _submits_refused(db, app, pkg):
+        # D171: its next approval would be a submission the queue refuses: nothing approved, and
+        # a pause's version not counted as tried.
+        _note(db, user.id, job, app, "skipped", "submit_not_permitted")
         return None
     if retry is not None:
         # D169: that version tried once more, now that it will be approved; a step any check

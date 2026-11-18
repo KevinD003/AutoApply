@@ -894,7 +894,8 @@ def assert_yours(api, app_id: str) -> None:
 
 WAITS_WORDS = {"stopped": "is stopped now", "declined": "rule it out",
                "unreadable": "could not read the employer's page again",
-               "questions": "as soon as you answer the open questions"}  # fmt: skip
+               "questions": "as soon as you answer the open questions",
+               "submit_not_permitted": "does not cover submitting (step 4)"}  # fmt: skip
 
 
 def assert_waits(api, app_id: str, why: str) -> None:
@@ -1572,6 +1573,100 @@ def test_d170_a_read_held_by_a_recent_failure_is_shown_as_unreadable(api, receiv
     back_date_events(job, timedelta(days=1))  # that failure now more than a day before
     note, continues = pause_shown(api, app_id)
     assert continues is True and note["needs_action"] is False
+
+
+# ------------------------------------- D171: a recorded permission for rehearsals only
+
+REHEARSALS_ONLY = ("read", "open", "disclose")  # the pilot's steps 1-3, not step 4
+
+
+def scopes(app_id: str) -> list[str]:
+    return [str(getattr(a.scope, "value", a.scope)) for a in approvals(app_id)]
+
+
+def test_d171_with_a_permission_for_rehearsals_only_it_rehearses_and_submits_nothing(api, receiver):
+    # Steps 1-3 recorded, not step 4: the rule reads the post and rehearses the employer's first
+    # application (filled and checked, never submitted), then approves nothing more and says why,
+    # once: a submission it approved would only be refused at the queue. Step 4 recorded, it
+    # continues by itself and the application is sent once.
+    pilot_on(permitted=REHEARSALS_ONLY)
+    synthetic_candidate(api)
+    job = v2_job(api)
+    assert tick() == 0 and events(job) == [("skipped", "open_questions")]  # read (step 1)
+    app_id = app_of(api, job)
+    answer(api, app_id)
+    state = api.get("/auto-apply").json()
+    assert state["active"] is True and state["submits"] is False
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert receiver.ledger()["disclosures"] and receiver.ledger()["accepted"] == 0
+    assert tick() == 0 and events(job)[-1] == ("skipped", "submit_not_permitted")
+    assert tick() == 0 and events(job).count(("skipped", "submit_not_permitted")) == 1
+    assert scopes(app_id) == ["disclose_only"]  # the rehearsal's only: no submission approved
+    shown = api.get("/auto-apply").json()["events"]
+    assert service.REASONS["submit_not_permitted"] in [e["text"] for e in shown]
+    assert receiver.ledger()["accepted"] == 0
+    pilot_on()  # step 4 recorded
+    assert api.get("/auto-apply").json()["submits"] is True
+    assert tick() == 1 and events(job)[-1] == ("approved_submit", "submission_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+    assert tick() == 0 and receiver.ledger()["accepted"] == 1
+
+
+def test_d171_a_paused_submission_waits_for_the_permission_and_is_never_counted_as_tried(
+    api, receiver
+):
+    # The rule's submission stopped on a changed form before anything was entered (its rehearsal
+    # held); the permission then covers rehearsals only. Shown as waiting for it, with why, never
+    # as continued; the form is read again meanwhile (step 1), and that version is not counted as
+    # tried: once step 4 is recorded it is tried once more, and sent once.
+    job, app_id = rehearsal_queued(api)
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert tick() == 1 and events(job)[-1] == ("approved_submit", "submission_queued")
+    receiver.config(mode="gh2_question_added")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
+    receiver.config(mode="normal")
+    note, continues = pause_shown(api, app_id)
+    assert continues is True  # step 4 recorded: the rule continues it
+    pilot_on(permitted=REHEARSALS_ONLY)
+    assert_waits(api, app_id, "submit_not_permitted")
+    reads = requests_made(receiver)
+    assert tick() == 0  # read again (step 1): no difference
+    assert requests_made(receiver) > reads
+    (p,) = pause_rows(app_id)
+    assert p.status == "unexplained"
+    assert tick() == 0 and events(job)[-1] == ("skipped", "submit_not_permitted")
+    (p,) = pause_rows(app_id)
+    assert (p.status, p.resolution) == ("unexplained", None)  # never counted as tried
+    assert ("continued", "form_tried_again") not in events(job)
+    assert scopes(app_id) == ["disclose_only", "submit"]  # nothing approved since the pause
+    assert_waits(api, app_id, "submit_not_permitted")
+    pilot_on()  # step 4 recorded
+    note, continues = pause_shown(api, app_id)
+    assert continues is True and note["needs_action"] is False
+    assert tick() == 1
+    assert events(job)[-2:] == [
+        ("continued", "form_tried_again"),
+        ("approved_submit", "submission_queued"),
+    ]
+    assert runner.run_attempt(latest_attempt(), "w1") == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+
+
+def test_d171_a_paused_rehearsal_is_continued_under_a_permission_for_rehearsals_only(api, receiver):
+    # The employer's rehearsal itself stopped on a changed form: its next approval is a rehearsal
+    # again, which the permission covers, so the rule continues it by itself (and says so); it
+    # stops before the submission.
+    job, app_id = form_change_pause(api, receiver)
+    pilot_on(permitted=REHEARSALS_ONLY)
+    note, continues = pause_shown(api, app_id)
+    assert continues is True and note["needs_action"] is False
+    assert rule_of(api, app_id) == [("continues", None)] * 2
+    continued_by_itself(job)
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert tick() == 0 and events(job)[-1] == ("skipped", "submit_not_permitted")
+    assert receiver.ledger()["accepted"] == 0
 
 
 def test_another_account_never_sees_or_triggers_the_owners_rule(api, other_api, receiver):
