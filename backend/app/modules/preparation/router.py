@@ -9,6 +9,7 @@ from sqlalchemy import Text, case, cast, delete, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.core import authorizations
 from app.core.config import get_settings
 from app.core.db import get_db, new_id, utcnow
 from app.core.errors import bad_request, conflict, not_found
@@ -303,10 +304,12 @@ def capture_greenhouse_form(
     real = live.posting(url)
     if real is not None and live.environment_refusal() != "not_enabled":
         # D102: the Greenhouse pilot is switched on: a real job post is read through it alone.
-        why = live.refusal(user, ("read",))  # D103: reading is permission 1, on its own
+        # D103: reading is permission 1, on its own; D172: for the owner's own applying (the
+        # standing rule reads through its own entries, autoapply `_may_read`).
+        why = live.refusal(user, ("read",), approver=authorizations.OWNER)
         if why:
-            raise conflict(f"{live.WHY[why]} Apply on the employer's site and record it in the "
-                           "tracker.")  # fmt: skip
+            words = live.words(why, ("read",), approver=authorizations.OWNER)
+            raise conflict(f"{words} Apply on the employer's site and record it in the tracker.")
         return _capture_live(db, user, job, url, real)
     p = urlsplit(url)
     origin = f"{p.scheme}://{p.netloc}"

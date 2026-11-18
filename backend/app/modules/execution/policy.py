@@ -12,6 +12,7 @@ destination is refused by `adapter_for`, whatever the flags below say.
 
 from urllib.parse import urlsplit
 
+from app.core import authorizations
 from app.core.config import get_settings
 from app.core.urlsafety import is_fixture_origin
 from app.modules.execution import live
@@ -391,7 +392,8 @@ def _live_adapter(destination: dict) -> str:
     if why:  # "needs_container", the only other environment refusal
         raise UnsupportedDestination(live.WHY[why], "live_needs_container")
     # D103: every attempt opens the page and fills it in; neither without the owner's record.
-    if live.permission_refusal(("open", "disclose")):
+    # D172: the binding is the same whoever approves (each gate asks for that approver).
+    if live.permission_refusal(("open", "disclose"), approver=authorizations.ANY):
         raise UnsupportedDestination(live.WHY["not_authorized"], "live_not_authorized")
     origin, submit = destination.get("origin"), destination.get("submit_url")
     if not origin or not submit:

@@ -100,9 +100,17 @@ REASONS = {
     "began; automatic applying leaves it to you.",
     "approval_refused": "NoEfforts could not approve this package automatically.",
     "queue_refused": "The approved package could not be queued.",
-    # D171: a recorded permission for rehearsals only (the pilot's steps 1-3).
+    # D171: a recorded permission for rehearsals only (the pilot's steps 1-3); D172: for the
+    # standing rule's approvals.
     "submit_not_permitted": "This employer's rehearsal held; your recorded permission does not "
-    "cover submitting (step 4), so it is not sent until it does.",
+    "cover submitting (step 4) for your standing rule, so it does not send it until it does.",
+    # D172: your own approval of the package is the one the rule would queue, and it runs under
+    # the entries for your own approvals.
+    "your_approval_not_permitted": "You approved this package yourself, and your recorded "
+    "permission does not cover it for applications you approve yourself (or their attempt limit "
+    "is used), so automatic applying does not queue your approval. It is queued once a "
+    "permission names your own approvals; until then it is yours (revoking it leaves it yours, "
+    "D134).",
 }
 # Network reads (capturing a job post) are tried at most once a day per job.
 RECAPTURE_AFTER = timedelta(hours=24)
@@ -224,7 +232,8 @@ def owner_refusal(user: User) -> str | None:
     """Why the rule cannot act for this account now (a fixed code), or None."""
     if not get_settings().auto_apply_enabled:
         return "rule_off"
-    return live.refusal(user)  # switch, environment, owner, every recorded permission
+    # Switch, environment, owner, every recorded permission; D172: for the rule's own packages.
+    return live.refusal(user, approver=authorizations.RULE)
 
 
 def _last_event(db: Session, job_id) -> AutoApplyEvent | None:
@@ -382,7 +391,7 @@ def _preferences_unmet(db: Session, user: User, job: Job) -> bool:
 def _may_read(user: User) -> bool:
     """D170: the recorded permission covers reading as it is now, not as the tick began (a tick
     can outlast a permission's last day)."""
-    return live.refusal(user, ("read",)) is None
+    return live.refusal(user, ("read",), approver=authorizations.RULE) is None  # D172
 
 
 def _capture(db: Session, user: User, job: Job) -> bool:
@@ -587,11 +596,25 @@ def _stopped_on_form_change(db: Session, att: ExecutionAttempt) -> bool:
 CONTINUES, WAITS, YOURS = "continues", "waits", "yours"
 
 
-def _limit_used(db: Session) -> bool:
+def _limit_used(db: Session, approver: str = authorizations.RULE) -> bool:
     """D112: the recorded permission's attempt limit is used up (every step declines until the
-    owner records a new permission)."""
-    cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose")
+    owner records a new permission); D172: that of the entries for `approver`'s approvals (the
+    rule's own unless your approval is the one queued, `_yours_refused`)."""
+    cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose", approver=approver)
     return cap is not None and live.attempts_used(db, cap[1]) >= cap[0]
+
+
+def _yours_refused(db: Session, appr) -> bool:
+    """D172: your own approval of this package is the one approving returns the rule
+    (`pk.approve`), and the queue and every gate run it under the entries for your own approvals:
+    steps 2 and 3, step 4 for a submission, and their attempt limit."""
+    from app.modules.preparation.models import ApprovalScope
+
+    scope = str(getattr(appr.scope, "value", appr.scope))
+    steps = ("open", "disclose") + (("submit",) if scope == ApprovalScope.submit.value else ())
+    if live.permission_refusal(steps, approver=authorizations.OWNER) is not None:
+        return True
+    return _limit_used(db, authorizations.OWNER)
 
 
 def verdict(db: Session, user: User, app) -> tuple[str, str | None]:
@@ -700,7 +723,7 @@ def _submits_refused(db: Session, app, pkg) -> bool:
     from app.modules.execution import rehearsal
     from app.modules.execution.policy import execution_binding
 
-    if live.permission_refusal(("submit",)) is None:
+    if live.permission_refusal(("submit",), approver=authorizations.RULE) is None:  # D172
         return False
     dest = pkg.content["destination"]
     binding = execution_binding(dest, app.user_id)
@@ -896,6 +919,11 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
         return None
     if pkg.content["unresolved"] or pkg.content["validation_errors"]:
         _note(db, user.id, job, app, "skipped", "open_questions")
+        return None
+    yours = pk.active_approval(db, pkg)
+    if yours is not None and not yours.by_rule and _yours_refused(db, yours):
+        # D172: not queued under the rule's permission: it is yours, and runs under your own.
+        _note(db, user.id, job, app, "skipped", "your_approval_not_permitted")
         return None
     if _limit_used(db):
         _note(db, user.id, job, app, "skipped", "permission_limit")

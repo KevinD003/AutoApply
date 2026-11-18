@@ -9202,7 +9202,8 @@ audit-inventory and export-completeness guards are updated and pass.
     recording step 4 for the owner's own approvals would let the rule submit too. None is in
     force; an approver scope per entry, checked at each gate, changes the permission model and
     every gate (a candidate in remaining work), and the next entry recorded must say which
-    approvals it covers;
+    approvals it covers (D172 builds it: each entry names whose approvals it covers, checked
+    at each gate);
   - several applications to a new employer seen before its first rehearsal finishes are each
     rehearsed (E6 counts no rehearsal still running), with any permission; the card says
     "employers it has not rehearsed with yet";
@@ -9230,3 +9231,123 @@ audit-inventory and export-completeness guards are updated and pass.
   paused; the console; the card's words; a shadowed name; an unordered test helper. Each fixed
   with its test (eb5f6fd), or kept above with the reason.
 - **Each part is needed:** 27 changes on eb5f6fd, one at a time (two worktrees of their own at once), D171's tests with D113's flow, D169's first test and the console's run each time (11 tests): each of the 26 changes named for a test fails it (63 failures among the 297 tests run). Not caught, by design: the pilot-only guard (Kept). Its frontend parts, each spec run with the file changed: the 3 of c66cfb0 and the 5 the fixes added, each caught on its own assertion. Before the reviews (c66cfb0): 9 changes, each of the 8 named caught (14 failures among the 45 tests run).
+
+## D172 — Each recorded permission says whose approvals it covers: yours, one at a time, or your standing rule's (2026-11-18)
+
+- **Context:** a recorded permission (app/core/authorizations.py) covered its steps for every
+  approval alike. The entries differed by approver only in their words: D112's form said
+  "approved there one at a time", and D113's said "without asking you". An entry recording
+  step 4 (submit) for the owner's own approvals would also have let the standing rule submit.
+  The rule has been on by default since D168, and the owner asked for it to stop for nothing
+  (2026-11-18). D171 kept this as a candidate: an approver scope per entry, checked at each
+  gate. It also said that the next entry recorded must name whose approvals it covers.
+- **Decided** (`authorizations.py`):
+  - **Each entry names its approvers** (`approvers`, required):
+    - `owner`: an account's own approvals, one package at a time in the app (every account
+      served is the owner's, D114);
+    - `rule`: the standing rule to apply automatically (D113, approvals with `by_rule`);
+    - or both.
+
+    A step recorded for one never lets the other take it. Every call that reads the register
+    for a step names the approver (`approver=`, a required keyword), and a static test reads
+    every such call in the app.
+
+    `ANY` is used only where the approver cannot be known: a job's route once a form is read,
+    the pilot's readiness, the binding computed at approval, and the console's warning. It
+    means one approver's entries cover every step asked, never steps pieced together from
+    entries for two approvers (`covers_all`).
+  - **Each gate that knows who approved the package asks for that approver**
+    (`execution.service.approver_of`):
+    - your capture of a job post: your own entries; the rule reads through its own;
+    - the queue (`enqueue`): steps 2 and 3, and step 4 for a submission. Your own package under
+      a permission for the rule's approvals only is refused there, before any attempt exists;
+    - the runner, before the employer's page is opened (`pilot_refusal`);
+    - the gates: steps 2 and 3 (`_gate_checks`), the disclosure gate's attempt limit
+      (`_pilot_limit`), and the send gate's step 4;
+    - verification codes from the mailbox (`fill_codes`): only for the code step of an attempt
+      whose approver the mailbox permission covers. The mailbox is not opened for another; that
+      step stays the owner's.
+  - **The standing rule acts only through entries naming it.** That covers its steps
+    (`owner_refusal`, `_may_read`), its attempt limit (`_limit_used`) and whether it submits
+    (`_submits_refused`, D171). The Tracker's card shows the same, and says when your own
+    approvals may submit while the rule's may not (`submits_yours`).
+  - **Your own approval runs under your own entries.** Approving returns the rule your own live
+    approval of the package (D134), and the queue and every gate run it under your own
+    entries. So the rule checks their steps and attempt limit before queueing it. If they do
+    not cover it, it does not queue it and says why, once (`your_approval_not_permitted`). It
+    never notes "could not be queued" at each step, and no page is opened for an attempt the
+    disclosure gate would refuse.
+  - **Your own applying reads your own entries:**
+    - the pilot's handoff (the rule's entries when the rule approved the package, which it then
+      says);
+    - the console's pilot row;
+    - the job page before any form is read: its route says whose approvals the permission covers
+      instead of offering a read that would be refused. The form is looked up for a real
+      Greenhouse post only; any other destination is refused before any form is looked up, as
+      before. The whole backend suite caught the lookup placed first (`test_reason_codes`).
+  - **Refusals say whose approvals.** Where what was refused is recorded only for the other
+    approver's applications, the words say so (`live.words`: `owner_only`, `rule_only`) rather
+    than that nothing is recorded. The reason codes are unchanged.
+  - **D171's words for step 4 say "for your standing rule"** wherever your own approvals may
+    submit: the card, the console, the rule's reason, the feed, the application's notice, and
+    the waiting pause.
+  - **Attempt limits:** the limit is that of the entries covering the approver: the smallest,
+    and the earliest-counted among equals. It counts every attempt through the pilot since its
+    day, whoever approved it. That is the conservative reading, as D112 to D114 shared theirs,
+    and the permission form says so. D113 and D114 share D112's limit in their words, so they
+    count from D112's day (`counted_from`).
+  - **The shipped register keeps what each entry's words said:**
+    - D112: the owner's own (the §4 form's "only postings I approve ... one at a time");
+    - D113: the rule's ("without asking you");
+    - D114: both ("approved by that account or by that account's own standing rule");
+    - D117 (codes): both ("the greenhouse applications").
+
+    Every entry ended on 2026-11-06, and none was added.
+  - **What the owner sees and fills in:** the console shows whose approvals each recorded
+    permission covers, and that an attempt limit counts every attempt whoever approved it. The
+    permission form (docs/activation-status.md §4) asks whose approvals the permission covers;
+    with no answer there, nothing is recorded until the owner says.
+- **Not changed:** `SCHEMA_VERSION`. There is no migration: who approved is
+  `PackageApproval.by_rule`, already recorded. Everything else each gate checks is unchanged.
+- **Supersedes** D171's kept item on an entry covering its steps for every approver.
+- **Kept, with the reason:**
+  - **Every attempt counts against every entry's limit, whoever approved it.** With your own
+    limit at 2 and the rule's at 10, two of the rule's attempts use up yours. It is the
+    conservative reading (no entry's limit is ever exceeded by attempts it did not count), and
+    the console and the form say so. Counting by approver needs the approver at each count, and
+    words for entries that share a limit: a candidate.
+  - **An approver covered only by entries without a limit takes no lock at the disclosure
+    gate.** A concurrent capped gate of the other approver can then miss that attempt by one.
+    Every pilot entry recorded since D112 sets a limit, and the §4 form asks for one.
+  - **"Your own" means each account's own approvals.** With every account served and sole-owner
+    mode off, an entry for your own approvals covers every served account's own approvals, as
+    D114's words do.
+  - **The Tracker row keeps "Waits for your permission to submit"** because it is short. The
+    application's notice and the card say whose approvals, and what your own "Submit once" does.
+  - **The rule queues your own approval only when your own entries cover it,** and it then runs
+    as yours. An approval the rule left unused, queued by you, runs under the rule's entries.
+    Either way it runs under its approver's.
+  - **The pilot's readiness lists the steps any entry covers, step by step.** This is display
+    only; its "recorded" conditions need one approver's entries for every step.
+- **Reviews:** two independent reviewers, read-only, each given the code (960abf0).
+  - **Reviewer A** (the gates) found nothing blocking:
+    - should-fix: D113 and D114 now counted their shared limit from their own day, leaving
+      D112's out;
+    - should-fix: verification codes asked for no approver (already fixed in 422f695);
+    - minor: the rule queueing your own approval under the rule's checks (a "could not be
+      queued" at each step, or a page opened for an attempt the gate refuses); the handoff
+      assuming you; a forgotten approver meaning any entry;
+    - note: the records.
+  - **Reviewer B** (completeness, tests, words):
+    - blocking: the records and the §4 form (the form was already done in 422f695; the records
+      are done with this change);
+    - should-fix, the words once approvals are split: the step-4 words, the console's notes, a
+      refusal in the generic words (done in 0fd8eb4), and the job page before a form;
+    - should-fix, the rest: the console not showing approvers (done in 422f695); the handoff;
+      the codes; the shared limit's day; the shared count across approvers (kept above,
+      recorded and said); the rule queueing your approval; tests that passed with one argument
+      changed; a forgotten approver;
+    - minor: "any" as a union, step by step; "your own" meaning each account's.
+
+  Each finding was fixed with its test (23cef64, 26dc02c) or kept above with the reason.
+- **Each part is needed:** 49 backend changes on 26dc02c, one at a time (two worktrees of their own at once), the 23 D172 tests run each time: each of the 49 fails the tests named for it (129 failures among the 1,127 tests run); the route's change again on 9200093 after its fix: caught. Its frontend parts, each spec run (desktop and mobile) with the file changed: each of the 8 caught on its own assertion (the email's wrapping on a phone only). Before the reviews (9d3d8f7): 35 changes, each of the 34 named caught; the gate's own check of steps 2 and 3 had no test of its own (the runner's check refused first): it has one now.

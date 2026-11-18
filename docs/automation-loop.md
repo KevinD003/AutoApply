@@ -63,7 +63,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D168 the owner's console (every switch and why, one application traced from start to finish) and sole-owner mode | merged (#78, aaf3bac, tree as predicted); its PR CI passed all four jobs on a827960 (on 5fab3fd the backend job failed one test: the console wrote a support label itself; fixed) |
 | D169 the standing rule continues an application after a form change (the owner's accounts) | merged with D170 (#79, 76178ed, tree as predicted); its PR CI passed all four jobs on ecb50b4 (and on b1b1f34, D169 alone) |
 | D170 a paused application is the rule's to continue, waits for it (and why), or is yours for good | merged with D169 (#79, 76178ed, tree as predicted); its PR CI passed all four jobs on ecb50b4 |
-| D171 with a permission for rehearsals only, the rule rehearses and stops before submitting, and says so | on its branch `rehearsal-only` (from main at 76178ed); its PR is next |
+| D171 with a permission for rehearsals only, the rule rehearses and stops before submitting, and says so | merged (#80, 1864450, tree as predicted); its PR CI passed all four jobs on 51132e8 |
+| D172 each recorded permission says whose approvals it covers (yours, one at a time, or your standing rule's), checked at each gate | on its branch `approver-scope` (from main at c44f405); its PR is next |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -385,7 +386,19 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
 
-- **D171 (on its branch `rehearsal-only`).** With a recorded permission for the pilot's
+- **D172 (on its branch `approver-scope`).** Each recorded permission says whose approvals it
+  covers, yours one at a time or your standing rule's, and each gate asks for that approver:
+  - your capture, the queue (steps 2 and 3 too), the runner before the page, the gates (steps
+    2 and 3, the attempt limit, step 4), verification codes; the rule acts only through
+    entries naming it, and queues your own approval only when your own entries cover it;
+  - every call names the approver (a static test reads them all); "any" means one
+    approver's entries for every step; D113's and D114's shared limit counts from D112's day;
+  - shown wherever it matters: the console, the card, the handoff, the job page, the refusals,
+    the step-4 words ("for your standing rule"); the permission form asks for it;
+  - two independent reviews (one blocking: the records and the form): each finding fixed with
+    its test, or kept with the reason.
+
+- **D171 (merged, #80).** With a recorded permission for the pilot's
   steps 1-3 only, the rule rehearses and stops before submitting, and says so:
   - nothing more is approved once the employer path's rehearsal held (a submission the queue
     would refuse), nor another rehearsal once that one no longer counts; noted once, before
@@ -810,8 +823,10 @@ and sole-owner mode, in which every account is the owner's.
 application after a form change, before anything was entered.
 **D170** (#79, with D169) shows with each paused application what the rule does with
 it (continues, waits and why, or yours for good) and keeps what is yours.
-**D171** (on its branch `rehearsal-only`) holds an application before submitting while the
+**D171** (#80) holds an application before submitting while the
 recorded permission covers rehearsals only, and says so wherever it is shown.
+**D172** (on its branch `approver-scope`) records whose approvals each permission covers and checks
+it at each gate.
 Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
@@ -908,7 +923,12 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D171:** on its branch `rehearsal-only`. Locally: the new tests (the receiver's ledger as the
+- **D172:** on its branch `approver-scope`. Locally: the new tests (the receiver's ledger as the
+  oracle), the suites the change touches, the removal runs, the whole backend suite and the
+  full e2e suite (Tests run below). Not tested: a real page or a real mailbox; a permission
+  recorded by the owner for one approver only (none is in force).
+- **D171:** merged (#80, 1864450, tree as predicted); its PR CI passed all four jobs on
+  51132e8. Locally: the new tests (the receiver's ledger as the
   oracle), the suites the change touches, the removal runs, the whole backend suite and the
   full e2e suite (Tests run below). Not tested: a real page; a permission for steps 1-3
   recorded by the owner (none is in force); two workers racing for one held application
@@ -1349,6 +1369,13 @@ action.
 | D171, each part changed in turn (eb5f6fd) | 27 backend changes, one at a time (two worktrees at once); 5 frontend changes | each of the 26 named caught (63 failures among the 297 tests run); each frontend change caught on its own assertion; the pilot-only guard not, by design |
 | D171, the full e2e suite on eb5f6fd | `npx playwright test` | exit 0; 198 passed, 3 skipped (15.6 minutes) |
 | D171, the whole backend suite on eb5f6fd (two halves at once) | `pytest` on all 179 test files (JUnit) | both exit 0: 7,144 passed, none failed or skipped (2,698 in 69 minutes and 4,446 in 63 minutes) |
+| D171, its PR's CI (#80) on 51132e8: the four jobs | all four passed (the backend job in 121 minutes); #80 merged (1864450, tree as predicted) |
+| D172, the first version (960abf0): its tests; the suites it touches; its parts changed in turn (9d3d8f7) | the D172 and permission tests; 47 suites; 35 changes | 52 passed; exit 0, 1,576 passed; each of the 34 named caught |
+| D172, two independent reviews (960abf0) | read-only, each given the code | one blocking, several should-fix, several minor; fixed in 23cef64 and 26dc02c with their tests, or kept (D172) |
+| D172, each part changed in turn (26dc02c, 3b61cc8) | 49 backend changes (two worktrees at once); 8 frontend changes | each of the 49 named caught (129 failures among the 1,127 tests run); each frontend change caught on its own assertion |
+| D172, the whole backend suite on 23cef64 (two halves at once) | `pytest` on all 179 test files (JUnit) | 7,166 passed, 1 failed (a real destination's route looked its form up first); fixed in 9200093 |
+| D172, the full e2e suite on 9200093 | `npx playwright test` | exit 0; 200 passed, 3 skipped (15.2 minutes) |
+| D172, the whole backend suite on 9200093 (two halves at once) | `pytest` on all 179 test files (JUnit) | both halves at once, in this rebuilt container (a fresh clone, its newer browser build linked for Playwright 1.56): half A 2,709 passed, 4 failed; half B 4,443 passed, 11 failed; none in D172's tests. Three broker-restart tests waited on the worker's log under the load of both halves; one test's check that a port number is never shown met a random identifier containing it (rare; not D172's); the browser runner's 11 ran before the browser build was linked. Each failing file run again alone: 14 and 18 passed |
 
 ## Failed approaches and rejected designs
 
@@ -1465,12 +1492,11 @@ action.
 
 ## Exact next action
 
-1. D171 (branch `rehearsal-only`, its PR next): with a recorded permission that does not
-   cover submitting, the rule rehearses and stops before submitting, and says so. Candidates
-   after it: an approver scope for each recorded permission, checked at each gate (D171,
-   Kept); the Greenhouse pilot's own reads of what its form sends (D159's attributes, D160's
-   controls and final click); leaving out one credential or link for one application (every
-   current approved one is sent today).
+1. D172 (branch `approver-scope`, its PR next): each recorded permission says whose
+   approvals it covers, yours or your standing rule's, checked at each gate. Candidates after it: counting each approver's attempts on its own
+   (D172, Kept); the Greenhouse pilot's own reads of what its form
+   sends (D159's attributes, D160's controls and final click); leaving out one credential or
+   link for one application (every current approved one is sent today).
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it

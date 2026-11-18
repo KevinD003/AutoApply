@@ -11,17 +11,25 @@ import pytest
 from sqlalchemy import select, text, update
 from sqlalchemy.exc import DBAPIError
 
+from app.core import authorizations
 from app.core.config import get_settings
 from app.core.db import SessionLocal, utcnow
 from app.modules.autoapply import service
 from app.modules.autoapply.models import AutoApplyEvent, AutoApplyPrefs
-from app.modules.execution import runner
+from app.modules.execution import live, runner
 from app.modules.execution import service as svc
 from app.modules.execution.models import ApplicationPause, ExecutionAttempt, RehearsalRecord
 from app.modules.identity.models import User
 from app.modules.preparation import package as pk
 from app.modules.preparation.models import PackageApproval
-from tests.execution_harness import Receiver, pilot_on, queue, synthetic_candidate
+from tests.execution_harness import (
+    PILOT_PERMISSIONS,
+    Receiver,
+    pilot_add,
+    pilot_on,
+    queue,
+    synthetic_candidate,
+)
 from tests.test_greenhouse_dom import BASE, BOARD, SCREEN_JOB, v2_job
 
 ANSWERS = {
@@ -895,7 +903,8 @@ def assert_yours(api, app_id: str) -> None:
 WAITS_WORDS = {"stopped": "is stopped now", "declined": "rule it out",
                "unreadable": "could not read the employer's page again",
                "questions": "as soon as you answer the open questions",
-               "submit_not_permitted": "does not cover submitting (step 4)"}  # fmt: skip
+               "submit_not_permitted":
+                   "does not cover submitting (step 4) for your standing rule"}  # fmt: skip
 
 
 def assert_waits(api, app_id: str, why: str, step4: bool = False) -> None:
@@ -1172,8 +1181,10 @@ def test_d170_a_read_needs_the_permission_as_it_is_now(api, receiver, monkeypatc
     job, app_id = form_change_pause(api, receiver)
     real = live.refusal
 
-    def refusal(user, actions=live.TO_APPLY):
-        return "not_authorized" if tuple(actions) == ("read",) else real(user, actions)
+    def refusal(user, actions=live.TO_APPLY, *, approver):
+        if tuple(actions) == ("read",):
+            return "not_authorized"
+        return real(user, actions, approver=approver)
 
     monkeypatch.setattr(live, "refusal", refusal)
     other_role = {"url": f"{BASE}/gh2/{BOARD}/jobs/5020003", "title": "Clinic Coordinator",
@@ -1595,7 +1606,7 @@ def test_d170_a_read_held_by_a_recent_failure_is_shown_as_unreadable(api, receiv
 # ------------------------------------- D171: a recorded permission for rehearsals only
 
 REHEARSALS_ONLY = ("read", "open", "disclose")  # the pilot's steps 1-3, not step 4
-STEP4_WORDS = "and your recorded permission covers submitting (step 4)"
+STEP4_WORDS = "and your recorded permission covers submitting (step 4) for your standing rule"
 
 
 def scopes(app_id: str) -> list[str]:
@@ -1820,14 +1831,151 @@ def test_d171_a_held_application_with_a_question_open_says_both(api, receiver):
     (item,) = [n for n in items if n["kind"] == "auto_apply_questions"]
     assert item["application_id"] == app_id
     assert (
-        "it submits nothing until your recorded permission covers submitting (step 4)"
-        in item["text"]
+        "it submits nothing until your recorded permission covers submitting (step 4) for your "
+        "standing rule" in item["text"]
     )
     assert "continues by itself" not in item["text"]
     r = api.put(f"/applications/{app_id}/answers",
                 json={"key": "question_8101", "value": {"label": "Yes"}})  # fmt: skip
     assert r.status_code == 200, r.text
     assert held(api, app_id) == (("waits", "submit_not_permitted", False),) * 2
+
+
+# --------------------------- D172: whose approvals a recorded permission covers
+
+
+def test_d172_your_own_step_4_never_lets_the_rule_submit(api, receiver):
+    """D172: steps 1-3 recorded for the standing rule's packages and all four for your own: the
+    rule rehearses, then holds the application for step 4 (D171), while your own approval to
+    submit it is queued and sent, once."""
+    pilot_on(permitted=REHEARSALS_ONLY, approvers={authorizations.RULE})
+    pilot_add(PILOT_PERMISSIONS, approvers={authorizations.OWNER})
+    synthetic_candidate(api)
+    job = v2_job(api)
+    tick()
+    app_id = app_of(api, job)
+    answer(api, app_id)
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert tick() == 0 and events(job)[-1] == ("skipped", "submit_not_permitted")
+    state = api.get("/auto-apply").json()
+    assert (state["submits"], state["submits_yours"]) == (False, True)  # yours is still sent
+    p = api.get(f"/applications/{app_id}/package").json()["package"]
+    body = {"version": p["version"], "content_hash": p["content_hash"], "scope": "submit"}
+    assert api.post(f"/applications/{app_id}/package/approve", json=body).status_code == 200
+    assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+    assert tick() == 0 and receiver.ledger()["accepted"] == 1
+
+
+def test_d172_a_permission_for_your_own_approvals_only_stops_the_rule(api, receiver):
+    """D172: every step recorded for your own approvals only: the standing rule reads nothing
+    and approves nothing, and says it cannot act."""
+    pilot_on(approvers={authorizations.OWNER})
+    synthetic_candidate(api)
+    job = v2_job(api)
+    assert tick() == 0 and events(job) == [] and receiver.ledger()["requests"] == []
+    state = api.get("/auto-apply").json()
+    assert state["active"] is False and state["unavailable"]["code"] == "not_authorized"
+    assert state["unavailable"]["message"] == live.WHY["owner_only"]
+    assert state["submits"] is False
+    pilot_on(permitted=())  # nothing recorded at all: the words say so
+    assert api.get("/auto-apply").json()["unavailable"]["message"] == live.WHY["not_authorized"]
+
+
+def test_d172_the_rules_attempt_limit_is_that_of_its_own_entries(api, receiver, monkeypatch):
+    """D112's limit, D172: of the entries covering the standing rule's approvals. Yours (1) used
+    up stops your own attempts, not the rule: its card shows its own (5) and it approves."""
+    pilot_on(approvers={authorizations.OWNER}, max_attempts=1)
+    pilot_add(PILOT_PERMISSIONS, approvers={authorizations.RULE}, max_attempts=5)
+    monkeypatch.setattr(live, "attempts_used", lambda db, since, exclude=None: 1)
+    synthetic_candidate(api)
+    job = v2_job(api)
+    tick()
+    answer(api, app_of(api, job))
+    state = api.get("/auto-apply").json()
+    assert state["active"] is True and state["permission_attempts"] == {"used": 1, "of": 5}
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+
+
+def test_d172_a_read_during_a_tick_needs_the_rules_own_permission(api, receiver, monkeypatch):
+    """D170's read as the permission is now, D172: the standing rule's own. Its entry ends during
+    a tick while yours still covers reading: the post is neither read for the rule nor noted."""
+    pilot_on(approvers={authorizations.RULE})
+    pilot_add(("read",), approvers={authorizations.OWNER})
+    synthetic_candidate(api)
+    job = v2_job(api)  # a new job: read first
+    real = service._read_failed_recently
+
+    def ends_now(db, job, now):
+        pilot_on(permitted=("read",), approvers={authorizations.OWNER})  # the rule's entry ended
+        return real(db, job, now)
+
+    monkeypatch.setattr(service, "_read_failed_recently", ends_now)
+    assert tick() == 0 and events(job) == [] and requests_made(receiver) == 0
+
+
+def test_d172_a_permission_for_the_rules_approvals_only_lets_it_apply_start_to_finish(
+    api, receiver
+):
+    """D172 (B9): every step recorded for the standing rule's approvals only: it reads, rehearses
+    and submits by itself, once (the queue and both gates ask for the rule's own entries)."""
+    pilot_on(approvers={authorizations.RULE})
+    synthetic_candidate(api)
+    job = v2_job(api)
+    tick()
+    answer(api, app_of(api, job))
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert tick() == 1 and events(job)[-1] == ("approved_submit", "submission_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+
+
+def test_d172_your_own_approval_is_queued_only_under_your_own_permission(api, receiver):
+    """D172 (both reviews): steps 1-3 recorded for your own approvals and all four for the rule's.
+    The rule rehearses; you approve the submission yourself, which your permission does not
+    cover: your queue is refused, and the rule, to which approving returns your approval, does
+    not queue it either and says why, once (never "could not be queued" at each step). Once a
+    permission names your own approvals for submitting, it is queued and sent, once."""
+    pilot_on(permitted=REHEARSALS_ONLY, approvers={authorizations.OWNER})
+    pilot_add(PILOT_PERMISSIONS, approvers={authorizations.RULE})
+    synthetic_candidate(api)
+    job = v2_job(api)
+    tick()
+    app_id = app_of(api, job)
+    answer(api, app_id)
+    assert tick() == 1 and runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    p = api.get(f"/applications/{app_id}/package").json()["package"]
+    body = {"version": p["version"], "content_hash": p["content_hash"], "scope": "submit"}
+    assert api.post(f"/applications/{app_id}/package/approve", json=body).status_code == 200
+    r = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
+    assert r.status_code == 409 and live.WHY["rule_only"] in r.json()["detail"]
+    assert tick() == 0 and tick() == 0
+    assert events(job)[-1] == ("skipped", "your_approval_not_permitted")
+    assert events(job).count(("skipped", "your_approval_not_permitted")) == 1
+    assert ("skipped", "queue_refused") not in events(job)
+    assert receiver.ledger()["accepted"] == 0
+    pilot_add(("submit",), approvers={authorizations.OWNER})  # your own approvals may submit
+    assert tick() == 1 and runner.run_attempt(latest_attempt(), "w1") == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+
+
+def test_d172_your_own_approval_waits_while_your_attempt_limit_is_used(api, receiver, monkeypatch):
+    """D172 (both reviews): your own entries' attempt limit used, not the rule's: the rule does not
+    queue your approval, so no page is opened for an attempt the disclosure gate would refuse."""
+    pilot_on(approvers={authorizations.OWNER}, max_attempts=1)
+    pilot_add(PILOT_PERMISSIONS, approvers={authorizations.RULE}, max_attempts=5)
+    synthetic_candidate(api)
+    job = v2_job(api)
+    tick()
+    app_id = app_of(api, job)
+    answer(api, app_id)
+    approve_yourself(api, app_id)  # a rehearsal, not queued
+    monkeypatch.setattr(live, "attempts_used", lambda db, since, exclude=None: 1)
+    reads = requests_made(receiver)
+    assert tick() == 0 and events(job)[-1] == ("skipped", "your_approval_not_permitted")
+    assert requests_made(receiver) == reads
 
 
 def test_another_account_never_sees_or_triggers_the_owners_rule(api, other_api, receiver):

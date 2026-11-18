@@ -415,7 +415,9 @@ def test_the_shipped_permissions_are_shown_as_the_gates_read_them(api, monkeypat
     for p, a in zip(v["permissions"], SHIPPED_REGISTER, strict=True):
         assert (p["what"], p["words"], p["decision"]) == (a.what, a.words, a.decision)
         monkeypatch.setattr(authorizations, "RECORDED", (a,))
-        assert p["active"] is any(authorizations.covers(a.what, x) for x in a.actions)
+        assert p["active"] is any(
+            authorizations.covers(a.what, x, approver=authorizations.ANY) for x in a.actions
+        )
     pilot = [p for p in v["permissions"] if p["what"] == "greenhouse_pilot"]
     assert pilot and all(p["ends_on"] == "2026-11-06" for p in pilot)
     if date.today() > date(2026, 11, 6):
@@ -432,7 +434,8 @@ def test_a_permission_running_or_not_yet_started_is_shown_as_such(api, monkeypat
         return authorizations.Authorization(
             what=authorizations.GREENHOUSE_PILOT, decision="D168", given_on=given_on,
             words=words, actions=frozenset({"read", "open", "disclose"}),
-            data="a test's own synthetic posting", ends_on=ends_on, max_attempts=3)  # fmt: skip
+            data="a test's own synthetic posting", ends_on=ends_on,
+            approvers=authorizations.APPROVERS, max_attempts=3)  # fmt: skip
 
     monkeypatch.setattr(authorizations, "RECORDED", (
         entry(today, today + timedelta(days=1), "running"),
@@ -456,6 +459,43 @@ def test_d171_the_rule_says_a_permission_covers_rehearsals_only(api, monkeypatch
     pilot_on()
     rule = feature(api.get("/debug/system").json(), "auto_apply")
     assert rule["why"] is None and "covers rehearsals only" not in rule["note"]
+
+
+def test_d172_each_row_reads_the_permissions_for_its_own_approvals(api, monkeypatch):
+    """D172: the pilot's row is your own applying, one package at a time; the standing rule's
+    row is the rule's. Each reads the entries covering its own approvals: their steps, their
+    attempt limit; each permission says whose approvals it covers."""
+    from app.modules.execution import live
+    from tests.execution_harness import PILOT_PERMISSIONS, pilot_add
+
+    monkeypatch.setattr(get_settings(), "auto_apply_enabled", True)
+    pilot_on(approvers={authorizations.RULE})  # every step, for the standing rule's only
+    v = api.get("/debug/system").json()
+    assert feature(v, "greenhouse_pilot")["why"] == live.WHY["rule_only"]
+    assert feature(v, "auto_apply")["why"] is None
+    assert [p["approvers"] for p in v["permissions"]] == [["rule"]]
+    pilot_on(approvers={authorizations.OWNER})  # every step, for your own only
+    v = api.get("/debug/system").json()
+    assert feature(v, "greenhouse_pilot")["why"] is None
+    assert feature(v, "auto_apply")["why"] == live.WHY["owner_only"]
+    assert [p["approvers"] for p in v["permissions"]] == [["owner"]]
+    # Steps 1-3 for yours (one attempt), every step for the rule's (five): one attempt used.
+    pilot_on(permitted=("read", "open", "disclose"), approvers={authorizations.OWNER},
+             max_attempts=1)  # fmt: skip
+    pilot_add(PILOT_PERMISSIONS, approvers={authorizations.RULE}, max_attempts=5)
+    monkeypatch.setattr(live, "attempts_used", lambda db, since, **kw: 1)
+    v = api.get("/debug/system").json()
+    pilot, rule = feature(v, "greenhouse_pilot"), feature(v, "auto_apply")
+    assert pilot["why"] == "The recorded permission's attempt limit is used: 1 of 1."
+    assert "not the final submit" in pilot["note"]
+    assert rule["why"] is None and "covers rehearsals only" not in rule["note"]
+    assert [p["approvers"] for p in v["permissions"]] == [["owner"], ["rule"]]
+    # Steps 1-3 for the rule's, every step for yours: the rule's row says it rehearses only.
+    pilot_on(permitted=("read", "open", "disclose"), approvers={authorizations.RULE})
+    pilot_add(PILOT_PERMISSIONS, approvers={authorizations.OWNER})
+    v = api.get("/debug/system").json()
+    assert "covers rehearsals only" in feature(v, "auto_apply")["note"]
+    assert feature(v, "greenhouse_pilot")["note"] is None
 
 
 def test_each_feature_says_why_as_its_own_gate_decides(api, other_api, monkeypatch, tmp_path):
@@ -664,7 +704,7 @@ def test_sole_owner_mode_opens_no_gate(api, other_api, receiver, monkeypatch):
 
     v2_job(other_api)
     other = user(OTHER)
-    assert live.refusal(other) == "not_authorized"
+    assert live.refusal(other, approver=authorizations.ANY) == "not_authorized"
     assert rule.owner_refusal(other) == "not_authorized"
     assert rule.tick() == 0
     assert receiver.ledger()["requests"] == []
@@ -674,6 +714,6 @@ def test_sole_owner_mode_opens_no_gate(api, other_api, receiver, monkeypatch):
     assert pilot["ready"] is False and pilot["why"]
     monkeypatch.setattr(s, "env", "production")
     monkeypatch.setattr(s, "browser_isolation", "netns")
-    assert live.refusal(other) == "needs_container"
+    assert live.refusal(other, approver=authorizations.ANY) == "needs_container"
     monkeypatch.setattr(s, "env", "development")
-    assert live.refusal(other) == "needs_production"
+    assert live.refusal(other, approver=authorizations.ANY) == "needs_production"

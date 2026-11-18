@@ -63,7 +63,11 @@ test("a permission for rehearsals only is said on the card", async ({ page }, in
   const card = page.locator("section", { has: title });
   await stateSays(false);
   await expect(card.getByText("On", { exact: true })).toBeVisible();
-  await expect(card.getByText(/Your recorded permission covers rehearsals only/)).toBeVisible();
+  await expect(card.getByText(/Your recorded permission covers rehearsals only for your standing rule/)).toBeVisible();
+  await expect(card.getByText(/Submit once/)).toHaveCount(0);
+  // D172: your own approvals may submit while the rule's may not: the card says your own is still sent.
+  await stateSays(false, { submits_yours: true });
+  await expect(card.getByText(/Your own “Submit once” is still sent/)).toBeVisible();
   await stateSays(true);
   await expect(card.getByText("On", { exact: true })).toBeVisible();
   await expect(card.getByText(/covers rehearsals only/)).toHaveCount(0);

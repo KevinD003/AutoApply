@@ -8,8 +8,9 @@ from datetime import date
 from app.core import authorizations
 
 
-def authorize(monkeypatch, what: str, *actions: str) -> None:
-    """Record an authorization of `what` covering `actions` (all of its actions when none)."""
+def authorize(monkeypatch, what: str, *actions: str, approvers=None) -> None:
+    """Record an authorization of `what` covering `actions` (all of its actions when none), for
+    `approvers`' packages (D172; default: whoever approved them)."""
     record = authorizations.Authorization(
         what=what,
         decision="TEST",
@@ -18,6 +19,7 @@ def authorize(monkeypatch, what: str, *actions: str) -> None:
         actions=frozenset(actions or authorizations.ACTIONS[what]),
         data="synthetic test data only",
         ends_on=None,
+        approvers=frozenset(approvers or authorizations.APPROVERS),  # D172
     )
     monkeypatch.setattr(authorizations, "RECORDED", (*authorizations.RECORDED, record))
 

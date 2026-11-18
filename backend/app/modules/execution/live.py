@@ -57,6 +57,13 @@ WHY = {
     # D112: the recorded permission's own limit (a format string: n).
     "limit_reached": "The server owner's recorded permission covers at most {n} attempts on real "
     "Greenhouse pages, and they have been used; it must be renewed before another.",
+    # D172: what was refused is recorded, for the other approver's applications only (`words`).
+    "owner_only": "Your recorded permission covers this only for applications you approve "
+    "yourself, one at a time, not for your standing rule's: the rule acts only under a "
+    "permission that names it.",
+    "rule_only": "Your recorded permission covers this only for applications your standing rule "
+    "approves, not for ones you approve yourself: those need a permission that names your own "
+    "approvals.",
 }
 # What a whole application through the pilot needs, short of submitting.
 TO_APPLY = ("read", "open", "disclose")
@@ -84,10 +91,24 @@ def environment_refusal() -> str | None:
     return None
 
 
-def permission_refusal(actions: tuple[str, ...]) -> str | None:
-    """D103: "not_authorized" unless the owner's recorded permission covers every action."""
-    ok = all(authorizations.covers(authorizations.GREENHOUSE_PILOT, a) for a in actions)
+def permission_refusal(actions: tuple[str, ...], *, approver: str | None) -> str | None:
+    """D103: "not_authorized" unless the owner's recorded permission covers every action; D172:
+    for packages `approver` approves (authorizations.OWNER or RULE), named wherever the caller
+    knows who approved; `authorizations.ANY` only where it cannot (a route shown, the binding
+    computed at approval, the console's warning): one approver's entries covering every action."""
+    ok = authorizations.covers_all(authorizations.GREENHOUSE_PILOT, actions, approver=approver)
     return None if ok else "not_authorized"
+
+
+def words(why: str, actions: tuple[str, ...] = TO_APPLY, *, approver: str | None) -> str:
+    """The words for a refusal code. D172: "not_authorized" for `approver`'s applications where
+    every one of these steps is recorded for the other approver's says whose they are recorded
+    for, not that nothing is."""
+    if why == "not_authorized" and approver in authorizations.APPROVERS:
+        (other,) = authorizations.APPROVERS - {approver}
+        if permission_refusal(actions, approver=other) is None:
+            return WHY["owner_only" if approver == authorizations.RULE else "rule_only"]
+    return WHY.get(why, why)
 
 
 def attempts_used(db, since, *, exclude=None) -> int:
@@ -113,8 +134,9 @@ def attempts_used(db, since, *, exclude=None) -> int:
     return int(db.scalar(q) or 0)
 
 
-def refusal(user, actions: tuple[str, ...] = TO_APPLY) -> str | None:
-    """Why this account cannot use the pilot for `actions` now, or None."""
+def refusal(user, actions: tuple[str, ...] = TO_APPLY, *, approver: str | None) -> str | None:
+    """Why this account cannot use the pilot for `actions` now, or None; D172: for packages
+    `approver` approves (`authorizations.ANY`: one approver's, whichever)."""
     why = environment_refusal()
     if why:
         return why
@@ -122,7 +144,7 @@ def refusal(user, actions: tuple[str, ...] = TO_APPLY) -> str | None:
 
     if not named(user.email, get_settings().live_owner_emails):  # D114: every account
         return "not_for_this_account"
-    return permission_refusal(actions)
+    return permission_refusal(actions, approver=approver)
 
 
 def _origin(url: str) -> str:

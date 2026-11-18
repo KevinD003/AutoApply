@@ -43,19 +43,23 @@ PILOT_STEPS = ("read", "open", "disclose", "submit")
 
 
 def recorded_steps() -> list[str]:
-    """The pilot steps the owner's recorded authorization covers today."""
-    return [s for s in PILOT_STEPS
-            if authorizations.covers(authorizations.GREENHOUSE_PILOT, s)]  # fmt: skip
+    """The pilot steps the owner's recorded authorization covers today (anyone's, step by step:
+    shown only)."""
+    return [s for s in PILOT_STEPS if authorizations.covers(
+        authorizations.GREENHOUSE_PILOT, s, approver=authorizations.ANY)]  # fmt: skip
 
 
 def disclosure_permission_recorded() -> bool:
-    """Permissions 1-3 (C): read the post, open its page, disclose. What a rehearsal needs."""
-    return {"read", "open", "disclose"} <= set(recorded_steps())
+    """Permissions 1-3 (C): read the post, open its page, disclose. What a rehearsal needs.
+    D172: all three for one approver's packages, never pieced together from two."""
+    return authorizations.covers_all(authorizations.GREENHOUSE_PILOT, ("read", "open", "disclose"),
+                                     approver=authorizations.ANY)  # fmt: skip
 
 
 def submission_permission_recorded() -> bool:
-    """Permission 4 (D), on top of C."""
-    return set(PILOT_STEPS) <= set(recorded_steps())
+    """Permission 4 (D), on top of C, for one approver's packages (D172)."""
+    return authorizations.covers_all(authorizations.GREENHOUSE_PILOT, PILOT_STEPS,
+                                     approver=authorizations.ANY)  # fmt: skip
 
 
 _UNSET = object()
