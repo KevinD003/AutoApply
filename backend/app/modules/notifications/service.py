@@ -214,7 +214,7 @@ _TAKE_OVER = (
 )
 # D171: what it waits for besides, while the recorded permission does not cover submitting
 # ({step4} in each waiting reason's words; frontend lib/pauseWords.js says the same).
-_STEP4 = " and your recorded permission covers submitting (step 4)"
+_STEP4 = " and your recorded permission covers submitting (step 4) for your standing rule"
 _RULE_WAITS = {
     "stopped": _STOPPED + "Your automatic applying is stopped now (the Tracker shows why); "
     "when it runs again{step4}, it continues this application by itself." + _TAKE_OVER,
@@ -228,8 +228,8 @@ _RULE_WAITS = {
     "soon as you answer the open questions under Questions{step4}." + _TAKE_OVER,
     # D171: a recorded permission for rehearsals only.
     "submit_not_permitted": _STOPPED + "This employer's rehearsal held, and your recorded "
-    "permission does not cover submitting (step 4): once it does, your automatic applying "
-    "continues this application by itself." + _TAKE_OVER,
+    "permission does not cover submitting (step 4) for your standing rule: once it does, your "
+    "automatic applying continues this application by itself." + _TAKE_OVER,
 }
 _UNEXPLAINED = (
     "Reading the employer's form again showed no difference NoEfforts can see (the page's own "
@@ -381,7 +381,8 @@ def _auto_apply(db: Session, user_id) -> list[dict]:
         if app is not None and withholds_submission(db, app):  # D171: step 4 not recorded
             text = ("Automatic applying read this job's form. Answer the open questions "
                     "(suggestions from your saved answers are shown there); it submits nothing "
-                    "until your recorded permission covers submitting (step 4).")  # fmt: skip
+                    "until your recorded permission covers submitting (step 4) for your "
+                    "standing rule.")  # fmt: skip
         else:
             text = ("Automatic applying read this job's form. Answer the open questions "
                     "(suggestions from your saved answers are shown there) and it continues by "

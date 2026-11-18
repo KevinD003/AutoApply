@@ -19,6 +19,7 @@ from urllib.parse import urljoin, urlsplit
 
 from sqlalchemy import select
 
+from app.core import authorizations
 from app.core.config import get_settings
 from app.core.urlsafety import is_fixture_origin
 from app.modules.execution import live
@@ -173,7 +174,7 @@ def decide(destination: dict, user_id=None) -> RouteDecision:
     else:
         refusal, refusal_code = "", FALLBACK_REASON
     if browser == live.ADAPTER:
-        why = _live_user_refusal(user_id)
+        why = _live_user_refusal(user_id, authorizations.ANY)
         if why:
             steps.append(f"greenhouse pilot: {why}")
             return RouteDecision("manual_handoff", "manual_handoff", steps, live.WHY[why],
@@ -226,9 +227,10 @@ def form_checkpoint(schema: dict | None) -> list[str]:
             and f.get("widget") != "location_structured"]  # fmt: skip
 
 
-def _live_user_refusal(user_id) -> str | None:
+def _live_user_refusal(user_id, approver: str | None) -> str | None:
     """Why the Greenhouse pilot does not apply to this account (a live.WHY code), or None. No
-    account known: it does not apply."""
+    account known: it does not apply. D172: for `approver`'s applications (`authorizations.ANY`:
+    one approver's, whichever)."""
     from app.core.db import SessionLocal
     from app.modules.identity.models import User
 
@@ -237,7 +239,7 @@ def _live_user_refusal(user_id) -> str | None:
         return why or "not_for_this_account"
     with SessionLocal() as db:
         user = db.get(User, user_id)
-        return live.refusal(user) if user is not None else "not_for_this_account"
+        return live.refusal(user, approver=approver) if user is not None else "not_for_this_account"
 
 
 # Why a real Greenhouse job is a manual handoff here (appended to the generic message; the reason
@@ -256,7 +258,11 @@ NOT_A_BOARD_ADDRESS_HINT = (
 
 
 def _enabled_refusal(
-    url: str | None, steps: list[str], user_id=None, ats_provider: str | None = None
+    url: str | None,
+    steps: list[str],
+    user_id=None,
+    ats_provider: str | None = None,
+    approver: str | None = authorizations.ANY,
 ) -> RouteDecision | None:
     """In production, or for a job on a real employer's site, no provider is enabled whatever
     form is captured, so the route says that, not "capture the form first" (which could not
@@ -267,14 +273,14 @@ def _enabled_refusal(
 
     hint = ""
     if live.posting(url) is not None:
-        why = _live_user_refusal(user_id)
+        why = _live_user_refusal(user_id, approver)
         if why is None:
             steps.append("greenhouse pilot: on for this account")
             return None
         if why != "not_enabled":  # switched on, but not here or not for this account
             steps.append(f"greenhouse pilot: {why}")
-            return RouteDecision("manual_handoff", "manual_handoff", steps, live.WHY[why],
-                                 LIVE_REASONS[why])  # fmt: skip
+            return RouteDecision("manual_handoff", "manual_handoff", steps,
+                                 live.words(why, approver=approver), LIVE_REASONS[why])  # fmt: skip
         steps.append("greenhouse pilot: switched off on this server")
         hint = PILOT_OFF_HINT
     elif (ats_provider or "").lower() == "greenhouse":
@@ -304,15 +310,18 @@ def route_for_job(db, job) -> RouteDecision:
     from app.modules.preparation.models import JobForm
 
     steps: list[str] = []
-    refused = _identity_refusal({"url": job.url, "ats_provider": job.ats_provider}, steps)
-    if refused is None:
-        refused = _enabled_refusal(job.url, steps, getattr(job, "user_id", None),
-                                   getattr(job, "ats_provider", None))  # fmt: skip
-    if refused is not None:
-        return refused
     form = db.scalar(select(JobForm).where(JobForm.job_id == job.id,
                                            JobForm.user_id == job.user_id)
                      .order_by(JobForm.version.desc()))  # fmt: skip
+    refused = _identity_refusal({"url": job.url, "ats_provider": job.ats_provider}, steps)
+    if refused is None:
+        # D172: before any form, what is offered is reading it yourself (your own approvals);
+        # once one is read (by you or your standing rule), whichever approver may apply.
+        approver = authorizations.OWNER if form is None else authorizations.ANY
+        refused = _enabled_refusal(job.url, steps, getattr(job, "user_id", None),
+                                   getattr(job, "ats_provider", None), approver)  # fmt: skip
+    if refused is not None:
+        return refused
     if form is None:
         steps.append("no application form captured yet")
         return RouteDecision("manual_handoff", "manual_handoff", steps,

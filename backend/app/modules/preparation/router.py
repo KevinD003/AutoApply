@@ -308,7 +308,7 @@ def capture_greenhouse_form(
         # standing rule reads through its own entries, autoapply `_may_read`).
         why = live.refusal(user, ("read",), approver=authorizations.OWNER)
         if why:
-            words = live.words(why, ("read",), authorizations.OWNER)
+            words = live.words(why, ("read",), approver=authorizations.OWNER)
             raise conflict(f"{words} Apply on the employer's site and record it in the tracker.")
         return _capture_live(db, user, job, url, real)
     p = urlsplit(url)

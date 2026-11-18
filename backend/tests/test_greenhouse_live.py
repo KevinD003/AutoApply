@@ -120,10 +120,10 @@ def test_the_pilot_runs_only_in_production_with_the_browsers_own_sandbox(
     monkeypatch.setattr(get_settings(), "browser_isolation", isolation)
     assert live.environment_refusal() == why
     owner, other = User(email=OWNER.upper()), User(email="someone.else@example.com")
-    assert live.refusal(owner) == why
-    assert live.refusal(other) == (why or "not_for_this_account")
+    assert live.refusal(owner, approver=None) == why
+    assert live.refusal(other, approver=None) == (why or "not_for_this_account")
     get_settings().live_greenhouse_enabled = False
-    assert live.refusal(owner) == "not_enabled"
+    assert live.refusal(owner, approver=None) == "not_enabled"
 
 
 # -- what it reads, and from where ----------------------------------------------------------------
@@ -549,9 +549,10 @@ def test_d172_a_permission_for_the_rules_packages_never_covers_your_own(api, rec
     assert len(led["requests"]) == requests  # the page was never opened
     assert led["disclosures"] == [] and led["accepted"] == 0
     other = v2_job(api, job="5020002")
+    requests = len(receiver.ledger()["requests"])
     r = api.post(f"/jobs/{other}/form/greenhouse")
     assert r.status_code == 409 and live.WHY["rule_only"] in r.json()["detail"]
-    assert forms(other) == []
+    assert forms(other) == [] and len(receiver.ledger()["requests"]) == requests  # nothing read
 
 
 def test_d172_your_own_package_is_refused_at_the_queue_under_the_rules_permission(api, receiver):
@@ -624,6 +625,64 @@ def test_d172_each_approvers_attempt_limit(api, receiver):
     aid = queue(api, app1)
     by_rule(aid)  # the standing rule's own: 1 of its 5 used
     assert runner.run_attempt(aid, "w1") == "rehearsed"
+    assert len(receiver.ledger()["disclosures"]) > disclosed  # it reached the page
+
+
+def test_d172_the_gate_itself_asks_for_the_approver(api, receiver, monkeypatch):
+    """D172 (both reviews): past the runner's own check (made to pass here), the gate before
+    anything is entered asks for the approver as well: the standing rule's attempt under a
+    permission for your own approvals stops there, nothing entered."""
+    from app.core import authorizations as a
+    from app.modules.execution import service as svc
+
+    aid = queue(api, live_application(api))
+    by_rule(aid)
+    pilot_on(OWNER, approvers={a.OWNER})
+    monkeypatch.setattr(svc, "pilot_refusal", lambda attempt_id, actions: None)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert _reason(aid) == "live_not_authorized" and live.WHY["owner_only"] in _detail(aid)
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+def test_d172_every_attempt_counts_against_each_limit_whoever_approved_it(api, receiver):
+    """D172: the standing rule's attempts count against your own entries' limit too (every
+    attempt through the pilot counts, whoever approved it: the conservative reading). Yours (1)
+    is used by the rule's rehearsal; your own attempt then stops at the disclosure gate."""
+    from app.core import authorizations as a
+
+    app1 = live_application(api, approve=False)
+    pilot_on(OWNER, approvers={a.OWNER}, max_attempts=1)
+    pilot_add(PILOT_PERMISSIONS, approvers={a.RULE}, max_attempts=5)
+    assert approve(api, app1, "disclose_only").status_code == 200
+    aid = queue(api, app1)
+    by_rule(aid)
+    assert runner.run_attempt(aid, "w1") == "rehearsed"  # the rule's: 1 of its 5, 1 of your 1
+    disclosed = len(receiver.ledger()["disclosures"])
+    assert approve(api, app1, "disclose_only").status_code == 200
+    aid = queue(api, app1)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert _reason(aid) == "live_limit_reached"
+    assert len(receiver.ledger()["disclosures"]) == disclosed
+
+
+def test_d172_before_any_form_the_job_page_asks_for_your_own_approvals(api, receiver):
+    """D172 (B2d): every step recorded for the standing rule's approvals only. Before any form is
+    read, the job page offers reading it yourself: its route says whose approvals the
+    permission covers (no "Read the Greenhouse form" that would be refused). Once a form is
+    read, the route is the pilot's, whoever approves."""
+    from app.core import authorizations as a
+
+    pilot_on(OWNER)  # every step, for both
+    unread = v2_job(api, job="5020002")
+    read = v2_job(api)
+    assert api.post(f"/jobs/{read}/form/greenhouse").status_code == 201
+    pilot_on(OWNER, approvers={a.RULE})
+    route = api.get(f"/jobs/{unread}/route").json()
+    assert (route["route"], route["reason"]) == ("manual_handoff", "live_not_authorized")
+    assert route["message"] == live.WHY["rule_only"]
+    route = api.get(f"/jobs/{read}/route").json()
+    assert (route["route"], route["provider"]) == ("browser", "greenhouse_live")
 
 
 @pytest.mark.parametrize(
@@ -669,7 +728,7 @@ def test_an_authorization_that_ends_while_queued_stops_before_the_page_opens(
         what=a.GREENHOUSE_PILOT, decision="TEST", given_on=today - timedelta(days=1),
         words="(synthetic: tests only)", actions=a.ACTIONS[a.GREENHOUSE_PILOT],
         data="synthetic test data only", ends_on=today, approvers=a.APPROVERS),)  # fmt: skip
-    assert live.permission_refusal(("open", "disclose")) is None  # still valid today
+    assert live.permission_refusal(("open", "disclose"), approver=a.ANY) is None  # valid today
 
     class Tomorrow(date):
         @classmethod
@@ -677,7 +736,7 @@ def test_an_authorization_that_ends_while_queued_stops_before_the_page_opens(
             return today + timedelta(days=1)
 
     monkeypatch.setattr(a, "date", Tomorrow)
-    assert live.permission_refusal(("open", "disclose")) == "not_authorized"
+    assert live.permission_refusal(("open", "disclose"), approver=a.ANY) == "not_authorized"
     assert runner.run_attempt(aid, "w1") == "failed_safe"
     assert _reason(aid) == "live_not_authorized"
     led = receiver.ledger()

@@ -66,6 +66,9 @@ def _state(db: Session, user: User) -> dict:
         # D171: whether the recorded permission covers submitting (the pilot's step 4); without
         # it the rule rehearses and stops before submitting.
         "submits": live.permission_refusal(("submit",), approver=authorizations.RULE) is None,
+        # D172: whether your own approvals may submit (your "Submit once" is sent).
+        "submits_yours": live.permission_refusal(("submit",), approver=authorizations.OWNER)
+        is None,
         "events": [
             {
                 "at": e.created_at,

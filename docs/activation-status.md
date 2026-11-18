@@ -134,7 +134,8 @@ Step 4  submit: one final click, after a rehearsal on that
 Whose approvals:    mine, one package at a time in the app / my standing rule
                     to apply automatically (D113) / both
 Postings covered:   only postings approved as above, each package on its own
-At most:            <N> applications
+At most:            <N> applications (every attempt through the pilot counts,
+                    whoever approved it)
 Data covered:       only what each approved package contains
 Starts / ends:      <date> / <date>
 Stop rules:         anything not understood stops the attempt; no retry

@@ -11,7 +11,7 @@ export const TAKE_OVER =
   "If you apply on the employer's site yourself instead, first choose “I applied myself” for it in the Tracker, so it is never sent twice.";
 
 // D171: what it waits for besides, while the recorded permission does not cover submitting (the server's `rule_step4`).
-export const STEP4 = " and your recorded permission covers submitting (step 4)";
+export const STEP4 = " and your recorded permission covers submitting (step 4) for your standing rule";
 
 export const RULE_WAITS = {
   stopped: (s) => `Your automatic applying is stopped now (the Tracker shows why); when it runs again${s}, it continues this application by itself.`,
@@ -24,14 +24,14 @@ export const RULE_WAITS = {
   questions: (s) => `Your automatic applying tries this version once more by itself as soon as you answer the open questions under Questions${s}.`,
   // D171: a recorded permission for rehearsals only.
   submit_not_permitted: () =>
-    "This employer's rehearsal held, and your recorded permission does not cover submitting (step 4): once it does, your " +
-    "automatic applying continues this application by itself.",
+    "This employer's rehearsal held, and your recorded permission does not cover submitting (step 4) for your standing rule: once it " +
+    "does, your automatic applying continues this application by itself.",
 };
 
 // D171: an application the rule held for step 4, with no pause: what it does with it (its page's notice).
 export const HELD_CONTINUES =
-  "Your automatic applying submits this application by itself now that your recorded permission covers submitting (step 4); it " +
-  "rehearses again first if this employer's rehearsal no longer counts. Do not apply on the employer's site meanwhile.";
+  "Your automatic applying submits this application by itself now that your recorded permission covers submitting (step 4) for " +
+  "it; it rehearses again first if this employer's rehearsal no longer counts. Do not apply on the employer's site meanwhile.";
 
 // After D132's own "or apply on the employer's site": record it, so it is never sent twice.
 export const APPLIED_YOURSELF = "and then choose “I applied myself” for it in the Tracker";

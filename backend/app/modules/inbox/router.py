@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import authorizations
 from app.core.config import get_settings
 from app.core.db import get_db
 from app.core.errors import conflict, not_found
@@ -107,7 +108,7 @@ def _view(db: Session, user: User) -> dict:
     # register, server-wide, not revocable here) or "in_app" (the owner's own authenticated,
     # revocable consent). None means it is not authorized, so the tracking toggle stays disabled.
     authz = None
-    if service.may(service.APPLICATION_EMAIL):
+    if service.may(service.APPLICATION_EMAIL, approver=authorizations.ANY):
         authz = {"source": "recorded"}
     elif (c := service.active_application_consent(db, user)) is not None:
         authz = {
@@ -170,7 +171,7 @@ def put_inbox(
     if why and (body.codes_enabled or body.tracking_enabled):
         raise conflict(WHY[why])
     # D103: each use needs its own recorded authorization; one never stands in for the other.
-    if (body.codes_enabled and not service.codes_authorized()) or (
+    if (body.codes_enabled and not service.codes_authorized(approver=authorizations.ANY)) or (
         body.tracking_enabled and not service.may_read_applications(db, user)
     ):
         raise conflict(WHY["not_authorized"])

@@ -86,8 +86,9 @@ export default function AutoApplyCard() {
         {!s.unavailable && s.submits === false && (
           <>
             {" "}
-            Your recorded permission covers rehearsals only: applications to employers it has not rehearsed with yet are filled and
-            checked, and nothing is submitted until it covers submitting (step 4).
+            Your recorded permission covers rehearsals only for your standing rule: applications to employers it has not rehearsed
+            with yet are filled and checked, and it submits nothing until the permission covers submitting (step 4) for it.
+            {s.submits_yours && " Your own “Submit once” is still sent: the permission covers submitting for applications you approve yourself."}
           </>
         )}
       </p>

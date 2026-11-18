@@ -112,19 +112,26 @@ def _server(user: User, url: str | None) -> list[dict]:
     ]
 
 
-def _permissions(db: Session) -> list[dict]:
+# D172: whose approvals a recorded step is for, in the handoff's words.
+WHOSE = {authorizations.OWNER: "your own approvals", authorizations.RULE: "your standing rule's"}
+
+
+def _permissions(db: Session, approver: str) -> list[dict]:
+    """The pilot's steps and attempt limit as the gates read them for this package's approver
+    (D172: your own, or your standing rule's when it approved the package)."""
+    (other,) = authorizations.APPROVERS - {approver}
     out = []
     for action, label in PERMISSIONS:
-        # D172: the owner's own rehearsal and submission, one package at a time.
-        ok = authorizations.covers(
-            authorizations.GREENHOUSE_PILOT, action, approver=authorizations.OWNER
-        )
-        why = "recorded" if ok else "not recorded (app/core/authorizations.py)"
+        ok = authorizations.covers(authorizations.GREENHOUSE_PILOT, action, approver=approver)
+        if ok:
+            why = "recorded"
+        elif authorizations.covers(authorizations.GREENHOUSE_PILOT, action, approver=other):
+            why = f"recorded for {WHOSE[other]} only, not {WHOSE[approver]}"
+        else:
+            why = "not recorded (app/core/authorizations.py)"
         out.append(_item(f"permission_{action}", label, ok, why))
     # D112: the permission's own limit on attempts that pass the disclosure gate.
-    cap = authorizations.limit(
-        authorizations.GREENHOUSE_PILOT, "disclose", approver=authorizations.OWNER
-    )
+    cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose", approver=approver)
     if cap is not None:
         used = live.attempts_used(db, cap[1])
         out.append(_item("attempts_left", "Attempts left under the recorded permission",
@@ -160,6 +167,10 @@ def handoff(db: Session, user: User, app: Application) -> dict:
     blocking = form_checkpoint(form.schema) if form is not None else []
     scope = None if appr is None else str(getattr(appr.scope, "value", appr.scope))
     rehearsal_ok = scope == ApprovalScope.disclose_only.value
+    # D172: the gates ask for whoever approved this package; none yet: you, one at a time.
+    from app.modules.execution.service import approver_of
+
+    approver = approver_of(appr) if appr is not None else authorizations.OWNER
     application = [
         _item(
             "captured_through_pilot",
@@ -175,15 +186,15 @@ def handoff(db: Session, user: User, app: Application) -> dict:
         ),  # fmt: skip
         _item(
             "rehearsal_approval",
-            "You approved this exact package as a rehearsal",
+            "Your standing rule approved this exact package as a rehearsal"
+            if approver == authorizations.RULE
+            else "You approved this exact package as a rehearsal",
             rehearsal_ok,
             "none" if scope is None else f"approved as {scope}",
         ),  # fmt: skip
     ]
-    prerequisites = _server(user, url) + _permissions(db) + application
-    submit_ok = authorizations.covers(
-        authorizations.GREENHOUSE_PILOT, SUBMIT[0], approver=authorizations.OWNER
-    )
+    prerequisites = _server(user, url) + _permissions(db, approver) + application
+    submit_ok = authorizations.covers(authorizations.GREENHOUSE_PILOT, SUBMIT[0], approver=approver)
     return {
         "application_id": str(app.id),
         "milestone": "B: one disclosure-only rehearsal on a real Greenhouse page",

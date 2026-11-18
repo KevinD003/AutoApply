@@ -772,7 +772,9 @@ def system(db: Session, user) -> dict:
 
     def spent_for(approver: str) -> str | None:
         """D172: the attempt limit of the entries covering this approver's packages, used up."""
-        cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose", today, approver)
+        cap = authorizations.limit(
+            authorizations.GREENHOUSE_PILOT, "disclose", today, approver=approver
+        )
         used = live.attempts_used(db, cap[1]) if cap else None
         return (f"The recorded permission's attempt limit is used: {used} of {cap[0]}."
                 if cap and used >= cap[0] else None)  # fmt: skip
@@ -791,8 +793,9 @@ def system(db: Session, user) -> dict:
     # D172: your own applying, one package at a time (the standing rule's row follows).
     why = live.refusal(user, approver=authorizations.OWNER)
     pilot_note = None
-    if why is None and live.permission_refusal(("submit",), authorizations.OWNER) is not None:
-        pilot_note = ("Your recorded permission covers rehearsals (filling and checking), not "
+    if why is None and live.permission_refusal(("submit",), approver=authorizations.OWNER):
+        pilot_note = ("Your recorded permission covers rehearsals (filling and checking) for "
+                      "applications you approve yourself, not "
                       "the final submit.")  # fmt: skip
     features.append(_feature(
         "greenhouse_pilot", "Applying to real Greenhouse jobs (fill and submit)",
@@ -816,10 +819,11 @@ def system(db: Session, user) -> dict:
         or (HELD if held else None),
         note=f"At most {s.auto_apply_daily_cap} automatic approvals a day{every} "
         f"(NOEFFORTS_AUTO_APPLY_DAILY_CAP); {rule.cap_used(db, user.id)} today."
-        + (" Your recorded permission covers rehearsals only: it rehearses and submits nothing "
-           "until it covers submitting (step 4, D171)."
-           if why is None and live.permission_refusal(("submit",), authorizations.RULE)
-           is not None else ""),
+        + (" Your recorded permission covers rehearsals only for your standing rule: it "
+           "rehearses and submits nothing by itself until the permission covers submitting "
+           "(step 4) for it (D171, D172)."
+           if why is None and live.permission_refusal(("submit",), approver=authorizations.RULE)
+           else ""),
     ))  # fmt: skip
     why = inbox.available_for(db, user)
     if why == "not_connected" and s.sole_owner and not inbox.named_inbox_owner(user):
@@ -837,7 +841,7 @@ def system(db: Session, user) -> dict:
     features.append(_feature(
         "inbox", "Reading your email (verification codes, application updates)",
         "NOEFFORTS_INBOX_ENABLED", s.inbox_enabled, mail_why,
-        note="Codes: " + ("permitted" if inbox.codes_authorized() else
+        note="Codes: " + ("permitted" if inbox.codes_authorized(approver=authorizations.ANY) else
                           "not permitted (no recorded permission)")
         + "; application emails: " + ("permitted" if inbox.may_read_applications(db, user) else
                                       "not permitted (no recorded permission or consent)") + ".",
@@ -907,7 +911,7 @@ def system(db: Session, user) -> dict:
         )
     if held:
         warnings.append(HELD)
-    if live.permission_refusal(live.TO_APPLY) is not None:
+    if live.permission_refusal(live.TO_APPLY, approver=authorizations.ANY) is not None:
         ended = [a.ends_on for a in authorizations.RECORDED if a.ends_on and a.ends_on < today]
         last = f" (the last ended on {max(ended).isoformat()})" if ended and is_owner else ""
         warnings.append(
@@ -915,7 +919,9 @@ def system(db: Session, user) -> dict:
             "opened, filled or submitted there until you record one in your own words, with its "
             "steps, end date and attempt limit."
         )
-    if not (inbox.codes_authorized() or inbox.may_read_applications(db, user)):
+    if not (
+        inbox.codes_authorized(approver=authorizations.ANY) or inbox.may_read_applications(db, user)
+    ):
         warnings.append(
             "Nothing permits reading a real mailbox (no recorded permission, and no consent of "
             "yours in the app): none is read."

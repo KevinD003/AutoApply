@@ -1180,8 +1180,10 @@ def test_d170_a_read_needs_the_permission_as_it_is_now(api, receiver, monkeypatc
     job, app_id = form_change_pause(api, receiver)
     real = live.refusal
 
-    def refusal(user, actions=live.TO_APPLY, approver=None):
-        return "not_authorized" if tuple(actions) == ("read",) else real(user, actions, approver)
+    def refusal(user, actions=live.TO_APPLY, *, approver):
+        if tuple(actions) == ("read",):
+            return "not_authorized"
+        return real(user, actions, approver=approver)
 
     monkeypatch.setattr(live, "refusal", refusal)
     other_role = {"url": f"{BASE}/gh2/{BOARD}/jobs/5020003", "title": "Clinic Coordinator",
@@ -1909,6 +1911,69 @@ def test_d172_a_read_during_a_tick_needs_the_rules_own_permission(api, receiver,
 
     monkeypatch.setattr(service, "_read_failed_recently", ends_now)
     assert tick() == 0 and events(job) == [] and requests_made(receiver) == 0
+
+
+def test_d172_a_permission_for_the_rules_approvals_only_lets_it_apply_start_to_finish(
+    api, receiver
+):
+    """D172 (B9): every step recorded for the standing rule's approvals only: it reads, rehearses
+    and submits by itself, once (the queue and both gates ask for the rule's own entries)."""
+    pilot_on(approvers={authorizations.RULE})
+    synthetic_candidate(api)
+    job = v2_job(api)
+    tick()
+    answer(api, app_of(api, job))
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert tick() == 1 and events(job)[-1] == ("approved_submit", "submission_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+
+
+def test_d172_your_own_approval_is_queued_only_under_your_own_permission(api, receiver):
+    """D172 (both reviews): steps 1-3 recorded for your own approvals and all four for the rule's.
+    The rule rehearses; you approve the submission yourself, which your permission does not
+    cover: your queue is refused, and the rule, to which approving returns your approval, does
+    not queue it either and says why, once (never "could not be queued" at each step). Once a
+    permission names your own approvals for submitting, it is queued and sent, once."""
+    pilot_on(permitted=REHEARSALS_ONLY, approvers={authorizations.OWNER})
+    pilot_add(PILOT_PERMISSIONS, approvers={authorizations.RULE})
+    synthetic_candidate(api)
+    job = v2_job(api)
+    tick()
+    app_id = app_of(api, job)
+    answer(api, app_id)
+    assert tick() == 1 and runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    p = api.get(f"/applications/{app_id}/package").json()["package"]
+    body = {"version": p["version"], "content_hash": p["content_hash"], "scope": "submit"}
+    assert api.post(f"/applications/{app_id}/package/approve", json=body).status_code == 200
+    r = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
+    assert r.status_code == 409 and live.WHY["rule_only"] in r.json()["detail"]
+    assert tick() == 0 and tick() == 0
+    assert events(job)[-1] == ("skipped", "your_approval_not_permitted")
+    assert events(job).count(("skipped", "your_approval_not_permitted")) == 1
+    assert ("skipped", "queue_refused") not in events(job)
+    assert receiver.ledger()["accepted"] == 0
+    pilot_add(("submit",), approvers={authorizations.OWNER})  # your own approvals may submit
+    assert tick() == 1 and runner.run_attempt(latest_attempt(), "w1") == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+
+
+def test_d172_your_own_approval_waits_while_your_attempt_limit_is_used(api, receiver, monkeypatch):
+    """D172 (both reviews): your own entries' attempt limit used, not the rule's: the rule does not
+    queue your approval, so no page is opened for an attempt the disclosure gate would refuse."""
+    pilot_on(approvers={authorizations.OWNER}, max_attempts=1)
+    pilot_add(PILOT_PERMISSIONS, approvers={authorizations.RULE}, max_attempts=5)
+    synthetic_candidate(api)
+    job = v2_job(api)
+    tick()
+    app_id = app_of(api, job)
+    answer(api, app_id)
+    approve_yourself(api, app_id)  # a rehearsal, not queued
+    monkeypatch.setattr(live, "attempts_used", lambda db, since, exclude=None: 1)
+    reads = requests_made(receiver)
+    assert tick() == 0 and events(job)[-1] == ("skipped", "your_approval_not_permitted")
+    assert requests_made(receiver) == reads
 
 
 def test_another_account_never_sees_or_triggers_the_owners_rule(api, other_api, receiver):

@@ -205,6 +205,7 @@ def test_d172_a_code_step_of_the_rules_attempt_needs_a_permission_for_its_approv
     wait_for(lambda: receiver.ledger()["challenges"])
     assert fill() == 0
     assert receiver.ledger()["inbox_requests"] == [] and events() == []
+    assert not receiver.ledger()["challenges"][-1]["done"]  # no code reached the page
     authorize(monkeypatch, authorizations.INBOX, approvers={authorizations.RULE})
     assert fill() == 1
     out, err = w.communicate(timeout=60)

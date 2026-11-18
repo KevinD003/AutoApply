@@ -128,8 +128,8 @@ def enqueue(db: Session, app: Application) -> ExecutionAttempt:
         # permission 4, recorded on its own; your approval to submit is needed as well, and
         # neither stands in for the other. D172: each for the packages of whoever approved this.
         steps = ("open", "disclose") + (("submit",) if appr.scope == ApprovalScope.submit else ())
-        if live.permission_refusal(steps, approver_of(appr)):
-            why = live.words("not_authorized", steps, approver_of(appr))
+        if live.permission_refusal(steps, approver=approver_of(appr)):
+            why = live.words("not_authorized", steps, approver=approver_of(appr))
             raise UnsupportedDestination(why, "live_not_authorized")
     cls = rehearsal.destination_class(dest.get("origin"))
     ref = rehearsal.path_ref(app.user_id, rehearsal.execution_path(dest, adapter))
@@ -607,9 +607,9 @@ def pilot_refusal(attempt_id, actions: tuple[str, ...]) -> str | None:
         appr = db.get(PackageApproval, att.approval_id) if att is not None else None
         if appr is None:
             return live.WHY["not_authorized"]
-        if live.permission_refusal(actions, approver_of(appr)) is None:
+        if live.permission_refusal(actions, approver=approver_of(appr)) is None:
             return None
-        return live.words("not_authorized", actions, approver_of(appr))
+        return live.words("not_authorized", actions, approver=approver_of(appr))
 
 
 def _pilot_permission(att: ExecutionAttempt, actions: tuple[str, ...], approver: str) -> None:
@@ -617,8 +617,9 @@ def _pilot_permission(att: ExecutionAttempt, actions: tuple[str, ...], approver:
     recorded permission (app/core/authorizations.py), checked at every gate: the switch is not
     one, and a permission that ends while an attempt waits stops it here. D172: for the packages
     of whoever approved this one."""
-    if att.adapter == live.ADAPTER and live.permission_refusal(actions, approver):
-        raise GateRefused(live.words("not_authorized", actions, approver), "live_not_authorized")
+    if att.adapter == live.ADAPTER and live.permission_refusal(actions, approver=approver):
+        why = live.words("not_authorized", actions, approver=approver)
+        raise GateRefused(why, "live_not_authorized")
 
 
 _PILOT_LIMIT_LOCK = 7_402_112  # pg_advisory_xact_lock key: one disclosure gate at a time counts

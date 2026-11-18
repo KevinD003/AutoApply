@@ -106,17 +106,17 @@ APPLICATION_EMAIL = "read_application_email"
 CONSENT_DISCLOSURE_VERSION = "appmail-consent/v1"
 
 
-def may(action: str, approver: str | None = None) -> bool:
+def may(action: str, *, approver: str | None) -> bool:
     """Whether the owner's recorded authorization covers this action (D103, the reviewed-source
     register). Verification codes (read_codes/enter_codes) are authorized only this way. D172:
     for the attempts of packages `approver` approves (authorizations.OWNER or RULE), when given."""
     return authorizations.covers(authorizations.INBOX, action, approver=approver)
 
 
-def codes_authorized(approver: str | None = None) -> bool:
+def codes_authorized(*, approver: str | None) -> bool:
     """Entering a code from the mail needs both: reading code emails, and entering what they say.
     D172: for the attempts of packages `approver` approves, when given (None: anyone's)."""
-    return may("read_codes", approver) and may("enter_codes", approver)
+    return may("read_codes", approver=approver) and may("enter_codes", approver=approver)
 
 
 def _approver(db: Session, cp: Checkpoint) -> str:
@@ -173,7 +173,8 @@ def may_read_applications(db: Session, user: User) -> bool:
     authorization in reviewed source (D103) OR the owner's own active in-app consent (an
     authenticated, auditable, revocable record). Both are owner-scoped; neither covers verification
     codes, sending or submission — those keep their own separate gates."""
-    return may(APPLICATION_EMAIL) or _active_consent(db, user.id, APPLICATION_EMAIL) is not None
+    return (may(APPLICATION_EMAIL, approver=authorizations.ANY)
+            or _active_consent(db, user.id, APPLICATION_EMAIL) is not None)  # fmt: skip
 
 
 def active_application_consent(db: Session, user: User) -> InboxConsent | None:
@@ -244,7 +245,7 @@ def available_for(db: Session, user: User) -> str | None:
         return "not_enabled"
     if not is_inbox_owner(user):
         return "not_for_this_account"
-    if not (codes_authorized() or may_read_applications(db, user)):
+    if not (codes_authorized(approver=authorizations.ANY) or may_read_applications(db, user)):
         return "not_authorized"  # switched on is not authorized (D103)
     if not owner_token_file(db, user):
         return "not_connected"
@@ -332,7 +333,9 @@ def fill_codes(db: Session, user: User, gmail: GmailReader | None = None) -> int
     codes were entered. Each code entered is committed at once (D143); the caller commits the
     rest."""
     st = settings_of(db, user.id)
-    if not st.codes_enabled or available_for(db, user) or not codes_authorized():
+    if not st.codes_enabled or available_for(db, user):
+        return 0
+    if not codes_authorized(approver=authorizations.ANY):
         return 0
     waiting = db.scalars(
         select(Checkpoint).where(
@@ -343,7 +346,7 @@ def fill_codes(db: Session, user: User, gmail: GmailReader | None = None) -> int
     ).all()
     # D172: only the code steps of attempts whose approver the permission covers; another's stays
     # yours, and the mailbox is not opened for it.
-    waiting = [cp for cp in waiting if codes_authorized(_approver(db, cp))]
+    waiting = [cp for cp in waiting if codes_authorized(approver=_approver(db, cp))]
     if not waiting:
         return 0
     if gmail is None:
@@ -804,7 +807,7 @@ def due(db: Session, now: datetime | None = None) -> list[tuple[User, InboxSetti
         if available_for(db, u):
             continue
         stale = st.last_checked_at is None or st.last_checked_at <= now - every
-        codes = st.codes_enabled and codes_authorized()
+        codes = st.codes_enabled and codes_authorized(approver=authorizations.ANY)
         if codes or (st.tracking_enabled and stale and may_read_applications(db, u)):
             out.append((u, st))
     return out

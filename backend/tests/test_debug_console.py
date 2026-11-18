@@ -415,7 +415,9 @@ def test_the_shipped_permissions_are_shown_as_the_gates_read_them(api, monkeypat
     for p, a in zip(v["permissions"], SHIPPED_REGISTER, strict=True):
         assert (p["what"], p["words"], p["decision"]) == (a.what, a.words, a.decision)
         monkeypatch.setattr(authorizations, "RECORDED", (a,))
-        assert p["active"] is any(authorizations.covers(a.what, x) for x in a.actions)
+        assert p["active"] is any(
+            authorizations.covers(a.what, x, approver=authorizations.ANY) for x in a.actions
+        )
     pilot = [p for p in v["permissions"] if p["what"] == "greenhouse_pilot"]
     assert pilot and all(p["ends_on"] == "2026-11-06" for p in pilot)
     if date.today() > date(2026, 11, 6):
@@ -702,7 +704,7 @@ def test_sole_owner_mode_opens_no_gate(api, other_api, receiver, monkeypatch):
 
     v2_job(other_api)
     other = user(OTHER)
-    assert live.refusal(other) == "not_authorized"
+    assert live.refusal(other, approver=authorizations.ANY) == "not_authorized"
     assert rule.owner_refusal(other) == "not_authorized"
     assert rule.tick() == 0
     assert receiver.ledger()["requests"] == []
@@ -712,6 +714,6 @@ def test_sole_owner_mode_opens_no_gate(api, other_api, receiver, monkeypatch):
     assert pilot["ready"] is False and pilot["why"]
     monkeypatch.setattr(s, "env", "production")
     monkeypatch.setattr(s, "browser_isolation", "netns")
-    assert live.refusal(other) == "needs_container"
+    assert live.refusal(other, approver=authorizations.ANY) == "needs_container"
     monkeypatch.setattr(s, "env", "development")
-    assert live.refusal(other) == "needs_production"
+    assert live.refusal(other, approver=authorizations.ANY) == "needs_production"
