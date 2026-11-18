@@ -99,7 +99,7 @@ backend suite, the full e2e suite, ruff, tsc and eslint were.
 | After the fixes | `test_auto_apply.py` (JUnit); `ruff check .`, `ruff format --check .`, `npx tsc --noEmit`, `npm run lint` | 71 passed (210 s); clean |
 | The whole backend suite on 135d1de | `pytest` on all 179 test files in two halves run at once, each with a database and ports of its own (JUnit) | both exit 0: 7,135 passed, none failed or skipped (2,690 in 77 minutes and 4,445 in 71 minutes) |
 | Each part changed in turn (135d1de) | 48 changes, one at a time (a worktree of its own), D169's and D170's tests run, the file restored | {SABRES_SHORT} |
-| The full e2e suite on cf54e2a | `npx playwright test` | {E2E} |
+| The full e2e suite on cf54e2a | `npx playwright test` | exit 0; 196 passed, 3 skipped (16.5 minutes), with `questions.spec.ts`'s new checks |
 | After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_auto_apply.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | {DOCS} |
 
 ## The standing rule continues an application after a form change (D169, 2026-11-18; local only)
