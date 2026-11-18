@@ -903,7 +903,8 @@ def assert_yours(api, app_id: str) -> None:
 WAITS_WORDS = {"stopped": "is stopped now", "declined": "rule it out",
                "unreadable": "could not read the employer's page again",
                "questions": "as soon as you answer the open questions",
-               "submit_not_permitted": "does not cover submitting (step 4)"}  # fmt: skip
+               "submit_not_permitted":
+                   "does not cover submitting (step 4) for your standing rule"}  # fmt: skip
 
 
 def assert_waits(api, app_id: str, why: str, step4: bool = False) -> None:
@@ -1605,7 +1606,7 @@ def test_d170_a_read_held_by_a_recent_failure_is_shown_as_unreadable(api, receiv
 # ------------------------------------- D171: a recorded permission for rehearsals only
 
 REHEARSALS_ONLY = ("read", "open", "disclose")  # the pilot's steps 1-3, not step 4
-STEP4_WORDS = "and your recorded permission covers submitting (step 4)"
+STEP4_WORDS = "and your recorded permission covers submitting (step 4) for your standing rule"
 
 
 def scopes(app_id: str) -> list[str]:
@@ -1830,8 +1831,8 @@ def test_d171_a_held_application_with_a_question_open_says_both(api, receiver):
     (item,) = [n for n in items if n["kind"] == "auto_apply_questions"]
     assert item["application_id"] == app_id
     assert (
-        "it submits nothing until your recorded permission covers submitting (step 4)"
-        in item["text"]
+        "it submits nothing until your recorded permission covers submitting (step 4) for your "
+        "standing rule" in item["text"]
     )
     assert "continues by itself" not in item["text"]
     r = api.put(f"/applications/{app_id}/answers",
