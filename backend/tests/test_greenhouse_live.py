@@ -18,7 +18,7 @@ from app.modules.execution import live, policy, runner
 from app.modules.identity.models import User
 from app.modules.preparation.models import JobForm
 from app.modules.providers import routing
-from tests.execution_harness import BASE, Receiver, pilot_on, queue
+from tests.execution_harness import BASE, PILOT_PERMISSIONS, Receiver, pilot_add, pilot_on, queue
 from tests.test_greenhouse_dom import BOARD, LOC_JOB, live_application, v2_job
 
 GH_REAL = "https://job-boards.greenhouse.io/exampleboard/jobs/4000001"  # a fictional board
@@ -511,6 +511,113 @@ def test_permission_to_disclose_is_not_permission_to_submit(api, receiver):
     assert receiver.ledger()["accepted"] == 0
 
 
+# -- D172: whose approvals a recorded permission covers --------------------------------------------
+
+
+def by_rule(aid) -> None:
+    """As if the owner's standing rule had approved this attempt's package (D113)."""
+    from app.modules.execution.models import ExecutionAttempt
+    from app.modules.preparation.models import PackageApproval
+
+    with SessionLocal() as db:
+        att = db.get(ExecutionAttempt, uuid.UUID(aid))
+        db.get(PackageApproval, att.approval_id).by_rule = True
+        db.commit()
+
+
+def test_d172_a_permission_for_the_rules_packages_never_covers_your_own(api, receiver):
+    """D172: every step recorded for the standing rule's packages only: your own capture of a job
+    post and your own approval to submit are refused, and an attempt you queued before stops
+    before the page is opened."""
+    from app.core import authorizations as a
+
+    app_id = live_application(api)  # captured and approved by you, every step recorded
+    aid = queue(api, app_id)
+    pilot_on(OWNER, approvers={a.RULE})
+    requests = len(receiver.ledger()["requests"])
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert _reason(aid) == "live_not_authorized"
+    led = receiver.ledger()
+    assert len(led["requests"]) == requests  # the page was never opened
+    assert led["disclosures"] == [] and led["accepted"] == 0
+    other = v2_job(api, job="5020002")
+    r = api.post(f"/jobs/{other}/form/greenhouse")
+    assert r.status_code == 409 and "recorded permission" in r.text
+    assert forms(other) == []
+
+
+def test_d172_your_own_package_is_refused_at_the_queue_under_the_rules_permission(api, receiver):
+    """D172: every step recorded for the standing rule's packages only: your approval of a
+    rehearsal is yours to give, and queueing it is refused with the permission's words, before
+    any attempt exists."""
+    from sqlalchemy import select
+
+    from app.core import authorizations as a
+    from app.modules.execution.models import ExecutionAttempt
+
+    app_id = live_application(api, approve=False)
+    pilot_on(OWNER, approvers={a.RULE})
+    assert approve(api, app_id, "disclose_only").status_code == 200
+    r = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
+    assert r.status_code == 409 and "recorded permission" in r.text
+    with SessionLocal() as db:
+        q = select(ExecutionAttempt).where(ExecutionAttempt.application_id == uuid.UUID(app_id))
+        assert db.scalars(q).all() == []
+    assert receiver.ledger()["disclosures"] == []
+
+
+def test_d172_your_own_permission_never_lets_the_rules_attempt_open_the_page(api, receiver):
+    """D172: every step recorded for your own approvals only: an attempt the standing rule
+    approved stops before the page is opened (permission 2), nothing entered."""
+    from app.core import authorizations as a
+
+    aid = queue(api, live_application(api))
+    by_rule(aid)
+    pilot_on(OWNER, approvers={a.OWNER})
+    requests = len(receiver.ledger()["requests"])
+    assert runner.run_attempt(aid, "w1") == "failed_safe"
+    assert _reason(aid) == "live_not_authorized"
+    assert len(receiver.ledger()["requests"]) == requests
+    assert receiver.ledger()["disclosures"] == []
+
+
+def test_d172_the_send_gate_asks_whether_your_own_approvals_may_submit(api, receiver):
+    """D172: your own approval to submit, queued under a permission for every approver; then
+    steps 1-3 recorded for your own approvals and step 4 for the standing rule's only: the page
+    is filled (covered), the final click never happens."""
+    from app.core import authorizations as a
+
+    aid = queue(api, live_application(api))
+    pilot_on(OWNER, permitted=("read", "open", "disclose"), approvers={a.OWNER})
+    pilot_add(PILOT_PERMISSIONS, approvers={a.RULE})
+    assert runner.run_attempt(aid, "w1") == "abandoned"
+    assert _reason(aid) == "live_not_authorized"
+    assert receiver.ledger()["accepted"] == 0
+
+
+def test_d172_each_approvers_attempt_limit(api, receiver):
+    """D112's limit, D172: of the entries covering that approver's packages. Yours (1) used by a
+    rehearsal: your next attempt stops at the disclosure gate with nothing entered, while the
+    standing rule's (5) still lets one of its own through."""
+    from app.core import authorizations as a
+
+    app1 = live_application(api, approve=False)
+    pilot_on(OWNER, approvers={a.OWNER}, max_attempts=1)
+    pilot_add(PILOT_PERMISSIONS, approvers={a.RULE}, max_attempts=5)
+    assert approve(api, app1, "disclose_only").status_code == 200
+    assert runner.run_attempt(queue(api, app1), "w1") == "rehearsed"
+    disclosed = len(receiver.ledger()["disclosures"])
+    assert approve(api, app1, "disclose_only").status_code == 200
+    aid = queue(api, app1)
+    assert runner.run_attempt(aid, "w1") == "failed_safe"  # yours: 1 of 1 used
+    assert _reason(aid) == "live_limit_reached"
+    assert len(receiver.ledger()["disclosures"]) == disclosed
+    assert approve(api, app1, "disclose_only").status_code == 200
+    aid = queue(api, app1)
+    by_rule(aid)  # the standing rule's own: 1 of its 5 used
+    assert runner.run_attempt(aid, "w1") == "rehearsed"
+
+
 @pytest.mark.parametrize(
     "destination",
     [
@@ -553,7 +660,7 @@ def test_an_authorization_that_ends_while_queued_stops_before_the_page_opens(
     a.RECORDED += (a.Authorization(
         what=a.GREENHOUSE_PILOT, decision="TEST", given_on=today - timedelta(days=1),
         words="(synthetic: tests only)", actions=a.ACTIONS[a.GREENHOUSE_PILOT],
-        data="synthetic test data only", ends_on=today),)  # fmt: skip
+        data="synthetic test data only", ends_on=today, approvers=a.APPROVERS),)  # fmt: skip
     assert live.permission_refusal(("open", "disclose")) is None  # still valid today
 
     class Tomorrow(date):

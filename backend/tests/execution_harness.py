@@ -97,13 +97,12 @@ PILOT_PERMISSIONS = ("read", "open", "disclose", "submit")
 
 
 def pilot_on(owner: str = "synthetic.user@example.com", permitted=PILOT_PERMISSIONS,
-             max_attempts: int | None = None) -> None:  # fmt: skip
+             max_attempts: int | None = None, approvers=None) -> None:  # fmt: skip
     """D102: the Greenhouse pilot on for `owner` (the `api` fixture's account), with the
     receiver's second Greenhouse-style approximation playing a real board host and its Job Board
     API. D103: with a synthetic record of the owner's permission for `permitted` (none: the
-    switch alone). Test environment only; conftest turns it off after every test."""
-    from datetime import date
-
+    switch alone). D172: for `approvers`' packages (default: the owner's own and the standing
+    rule's). Test environment only; conftest turns it off after every test."""
     from app.core import authorizations
     from app.core.config import get_settings
 
@@ -116,10 +115,21 @@ def pilot_on(owner: str = "synthetic.user@example.com", permitted=PILOT_PERMISSI
         a for a in authorizations.RECORDED if a.what != authorizations.GREENHOUSE_PILOT
     )
     if permitted:
-        authorizations.RECORDED += (authorizations.Authorization(
-            what=authorizations.GREENHOUSE_PILOT, decision="TEST", given_on=date(2000, 1, 1),
-            words="(synthetic: tests only)", actions=frozenset(permitted),
-            data="synthetic test data only", ends_on=None, max_attempts=max_attempts),)  # fmt: skip
+        pilot_add(permitted, approvers, max_attempts)
+
+
+def pilot_add(permitted, approvers=None, max_attempts: int | None = None) -> None:
+    """D172: another synthetic pilot permission beside those recorded (each its own entry)."""
+    from datetime import date
+
+    from app.core import authorizations
+
+    authorizations.RECORDED += (authorizations.Authorization(
+        what=authorizations.GREENHOUSE_PILOT, decision="TEST", given_on=date(2000, 1, 1),
+        words="(synthetic: tests only)", actions=frozenset(permitted),
+        data="synthetic test data only", ends_on=None,
+        approvers=frozenset(approvers or authorizations.APPROVERS),
+        max_attempts=max_attempts),)  # fmt: skip
 
 
 def synthetic_candidate(api) -> None:

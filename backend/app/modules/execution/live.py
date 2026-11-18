@@ -84,9 +84,14 @@ def environment_refusal() -> str | None:
     return None
 
 
-def permission_refusal(actions: tuple[str, ...]) -> str | None:
-    """D103: "not_authorized" unless the owner's recorded permission covers every action."""
-    ok = all(authorizations.covers(authorizations.GREENHOUSE_PILOT, a) for a in actions)
+def permission_refusal(actions: tuple[str, ...], approver: str | None = None) -> str | None:
+    """D103: "not_authorized" unless the owner's recorded permission covers every action; D172:
+    for packages `approver` approves (authorizations.OWNER or RULE) wherever the caller knows
+    who approved; None only where it cannot (a route shown, the pilot's readiness)."""
+    ok = all(
+        authorizations.covers(authorizations.GREENHOUSE_PILOT, a, approver=approver)
+        for a in actions
+    )
     return None if ok else "not_authorized"
 
 
@@ -113,8 +118,9 @@ def attempts_used(db, since, *, exclude=None) -> int:
     return int(db.scalar(q) or 0)
 
 
-def refusal(user, actions: tuple[str, ...] = TO_APPLY) -> str | None:
-    """Why this account cannot use the pilot for `actions` now, or None."""
+def refusal(user, actions: tuple[str, ...] = TO_APPLY, approver: str | None = None) -> str | None:
+    """Why this account cannot use the pilot for `actions` now, or None; D172: for packages
+    `approver` approves, when given."""
     why = environment_refusal()
     if why:
         return why
@@ -122,7 +128,7 @@ def refusal(user, actions: tuple[str, ...] = TO_APPLY) -> str | None:
 
     if not named(user.email, get_settings().live_owner_emails):  # D114: every account
         return "not_for_this_account"
-    return permission_refusal(actions)
+    return permission_refusal(actions, approver)
 
 
 def _origin(url: str) -> str:

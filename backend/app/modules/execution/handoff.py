@@ -115,11 +115,16 @@ def _server(user: User, url: str | None) -> list[dict]:
 def _permissions(db: Session) -> list[dict]:
     out = []
     for action, label in PERMISSIONS:
-        ok = authorizations.covers(authorizations.GREENHOUSE_PILOT, action)
+        # D172: the owner's own rehearsal and submission, one package at a time.
+        ok = authorizations.covers(
+            authorizations.GREENHOUSE_PILOT, action, approver=authorizations.OWNER
+        )
         why = "recorded" if ok else "not recorded (app/core/authorizations.py)"
         out.append(_item(f"permission_{action}", label, ok, why))
     # D112: the permission's own limit on attempts that pass the disclosure gate.
-    cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose")
+    cap = authorizations.limit(
+        authorizations.GREENHOUSE_PILOT, "disclose", approver=authorizations.OWNER
+    )
     if cap is not None:
         used = live.attempts_used(db, cap[1])
         out.append(_item("attempts_left", "Attempts left under the recorded permission",
@@ -176,7 +181,9 @@ def handoff(db: Session, user: User, app: Application) -> dict:
         ),  # fmt: skip
     ]
     prerequisites = _server(user, url) + _permissions(db) + application
-    submit_ok = authorizations.covers(authorizations.GREENHOUSE_PILOT, SUBMIT[0])
+    submit_ok = authorizations.covers(
+        authorizations.GREENHOUSE_PILOT, SUBMIT[0], approver=authorizations.OWNER
+    )
     return {
         "application_id": str(app.id),
         "milestone": "B: one disclosure-only rehearsal on a real Greenhouse page",

@@ -725,6 +725,7 @@ def _permission(db: Session, a, today: date) -> dict:
         used = live.attempts_used(db, a.given_on)
     return {"what": a.what, "decision": a.decision, "given_on": a.given_on.isoformat(),
             "words": a.words, "actions": sorted(a.actions), "data": a.data,
+            "approvers": sorted(a.approvers),  # D172: whose approvals it covers
             "ends_on": a.ends_on.isoformat() if a.ends_on else None, "state": state,
             "active": state == "active", "max_attempts": a.max_attempts,
             "attempts_used": used}  # fmt: skip
@@ -768,10 +769,14 @@ def system(db: Session, user) -> dict:
     is_owner = owner(user.email)
     held = restore.held(db)
     today = date.today()  # as authorizations.covers reads it
-    cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose", today)
-    used = live.attempts_used(db, cap[1]) if cap else None
-    spent = (f"The recorded permission's attempt limit is used: {used} of {cap[0]}."
-             if cap and used >= cap[0] else None)  # fmt: skip
+
+    def spent_for(approver: str) -> str | None:
+        """D172: the attempt limit of the entries covering this approver's packages, used up."""
+        cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose", today, approver)
+        used = live.attempts_used(db, cap[1]) if cap else None
+        return (f"The recorded permission's attempt limit is used: {used} of {cap[0]}."
+                if cap and used >= cap[0] else None)  # fmt: skip
+
     features = []
     freehire = "freehire" in s.discovery_providers
     features.append(_feature(
@@ -783,16 +788,17 @@ def system(db: Session, user) -> dict:
     features.append(_feature(
         "job_boards", "Employer job boards (Greenhouse, Lever, Ashby)",
         "NOEFFORTS_BOARD_SOURCES_ENABLED", s.board_sources_enabled))  # fmt: skip
-    why = live.refusal(user)
+    # D172: your own applying, one package at a time (the standing rule's row follows).
+    why = live.refusal(user, approver=authorizations.OWNER)
     pilot_note = None
-    if why is None and live.permission_refusal(("submit",)) is not None:
+    if why is None and live.permission_refusal(("submit",), authorizations.OWNER) is not None:
         pilot_note = ("Your recorded permission covers rehearsals (filling and checking), not "
                       "the final submit.")  # fmt: skip
     features.append(_feature(
         "greenhouse_pilot", "Applying to real Greenhouse jobs (fill and submit)",
         "NOEFFORTS_LIVE_GREENHOUSE_ENABLED", s.live_greenhouse_enabled,
-        (live.WHY.get(why, why) if why else None) or spent or (HELD if held else None),
-        note=pilot_note))  # fmt: skip
+        (live.WHY.get(why, why) if why else None) or spent_for(authorizations.OWNER)
+        or (HELD if held else None), note=pilot_note))  # fmt: skip
     why = rule.owner_refusal(user)
     chosen = db.get(AutoApplyPrefs, user.id) is not None
     off = None
@@ -804,12 +810,14 @@ def system(db: Session, user) -> dict:
     features.append(_feature(
         "auto_apply", "Automatic applying (your standing rule)", "NOEFFORTS_AUTO_APPLY_ENABLED",
         s.auto_apply_enabled,
-        (RULE_WHY.get(why, why) if why else None) or off or spent or (HELD if held else None),
+        (RULE_WHY.get(why, why) if why else None) or off or spent_for(authorizations.RULE)
+        or (HELD if held else None),
         note=f"At most {s.auto_apply_daily_cap} automatic approvals a day{every} "
         f"(NOEFFORTS_AUTO_APPLY_DAILY_CAP); {rule.cap_used(db, user.id)} today."
         + (" Your recorded permission covers rehearsals only: it rehearses and submits nothing "
            "until it covers submitting (step 4, D171)."
-           if why is None and live.permission_refusal(("submit",)) is not None else ""),
+           if why is None and live.permission_refusal(("submit",), authorizations.RULE)
+           is not None else ""),
     ))  # fmt: skip
     why = inbox.available_for(db, user)
     if why == "not_connected" and s.sole_owner and not inbox.named_inbox_owner(user):

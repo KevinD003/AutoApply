@@ -224,7 +224,8 @@ def owner_refusal(user: User) -> str | None:
     """Why the rule cannot act for this account now (a fixed code), or None."""
     if not get_settings().auto_apply_enabled:
         return "rule_off"
-    return live.refusal(user)  # switch, environment, owner, every recorded permission
+    # Switch, environment, owner, every recorded permission; D172: for the rule's own packages.
+    return live.refusal(user, approver=authorizations.RULE)
 
 
 def _last_event(db: Session, job_id) -> AutoApplyEvent | None:
@@ -382,7 +383,7 @@ def _preferences_unmet(db: Session, user: User, job: Job) -> bool:
 def _may_read(user: User) -> bool:
     """D170: the recorded permission covers reading as it is now, not as the tick began (a tick
     can outlast a permission's last day)."""
-    return live.refusal(user, ("read",)) is None
+    return live.refusal(user, ("read",), approver=authorizations.RULE) is None  # D172
 
 
 def _capture(db: Session, user: User, job: Job) -> bool:
@@ -590,7 +591,9 @@ CONTINUES, WAITS, YOURS = "continues", "waits", "yours"
 def _limit_used(db: Session) -> bool:
     """D112: the recorded permission's attempt limit is used up (every step declines until the
     owner records a new permission)."""
-    cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose")
+    cap = authorizations.limit(
+        authorizations.GREENHOUSE_PILOT, "disclose", approver=authorizations.RULE
+    )
     return cap is not None and live.attempts_used(db, cap[1]) >= cap[0]
 
 
@@ -700,7 +703,7 @@ def _submits_refused(db: Session, app, pkg) -> bool:
     from app.modules.execution import rehearsal
     from app.modules.execution.policy import execution_binding
 
-    if live.permission_refusal(("submit",)) is None:
+    if live.permission_refusal(("submit",), approver=authorizations.RULE) is None:  # D172
         return False
     dest = pkg.content["destination"]
     binding = execution_binding(dest, app.user_id)

@@ -52,6 +52,9 @@ def test_the_shipped_register_holds_exactly_the_owners_recorded_words():
     assert '"Everything before next week end."' in entry.words
     assert '"5 applications (Recommended)"' in entry.words
     assert "one at a time" in entry.data
+    # D172: whose approvals each covers, as its words say.
+    assert (entry.approvers, auto.approvers, everyone.approvers, codes.approvers) == (
+        {a.OWNER}, {a.RULE}, a.APPROVERS, a.APPROVERS)  # fmt: skip
 
 
 def test_the_owners_permission_holds_only_on_its_days_and_never_inside_another_test(monkeypatch):
@@ -86,7 +89,8 @@ def test_no_configuration_can_supply_an_authorization():
 def _entry(**kw) -> a.Authorization:
     base = dict(what=a.INBOX, decision="TEST", given_on=date(2026, 11, 1),
                 words="(synthetic)", actions=frozenset({"read_application_email"}),
-                data="synthetic", ends_on=date(2026, 11, 30))  # fmt: skip
+                data="synthetic", ends_on=date(2026, 11, 30),
+                approvers=a.APPROVERS)  # fmt: skip
     return a.Authorization(**{**base, **kw})
 
 
@@ -101,6 +105,26 @@ def test_an_authorization_covers_only_its_own_actions_and_days(monkeypatch):
     assert not a.covers(a.INBOX, "read_application_email", date(2026, 12, 1))  # after it ends
     monkeypatch.setattr(a, "RECORDED", (_entry(actions=frozenset({"send_mail"})),))
     assert not a.covers(a.INBOX, "send_mail", day)  # not an action the register knows
+
+
+def test_d172_an_entry_covers_only_its_own_approvers_packages(monkeypatch):
+    """D172: an entry for the owner's own approvals never covers the standing rule's, nor the
+    reverse; asked without an approver (a route shown), any entry does; the attempt limit is
+    the one of the entries covering that approver."""
+    pilot = a.GREENHOUSE_PILOT
+    owner = _entry(what=pilot, actions=frozenset({"read", "open", "disclose", "submit"}),
+                   approvers=frozenset({a.OWNER}), max_attempts=1)  # fmt: skip
+    rule = _entry(what=pilot, actions=frozenset({"read", "open", "disclose"}),
+                  approvers=frozenset({a.RULE}), max_attempts=4)  # fmt: skip
+    monkeypatch.setattr(a, "RECORDED", (owner, rule))
+    day = date(2026, 11, 10)
+    assert a.covers(pilot, "submit", day, a.OWNER) and not a.covers(pilot, "submit", day, a.RULE)
+    assert a.covers(pilot, "disclose", day, a.RULE) and a.covers(pilot, "submit", day)
+    assert a.limit(pilot, "disclose", day, a.OWNER) == (1, date(2026, 11, 1))
+    assert a.limit(pilot, "disclose", day, a.RULE) == (4, date(2026, 11, 1))
+    assert a.limit(pilot, "disclose", day) == (1, date(2026, 11, 1))  # the smaller of both
+    for entry in SHIPPED_REGISTER:
+        assert entry.approvers and entry.approvers <= a.APPROVERS
 
 
 def test_each_pilot_permission_is_separate():

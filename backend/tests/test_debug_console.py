@@ -432,7 +432,8 @@ def test_a_permission_running_or_not_yet_started_is_shown_as_such(api, monkeypat
         return authorizations.Authorization(
             what=authorizations.GREENHOUSE_PILOT, decision="D168", given_on=given_on,
             words=words, actions=frozenset({"read", "open", "disclose"}),
-            data="a test's own synthetic posting", ends_on=ends_on, max_attempts=3)  # fmt: skip
+            data="a test's own synthetic posting", ends_on=ends_on,
+            approvers=authorizations.APPROVERS, max_attempts=3)  # fmt: skip
 
     monkeypatch.setattr(authorizations, "RECORDED", (
         entry(today, today + timedelta(days=1), "running"),

@@ -28,7 +28,9 @@ WHY = {
 
 def _state(db: Session, user: User) -> dict:
     s = get_settings()
-    cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose")
+    cap = authorizations.limit(
+        authorizations.GREENHOUSE_PILOT, "disclose", approver=authorizations.RULE
+    )
     # D170: what stops the rule, the recorded permission's attempts used up and no approval
     # allowed a day among it, as the pause's words ("the Tracker shows why") promise.
     refusal = service.owner_refusal(user) or service.limit_refusal(db)
@@ -58,7 +60,7 @@ def _state(db: Session, user: User) -> dict:
         "permission_attempts": None if cap is None else {"used": used, "of": cap[0]},
         # D171: whether the recorded permission covers submitting (the pilot's step 4); without
         # it the rule rehearses and stops before submitting.
-        "submits": live.permission_refusal(("submit",)) is None,
+        "submits": live.permission_refusal(("submit",), approver=authorizations.RULE) is None,
         "events": [
             {
                 "at": e.created_at,

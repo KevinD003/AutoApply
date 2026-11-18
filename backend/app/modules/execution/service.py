@@ -123,10 +123,12 @@ def enqueue(db: Session, app: Application) -> ExecutionAttempt:
         e.approval_id = appr.id  # the caller retires it after rolling back the queue
         raise
     adapter, dest = binding["adapter"], pkg.content["destination"]
-    if adapter == live.ADAPTER and appr.scope == ApprovalScope.submit:
-        # D103: submitting is the pilot's permission 4, recorded on its own; your approval to
-        # submit is needed as well, and neither stands in for the other.
-        if live.permission_refusal(("submit",)):
+    if adapter == live.ADAPTER:
+        # D103: every attempt opens the page and fills it in (permissions 2 and 3); submitting is
+        # permission 4, recorded on its own; your approval to submit is needed as well, and
+        # neither stands in for the other. D172: each for the packages of whoever approved this.
+        steps = ("open", "disclose") + (("submit",) if appr.scope == ApprovalScope.submit else ())
+        if live.permission_refusal(steps, approver_of(appr)):
             raise UnsupportedDestination(live.WHY["not_authorized"], "live_not_authorized")
     cls = rehearsal.destination_class(dest.get("origin"))
     ref = rehearsal.path_ref(app.user_id, rehearsal.execution_path(dest, adapter))
@@ -574,8 +576,8 @@ def _gate_checks(db: Session, att: ExecutionAttempt, approval_lock: str = "share
     content = pk.build_content(db, app)
     if pk.content_hash(content) != att.package_hash:
         raise GateRefused("profile, documents or answers changed after approval")
-    _pilot_permission(att, ("open", "disclose"))
     appr = db.get(PackageApproval, att.approval_id)
+    _pilot_permission(att, ("open", "disclose"), approver_of(appr))
     try:
         check_binding(appr, content["destination"], att.adapter)
     except (BindingChanged, UnsupportedDestination):
@@ -590,24 +592,43 @@ def _gate_checks(db: Session, att: ExecutionAttempt, approval_lock: str = "share
     return GateContext(app, content, appr)
 
 
-def _pilot_permission(att: ExecutionAttempt, actions: tuple[str, ...]) -> None:
+def approver_of(appr: PackageApproval) -> str:
+    """D172: who approved the package, as the recorded permissions tell approvers apart: the
+    owner's standing rule (`by_rule`) or the owner, one package at a time."""
+    return authorizations.RULE if appr.by_rule else authorizations.OWNER
+
+
+def pilot_refusal(attempt_id, actions: tuple[str, ...]) -> str | None:
+    """D172: the runner's check before the pilot opens the employer's page (permission 2),
+    for the packages of whoever approved this attempt's package."""
+    with SessionLocal() as db:
+        att = db.get(ExecutionAttempt, attempt_id)
+        appr = db.get(PackageApproval, att.approval_id) if att is not None else None
+        if appr is None:
+            return "not_authorized"
+        return live.permission_refusal(actions, approver_of(appr))
+
+
+def _pilot_permission(att: ExecutionAttempt, actions: tuple[str, ...], approver: str) -> None:
     """D103: through the Greenhouse pilot, each action on a real employer's page needs the owner's
     recorded permission (app/core/authorizations.py), checked at every gate: the switch is not
-    one, and a permission that ends while an attempt waits stops it here."""
-    if att.adapter == live.ADAPTER and live.permission_refusal(actions):
+    one, and a permission that ends while an attempt waits stops it here. D172: for the packages
+    of whoever approved this one."""
+    if att.adapter == live.ADAPTER and live.permission_refusal(actions, approver):
         raise GateRefused(live.WHY["not_authorized"], "live_not_authorized")
 
 
 _PILOT_LIMIT_LOCK = 7_402_112  # pg_advisory_xact_lock key: one disclosure gate at a time counts
 
 
-def _pilot_limit(db: Session, att: ExecutionAttempt) -> None:
+def _pilot_limit(db: Session, att: ExecutionAttempt, approver: str) -> None:
     """D112: through the Greenhouse pilot, no more attempts pass the disclosure gate than the
     owner's recorded authorization allows (rehearsals and submissions alike, counted from the day
-    of the owner's words). Counted under one lock, so two gates cannot both take the last one."""
+    of the owner's words). Counted under one lock, so two gates cannot both take the last one.
+    D172: the limit of the entries covering the packages of whoever approved this one."""
     if att.adapter != live.ADAPTER:
         return
-    cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose")
+    cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose", approver=approver)
     if cap is None:
         return
     db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _PILOT_LIMIT_LOCK})
@@ -659,7 +680,7 @@ def gate_before_disclosure(attempt_id, worker: str, gen: int) -> None:
                 if ctx.approval.scope != ApprovalScope.submit:
                     raise GateRefused(WIZARD_REHEARSAL, "wizard_rehearsal")
             _gate_prerequisite(db, att, ctx, "disclosure")
-            _pilot_limit(db, att)
+            _pilot_limit(db, att, approver_of(ctx.approval))
         except GateRefused as e:
             db.rollback()
             raise GateRefused(str(e), e.code) from None
@@ -696,7 +717,7 @@ def gate_before_send(attempt_id, worker: str, gen: int, watch_seconds: int | Non
             # A rehearsal stops before this gate (runner); this refusal holds even if it did not.
             if ctx.approval.scope != ApprovalScope.submit:
                 raise GateRefused("this approval permits filling and checking only, not submitting")
-            _pilot_permission(att, ("submit",))
+            _pilot_permission(att, ("submit",), approver_of(ctx.approval))
             verdict = _gate_prerequisite(db, att, ctx, "send")
         except GateRefused as e:
             db.rollback()

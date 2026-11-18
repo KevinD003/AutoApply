@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy import select, text, update
 from sqlalchemy.exc import DBAPIError
 
+from app.core import authorizations
 from app.core.config import get_settings
 from app.core.db import SessionLocal, utcnow
 from app.modules.autoapply import service
@@ -21,7 +22,14 @@ from app.modules.execution.models import ApplicationPause, ExecutionAttempt, Reh
 from app.modules.identity.models import User
 from app.modules.preparation import package as pk
 from app.modules.preparation.models import PackageApproval
-from tests.execution_harness import Receiver, pilot_on, queue, synthetic_candidate
+from tests.execution_harness import (
+    PILOT_PERMISSIONS,
+    Receiver,
+    pilot_add,
+    pilot_on,
+    queue,
+    synthetic_candidate,
+)
 from tests.test_greenhouse_dom import BASE, BOARD, SCREEN_JOB, v2_job
 
 ANSWERS = {
@@ -1172,8 +1180,8 @@ def test_d170_a_read_needs_the_permission_as_it_is_now(api, receiver, monkeypatc
     job, app_id = form_change_pause(api, receiver)
     real = live.refusal
 
-    def refusal(user, actions=live.TO_APPLY):
-        return "not_authorized" if tuple(actions) == ("read",) else real(user, actions)
+    def refusal(user, actions=live.TO_APPLY, approver=None):
+        return "not_authorized" if tuple(actions) == ("read",) else real(user, actions, approver)
 
     monkeypatch.setattr(live, "refusal", refusal)
     other_role = {"url": f"{BASE}/gh2/{BOARD}/jobs/5020003", "title": "Clinic Coordinator",
@@ -1828,6 +1836,44 @@ def test_d171_a_held_application_with_a_question_open_says_both(api, receiver):
                 json={"key": "question_8101", "value": {"label": "Yes"}})  # fmt: skip
     assert r.status_code == 200, r.text
     assert held(api, app_id) == (("waits", "submit_not_permitted", False),) * 2
+
+
+# --------------------------- D172: whose approvals a recorded permission covers
+
+
+def test_d172_your_own_step_4_never_lets_the_rule_submit(api, receiver):
+    """D172: steps 1-3 recorded for the standing rule's packages and all four for your own: the
+    rule rehearses, then holds the application for step 4 (D171), while your own approval to
+    submit it is queued and sent, once."""
+    pilot_on(permitted=REHEARSALS_ONLY, approvers={authorizations.RULE})
+    pilot_add(PILOT_PERMISSIONS, approvers={authorizations.OWNER})
+    synthetic_candidate(api)
+    job = v2_job(api)
+    tick()
+    app_id = app_of(api, job)
+    answer(api, app_id)
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert tick() == 0 and events(job)[-1] == ("skipped", "submit_not_permitted")
+    assert api.get("/auto-apply").json()["submits"] is False
+    p = api.get(f"/applications/{app_id}/package").json()["package"]
+    body = {"version": p["version"], "content_hash": p["content_hash"], "scope": "submit"}
+    assert api.post(f"/applications/{app_id}/package/approve", json=body).status_code == 200
+    assert runner.run_attempt(queue(api, app_id), "w1") == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+    assert tick() == 0 and receiver.ledger()["accepted"] == 1
+
+
+def test_d172_a_permission_for_your_own_approvals_only_stops_the_rule(api, receiver):
+    """D172: every step recorded for your own approvals only: the standing rule reads nothing
+    and approves nothing, and says it cannot act."""
+    pilot_on(approvers={authorizations.OWNER})
+    synthetic_candidate(api)
+    job = v2_job(api)
+    assert tick() == 0 and events(job) == [] and receiver.ledger()["requests"] == []
+    state = api.get("/auto-apply").json()
+    assert state["active"] is False and state["unavailable"] is not None
+    assert state["submits"] is False
 
 
 def test_another_account_never_sees_or_triggers_the_owners_rule(api, other_api, receiver):

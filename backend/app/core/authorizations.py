@@ -34,6 +34,11 @@ mailbox and the owner's own applications, through 2026-11-06. Application emails
 A permission for one action never implies another: `disclose` does not include `submit`, and
 `read` does not include `enter_codes`. Each still needs the per-application approval of the
 exact package (D57), and neither register entry nor approval replaces the other.
+
+D172: an entry also records whose approvals it covers (`approvers`): the owner's own, one
+package at a time in the app (`OWNER`), the owner's standing rule to apply automatically
+(`RULE`), or both. A step recorded for the owner's own approvals never lets the rule take it,
+and the reverse: each gate that knows who approved the package asks for that approver.
 """
 
 from dataclasses import dataclass
@@ -41,6 +46,11 @@ from datetime import date
 
 INBOX = "inbox"
 GREENHOUSE_PILOT = "greenhouse_pilot"
+
+# D172: who approved the package an action is for.
+OWNER = "owner"  # the owner, one package at a time in the app
+RULE = "rule"  # the owner's standing rule to apply automatically (app/modules/autoapply)
+APPROVERS = frozenset({OWNER, RULE})
 
 # What each authorization can cover, action by action (anything else is refused).
 ACTIONS = {
@@ -58,6 +68,8 @@ class Authorization:
     actions: frozenset[str]  # what it covers, a subset of ACTIONS[what]
     data: str  # which data it covers, in the owner's terms
     ends_on: date | None  # the last day it holds; None only if the owner's words say so
+    # D172: whose approvals it covers (a non-empty subset of APPROVERS), as the owner's words say
+    approvers: frozenset[str]
     # D112: at most this many attempts may pass the disclosure gate under it (counted from
     # `given_on`, rehearsals and submissions alike); None only if the owner's words set none.
     max_attempts: int | None = None
@@ -81,6 +93,7 @@ RECORDED: tuple[Authorization, ...] = (
         ),
         # "Before next week end", read conservatively: the last weekday before next weekend.
         ends_on=date(2026, 11, 6),
+        approvers=frozenset({OWNER}),  # "approved there one at a time"
         max_attempts=5,
     ),
     Authorization(
@@ -102,6 +115,7 @@ RECORDED: tuple[Authorization, ...] = (
         # "within ... your recorded permission": D112's end date and limit, shared (the smaller
         # limit counts every attempt since D112's day).
         ends_on=date(2026, 11, 6),
+        approvers=frozenset({RULE}),  # "packages the owner's standing rule approves"
         max_attempts=5,
     ),
     Authorization(
@@ -119,6 +133,7 @@ RECORDED: tuple[Authorization, ...] = (
         ),
         # The same end date and the same shared limit: every account's attempts count.
         ends_on=date(2026, 11, 6),
+        approvers=APPROVERS,  # "approved by that account or by that account's own standing rule"
         max_attempts=5,
     ),
     Authorization(
@@ -140,11 +155,16 @@ RECORDED: tuple[Authorization, ...] = (
         ),
         # The owner's words set no end; read with the pilot permission the codes serve.
         ends_on=date(2026, 11, 6),
+        approvers=APPROVERS,  # "the greenhouse applications", whoever approved them
     ),
 )
 
 
-def _covering(what: str, action: str, today: date) -> list[Authorization]:
+def _covering(
+    what: str, action: str, today: date, approver: str | None = None
+) -> list[Authorization]:
+    """The entries covering `action` of `what` today; D172: for `approver`'s packages when given
+    (None: whoever approved them, where the caller cannot tell)."""
     if action not in ACTIONS.get(what, ()):
         return []
     return [
@@ -154,14 +174,20 @@ def _covering(what: str, action: str, today: date) -> list[Authorization]:
         and action in a.actions
         and a.given_on <= today
         and (a.ends_on is None or today <= a.ends_on)
+        and (approver is None or approver in a.approvers)
     ]
 
 
-def limit(what: str, action: str, today: date | None = None) -> tuple[int, date] | None:
+def limit(
+    what: str, action: str, today: date | None = None, approver: str | None = None
+) -> tuple[int, date] | None:
     """D112: (the most attempts allowed, counted from which day) under the recorded
-    authorization covering `action` today with the smallest limit; None when none sets one."""
+    authorization covering `action` today with the smallest limit; None when none sets one.
+    D172: among those covering `approver`'s packages when given."""
     capped = [
-        a for a in _covering(what, action, today or date.today()) if a.max_attempts is not None
+        a
+        for a in _covering(what, action, today or date.today(), approver)
+        if a.max_attempts is not None
     ]
     if not capped:
         return None
@@ -169,15 +195,7 @@ def limit(what: str, action: str, today: date | None = None) -> tuple[int, date]
     return a.max_attempts, a.given_on
 
 
-def covers(what: str, action: str, today: date | None = None) -> bool:
-    """Whether a recorded authorization covers `action` of `what` today."""
-    if action not in ACTIONS.get(what, ()):
-        return False
-    today = today or date.today()
-    return any(
-        a.what == what
-        and action in a.actions
-        and a.given_on <= today
-        and (a.ends_on is None or today <= a.ends_on)
-        for a in RECORDED
-    )
+def covers(what: str, action: str, today: date | None = None, approver: str | None = None) -> bool:
+    """Whether a recorded authorization covers `action` of `what` today; D172: for
+    `approver`'s packages when given."""
+    return bool(_covering(what, action, today or date.today(), approver))

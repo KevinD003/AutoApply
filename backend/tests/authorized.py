@@ -18,6 +18,7 @@ def authorize(monkeypatch, what: str, *actions: str) -> None:
         actions=frozenset(actions or authorizations.ACTIONS[what]),
         data="synthetic test data only",
         ends_on=None,
+        approvers=authorizations.APPROVERS,  # D172: whoever approved the package
     )
     monkeypatch.setattr(authorizations, "RECORDED", (*authorizations.RECORDED, record))
 
