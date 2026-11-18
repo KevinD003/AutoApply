@@ -107,6 +107,37 @@ test("an application is traced from its form read to its receipt, and every swit
   await expect(page.getByRole("heading", { name: "Process trace" })).toBeVisible();
 });
 
+test("each recorded permission says whose approvals it covers", async ({ page }, info) => {
+  // D172. Only the server's owner sees the recorded permissions, and no account is the owner
+  // here: the console's own answer is shown as the owner would get it, with three synthetic
+  // permissions (yours, your standing rule's, both).
+  const reg = await page.request.post("/api/auth/register", {
+    data: { email: `debug.permissions.${info.project.name}.${Date.now()}@example.com`, password: "synthetic-password-1" },
+  });
+  expect(reg.status()).toBe(201);
+  const entry = {
+    what: "greenhouse_pilot", decision: "D172", given_on: "2026-11-18", words: "synthetic", data: "synthetic",
+    actions: ["disclose", "open", "read"], ends_on: "2026-11-30", state: "active", active: true,
+    max_attempts: 2, attempts_used: 0,
+  };
+  await page.route("**/api/debug/system", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    json.account = { ...json.account, owner: true };
+    json.permissions = [["owner"], ["rule"], ["owner", "rule"]].map((approvers) => ({ ...entry, approvers }));
+    await route.fulfill({ response, json });
+  });
+  await page.goto("/debug");
+  const rows = page.getByRole("list", { name: "Recorded permissions" }).getByRole("listitem");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0)).toContainText("steps: disclose, open, read · for your own approvals, one at a time");
+  await expect(rows.nth(1)).toContainText("for your standing rule's approvals");
+  await expect(rows.nth(1)).not.toContainText("your own approvals");
+  await expect(rows.nth(2)).toContainText("for your own approvals, one at a time and your standing rule's approvals");
+  await expect(rows.nth(0)).toContainText("0 of 2 used (every account's, whoever approved them)");
+  expect(await overflow(page)).toBeLessThanOrEqual(1);
+});
+
 test("another account's application is not found", async ({ page }, info) => {
   const appId = await setup(page, `debug-other-${info.project.name}-${RUN}`);
   await page.context().clearCookies();

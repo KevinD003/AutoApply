@@ -106,15 +106,30 @@ APPLICATION_EMAIL = "read_application_email"
 CONSENT_DISCLOSURE_VERSION = "appmail-consent/v1"
 
 
-def may(action: str) -> bool:
+def may(action: str, approver: str | None = None) -> bool:
     """Whether the owner's recorded authorization covers this action (D103, the reviewed-source
-    register). Verification codes (read_codes/enter_codes) are authorized only this way."""
-    return authorizations.covers(authorizations.INBOX, action)
+    register). Verification codes (read_codes/enter_codes) are authorized only this way. D172:
+    for the attempts of packages `approver` approves (authorizations.OWNER or RULE), when given."""
+    return authorizations.covers(authorizations.INBOX, action, approver=approver)
 
 
-def codes_authorized() -> bool:
-    """Entering a code from the mail needs both: reading code emails, and entering what they say."""
-    return may("read_codes") and may("enter_codes")
+def codes_authorized(approver: str | None = None) -> bool:
+    """Entering a code from the mail needs both: reading code emails, and entering what they say.
+    D172: for the attempts of packages `approver` approves, when given (None: anyone's)."""
+    return may("read_codes", approver) and may("enter_codes", approver)
+
+
+def _approver(db: Session, cp: Checkpoint) -> str:
+    """D172: who approved the package of the attempt this code step belongs to (an approver no
+    permission names when none is found: never covered)."""
+    from app.modules.preparation.models import PackageApproval
+
+    appr = db.scalar(
+        select(PackageApproval)
+        .join(ExecutionAttempt, ExecutionAttempt.approval_id == PackageApproval.id)
+        .where(ExecutionAttempt.id == cp.attempt_id, ExecutionAttempt.user_id == cp.user_id)
+    )
+    return execution.approver_of(appr) if appr is not None else "unknown"
 
 
 def named_inbox_owner(user: User) -> bool:
@@ -326,6 +341,9 @@ def fill_codes(db: Session, user: User, gmail: GmailReader | None = None) -> int
             Checkpoint.expires_at > utcnow(),
         )  # fmt: skip
     ).all()
+    # D172: only the code steps of attempts whose approver the permission covers; another's stays
+    # yours, and the mailbox is not opened for it.
+    waiting = [cp for cp in waiting if codes_authorized(_approver(db, cp))]
     if not waiting:
         return 0
     if gmail is None:

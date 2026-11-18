@@ -14,6 +14,10 @@ const PERMISSION = {
   not_started: { tone: "amber", label: (p) => `Starts ${p.given_on}` },
 };
 
+// D172: whose approvals a recorded permission covers (authorizations.OWNER, RULE).
+const APPROVERS = { owner: "your own approvals, one at a time", rule: "your standing rule's approvals" };
+const approvers = (p) => (p.approvers ?? []).map((a) => APPROVERS[a] ?? a).join(" and ");
+
 // D168: the owner's console. Every switch as it applies to this account (on or off, working or
 // not, and why), the owner's recorded permissions with their own words, the rules that always
 // apply, and each step NoEfforts took across this account's jobs. It only reads: nothing here
@@ -50,7 +54,7 @@ export default function DebuggerPage() {
           <Card title="This account">
             <ul className="space-y-1 text-sm" aria-label="This account">
               <li>
-                Signed in as <span className="font-medium text-ink">{system.account.email}</span>{" "}
+                Signed in as <span className="break-all font-medium text-ink">{system.account.email}</span>{" "}
                 <Badge tone={system.account.owner ? "green" : "slate"}>{system.account.owner ? "Owner" : "Not the owner"}</Badge>
               </li>
               <li>
@@ -119,9 +123,9 @@ export default function DebuggerPage() {
                     </p>
                     <p className="mt-1 text-xs text-ink-faint">
                       Recorded in {p.decision}, given on {p.given_on}
-                      {p.ends_on ? `, ends ${p.ends_on}` : ""} · steps: {p.actions.join(", ")}
+                      {p.ends_on ? `, ends ${p.ends_on}` : ""} · steps: {p.actions.join(", ")} · for {approvers(p)}
                       {p.max_attempts != null &&
-                        ` · attempts: ${p.attempts_used ?? 0} of ${p.max_attempts} used (every account's)`}
+                        ` · attempts: ${p.attempts_used ?? 0} of ${p.max_attempts} used (every account's, whoever approved them)`}
                     </p>
                     <blockquote className="mt-2 border-l-2 border-hairline-strong pl-3 text-ink-muted">“{p.words}”</blockquote>
                     {p.data && <p className="mt-1 text-xs text-ink-faint">Data: {p.data}</p>}

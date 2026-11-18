@@ -459,6 +459,37 @@ def test_d171_the_rule_says_a_permission_covers_rehearsals_only(api, monkeypatch
     assert rule["why"] is None and "covers rehearsals only" not in rule["note"]
 
 
+def test_d172_each_row_reads_the_permissions_for_its_own_approvals(api, monkeypatch):
+    """D172: the pilot's row is your own applying, one package at a time; the standing rule's
+    row is the rule's. Each reads the entries covering its own approvals: their steps, their
+    attempt limit; each permission says whose approvals it covers."""
+    from app.modules.execution import live
+    from tests.execution_harness import PILOT_PERMISSIONS, pilot_add
+
+    monkeypatch.setattr(get_settings(), "auto_apply_enabled", True)
+    pilot_on(approvers={authorizations.RULE})  # every step, for the standing rule's only
+    v = api.get("/debug/system").json()
+    assert feature(v, "greenhouse_pilot")["why"] == live.WHY["not_authorized"]
+    assert feature(v, "auto_apply")["why"] is None
+    assert [p["approvers"] for p in v["permissions"]] == [["rule"]]
+    pilot_on(approvers={authorizations.OWNER})  # every step, for your own only
+    v = api.get("/debug/system").json()
+    assert feature(v, "greenhouse_pilot")["why"] is None
+    assert feature(v, "auto_apply")["why"] == live.WHY["not_authorized"]
+    assert [p["approvers"] for p in v["permissions"]] == [["owner"]]
+    # Steps 1-3 for yours (one attempt), every step for the rule's (five): one attempt used.
+    pilot_on(permitted=("read", "open", "disclose"), approvers={authorizations.OWNER},
+             max_attempts=1)  # fmt: skip
+    pilot_add(PILOT_PERMISSIONS, approvers={authorizations.RULE}, max_attempts=5)
+    monkeypatch.setattr(live, "attempts_used", lambda db, since, **kw: 1)
+    v = api.get("/debug/system").json()
+    pilot, rule = feature(v, "greenhouse_pilot"), feature(v, "auto_apply")
+    assert pilot["why"] == "The recorded permission's attempt limit is used: 1 of 1."
+    assert "not the final submit" in pilot["note"]
+    assert rule["why"] is None and "covers rehearsals only" not in rule["note"]
+    assert [p["approvers"] for p in v["permissions"]] == [["owner"], ["rule"]]
+
+
 def test_each_feature_says_why_as_its_own_gate_decides(api, other_api, monkeypatch, tmp_path):
     """The pilot with its attempt limit used, the standing rule never turned on or paused, the
     stand-ins outside the test environment, connecting Gmail for an account not the owner's,

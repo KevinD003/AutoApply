@@ -184,6 +184,34 @@ def test_a_waiting_code_step_is_filled_from_the_mail_once(api, receiver, connect
     assert fill() == 0  # the message is used once; nothing waits now
 
 
+def test_d172_a_code_step_of_the_rules_attempt_needs_a_permission_for_its_approvals(
+    api, receiver, connected, monkeypatch
+):
+    """D172: codes permitted for your own approvals only: the code step of an attempt your
+    standing rule approved waits, the mailbox not opened for it, until a permission covers the
+    rule's approvals; then its code is entered once and the application completes."""
+    from tests.test_greenhouse_live import by_rule
+
+    app_id = prepared_application(api, receiver)
+    assert api.put("/inbox", json={"codes_enabled": True, "tracking_enabled": False}).status_code \
+        == 200  # fmt: skip
+    aid = queue(api, app_id)
+    by_rule(aid)
+    unauthorize(monkeypatch)
+    authorize(monkeypatch, authorizations.INBOX, approvers={authorizations.OWNER})
+    receiver.config(mode="otp", email_codes=CODE_SENDER)
+    w = start_worker(aid)
+    open_checkpoint(api, app_id, 1)
+    wait_for(lambda: receiver.ledger()["challenges"])
+    assert fill() == 0
+    assert receiver.ledger()["inbox_requests"] == [] and events() == []
+    authorize(monkeypatch, authorizations.INBOX, approvers={authorizations.RULE})
+    assert fill() == 1
+    out, err = w.communicate(timeout=60)
+    assert out.strip() == "confirmed", err[-800:]
+    assert receiver.ledger()["accepted"] == 1
+
+
 def test_the_mail_entering_a_code_while_the_sweeper_closes_its_request_waits_for_it(
     api, receiver, connected, monkeypatch
 ):

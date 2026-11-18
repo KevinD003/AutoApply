@@ -8,7 +8,7 @@ import pytest
 
 from app.core import authorizations
 from app.modules.execution import runner
-from tests.execution_harness import Receiver, pilot_on, queue
+from tests.execution_harness import PILOT_PERMISSIONS, Receiver, pilot_add, pilot_on, queue
 from tests.test_greenhouse_dom import live_application, v2_application
 from tests.test_greenhouse_live import approve
 
@@ -112,3 +112,22 @@ def test_a_permission_that_is_not_recorded_is_outstanding_whatever_the_switch_sa
     assert h["ready"] is False and h["outstanding"] == ["permission_disclose"]
     assert not any(a.what == authorizations.GREENHOUSE_PILOT and "disclose" in a.actions
                    for a in authorizations.RECORDED)  # fmt: skip
+
+
+def test_d172_only_a_permission_for_your_own_approvals_counts_here(api, receiver):
+    """D172: the handoff is your own rehearsal, one package at a time. Steps recorded for the
+    standing rule's approvals only are outstanding here, step 4 too; the attempt limit shown is
+    that of the entries covering your own."""
+    app_id = live_application(api, approve=False)
+    pilot_on(approvers={authorizations.RULE})
+    assert approve(api, app_id, "disclose_only").status_code == 200
+    h = handoff(api, app_id)
+    assert {"permission_read", "permission_open", "permission_disclose"} <= set(h["outstanding"])
+    assert h["ready"] is False and h["submit_permission"]["met"] is False
+    pilot_on(approvers={authorizations.OWNER}, max_attempts=2)
+    pilot_add(PILOT_PERMISSIONS, approvers={authorizations.RULE}, max_attempts=1)
+    h = handoff(api, app_id)
+    assert (h["ready"], h["outstanding"]) == (True, [])
+    assert h["submit_permission"]["met"] is True
+    left = next(p for p in h["prerequisites"] if p["code"] == "attempts_left")
+    assert left["detail"] == "0 of 2 used"

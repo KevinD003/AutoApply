@@ -131,7 +131,9 @@ Step 3  disclose: fill the form and upload my approved documents,
 Step 4  submit: one final click, after a rehearsal on that
         employer's path held:                                         yes / no
 
-Postings covered:   only postings I approve in the NoEfforts app, one at a time
+Whose approvals:    mine, one package at a time in the app / my standing rule
+                    to apply automatically (D113) / both
+Postings covered:   only postings approved as above, each package on its own
 At most:            <N> applications
 Data covered:       only what each approved package contains
 Starts / ends:      <date> / <date>
@@ -146,6 +148,9 @@ What happens with it:
 - Each posting is named only in the app, by your approval of its package. That stays in your
   private database and never goes to git (D95).
 - A "no" or a blank means that step stays refused.
+- Whose approvals it covers is recorded with it (D172). A step recorded for your own approvals
+  never lets your standing rule take it, and a step recorded for your standing rule never covers
+  an application you approve yourself. With no answer there, nothing is recorded until you say.
 
 ## 5. Safe configuration and startup
 
@@ -194,17 +199,18 @@ What happens with it:
 5. The result shows on the application: "rehearsed", or the stop and its reason. Report back
    only the outcome and the reason code. Never the page, the employer or your data.
 6. Your documents and typed answers reached the employer's page. Nothing was submitted.
-7. With your standing rule on (D113), it does the same by itself for employers it has not
-   rehearsed with yet, and then holds each application: nothing is submitted until
-   permission 4 is recorded, and the Tracker's card and each such application say so
-   (D171). Once permission 4 is recorded it submits them by itself; pause it first if it
-   must not.
+7. With your standing rule on (D113) and steps 1-3 recorded for its approvals (D172), it does
+   the same by itself for employers it has not rehearsed with yet, and then holds each
+   application: nothing is submitted until permission 4 is recorded for its approvals, and
+   the Tracker's card and each such application say so (D171). Once it is, it submits them
+   by itself; pause it first if it must not. Permission 4 recorded for your own approvals
+   only lets you submit, one application at a time, and never lets the rule.
 
 ## 7. Separately authorized submission plan (permission 4 recorded, D112; needs a rehearsal that holds)
 
 1. Approve **"Submit once"** for the same application, a new approval.
-2. Queue it. It re-checks everything, fills again, and passes the send gate (step 4). It clicks
-   submit once.
+2. Queue it. It re-checks everything, fills again, and passes the send gate (step 4: recorded
+   for your own approvals, D172). It clicks submit once.
 3. The outcome is one of:
    - **confirmed**: the employer's page confirmed, bound to this attempt;
    - **rejected by the form**;

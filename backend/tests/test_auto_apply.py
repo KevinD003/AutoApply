@@ -1876,6 +1876,40 @@ def test_d172_a_permission_for_your_own_approvals_only_stops_the_rule(api, recei
     assert state["submits"] is False
 
 
+def test_d172_the_rules_attempt_limit_is_that_of_its_own_entries(api, receiver, monkeypatch):
+    """D112's limit, D172: of the entries covering the standing rule's approvals. Yours (1) used
+    up stops your own attempts, not the rule: its card shows its own (5) and it approves."""
+    from app.modules.execution import live
+
+    pilot_on(approvers={authorizations.OWNER}, max_attempts=1)
+    pilot_add(PILOT_PERMISSIONS, approvers={authorizations.RULE}, max_attempts=5)
+    monkeypatch.setattr(live, "attempts_used", lambda db, since, exclude=None: 1)
+    synthetic_candidate(api)
+    job = v2_job(api)
+    tick()
+    answer(api, app_of(api, job))
+    state = api.get("/auto-apply").json()
+    assert state["active"] is True and state["permission_attempts"] == {"used": 1, "of": 5}
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+
+
+def test_d172_a_read_during_a_tick_needs_the_rules_own_permission(api, receiver, monkeypatch):
+    """D170's read as the permission is now, D172: the standing rule's own. Its entry ends during
+    a tick while yours still covers reading: the post is neither read for the rule nor noted."""
+    pilot_on(approvers={authorizations.RULE})
+    pilot_add(("read",), approvers={authorizations.OWNER})
+    synthetic_candidate(api)
+    job = v2_job(api)  # a new job: read first
+    real = service._read_failed_recently
+
+    def ends_now(db, job, now):
+        pilot_on(permitted=("read",), approvers={authorizations.OWNER})  # the rule's entry ended
+        return real(db, job, now)
+
+    monkeypatch.setattr(service, "_read_failed_recently", ends_now)
+    assert tick() == 0 and events(job) == [] and requests_made(receiver) == 0
+
+
 def test_another_account_never_sees_or_triggers_the_owners_rule(api, other_api, receiver):
     pilot_on()  # the owner is the `api` account; `other_api` is not named
     synthetic_candidate(other_api)
