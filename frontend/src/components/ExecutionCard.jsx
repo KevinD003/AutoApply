@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
+import { TAKE_OVER } from "@/lib/pauseWords";
 import { Badge, Button, Card, ErrorBox, inputCls, Notice } from "./ui";
 
 const STATE = {
@@ -21,7 +22,7 @@ const STATE = {
 
 // prerequisiteUnmet: the rehearsal prerequisite is not met, so submitting would be refused (the
 // reason is shown on the review page's "Before the first submission" row).
-export default function ExecutionCard({ appId, appState, approved, scope, prerequisiteUnmet, onChange }) {
+export default function ExecutionCard({ appId, appState, approved, scope, prerequisiteUnmet, onChange, rule }) {
   const [attempts, setAttempts] = useState([]);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState("");
@@ -70,8 +71,10 @@ export default function ExecutionCard({ appId, appState, approved, scope, prereq
   return (
     <Card title="Submission">
       <p className="mb-3 text-sm text-ink-muted">
-        Automatic submission works only for local test forms (fictional employers) in this version. For real employers, apply on their site
-        and record it in the tracker.
+        {rule === "continues" || rule === "waits"
+          ? // D170: the account's standing rule may still send it (the notice above says how it goes on).
+            `Your automatic applying may still send this application (see the notice above). ${TAKE_OVER}`
+          : "Automatic submission works only for local test forms (fictional employers) in this version. For real employers, apply on their site and record it in the tracker."}
       </p>
       <ErrorBox error={error} />
       {notice && <Notice>{notice}</Notice>}

@@ -18,13 +18,20 @@ from app.modules.jobs.models import Job
 
 router = APIRouter(prefix="/auto-apply", tags=["auto-apply"])
 
-WHY = {"rule_off": "Automatic applying is switched off on this server."} | live.WHY
+WHY = {
+    "rule_off": "Automatic applying is switched off on this server.",
+    # D170: the server allows no automatic approval a day.
+    "no_daily_approvals": "This server allows no automatic approvals a day "
+    "(NOEFFORTS_AUTO_APPLY_DAILY_CAP is 0).",
+} | live.WHY
 
 
 def _state(db: Session, user: User) -> dict:
     s = get_settings()
-    refusal = service.owner_refusal(user)
     cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose")
+    # D170: what stops the rule, the recorded permission's attempts used up and no approval
+    # allowed a day among it, as the pause's words ("the Tracker shows why") promise.
+    refusal = service.owner_refusal(user) or service.limit_refusal(db)
     used = live.attempts_used(db, cap[1]) if cap is not None else None
     rows = db.execute(
         select(AutoApplyEvent, Job.title, Job.employer)
@@ -41,7 +48,9 @@ def _state(db: Session, user: User) -> dict:
         # server owner, off for everyone else until they turn it on).
         "chosen": db.get(AutoApplyPrefs, user.id) is not None,
         "consent": service.CONSENT_TEXT,
-        "unavailable": None if refusal is None else {"code": refusal, "message": WHY[refusal]},
+        "unavailable": None
+        if refusal is None
+        else {"code": refusal, "message": WHY[refusal].format(n=cap[0] if cap else 0)},
         "daily_cap": s.auto_apply_daily_cap,
         # D168: in sole-owner mode the cap counts every account's approvals (cap_used).
         "approved_today": service.cap_used(db, user.id),

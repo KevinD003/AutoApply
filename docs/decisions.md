@@ -4599,7 +4599,8 @@ audit-inventory and export-completeness guards are updated and pass.
     itself" for an application automation already tried.
   - **D113 never continues an application that paused**, even after you answered and approved
     again (`form_changed`). Continuing automatically after a form change is a decision for you; it
-    is not taken here.
+    is not taken here. (D169, 2026-11-18: the owner took it; for the owner's accounts the rule
+    now continues a stop before anything was entered: see D169.)
   - **A pause ends** when the application leaves review: cancelled, expired, failed for good, or
     submitted (by hand too). The tracker offers "I applied myself" and "Cancel" for an application
     that waits for you, but not while an attempt still holds it (a verification code awaited),
@@ -4621,7 +4622,8 @@ audit-inventory and export-completeness guards are updated and pass.
   - A minimum interval between reads of a real post. The job's own capture route has none, the
     read is your click, and the recorded permission gates it.
 - **Open for the owner:**
-  - whether automation may continue after a form change;
+  - whether automation may continue after a form change (D169, 2026-11-18: the owner's
+    accounts continue a stop before anything was entered);
   - whether a form change on an employer's path should require a new rehearsal;
   - whether every stop after data was entered (not only the check after filling) should use the
     approval up, so that entering the data again always needs a new approval.
@@ -4874,7 +4876,8 @@ audit-inventory and export-completeness guards are updated and pass.
   that holds an attempt when a pause lands may already have opened the page (a read).
 - **Owner decisions, open:** every recorded permission ended on 2026-11-06 (`app/core/authorizations.py`):
   until you record new ones nothing real is read, opened or sent, whatever the rule says; renewing
-  is yours, never extended because work took longer. Continuing after a form change (D132).
+  is yours, never extended because work took longer. Continuing after a form change (D132):
+  decided by the owner in D169.
 - **Tests** (`test_auto_apply.py`, the receiver's ledger as the oracle):
   - a pause cancels a rehearsal the rule queued before a worker took it (no disclosure; its
     approval retired; the application waits; resumed, the rule rehearses it);
@@ -4927,7 +4930,8 @@ audit-inventory and export-completeness guards are updated and pass.
 - **Not changed:**
   - D132's rule that nothing found after filling pauses, but for this one finding;
   - the gates, fencing and lock order, and no retry after `disclosure_started_at` or `sending`;
-  - the standing rule never continues an application that paused (D132, D134), whatever the kind;
+  - the standing rule never continues an application that paused (D132, D134), whatever the kind
+    (D169: it continues a stop before anything was entered, never this one, after filling);
   - the package content's shape: `SCHEMA_VERSION` stays 3. A package containing such a question
     gets a new version when next built (its explanation and answerability change), so an approval
     given for the previous version must be given again.
@@ -8869,3 +8873,269 @@ audit-inventory and export-completeness guards are updated and pass.
   - **Kept:** registration stays open (the owner's words cover new accounts), with the warning;
     the cap's lock across accounts is not exercised by a test (a race between two workers).
 - **Each part is needed:** 57 changes on 61e1c83, one at a time (a worktree of its own), each run with the tests named for its part: every one fails them (74 failures among the 74 tests run). The trace's account check alone was not caught at first: the trace checks the account twice (the application's and its job's), so removing one leaves the other; removed together, all three named tests fail.
+
+## D169 — The standing rule continues an application after a form change (2026-11-18)
+
+- **Context:** the owner's words (2026-11-18): "Do not pauses anything. Make it enable for the
+  auto application." D132 made a form that changed after approval a durable pause, written
+  before anything is entered on the employer's page; continuing it was the owner's, by "Read the
+  form again" or "Try this version again", and the standing rule skipped such an application for
+  good (D132, D134). The backlog recorded that continuing after a form change needed the owner's
+  decision (`docs/remaining-work.md`, capability row 32 and rank 3). This is that decision. The
+  standing rule itself is on by default outside tests for the owner's accounts (D113; D168's
+  sole-owner mode makes every account the owner's) until the account pauses it, and that switch
+  stays the account's. Local stand-ins only; nothing real was run.
+- **Decided** (`autoapply/service.py`: `_after_pause`, `_yours`, `_lock_pause`, `will_continue`;
+  `_advance` calls `_after_pause` before it judges the application's last attempt):
+  - **For the owner's accounts, a stop on a changed form before anything was entered is
+    continued by the rule,** as the owner's two buttons continue it:
+    - **an open pause:** the rule reads the form again through the route that read it first (the
+      pilot's capture, every check of that route applying: the recorded permission to read a real
+      post among them). A version differing from the one it paused on ends the pause
+      (`_resolve_pauses`, D132; noted `form_read_again`); finding no difference (a change only
+      the page's own scripts make), it marks the pause unexplained, as the owner's route does.
+      Either way the step ends there: the read committed, which ended every lock, so the next
+      step judges the application as it is then, without reading again. The package is rebuilt
+      from a new version as any other; a new question waits for the owner's answer ("Questions
+      are waiting for your answers");
+    - **an unexplained pause:** that form version is tried once more ("Try this version again";
+      noted `form_tried_again`). The pause is ended only just before the approval, once every
+      other check has passed (a checkpoint, the job's signals, the owner's preferences, open
+      questions, the recorded permission's limit, the daily cap), so a step any of them declines
+      never counts as a try; an approval refused after it rolls it back. The live page is checked
+      again before anything is entered;
+    - a read the capture route refuses leaves the pause open (`capture_failed`) and is tried
+      again a day after the last failed read: each failed read is recorded (`_note` never
+      treats one as a repeat), and the limit counts from the newest (`_read_failed_recently`).
+  - **The owner's** (`_yours`; the rule skips, with its reason):
+    - an application one of whose attempts entered the owner's data on the employer's page and
+      did not end as a rehearsal or a confirmed submission (`stopped_after_entry`; D135's pause
+      after filling among them): CLAUDE.md allows no retry after disclosure, and the rule never
+      follows such an application, even after the owner tried it again;
+    - a second stop on a form version already tried once more, by the rule or the owner, and any
+      application past three stops on a changed form (`FORM_STOPS`): `form_kept_changing`; the
+      form is not read again for it. A page that keeps changing is never read and tried without
+      end. After the owner continues it themselves, the rule goes on from there (D170 corrects
+      both: the form is read once more after that second stop, and what is the owner's stays
+      theirs);
+    - **every account that is not the owner's** (only when sole-owner mode is off): it turned the
+      rule on under its consent text ("an attempt that stops is never retried"), so D132 still
+      applies to it (`form_changed`, D132's words);
+    - **what D132 already handed to the owner** (an application with a `form_changed` event
+      recorded before D169): it stays theirs, as D132 said; they may have applied on the
+      employer's site meanwhile;
+    - as before: an attempt's own stop (`attempt_stopped`), an approval the owner revoked
+      (`owner_revoked`, D134), an application begun before a restore (D147), and an account the
+      owner paused.
+  - **What the owner does meanwhile is seen:** after `_after_pause`, the step re-reads the
+    application under its row lock (its state, a revocation, its last attempt) before going on, so
+    a cancel, a revocation or an attempt the owner ran since the step began stops it.
+  - **Locks:** the rule changes a pause only as it is now (`unresolved_pause(lock=True)`), taking
+    the job's row (key share), then the application's, then the pause's: the order a form read
+    takes them. The rule's own notes reference the job (a key-share lock a read's update lock
+    refuses), so taking the pause first deadlocked with a form read on the job's page (found by
+    a test; 40P01). The owner's click and the rule's step serialize: one ends a pause, the other
+    finds it ended.
+  - **The rule's record:** a new action, `continued` (`form_read_again`, `form_tried_again`); new
+    skips `form_kept_changing` and `stopped_after_entry`; `form_changed` keeps D132's words for
+    the events recorded so. Each note is flushed, so the next note of the same step compares with
+    it (a "waiting for your answers" after `continued` was otherwise dropped as a repeat, and the
+    notification asking for the answers is derived from it). `paused()` reads the account's
+    switch as it is now, not as the session last saw it.
+  - **What the owner sees:** the notification for a pause and the Questions page say whether the
+    rule continues it (`will_continue`: the rule's next steps as they will judge it: the rule on
+    and acting for this account, the application not left to the owner, the job among those the
+    rule examines and not declined by its signals or the owner's preferences). Continued: "Your
+    automatic applying reads the form again and continues it by itself … do not apply on the
+    employer's site meanwhile" (no action needed). Otherwise D132's words and its action.
+- **Not changed:** every gate of the standing rule and of execution (fully resolved packages only,
+  a rehearsal first per employer path, the daily cap, the recorded permission); D132's pause
+  before anything is entered and the owner's two buttons; `SCHEMA_VERSION`; no migration or new
+  state; no retry after disclosure. Every recorded permission ended on 2026-11-06 and none was
+  added ("make it enable" is not a permission: the register's own rule): nothing real is read or
+  sent until the owner records one in their own words, with its steps, end date and attempt
+  limit.
+- **Reviews** (two independent reviewers, read-only, each given the code and not the author's
+  conclusions; on ecd7542):
+  - **Security:** the step went on with the application, its last attempt and a revocation as
+    read before its form read committed, so an attempt that entered the owner's data meanwhile
+    could be followed by a second entry (high); the once-a-day read limit held only for the
+    first day (a skip noted once kept its first time); the deadlock above (found independently,
+    3c215c2); the consent text no longer true for accounts that consented to it; D132's
+    `form_changed` relabelled, and applications D132 handed to the owner taken back (a duplicate
+    application if they applied by hand); the pause ended before the cap or other checks, the
+    version then counted as tried; a read's result lost on a rollback (read again every tick);
+    the pause texts promising a continuation after the rule gave up, and D132's "apply on the
+    employer's site" shown while the rule would try again; only the last attempt considered; a
+    query unscoped by `user_id`.
+  - **Correctness:** the same lock cycle; the same stale state (a cancel, a revocation, the
+    owner's own queueing during the read); the same read limit; the texts; the consent and the
+    docs; D132's reason relabelled; the pause ended before the job's checks; the unscoped query;
+    the pauses ordered by the workers' clocks (a stall when they disagree); tests that would pass
+    with parts removed (the hold and pause check after the read, the concurrency guards, the
+    note's flush, the stop limit's unresolved condition).
+  - Each fixed, with its test (c7bd5a3, 6fb2b91, 65c1989): the read ends the step; the step
+    re-checks under the application's lock; the try happens at approval; failed reads are
+    always recorded; D132's words, hand-overs and other accounts kept; any attempt that entered
+    data makes the application the owner's; the waiting pause found by its status; every query
+    scoped by `user_id`; the texts chosen by `will_continue`.
+  - **Kept:** the rule reads the form of a job it may then decline (its first read has the same
+    order); a changed version is submitted on the strength of the employer path's rehearsal
+    (E6's rule: one rehearsal per path); the stand-in cannot refuse a read, so a refused read is
+    stubbed as `_capture` reports it.
+- **Each part is needed:** 49 changes on 65c1989 (one rerun on ea62be4), one at a time (a worktree of its own), each run with the tests named for its part: each of the 42 named for a test fails it. The note that a failed read is always recorded was caught only once the read limit's test shifted every note of the job (ea62be4): shifting the failed reads alone put them behind the rule's other notes, so the repeat was never seen. Not caught, by design: the pause row's own lock (the job's and the application's locks the step holds keep every writer out; kept so the pause is read as the owner's routes read it); two `user_id` scopes (the attempt and the application are already the account's; CLAUDE.md's rule, kept); four of `will_continue`'s checks that mirror the rule's step (a job outside the rule's window of the 25 newest, a job signal or an unmet preference, a final state, which closes the pause first, and a restore), none of which a test pauses. An earlier run of 28 changes on 9e7a0b2, before the reviews, found the note's flush untested (a test added).
+
+## D170 — A paused application is the rule's to continue, waits for it, or is yours for good (2026-11-18)
+
+- **Context:** D169 lets the standing rule continue, for the owner's accounts, an application that
+  stopped on a changed form before anything was entered, and shows with the pause whether it does
+  (`will_continue`: yes or no). Two independent reviews of a follow-up (each given the code, not
+  the author's conclusions) found that "no" was not final: an application shown as the owner's,
+  in D132's words ("nothing is sent until you do"; "…or apply on the employer's site"), was
+  continued by the rule as soon as the reason lifted: newer jobs pushing the job out of the rule's
+  window of the 25 newest and closing them bringing it back; a possible duplicate answered "a
+  different role"; a preference edited; the rule resumed; a recorded permission renewed. An owner
+  who applied by hand meanwhile, as the words invited, would see a second application sent. The
+  reviews also found Questions saying both "continues it by itself … do not apply on the
+  employer's site" and D132's "or apply on the employer's site" for one pause; the application's
+  page never asking the rule; the rule reading the employer's page for a job it then declined;
+  and "continues it by itself" shown while the recorded permission's attempt limit was used up.
+  A first version (e112f0c) made each such reason a hand-over for good, recorded at the rule's
+  next step; it was shown as the owner's before it was recorded (a reason lifting within that
+  interval handed it back unrecorded), and it made reasons that are the owner's to lift (a
+  preference, "a different role", pausing the rule) permanent for no gain. This decision replaces
+  it; two more independent reviews of its code found more (Reviews, below).
+- **Decided** (`autoapply/service.py`; D132's principle, kept by D169: what is shown as the
+  owner's stays theirs, since they may have applied by hand meanwhile):
+  - **Three outcomes** (`verdict`), shown with the pause on the feed, on Questions (each item and
+    the count), on the application's page (`rule`, `rule_why`; `rule_continues` kept for clients
+    that read it) and on the Tracker's rows (`rule`: "Automatic applying continues it"), each in
+    its own words and only those:
+    - **continues:** the rule continues it by itself (D169): it reads the form again, or tries
+      this version once more, the page checked again before anything is entered; a new question
+      waits for the owner's answer under Questions. "Do not apply on the employer's site
+      meanwhile." No action is asked;
+    - **waits, and why:** the rule would continue it once what holds it lifts: `stopped`
+      (automatic applying switched off or paused, the pilot not running here, no recorded
+      permission covering it, its attempts used up, or no approval allowed a day: a daily cap of
+      0, which now stops the rule outright, so no post is read for nothing); `declined` (the job's
+      signals or the owner's checked preferences rule it out: neither continued nor read
+      meanwhile, and continued by itself once that changes); `unreadable` (a read of the post
+      failed since the pause began, or the rule's own read is held a day after a failed one);
+      `questions` (the version is to be tried once more and its package asks for an answer: the
+      rule approves nothing until it is given; linked to Questions, and tried by itself once
+      answered). Never D132's words, which would invite applying by hand while the rule may
+      still send it; instead how to take it over: first choose "I applied myself" for it in the
+      Tracker, which makes it final, so it is never sent. The Tracker says why the rule is
+      stopped, the permission's attempts used up and no approval allowed a day among it
+      (`limit_refusal`);
+    - **yours, for good** (D132's words and its action): a final or revoked application, one
+      begun before a restore or while one is unresolved, a job the rule never examines (not a
+      post the pilot accepts), an attempt that entered the owner's data, what D132 handed over,
+      a pause made while the account was not the owner's, and a page that kept changing.
+  - **Yours stays yours:** each of those is judged only from facts no later step changes back.
+    D169 judged a page that kept changing by the mark a no-difference read left on the pause
+    (`recaptured_version`), which a later read finding a new version overwrites, so the owner's
+    own "Read the form again" could hand back an application shown as theirs: a new column,
+    `application_pauses.unexplained_at`, is set by either read (the rule's or the owner's) and
+    never cleared. D169 also judged "not the owner's account" from the server's settings as they
+    are now, which may change back: it is now recorded with the pause, in the worker's fenced
+    transaction (execution `_hand_over_unless_owner`, the same `form_changed` hand-over D132's
+    rule wrote), and `_yours` never reads the settings. The owner's own read or try no longer
+    hands such an application back (D169: "after the owner continues it themselves, the rule goes
+    on from there").
+  - **Pauses from before D169:** D169 recorded D132's hand-over only for applications the rule
+    examined after their stop (among its newest jobs, the rule on and a permission in force). The
+    migration (`d170b0a8e3c1`) records it once for every application with a pause and none, under
+    its own account, dated when it last paused (so it takes its place in the account's history),
+    so none that D132 showed as the owner's is taken back.
+  - **Followed to the end:** every application that ever paused on a changed form and is not
+    final is examined first in each tick, whatever its job's age, also once its pause has ended
+    (the rule's own read or try ends it). Left to the window of the 25 newest, it stalled once
+    newer jobs pushed it out (its new question never asked for, its submission never queued
+    after its rehearsal) and was sent when they closed, long after the owner, told "do not apply
+    meanwhile", may have given up and applied by hand. First, so a tick that runs out of time
+    reading new posts never leaves it behind.
+  - **A decline is judged before any read, and as it is now:** the job's signals (closed,
+    excluded, closed at source, a possible duplicate) and the owner's checked preferences are
+    judged before the post is read, for a new job and for a paused application (`_declined`),
+    and again after a new job's read; the job is read as it is then, not as the tick's session
+    first loaded it, and so is it at the approval itself (`pk.approve`): the owner may close the
+    job or check a preference while the rule works.
+  - **A read needs the permission as it is now** (`_may_read`): a tick that began under a
+    recorded permission can outlast its last day. With the permission's attempts used up, the
+    rule does not read a paused application's page at all (`permission_limit`).
+  - **A refused queue is no try:** the version is tried once more only with a queued attempt; a
+    queue refused after the rule's approval rolls the step back (the approval and the try), so
+    the pause stays as it was and the next step tries it.
+  - **The task's time limit ends the tick:** Celery's soft time limit is re-raised, never taken
+    for one job's failure or for a refused queue (D113's catch-all would start the next job).
+  - **Never another account's job:** a step for a job that is not the account's ends before
+    anything is read or noted (the rule's selection is scoped by account; this holds whatever
+    selected it).
+  - **One message per application:** the feed's "answer the open questions … and it continues by
+    itself" never stands beside a pause (the pause's own item says what the rule does), and
+    Questions' count leaves out a pause the rule continues by itself.
+  - **The application's page:** its Submission card no longer says "for real employers, apply on
+    their site" while the rule may still send the application (continues or waits); it says how
+    to take it over instead.
+- **Changed from D169's text:** after a second stop on a version tried once more, the form is
+  read once more, as D169's code did (its decision said it was not): a visible change made since,
+  such as a new question, is continued; finding no difference, the application is the owner's
+  for good, as is one the owner then continues themselves.
+- **Not changed:** every gate of the rule and of execution (fully resolved packages only, a
+  rehearsal first per employer path, the daily cap, the recorded permission); D132's pause, its
+  words for what is the owner's and the owner's two buttons (always offered); no retry after
+  disclosure; `SCHEMA_VERSION` (nothing in the package content). One migration: the column and
+  the hand-overs (its downgrade drops the column and keeps the hand-overs, true before it too).
+  Every recorded permission ended on 2026-11-06 and none was added: nothing real is read or
+  sent until the owner records one, in their own words, with its steps, end date and attempt
+  limit.
+- **Kept, with the reason:**
+  - pausing the rule, a permission ending, a decline, an unreadable post and an open question are
+    "waits", not hand-overs: each is the owner's to lift, the words say so, and say how to take
+    the application over instead;
+  - the daily cap used up today is not a "waits": the rule continues the next day, and the words
+    say it continues it;
+  - a job the rule never examines is "yours" by its URL alone in production (the stand-in's base
+    is a test setting); an account that was the owner's when its application paused, made not the
+    owner's and then the owner's again by the server's settings, is the rule's again once its
+    rule runs (D132's words were shown meanwhile, while that account's rule was off): a change of
+    the server's settings, not a step;
+  - a recorded permission covering reading and filling but not submitting: the rule's submission
+    is refused at the queue at each step (`queue_refused`, on the Tracker) while the pause says it
+    continues; such permissions are the owner's own records per step (D103a), none in force;
+  - `verdict` costs a handful of queries per paused application wherever it is shown (the feed,
+    Questions, the Tracker's rows, the application's page): paused applications are few; batch
+    the account-wide reads if that changes. The count leaves out a pause the rule continues while
+    the list still shows its card (nothing to do: no action is asked);
+  - the migration's hand-overs have no audit records (a data backfill, not an action); stop the
+    workers before `alembic upgrade` (the deployment's migrate step runs before the services
+    start), so no pause is written after its snapshot;
+  - the owner's preferences are re-read explicitly at each check (`populate_existing`); the
+    session already reads them afresh, since nothing holds them between checks (the removal run
+    of that re-read is not caught, by design: it guards a future caller that keeps them).
+- **Reviews:** two rounds, each of two independent reviewers (read-only, each given the code, not
+  the author's conclusions).
+  - **On e112f0c** (the first version): the hand-over shown before it was recorded; reasons the
+    owner lifts made permanent; the window of the 25 newest; Questions' two texts for one pause;
+    the application's page never asking the rule; reads of a declined job's page; the attempt
+    limit. The design was replaced by this decision's (fd93167).
+  - **On fd93167, the rule's decisions over time:** blocking: a paused application stalled once
+    its pause ended (the window decided again) and was sent once newer jobs closed; should-fix:
+    "continues" while the try waited for the owner's answer; "yours" by a setting handed back when
+    the setting changed; the selection of paused applications' account scoping untested (with it
+    removed, the owner's step made an application on another account's job); minor: a daily cap
+    of 0 still read the page; the time limit swallowed while queueing; a refused queue counted as
+    the try; the approval read a cached job; paused jobs examined last; "unreadable" unlike the
+    rule's own read limit; the migration's events dated at the upgrade; D169's text.
+  - **On fd93167, the words:** should-fix: the same "continues, no action needed" while the rule
+    waited for an answer (the feed hid the only item asking for it); the Submission card's "for
+    real employers, apply on their site" and the Tracker's "Needs your action" beside "continues";
+    minor: the same setting and cap findings; "(the Tracker shows why)" untrue for two causes;
+    "unreadable" against the Tracker's "it waits for you" (`capture_failed` now says the post is
+    read again a day later); links (a waiting pause now opens its row in the Tracker, an open
+    question Questions); queries per verdict; the count against the list; paused jobs starved by
+    the time limit; dead code (`will_continue`, removed).
+  - Each fixed with its test (135d1de), but those kept above.
+- **Each part is needed:** 48 changes on 135d1de, one at a time (worktrees of their own; the last 20 in two at once), D169's and D170's 51 tests run each time: each of the 46 changes named for a test fails it (174 failures among the 2,448 tests run). Not caught, by design: a final application examined too (the step returns at once for one, so the filter only saves the step), and the owner's preferences' explicit re-read (Kept). Earlier runs: 8 of 13 changes on e112f0c, each caught; 19 of 31 on 1422295, 18 caught (that re-read not).

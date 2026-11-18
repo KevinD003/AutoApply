@@ -33,7 +33,7 @@ class AutoApplyEvent(Base):
     application_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("applications.id", ondelete="CASCADE")
     )
-    # approved_rehearsal | approved_submit | skipped
+    # approved_rehearsal | approved_submit | skipped | continued (D169: after a form change)
     action: Mapped[str] = mapped_column(String(30))
     # A fixed code (autoapply/service.py REASONS); never a field key, a value or page text.
     reason: Mapped[str] = mapped_column(String(40))

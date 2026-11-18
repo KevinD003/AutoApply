@@ -224,6 +224,11 @@ class ApplicationPause(Base):
     form_version: Mapped[int | None] = mapped_column(Integer)
     detail: Mapped[dict] = mapped_column(JSON, default=dict)  # counts only
     recaptured_version: Mapped[int | None] = mapped_column(Integer)
+    # D170: when a read of the form first found no difference from `form_version` (marked
+    # unexplained). Never cleared: a later read finding a new version ends the pause and
+    # overwrites `recaptured_version`, while the rule's judgement that the page kept changing
+    # (autoapply `_kept_changing`) stands.
+    unexplained_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # How it ended (ck_pause_resolution).
     resolution: Mapped[str | None] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

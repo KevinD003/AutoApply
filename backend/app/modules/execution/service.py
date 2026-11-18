@@ -1066,8 +1066,25 @@ def pause_for_form_change(attempt_id, worker, gen, reason: str, counts: dict) ->
             )
         )
         event(db, att, "paused", reason_code="form_changed", **safe)
+        _hand_over_unless_owner(db, att, app)
         db.commit()
         return True
+
+
+def _hand_over_unless_owner(db, att, app) -> None:
+    """D170: an account that is not the server owner's (sole-owner mode off) keeps D132's rule for
+    this application for good: its consent says "an attempt that stops is never retried", and the
+    pause tells it "nothing is sent until you do". Recorded with the pause, in its fenced
+    transaction (the standing rule's own hand-over, autoapply `_handed_to_you`), so a later
+    setting making the account the owner's never hands the application to the rule."""
+    from app.core.accounts import owner
+    from app.modules.autoapply.models import AutoApplyEvent
+    from app.modules.identity.models import User
+
+    user = db.get(User, att.user_id)
+    if user is not None and not owner(user.email):
+        db.add(AutoApplyEvent(user_id=att.user_id, job_id=app.job_id, application_id=app.id,
+                              action="skipped", reason="form_changed"))  # fmt: skip
 
 
 def pause_after_entry(attempt_id, worker, gen, reason: str, required: int) -> bool:

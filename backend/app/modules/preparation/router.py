@@ -531,6 +531,7 @@ def recapture_form(
         # Only the pause this read was for, as it is now (a concurrent read may have ended it,
         # and a newer pause was never read for).
         pause.status, pause.recaptured_version = "unexplained", out["version"]
+        pause.unexplained_at = utcnow()  # D170: kept, whatever a later read finds
     pkg = pk.ensure_current(db, app)
     last = _last_pause(db, app.id)
     record(db, user.id, "application.form_recaptured", "application", app.id,
@@ -552,8 +553,9 @@ def dismiss_pause(
     """D132: "Try this version again". Ends the application's form-change pause (always found
     before anything was entered), so a package can be approved again: every approval was retired
     when it paused, and the live page is checked again before anything is entered, so a change
-    still there stops it again with nothing sent. Never approves, queues or sends anything; the
-    automatic rule never takes this step.
+    still there stops it again with nothing sent. Never approves, queues or sends anything. The
+    standing rule takes this step itself at most once per form version (D169, autoapply
+    `_after_pause`), never for a pause after filling.
 
     D135: a pause for a question the page revealed and required after filling ends only once
     every such question you can answer has your answer (`questions_open` otherwise): trying again
@@ -613,6 +615,17 @@ def _last_pause(db: Session, app_id: uuid.UUID):
         .order_by(ApplicationPause.created_at.desc())
         .limit(1)
     )
+
+
+def _rule(db: Session, app: Application, pause) -> dict:
+    """D170: the standing rule's verdict on a form-change pause: continues, waits (and why) or
+    yours."""
+    from app.modules.autoapply.service import verdict
+
+    if pause is None or pause.kind != "form_changed":
+        return {"rule": None, "rule_why": None}
+    rule, why = verdict(db, db.get(User, app.user_id), app)
+    return {"rule": rule, "rule_why": why}
 
 
 def _pause_out(pause) -> dict | None:
@@ -752,7 +765,10 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
         "job_signals": signals.view(db, db.get(Job, app.job_id)),
         # D132: the employer's form no longer matched under an attempt, while it waits for you;
         # nothing can be approved until it is resolved (a new form, or "Try this version again").
-        "pause": _pause_out(pk.unresolved_pause(db, app.id)),
+        "pause": _pause_out(pause := pk.unresolved_pause(db, app.id)),
+        # D170: what the account's standing rule does with that pause (autoapply `verdict`), so
+        # this page never invites applying by hand while the rule may still send it.
+        **_rule(db, app, pause),
         "recapture_available": _recapture_available(db, app),
         "history": [
             {

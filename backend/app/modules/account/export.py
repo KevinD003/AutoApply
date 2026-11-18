@@ -229,6 +229,7 @@ EXPORTED: dict[str, tuple[str, ...]] = {
         "form_version",
         "detail",
         "recaptured_version",
+        "unexplained_at",
         "resolution",
         "created_at",
         "resolved_at",
