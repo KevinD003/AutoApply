@@ -59,7 +59,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D164 an education field no option of the form matches, chosen from its own options for one application | merged (#73, 65c6aac, tree as predicted); its PR CI passed all four jobs on dadf16e |
 | D165 a Workday-style Languages, Websites or Skills section the page does not mark required, left empty | merged (#74, a681c3c, tree as predicted); its PR CI passed all four jobs on ba6b804 |
 | D166 a Workday-style Websites section filled from your profile's links | merged (#75, f927e8f, tree as predicted); its PR CI passed all four jobs on d52880e |
-| D167 a Workday-style Certifications section filled from your licences and certifications | branch `workday-certifications` (from D166's branch, main with #75 merged in); reviewed twice; not merged |
+| D167 a Workday-style Certifications section filled from your licences and certifications | merged (#77, 9991ed8, tree as predicted); its PR CI passed all four jobs on e6015a4 |
+| D168 the owner's console (every switch and why, one application traced from start to finish) and sole-owner mode | branch `process-debugger` (from main at f927e8f; main with #77 merged in at 980cac5); reviewed twice; not merged |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -81,7 +82,7 @@ Nothing is **real-observed** except read-only Greenhouse mapping and dropdown op
 | 4 | Unsafe similar question refused | unit; D131 merged (#36); more wordings in #39; D133 merged (#41): word-level vetoes over label and help, a rule floor under the model; D138 merged (#47): a gh2 look-alike naming a country is neither reused nor suggested | D138 merged (#47): "Preferred shift" never saved or reused |
 | 5 | Conditional question | fx on the v1 fixture; D135 merged (#44), on the id-only structure (gh2, by id and pilot stand-in, receiver ledger): a typed question the page reveals is answerable, entered only when shown, and a revealed required one pauses; a choice or upload hidden at load is still never filled | D148 merged (#57; stand-in FA6, receiver ledger): a typed follow-up the page shows after an earlier answer is answerable, entered only when shown, never waited for; a shown required one without an answer pauses a single page and stops a wizard page before its Next; a hidden one the page still requires, or one it removes, stops the attempt; a choice hidden at load is still never filled (a hidden file input is uploaded as before); D154 on its branch: one the page shows after a request is waited for, entered when answered, and otherwise pauses a single page or stops a wizard page before its Next (FA8, receiver ledger) |
 | 6 | Unsupported widget → checkpoint | fx at capture; D136 merged (#45): on the id-only structure every control the adapter cannot fill (a native dropdown, a checkbox, a list of several choices) is refused when the form is read, a required one a checkpoint, an optional one left blank (gh2, receiver ledger); D145 (branch): a dropdown whose list keeps being re-rendered is refused however slowly it is read (the page's own record of its last change to a list), before anything is entered, and a location search whose suggestions keep changing chooses no place (gh2 stand-ins; receiver ledger); D152 merged (#61): the read-only survey publishes whether each list met that rule at its last read (gh2 stand-ins; code only, no run); D153 merged (#62): a page busy elsewhere no longer has its lists refused, one whose style sheets or control keep changing has them refused before anything is entered, and an option is chosen only from one read of the list that is still the approved one (gh2 stand-ins; receiver ledger) | fx at capture |
-| 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger); D151 on its branch: a section combobox chooses only from a list that has settled, by the dropdown's rule, and a list that keeps changing, posts or fails to load stops the section (gh2 stand-ins, receiver ledger) | D149 merged (#58; stand-in FA7, receiver ledger): the Work Experience entries on My Experience filled from your approved work history (employment), each added by the section's own button and read back, no entry beyond the approved ones sent, a required section waiting for your approved work history; D155 on its branch: an entry's Location and Role Description from your record where the entry asks them (blank: not sent; required and blank: yours to add), what the form would send read back; anything else about work history a checkpoint; D163 merged (#72): the Education section filled from your approved education; D164 merged (#73): an education field no option matches chosen from its own options for one application; D165 merged (#74): a Languages, Websites or Skills section the page does not mark required left empty, anything else about it a checkpoint of its own; D166 merged (#75): the Websites section filled from your profile's links, each the web address its entry is given, anything else about it its own checkpoint; D167 on its branch: the Certifications section filled from your current approved licences and certifications (name, issued and expiration dates; never a number), anything else about it its own checkpoint (filling languages and skills not built) |
+| 7 | Repeating records | fx education stand-in (D120); D140 merged (#49): the rows sent shown on the review page and diffed by record and field; D141 merged (#50): an employment stand-in (current and past roles, rows in their own sections) and react-select-safe section comboboxes, read back before the send gate (receiver ledger); D151 on its branch: a section combobox chooses only from a list that has settled, by the dropdown's rule, and a list that keeps changing, posts or fails to load stops the section (gh2 stand-ins, receiver ledger) | D149 merged (#58; stand-in FA7, receiver ledger): the Work Experience entries on My Experience filled from your approved work history (employment), each added by the section's own button and read back, no entry beyond the approved ones sent, a required section waiting for your approved work history; D155 on its branch: an entry's Location and Role Description from your record where the entry asks them (blank: not sent; required and blank: yours to add), what the form would send read back; anything else about work history a checkpoint; D163 merged (#72): the Education section filled from your approved education; D164 merged (#73): an education field no option matches chosen from its own options for one application; D165 merged (#74): a Languages, Websites or Skills section the page does not mark required left empty, anything else about it a checkpoint of its own; D166 merged (#75): the Websites section filled from your profile's links, each the web address its entry is given, anything else about it its own checkpoint; D167 merged (#77): the Certifications section filled from your current approved licences and certifications (name, issued and expiration dates; never a number), anything else about it its own checkpoint (filling languages and skills not built) |
 | 8 | Answer edits invalidate approvals | fx; D138 merged (#47): on gh2, editing the saved answer retires the approval that used it; approved again, the new value is sent (receiver ledger); D140 merged (#49): an education or employment edit retires the approval at once; on the education stand-in, approved again, the new degree is sent, and an edit while a worker fills is stopped at the send gate (receiver ledger) | fx (single page) |
 | 9 | Recovery without duplicates | fx on the generic form; D143 merged (#52): on gh2 by id a worker killed before anything was sent is run again once, and one killed after entering data, at the send gate, around the final click or after the employer's receipt is never run again; a run past its budget stops before the final click (gh2 by id and the pilot stand-in; receiver ledger); D144 merged (#53): the sweeper runs on a worker of its own, so it is not held up by attempts waiting for codes (real workers, generic form; receiver ledger) | partial; D142 merged (#51): on the wizard stand-in a lost or killed worker leaves the record of each page's Next, is never taken over, and the application is never run again (receiver ledger); D143 merged (#52): the same kills on the single-page form and on the wizard's review page, and a wizard past its budget stops for good (receiver ledger) |
 | 10 | Sensitive answers | partial; D131 merged (#36); vaccinations and work documents in #39; D133 merged (#41): a screening job counted by the receiver (by id and pilot stand-in), self-identification across the whole question-safety table and corpus; D139 merged (#48): self-identification on gh2 (by id and pilot) up to the ledger: off or unmatched never sent, a label or a decline label sent, your per-application "Don't disclose" beats it, a required one without a match waits; a change retires its approvals at once (queued, held by a worker, under the standing rule: nothing withdrawn is sent) | partial (never inferred only); no recorded Workday source for "I do not wish to self-identify"; D139 merged (#48): self-identification sent as each option's own value, each question only from the label naming its category, a bare "No" or two labels never used, a decline only where the choices name a category, a required gender without a match waits; withdrawal and change retire the approval (single page; the Workday decline wording is a fixture assumption) |
@@ -381,7 +382,28 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
 
-- **D167 (branch `workday-certifications`, not merged).** Rank 34, your licences and
+- **D168 (branch `process-debugger`, not merged).** The owner's request of 2026-11-17,
+  outside the ranked backlog ("Add a debugger to the automatic job application process";
+  every account the owner's):
+  - the console: Account → Debugger shows each switch as its own gate decides it and why,
+    what a feature still needs (a setting's name, never its value), the warnings and the
+    rules that always apply; to the server's owner, the recorded permissions in their own
+    words; the account's newest steps of every kind; and, from an application's review
+    page, its process trace from the form read to its receipt, in one timeline by the
+    moment. Read-only, app-only, never a secret; another account's application a 404;
+  - sole-owner mode (on by default outside tests): every account is served and the
+    owner's: the standing rule on for each until it pauses, one daily cap for all of them,
+    the Gmail features for each, reading only a mailbox it connected itself. No other gate
+    opens: every recorded permission ended on 2026-11-06, and none was added;
+  - two independent reviews: a mailbox read could fall back to the server's own token
+    file; the cap counted per account; owner-only parts went to every account; weaker
+    scrubbing than the export's; warnings and reasons naming the wrong cause; the
+    timeline sorted the text of times. Each fixed, with its test; the rest recorded in
+    D168;
+  - each of 57 parts changed in turn: every one caught; the regression set: 2,474 passed
+    on 4d9b103; the full e2e suite: 194 passed, 3 skipped.
+
+- **D167 (merged, #77).** Rank 34, your licences and
   certifications on Workday:
   - the gap: a Certifications section was a section of a kind no reader takes, the
     work-history checkpoint for the whole page, so no such page could be applied to;
@@ -733,8 +755,10 @@ option for an education field none matches.
 section the page does not mark required empty, anything else about it a checkpoint.
 **D166** (rank 33, #75) fills a Workday-style Websites section from your
 profile's links.
-**D167** (rank 34, on its branch) fills a Workday-style Certifications section from
+**D167** (rank 34, #77) fills a Workday-style Certifications section from
 your current approved licences and certifications.
+**D168** (the owner's request, on its branch) adds the owner's console (the Debugger)
+and sole-owner mode, in which every account is the owner's.
 Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
@@ -831,9 +855,14 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D167 (branch `workday-certifications`):** the new tests, the review page in
-  Chromium, the suites the change touches, the removal runs and the regression set,
-  locally (Tests run below). Not tested: any real page (no real Workday Certifications
+- **D168 (branch `process-debugger`):** the new tests, the console's pages in Chromium
+  (desktop and mobile), the suites the change touches, the removal runs, the regression set
+  and the full e2e suite, locally (Tests run below). Not tested: a real mailbox or a real
+  employer's page; two workers racing for the shared daily cap (its lock is not exercised
+  by a test).
+- **D167:** merged (#77, 9991ed8, tree as predicted); its PR CI passed all four jobs on
+  e6015a4. Locally: the new tests, the review page in Chromium, the suites the change
+  touches, the removal runs and the regression set (Tests run below). Not tested: any real page (no real Workday Certifications
   section was observed); a Certification chosen from the employer's own list.
 - **D166:** merged (#75, f927e8f, tree as predicted); its PR CI passed all four
   jobs on d52880e. Locally: the new tests, the review page in Chromium, the suites
@@ -1219,6 +1248,12 @@ action.
 | D167, after the reviews: the 22 suites the change touches (JUnit) on c08b283; after ccdfaa9 (the removal runs' fix), the 5 suites holding frozen certifications content | 1,691 passed; then 258 passed |
 | D167, each part changed in turn: 95 parts of the change each removed or weakened in turn on ffbc299, in a worktree of their own, each with the suites that cover it (JUnit) | 95 of 95 caught: each change made the tests named for its part fail (294 failures among 5,296 tests run). The first pass had misses (e14, g02, g04, g06, g07, g08, g11, g12): expectations corrected, the tamper test strengthened and the date bounds restored (ccdfaa9), then every one rerun |
 | D167, the regression set: `pytest` on 94 files (D166's 93 with `test_workday_certifications.py`; JUnit), in a copy of the branch at ffbc299 (main merged in), with a database and ports of its own | exit 0, 3,409 passed (91 minutes) |
+| D167, its PR's CI on e6015a4: the four jobs | all four passed; #77 merged (9991ed8, tree as predicted) |
+| D168, the first version: `test_debug_console.py` (JUnit) before df08d96; the owner suites, the route, privacy and document guards; `debugger.spec.ts` and the 8 nav, review and account specs | 13 run, 2 failed (an optional control counted as a checkpoint; a permissions test reading the empty register conftest leaves), then 14 passed; 119 passed; 271 passed; e2e 4 passed after two test fixes; 31 passed |
+| D168, after the reviews: the 16 suites the fixes touch (JUnit) on 92e9b1a; `test_debug_console.py` on 61e1c83; `debugger.spec.ts`, `account.spec.ts`, `auto-apply-pause.spec.ts`, `layout-regression.spec.ts`; ruff, tsc, eslint | 477 passed; 25 passed; e2e 15 passed (desktop and mobile); clean |
+| D168, each part changed in turn: 57 changes on 61e1c83, one at a time (a worktree of its own), the named tests run, the file restored | each fails the tests named for its part (74 failures among the 74 tests run); the trace's account check, checked twice, was caught once both were removed |
+| D168, the regression set: `pytest` on the 41 suites that exercise accounts, the mailbox, the standing rule, Gmail, drafting access, discovery and the pilot (JUnit), at 4d9b103 | exit 0, 2,474 passed (29 minutes) |
+| D168, the full e2e suite: `npx playwright test` on 4d9b103 | 194 passed, 3 skipped (14.1 minutes) |
 
 ## Failed approaches and rejected designs
 

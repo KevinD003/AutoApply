@@ -86,6 +86,11 @@ never the text, the subject, the sender's name or a code. Your Gmail token stays
    and no code is entered.
 5. Restart, then turn each use on in Account.
 
+In sole-owner mode (D168, `NOEFFORTS_SOLE_OWNER`, on by default outside tests) every account is
+yours and may read mail too, but only a mailbox it connected itself (Account → Connections →
+Connect Gmail): the token file above is read for the account named in
+`NOEFFORTS_INBOX_OWNER_EMAILS` alone, never for another account in its place.
+
 ## Disconnect
 
 Turn both off in Account, delete the token file, and remove NoEfforts in your Google Account's

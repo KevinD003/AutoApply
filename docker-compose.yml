@@ -79,6 +79,8 @@ services:
       # D113: the owner's standing rule to apply automatically (on by default; pause it in the app).
       NOEFFORTS_AUTO_APPLY_ENABLED: ${NOEFFORTS_AUTO_APPLY_ENABLED:-true}
       NOEFFORTS_AUTO_APPLY_DAILY_CAP: ${NOEFFORTS_AUTO_APPLY_DAILY_CAP:-5}
+      # D168: sole-owner mode (every account is the owner's; on by default). Keep the server private.
+      NOEFFORTS_SOLE_OWNER: ${NOEFFORTS_SOLE_OWNER:-true}
     volumes: [storage:/data/storage]
     ports: ["127.0.0.1:8000:8000"]
     depends_on:

@@ -54,6 +54,43 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## The owner's console: one application from start to finish, every switch and why; sole-owner mode (D168, 2026-11-17; local only)
+
+The owner's request of 2026-11-17, outside the ranked backlog (D168 quotes it). Product changes:
+
+- `app/modules/debug/` (new): `router.py` (`/api/debug/system`, `/api/debug/activity`,
+  `/api/debug/applications/{id}`; app-only), `service.py` (`system`, `activity`, `trace`);
+  `app/main.py` mounts it.
+- `app/core/config.py`: `sole_owner`, on by default outside tests (`_d113_defaults`).
+- `app/core/accounts.py`: `named` and `owner` hold for every account in sole-owner mode.
+- `app/modules/inbox/service.py`: `named_inbox_owner`; `is_inbox_owner` in sole-owner mode;
+  `owner_token_file` (the server's token file for the named owner only); `reader` (no fallback);
+  the token file read once per read (`check`, `fill_codes`, `inbox_tick`).
+- `app/modules/autoapply/service.py`: `approved_today` for every account, `cap_used` (one cap
+  for every account in sole-owner mode, with its lock), `tick` in sole-owner mode;
+  `router.py`: the cap's count and `cap_every_account`.
+- `frontend/src/app/(app)/debug/page.jsx`, `frontend/src/app/(app)/applications/[id]/debug/page.jsx`,
+  `frontend/src/lib/debug.js` (new); the Account page's Debugger card; the review page's "Debug
+  this application"; `AutoApplyCard.jsx` (the cap across every account).
+- `.env.example`, `docker-compose.yml`: `NOEFFORTS_SOLE_OWNER`.
+- Docs: D114's mailbox note, `email-tracking.md`, `inbox.md`.
+
+No migration, no new state, reason code, permission or retry; `SCHEMA_VERSION` unchanged.
+Nothing was run against a real page or mailbox. `scripts/validate.sh all` was not run (it runs
+the whole backend and e2e suites); the full e2e suite, ruff, tsc and eslint were.
+
+| Check (branch `process-debugger`, from main at f927e8f; main with #77 merged in at 980cac5) | Command | Result |
+|---|---|---|
+| The first version's tests | `test_debug_console.py` (JUnit) on the working tree before df08d96; the owner suites (`test_debug_console.py`, `test_auto_apply.py`, `test_inbox.py`, `test_connections.py`, `test_authorizations.py`); the route, privacy and document guards (`test_api_tokens.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_forbidden_capabilities.py`, `test_error_boundary.py`, `test_account.py`, `test_doc_references.py`, `test_retained_data_privacy.py`, `test_audit_privacy.py`); `debugger.spec.ts`; the 8 nav, review and account specs | first 13, 2 failed (an optional control counted as a checkpoint; a permissions test reading the empty register conftest leaves); then 14 passed; 119 passed; 271 passed; e2e 4 passed (after two test fixes: a section's summary, a link named twice); 31 passed |
+| Two independent reviews | on df08d96 | the security review: a mailbox read could fall back to the server's token file mid-read; the cap counted per account; weak tests; owner-only fields to every account; weaker scrubbing. The correctness review: the warnings ignored the account's own consent; "working" for the pilot with its limit used, the stand-ins outside tests, Gmail and drafting; a failed rehearsal as an attempt; the nav entry cut off; the activity list's loads; the timeline's text sort; missing steps. Each fixed, with its test (92e9b1a, 61e1c83) |
+| After the reviews | the 16 suites the fixes touch (JUnit) on 92e9b1a; `test_debug_console.py` on 61e1c83; `debugger.spec.ts`, `account.spec.ts`, `auto-apply-pause.spec.ts`, `layout-regression.spec.ts`; ruff, tsc, eslint | 477 passed; 25 passed; e2e 15 passed (desktop and mobile); clean |
+| Each part changed in turn | 57 changes on 61e1c83, one at a time (a worktree of its own), the named tests run, the file restored | each of the 57 fails the tests named for its part (74 failures among the 74 tests run). The trace's account check alone was not caught at first: the trace checks the account twice (the application's and its job's), so removing one leaves the other; removed together, all three named tests fail |
+| The regression set | `pytest` on the 41 suites that exercise accounts, the mailbox, the standing rule, Gmail, drafting access, discovery and the pilot (JUnit), in a copy of the branch at 4d9b103, a database and ports of its own | exit 0, 2,474 passed (29 minutes) |
+| The full e2e suite | `npx playwright test` on 4d9b103 | 194 passed, 3 skipped (14.1 minutes) |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`), `test_debug_console.py` and `test_auto_apply.py` (JUnit, after the cap lock's comment was corrected: the application's row lock comes before it); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 91 passed in 123 s; ruff formatted nothing, found nothing, and the format check passed |
+| PR CI (#78) on 5fab3fd | the four jobs | three passed; the backend job failed one test of 7,085 (`test_support_wording.py::test_the_frontend_writes_no_support_wording_of_its_own`): the console's form section wrote "not supported" itself, a support label only the API serves, for a control with no reason recorded. That suite, like five others that scan the whole repository, was not among the suites run locally |
+| The fix (the commit after 5fab3fd) | the failing test on 5fab3fd; then, with the page saying "no reason recorded", `test_support_wording.py` and the five other suites that scan the whole repository (`test_applications.py`, `test_code_wait_quarantine.py`, `test_provider_admission.py`, `test_providers.py`, `test_runtime_dependencies.py`) with `test_debug_console.py` (JUnit); `tsc --noEmit`, `npm run lint`; `debugger.spec.ts` (desktop and mobile) | it failed as in CI; then exit 0, 260 passed; tsc and eslint clean; 4 passed |
+
 ## Your licences and certifications fill a Workday-style Certifications section (D167, 2026-11-17; local only)
 
 Rank 34 of the automation loop (a Workday-style Certifications section, a kind no reader took).
@@ -96,6 +133,7 @@ backend and e2e suites); ruff, tsc and eslint were.
 | The regression set | `pytest` on 94 files (D166's 93 with `test_workday_certifications.py`; JUnit), in a copy of the branch at ffbc299 (main merged in), with a database and ports of its own | exit 0, 3,409 passed (91 minutes) |
 | The full e2e suite | `npx playwright test` on ffbc299 (main merged in; the records after it change no code) | 191 passed, 1 failed, 3 skipped (14.6m): answer-suggestions on desktop, while other runs loaded this machine; run alone it passed (2 passed, 23.0s) |
 | After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_workday_certifications.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 226 passed in 142 s; ruff formatted nothing, found nothing, and the format check passed |
+| PR CI (#77) on e6015a4 | the four jobs | all four passed; #77 merged (9991ed8, tree as predicted) |
 
 ## Your profile's links fill a Workday-style Websites section (D166, 2026-11-17; local only)
 

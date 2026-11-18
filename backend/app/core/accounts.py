@@ -6,21 +6,32 @@ feature that named its owner accounts in a setting serves every account instead.
 per account is unchanged: each account's own approvals, its own consent where one is asked
 (AI drafting), and its own choice to apply automatically (autoapply: on by default only for an
 account the owner named in NOEFFORTS_LIVE_OWNER_EMAILS). Reading a mailbox is never opened
-this way: the server holds one mailbox token, the owner's (inbox/service.py)."""
+this way: the server holds one mailbox token, the owner's (inbox/service.py).
+
+D168: with `sole_owner` on (the owner's words, 2026-11-17: "treat any account I use new or
+existing as the owner"; the default outside tests), every account is served (`named`) and is the
+owner's (`owner`): automatic applying on unless that account pauses it, with one daily cap for
+all of them (autoapply.cap_used), and the Gmail features, each account reading only a mailbox it
+connected itself (inbox.owner_token_file)."""
 
 from app.core.config import get_settings
 
 
 def named(email: str | None, names: list[str]) -> bool:
-    """Whether the account is served: every account when `all_accounts`, else one named."""
-    if get_settings().all_accounts:
+    """Whether the account is served: every account when `all_accounts` or in sole-owner mode
+    (D168), else one named."""
+    s = get_settings()
+    if s.all_accounts or s.sole_owner:
         return True
     return (email or "").strip().lower() in {n.strip().lower() for n in names if n.strip()}
 
 
 def owner(email: str | None) -> bool:
-    """Whether the account is the server owner's (NOEFFORTS_LIVE_OWNER_EMAILS), always by name."""
+    """Whether the account is the server owner's: every account in sole-owner mode (D168), else
+    by name (NOEFFORTS_LIVE_OWNER_EMAILS)."""
     s = get_settings()
+    if s.sole_owner:
+        return True
     return (email or "").strip().lower() in {
         n.strip().lower() for n in s.live_owner_emails if n.strip()
     }

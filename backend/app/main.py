@@ -13,6 +13,7 @@ from app.modules.applications.router import router as applications_router
 from app.modules.audit.service import check_ref_key
 from app.modules.autoapply.router import router as auto_apply_router
 from app.modules.connections.router import router as connections_router
+from app.modules.debug.router import router as debug_router
 from app.modules.discovery.router import router as discovery_router
 from app.modules.discovery.sources_router import router as board_sources_router
 from app.modules.documents.router import router as documents_router
@@ -89,6 +90,7 @@ def create_app() -> FastAPI:
         connections_router,
         auto_apply_router,
         learning_router,
+        debug_router,
     ):
         app.include_router(r, prefix=API_PREFIX)
 
