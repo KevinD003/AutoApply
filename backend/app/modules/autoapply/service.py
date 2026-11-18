@@ -289,16 +289,13 @@ def _new_application(db: Session, user: User, job: Job) -> Application:
     return app
 
 
-def _latest_attempt(db: Session, app: Application, fresh: bool = False) -> ExecutionAttempt | None:
-    q = (
+def _latest_attempt(db: Session, app: Application) -> ExecutionAttempt | None:
+    return db.scalar(
         select(ExecutionAttempt)
         .where(ExecutionAttempt.application_id == app.id)
         .order_by(ExecutionAttempt.created_at.desc())
         .limit(1)
     )
-    if fresh:  # as it is now, not as this session last saw it
-        q = q.execution_options(populate_existing=True)
-    return db.scalar(q)
 
 
 def _preferences_unmet(db: Session, user: User, job: Job) -> bool:
@@ -382,7 +379,7 @@ def _yours(db: Session, user: User, app, pauses: list) -> str | None:
     may continue it."""
     from app.core.accounts import owner
 
-    if _entered(db, app) or any(p.kind != "form_changed" for p in pauses):
+    if _entered(db, app):  # D135's pause after filling among them
         return "stopped_after_entry"  # never entered a second time by the rule
     if not owner(user.email) or _handed_to_you(db, app):
         return "form_changed"  # D132's rule: this account chose under it, or D132 handed it over
@@ -576,7 +573,7 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
         db.refresh(app)
         if app.state in FINAL_STATES or _owner_revoked(db, app):
             return None  # the next step says why
-        att = _latest_attempt(db, app, fresh=True)
+        att = _latest_attempt(db, app)  # one that ended is never changed again
         if att is not None and att.state not in (AttemptState.rehearsed,):
             if att.state in HELD or att.state == AttemptState.confirmed:
                 return None

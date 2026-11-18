@@ -369,7 +369,68 @@ def test_d169_an_attempt_that_entered_data_meanwhile_is_never_followed_by_the_ru
     assert tick() == 0 and ran
     assert events(job)[-1] == ("skipped", "attempt_stopped")
     assert len(approvals(app_id)) == before + 1  # the owner's own, and no other
+    # The owner tries again; that attempt stops on a changed form before anything is entered:
+    # still theirs, since an attempt of this application entered the data.
+    monkeypatch.setattr(pk, "lock_application", lock)
+    approve_yourself(api, app_id)
+    receiver.config(mode="gh2_question_added")
+    assert runner.run_attempt(queue(api, app_id), "w1") == "failed_safe"
+    assert tick() == 0 and events(job)[-1] == ("skipped", "stopped_after_entry")
     assert receiver.ledger()["accepted"] == 0
+
+
+def test_d169_a_newer_pause_made_during_the_rules_try_is_never_tried_without_a_read(
+    api, receiver, monkeypatch
+):
+    # The rule tries an unexplained pause once more only as it read it; one the owner ended
+    # meanwhile, followed by a new stop, is left for the next step, which reads the form for it.
+    job, app_id = rehearsal_queued(api)
+    receiver.config(mode="gh2_options_changed")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
+    assert tick() == 0  # read: no difference, unexplained
+    lock_pause, ran = service._lock_pause, []
+
+    def owner_tries_it_meanwhile(db, j, app):
+        if not ran:
+            ran.append(True)
+            assert api.post(f"/applications/{app_id}/pause/dismiss").status_code == 200
+            approve_yourself(api, app_id)
+            assert runner.run_attempt(queue(api, app_id), "w1") == "failed_safe"
+        return lock_pause(db, j, app)
+
+    monkeypatch.setattr(service, "_lock_pause", owner_tries_it_meanwhile)
+    assert tick() == 0 and ran
+    first, second = pause_rows(app_id)
+    assert (first.status, first.resolution) == ("closed", "dismissed")  # the owner's
+    assert (second.status, second.resolution) == ("open", None)  # read first, next step
+    assert ("continued", "form_tried_again") not in events(job)
+
+
+@pytest.mark.parametrize("act", ["cancel", "revoke"])
+def test_d169_what_the_owner_does_during_the_rules_step_is_seen(api, receiver, monkeypatch, act):
+    # The rule judges the application under its lock, as it is then: cancelled or revoked by
+    # the owner since the step began, it is never approved by the rule.
+    job, app_id = rehearsal_queued(api)
+    receiver.config(mode="gh2_question_added")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
+    assert api.post(f"/applications/{app_id}/pause/dismiss").status_code == 200
+    lock, ran = pk.lock_application, []
+
+    def owner_acts_meanwhile(db, app_uuid):
+        if not ran:
+            ran.append(True)
+            if act == "cancel":
+                r = api.post(f"/applications/{app_id}/transition", json={"to": "cancelled"})
+            else:
+                approve_yourself(api, app_id)
+                r = api.post(f"/applications/{app_id}/package/revoke")
+            assert r.status_code == 200, r.text
+        return lock(db, app_uuid)
+
+    monkeypatch.setattr(pk, "lock_application", owner_acts_meanwhile)
+    assert tick() == 0 and ran
+    assert not [a for a in approvals(app_id) if a.by_rule and a.invalidated_at is None]
+    assert receiver.ledger()["disclosures"] == []
 
 
 def test_d169_a_read_that_fails_leaves_the_pause_and_is_tried_again_a_day_after_the_last(
