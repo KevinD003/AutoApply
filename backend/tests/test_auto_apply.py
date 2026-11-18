@@ -8,7 +8,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import DBAPIError
 
 from app.core.config import get_settings
@@ -442,6 +442,149 @@ def test_d169_trying_again_yourself_while_the_rule_does_waits_and_it_happens_onc
         ("continued", "form_tried_again"),
         ("approved_rehearsal", "rehearsal_queued"),
     ]
+
+
+def test_d169_a_form_read_during_the_rules_try_again_waits_and_is_never_lost(
+    api, receiver, monkeypatch
+):
+    # The rule reads the pause under its row lock, as it is now: a form read on the job's page
+    # that would resolve it meanwhile waits for the rule's step, then finds it ended.
+    from app.modules.preparation import router as prep
+    from tests.test_lock_order import Hold, Side, lock_waiters, no_errors, wait_until
+
+    job, app_id = rehearsal_queued(api)
+    receiver.config(mode="gh2_options_changed")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
+    out = api.post(f"/applications/{app_id}/form/recapture").json()  # the owner read it: no change
+    assert out["pause"]["status"] == "unexplained"
+    receiver.config(mode="gh2_question_added")  # a read now finds a new version
+    hold = Hold("rule")  # held once it has read the pause under its locks
+    held = hold.wrap(pk.unresolved_pause, after=True, when=lambda r: r is not None)
+    monkeypatch.setattr(pk, "unresolved_pause", held)
+
+    def read():
+        with SessionLocal() as db:
+            user = db.get(User, owner_id())
+            return prep.capture_greenhouse_form(uuid.UUID(job), user=user, db=db)
+
+    try:
+        rule = Side("rule", tick)
+        assert hold.reached.wait(30), "the rule never reached the pause"
+        waiting = lock_waiters()
+        reader = Side("read", read)
+        wait_until(lambda: lock_waiters() > waiting or not reader.thread.is_alive(), "it waits")
+        assert reader.thread.is_alive(), (reader.error, "the read did not wait")
+    finally:
+        hold.go.set()
+    rule.join(), reader.join()
+    no_errors(rule, reader)
+    (p,) = pause_rows(app_id)
+    assert (p.status, p.resolution) == ("closed", "dismissed")  # one outcome, never overwritten
+
+
+def test_d169_a_newer_pause_made_while_the_rule_reads_is_left_for_its_next_step(
+    api, receiver, monkeypatch
+):
+    # While the rule reads the form for one pause, the owner tries that version again and the
+    # attempt stops on the page again: the rule never marks or ends the newer pause in this
+    # step (its form was not read for it).
+    job, app_id = rehearsal_queued(api)
+    receiver.config(mode="gh2_options_changed")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
+    capture = service._capture
+
+    def read_while_the_owner_tries_again(db, user, j):
+        ok = capture(db, user, j)  # no difference to see
+        assert api.post(f"/applications/{app_id}/pause/dismiss").status_code == 200
+        approve_yourself(api, app_id)
+        assert runner.run_attempt(queue(api, app_id), "w1") == "failed_safe"
+        return ok
+
+    monkeypatch.setattr(service, "_capture", read_while_the_owner_tries_again)
+    assert tick() == 0
+    first, second = pause_rows(app_id)
+    assert (first.status, first.resolution) == ("closed", "dismissed")  # the owner's
+    assert (second.status, second.resolution) == ("open", None)  # untouched in this step
+    assert events(job)[-1][0] != "continued"
+
+
+def test_d169_an_application_you_approved_yourself_is_continued_and_asks_for_the_answer(
+    api, receiver
+):
+    # The rule continues the account's applications it may apply to, not only those it
+    # approved: here the owner approved and queued it after the rule asked for answers. The new
+    # question is asked again (the notification is derived from the rule's note, recorded again
+    # after "continued").
+    pilot_on()
+    synthetic_candidate(api)
+    job = v2_job(api)
+    assert tick() == 0 and events(job) == [("skipped", "open_questions")]
+    app_id = app_of(api, job)
+    answer(api, app_id)
+    approve_yourself(api, app_id)
+    receiver.config(mode="gh2_question_added")
+    assert runner.run_attempt(queue(api, app_id), "w1") == "failed_safe"
+    assert tick() == 0
+    assert events(job) == [
+        ("skipped", "open_questions"),
+        ("continued", "form_read_again"),
+        ("skipped", "open_questions"),
+    ]
+    waiting = [i for i in api.get("/notifications").json()["items"]
+               if i["kind"] == "auto_apply_questions"]  # fmt: skip
+    assert [i["application_id"] for i in waiting] == [app_id]
+    assert receiver.ledger()["disclosures"] == []
+
+
+def test_d169_each_form_version_is_tried_once_more(api, receiver, monkeypatch):
+    # "Once more" counts per form version: a version read after another was tried once more is
+    # tried once more itself.
+    job, app_id = rehearsal_queued(api)
+    receiver.config(mode="gh2_options_changed")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"  # stop 1, version 1
+    assert tick() == 1 and events(job)[-2] == ("continued", "form_tried_again")
+    receiver.config(mode="normal")
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert tick() == 1 and events(job)[-1] == ("approved_submit", "submission_queued")
+    receiver.config(mode="gh2_question_added")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"  # stop 2, version 1
+    assert tick() == 0 and events(job)[-2:] == [
+        ("continued", "form_read_again"),
+        ("skipped", "open_questions"),
+    ]
+    r = api.put(f"/applications/{app_id}/answers", json={"key": ADDED, "value": {"label": "Yes"}})
+    assert r.status_code == 200, r.text
+    assert tick() == 1 and events(job)[-1] == ("approved_submit", "submission_queued")
+    receiver.config(mode="gh2_options_changed")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"  # stop 3, version 2
+    monkeypatch.setattr(service, "_capture", lambda db, user, j: True)  # a read: no difference
+    assert tick() == 1 and events(job)[-2] == ("continued", "form_tried_again")
+    assert [(p.form_version, p.resolution) for p in pause_rows(app_id)] == [
+        (1, "dismissed"),
+        (1, "new_form"),
+        (2, "dismissed"),
+    ]
+    assert receiver.ledger()["accepted"] == 0
+
+
+def test_d169_only_a_stop_on_a_changed_form_before_anything_was_entered_is_continued(api, receiver):
+    job, app_id = rehearsal_queued(api)
+    receiver.config(mode="gh2_question_added")
+    att_id = latest_attempt()
+    assert runner.run_attempt(att_id, "w1") == "failed_safe"
+    with SessionLocal() as db:
+        att = db.get(ExecutionAttempt, uuid.UUID(att_id))
+        assert service._stopped_on_form_change(db, att)
+        att.disclosure_started_at = utcnow()  # had anything been entered: never continued
+        assert not service._stopped_on_form_change(db, att)
+        att.disclosure_started_at = None
+        db.execute(
+            update(ApplicationPause)
+            .where(ApplicationPause.attempt_id == att.id)
+            .values(kind="conditional_required")
+        )
+        assert not service._stopped_on_form_change(db, att)  # a pause of another kind
+        db.rollback()
 
 
 def test_another_account_never_sees_or_triggers_the_owners_rule(api, other_api, receiver):

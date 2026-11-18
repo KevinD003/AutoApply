@@ -348,11 +348,17 @@ def _after_pause(db: Session, user: User, job: Job, app, now: datetime) -> bool:
         _hold(db, user.id)
         if paused(db, user):
             return False
+    # Lock order: the job's row before the pause's, as a form read takes them (`_store_form`
+    # locks the job, then `_resolve_pauses` the pause). The rule's notes reference the job, a
+    # key-share lock a read's update lock refuses: taken only after the pause, a read in between
+    # would wait for the pause while the rule waited for the job (a deadlock).
+    db.execute(select(Job.id).where(Job.id == job.id).with_for_update(key_share=True))
     pk.lock_application(db, app.id)
     pause = pk.unresolved_pause(db, app.id, lock=True)  # as it is now
     if pause is None:
-        db.refresh(last)
-        if read and last.resolution == "new_form":  # a version differing from the paused one
+        # This step's read ended it (`_resolve_pauses` changed this very row object): a version
+        # differing from the paused one. Ended by anyone else, it is theirs to record.
+        if read and last.resolution == "new_form":
             _note(db, user.id, job, app, "continued", "form_read_again")
         return True
     if pause.id != last.id:
@@ -361,9 +367,9 @@ def _after_pause(db: Session, user: User, job: Job, app, now: datetime) -> bool:
         # No version differing from the one it paused on: never guessed (D132).
         pause.status = "unexplained"
         pause.recaptured_version = pk.latest_form(db, job.id).version
+    # Tried once more on this form version already (by the rule or the owner): the owner's.
     tried = any(
-        p.id != pause.id and p.form_version == pause.form_version and p.resolution == "dismissed"
-        for p in pauses
+        p.form_version == pause.form_version and p.resolution == "dismissed" for p in pauses
     )
     if tried:
         _note(db, user.id, job, app, "skipped", "form_changed")
