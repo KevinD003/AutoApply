@@ -309,19 +309,26 @@ def route_for_job(db, job) -> RouteDecision:
     A job source (e.g. Freehire) never supplies the form: only a capture does."""
     from app.modules.preparation.models import JobForm
 
+    def latest_form():
+        return db.scalar(select(JobForm).where(JobForm.job_id == job.id,
+                                               JobForm.user_id == job.user_id)
+                         .order_by(JobForm.version.desc()))  # fmt: skip
+
     steps: list[str] = []
-    form = db.scalar(select(JobForm).where(JobForm.job_id == job.id,
-                                           JobForm.user_id == job.user_id)
-                     .order_by(JobForm.version.desc()))  # fmt: skip
     refused = _identity_refusal({"url": job.url, "ats_provider": job.ats_provider}, steps)
     if refused is None:
-        # D172: before any form, what is offered is reading it yourself (your own approvals);
-        # once one is read (by you or your standing rule), whichever approver may apply.
-        approver = authorizations.OWNER if form is None else authorizations.ANY
+        # D172: before any form of a real Greenhouse post is read, what is offered is reading it
+        # yourself (your own approvals); once one is read (by you or your standing rule),
+        # whichever approver may apply. Looked up for such a post only: any other is refused,
+        # or not, before any form is looked up.
+        approver = authorizations.ANY
+        if live.posting(job.url) is not None and latest_form() is None:
+            approver = authorizations.OWNER
         refused = _enabled_refusal(job.url, steps, getattr(job, "user_id", None),
                                    getattr(job, "ats_provider", None), approver)  # fmt: skip
     if refused is not None:
         return refused
+    form = latest_form()
     if form is None:
         steps.append("no application form captured yet")
         return RouteDecision("manual_handoff", "manual_handoff", steps,
