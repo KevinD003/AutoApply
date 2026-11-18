@@ -54,6 +54,65 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## Each recorded permission says whose approvals it covers (D172, 2026-11-18; local only)
+
+A follow-up of D171's kept item (an approver scope per recorded permission), for the owner's
+words of 2026-11-18 (D169). Product changes:
+
+- `app/core/authorizations.py`:
+  - `OWNER`, `RULE`, `APPROVERS` and `ANY`;
+  - each entry's `approvers` (required) and `counted_from`;
+  - `covers`, `covers_all` and `limit` take the approver as a required keyword.
+
+  The four shipped entries are given theirs from their words.
+- `app/modules/execution/`:
+  - `live.py`: `permission_refusal`, `refusal` and `words` take the approver.
+  - `service.py`: `approver_of` and `pilot_refusal`. The queue, `_gate_checks`, the disclosure
+    gate's limit and the send gate ask for the approver.
+  - `runner.py`: the check before the page is opened.
+  - `handoff.py`: the entries of the package's approver.
+  - `policy.py`: the binding reads `ANY`.
+- `app/modules/autoapply/`:
+  - `service.py`: the rule's own entries, and `_yours_refused` with the
+    `your_approval_not_permitted` reason.
+  - `router.py`: the card's `submits_yours`.
+- `app/modules/preparation/router.py`: your capture.
+- `app/modules/providers/`:
+  - `routing.py`: the job page before a form (looked up for a real Greenhouse post only);
+  - `readiness.py`: one approver's entries.
+- `app/modules/inbox/`: code steps by approver.
+- `app/modules/debug/service.py`: each row's own entries, and each permission's approvers.
+- `app/modules/notifications/service.py`: the step-4 words.
+- Frontend:
+  - `src/app/(app)/debug/page.jsx`: whose approvals each permission covers; a long email wraps.
+  - `src/components/AutoApplyCard.jsx`, `src/lib/pauseWords.js`: the step-4 words.
+  - `e2e/debugger.spec.ts`, `e2e/auto-apply-pause.spec.ts`, `e2e/questions.spec.ts`.
+- `docs/activation-status.md` §4: the permission form asks whose approvals, and says how the
+  limit counts.
+
+No migration; no new state; no retry after disclosure; `SCHEMA_VERSION` unchanged. No permission
+was recorded: every one ended on 2026-11-06. Nothing was run against a real page or mailbox.
+`scripts/validate.sh all` was not run (it runs the whole backend and e2e suites); the whole backend suite, the full e2e suite, ruff, tsc and eslint were.
+
+| Check (branch `approver-scope`, from main at c44f405) | Command | Result |
+|---|---|---|
+| The first version (960abf0): its tests, the register's, the console's and the pilot's permission tests | four files, `-k "d172 or authoriz or register or test_debug_console or permission"` (JUnit) | 52 passed |
+| The suites the first version touches (960abf0) | 47 suites (JUnit) | exit 0, 1,576 passed, none failed or skipped (45 minutes) |
+| Its follow-ups (422f695 to 0fd8eb4): the console, the handoff, the rule's card and limit, a read during a tick, codes, whose approvals each refusal names | the D172 and permission tests, six files (JUnit); `debugger.spec.ts` (desktop and mobile) | 34 passed; 6 passed |
+| Its parts changed in turn (9d3d8f7) | 35 backend changes, one at a time (two worktrees at once), the D172 tests run each time | each of the 34 named caught; the gate's own check of steps 2 and 3 had no test (the runner's check refused first): it has one now |
+| Two independent reviews (960abf0) | read-only, each given the code | one blocking (the records and the form), several should-fix, several minor (D172, Reviews); fixed in 23cef64 and 26dc02c with their tests, or kept with the reason |
+| After the fixes: the D172 and permission tests | six files, `-k "d172 or register or permission or not_authorized or shipped"` (JUnit) | 44 run: two failed in the tests themselves (a stand-in's signature, a route test's setup), fixed; then passed |
+| Their browser checks | `auto-apply-pause.spec.ts`, `questions.spec.ts`, `debugger.spec.ts` (desktop and mobile) | 14 passed |
+| Each part changed in turn (26dc02c) | 49 backend changes, one at a time (two worktrees at once), the 23 D172 tests each time | each of the 49 named caught (129 failures among the 1,127 tests run) |
+| Frontend parts changed in turn (3b61cc8) | 8 changes, each spec run (desktop and mobile), each file restored | each caught on its own assertion (the email's wrapping on a phone only) |
+| The rule's and notification tests (3b61cc8, their words' assertions tightened) | `test_auto_apply.py`, `test_notifications.py` (JUnit) | 98 passed |
+| The whole backend suite (23cef64) | `pytest` on all 179 test files in two halves at once, each with a database and ports of its own (JUnit) | 7,166 passed, 1 failed: a real destination's route looked its form up first (`test_reason_codes`); fixed in 9200093 |
+| After the route's fix (9200093) | the six route suites (JUnit); the route's removal change | 109 passed; caught |
+| The full e2e suite (9200093) | `npx playwright test` | exit 0; 200 passed, 3 skipped (15.2 minutes) |
+| The whole backend suite (9200093) | `pytest` on all 179 test files in two halves at once (JUnit) | still running when this was written; its result follows in the next commit |
+| Lint and types | `ruff check .`, `ruff format --check .`, `npx tsc --noEmit`, `npm run lint` | clean |
+
+
 ## With a permission for rehearsals only, the rule rehearses and stops before submitting (D171, 2026-11-18; local only)
 
 A follow-up of D169 and D170 (the owner's words of 2026-11-18, which D169 quotes). Product

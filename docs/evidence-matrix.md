@@ -9,6 +9,47 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## Each recorded permission says whose approvals it covers (D172, 2026-11-18; local only)
+
+Nothing here ran against a real page or a real mailbox. Branch `approver-scope` (from main at
+c44f405).
+
+Each test records synthetic permissions. The pilot's are set with `pilot_on(approvers=…)` and
+`pilot_add`, and the mailbox's with `authorize(…, approvers=…)`. Where the rule's attempt is
+meant, an approval is marked as the standing rule's (`by_rule`). The tests run against the
+Greenhouse-style stand-in, which plays a real board through the pilot.
+
+The receiver's own ledger is the oracle for what reached the employer: each request, each
+disclosure, each acceptance, and each verification-code challenge.
+
+| Claim | Test | Result |
+|---|---|---|
+| An entry covers its steps for its own approvers only, and its limit counts for them. The shipped entries name approvers that match their words | `test_authorizations.py` `test_d172_an_entry_covers_only_its_own_approvers_packages`, the shipped register's test | pass |
+| D113 and D114 count their shared limit from D112's day, whoever approves; among equal limits, the earliest-counted applies | `test_d172_the_shared_limit_counts_from_d112s_day_whoever_approves` | pass |
+| "Any approver" means one approver's entries covering every step, never two pieced together. With steps 1-3 yours and step 4 the rule's, nobody may submit, and the pilot's readiness agrees | `test_d172_any_approver_means_one_approvers_entries_never_two_pieced_together` | pass |
+| Every call in the app that reads the register for a step names whose approvals (read from the source) | `test_d172_every_call_in_the_app_names_whose_approvals` | pass |
+| Every step recorded for the rule's approvals only: an attempt you queued before stops before the page is opened, and nothing is requested. Your capture of a job post is refused with nothing read. Both refusals say the permission covers the rule's applications | `test_greenhouse_live.py` `test_d172_a_permission_for_the_rules_packages_never_covers_your_own` | pass |
+| Every step recorded for the rule's approvals only: your approval of a rehearsal is given, and queueing it is refused before any attempt exists. Nothing is disclosed | `test_d172_your_own_package_is_refused_at_the_queue_under_the_rules_permission` | pass |
+| Every step recorded for your own approvals only: an attempt the rule approved stops before the page is opened. Nothing is requested or entered | `test_d172_your_own_permission_never_lets_the_rules_attempt_open_the_page` | pass |
+| Steps 1-3 for yours and step 4 for the rule's only: your approval to submit fills the page and never clicks submit. Nothing is accepted | `test_d172_the_send_gate_asks_whether_your_own_approvals_may_submit` | pass |
+| Each approver's attempt limit: your 1, used by a rehearsal, stops your next attempt at the disclosure gate with nothing more disclosed. The rule's 5 lets its own through, and it reaches the page | `test_d172_each_approvers_attempt_limit` | pass |
+| Past the runner's own check, the gate before anything is entered asks for the approver too. The rule's attempt under your own entries stops there, with nothing entered | `test_d172_the_gate_itself_asks_for_the_approver` | pass |
+| The rule's attempts count against your own entries' limit too. Your 1 is used by the rule's rehearsal, and your own attempt then stops at the disclosure gate with nothing more disclosed | `test_d172_every_attempt_counts_against_each_limit_whoever_approved_it` | pass |
+| Before any form is read, the job page's route says the permission covers the rule's applications only, and offers no read that would be refused. Once a form is read, the route is the pilot's | `test_d172_before_any_form_the_job_page_asks_for_your_own_approvals` | pass |
+| Steps 1-3 for the rule's and all four for yours: the rule rehearses and holds the application for step 4 (D171). Your own approval to submit is sent once (the ledger's one acceptance). The card says the rule submits nothing and your own is still sent | `test_auto_apply.py` `test_d172_your_own_step_4_never_lets_the_rule_submit` | pass |
+| Every step for your own approvals only: the rule reads and approves nothing, so no request reaches the stand-in. Its card names whose approvals the permission covers | `test_d172_a_permission_for_your_own_approvals_only_stops_the_rule` | pass |
+| Every step for the rule's approvals only: it reads, rehearses and submits by itself, once (the ledger's one acceptance) | `test_d172_a_permission_for_the_rules_approvals_only_lets_it_apply_start_to_finish` | pass |
+| Steps 1-3 yours, all four the rule's: your own approval to submit is refused at your queue. The rule, given your approval back, does not queue it and says why once (never "could not be queued"). Once your own approvals may submit, it is sent once | `test_d172_your_own_approval_is_queued_only_under_your_own_permission` | pass |
+| Your own entries' limit used, not the rule's: the rule does not queue your approval, and no page is opened | `test_d172_your_own_approval_waits_while_your_attempt_limit_is_used` | pass |
+| The rule's attempt limit is its own entries' (5, not your 1). The card shows it and the rule approves | `test_d172_the_rules_attempt_limit_is_that_of_its_own_entries` | pass |
+| The rule's entry ends during a tick while yours still covers reading: the post is not read for the rule | `test_d172_a_read_during_a_tick_needs_the_rules_own_permission` | pass |
+| The console: your applying is read from your own entries, and the rule's row from the rule's (their steps, attempt limit and words). Each permission lists its approvers | `test_debug_console.py` `test_d172_each_row_reads_the_permissions_for_its_own_approvals` | pass |
+| The pilot's handoff: steps recorded for the rule's approvals only are outstanding here, and the attempt limit shown is that of your own entries | `test_rehearsal_handoff.py` `test_d172_only_a_permission_for_your_own_approvals_counts_here` | pass |
+| The handoff for a package the rule approved reads the rule's entries and says so. A step recorded for the other approver's approvals only is shown as such | `test_d172_the_handoff_reads_the_permission_of_whoever_approved_the_package` | pass |
+| Codes permitted for your own approvals only: the code step of the rule's attempt waits. The stand-in mailbox receives no request and no code reaches the page (the receiver's challenge). Once a permission covers the rule's approvals, the code is entered once and the application is accepted once | `test_inbox.py` `test_d172_a_code_step_of_the_rules_attempt_needs_a_permission_for_its_approvals` | pass |
+| In the browser: each recorded permission on the console says whose approvals it covers, and a long email address wraps on a phone's screen | `debugger.spec.ts` (desktop and mobile) | pass |
+| In the browser: the card says the permission covers rehearsals only for your standing rule, and that your own "Submit once" is still sent when your own approvals may submit. The step-4 words appear on Questions and the application's page | `auto-apply-pause.spec.ts`, `questions.spec.ts` (desktop and mobile) | pass |
+
 ## With a permission for rehearsals only, the rule rehearses and stops before submitting (D171, 2026-11-18; local only)
 
 Nothing here ran against a real page. Branch `rehearsal-only` (from main at 76178ed). In
