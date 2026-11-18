@@ -482,7 +482,8 @@ def _stopped_on_form_change(db: Session, att: ExecutionAttempt) -> bool:
 
 def will_continue(db: Session, user: User, app) -> bool:
     """D169: whether the standing rule continues this paused application by itself, as its next
-    steps will judge it (shown with the pause, so the owner does not apply by hand meanwhile)."""
+    steps will judge it (shown with the pause, so the owner does not apply by hand meanwhile).
+    For an application that has a pause waiting (the feed's and Questions' only callers)."""
     from app.modules.jobs import signals
 
     if owner_refusal(user) is not None or paused(db, user):
@@ -497,8 +498,7 @@ def will_continue(db: Session, user: User, app) -> bool:
         return False
     if signals.approval_refusal(db, job) is not None or _preferences_unmet(db, user, job):
         return False
-    pauses = _pauses(db, app)
-    return _unresolved(pauses) is not None and _yours(db, user, app, pauses) is None
+    return _yours(db, user, app, _pauses(db, app)) is None
 
 
 def _paused_before_entry(db: Session, att: ExecutionAttempt) -> bool:

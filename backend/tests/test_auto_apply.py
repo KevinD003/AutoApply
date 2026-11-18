@@ -575,6 +575,26 @@ def test_d169_the_pause_says_whether_the_rule_continues_it(api, receiver):
     assert "apply on the employer's site" in note["text"]
 
 
+def test_d169_a_pause_on_an_application_you_once_revoked_is_yours(api, receiver):
+    # The rule never approves an application whose approval the owner revoked (D134), so its
+    # pause is the owner's, and shown so, even after the owner approved it again themselves.
+    job, app_id = ready(api)
+    approve_yourself(api, app_id)
+    assert api.post(f"/applications/{app_id}/package/revoke").status_code == 200
+    approve_yourself(api, app_id)
+    receiver.config(mode="gh2_question_added")
+    assert runner.run_attempt(queue(api, app_id), "w1") == "failed_safe"
+    note = next(n for n in api.get("/notifications").json()["items"]
+                if n["kind"] == "form_changed")  # fmt: skip
+    assert note["needs_action"] is True and "nothing is sent until you do" in note["text"]
+    item = next(i for i in api.get("/questions").json()["items"]
+                if i["application_id"] == app_id)  # fmt: skip
+    assert item["rule_continues"] is False
+    reads = requests_made(receiver)
+    assert tick() == 0 and events(job)[-1] == ("skipped", "owner_revoked")
+    assert requests_made(receiver) == reads
+
+
 def test_d169_a_pause_recorded_meanwhile_is_read_as_it_is_now(api, receiver):
     # The rule reads the account's switch as it is now, not as its session last saw it.
     pilot_on()
