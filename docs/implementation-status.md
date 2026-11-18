@@ -109,7 +109,7 @@ was recorded: every one ended on 2026-11-06. Nothing was run against a real page
 | The whole backend suite (23cef64) | `pytest` on all 179 test files in two halves at once, each with a database and ports of its own (JUnit) | 7,166 passed, 1 failed: a real destination's route looked its form up first (`test_reason_codes`); fixed in 9200093 |
 | After the route's fix (9200093) | the six route suites (JUnit); the route's removal change | 109 passed; caught |
 | The full e2e suite (9200093) | `npx playwright test` | exit 0; 200 passed, 3 skipped (15.2 minutes) |
-| The whole backend suite (9200093) | `pytest` on all 179 test files in two halves at once (JUnit) | still running when this was written; its result follows in the next commit |
+| The whole backend suite (9200093) | `pytest` on all 179 test files in two halves at once (JUnit) | both halves at once, in this rebuilt container (a fresh clone, its newer browser build linked for Playwright 1.56): half A 2,709 passed, 4 failed; half B 4,443 passed, 11 failed; none in D172's tests. Three broker-restart tests waited on the worker's log under the load of both halves; one test's check that a port number is never shown met a random identifier containing it (rare; not D172's); the browser runner's 11 ran before the browser build was linked. Each failing file run again alone: 14 and 18 passed |
 | Lint and types | `ruff check .`, `ruff format --check .`, `npx tsc --noEmit`, `npm run lint` | clean |
 
 

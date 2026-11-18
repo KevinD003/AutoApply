@@ -1375,7 +1375,7 @@ action.
 | D172, each part changed in turn (26dc02c, 3b61cc8) | 49 backend changes (two worktrees at once); 8 frontend changes | each of the 49 named caught (129 failures among the 1,127 tests run); each frontend change caught on its own assertion |
 | D172, the whole backend suite on 23cef64 (two halves at once) | `pytest` on all 179 test files (JUnit) | 7,166 passed, 1 failed (a real destination's route looked its form up first); fixed in 9200093 |
 | D172, the full e2e suite on 9200093 | `npx playwright test` | exit 0; 200 passed, 3 skipped (15.2 minutes) |
-| D172, the whole backend suite on 9200093 (two halves at once) | `pytest` on all 179 test files (JUnit) | still running when this was written; its result follows in the next commit |
+| D172, the whole backend suite on 9200093 (two halves at once) | `pytest` on all 179 test files (JUnit) | both halves at once, in this rebuilt container (a fresh clone, its newer browser build linked for Playwright 1.56): half A 2,709 passed, 4 failed; half B 4,443 passed, 11 failed; none in D172's tests. Three broker-restart tests waited on the worker's log under the load of both halves; one test's check that a port number is never shown met a random identifier containing it (rare; not D172's); the browser runner's 11 ran before the browser build was linked. Each failing file run again alone: 14 and 18 passed |
 
 ## Failed approaches and rejected designs
 
