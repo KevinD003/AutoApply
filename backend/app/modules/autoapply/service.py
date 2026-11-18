@@ -14,7 +14,10 @@ is that rule, and nothing wider. A worker task (`tick`) runs it for the pilot's 
   * the first application to each employer path is a rehearsal (E6: fill and check, never
     submit); a submission follows only once that rehearsal held;
   * at most `auto_apply_daily_cap` approvals a day; never a retry of an attempt that stopped,
-    failed or ended with an unknown outcome (those wait for the owner).
+    failed or ended with an unknown outcome (those wait for the owner). D169: for the owner's
+    own accounts, an attempt the employer's changed form stopped before anything was entered is
+    continued (the form read again; a version tried once more; at most `FORM_STOPS` stops),
+    never one that entered anything.
 
 Each approval it gives is the same approval the owner gives in the app (exact version and content
 hash), recorded with the rule as its reason, and every gate still checks it. Each thing the rule
@@ -68,16 +71,20 @@ REASONS = {
     "permission_limit": "Your recorded permission's attempts are used up; renew it to continue.",
     "attempt_stopped": "The last attempt stopped or its outcome is unknown; it is never retried "
     "automatically.",
-    # D169: the rule continues after a form change (reading the form again; finding no
-    # difference, one more try on that version), at most FORM_STOPS times per application.
-    "form_changed": "The employer's page kept differing from its form as NoEfforts reads it, so "
-    "automatic applying stopped trying; this application is yours to continue.",
+    # D132: the rule never continued an application that paused; kept with these words for every
+    # event recorded so, and for an account that is not the owner's (D169 below is the owner's).
+    "form_changed": "The employer's form changed during an attempt; automatic applying leaves "
+    "this application to you.",
+    # D169: for the owner's accounts the rule continues after a form change (the form read
+    # again; finding no difference, that version tried once more), within FORM_STOPS.
     "form_read_again": "The employer's form changed; NoEfforts read it again and continues with "
     "it (nothing had been entered).",
     "form_tried_again": "The employer's page differed from its form, but reading it again found no "
     "change; NoEfforts tries it once more (the page is checked before anything is entered).",
-    # D135, D169: an attempt that stopped after entering your data is never run again by the
-    # rule (CLAUDE.md: no retry after disclosure); approving it again is yours.
+    "form_kept_changing": "The employer's page kept differing from its form as NoEfforts reads "
+    "it, so automatic applying stopped trying; this application is yours to continue.",
+    # D135, D169: an attempt that entered your data and did not end as a rehearsal or a
+    # submission is never followed by the rule (CLAUDE.md: no retry after disclosure).
     "stopped_after_entry": "An attempt stopped after entering your data on the employer's page; "
     "automatic applying never enters it a second time, so it is yours.",
     # D134: an application whose approval you revoked is yours from then on.
@@ -121,7 +128,9 @@ def paused(db: Session, user: User) -> bool:
     someone's name needs that person's own choice, never only the server owner's."""
     from app.core.accounts import owner
 
-    row = db.get(AutoApplyPrefs, user.id)
+    # As it is now, not as this session last saw it (D169); so never between changing the row
+    # and committing it (the change would be read over).
+    row = db.get(AutoApplyPrefs, user.id, populate_existing=True)
     if row is None:
         return not owner(user.email)
     return bool(row.paused)
@@ -218,10 +227,28 @@ def _last_event(db: Session, job_id) -> AutoApplyEvent | None:
     )
 
 
+def _read_failed_recently(db: Session, job: Job, now: datetime) -> bool:
+    """A read of this job's post failed less than RECAPTURE_AFTER ago: not read again yet."""
+    at = db.scalar(
+        select(func.max(AutoApplyEvent.created_at)).where(
+            AutoApplyEvent.job_id == job.id,
+            AutoApplyEvent.user_id == job.user_id,
+            AutoApplyEvent.reason == "capture_failed",
+        )
+    )
+    return at is not None and now - at < RECAPTURE_AFTER
+
+
 def _note(db: Session, user_id, job: Job, app: Application | None, action: str, reason: str):
-    """Record what the rule did. A skip already recorded last for this job is not repeated."""
+    """Record what the rule did. A skip already recorded last for this job is not repeated, but a
+    failed read always is: the once-a-day limit on reads counts from the last one (D169)."""
     last = _last_event(db, job.id)
-    if action == "skipped" and last is not None and (last.action, last.reason) == (action, reason):
+    if (
+        action == "skipped"
+        and reason != "capture_failed"
+        and last is not None
+        and (last.action, last.reason) == (action, reason)
+    ):
         return
     db.add(AutoApplyEvent(user_id=user_id, job_id=job.id,
                           application_id=app.id if app else None, action=action,
@@ -260,13 +287,16 @@ def _new_application(db: Session, user: User, job: Job) -> Application:
     return app
 
 
-def _latest_attempt(db: Session, app: Application) -> ExecutionAttempt | None:
-    return db.scalar(
+def _latest_attempt(db: Session, app: Application, fresh: bool = False) -> ExecutionAttempt | None:
+    q = (
         select(ExecutionAttempt)
         .where(ExecutionAttempt.application_id == app.id)
         .order_by(ExecutionAttempt.created_at.desc())
         .limit(1)
     )
+    if fresh:  # as it is now, not as this session last saw it
+        q = q.execution_options(populate_existing=True)
+    return db.scalar(q)
 
 
 def _preferences_unmet(db: Session, user: User, job: Job) -> bool:
@@ -302,81 +332,132 @@ def _pauses(db: Session, app) -> list:
     ).all()
 
 
-def _after_pause(db: Session, user: User, job: Job, app, now: datetime) -> bool:
-    """D169, the owner's words (2026-11-18): "Do not pauses anything. Make it enable for the
-    auto application." Whether the rule goes on with an application that paused (D132 had left
-    every one to the owner).
+def _entered(db: Session, app) -> bool:
+    """An attempt of this application entered the owner's data on the employer's page and did not
+    end as a rehearsal or a confirmed submission (D135's pause after filling among them)."""
+    return (
+        db.scalar(
+            select(ExecutionAttempt.id)
+            .where(
+                ExecutionAttempt.application_id == app.id,
+                ExecutionAttempt.user_id == app.user_id,
+                ExecutionAttempt.disclosure_started_at.is_not(None),
+                ExecutionAttempt.state.notin_((AttemptState.rehearsed, AttemptState.confirmed)),
+            )
+            .limit(1)
+        )
+        is not None
+    )
 
-    A stop on a changed form always comes before anything is entered (execution's
-    `pause_for_form_change`), so the rule continues it, as the owner's two buttons do: it reads
-    the form again through the same capture route ("Read the form again"); a version differing
-    from the one it paused on ends the pause (`_resolve_pauses`) and the package is rebuilt from
-    it, so a new question waits for the owner's answer as any other. A read finding no difference
-    (the page's own scripts make the change: "unexplained") is tried once more on that form
-    version ("Try this version again"): the live page is checked again before anything is
-    entered, and a second stop on that version is the owner's, as is a fourth stop of any kind
-    (FORM_STOPS): a page that keeps changing is never read and tried without end. A stop after
-    the owner's data was entered (D135) is never run again by the rule (CLAUDE.md: no retry
-    after disclosure). A pause is changed only under the application's lock, read as it is now,
-    as the owner's routes do. Returns True when the rule may go on now."""
+
+def _handed_to_you(db: Session, app) -> bool:
+    """D132 left this application to the owner (an event recorded so before D169): it stays
+    theirs, as D132 said; they may have applied on the employer's site meanwhile."""
+    return (
+        db.scalar(
+            select(AutoApplyEvent.id)
+            .where(
+                AutoApplyEvent.application_id == app.id,
+                AutoApplyEvent.user_id == app.user_id,
+                AutoApplyEvent.reason == "form_changed",
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
+def _unresolved(pauses: list):
+    """The pause that still waits (open or unexplained; at most one, by a partial unique index),
+    whatever order the workers' clocks gave the rest."""
     from app.modules.execution.models import PAUSE_UNRESOLVED
+
+    return next((p for p in pauses if p.status in PAUSE_UNRESOLVED), None)
+
+
+def _yours(db: Session, user: User, app, pauses: list) -> str | None:
+    """D169: why an application that paused is the owner's (a reason code), or None while the rule
+    may continue it."""
+    from app.core.accounts import owner
+
+    if _entered(db, app) or any(p.kind != "form_changed" for p in pauses):
+        return "stopped_after_entry"  # never entered a second time by the rule
+    if not owner(user.email) or _handed_to_you(db, app):
+        return "form_changed"  # D132's rule: this account chose under it, or D132 handed it over
+    current = _unresolved(pauses)
+    if current is None:
+        return None
+    tried = any(
+        p.form_version == current.form_version and p.resolution == "dismissed" for p in pauses
+    )
+    if len(pauses) > FORM_STOPS or (current.status == "unexplained" and tried):
+        return "form_kept_changing"
+    return None
+
+
+def _lock_pause(db: Session, job: Job, app):
+    """The application's unresolved pause as it is now, under its locks, taken in the order a form
+    read takes them: the job's row (key share: the rule's notes reference it, a key-share lock a
+    read's update lock refuses), the application's, the pause's. Taken the other way round, a
+    read in between waits for the pause while the rule waits for the job (a deadlock)."""
+    from app.modules.preparation import package as pk
+
+    db.execute(select(Job.id).where(Job.id == job.id).with_for_update(key_share=True))
+    pk.lock_application(db, app.id)
+    return pk.unresolved_pause(db, app.id, lock=True)
+
+
+def _after_pause(db: Session, user: User, job: Job, app, now: datetime):
+    """D169, the owner's words (2026-11-18): "Do not pauses anything. Make it enable for the
+    auto application." Whether the rule goes on with an application that paused (D132 left every
+    one to the owner). Returns False (it does not, in this step), True (nothing waits: go on), or
+    the unexplained pause to try once more: ended by `_advance` just before the approval, once
+    every other check has passed, so a step that approves nothing never counts as a try.
+
+    A stop on a changed form comes before anything is entered (execution's
+    `pause_for_form_change`), so for the owner's accounts the rule continues it as the owner's
+    two buttons do. An open pause: it reads the form again through the same capture route ("Read
+    the form again"); a version differing from the one it paused on ends the pause
+    (`_resolve_pauses`) and the package is rebuilt from it next step, a new question waiting for
+    the owner's answer as any other. Finding no difference, it marks the pause unexplained, as the
+    owner's route does. Either way the step ends there: the read committed (every lock ended), so
+    the next step judges the application as it is then, without reading again. An unexplained
+    pause: that version is tried once more ("Try this version again"); the live page is checked
+    again before anything is entered. The owner's (`_yours`): a second stop on a version tried
+    once more, a fourth stop (FORM_STOPS), anything after an attempt entered the owner's data,
+    an account that is not the owner's, and what D132 already handed to the owner."""
     from app.modules.preparation import package as pk
 
     pauses = _pauses(db, app)
     if not pauses:
         return True
-    if any(p.kind != "form_changed" for p in pauses):
-        _note(db, user.id, job, app, "skipped", "stopped_after_entry")
+    why = _yours(db, user, app, pauses)
+    if why is not None:
+        _note(db, user.id, job, app, "skipped", why)
         return False
-    last = pauses[-1]
-    if last.status in PAUSE_UNRESOLVED and len(pauses) > FORM_STOPS:
-        _note(db, user.id, job, app, "skipped", "form_changed")
-        return False
-    read = last.status == "open"
-    if read:
-        prev = _last_event(db, job.id)
-        if (
-            prev is not None
-            and prev.reason == "capture_failed"
-            and (now - prev.created_at < RECAPTURE_AFTER)
-        ):
+    current = _unresolved(pauses)
+    if current is None:
+        return True  # ended, by the owner or by a read
+    if current.status == "open":
+        if _read_failed_recently(db, job, now):
             return False
         if not _capture(db, user, job):  # commits; a differing version ends the pause
             _note(db, user.id, job, app, "skipped", "capture_failed")
             return False
-        # The capture committed, which ended this step's hold (run_for): hold again first.
-        _hold(db, user.id)
-        if paused(db, user):
-            return False
-    # Lock order: the job's row before the pause's, as a form read takes them (`_store_form`
-    # locks the job, then `_resolve_pauses` the pause). The rule's notes reference the job, a
-    # key-share lock a read's update lock refuses: taken only after the pause, a read in between
-    # would wait for the pause while the rule waited for the job (a deadlock).
-    db.execute(select(Job.id).where(Job.id == job.id).with_for_update(key_share=True))
-    pk.lock_application(db, app.id)
-    pause = pk.unresolved_pause(db, app.id, lock=True)  # as it is now
-    if pause is None:
-        # This step's read ended it (`_resolve_pauses` changed this very row object): a version
-        # differing from the paused one. Ended by anyone else, it is theirs to record.
-        if read and last.resolution == "new_form":
+        if current.resolution == "new_form":  # this read ended it (`_resolve_pauses`, this row)
             _note(db, user.id, job, app, "continued", "form_read_again")
-        return True
-    if pause.id != last.id:
-        return False  # a newer pause since this step began: the next step reads it
-    if pause.status == "open":
-        # No version differing from the one it paused on: never guessed (D132).
-        pause.status = "unexplained"
-        pause.recaptured_version = pk.latest_form(db, job.id).version
-    # Tried once more on this form version already (by the rule or the owner): the owner's.
-    tried = any(
-        p.form_version == pause.form_version and p.resolution == "dismissed" for p in pauses
-    )
-    if tried:
-        _note(db, user.id, job, app, "skipped", "form_changed")
+            return False
+        pause = _lock_pause(db, job, app)
+        if pause is not None and pause.id == current.id and pause.status == "open":
+            # No version differing from the one it paused on: never guessed (D132). Kept now,
+            # as the owner's route keeps it, so it is never read again for this pause.
+            pause.status = "unexplained"
+            pause.recaptured_version = pk.latest_form(db, job.id).version
         return False
-    pause.status, pause.resolution, pause.resolved_at = "closed", "dismissed", utcnow()
-    _note(db, user.id, job, app, "continued", "form_tried_again")  # flushes the pause too
-    return True
+    pause = _lock_pause(db, job, app)
+    if pause is None or pause.id != current.id:
+        return False  # changed since this step began: the next step reads it
+    return pause
 
 
 def _stopped_on_form_change(db: Session, att: ExecutionAttempt) -> bool:
@@ -391,12 +472,34 @@ def _stopped_on_form_change(db: Session, att: ExecutionAttempt) -> bool:
             select(ApplicationPause.id)
             .where(
                 ApplicationPause.attempt_id == att.id,
+                ApplicationPause.user_id == att.user_id,
                 ApplicationPause.kind == "form_changed",
             )
             .limit(1)
         )
         is not None
     )
+
+
+def will_continue(db: Session, user: User, app) -> bool:
+    """D169: whether the standing rule continues this paused application by itself, as its next
+    steps will judge it (shown with the pause, so the owner does not apply by hand meanwhile)."""
+    from app.modules.jobs import signals
+
+    if owner_refusal(user) is not None or paused(db, user):
+        return False
+    if app.state in FINAL_STATES or _owner_revoked(db, app):
+        return False
+    restored = restore.restored_at(db)
+    if restored is not None and app.created_at < restored:
+        return False
+    job = db.get(Job, app.job_id)
+    if job is None or job.id not in {j.id for j in _candidates(db, user)}:
+        return False
+    if signals.approval_refusal(db, job) is not None or _preferences_unmet(db, user, job):
+        return False
+    pauses = _pauses(db, app)
+    return _unresolved(pauses) is not None and _yours(db, user, app, pauses) is None
 
 
 def _paused_before_entry(db: Session, att: ExecutionAttempt) -> bool:
@@ -460,23 +563,29 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
             return None
         att = _latest_attempt(db, app)
         if att is not None and att.state in HELD:
+            return None  # never a read while an attempt holds the application
+        verdict = _after_pause(db, user, job, app, now)  # D169
+        if verdict is False:
             return None
-        if not _after_pause(db, user, job, app, now):  # D169: continued unless yours
-            return None
+        retry = None if verdict is True else verdict
+        # The application as it is now, under its lock: the owner may have acted since this step
+        # began (a revocation, a cancel, an attempt of their own).
+        pk.lock_application(db, app.id)
+        db.refresh(app)
+        if app.state in FINAL_STATES or _owner_revoked(db, app):
+            return None  # the next step says why
+        att = _latest_attempt(db, app, fresh=True)
         if att is not None and att.state not in (AttemptState.rehearsed,):
-            if att.state == AttemptState.confirmed:
+            if att.state in HELD or att.state == AttemptState.confirmed:
                 return None
             if not (_paused_before_entry(db, att) or _stopped_on_form_change(db, att)):
                 _note(db, user.id, job, app, "skipped", "attempt_stopped")
                 return None
+    else:
+        retry = None
     form = pk.latest_form(db, job.id)
     if form is None:
-        last = _last_event(db, job.id)
-        if (
-            last is not None
-            and last.reason == "capture_failed"
-            and (now - last.created_at < RECAPTURE_AFTER)
-        ):
+        if _read_failed_recently(db, job, now):
             return None
         if not _capture(db, user, job):
             _note(db, user.id, job, None, "skipped", "capture_failed")
@@ -514,6 +623,11 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
     if cap_used(db, user.id, now) >= get_settings().auto_apply_daily_cap:
         _note(db, user.id, job, app, "skipped", "daily_cap")
         return None
+    if retry is not None:
+        # D169: that version tried once more, now that it will be approved; a step any check
+        # above declined left the pause as it was. A refused approval below rolls this back.
+        retry.status, retry.resolution, retry.resolved_at = "closed", "dismissed", utcnow()
+        _note(db, user.id, job, app, "continued", "form_tried_again")  # flushes the pause too
     try:
         try:
             appr = pk.approve(

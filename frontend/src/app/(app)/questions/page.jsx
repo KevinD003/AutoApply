@@ -49,8 +49,14 @@ function PauseCard({ item, busy, onRecapture, onDismiss }) {
       <p className="font-medium">The employer&apos;s form no longer matches what you approved.</p>
       <p className="mt-1">
         NoEfforts stopped before sending anything. {counts.length > 0 && `(${counts.join(", ")} question(s).)`} Nothing can be approved or sent
-        until you read the form again or try this version again; automatic applying, when on, may do this for you.
+        until you read the form again or try this version again.
       </p>
+      {item.rule_continues && (
+        <p className="mt-2 font-medium">
+          Your automatic applying reads this form again and continues it by itself; a new question waits for your answer here. Do not apply
+          on the employer&apos;s site meanwhile.
+        </p>
+      )}
       {p.status === "unexplained" ? (
         <p className="mt-2">
           Reading the form again showed no difference NoEfforts can see (the page&apos;s own scripts may add it). Try this version again

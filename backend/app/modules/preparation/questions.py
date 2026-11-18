@@ -80,6 +80,7 @@ def _row(a: dict, control: dict) -> dict:
 def questions(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """Your applications that wait for an answer or a decision, each with its open questions and
     any form-change pause. Each package is brought up to date first, as its own page does."""
+    from app.modules.autoapply.service import will_continue
     from app.modules.preparation.router import _RECAPTURE, _pause_out
 
     rows = db.execute(
@@ -119,6 +120,10 @@ def questions(user: User = Depends(current_user), db: Session = Depends(get_db))
                 "package": {"version": pkg.version, "content_hash": pkg.content_hash},
                 # D132: while it is unresolved nothing is approved for this application.
                 "pause": _pause_out(pause),
+                # D169: the account's standing rule continues it by itself (never by hand then).
+                "rule_continues": pause is not None
+                and pause.kind == "form_changed"
+                and will_continue(db, user, app),
                 "recapture_available": form is not None and form.source in _RECAPTURE,
                 "questions": open_rows,
             }

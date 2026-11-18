@@ -184,7 +184,14 @@ def _attempts(db: Session, user_id) -> list[dict]:
 _PAUSE_TEXT = (
     "The employer's form no longer matched what you approved, so NoEfforts stopped before "
     "sending anything. Read the form again under Questions, answer what is new and approve "
-    "again; with automatic applying on, NoEfforts may read it again and continue for you."
+    "again; nothing is sent until you do."
+)
+# D169: the account's standing rule continues this one by itself (autoapply `will_continue`).
+_RULE_CONTINUES = (
+    "The employer's form no longer matched what you approved, so NoEfforts stopped before "
+    "sending anything. Your automatic applying reads the form again and continues it by itself "
+    "(a new question waits for your answer under Questions); do not apply on the employer's "
+    "site meanwhile."
 )
 _UNEXPLAINED = (
     "Reading the employer's form again showed no difference NoEfforts can see (the page's own "
@@ -201,6 +208,9 @@ _CONDITIONAL_TEXT = (
 
 
 def _pauses(db: Session, user_id) -> list[dict]:
+    from app.modules.autoapply.service import will_continue
+
+    user = db.get(User, user_id)
     out = []
     for p in db.scalars(
         select(ApplicationPause).where(
@@ -211,6 +221,12 @@ def _pauses(db: Session, user_id) -> list[dict]:
             out.append(_item(f"pause:{p.id}:{p.status}", "conditional_required", p.created_at,
                              p.application_id, "The employer's page asked a question",
                              _CONDITIONAL_TEXT, needs_action=True, link="/questions"))  # fmt: skip
+            continue
+        app = db.get(Application, p.application_id)
+        if user is not None and app is not None and will_continue(db, user, app):
+            out.append(_item(f"pause:{p.id}:{p.status}:rule", "form_changed", p.created_at,
+                             p.application_id, "The employer's form no longer matches",
+                             _RULE_CONTINUES, link="/questions"))  # fmt: skip
             continue
         text = _UNEXPLAINED if p.status == "unexplained" else _PAUSE_TEXT
         out.append(_item(f"pause:{p.id}:{p.status}", "form_changed", p.created_at,
