@@ -165,8 +165,11 @@ class AppOut(BaseModel):
     submission: Basis | None = None
     reached_submission: bool = False
     # D170: what the account's standing rule does with an application paused on a changed form
-    # (autoapply `verdict`: continues, waits or yours); null without such a pause.
+    # (autoapply `verdict`: continues, waits or yours); null without such a pause. D171: also with
+    # one it held for the pilot's step 4; why it waits, and whether for step 4 too.
     rule: str | None = None
+    rule_why: str | None = None
+    rule_step4: bool = False
 
 
 class AppDetail(AppOut):
@@ -223,15 +226,13 @@ def _last_attempt(db: Session, app: Application) -> dict | None:
     return {"state": att.state, "approval_scope": scope}
 
 
-def _rule(db: Session, app: Application) -> str | None:
-    """D170: the standing rule's verdict on the application's form-change pause, if it has one."""
-    from app.modules.autoapply.service import verdict
+def _rule(db: Session, app: Application) -> dict:
+    """D170: the standing rule's verdict on the application's form-change pause, if it has one;
+    D171: or on an application it held for the pilot's step 4 (autoapply `shown`)."""
+    from app.modules.autoapply.service import shown
     from app.modules.preparation.package import unresolved_pause
 
-    pause = unresolved_pause(db, app.id)
-    if pause is None or pause.kind != "form_changed":
-        return None
-    return verdict(db, db.get(User, app.user_id), app)[0]
+    return shown(db, db.get(User, app.user_id), app, unresolved_pause(db, app.id))
 
 
 def _out(db: Session, app: Application, detail: bool = False):
@@ -249,7 +250,7 @@ def _out(db: Session, app: Application, detail: bool = False):
         last_attempt=_last_attempt(db, app),
         submission=states.submission_basis(app.state, receipt, by_user),
         reached_submission=reached,
-        rule=_rule(db, app),
+        **_rule(db, app),
     )
     if not detail:
         return AppOut(**base)

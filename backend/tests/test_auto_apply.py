@@ -17,7 +17,7 @@ from app.modules.autoapply import service
 from app.modules.autoapply.models import AutoApplyEvent, AutoApplyPrefs
 from app.modules.execution import runner
 from app.modules.execution import service as svc
-from app.modules.execution.models import ApplicationPause, ExecutionAttempt
+from app.modules.execution.models import ApplicationPause, ExecutionAttempt, RehearsalRecord
 from app.modules.identity.models import User
 from app.modules.preparation import package as pk
 from app.modules.preparation.models import PackageApproval
@@ -894,20 +894,38 @@ def assert_yours(api, app_id: str) -> None:
 
 WAITS_WORDS = {"stopped": "is stopped now", "declined": "rule it out",
                "unreadable": "could not read the employer's page again",
-               "questions": "as soon as you answer the open questions"}  # fmt: skip
+               "questions": "as soon as you answer the open questions",
+               "submit_not_permitted": "does not cover submitting (step 4)"}  # fmt: skip
 
 
-def assert_waits(api, app_id: str, why: str) -> None:
+def assert_waits(api, app_id: str, why: str, step4: bool = False) -> None:
     """Shown as waiting for the rule, with why: never D132's words, which would invite applying
-    by hand while the rule may still send it; how to take it over instead."""
+    by hand while the rule may still send it; how to take it over instead. D171: `step4`, it
+    waits for the pilot's step 4 too, said in the same words."""
     note, continues = pause_shown(api, app_id)
     assert continues is False and note["needs_action"] is True
     link = "/questions" if why == "questions" else f"/tracker?highlight={app_id}"
-    assert note["link"] == link and note["key"].endswith(f":waits:{why}")  # new when why changes
+    key = f":waits:{why}" + (":step4" if step4 else "")
+    assert note["link"] == link and note["key"].endswith(key)  # new when why changes
     assert WAITS_WORDS[why] in note["text"] and "I applied myself" in note["text"]
+    assert (STEP4_WORDS in note["text"]) is step4
     assert "nothing is sent until you do" not in note["text"]
     assert rule_of(api, app_id) == [("waits", why)] * 2
+    assert step4_of(api, app_id) == [step4] * 3
     assert tracker_rule(api, app_id) == "waits"
+
+
+def step4_of(api, app_id: str) -> list[bool]:
+    """D171: whether Questions, the application's page and the Tracker's row say it waits for
+    step 4 too."""
+    item = next(i for i in api.get("/questions").json()["items"]
+                if i["application_id"] == app_id)  # fmt: skip
+    view = api.get(f"/applications/{app_id}/package").json()
+    return [item["rule_step4"], view["rule_step4"], tracker_row(api, app_id)["rule_step4"]]
+
+
+def tracker_row(api, app_id: str) -> dict:
+    return next(a for a in api.get("/applications").json() if a["id"] == app_id)
 
 
 def never_read_or_tried(receiver, app_id: str, reads: int) -> None:
@@ -1574,6 +1592,244 @@ def test_d170_a_read_held_by_a_recent_failure_is_shown_as_unreadable(api, receiv
     assert continues is True and note["needs_action"] is False
 
 
+# ------------------------------------- D171: a recorded permission for rehearsals only
+
+REHEARSALS_ONLY = ("read", "open", "disclose")  # the pilot's steps 1-3, not step 4
+STEP4_WORDS = "and your recorded permission covers submitting (step 4)"
+
+
+def scopes(app_id: str) -> list[str]:
+    return [str(getattr(a.scope, "value", a.scope)) for a in approvals(app_id)]
+
+
+def held(api, app_id: str) -> tuple:
+    """The rule's state of an application with no pause, as its page and its row carry it."""
+    view = api.get(f"/applications/{app_id}/package").json()
+    row = tracker_row(api, app_id)
+    return ((view["rule"], view["rule_why"], view["rule_step4"]),
+            (row["rule"], row["rule_why"], row["rule_step4"]))  # fmt: skip
+
+
+def rehearsed_and_held(api) -> tuple[str, str]:
+    """Steps 1-3 recorded: the rule rehearses the employer's first application, then holds it."""
+    pilot_on(permitted=REHEARSALS_ONLY)
+    synthetic_candidate(api)
+    job = v2_job(api)
+    tick()
+    app_id = app_of(api, job)
+    answer(api, app_id)
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert tick() == 0 and events(job)[-1] == ("skipped", "submit_not_permitted")
+    return job, app_id
+
+
+def submission_paused(api, receiver) -> tuple[str, str]:
+    """The rule's submission (its employer's rehearsal held) stopped on a changed form before
+    anything was entered, the page as it was again since; then steps 1-3 only are recorded."""
+    job, app_id = rehearsal_queued(api)
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert tick() == 1 and events(job)[-1] == ("approved_submit", "submission_queued")
+    receiver.config(mode="gh2_question_added")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
+    receiver.config(mode="normal")
+    note, continues = pause_shown(api, app_id)
+    assert continues is True  # step 4 recorded: the rule continues it
+    pilot_on(permitted=REHEARSALS_ONLY)
+    return job, app_id
+
+
+def test_d171_with_a_permission_for_rehearsals_only_it_rehearses_and_submits_nothing(
+    api, receiver, monkeypatch
+):
+    # Steps 1-3 recorded, not step 4: the rule reads the post and rehearses the employer's first
+    # application (filled and checked, never submitted), then approves nothing more and says why,
+    # once: on the application's page and its row (it may still send it), the rehearsal's own item
+    # (never "approve again to submit") and the Tracker's card. Step 4 recorded, it is submitted
+    # once, and its page and row are its own again.
+    pilot_on(permitted=REHEARSALS_ONLY)
+    synthetic_candidate(api)
+    job = v2_job(api)
+    assert tick() == 0 and events(job) == [("skipped", "open_questions")]  # read (step 1)
+    app_id = app_of(api, job)
+    answer(api, app_id)
+    state = api.get("/auto-apply").json()
+    assert state["active"] is True and state["submits"] is False
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert receiver.ledger()["disclosures"] and receiver.ledger()["accepted"] == 0
+    assert held(api, app_id) == ((None, None, False),) * 2  # not held yet
+    assert tick() == 0 and events(job)[-1] == ("skipped", "submit_not_permitted")
+    assert tick() == 0 and events(job).count(("skipped", "submit_not_permitted")) == 1
+    assert scopes(app_id) == ["disclose_only"]  # the rehearsal's only: no submission approved
+    assert held(api, app_id) == (("waits", "submit_not_permitted", False),) * 2
+    shown = api.get("/auto-apply").json()["events"]
+    assert service.REASONS["submit_not_permitted"] in [e["text"] for e in shown]
+    (r,) = [n for n in api.get("/notifications").json()["items"] if n["kind"] == "rehearsal"]
+    assert "Automatic applying queued this rehearsal" in r["text"]
+    assert "Approve again to submit" not in r["text"]
+    with monkeypatch.context() as m:  # the pilot off: the rule is stopped; every page served
+        m.setattr(get_settings(), "live_greenhouse_enabled", False)
+        for path in (
+            "/notifications",
+            "/questions",
+            "/applications",
+            f"/applications/{app_id}/package",
+        ):
+            assert api.get(path).status_code == 200, path
+        # Stopped, and nothing to execute it through: no "step 4 too" (the binding's guard).
+        assert held(api, app_id) == (("waits", "stopped", False),) * 2
+    assert receiver.ledger()["accepted"] == 0
+    pilot_on()  # step 4 recorded
+    assert api.get("/auto-apply").json()["submits"] is True
+    assert held(api, app_id) == (("continues", None, False),) * 2
+    assert tick() == 1 and events(job)[-1] == ("approved_submit", "submission_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+    assert held(api, app_id) == ((None, None, False),) * 2  # final: its own words
+    assert tick() == 0 and receiver.ledger()["accepted"] == 1
+
+
+def test_d171_a_paused_submission_waits_for_the_permission_and_is_never_counted_as_tried(
+    api, receiver
+):
+    # Shown as waiting for step 4, with why, never as continued; the form is read again meanwhile
+    # (step 1) with one message, not a new one; that version is not counted as tried: once step 4
+    # is recorded it is tried once more, and sent once.
+    job, app_id = submission_paused(api, receiver)
+    assert_waits(api, app_id, "submit_not_permitted")
+    key = pause_shown(api, app_id)[0]["key"]
+    reads = requests_made(receiver)
+    assert tick() == 0  # read again (step 1): no difference
+    assert requests_made(receiver) > reads
+    (p,) = pause_rows(app_id)
+    assert p.status == "unexplained"
+    assert pause_shown(api, app_id)[0]["key"] == key  # the same message
+    assert tick() == 0 and events(job)[-1] == ("skipped", "submit_not_permitted")
+    (p,) = pause_rows(app_id)
+    assert (p.status, p.resolution) == ("unexplained", None)  # never counted as tried
+    assert ("continued", "form_tried_again") not in events(job)
+    assert scopes(app_id) == ["disclose_only", "submit"]  # nothing approved since the pause
+    assert_waits(api, app_id, "submit_not_permitted")
+    pilot_on()  # step 4 recorded
+    note, continues = pause_shown(api, app_id)
+    assert continues is True and note["needs_action"] is False
+    assert tick() == 1
+    assert events(job)[-2:] == [
+        ("continued", "form_tried_again"),
+        ("approved_submit", "submission_queued"),
+    ]
+    assert runner.run_attempt(latest_attempt(), "w1") == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+
+
+def test_d171_an_open_question_and_step_4_are_both_said(api, receiver):
+    # The paused submission read again (no difference) and a question open again: it waits for the
+    # answer and for step 4, both said in the same words and linked to Questions, as the step
+    # checks them; answered, it waits for step 4 alone.
+    job, app_id = submission_paused(api, receiver)
+    assert tick() == 0 and pause_rows(app_id)[-1].status == "unexplained"
+    r = api.post(f"/applications/{app_id}/answers/clear", json={"key": "question_8101"})
+    assert r.status_code == 200, r.text
+    assert_waits(api, app_id, "questions", step4=True)
+    assert tick() == 0 and events(job)[-1] == ("skipped", "open_questions")
+    assert_waits(api, app_id, "questions", step4=True)
+    r = api.put(f"/applications/{app_id}/answers",
+                json={"key": "question_8101", "value": {"label": "Yes"}})  # fmt: skip
+    assert r.status_code == 200, r.text
+    assert_waits(api, app_id, "submit_not_permitted")
+    assert receiver.ledger()["accepted"] == 0
+
+
+def test_d171_a_paused_rehearsal_is_continued_under_a_permission_for_rehearsals_only(api, receiver):
+    # The employer's rehearsal itself stopped on a changed form: its next approval is a rehearsal
+    # again, which the permission covers, so the rule continues it by itself (and says so); it
+    # stops before the submission.
+    job, app_id = form_change_pause(api, receiver)
+    pilot_on(permitted=REHEARSALS_ONLY)
+    note, continues = pause_shown(api, app_id)
+    assert continues is True and note["needs_action"] is False
+    assert rule_of(api, app_id) == [("continues", None)] * 2
+    continued_by_itself(job)
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert tick() == 0 and events(job)[-1] == ("skipped", "submit_not_permitted")
+    assert receiver.ledger()["accepted"] == 0
+
+
+def test_d171_a_held_application_is_followed_whatever_its_jobs_age(api, receiver, monkeypatch):
+    # Held for step 4, it is examined first in each tick, whatever came after it: newer jobs
+    # pushing it out of the newest never stall it, to be sent when they close, long after the
+    # owner may have applied by hand. Step 4 recorded, it is submitted at the next step, once.
+    job, app_id = rehearsed_and_held(api)
+    monkeypatch.setattr(service, "JOBS_PER_TICK", 1)
+    newer = api.post("/jobs", json=OTHER_ROLE).json()["job"]["id"]
+    with SessionLocal() as db:
+        examined = [j.id for j in service._candidates(db, db.get(User, owner_id()))]
+    assert examined == [uuid.UUID(job), uuid.UUID(newer)]
+    pilot_on()  # step 4 recorded
+    assert tick() == 1 and events(job)[-1] == ("approved_submit", "submission_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+
+
+def test_d171_a_rehearsal_that_no_longer_counts_is_not_repeated_before_step_4(api, receiver):
+    # The employer's rehearsal held, then went stale (older than its maximum age): another one
+    # would enter the owner's data on the employer's page again for nothing, and use one of the
+    # permission's attempts. Held instead; once step 4 is recorded the rule rehearses again first
+    # (E6), then submits once.
+    job, app_id = rehearsed_and_held(api)
+    days = get_settings().rehearsal_max_age_days + 1
+    with SessionLocal() as db:
+        r = RehearsalRecord
+        db.execute(update(r).where(r.application_id == uuid.UUID(app_id))
+                   .values(recorded_at=r.recorded_at - timedelta(days=days)))  # fmt: skip
+        db.commit()
+    disclosed = len(receiver.ledger()["disclosures"])
+    assert tick() == 0 and events(job)[-1] == ("skipped", "submit_not_permitted")
+    assert scopes(app_id) == ["disclose_only"]
+    assert len(receiver.ledger()["disclosures"]) == disclosed
+    assert held(api, app_id) == (("waits", "submit_not_permitted", False),) * 2
+    pilot_on()  # step 4 recorded
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert tick() == 1 and events(job)[-1] == ("approved_submit", "submission_queued")
+    assert runner.run_attempt(latest_attempt(), "w1") == "confirmed"
+    assert receiver.ledger()["accepted"] == 1
+
+
+def test_d171_held_for_step_4_before_the_daily_cap(api, receiver, monkeypatch):
+    # Today's approvals used up (by rehearsals elsewhere, say): it is still held for step 4, never
+    # "it continues tomorrow", and the notes never alternate between the two.
+    job, app_id = rehearsed_and_held(api)
+    with monkeypatch.context() as m:
+        m.setattr(service, "cap_used", lambda db, user_id, now=None: 5)
+        assert tick() == 0 and events(job)[-1] == ("skipped", "submit_not_permitted")
+    assert ("skipped", "daily_cap") not in events(job)
+
+
+def test_d171_a_held_application_with_a_question_open_says_both(api, receiver):
+    # Held for step 4 with no pause, and a question open again: its page and row say it waits for
+    # the answer and for step 4, and the feed's "questions are waiting" never says it continues
+    # by itself once they are answered.
+    job, app_id = rehearsed_and_held(api)
+    r = api.post(f"/applications/{app_id}/answers/clear", json={"key": "question_8101"})
+    assert r.status_code == 200, r.text
+    assert tick() == 0 and events(job)[-1] == ("skipped", "open_questions")
+    assert held(api, app_id) == (("waits", "questions", True),) * 2
+    items = api.get("/notifications").json()["items"]
+    (item,) = [n for n in items if n["kind"] == "auto_apply_questions"]
+    assert item["application_id"] == app_id
+    assert (
+        "it submits nothing until your recorded permission covers submitting (step 4)"
+        in item["text"]
+    )
+    assert "continues by itself" not in item["text"]
+    r = api.put(f"/applications/{app_id}/answers",
+                json={"key": "question_8101", "value": {"label": "Yes"}})  # fmt: skip
+    assert r.status_code == 200, r.text
+    assert held(api, app_id) == (("waits", "submit_not_permitted", False),) * 2
+
+
 def test_another_account_never_sees_or_triggers_the_owners_rule(api, other_api, receiver):
     pilot_on()  # the owner is the `api` account; `other_api` is not named
     synthetic_candidate(other_api)
@@ -1692,7 +1948,9 @@ def attempt_row(att_id: str) -> ExecutionAttempt:
 def approvals(app_id: str) -> list[PackageApproval]:
     with SessionLocal() as db:
         return db.scalars(
-            select(PackageApproval).where(PackageApproval.application_id == uuid.UUID(app_id))
+            select(PackageApproval)
+            .where(PackageApproval.application_id == uuid.UUID(app_id))
+            .order_by(PackageApproval.approved_at)
         ).all()
 
 

@@ -9,6 +9,28 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## With a permission for rehearsals only, the rule rehearses and stops before submitting (D171, 2026-11-18; local only)
+
+Nothing here ran against a real page. Branch `rehearsal-only` (from main at 76178ed). In
+`tests/test_auto_apply.py` (`test_d171_*`), against the Greenhouse-style stand-in playing a real
+board through the pilot, with a synthetic record of the pilot's steps 1-3
+(`pilot_on(permitted=REHEARSALS_ONLY)`); the receiver's own ledger is the oracle for what
+reached the employer. Each "shown" claim is checked on the feed, Questions, the application's
+page and the Tracker's row.
+
+| Claim | Test | Result |
+|---|---|---|
+| With steps 1-3 recorded, the rule reads the post and rehearses the employer's first application (filled and checked, never submitted), then approves nothing more and says why, once; its page and row say it waits for step 4, the rule's rehearsal item never says "approve again to submit", the card says the permission does not cover submitting; with the pilot off every page is still served; step 4 recorded, it is shown as continued and submitted once, and its own words return once final | `with_a_permission_for_rehearsals_only_it_rehearses_and_submits_nothing` | pass |
+| A submission paused on a changed form waits for step 4, with why (never "continues"); its form is read again meanwhile with one message, not a second; its try once more is not used up; once step 4 is recorded it is tried once more and sent once | `a_paused_submission_waits_for_the_permission_and_is_never_counted_as_tried` | pass |
+| An open question and step 4 are both said, in the step's own order (linked to Questions); answered, it waits for step 4 alone | `an_open_question_and_step_4_are_both_said` | pass |
+| A paused rehearsal is continued under steps 1-3 (its next approval is a rehearsal again), and the rule stops before the submission | `a_paused_rehearsal_is_continued_under_a_permission_for_rehearsals_only` | pass |
+| An application held for step 4 is examined first whatever came after it, and submitted once step 4 is recorded | `a_held_application_is_followed_whatever_its_jobs_age` | pass |
+| A rehearsal that no longer counts (stale) is not repeated before step 4 (nothing more disclosed); with step 4 the rule rehearses again first, then submits once | `a_rehearsal_that_no_longer_counts_is_not_repeated_before_step_4` | pass |
+| Held for step 4 before the daily cap: never "it continues tomorrow" | `held_for_step_4_before_the_daily_cap` | pass |
+| Held with no pause and a question open again: its page and row say both; the feed's "questions are waiting" says it submits nothing until step 4 | `a_held_application_with_a_question_open_says_both` | pass |
+| The owner's console: the rule's row says the permission covers rehearsals only (`test_debug_console.py`) | `the_rule_says_a_permission_covers_rehearsals_only` | pass |
+| In the browser: the Questions card's words for a pause waiting for step 4, and for an open question and step 4; the application's notice and Submission card for one held with no pause (and once step 4 is recorded); the Tracker's row; the card's line while on and while paused, not where the rule cannot act | `questions.spec.ts`, `auto-apply-pause.spec.ts` (desktop and mobile) | pass |
+
 ## A paused application is the rule's to continue, waits for it, or is yours for good (D170, 2026-11-18; local only)
 
 Nothing here ran against a real page. Branch `continue-checks` (on `rule-continues`). In

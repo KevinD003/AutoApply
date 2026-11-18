@@ -32,7 +32,7 @@ from datetime import UTC, datetime, time, timedelta
 
 from celery.exceptions import SoftTimeLimitExceeded
 from fastapi import HTTPException
-from sqlalchemy import func, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.core import authorizations
@@ -100,6 +100,9 @@ REASONS = {
     "began; automatic applying leaves it to you.",
     "approval_refused": "NoEfforts could not approve this package automatically.",
     "queue_refused": "The approved package could not be queued.",
+    # D171: a recorded permission for rehearsals only (the pilot's steps 1-3).
+    "submit_not_permitted": "This employer's rehearsal held; your recorded permission does not "
+    "cover submitting (step 4), so it is not sent until it does.",
 }
 # Network reads (capturing a job post) are tried at most once a day per job.
 RECAPTURE_AFTER = timedelta(hours=24)
@@ -271,7 +274,9 @@ def _candidates(db: Session, user: User) -> list[Job]:
     rule's own read or try ends it): the window never decides it, since newer jobs pushing it out
     would stall it and closing them would bring it back, sent long after the owner may have given
     up and applied by hand. First, so a tick that runs out of time (the task's soft limit) reading
-    new posts never leaves them behind."""
+    new posts never leaves them behind. D171: so is every application the rule held for the
+    pilot's step 4 (`submit_not_permitted`): it is submitted once that is recorded, not whenever
+    its job is among the newest again."""
     from app.modules.execution.models import ApplicationPause
 
     jobs = db.scalars(
@@ -294,6 +299,15 @@ def _candidates(db: Session, user: User) -> list[Job]:
         )
         .exists()
     )
+    held = (  # D171
+        select(AutoApplyEvent.id)
+        .where(
+            AutoApplyEvent.application_id == Application.id,
+            AutoApplyEvent.user_id == user.id,
+            AutoApplyEvent.reason == "submit_not_permitted",
+        )
+        .exists()
+    )
     waiting = db.scalars(
         select(Job)
         .join(Application, Application.job_id == Job.id)
@@ -302,7 +316,7 @@ def _candidates(db: Session, user: User) -> list[Job]:
             Job.url.is_not(None),
             Application.user_id == user.id,
             Application.state.notin_(FINAL_STATES),
-            paused_once,
+            or_(paused_once, held),
         )
         .order_by(Application.created_at)
     ).all()
@@ -590,12 +604,15 @@ def verdict(db: Session, user: User, app) -> tuple[str, str | None]:
       attempt limit used up, no approval allowed a day), the job's signals or the owner's
       preferences ruling it out ("declined"), the post unreadable since the pause began
       ("unreadable", read again once a day), or, the version to be tried once more, a question
-      waiting for the owner's answer ("questions"). Never D132's words: how to take it over
-      instead;
+      waiting for the owner's answer ("questions"); D171, last, as the step checks it: its
+      employer path's rehearsal held and the recorded permission does not cover submitting
+      ("submit_not_permitted"; with any other reason, `withholds_submission` says it waits for
+      that too). Never D132's words: how to take it over instead;
     - YOURS: it never will (D132's words), and that is for good: a final or revoked application,
       one begun before a restore or while one is unresolved, a job it never examines (not a post
       the pilot accepts), or what `_yours` leaves to the owner.
-    For an application that has a pause waiting (its callers' only use)."""
+    For an application that has a pause waiting, or (D171) one the rule held for step 4 with no
+    pause waiting (`shown`)."""
     if app.state in FINAL_STATES or _owner_revoked(db, app):
         return YOURS, None
     if restore.held(db):
@@ -620,9 +637,111 @@ def verdict(db: Session, user: User, app) -> tuple[str, str | None]:
         and (_read_failed_since(db, job, current) or _read_failed_recently(db, job, utcnow()))
     ):
         return WAITS, "unreadable"  # its next read is held a day after the last failed one
-    if current is not None and current.status == "unexplained" and _questions_open(db, app):
-        return WAITS, "questions"  # its next step, the try, waits for them (`open_questions`)
+    if (current is None or current.status == "unexplained") and _questions_open(db, app):
+        return WAITS, "questions"  # its next approval waits for them (`open_questions`)
+    if withholds_submission(db, app):
+        return WAITS, "submit_not_permitted"  # D171: until the permission covers submitting
     return CONTINUES, None
+
+
+def withholds_submission(db: Session, app) -> bool:
+    """D171: the rule approves nothing more for this application until the recorded permission
+    covers submitting (the pilot's step 4), whatever else it waits for (`_submits_refused`)."""
+    from app.modules.preparation import package as pk
+
+    latest = pk.latest_package(db, app.id)
+    return latest is not None and _submits_refused(db, app, latest)
+
+
+def held_for_submission(db: Session, app) -> bool:
+    """D171: the rule held this application for the pilot's step 4 (it noted so): it follows it
+    to the end (`_candidates`), and its pages say what the rule does with it (`shown`)."""
+    return (
+        db.scalar(
+            select(AutoApplyEvent.id)
+            .where(
+                AutoApplyEvent.application_id == app.id,
+                AutoApplyEvent.user_id == app.user_id,
+                AutoApplyEvent.reason == "submit_not_permitted",
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
+def shown(db: Session, user: User, app, pause) -> dict:
+    """D170, D171: what the account's standing rule does with this application, as Questions,
+    the application's page and the Tracker's row show it: for a form-change pause waiting
+    (`pause`), and for an application it held for step 4 with no pause waiting; nothing
+    otherwise (the owner's own flow). `rule_step4`: it waits for something else, and for step 4
+    too (said in the same words)."""
+    none = {"rule": None, "rule_why": None, "rule_step4": False}
+    if pause is not None and pause.kind != "form_changed":
+        return none
+    if pause is None and not held_for_submission(db, app):
+        return none
+    rule, why = verdict(db, user, app)
+    if pause is None and rule == YOURS:
+        return none  # final, revoked...: its page and row say so, as for any application
+    step4 = rule == WAITS and why != "submit_not_permitted" and withholds_submission(db, app)
+    return {"rule": rule, "rule_why": why, "rule_step4": step4}
+
+
+def _submits_refused(db: Session, app, pkg) -> bool:
+    """D171: the recorded permission does not cover submitting (the pilot's step 4) while this
+    application's next approval would be a submission (its employer path's rehearsal held, E6, as
+    the approval computes it): approved, it would only be refused at the queue (execution
+    `enqueue`). So too once that rehearsal no longer counts (stale, a newer adapter version):
+    another one would enter the owner's data on the employer's page again for nothing, and a
+    paused application's try once more would be spent on it; once step 4 is recorded the rule
+    rehearses again first (E6). A rehearsal the path still needs is approved as before; a stand-in
+    that is not the pilot needs no permission."""
+    from app.modules.execution import rehearsal
+    from app.modules.execution.policy import execution_binding
+
+    if live.permission_refusal(("submit",)) is None:
+        return False
+    dest = pkg.content["destination"]
+    binding = execution_binding(dest, app.user_id)
+    if binding is None or binding["adapter"] != live.ADAPTER:
+        return False
+    pre = rehearsal.prerequisite(
+        db,
+        layer="approve",
+        user_id=app.user_id,
+        destination=dest,
+        adapter=binding["adapter"],
+        adapter_version=binding["adapter_version"],
+        destination_class=rehearsal.destination_class(dest.get("origin")),
+    )
+    return pre.status != rehearsal.UNMET or _rehearsed_before(db, app.user_id, dest, binding)
+
+
+def _rehearsed_before(db: Session, user_id, dest: dict, binding: dict) -> bool:
+    """D171: a rehearsal on this employer path held when it ran (ended "rehearsed"), whether or
+    not it still counts for E6."""
+    from app.modules.execution import rehearsal
+    from app.modules.preparation.models import ApprovalScope, PackageApproval
+
+    ref = rehearsal.path_ref(user_id, rehearsal.execution_path(dest, binding["adapter"]))
+    if ref is None:
+        return False
+    return (
+        db.scalar(
+            select(ExecutionAttempt.id)
+            .join(PackageApproval, PackageApproval.id == ExecutionAttempt.approval_id)
+            .where(
+                ExecutionAttempt.user_id == user_id,
+                PackageApproval.user_id == user_id,
+                ExecutionAttempt.path_ref == ref,
+                PackageApproval.scope == ApprovalScope.disclose_only,
+                ExecutionAttempt.state == AttemptState.rehearsed,
+            )
+            .limit(1)
+        )
+        is not None
+    )
 
 
 def _questions_open(db: Session, app) -> bool:
@@ -780,6 +899,12 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
         return None
     if _limit_used(db):
         _note(db, user.id, job, app, "skipped", "permission_limit")
+        return None
+    if _submits_refused(db, app, pkg):
+        # D171: its next approval would be a submission the queue refuses: nothing approved, and
+        # a pause's version not counted as tried. Before the daily cap: it approves nothing, and
+        # "it continues tomorrow" would not be true.
+        _note(db, user.id, job, app, "skipped", "submit_not_permitted")
         return None
     if get_settings().sole_owner:
         db.execute(text("SELECT pg_advisory_xact_lock(:c, 0)"), {"c": _CAP_LOCK})

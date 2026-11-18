@@ -56,6 +56,9 @@ def _state(db: Session, user: User) -> dict:
         "approved_today": service.cap_used(db, user.id),
         "cap_every_account": s.sole_owner,
         "permission_attempts": None if cap is None else {"used": used, "of": cap[0]},
+        # D171: whether the recorded permission covers submitting (the pilot's step 4); without
+        # it the rule rehearses and stops before submitting.
+        "submits": live.permission_refusal(("submit",)) is None,
         "events": [
             {
                 "at": e.created_at,

@@ -61,8 +61,9 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D166 a Workday-style Websites section filled from your profile's links | merged (#75, f927e8f, tree as predicted); its PR CI passed all four jobs on d52880e |
 | D167 a Workday-style Certifications section filled from your licences and certifications | merged (#77, 9991ed8, tree as predicted); its PR CI passed all four jobs on e6015a4 |
 | D168 the owner's console (every switch and why, one application traced from start to finish) and sole-owner mode | merged (#78, aaf3bac, tree as predicted); its PR CI passed all four jobs on a827960 (on 5fab3fd the backend job failed one test: the console wrote a support label itself; fixed) |
-| D169 the standing rule continues an application after a form change (the owner's accounts) | branch `rule-continues` (from D168's branch; main with #78 merged in at f9f0913); reviewed twice; PR #79, its CI passed all four jobs on b1b1f34; held to merge with D170 |
-| D170 a paused application is the rule's to continue, waits for it (and why), or is yours for good | branch `continue-checks` (on `rule-continues`); two rounds of two independent reviews; to merge with D169 (#79) |
+| D169 the standing rule continues an application after a form change (the owner's accounts) | merged with D170 (#79, 76178ed, tree as predicted); its PR CI passed all four jobs on ecb50b4 (and on b1b1f34, D169 alone) |
+| D170 a paused application is the rule's to continue, waits for it (and why), or is yours for good | merged with D169 (#79, 76178ed, tree as predicted); its PR CI passed all four jobs on ecb50b4 |
+| D171 with a permission for rehearsals only, the rule rehearses and stops before submitting, and says so | on its branch `rehearsal-only` (from main at 76178ed); its PR is next |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -384,7 +385,20 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
 
-- **D170 (branch `continue-checks`, on D169's; not merged).** What the rule does with a paused
+- **D171 (on its branch `rehearsal-only`).** With a recorded permission for the pilot's
+  steps 1-3 only, the rule rehearses and stops before submitting, and says so:
+  - nothing more is approved once the employer path's rehearsal held (a submission the queue
+    would refuse), nor another rehearsal once that one no longer counts; noted once, before
+    the daily cap, and before a paused application's try once more is spent;
+  - every application held so is followed to the end, first in each tick, and submitted once
+    step 4 is recorded;
+  - shown on every surface, held with or without a pause: a pause's reasons in the step's own
+    order, step 4 said with any other one; the application's page and its row; the feed; the
+    card, also while paused; the console;
+  - two independent reviews (one blocking: a held application left to the window of the newest
+    jobs, sent when they closed): each finding fixed with its test, or kept with the reason.
+
+- **D170 (merged with D169, #79).** What the rule does with a paused
   application, on every surface, and kept:
   - three outcomes (`verdict`): continues; waits, with why (stopped, declined, unreadable, an
     open question), never in D132's words and with how to take it over; yours for good, judged
@@ -398,7 +412,7 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     stalled application sent long after the owner was told not to apply, among others): each
     fixed with its test; the whole backend suite: 7,135 passed on 135d1de.
 
-- **D169 (branch `rule-continues`, not merged).** The owner's words of 2026-11-18 ("Do not
+- **D169 (merged, #79).** The owner's words of 2026-11-18 ("Do not
   pauses anything. Make it enable for the auto application"), deciding what rank 3 left open:
   - for the owner's accounts the standing rule continues a stop on a changed form before
     anything was entered: it reads the form again (a new version ends the pause; a new
@@ -792,10 +806,12 @@ profile's links.
 your current approved licences and certifications.
 **D168** (the owner's request, #78) adds the owner's console (the Debugger)
 and sole-owner mode, in which every account is the owner's.
-**D169** (the owner's decision, on its branch) lets the standing rule continue an
+**D169** (the owner's decision, #79) lets the standing rule continue an
 application after a form change, before anything was entered.
-**D170** (on D169's branch) shows with each paused application what the rule does with
+**D170** (#79, with D169) shows with each paused application what the rule does with
 it (continues, waits and why, or yours for good) and keeps what is yours.
+**D171** (on its branch `rehearsal-only`) holds an application before submitting while the
+recorded permission covers rehearsals only, and says so wherever it is shown.
 Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
@@ -892,13 +908,19 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
-- **D170 (branch `continue-checks`):** the new tests (the receiver's ledger as the oracle),
+- **D171:** on its branch `rehearsal-only`. Locally: the new tests (the receiver's ledger as the
+  oracle), the suites the change touches, the removal runs, the whole backend suite and the
+  full e2e suite (Tests run below). Not tested: a real page; a permission for steps 1-3
+  recorded by the owner (none is in force); two workers racing for one held application
+  (the rule's step holds the application's lock, as for any).
+- **D170:** merged with D169 (#79, 76178ed, tree as predicted); its PR CI passed all four jobs
+  on ecb50b4. Locally: the new tests (the receiver's ledger as the oracle),
   the suites the change touches, the removal runs, the whole backend suite and the full e2e
   suite, locally (Tests run below). Not tested: a real page; two workers racing for one
   paused application (the rule's row locks are exercised by D169's tests only); the
   migration's hand-over run by `alembic upgrade` over real rows (its data step is run on rows
   the app makes; its schema step by the empty-to-head and down-and-up tests).
-- **D169 (branch `rule-continues`):** the new tests (the receiver's ledger as the oracle),
+- **D169:** merged with D170 (#79). Locally: the new tests (the receiver's ledger as the oracle),
   the suites the change touches, the removal runs, the regression set, the suites that scan
   the whole repository, the whole backend suite and the full e2e suite, locally (Tests run
   below). Not tested: a real page (no real form change was observed); a
@@ -1320,6 +1342,13 @@ action.
 | D170, after both reviews' findings (135d1de): `test_auto_apply.py`; the whole backend suite (two halves at once) | 71 passed; both exit 0: 7,135 passed, none failed or skipped (2,690 in 77 minutes and 4,445 in 71 minutes) |
 | D170, each part changed in turn: 48 changes on 135d1de | each of the 46 changes named for a test fails it (174 failures among the 2,448 tests run, 51 per change); not caught, by design: a final application examined too (the step returns at once for one) and the preferences' explicit re-read (D170, Kept) |
 | D170, the full e2e suite on cf54e2a | exit 0; 196 passed, 3 skipped (16.5 minutes), with `questions.spec.ts`'s new checks |
+| D169 and D170, their PR's CI (#79) on ecb50b4: the four jobs | all four passed (the backend job in 126 minutes); #79 merged (76178ed, tree as predicted) |
+| D171, the first version (c66cfb0): its tests; four suites; its browser checks; its parts changed in turn | `test_auto_apply.py -k d171`; four suites; two specs; 9 + 3 changes | 3 passed; exit 0, 112 passed; 8 passed; each of the 8 + 3 named caught (the pilot-only guard not, by design) |
+| D171, two independent reviews (c66cfb0) | read-only, each given the code | one blocking, five should-fix, several minor; fixed in eb5f6fd with their tests, or kept (D171) |
+| D171, after the fixes: the suites the change touches; its browser checks | 20 suites (JUnit); two specs | exit 0, 456 passed; 8 passed |
+| D171, each part changed in turn (eb5f6fd) | 27 backend changes, one at a time (two worktrees at once); 5 frontend changes | each of the 26 named caught (63 failures among the 297 tests run); each frontend change caught on its own assertion; the pilot-only guard not, by design |
+| D171, the full e2e suite on eb5f6fd | `npx playwright test` | exit 0; 198 passed, 3 skipped (15.6 minutes) |
+| D171, the whole backend suite on eb5f6fd (two halves at once) | `pytest` on all 179 test files (JUnit) | both exit 0: 7,144 passed, none failed or skipped (2,698 in 69 minutes and 4,446 in 63 minutes) |
 
 ## Failed approaches and rejected designs
 
@@ -1426,8 +1455,9 @@ action.
   - a single-use read-only observation;
   - candidate accounts are the user's own: NoEfforts never creates accounts or handles passwords,
     and a resume needs the user's own sign-in.
-- **D113 continuing after a form-change pause.** The owner's recorded words say a stopped attempt
-  waits for them; continuing needs their decision.
+- **D113 continuing after a form-change pause.** Decided by the owner (2026-11-18, D169): the
+  rule continues a stop before anything was entered; one after anything was entered stays
+  theirs (CLAUDE.md allows no retry after disclosure).
 - **A final click the page's own checks block (`CLIENT_BLOCKED`).** Nothing was sent, but it is
   found after `sending` began; making it a pause that later queues a new attempt is a retry after
   `sending`, which CLAUDE.md forbids. Today: `failed_terminal`, apply on the employer's site. Only
@@ -1435,10 +1465,12 @@ action.
 
 ## Exact next action
 
-1. D169 and D170 (PR #79, branches `rule-continues` and `continue-checks`): merge once its CI
-   passes on the head that carries D170. Candidates after it: the Greenhouse pilot's own reads
-   of what its form sends (D159's attributes, D160's controls and final click); leaving out one
-   credential or link for one application (every current approved one is sent today).
+1. D171 (branch `rehearsal-only`, its PR next): with a recorded permission that does not
+   cover submitting, the rule rehearses and stops before submitting, and says so. Candidates
+   after it: an approver scope for each recorded permission, checked at each gate (D171,
+   Kept); the Greenhouse pilot's own reads of what its form sends (D159's attributes, D160's
+   controls and final click); leaving out one credential or link for one application (every
+   current approved one is sent today).
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it

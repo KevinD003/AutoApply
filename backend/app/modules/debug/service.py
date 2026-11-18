@@ -806,7 +806,10 @@ def system(db: Session, user) -> dict:
         s.auto_apply_enabled,
         (RULE_WHY.get(why, why) if why else None) or off or spent or (HELD if held else None),
         note=f"At most {s.auto_apply_daily_cap} automatic approvals a day{every} "
-        f"(NOEFFORTS_AUTO_APPLY_DAILY_CAP); {rule.cap_used(db, user.id)} today.",
+        f"(NOEFFORTS_AUTO_APPLY_DAILY_CAP); {rule.cap_used(db, user.id)} today."
+        + (" Your recorded permission covers rehearsals only: it rehearses and submits nothing "
+           "until it covers submitting (step 4, D171)."
+           if why is None and live.permission_refusal(("submit",)) is not None else ""),
     ))  # fmt: skip
     why = inbox.available_for(db, user)
     if why == "not_connected" and s.sole_owner and not inbox.named_inbox_owner(user):

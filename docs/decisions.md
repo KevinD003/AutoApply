@@ -9104,7 +9104,8 @@ audit-inventory and export-completeness guards are updated and pass.
     the server's settings, not a step;
   - a recorded permission covering reading and filling but not submitting: the rule's submission
     is refused at the queue at each step (`queue_refused`, on the Tracker) while the pause says it
-    continues; such permissions are the owner's own records per step (D103a), none in force;
+    continues; such permissions are the owner's own records per step (D103a), none in force
+    (D171 replaces this: the rule rehearses, then holds such an application and says so);
   - `verdict` costs a handful of queries per paused application wherever it is shown (the feed,
     Questions, the Tracker's rows, the application's page): paused applications are few; batch
     the account-wide reads if that changes. The count leaves out a pause the rule continues while
@@ -9139,3 +9140,93 @@ audit-inventory and export-completeness guards are updated and pass.
     the time limit; dead code (`will_continue`, removed).
   - Each fixed with its test (135d1de), but those kept above.
 - **Each part is needed:** 48 changes on 135d1de, one at a time (worktrees of their own; the last 20 in two at once), D169's and D170's 51 tests run each time: each of the 46 changes named for a test fails it (174 failures among the 2,448 tests run). Not caught, by design: a final application examined too (the step returns at once for one, so the filter only saves the step), and the owner's preferences' explicit re-read (Kept). Earlier runs: 8 of 13 changes on e112f0c, each caught; 19 of 31 on 1422295, 18 caught (that re-read not).
+
+## D171 — With a permission for rehearsals only, the rule rehearses and stops before submitting, and says so (2026-11-18)
+
+- **Context:** the Greenhouse pilot's permission is recorded per step (D103a): 1 read the post,
+  2 open the form, 3 fill and check it (a rehearsal), 4 submit; the activation order records 1-3
+  first, then one rehearsal, then 4 (docs/activation-status.md). The standing rule (D113, on by
+  default since D168) acts with steps 1-3 (`owner_refusal`) and, once an employer path's
+  rehearsal held, approved the submission whatever step 4 said; the queue then refused it
+  (`enqueue`, D103), so the rule left an approval nothing used, and the Tracker said only "The
+  approved package could not be queued" (`queue_refused`). D170 kept this, while a paused
+  application under such a permission was shown as "continues it by itself" and never moved.
+  The owner asked for automatic applying to be on and to stop for nothing (2026-11-18): with a
+  permission that covers rehearsals only, the owner must see that nothing will be submitted,
+  why, and what each application waits for.
+- **Decided** (`autoapply/service.py`):
+  - **The rule's step** (`_submits_refused`): when an application's next approval would be a
+    submission on the pilot (its employer path's rehearsal held: the rehearsal prerequisite
+    exactly as the approval computes it, E6) and step 4 is not recorded, the rule approves
+    nothing and notes why, once (`submit_not_permitted`): "This employer's rehearsal held; your
+    recorded permission does not cover submitting (step 4), so it is not sent until it does."
+    So too once that rehearsal no longer counts (older than `rehearsal_max_age_days`, a newer
+    adapter version: `_rehearsed_before`): another one would enter the owner's data on the
+    employer's page again for nothing, use one of the permission's attempts, and spend a paused
+    application's try once more; once step 4 is recorded the rule rehearses again first (E6),
+    then submits. A rehearsal the path still needs is approved as before (steps 1-3 cover it).
+    Checked after the permission's attempt limit and before the daily cap (it approves nothing,
+    and "it continues tomorrow" would not be true), and before a paused application's version
+    is counted as tried once more (D169), so that try waits for step 4 too.
+  - **Followed to the end** (`_candidates`): every application the rule held for step 4 is
+    examined first in each tick, as D170's paused ones are: once step 4 is recorded it is
+    submitted at the next step, not whenever its job is among the newest again, long after the
+    owner may have applied by hand.
+  - **What the owner is shown** (`verdict`, `shown`): a paused application waits, with why, in
+    the step's own order (stopped, declined, unreadable, an open question, then
+    `submit_not_permitted`); when it waits for anything else and for step 4 too, the same words
+    say both ("…and your recorded permission covers submitting (step 4)", `rule_step4`). An
+    application the rule held with no pause is shown the same way on its page (a notice, and
+    the Submission card's "may still send this application" with how to take it over) and on
+    its Tracker row ("Waits for your permission to submit"; "Automatic applying continues it"
+    once step 4 is recorded); once final, or the owner's for good, its own words again. The
+    feed's "questions are waiting" says it submits nothing until step 4, and the rule's own
+    rehearsal no longer says "Approve again to submit". A pause's waiting message keeps one key
+    whatever the pause's status: the rule still reads a pause that waits for step 4, and a
+    second, identical message followed.
+  - **The Tracker's card** (`/auto-apply`, `submits`) and the owner's console: "Your recorded
+    permission covers rehearsals only: applications to employers it has not rehearsed with yet
+    are filled and checked, and nothing is submitted until it covers submitting (step 4)", also
+    while the rule is paused (what turning it on would do), not where it cannot act at all (its
+    own reason instead); the console's rule row says so too.
+- **Not changed:** every gate: the queue and the send gate still refuse a pilot submission
+  without step 4 (D103), and the owner's own approval to submit is refused there as before;
+  `SCHEMA_VERSION`; no migration. No permission was recorded: every one ended on 2026-11-06, so
+  nothing real is read or sent until the owner records one, in their own words, with its steps,
+  end date and attempt limit (docs/activation-status.md §4).
+- **Supersedes** D170's kept item on a recorded permission covering reading and filling but not
+  submitting.
+- **Kept, with the reason:**
+  - a recorded entry covers its steps for every approver: entries differ by approver only in
+    their words (D112's "approved there one at a time", D113's "the standing rule"), so an entry
+    recording step 4 for the owner's own approvals would let the rule submit too. None is in
+    force; an approver scope per entry, checked at each gate, changes the permission model and
+    every gate (a candidate in remaining work), and the next entry recorded must say which
+    approvals it covers;
+  - several applications to a new employer seen before its first rehearsal finishes are each
+    rehearsed (E6 counts no rehearsal still running), with any permission; the card says
+    "employers it has not rehearsed with yet";
+  - a submission queued before step 4 lapsed fills the page and is stopped at the send gate
+    (D103, `test_permission_to_disclose_is_not_permission_to_submit`): the application is then
+    the owner's for good (`stopped_after_entry`), never retried (CLAUDE.md);
+  - "This employer's rehearsal held" is not true for a path that needs no rehearsal (test
+    stand-ins only, `NOT_REQUIRED`);
+  - the event list's words for open questions ("it continues once they are answered") describe
+    that step; the application's page and row, and the card, say it waits for step 4;
+  - the check's adapter guard mirrors the queue's (the pilot only); the rule examines pilot
+    postings only, so no test reaches another adapter (its removal is not caught, by design);
+  - the owner's own approval to submit, offered on the application's page, is refused at the
+    queue under steps 1-3, as before D171, with words naming the permission;
+  - a waiting pause's message has a new key (without the pause's status), so one read before
+    D171 shows as new once.
+- **Reviews:** two independent reviewers, read-only, each given the code (c66cfb0). One
+  blocking: an application held for step 4 was left to the window of the newest jobs, stalled,
+  and sent when newer jobs closed. Should-fix: nothing tied to an application held with no pause
+  said so (its page and row invited approving or applying by hand); the verdict's order hid an
+  open question or an unreadable post behind step 4, and the other reasons' words promised
+  continuing without it; a rehearsal that no longer counted was repeated every 30 days under
+  steps 1-3; the daily cap was noted before step 4 ("it continues tomorrow"); the records.
+  Minor: a second, identical message after the rule's read; the card's line hidden while
+  paused; the console; the card's words; a shadowed name; an unordered test helper. Each fixed
+  with its test (eb5f6fd), or kept above with the reason.
+- **Each part is needed:** 27 changes on eb5f6fd, one at a time (two worktrees of their own at once), D171's tests with D113's flow, D169's first test and the console's run each time (11 tests): each of the 26 changes named for a test fails it (63 failures among the 297 tests run). Not caught, by design: the pilot-only guard (Kept). Its frontend parts, each spec run with the file changed: the 3 of c66cfb0 and the 5 the fixes added, each caught on its own assertion. Before the reviews (c66cfb0): 9 changes, each of the 8 named caught (14 failures among the 45 tests run).

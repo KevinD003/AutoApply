@@ -54,6 +54,48 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## With a permission for rehearsals only, the rule rehearses and stops before submitting (D171, 2026-11-18; local only)
+
+A follow-up of D169 and D170 (the owner's words of 2026-11-18, which D169 quotes). Product
+changes:
+
+- `app/modules/autoapply/service.py`: `_submits_refused` (the pilot's step 4 not recorded while
+  the application's next approval would be a submission: the rehearsal prerequisite as the
+  approval computes it, or a rehearsal on the path held before, `_rehearsed_before`);
+  `_advance` approves nothing then and notes `submit_not_permitted` (before the daily cap and
+  before a paused application's try once more is used); `_candidates` follows every
+  application held so first; `verdict` in the step's own order, also for an application held
+  with no pause; `withholds_submission`, `held_for_submission`, `shown` (`rule`, `rule_why`,
+  `rule_step4`); the reason's words.
+- `app/modules/notifications/service.py` (step 4 said with any other waiting reason; one key
+  whatever the pause's status; "questions are waiting" and the rule's rehearsal item),
+  `autoapply/router.py` (`submits`), `applications/router.py` (each row's `rule_why`,
+  `rule_step4`), `preparation/router.py` and `preparation/questions.py` (`shown`),
+  `debug/service.py` (the rule's row).
+- `frontend/src/lib/pauseWords.js` (the words, `heldWords`), `components/AutoApplyCard.jsx` (the
+  card's line), `applications/[id]/page.jsx` (the notice for one held with no pause),
+  `questions/page.jsx`, `ui/status.js` (the Tracker's "Waits for your permission to submit");
+  `e2e/questions.spec.ts`, `e2e/auto-apply-pause.spec.ts`.
+
+No migration; no new state; no retry after disclosure; `SCHEMA_VERSION` unchanged. No permission
+was recorded. Nothing was run against a real page. `scripts/validate.sh all` was not run (it runs
+the whole backend and e2e suites); the whole backend suite, the full e2e suite, ruff, tsc and
+eslint were.
+
+| Check (branch `rehearsal-only`, from main at 76178ed) | Command | Result |
+|---|---|---|
+| The first version (c66cfb0): its tests; the automatic-applying, notification, console and doc-reference suites | `test_auto_apply.py -k d171`; four suites (JUnit) | 3 passed; exit 0, 112 passed |
+| Its browser checks (c66cfb0) | `questions.spec.ts`, `auto-apply-pause.spec.ts` (desktop and mobile) | 8 passed (1.5 minutes) |
+| Its parts changed in turn (c66cfb0) | 9 backend changes, one at a time, the D171 tests with D113's flow and D169's first test run; 3 frontend changes, each spec run; each file restored | each of the 8 backend changes named for a test fails it (14 failures among the 45 tests run); the pilot-only guard not, by design; each frontend change caught on its new assertion |
+| Two independent reviews (c66cfb0) | read-only, each given the code | one blocking, five should-fix, several minor (D171, Reviews); fixed in eb5f6fd with their tests, or kept with the reason |
+| After the fixes: the D171 tests | `test_auto_apply.py -k d171` (JUnit) | 8 passed |
+| The suites the change touches (the fixes, before eb5f6fd's last simplification of `shown`) | 20 suites (JUnit) | exit 0, 456 passed, none failed or skipped |
+| Its browser checks (the fixes) | `questions.spec.ts`, `auto-apply-pause.spec.ts` (desktop and mobile) | 8 passed (1.0 minute) |
+| Each part changed in turn (eb5f6fd) | 27 backend changes, one at a time (two worktrees at once), the D171 tests with D113's flow, D169's first test and the console's run (11 tests); 5 frontend changes, each spec run; each file restored | each of the 26 backend changes named for a test fails it (63 failures among the 297 tests run); not caught, by design: the pilot-only guard (D171, Kept); each frontend change caught on its own assertion |
+| The full e2e suite (eb5f6fd) | `npx playwright test` | exit 0; 198 passed, 3 skipped (15.6 minutes) |
+| The whole backend suite (eb5f6fd) | `pytest` on all 179 test files in two halves at once, each with a database and ports of its own (JUnit) | both exit 0: 7,144 passed, none failed or skipped (2,698 in 69 minutes and 4,446 in 63 minutes) |
+| Lint and types | `ruff check .`, `ruff format --check .`, `npx tsc --noEmit`, `npm run lint` | clean |
+
 ## A paused application is the rule's to continue, waits for it, or is yours for good (D170, 2026-11-18; local only)
 
 A follow-up of D169 (the owner's words of 2026-11-18, which D169 quotes), from its reviews.
@@ -101,6 +143,7 @@ backend suite, the full e2e suite, ruff, tsc and eslint were.
 | Each part changed in turn (135d1de) | 48 changes, one at a time (a worktree of its own), D169's and D170's tests run, the file restored | each of the 46 changes named for a test fails it (174 failures among the 2,448 tests run, 51 per change); not caught, by design: a final application examined too (the step returns at once for one) and the preferences' explicit re-read (D170, Kept) |
 | The full e2e suite on cf54e2a | `npx playwright test` | exit 0; 196 passed, 3 skipped (16.5 minutes), with `questions.spec.ts`'s new checks |
 | After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_auto_apply.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 116 passed in 235 s with the records; `ruff format .` formatted nothing, `ruff check .` found nothing, and the format check passed |
+| PR CI (#79, with D169) on ecb50b4 | the four jobs | all four passed (the backend job in 126 minutes); #79 merged (76178ed, tree as predicted) |
 
 ## The standing rule continues an application after a form change (D169, 2026-11-18; local only)
 
