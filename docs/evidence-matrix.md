@@ -9,6 +9,28 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## The owner's console: one application from start to finish, every switch and why; sole-owner mode (D168, 2026-11-17; local only)
+
+Nothing here ran against a real page or mailbox. Branch `process-debugger`. In
+`tests/test_debug_console.py` unless named otherwise; the pages in Chromium in
+`frontend/e2e/debugger.spec.ts` (desktop and mobile).
+
+| Claim | Test | Result |
+|---|---|---|
+| One application traced from its form read to its receipt, every step in order by the moment | `test_a_submitted_application_is_traced_from_capture_to_its_receipt`, `test_the_timeline_puts_every_step_in_order`, `test_the_timeline_orders_by_the_moment_not_by_how_the_time_is_written`, `test_what_the_standing_rule_decided_is_in_the_trace_with_its_words` | pass |
+| A rehearsal named by what its approval allowed; a form read's checkpoints, what the page sets and what is left empty | `test_a_rehearsal_is_named_by_what_its_approval_allowed`, `test_a_form_read_names_its_checkpoints_what_the_page_sets_and_what_is_left_empty` | pass |
+| Never a secret: no code, key, token, password, keyed reference, private note or answer's stored value | `test_a_verification_code_never_appears`, `test_a_private_note_and_the_keyed_references_are_never_served`, `test_no_keyed_reference_is_served`, `test_every_switch_is_shown_and_never_a_secret` | pass |
+| Read-only, app-only, and another account's a 404 or nothing | `test_the_console_changes_nothing`, `test_the_console_is_never_reachable_with_an_api_token`, `test_another_account_s_application_is_a_404`, `test_another_account_sees_nothing_of_mine_from_any_source` (with sole-owner mode off and on) | pass |
+| Activity: the newest steps of every kind, by the moment, each linked to its trace | `test_activity_lists_this_account_s_steps_newest_first`, `test_another_account_sees_nothing_of_mine_from_any_source` | pass |
+| Each switch as its own gate decides it | `test_each_feature_says_why_as_its_own_gate_decides` | pass |
+| The recorded permissions, missing settings and environment to the owner alone; each permission as `covers` reads it | `test_only_the_owner_sees_the_permissions_and_what_each_switch_needs`, `test_the_shipped_permissions_are_shown_as_the_gates_read_them`, `test_a_permission_running_or_not_yet_started_is_shown_as_such` | pass |
+| Sole-owner mode on by default outside tests; every account served and the owner's; no other gate opens | `test_sole_owner_is_on_by_default_outside_tests_and_off_when_set`, `test_in_sole_owner_mode_every_account_is_the_owner_s`, `test_sole_owner_mode_opens_no_gate`, `test_d113_defaults_are_on_outside_tests_and_explicit_settings_win` (`test_auto_apply.py`) | pass |
+| Each account reads only a mailbox it connected itself, never the server's in its place, even when its own disappears mid-read | `test_in_sole_owner_mode_an_account_reads_only_a_mailbox_it_connected`, `test_in_sole_owner_mode_a_mailbox_gone_mid_read_is_never_the_server_s` | pass |
+| One daily cap for every account, and each account's page counts it | `test_d168_in_sole_owner_mode_one_daily_cap_counts_every_account` (`test_auto_apply.py`) | pass |
+| The pages: Account → Debugger, the trace from the review page, another account's not found, nothing wider than the screen | `frontend/e2e/debugger.spec.ts` | 4 passed |
+| Every other flow unchanged | the suites the change touches; the regression set; the full e2e suite | pass (`docs/implementation-status.md`) |
+| Each part is needed | 57 changes, one at a time (`docs/implementation-status.md`) | each fails the tests named for its part |
+
 ## Your licences and certifications fill a Workday-style Certifications section (D167, 2026-11-17; local only)
 
 Nothing here ran against a real page. Branch `workday-certifications`. The runs drive capture,

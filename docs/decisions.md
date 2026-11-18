@@ -8764,3 +8764,108 @@ audit-inventory and export-completeness guards are updated and pass.
   - The issuer: the entry does not ask it.
   - A required mark only a style sheet or the page's script shows.
   - **Never seen on a real page.**
+
+## D168 — An owner's console: one application traced from start to finish, every switch and why; sole-owner mode (2026-11-17)
+
+- **Context:** the owner's words (2026-11-17): "Add a debugger to the automatic job application
+  process. Assume I am the owner; treat any account I use new or existing as the owner. Every
+  account should include all features, such as auto application, submission, auto filling,
+  searching, and more. Consider me the sole owner of this software for now. I want to review the
+  entire process from start to finish. Provide access to all functions, including beta, test, or
+  production settings. Everything should be enabled." D113 and D114 had already turned on, by
+  default outside tests, every switch that needs no credential (Freehire discovery, the
+  Greenhouse pilot's switch, the standing rule, the inbox, employer boards) and served every
+  account; what stayed the named owner's was the mailbox and the standing rule's default (on
+  only for an account named in `NOEFFORTS_LIVE_OWNER_EMAILS`, off for every other until it
+  chose). Nothing showed, in one place, why a step did or did not happen.
+- **Decided:**
+  - **Sole-owner mode** (`Settings.sole_owner`, `NOEFFORTS_SOLE_OWNER`; on by default outside
+    tests, `_d113_defaults`, off in tests; `.env.example`, `docker-compose.yml`): every account
+    on the server is served (`accounts.named`) and is the owner's (`accounts.owner`):
+    - the standing rule is on for each account until that account pauses it, and the rule's
+      worker examines every account;
+    - **one daily cap for all of them** (`autoapply.cap_used`): the owner's cap counts every
+      account's approvals, from the count to the approval one account's step at a time (a
+      transaction lock taken after the account's own lock and before any row lock); each
+      account's page shows that count ("across every account");
+    - the Gmail features (`inbox.is_inbox_owner`): each account may connect Gmail from the app
+      (D128) and use the code and application-email features, **reading only a mailbox it
+      connected itself**: the server's own token file (connect.py's `inbox_token_file`) is read
+      only for the account named in `inbox_owner_emails` (`named_inbox_owner`,
+      `owner_token_file`). A reader is built only on the file it is given (no fallback), and the
+      file is looked up once per read, so one that disappears mid-read (a disconnect at that
+      moment) reads nothing, never the server's mailbox in its place (`check`, `fill_codes`,
+      `inbox_tick`);
+    - each account still sees only its own records.
+  - **No other gate opens with it.** Real submission still needs the owner's approval of the
+    exact package or the standing rule within its limits (every answer from approved facts and
+    answers, rehearsal first per employer path, the daily cap), production mode, container
+    isolation and the owner's recorded permission (`app/core/authorizations.py`); a code from
+    mail still needs the recorded permission. Every recorded permission ended on 2026-11-06, and a
+    request for features is not a permission (the register's own rule): none was added, so
+    nothing real is read, opened, filled or sent until the owner records one in their own words,
+    with its steps, end date and limit. AI drafting, email reminders, connecting Gmail and Google
+    Drive still need their credentials (and drafting its budget). Anyone who can reach the server
+    can sign up and is then treated as the owner: the console warns, and the shipped Compose file
+    binds to 127.0.0.1. (The next permission recorded for the pilot must say whose packages it
+    covers: in sole-owner mode, every account's, and each account's attempts count against its
+    one shared limit, D112.)
+  - **The console** (`app/modules/debug`; app-only, an API token refused; read-only, tested: no
+    row anywhere changes; every query scoped to the signed-in account; another account's
+    application a 404):
+    - `/debug/system` (the Debugger page, from Account): each switch as it applies to this
+      account, judged by the gate that decides it: on or off, working or not, why not in that
+      gate's words (the pilot's, including its attempt limit used and a permission that covers
+      rehearsals but not submitting; the standing rule's, telling "never turned on" from
+      "paused"; the inbox's, including both of the account's switches off, a revoked token, and
+      "connect your own Gmail"; connecting Gmail for an account not the owner's; AI drafting by
+      `provider_for`, including a model NoEfforts cannot price; the stand-ins outside the test
+      environment); what a feature still needs (a setting's name, never its value); the
+      warnings: sole-owner mode, a restore holding the database (D147), no recorded permission
+      covering a real employer's site, nothing permitting a real mailbox to be read (the
+      register and the account's own consent in the app, D127); the rules that always apply.
+      **To the server's owner only** (every account in sole-owner mode): the recorded
+      permissions in the owner's own words with their steps, end dates, attempt limits and use,
+      and state as `covers` reads it (active, ended, not yet started); which settings are
+      missing; how the server runs. Every account sees its own consents in the app.
+    - `/debug/activity`: the newest steps of every kind across the account's jobs (the
+      standing rule's decisions, status changes, forms read, approvals, attempts queued and
+      ended, rehearsals named as such, pauses, emails, AI drafts, and at most 25 postings found),
+      by the moment, each named by its job and linked to its application's trace; it reads only
+      the columns it shows.
+    - `/debug/applications/{id}` (Process trace; "Debug this application" on the review page):
+      the job's arrival and where it was found; each form read (its checkpoints as
+      `form_checkpoint` decides them, a location search's value the page sets, the optional
+      controls left empty and an optional phone left blank); each package (answers as the review
+      page shows them, never their stored value; its destination, documents and consents); AI
+      drafts (never their text); approvals and their expiry; the standing rule's decisions in its
+      words; status changes; each attempt (a rehearsal named by its approval's scope, whatever
+      came of it; its events, evidence, waits, queue messages, and its rehearsal record with
+      whether it still holds or was withdrawn); pauses and how each ended; emails; the audit log;
+      all in one timeline ordered by the moment, never by the text of a time.
+  - **Never served:** a verification code, a token, key or password (only whether a setting is
+    set), a keyed reference (the audit log's `ref:v2:`, an attempt's path, an email's message or
+    thread; every stored JSON value passes the data export's scrubbing, `export._scrub`), an
+    outcome's private note (the application's own page shows it), an email's or a draft's text.
+    There is no screenshot, trace or raw page to show: execution keeps none (CLAUDE.md).
+- **Not changed:** CLAUDE.md's rules, every gate but the standing rule's default and cap scope,
+  `SCHEMA_VERSION`; no migration, state, reason code, permission or retry.
+- **Reviews** (two independent reviewers, read-only, each given the code and not the author's
+  conclusions; on df08d96):
+  - **Security:** a mailbox read could fall back to the server's token file for an account in
+    sole-owner mode whose own file vanished between the check and the read (`reader("")`), so
+    it could read the owner's mail; "every gate unchanged" was not true (the cap counted per
+    account, so more accounts meant more approvals a day against one shared permission); tests
+    that would pass with their protection removed; the recorded permissions and the list of
+    missing settings went to every account; the console's scrubbing was weaker than the
+    export's; the docs. Each fixed, with its test (92e9b1a, 61e1c83).
+  - **Correctness:** the warning said no real mailbox is read while an account's own consent
+    allowed it; the pilot and the rule read "working" with the permission's attempt limit used;
+    a failed rehearsal read as an attempt; the stand-ins read "working" outside tests; the new
+    nav entry was half cut off on every desktop width (moved to the Account page); the activity
+    list loaded every job and could be drowned by one import; Gmail, drafting, the inbox and the
+    rule's off state named the wrong cause; the timeline sorted the text of times; missing
+    steps; legacy outcome rows. Each fixed, with its test, in the same commits.
+  - **Kept:** registration stays open (the owner's words cover new accounts), with the warning;
+    the cap's lock across accounts is not exercised by a test (a race between two workers).
+- **Each part is needed:** 57 changes on 61e1c83, one at a time (a worktree of its own), each run with the tests named for its part: every one fails them (74 failures among the 74 tests run). The trace's account check alone was not caught at first: the trace checks the account twice (the application's and its job's), so removing one leaves the other; removed together, all three named tests fail.

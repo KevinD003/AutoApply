@@ -120,7 +120,9 @@ def paused(db: Session, user: User) -> bool:
 _RULE_LOCK = 7_402_113
 # D168: in sole-owner mode one daily cap counts every account's approvals; one account's step at
 # a time from that count to its approval (this class, key 0), released when the step commits.
-# Taken after the account's own lock and before any row lock; nothing takes them the other way.
+# Taken last, after the account's own lock and its application's row lock. Only rule steps take
+# it, each holding only its own account's rows, so a step waiting for it holds nothing a step
+# holding it needs.
 _CAP_LOCK = 7_402_168
 
 
