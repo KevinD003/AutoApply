@@ -343,6 +343,107 @@ def test_d169_a_read_that_fails_leaves_the_pause_and_is_tried_again_a_day_later(
     assert events(job)[-2] == ("continued", "form_tried_again")
 
 
+def test_d169_a_pause_recorded_while_the_rule_reads_the_form_stops_its_step(
+    api, receiver, monkeypatch
+):
+    # Reading the form commits, which ends the step's hold on the account; a pause recorded
+    # meanwhile is read before the rule changes the pause or approves anything.
+    job, app_id = rehearsal_queued(api)
+    receiver.config(mode="gh2_options_changed")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
+    capture = service._capture
+
+    def read_then_pause(db, user, j):
+        ok = capture(db, user, j)
+        with SessionLocal() as other:
+            service.set_paused(other, user.id, True)
+            other.commit()
+        return ok
+
+    monkeypatch.setattr(service, "_capture", read_then_pause)
+    before = len(approvals(app_id))
+    assert tick() == 0
+    assert len(approvals(app_id)) == before and events(job)[-1][0] != "continued"
+    (p,) = pause_rows(app_id)
+    assert (p.status, p.resolution) == ("open", None)  # untouched: the owner paused the rule
+
+
+def test_d169_after_reading_the_form_the_rules_step_holds_the_account_again(
+    api, receiver, monkeypatch
+):
+    # A pause waits for the rest of the step (D134), as it does for the step's first part.
+    job, app_id = rehearsal_queued(api)
+    receiver.config(mode="gh2_options_changed")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
+    waited = []
+    unresolved = pk.unresolved_pause
+
+    def probe(db, app_uuid, *, lock=False):
+        if lock and not waited:
+            with SessionLocal() as other:
+                other.execute(text("SET lock_timeout = '300ms'"))
+                try:
+                    service.set_paused(other, owner_id(), True)
+                    waited.append(False)
+                except DBAPIError:
+                    waited.append(True)
+                other.rollback()
+        return unresolved(db, app_uuid, lock=lock)
+
+    monkeypatch.setattr(pk, "unresolved_pause", probe)
+    assert tick() == 1 and waited == [True]
+    assert events(job)[-2] == ("continued", "form_tried_again")
+
+
+def test_d169_trying_again_yourself_while_the_rule_does_waits_and_it_happens_once(
+    api, receiver, monkeypatch
+):
+    # The rule changes a pause under the application's lock, as the owner's routes do: "Try this
+    # version again" clicked during the rule's step waits, then finds it already done. One
+    # dismissal, one approval, no deadlock.
+    from fastapi import HTTPException
+
+    from app.modules.preparation import router as prep
+    from tests.test_lock_order import Hold, Side, lock_waiters, no_errors, wait_until
+
+    job, app_id = rehearsal_queued(api)
+    receiver.config(mode="gh2_options_changed")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
+    out = api.post(f"/applications/{app_id}/form/recapture").json()  # the owner read it: no change
+    assert out["pause"]["status"] == "unexplained"
+    before = len(approvals(app_id))
+    hold = Hold("rule")  # held once it has read the pause under its locks
+    held = hold.wrap(pk.unresolved_pause, after=True, when=lambda r: r is not None)
+    monkeypatch.setattr(pk, "unresolved_pause", held)
+
+    def owner_tries_again():
+        with SessionLocal() as db:
+            try:
+                return prep.dismiss_pause(uuid.UUID(app_id), user=db.get(User, owner_id()), db=db)
+            except HTTPException as e:
+                return e.detail
+
+    try:
+        rule = Side("rule", tick)
+        assert hold.reached.wait(30), "the rule never reached the pause"
+        waiting = lock_waiters()
+        owner = Side("owner", owner_tries_again)
+        wait_until(lambda: lock_waiters() > waiting or not owner.thread.is_alive(), "it waits")
+        assert owner.thread.is_alive(), (owner.error, owner.result, "it did not wait")
+    finally:
+        hold.go.set()
+    rule.join(), owner.join()
+    no_errors(rule, owner)
+    assert rule.result == 1 and "no_pause" in str(owner.result)
+    (p,) = pause_rows(app_id)
+    assert (p.status, p.resolution) == ("closed", "dismissed")
+    assert len(approvals(app_id)) == before + 1
+    assert events(job)[-2:] == [
+        ("continued", "form_tried_again"),
+        ("approved_rehearsal", "rehearsal_queued"),
+    ]
+
+
 def test_another_account_never_sees_or_triggers_the_owners_rule(api, other_api, receiver):
     pilot_on()  # the owner is the `api` account; `other_api` is not named
     synthetic_candidate(other_api)
