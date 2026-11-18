@@ -1857,7 +1857,8 @@ def test_d172_your_own_step_4_never_lets_the_rule_submit(api, receiver):
     assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
     assert runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
     assert tick() == 0 and events(job)[-1] == ("skipped", "submit_not_permitted")
-    assert api.get("/auto-apply").json()["submits"] is False
+    state = api.get("/auto-apply").json()
+    assert (state["submits"], state["submits_yours"]) == (False, True)  # yours is still sent
     p = api.get(f"/applications/{app_id}/package").json()["package"]
     body = {"version": p["version"], "content_hash": p["content_hash"], "scope": "submit"}
     assert api.post(f"/applications/{app_id}/package/approve", json=body).status_code == 200
