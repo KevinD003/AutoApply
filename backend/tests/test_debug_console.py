@@ -488,6 +488,12 @@ def test_d172_each_row_reads_the_permissions_for_its_own_approvals(api, monkeypa
     assert "not the final submit" in pilot["note"]
     assert rule["why"] is None and "covers rehearsals only" not in rule["note"]
     assert [p["approvers"] for p in v["permissions"]] == [["owner"], ["rule"]]
+    # Steps 1-3 for the rule's, every step for yours: the rule's row says it rehearses only.
+    pilot_on(permitted=("read", "open", "disclose"), approvers={authorizations.RULE})
+    pilot_add(PILOT_PERMISSIONS, approvers={authorizations.OWNER})
+    v = api.get("/debug/system").json()
+    assert "covers rehearsals only" in feature(v, "auto_apply")["note"]
+    assert feature(v, "greenhouse_pilot")["note"] is None
 
 
 def test_each_feature_says_why_as_its_own_gate_decides(api, other_api, monkeypatch, tmp_path):
