@@ -94,6 +94,7 @@ eslint were.
 | Each part changed in turn (eb5f6fd) | 27 backend changes, one at a time (two worktrees at once), the D171 tests with D113's flow, D169's first test and the console's run (11 tests); 5 frontend changes, each spec run; each file restored | each of the 26 backend changes named for a test fails it (63 failures among the 297 tests run); not caught, by design: the pilot-only guard (D171, Kept); each frontend change caught on its own assertion |
 | The full e2e suite (eb5f6fd) | `npx playwright test` | exit 0; 198 passed, 3 skipped (15.6 minutes) |
 | The whole backend suite (eb5f6fd) | `pytest` on all 179 test files in two halves at once, each with a database and ports of its own (JUnit) | both exit 0: 7,144 passed, none failed or skipped (2,698 in 69 minutes and 4,446 in 63 minutes) |
+| PR CI (#80) on 51132e8 | the four jobs | all four passed (the backend job in 121 minutes); #80 merged (1864450, tree as predicted) |
 | Lint and types | `ruff check .`, `ruff format --check .`, `npx tsc --noEmit`, `npm run lint` | clean |
 
 ## A paused application is the rule's to continue, waits for it, or is yours for good (D170, 2026-11-18; local only)
