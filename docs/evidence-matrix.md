@@ -9,6 +9,24 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## A paused application is the rule's to continue, waits for it, or is yours for good (D170, 2026-11-18; local only)
+
+Nothing here ran against a real page. Branch `continue-checks` (on `rule-continues`). In
+`tests/test_auto_apply.py` (`test_d170_*`, and D169's tests where D170 changed their end), against
+the Greenhouse-style stand-in playing a real board through the pilot; the receiver's own ledger is
+the oracle for what reached the employer. Each "shown" claim is checked on every surface: the feed,
+Questions (item and count), the application's page and the Tracker's row.
+
+| Claim | Test | Result |
+|---|---|---|
+| A paused application is examined whatever its job's age, first in each tick, also once its pause has ended: tried once more, rehearsed, then submitted once; a new question its read found asked for, then approved | `a_paused_application_is_continued_whatever_its_jobs_age`, `a_paused_application_is_followed_after_its_pause_whatever_its_jobs_age` | pass |
+| Waits, with why, never in D132's words: stopped (paused, no recorded permission, its attempts used up, no approval a day, which reads nothing), declined (a possible duplicate, a checked preference; never read meanwhile), unreadable (a read failed since the pause, or within a day before it), questions (an answer it needs cleared): each continued by itself once lifted | `a_paused_application_on_a_possible_duplicate_waits_until_that_changes`, `a_paused_application_an_unmet_preference_rules_out_waits_until_it_is_met`, `a_pause_waits_for_the_rule_while_automatic_applying_is_stopped`, `a_post_unreadable_since_the_pause_waits_and_is_read_again_a_day_later`, `a_read_held_by_a_recent_failure_is_shown_as_unreadable`, `a_try_that_waits_for_your_answer_says_so` | pass |
+| Yours for good: a final or revoked application, a restore, a job never examined, a page that kept changing whatever a later read finds (the rule's read or the owner's), what D132 handed over (the upgrade), a pause made while the account was not the owner's (then sole-owner mode switched on), and neither the owner's read nor their try hands it back | `a_final_application_is_never_shown_as_continued`, `a_pause_on_an_application_begun_before_a_restore_is_yours`, `a_pause_while_a_restore_is_unresolved_is_yours`, `a_pause_on_a_job_the_rule_never_examines_is_yours`, `a_page_that_kept_changing_is_yours_whatever_a_later_read_finds`, `the_owners_own_read_finding_no_difference_counts_as_the_rules`, `the_upgrade_leaves_every_application_paused_before_it_to_its_owner`, `a_pause_made_while_the_account_was_not_the_owners_stays_its_own`; D169's `a_change_a_read_cannot_see_is_tried_once_then_left_to_you`, `a_page_that_keeps_changing_is_yours_after_three_stops` | pass |
+| A decline is judged before any read and as it is now: a job its signals or preferences rule out is never read; a preference checked or the job closed during the read, or the job closed just before the approval, declines it | `a_job_the_rule_declines_is_never_read_for_it`, `a_job_ruled_out_while_its_post_is_read_is_declined_after_the_read`, `a_job_closed_while_its_post_is_read_is_declined_after_the_read`, `a_job_closed_just_before_the_rules_approval_is_not_approved` | pass |
+| A read needs the permission as it is now (a paused application and a new job); the task's time limit ends the tick, also while queueing (nothing kept); a refused queue is no try; each account examines only its own, and none makes an application on another's job | `a_read_needs_the_permission_as_it_is_now`, `the_tasks_time_limit_stops_the_rule_at_once`, `the_tasks_time_limit_during_queueing_ends_the_tick`, `a_refused_queue_is_not_the_try_once_more`, `each_account_examines_only_its_own_paused_applications` | pass |
+| One message per application; the Questions count leaves out what the rule continues | `the_feed_never_says_it_continues_beside_a_pause`, `the_questions_count_leaves_out_what_the_rule_continues` | pass |
+| In the browser: the Questions card's words for each verdict (continues, waits stopped and declined, yours), the application's notice and Submission card, the Tracker's row | `questions.spec.ts` (desktop and mobile) | pass |
+
 ## The standing rule continues an application after a form change (D169, 2026-11-18; local only)
 
 Nothing here ran against a real page. Branch `rule-continues`. In `tests/test_auto_apply.py`

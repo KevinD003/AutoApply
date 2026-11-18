@@ -61,7 +61,8 @@ The target is Greenhouse and Workday, with the 14 acceptance workflows below for
 | D166 a Workday-style Websites section filled from your profile's links | merged (#75, f927e8f, tree as predicted); its PR CI passed all four jobs on d52880e |
 | D167 a Workday-style Certifications section filled from your licences and certifications | merged (#77, 9991ed8, tree as predicted); its PR CI passed all four jobs on e6015a4 |
 | D168 the owner's console (every switch and why, one application traced from start to finish) and sole-owner mode | merged (#78, aaf3bac, tree as predicted); its PR CI passed all four jobs on a827960 (on 5fab3fd the backend job failed one test: the console wrote a support label itself; fixed) |
-| D169 the standing rule continues an application after a form change (the owner's accounts) | branch `rule-continues` (from D168's branch; main with #78 merged in at f9f0913); reviewed twice; not merged |
+| D169 the standing rule continues an application after a form change (the owner's accounts) | branch `rule-continues` (from D168's branch; main with #78 merged in at f9f0913); reviewed twice; PR #79, its CI passed all four jobs on b1b1f34; held to merge with D170 |
+| D170 a paused application is the rule's to continue, waits for it (and why), or is yours for good | branch `continue-checks` (on `rule-continues`); two rounds of two independent reviews; to merge with D169 (#79) |
 | Outcome state | Not complete. Every item below is at most **synthetic-fixture**. Live verification is **blocked externally** (see Blockers) |
 
 ## Acceptance matrix (2026-11-06)
@@ -382,6 +383,20 @@ acceptance inventory. Ranked slices are in `docs/remaining-work.md`.
     adapter's three, with further weaknesses. Fixed (26e6cdc, 30766a5), each with a test;
     the rest recorded in D152. The receiver's reset now clears D145's ticker, which went on
     changing the pages of later tests.
+
+- **D170 (branch `continue-checks`, on D169's; not merged).** What the rule does with a paused
+  application, on every surface, and kept:
+  - three outcomes (`verdict`): continues; waits, with why (stopped, declined, unreadable, an
+    open question), never in D132's words and with how to take it over; yours for good, judged
+    only from facts no later step changes (a no-difference read kept in `unexplained_at`; the
+    account not the owner's recorded with its pause; a migration for pauses before D169);
+  - every application that ever paused is followed to the end whatever its job's age, first in
+    each tick; declines judged before any read and as they are now; a read needs the permission
+    as it is now; a refused queue is no try; the time limit ends the tick; never another
+    account's job; a daily cap of 0 stops the rule;
+  - two rounds of two independent reviews (the first replaced the design; the second found a
+    stalled application sent long after the owner was told not to apply, among others): each
+    fixed with its test; the whole backend suite: 7,135 passed on 135d1de.
 
 - **D169 (branch `rule-continues`, not merged).** The owner's words of 2026-11-18 ("Do not
   pauses anything. Make it enable for the auto application"), deciding what rank 3 left open:
@@ -779,6 +794,8 @@ your current approved licences and certifications.
 and sole-owner mode, in which every account is the owner's.
 **D169** (the owner's decision, on its branch) lets the standing rule continue an
 application after a form change, before anything was entered.
+**D170** (on D169's branch) shows with each paused application what the rule does with
+it (continues, waits and why, or yours for good) and keeps what is yours.
 Every ranked
 slice left after it waits on an owner decision; next, the candidates under Exact next
 action.
@@ -875,6 +892,12 @@ action.
   wait for the page to settle; the check after filling stops such an attempt), one marked
   required only by a label's asterisk, one a later wizard page reveals on an earlier one,
   several levels of follow-ups, and anything real.
+- **D170 (branch `continue-checks`):** the new tests (the receiver's ledger as the oracle),
+  the suites the change touches, the removal runs, the whole backend suite and the full e2e
+  suite, locally (Tests run below). Not tested: a real page; two workers racing for one
+  paused application (the rule's row locks are exercised by D169's tests only); the
+  migration's hand-over run by `alembic upgrade` over real rows (its data step is run on rows
+  the app makes; its schema step by the empty-to-head and down-and-up tests).
 - **D169 (branch `rule-continues`):** the new tests (the receiver's ledger as the oracle),
   the suites the change touches, the removal runs, the regression set, the suites that scan
   the whole repository, the whole backend suite and the full e2e suite, locally (Tests run
@@ -1291,6 +1314,12 @@ action.
 | D169, the full e2e suite: `npx playwright test` on 8f210d3 (with `questions.spec.ts`'s new check) | exit 0; 196 passed, 3 skipped (14.5 minutes) |
 | D169, the suites that scan the whole repository (six, with the console's tests) on c19ccaa | exit 0, 260 passed |
 | D169, the whole backend suite on c19ccaa (two halves at once) | both halves exit 0: 7,108 passed, none failed or skipped (2,663 in 62 minutes and 4,445 in 57 minutes, run at once) |
+| D169, its PR's CI (#79) on b1b1f34: the four jobs | all four passed; held to merge with D170 |
+| D170, the first version (e112f0c): its tests and touched suites; Questions e2e; 8 of 13 removal changes | 549 passed; 4 passed; each caught; then its reviews replaced the design |
+| D170, the revision (fd93167): the 20 suites it touches with the six that scan the whole repository; Questions e2e (aafb853); 19 of 31 removal changes (1422295) | exit 0, 844 passed; 4 passed; 18 caught (the preferences' re-read not, by design) |
+| D170, after both reviews' findings (135d1de): `test_auto_apply.py`; the whole backend suite (two halves at once) | 71 passed; both exit 0: 7,135 passed, none failed or skipped (2,690 in 77 minutes and 4,445 in 71 minutes) |
+| D170, each part changed in turn: 48 changes on 135d1de | {SABRES_SHORT} |
+| D170, the full e2e suite on cf54e2a | {E2E} |
 
 ## Failed approaches and rejected designs
 
@@ -1406,11 +1435,10 @@ action.
 
 ## Exact next action
 
-1. D167 (branch `workday-certifications`, rank 34, your licences and certifications on
-   Workday): its pull request. Candidates after it: the Greenhouse pilot's own reads of
-   what its form sends (D159's attributes, D160's controls and final click); leaving
-   out one credential or link for one application (every current approved one is
-   sent today).
+1. D169 and D170 (PR #79, branches `rule-continues` and `continue-checks`): merge once its CI
+   passes on the head that carries D170. Candidates after it: the Greenhouse pilot's own reads
+   of what its form sends (D159's attributes, D160's controls and final click); leaving out one
+   credential or link for one application (every current approved one is sent today).
 2. Owner decisions: on a Workday-style wizard (D142), continuing after a stop, rehearsing then
    submitting, a permission per page or one approval, and whether the standing rule may drive
    one; the standing rule's consent text does not name self-identification, which it

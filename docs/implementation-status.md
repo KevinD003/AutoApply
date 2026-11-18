@@ -54,6 +54,54 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## A paused application is the rule's to continue, waits for it, or is yours for good (D170, 2026-11-18; local only)
+
+A follow-up of D169 (the owner's words of 2026-11-18, which D169 quotes), from its reviews.
+Product changes:
+
+- `app/modules/autoapply/service.py`: `verdict` (continues, waits and why, yours; `CONTINUES`,
+  `WAITS`, `YOURS`), `_candidates` (first every non-final application that ever paused on a
+  changed form, whatever its job's age), `_declined` (before any read and after a new job's read;
+  the job as it is now), `_may_read`, `limit_refusal`, `_questions_open`, `_read_failed_since`,
+  `_kept_changing` (from `unexplained_at`), `_yours` (never from the server's settings);
+  `run_for` re-raises Celery's soft time limit and does nothing with no approval allowed a day;
+  `_advance` never examines another account's job, re-raises the time limit while queueing and
+  rolls a refused queue back (no try); `capture_failed`'s words; `will_continue` removed.
+- `app/modules/execution/service.py`: `_hand_over_unless_owner` (D132's hand-over recorded with a
+  pause made while the account is not the owner's); `models.py`: `ApplicationPause.unexplained_at`;
+  migration `d170b0a8e3c1` (the column; a hand-over for every application paused before it, dated
+  when it last paused).
+- `app/modules/preparation/router.py` (the owner's read sets `unexplained_at`; the package view's
+  `rule`, `rule_why`), `preparation/questions.py` (items and count by `verdict`),
+  `preparation/package.py` (the approval reads the job as it is now), `notifications/service.py`
+  (each verdict's words; one message per application; a waiting pause links to its row in the
+  Tracker, an open question to Questions), `applications/router.py` (each row's `rule`),
+  `autoapply/router.py` (why the rule is stopped, its two limits among it), `account/export.py`
+  and `debug/service.py` (`unexplained_at`).
+- `frontend/src/lib/pauseWords.js` (the words), `questions/page.jsx`, `applications/[id]/page.jsx`
+  (the notice and the Submission card), `components/ExecutionCard.jsx`, `ui/status.js` (the
+  Tracker's "Automatic applying continues it"); `e2e/questions.spec.ts`.
+
+One migration; no new state, reason code for the owner's data or permission; no retry after
+disclosure; `SCHEMA_VERSION` unchanged. Nothing was run against a real page.
+`scripts/validate.sh all` was not run (it runs the whole backend and e2e suites); the whole
+backend suite, the full e2e suite, ruff, tsc and eslint were.
+
+| Check (branch `continue-checks`, from `rule-continues` at b1b1f34) | Command | Result |
+|---|---|---|
+| The first version (e112f0c): its tests and the suites it touches with the six that scan the whole repository; Questions in the browser | `pytest` (JUnit); `questions.spec.ts` (desktop and mobile) | exit 0, 549 passed; 4 passed |
+| Its removal runs and two reviews (e112f0c) | 13 changes, one at a time; two independent reviewers | 8 ran, each caught, then stopped: the reviews found the hand-over shown before it was recorded, and reasons the owner lifts made permanent, so the design was replaced (D170, Context) |
+| The revision's tests, as they were rewritten (the working tree) | `test_auto_apply.py` (JUnit) | a page that kept changing was judged by the mark a no-difference read left on the pause, which a later read overwrites (the owner's own read could hand it back): `unexplained_at` added. Judging it without D169's extra read failed D169's own tests (a visible change made later must be continued): not done |
+| The revision (fd93167): the suites it touches with the six that scan the whole repository | 20 suites (JUnit) | exit 0, 844 passed (21 minutes); `test_notifications.py`'s count of account-scoped queries raised by the one it adds |
+| Questions in the browser (aafb853) | `questions.spec.ts` (desktop and mobile) | 4 passed (1.0 minute) |
+| Its removal runs (1422295) | 31 changes, one at a time | 19 ran (18 caught; the preferences' re-read not, by design: D170, Kept), then stopped when the reviews' fixes changed the code |
+| Two independent reviews (fd93167) | read-only, each given the code | one blocking, four should-fix, the rest minor (D170, Reviews); fixed in 135d1de with their tests, or kept with the reason |
+| After the fixes | `test_auto_apply.py` (JUnit); `ruff check .`, `ruff format --check .`, `npx tsc --noEmit`, `npm run lint` | 71 passed (210 s); clean |
+| The whole backend suite on 135d1de | `pytest` on all 179 test files in two halves run at once, each with a database and ports of its own (JUnit) | both exit 0: 7,135 passed, none failed or skipped (2,690 in 77 minutes and 4,445 in 71 minutes) |
+| Each part changed in turn (135d1de) | 48 changes, one at a time (a worktree of its own), D169's and D170's tests run, the file restored | {SABRES_SHORT} |
+| The full e2e suite on cf54e2a | `npx playwright test` | {E2E} |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_auto_apply.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | {DOCS} |
+
 ## The standing rule continues an application after a form change (D169, 2026-11-18; local only)
 
 The owner's words of 2026-11-18, outside the ranked backlog: "Do not pauses anything. Make it
