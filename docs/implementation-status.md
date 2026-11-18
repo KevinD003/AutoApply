@@ -101,6 +101,7 @@ backend suite, the full e2e suite, ruff, tsc and eslint were.
 | Each part changed in turn (135d1de) | 48 changes, one at a time (a worktree of its own), D169's and D170's tests run, the file restored | each of the 46 changes named for a test fails it (174 failures among the 2,448 tests run, 51 per change); not caught, by design: a final application examined too (the step returns at once for one) and the preferences' explicit re-read (D170, Kept) |
 | The full e2e suite on cf54e2a | `npx playwright test` | exit 0; 196 passed, 3 skipped (16.5 minutes), with `questions.spec.ts`'s new checks |
 | After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_auto_apply.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 116 passed in 235 s with the records; `ruff format .` formatted nothing, `ruff check .` found nothing, and the format check passed |
+| PR CI (#79, with D169) on ecb50b4 | the four jobs | all four passed (the backend job in 126 minutes); #79 merged (76178ed, tree as predicted) |
 
 ## The standing rule continues an application after a form change (D169, 2026-11-18; local only)
 
