@@ -376,6 +376,7 @@ def _pause(p: ApplicationPause) -> dict:
         "package_version": p.package_version,
         "form_version": p.form_version,
         "recaptured_version": p.recaptured_version,
+        "unexplained_at": _iso(p.unexplained_at),
         "detail": scrub(p.detail),
     }
 

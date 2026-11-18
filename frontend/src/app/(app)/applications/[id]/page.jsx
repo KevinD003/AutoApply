@@ -1,5 +1,6 @@
 "use client";
 
+import { APPLIED_YOURSELF, RULE_CONTINUES, waitsWords } from "@/lib/pauseWords";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -239,11 +240,11 @@ export default function ReviewPage() {
               {view.pause.kind === "conditional_required"
                 ? "The employer's page asked a question it shows only after an earlier answer, and requires it, so NoEfforts stopped before submitting (your answers were already entered on the page). Answer it under Questions, then try this version again."
                 : view.rule === "continues" // D170: D132's words only when the application is yours
-                ? "The employer's form no longer matched what you approved, so NoEfforts stopped before sending anything. Your automatic applying continues it by itself: it reads the form again, or tries this version once more (the page is checked again before anything is entered); a new question waits for your answer under Questions. Do not apply on the employer's site meanwhile."
+                ? `The employer's form no longer matched what you approved, so NoEfforts stopped before sending anything. ${RULE_CONTINUES}`
                 : view.rule === "waits"
-                ? "The employer's form no longer matched what you approved, so NoEfforts stopped before sending anything. Your automatic applying is stopped now (the Tracker shows why); when it runs again, it continues this application by itself. If you apply on the employer's site yourself instead, first choose “I applied myself” for it in the Tracker, so it is never sent twice."
+                ? `The employer's form no longer matched what you approved, so NoEfforts stopped before sending anything. ${waitsWords(view.rule_why)}`
                 : view.pause.status === "unexplained"
-                ? "The employer's form no longer matched what you approved, and reading it again showed no difference NoEfforts can see. Try this version again under Questions, or apply on the employer's site."
+                ? `The employer's form no longer matched what you approved, and reading it again showed no difference NoEfforts can see. Try this version again under Questions, or apply on the employer's site ${APPLIED_YOURSELF}.`
                 : "The employer's form no longer matched what you approved, so NoEfforts stopped before sending anything. Read the form again under Questions and answer what is new; nothing can be approved until then."}
             </p>
             <p className="mt-1">

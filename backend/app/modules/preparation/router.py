@@ -531,6 +531,7 @@ def recapture_form(
         # Only the pause this read was for, as it is now (a concurrent read may have ended it,
         # and a newer pause was never read for).
         pause.status, pause.recaptured_version = "unexplained", out["version"]
+        pause.unexplained_at = utcnow()  # D170: kept, whatever a later read finds
     pkg = pk.ensure_current(db, app)
     last = _last_pause(db, app.id)
     record(db, user.id, "application.form_recaptured", "application", app.id,
@@ -616,13 +617,15 @@ def _last_pause(db: Session, app_id: uuid.UUID):
     )
 
 
-def _rule(db: Session, app: Application, pause) -> str | None:
-    """D170: the standing rule's verdict on a form-change pause (continues, waits, yours)."""
+def _rule(db: Session, app: Application, pause) -> dict:
+    """D170: the standing rule's verdict on a form-change pause: continues, waits (and why) or
+    yours."""
     from app.modules.autoapply.service import verdict
 
     if pause is None or pause.kind != "form_changed":
-        return None
-    return verdict(db, db.get(User, app.user_id), app)
+        return {"rule": None, "rule_why": None}
+    rule, why = verdict(db, db.get(User, app.user_id), app)
+    return {"rule": rule, "rule_why": why}
 
 
 def _pause_out(pause) -> dict | None:
@@ -765,7 +768,7 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
         "pause": _pause_out(pause := pk.unresolved_pause(db, app.id)),
         # D170: what the account's standing rule does with that pause (autoapply `verdict`), so
         # this page never invites applying by hand while the rule may still send it.
-        "rule": _rule(db, app, pause),
+        **_rule(db, app, pause),
         "recapture_available": _recapture_available(db, app),
         "history": [
             {

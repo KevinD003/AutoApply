@@ -256,7 +256,8 @@ def test_every_query_of_the_feed_is_scoped_to_the_account():
     # account: the pauses, the paused attempts left out of the attempt items, and the attempts
     # that end an automatic-applying item. D147 adds one, the account's own creation time, by its
     # own id; the restore it is compared with is read from the database's own stamp
-    # (`restore.restored_at`), which holds no account's data.
-    assert src.count("select(") == 13 and src.count("user_id == user_id") == 14
+    # (`restore.restored_at`), which holds no account's data. D170 adds one: the applications
+    # with an unresolved pause, whose pause item says what the rule does (`_auto_apply`).
+    assert src.count("select(") == 14 and src.count("user_id == user_id") == 15
     assert "select(User.created_at).where(User.id == user_id)" in src
     assert "at = restore.restored_at(db)" in src

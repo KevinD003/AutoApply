@@ -1,5 +1,6 @@
 "use client";
 
+import { APPLIED_YOURSELF, RULE_CONTINUES, waitsWords } from "@/lib/pauseWords";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -55,23 +56,12 @@ function PauseCard({ item, busy, onRecapture, onDismiss }) {
         NoEfforts stopped before sending anything. {counts.length > 0 && `(${counts.join(", ")} question(s).)`}
         {yours && " Nothing can be approved or sent until you read the form again or try this version again."}
       </p>
-      {rule === "continues" && (
-        <p className="mt-2 font-medium">
-          Your automatic applying continues it by itself: it reads this form again, or tries this version once more (the page is checked
-          again before anything is entered); a new question waits for your answer here. Do not apply on the employer&apos;s site
-          meanwhile.
-        </p>
-      )}
-      {rule === "waits" && (
-        <p className="mt-2 font-medium">
-          Your automatic applying is stopped now (the Tracker shows why); when it runs again, it continues this application by itself. If you
-          apply on the employer&apos;s site yourself instead, first choose “I applied myself” for it in the Tracker, so it is never sent twice.
-        </p>
-      )}
+      {rule === "continues" && <p className="mt-2 font-medium">{RULE_CONTINUES}</p>}
+      {rule === "waits" && <p className="mt-2 font-medium">{waitsWords(item.rule_why)}</p>}
       {p.status === "unexplained" ? (
         <p className="mt-2">
           Reading the form again showed no difference NoEfforts can see (the page&apos;s own scripts may add it).
-          {yours && " Try this version again (the page is checked again before anything is entered), or apply on the employer's site."}
+          {yours && ` Try this version again (the page is checked again before anything is entered), or apply on the employer's site ${APPLIED_YOURSELF}.`}
         </p>
       ) : item.recapture_available ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -83,7 +73,7 @@ function PauseCard({ item, busy, onRecapture, onDismiss }) {
       ) : (
         <p className="mt-2">
           This form was attached by you, so NoEfforts cannot read it again.
-          {yours && " Try this version again, or apply on the employer's site."}
+          {yours && ` Try this version again, or apply on the employer's site ${APPLIED_YOURSELF}.`}
         </p>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-2">

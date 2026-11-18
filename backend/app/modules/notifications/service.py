@@ -186,26 +186,35 @@ _PAUSE_TEXT = (
     "sending anything. Read the form again under Questions, answer what is new and approve "
     "again; nothing is sent until you do."
 )
+_STOPPED = (
+    "The employer's form no longer matched what you approved, so NoEfforts stopped before "
+    "sending anything. "
+)
 # D169: the account's standing rule continues this one by itself (autoapply `verdict`).
-_RULE_CONTINUES = (
-    "The employer's form no longer matched what you approved, so NoEfforts stopped before "
-    "sending anything. Your automatic applying continues it by itself: it reads the form again, "
-    "or tries this version once more (the page is checked again before anything is entered); a "
-    "new question waits for your answer under Questions. Do not apply on the employer's site "
-    "meanwhile."
+_RULE_CONTINUES = _STOPPED + (
+    "Your automatic applying continues it by itself: it reads the form again, or tries this "
+    "version once more (the page is checked again before anything is entered); a new question, "
+    "if the form now has one, waits for your answer under Questions. Do not apply on the "
+    "employer's site meanwhile."
 )
-# D170: it would, but automatic applying is stopped now; it continues it when it runs again.
-_RULE_WAITS = (
-    "The employer's form no longer matched what you approved, so NoEfforts stopped before "
-    "sending anything. Your automatic applying is stopped now (the Tracker shows why); when it "
-    "runs again, it continues this application by itself. If you apply on the employer's site "
-    "yourself instead, first choose “I applied myself” for it in the Tracker, so it is never "
-    "sent twice."
+# D170: it would, once what holds it lifts; never D132's words meanwhile, but how to take it over.
+_TAKE_OVER = (
+    " If you apply on the employer's site yourself instead, first choose “I applied myself” for "
+    "it in the Tracker, so it is never sent twice."
 )
+_RULE_WAITS = {
+    "stopped": _STOPPED + "Your automatic applying is stopped now (the Tracker shows why); "
+    "when it runs again, it continues this application by itself." + _TAKE_OVER,
+    "declined": _STOPPED + "Your automatic applying does not continue it while this job's "
+    "signals or your preferences rule it out (see the job); if that changes, it continues it by "
+    "itself." + _TAKE_OVER,
+    "unreadable": _STOPPED + "Your automatic applying could not read the employer's page again "
+    "(it tries once a day); once it can, it continues this application by itself." + _TAKE_OVER,
+}
 _UNEXPLAINED = (
     "Reading the employer's form again showed no difference NoEfforts can see (the page's own "
     "scripts may add it). Try this version again under Questions, or apply on the employer's "
-    "site."
+    "site and then choose “I applied myself” for it in the Tracker."
 )
 # D135: after filling, the page showed and required a question it reveals by its own logic, with no
 # approved answer: your answers were entered on the page, nothing was submitted.
@@ -232,16 +241,17 @@ def _pauses(db: Session, user_id) -> list[dict]:
                              _CONDITIONAL_TEXT, needs_action=True, link="/questions"))  # fmt: skip
             continue
         app = db.get(Application, p.application_id)
-        rule = verdict(db, user, app) if user is not None and app is not None else None
+        rule, why = verdict(db, user, app) if user is not None and app is not None else (None, None)
         if rule == CONTINUES:
             out.append(_item(f"pause:{p.id}:{p.status}:rule", "form_changed", p.created_at,
                              p.application_id, "The employer's form no longer matches",
                              _RULE_CONTINUES, link="/questions"))  # fmt: skip
             continue
         if rule == WAITS:  # D170: never D132's words while the rule may still send it
-            out.append(_item(f"pause:{p.id}:{p.status}:waits", "form_changed", p.created_at,
-                             p.application_id, "The employer's form no longer matches",
-                             _RULE_WAITS, needs_action=True, link="/questions"))  # fmt: skip
+            out.append(_item(f"pause:{p.id}:{p.status}:waits:{why}", "form_changed",
+                             p.created_at, p.application_id,
+                             "The employer's form no longer matches", _RULE_WAITS[why],
+                             needs_action=True, link="/tracker"))  # fmt: skip
             continue
         text = _UNEXPLAINED if p.status == "unexplained" else _PAUSE_TEXT
         out.append(_item(f"pause:{p.id}:{p.status}", "form_changed", p.created_at,
@@ -323,12 +333,22 @@ def _auto_apply(db: Session, user_id) -> list[dict]:
             )
         )
     }
+    # D170: an application with a pause waiting has the pause's own item, which says what the
+    # rule does with it; never also "it continues by itself" here.
+    paused = set(
+        db.scalars(
+            select(ApplicationPause.application_id).where(
+                ApplicationPause.user_id == user_id,
+                ApplicationPause.status.in_(PAUSE_UNRESOLVED),
+            )
+        )
+    )
     out, seen = [], set()
     for eid, app_id, at in rows:
         if app_id in seen:
             continue
         seen.add(app_id)
-        if any(a == app_id and t > at for a, t in tried):
+        if app_id in paused or any(a == app_id and t > at for a, t in tried):
             continue
         out.append(_item(f"autoapply:{eid}", "auto_apply_questions", at, app_id,
                          "Questions are waiting for your answers",

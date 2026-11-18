@@ -278,10 +278,12 @@ def test_d169_a_change_a_read_cannot_see_is_tried_once_then_left_to_you(api, rec
     assert led["disclosures"] == [] and led["accepted"] == 0
     shown = api.get("/auto-apply").json()["events"]
     assert shown[0]["text"] == service.REASONS["form_kept_changing"]
-    # The owner's decision: trying it again themselves, the rule continues from there.
+    # D170: the owner's for good: their own try hands nothing back; they approve it themselves.
     assert api.post(f"/applications/{app_id}/pause/dismiss").status_code == 200
     receiver.config(mode="normal")
-    assert tick() == 1 and runner.run_attempt(latest_attempt(), "w1") == "rehearsed"
+    assert tick() == 0 and events(job)[-1] == ("skipped", "form_kept_changing")
+    approve_yourself(api, app_id)
+    assert runner.run_attempt(queue(api, app_id), "w1") == "rehearsed"
 
 
 def test_d169_a_page_that_keeps_changing_is_yours_after_three_stops(api, receiver):
@@ -307,9 +309,13 @@ def test_d169_a_page_that_keeps_changing_is_yours_after_three_stops(api, receive
     assert pause_rows(app_id)[-1].status == "open"  # the owner's to read again
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
-    # The owner's decision: trying it again themselves, the rule continues from there.
-    assert api.post(f"/applications/{app_id}/pause/dismiss").status_code == 200
-    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
+    # D170: the owner's for good: reading the form again themselves (the page without the
+    # question it stopped with: a new version) hands nothing back (D132's words promise
+    # "nothing is sent until you do").
+    assert api.post(f"/applications/{app_id}/form/recapture").status_code == 200
+    assert pause_rows(app_id)[-1].resolution == "new_form"
+    assert tick() == 0 and events(job)[-1] == ("skipped", "form_kept_changing")
+    assert receiver.ledger()["disclosures"] == []
 
 
 def test_d169_a_stop_after_your_data_was_entered_is_never_run_again_by_the_rule(api, receiver):
@@ -827,7 +833,7 @@ def test_d169_a_note_after_continued_is_never_taken_for_a_repeat(api, receiver):
     ]
 
 
-# ------------- D170: a paused application is the rule's to continue, or the owner's for good
+# ---------- D170: a paused application is the rule's to continue, waits for it, or is yours
 
 
 def form_change_pause(api, receiver) -> tuple[str, str]:
@@ -839,6 +845,7 @@ def form_change_pause(api, receiver) -> tuple[str, str]:
     receiver.config(mode="normal")
     note, continues = pause_shown(api, app_id)
     assert continues is True and note["needs_action"] is False
+    assert rule_of(api, app_id) == [("continues", None)] * 2
     return job, app_id
 
 
@@ -851,68 +858,37 @@ def pause_shown(api, app_id: str) -> tuple[dict, bool]:
     return note, item["rule_continues"]
 
 
-def rule_of(api, app_id: str) -> tuple[str, str]:
-    """The rule's verdict as Questions and the application's own page carry it."""
+def rule_of(api, app_id: str) -> list[tuple]:
+    """The rule's verdict and why it waits, as Questions and the application's page carry them."""
     item = next(i for i in api.get("/questions").json()["items"]
                 if i["application_id"] == app_id)  # fmt: skip
-    return item["rule"], api.get(f"/applications/{app_id}/package").json()["rule"]
+    view = api.get(f"/applications/{app_id}/package").json()
+    return [(item["rule"], item["rule_why"]), (view["rule"], view["rule_why"])]
 
 
 def assert_yours(api, app_id: str) -> None:
-    """Shown as the owner's: D132's words for an open pause, and its action."""
+    """Shown as the owner's for good: D132's words for the pause as it is, and its action."""
     note, continues = pause_shown(api, app_id)
     assert continues is False and note["needs_action"] is True
-    assert "nothing is sent until you do" in note["text"]
+    unexplained = pause_rows(app_id)[-1].status == "unexplained"
+    d132 = "apply on the employer's site" if unexplained else "nothing is sent until you do"
+    assert d132 in note["text"]
     assert "continues it by itself" not in note["text"]
-    assert rule_of(api, app_id) == ("yours", "yours")
+    assert rule_of(api, app_id) == [("yours", None)] * 2
 
 
-def assert_waits(api, app_id: str) -> None:
-    """Shown as waiting for the rule (automatic applying stopped now): never D132's words, which
-    would invite applying by hand while the rule may still send it; how to take it over instead."""
+WAITS_WORDS = {"stopped": "is stopped now", "declined": "rule it out",
+               "unreadable": "could not read the employer's page again"}  # fmt: skip
+
+
+def assert_waits(api, app_id: str, why: str) -> None:
+    """Shown as waiting for the rule, with why: never D132's words, which would invite applying
+    by hand while the rule may still send it; how to take it over instead."""
     note, continues = pause_shown(api, app_id)
-    assert continues is False and note["needs_action"] is True
-    assert "is stopped now" in note["text"] and "I applied myself" in note["text"]
+    assert continues is False and note["needs_action"] is True and note["link"] == "/tracker"
+    assert WAITS_WORDS[why] in note["text"] and "I applied myself" in note["text"]
     assert "nothing is sent until you do" not in note["text"]
-    assert rule_of(api, app_id) == ("waits", "waits")
-
-
-def test_d170_a_pause_waits_for_the_rule_while_automatic_applying_is_stopped(
-    api, receiver, monkeypatch
-):
-    # The rule would continue it, and does once it runs again: while it cannot (the recorded
-    # permission's attempt limit used up, no recorded permission), the pause is shown as waiting,
-    # and the employer's page is not read for it.
-    from app.modules.execution import live
-
-    job, app_id = form_change_pause(api, receiver)
-    assert rule_of(api, app_id) == ("continues", "continues")
-    pilot_on(max_attempts=1)
-    # Used up by attempts of other applications (D112 counts those that passed the disclosure
-    # gate; the stop on a changed form came before it): its count is tested above.
-    monkeypatch.setattr(live, "attempts_used", lambda db, since, exclude=None: 1)
-    assert_waits(api, app_id)
-    reads = requests_made(receiver)
-    assert tick() == 0 and events(job)[-1] == ("skipped", "permission_limit")
-    pilot_on(permitted=())  # no recorded permission: the rule does not run at all
-    assert_waits(api, app_id)
-    assert tick() == 0 and events(job)[-1] == ("skipped", "permission_limit")
-    never_read_or_tried(receiver, app_id, reads)
-    pilot_on()  # a new permission: the rule continues it by itself
-    note, continues = pause_shown(api, app_id)
-    assert continues is True and note["needs_action"] is False
-    assert tick() == 0  # read again: no difference
-    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
-
-
-def test_d170_a_pause_while_a_restore_is_unresolved_is_yours(api, receiver):
-    # Once resolved, an application begun before the restore is the owner's for good (D147), so
-    # it is shown as theirs from the moment the restore is found, never as continued.
-    from tests.test_restore_hold import restored
-
-    _, app_id = form_change_pause(api, receiver)
-    restored()
-    assert_yours(api, app_id)
+    assert rule_of(api, app_id) == [("waits", why)] * 2
 
 
 def never_read_or_tried(receiver, app_id: str, reads: int) -> None:
@@ -939,10 +915,19 @@ def same_role_applied(api, job: str = "5020002") -> str:
     return other
 
 
+def continued_by_itself(job: str) -> None:
+    """The rule reads the form again (no difference), then tries that version once more."""
+    assert tick() == 0
+    assert tick() == 1
+    assert events(job)[-2:] == [
+        ("continued", "form_tried_again"),
+        ("approved_rehearsal", "rehearsal_queued"),
+    ]
+
+
 def test_d170_a_paused_application_is_continued_whatever_its_jobs_age(api, receiver, monkeypatch):
     # The rule examines the newest jobs it may apply to (JOBS_PER_TICK of them) and every job whose
-    # application waits on a form-change pause, however many jobs came after it: never shown as
-    # the owner's because newer jobs pushed it out of the window (it would come back into it).
+    # application waits on a form-change pause, however many jobs came after it.
     job, app_id = form_change_pause(api, receiver)
     monkeypatch.setattr(service, "JOBS_PER_TICK", 1)
     other_role = {"url": f"{BASE}/gh2/{BOARD}/jobs/5020003", "title": "Clinic Coordinator",
@@ -961,38 +946,72 @@ def test_d170_a_paused_application_is_continued_whatever_its_jobs_age(api, recei
     assert events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
 
 
-def test_d170_a_paused_application_on_a_possible_duplicate_is_yours_for_good(api, receiver):
-    # Shown as the owner's the moment the job is a possible duplicate, it is theirs for good:
-    # declined before its post is read, never read again, and never handed back to the rule when
-    # the signal lifts ("a different role"): the owner may have applied by hand meanwhile.
+def test_d170_a_paused_application_on_a_possible_duplicate_waits_until_that_changes(api, receiver):
+    # Another of the owner's jobs for the same role has an application past draft: the rule does
+    # not continue this one, nor read its post, while that holds; it waits, never in D132's words.
+    # Answered "a different role", the rule continues it by itself.
     job, app_id = form_change_pause(api, receiver)
     same_role_applied(api)
-    assert_yours(api, app_id)
+    assert_waits(api, app_id, "declined")
     reads = requests_made(receiver)
-    assert tick() == 0
-    assert events(job)[-2:] == [("skipped", "job_signal"), ("skipped", "form_changed")]
+    assert tick() == 0 and events(job)[-1] == ("skipped", "job_signal")
+    assert tick() == 0 and events(job)[-1] == ("skipped", "job_signal")  # noted once
+    assert events(job).count(("skipped", "job_signal")) == 1
     never_read_or_tried(receiver, app_id, reads)
-    assert api.post(f"/jobs/{job}/different-role").status_code == 200  # the signal lifts
-    assert_yours(api, app_id)
-    assert tick() == 0 and events(job)[-1] == ("skipped", "form_changed")
-    never_read_or_tried(receiver, app_id, reads)
-    shown = api.get("/auto-apply").json()["events"]
-    assert shown[0]["text"] == service.REASONS["form_changed"]
+    assert api.post(f"/jobs/{job}/different-role").status_code == 200
+    note, continues = pause_shown(api, app_id)
+    assert continues is True and note["needs_action"] is False
+    continued_by_itself(job)
 
 
-def test_d170_a_paused_application_an_unmet_preference_rules_out_is_yours_for_good(api, receiver):
-    # The same for a checked preference the job does not meet, even once the preference changes.
+def test_d170_a_paused_application_an_unmet_preference_rules_out_waits_until_it_is_met(
+    api, receiver
+):
+    # A checked preference the job does not meet holds it, whatever else holds it too: while the
+    # rule is paused it waits for the rule; resumed, for the preference; never in D132's words,
+    # so the decline lifting after the owner applied by hand cannot send it unseen. Once the
+    # preference no longer rules the job out, the rule continues it by itself.
     job, app_id = form_change_pause(api, receiver)
+    assert api.put("/auto-apply", json={"paused": True}).status_code == 200
+    assert_waits(api, app_id, "stopped")
     assert api.put("/profile/preferences", json={"titles": ["Registered Nurse"]}).status_code == 200
-    assert_yours(api, app_id)
+    assert_waits(api, app_id, "stopped")
+    assert api.put("/auto-apply", json={"paused": False}).status_code == 200
+    assert_waits(api, app_id, "declined")
     reads = requests_made(receiver)
-    assert tick() == 0
-    assert events(job)[-2:] == [("skipped", "preferences_not_met"), ("skipped", "form_changed")]
+    assert tick() == 0 and events(job)[-1] == ("skipped", "preferences_not_met")
     never_read_or_tried(receiver, app_id, reads)
     assert api.put("/profile/preferences", json={"titles": []}).status_code == 200
-    assert_yours(api, app_id)
-    assert tick() == 0 and events(job)[-1] == ("skipped", "form_changed")
+    note, continues = pause_shown(api, app_id)
+    assert continues is True and note["needs_action"] is False
+    continued_by_itself(job)
+
+
+def test_d170_a_post_unreadable_since_the_pause_waits_and_is_read_again_a_day_later(
+    api, receiver, monkeypatch
+):
+    # Every read of the post fails (it is gone, or needs its own scripts): never shown as
+    # continued meanwhile; read again once a day, and once it can be, continued by itself.
+    job, app_id = form_change_pause(api, receiver)
+
+    def refused(db, user, job):  # as `_capture` reports a read the capture route refuses
+        db.rollback()
+        return False
+
+    with monkeypatch.context() as m:
+        m.setattr(service, "_capture", refused)
+        assert tick() == 0 and events(job)[-1] == ("skipped", "capture_failed")
+    assert_waits(api, app_id, "unreadable")
+    reads = requests_made(receiver)
+    assert tick() == 0  # not read again within a day
     never_read_or_tried(receiver, app_id, reads)
+    back_date_events(job, timedelta(hours=25))
+    assert tick() == 0  # read again: no difference, marked unexplained
+    (p,) = pause_rows(app_id)
+    assert p.status == "unexplained"
+    note, continues = pause_shown(api, app_id)
+    assert continues is True and note["needs_action"] is False
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
 
 
 def test_d170_a_job_the_rule_declines_is_never_read_for_it(api, receiver):
@@ -1015,6 +1034,130 @@ def test_d170_a_job_the_rule_declines_is_never_read_for_it(api, receiver):
     assert made == []
 
 
+def test_d170_a_job_ruled_out_while_its_post_is_read_is_declined_after_the_read(
+    api, receiver, monkeypatch
+):
+    # The decline is judged on what is true now: a preference the owner checks while the rule
+    # reads a new job's post declines it before anything is made of what was read.
+    from app.modules.applications.models import Application
+
+    pilot_on()
+    synthetic_candidate(api)
+    job = v2_job(api)
+    real = service._capture
+
+    def read_while_the_owner_edits(db, user, j):
+        done = real(db, user, j)
+        assert (
+            api.put("/profile/preferences", json={"titles": ["Registered Nurse"]}).status_code
+            == 200
+        )
+        return done
+
+    monkeypatch.setattr(service, "_capture", read_while_the_owner_edits)
+    assert tick() == 0 and events(job) == [("skipped", "preferences_not_met")]
+    with SessionLocal() as db:
+        made = db.scalars(select(Application).where(Application.job_id == uuid.UUID(job))).all()
+    assert made == []
+
+
+def test_d170_a_pause_waits_for_the_rule_while_automatic_applying_is_stopped(
+    api, receiver, monkeypatch
+):
+    # The rule would continue it, and does once it runs again: while it cannot (the recorded
+    # permission's attempt limit used up, no recorded permission, no approval allowed a day), the
+    # pause is shown as waiting, and the employer's page is not read for it.
+    from app.modules.execution import live
+
+    job, app_id = form_change_pause(api, receiver)
+    pilot_on(max_attempts=1)
+    # Used up by attempts of other applications (D112 counts those that passed the disclosure
+    # gate; the stop on a changed form came before it): its count is tested above.
+    monkeypatch.setattr(live, "attempts_used", lambda db, since, exclude=None: 1)
+    assert_waits(api, app_id, "stopped")
+    reads = requests_made(receiver)
+    assert tick() == 0 and events(job)[-1] == ("skipped", "permission_limit")
+    pilot_on(permitted=())  # no recorded permission: the rule does not run at all
+    assert_waits(api, app_id, "stopped")
+    assert tick() == 0 and events(job)[-1] == ("skipped", "permission_limit")
+    never_read_or_tried(receiver, app_id, reads)
+    pilot_on()  # a new permission
+    monkeypatch.setattr(get_settings(), "auto_apply_daily_cap", 0)
+    assert_waits(api, app_id, "stopped")
+    monkeypatch.setattr(get_settings(), "auto_apply_daily_cap", 5)
+    note, continues = pause_shown(api, app_id)
+    assert continues is True and note["needs_action"] is False
+    continued_by_itself(job)
+
+
+def test_d170_a_read_needs_the_permission_as_it_is_now(api, receiver, monkeypatch):
+    # A tick can outlast a recorded permission's last day: the post is read only while the
+    # permission covers reading as it is now, and nothing is noted as a failed read for it.
+    from app.modules.execution import live
+
+    job, app_id = form_change_pause(api, receiver)
+    real = live.refusal
+
+    def refusal(user, actions=live.TO_APPLY):
+        return "not_authorized" if tuple(actions) == ("read",) else real(user, actions)
+
+    monkeypatch.setattr(live, "refusal", refusal)
+    reads = requests_made(receiver)
+    assert tick() == 0
+    never_read_or_tried(receiver, app_id, reads)
+    assert ("skipped", "capture_failed") not in events(job)
+
+
+def test_d170_the_tasks_time_limit_stops_the_rule_at_once(api, receiver, monkeypatch):
+    # The worker task's soft time limit ends the tick: no further job is started after it.
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    ready(api)
+    started = []
+
+    def out_of_time(db, user, job, now):
+        started.append(job.id)
+        raise SoftTimeLimitExceeded()
+
+    monkeypatch.setattr(service, "_advance", out_of_time)
+    v2_job(api, job="5020003")  # a second job the rule would examine
+    with pytest.raises(SoftTimeLimitExceeded):
+        tick()
+    assert len(started) == 1
+
+
+def test_d170_a_pause_on_a_job_the_rule_never_examines_is_yours(api, receiver, monkeypatch):
+    # Not a post the pilot accepts: the rule never acts on it, so it is the owner's (D132's words),
+    # whatever else holds; never shown as waiting for the rule.
+    from tests.test_form_change_loop import paused_application
+
+    monkeypatch.setattr(get_settings(), "live_owner_emails", ["synthetic.user@example.com"])
+    app_id, _ = paused_application(api, receiver)  # by the job's id: the pilot is off
+    assert_yours(api, app_id)
+
+
+def test_d170_the_feed_never_says_it_continues_beside_a_pause(api, receiver):
+    # The pause's own item says what the rule does; an earlier "answer the open questions and it
+    # continues by itself" for the same application never stands beside it.
+    job, app_id = form_change_pause(api, receiver)
+    with SessionLocal() as db:
+        db.add(AutoApplyEvent(user_id=owner_id(), job_id=uuid.UUID(job),
+                              application_id=uuid.UUID(app_id), action="skipped",
+                              reason="open_questions"))  # fmt: skip
+        db.commit()
+    kinds = [n["kind"] for n in api.get("/notifications").json()["items"]
+             if n["application_id"] == app_id]  # fmt: skip
+    assert kinds == ["form_changed"]
+
+
+def test_d170_the_questions_count_leaves_out_what_the_rule_continues(api, receiver):
+    # A pause the account's rule continues by itself does not wait for the owner.
+    _, app_id = form_change_pause(api, receiver)
+    assert api.get("/questions/count").json()["paused"] == 0
+    assert api.put("/auto-apply", json={"paused": True}).status_code == 200
+    assert api.get("/questions/count").json()["paused"] == 1
+
+
 def test_d170_a_pause_on_an_application_begun_before_a_restore_is_yours(api, receiver):
     # A restored database leaves to the owner every application begun before it (D147), even
     # once the owner resumes the rule: its pause is shown as theirs, and never read again.
@@ -1031,10 +1174,20 @@ def test_d170_a_pause_on_an_application_begun_before_a_restore_is_yours(api, rec
     never_read_or_tried(receiver, app_id, reads)
 
 
+def test_d170_a_pause_while_a_restore_is_unresolved_is_yours(api, receiver):
+    # Once resolved, an application begun before the restore is the owner's for good (D147), so
+    # it is shown as theirs from the moment the restore is found, never as continued.
+    from tests.test_restore_hold import restored
+
+    _, app_id = form_change_pause(api, receiver)
+    restored()
+    assert_yours(api, app_id)
+
+
 def test_d170_a_final_application_is_never_shown_as_continued(api, receiver):
-    # The rule never acts on a final application, so one is never shown as continued. (Five of
-    # the six final states end its pause first; failed_retryable leaves it, though a paused
-    # application never reaches that state today.)
+    # The rule never acts on a final application, so its pause, were one still waiting, is the
+    # owner's for good. (Five of the six final states end the pause first; failed_retryable leaves
+    # it, though a paused application never reaches that state today.)
     from app.modules.applications.models import Application
     from app.modules.applications.states import AppState
 
@@ -1045,12 +1198,86 @@ def test_d170_a_final_application_is_never_shown_as_continued(api, receiver):
     _, app_id = form_change_pause(api, receiver)
     with SessionLocal() as db:
         user, app = db.get(User, owner_id()), db.get(Application, uuid.UUID(app_id))
-        assert service.will_continue(db, user, app) is True
+        assert service.verdict(db, user, app) == (service.CONTINUES, None)
         for state in finals:
             app.state = state
             db.flush()
-            assert service.will_continue(db, user, app) is False, state
+            assert service.verdict(db, user, app) == (service.YOURS, None), state
         db.rollback()
+
+
+def test_d170_a_page_that_kept_changing_is_yours_whatever_a_later_read_finds(api, receiver):
+    # Read once more, with no difference: shown as the owner's from that read, before the
+    # rule's next step, and theirs for good: a read finding a new version since (the owner's own
+    # here) ends the pause and hands nothing back to the rule.
+    job, app_id = rehearsal_queued(api)
+    receiver.config(mode="gh2_options_changed")
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"
+    assert tick() == 0 and tick() == 1  # read again (no difference), then tried once more
+    assert runner.run_attempt(latest_attempt(), "w1") == "failed_safe"  # stopped on it again
+    assert tick() == 0  # read once more: no difference
+    assert_yours(api, app_id)
+    receiver.config(mode="gh2_question_added")
+    assert api.post(f"/applications/{app_id}/form/recapture").status_code == 200
+    assert pause_rows(app_id)[-1].resolution == "new_form"
+    reads = requests_made(receiver)
+    assert tick() == 0 and events(job)[-1] == ("skipped", "form_kept_changing")
+    assert requests_made(receiver) == reads
+    led = receiver.ledger()
+    assert led["disclosures"] == [] and led["accepted"] == 0
+
+
+def test_d170_the_upgrade_leaves_every_application_paused_before_it_to_its_owner(
+    api, other_api, receiver
+):
+    # Before D169 the rule left every application that had paused to its owner for good (D132's
+    # words: "nothing is sent until you do"). The upgrade records that hand-over once for each
+    # application with a pause, under its own account; one without a pause gets nothing.
+    import importlib.util
+    from pathlib import Path
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    from app.modules.applications.models import Application
+    from tests.test_form_change_loop import paused_application
+
+    path = (
+        Path(__file__).parents[1] / "migrations/versions/d170b0a8e3c1_hand_over_earlier_pauses.py"
+    )
+    spec = importlib.util.spec_from_file_location("d170_hand_over", path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    def upgrade() -> None:  # its data step: the column is there already (the schema is at head)
+        with SessionLocal() as db:
+            with Operations.context(MigrationContext.configure(db.connection())):
+                migration.hand_over()
+            db.commit()
+
+    others, _ = paused_application(other_api, receiver)  # by the job's id: before the pilot is on
+    receiver.config(mode="normal")
+    job, app_id = form_change_pause(api, receiver)  # the rule's to continue, until the upgrade
+    unpaused = same_role_applied(api)
+    upgrade()
+    upgrade()  # nothing twice
+    with SessionLocal() as db:
+        rows = db.execute(
+            select(AutoApplyEvent.user_id, AutoApplyEvent.application_id, AutoApplyEvent.job_id)
+            .where(AutoApplyEvent.reason == "form_changed", AutoApplyEvent.action == "skipped")
+            .order_by(AutoApplyEvent.created_at)
+        ).all()
+        other_user = db.scalar(select(User.id).where(User.id != owner_id()))
+        other_job = db.scalar(select(Application.job_id).where(Application.id == uuid.UUID(others)))
+    assert sorted(rows) == sorted([
+        (owner_id(), uuid.UUID(app_id), uuid.UUID(job)),
+        (other_user, uuid.UUID(others), other_job),
+    ])  # fmt: skip
+    assert events(unpaused) == []
+    assert_yours(api, app_id)
+    reads = requests_made(receiver)
+    assert tick() == 0 and events(job)[-1] == ("skipped", "form_changed")
+    assert requests_made(receiver) == reads
 
 
 def test_another_account_never_sees_or_triggers_the_owners_rule(api, other_api, receiver):

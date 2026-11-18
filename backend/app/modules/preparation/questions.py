@@ -101,8 +101,10 @@ def questions(user: User = Depends(current_user), db: Session = Depends(get_db))
             continue
         db.commit()
         pause = pk.unresolved_pause(db, app.id)  # as it stands after any rebuild
-        rule = (
-            verdict(db, user, app) if pause is not None and pause.kind == "form_changed" else None
+        rule, rule_why = (
+            verdict(db, user, app)
+            if pause is not None and pause.kind == "form_changed"
+            else (None, None)
         )
         controls = pk.review_controls(db, app.id, pkg.content)
         open_rows = [
@@ -126,6 +128,7 @@ def questions(user: User = Depends(current_user), db: Session = Depends(get_db))
                 # D169, D170: what the account's standing rule does with it (`verdict`): continues
                 # it by itself, waits to (automatic applying stopped now), or never will (yours).
                 "rule": rule,
+                "rule_why": rule_why,
                 "rule_continues": rule == "continues",
                 "recapture_available": form is not None and form.source in _RECAPTURE,
                 "questions": open_rows,
@@ -138,14 +141,20 @@ def questions(user: User = Depends(current_user), db: Session = Depends(get_db))
 def count(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """How many applications wait for you (an open question in the stored package, or a
     form-change pause). Reads what is stored; never rebuilds or writes anything."""
-    paused = set(
-        db.scalars(
-            select(ApplicationPause.application_id).where(
-                ApplicationPause.user_id == user.id,
-                ApplicationPause.status.in_(PAUSE_UNRESOLVED),
-            )
+    from app.modules.autoapply.service import CONTINUES, verdict
+
+    paused = set()
+    for p in db.scalars(
+        select(ApplicationPause).where(
+            ApplicationPause.user_id == user.id,
+            ApplicationPause.status.in_(PAUSE_UNRESOLVED),
         )
-    )
+    ):
+        app = db.get(Application, p.application_id)
+        # D170: one the account's rule continues by itself does not wait for you.
+        if p.kind == "form_changed" and app is not None and verdict(db, user, app)[0] == CONTINUES:
+            continue
+        paused.add(p.application_id)
     latest = (
         select(ApplicationPackage.application_id, func.max(ApplicationPackage.version))
         .join(Application, Application.id == ApplicationPackage.application_id)
