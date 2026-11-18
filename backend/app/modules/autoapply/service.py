@@ -375,8 +375,7 @@ def _after_pause(db: Session, user: User, job: Job, app, now: datetime) -> bool:
         _note(db, user.id, job, app, "skipped", "form_changed")
         return False
     pause.status, pause.resolution, pause.resolved_at = "closed", "dismissed", utcnow()
-    db.flush()
-    _note(db, user.id, job, app, "continued", "form_tried_again")
+    _note(db, user.id, job, app, "continued", "form_tried_again")  # flushes the pause too
     return True
 
 

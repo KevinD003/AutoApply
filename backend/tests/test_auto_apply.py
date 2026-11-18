@@ -288,6 +288,9 @@ def test_d169_a_page_that_keeps_changing_is_yours_after_three_stops(api, receive
     assert pause_rows(app_id)[-1].status == "open"  # the owner's to read again
     led = receiver.ledger()
     assert led["disclosures"] == [] and led["accepted"] == 0
+    # The owner's decision: trying it again themselves, the rule continues from there.
+    assert api.post(f"/applications/{app_id}/pause/dismiss").status_code == 200
+    assert tick() == 1 and events(job)[-1] == ("approved_rehearsal", "rehearsal_queued")
 
 
 def test_d169_a_stop_after_your_data_was_entered_is_never_run_again_by_the_rule(api, receiver):
