@@ -293,7 +293,8 @@ class SectionSpec(BaseModel):
     so no ordinary form's schema, fingerprint or package hash changes.
     """
 
-    kind: str = Field(pattern="^(education|employment|websites)$")  # D166: websites
+    # D166: websites; D167: certifications
+    kind: str = Field(pattern="^(education|employment|websites|certifications)$")
     root: str = Field(min_length=1, max_length=200)  # CSS selector of the section container
     schools: list[SectionOptionSpec] = Field(default_factory=list, max_length=5000)
     degrees: list[SectionOptionSpec] = Field(default_factory=list, max_length=500)
