@@ -308,8 +308,8 @@ def capture_greenhouse_form(
         # standing rule reads through its own entries, autoapply `_may_read`).
         why = live.refusal(user, ("read",), approver=authorizations.OWNER)
         if why:
-            raise conflict(f"{live.WHY[why]} Apply on the employer's site and record it in the "
-                           "tracker.")  # fmt: skip
+            words = live.words(why, ("read",), authorizations.OWNER)
+            raise conflict(f"{words} Apply on the employer's site and record it in the tracker.")
         return _capture_live(db, user, job, url, real)
     p = urlsplit(url)
     origin = f"{p.scheme}://{p.netloc}"

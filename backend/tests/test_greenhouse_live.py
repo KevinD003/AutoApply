@@ -525,6 +525,14 @@ def by_rule(aid) -> None:
         db.commit()
 
 
+def _detail(aid) -> str:
+    """The words the attempt's outcome was recorded with."""
+    from app.modules.execution.models import ExecutionAttempt
+
+    with SessionLocal() as db:
+        return db.get(ExecutionAttempt, uuid.UUID(aid)).outcome_detail
+
+
 def test_d172_a_permission_for_the_rules_packages_never_covers_your_own(api, receiver):
     """D172: every step recorded for the standing rule's packages only: your own capture of a job
     post and your own approval to submit are refused, and an attempt you queued before stops
@@ -536,13 +544,13 @@ def test_d172_a_permission_for_the_rules_packages_never_covers_your_own(api, rec
     pilot_on(OWNER, approvers={a.RULE})
     requests = len(receiver.ledger()["requests"])
     assert runner.run_attempt(aid, "w1") == "failed_safe"
-    assert _reason(aid) == "live_not_authorized"
+    assert _reason(aid) == "live_not_authorized" and live.WHY["rule_only"] in _detail(aid)
     led = receiver.ledger()
     assert len(led["requests"]) == requests  # the page was never opened
     assert led["disclosures"] == [] and led["accepted"] == 0
     other = v2_job(api, job="5020002")
     r = api.post(f"/jobs/{other}/form/greenhouse")
-    assert r.status_code == 409 and "recorded permission" in r.text
+    assert r.status_code == 409 and live.WHY["rule_only"] in r.json()["detail"]
     assert forms(other) == []
 
 
@@ -559,7 +567,7 @@ def test_d172_your_own_package_is_refused_at_the_queue_under_the_rules_permissio
     pilot_on(OWNER, approvers={a.RULE})
     assert approve(api, app_id, "disclose_only").status_code == 200
     r = api.post(f"/applications/{app_id}/transition", json={"to": "queued"})
-    assert r.status_code == 409 and "recorded permission" in r.text
+    assert r.status_code == 409 and live.WHY["rule_only"] in r.json()["detail"]
     with SessionLocal() as db:
         q = select(ExecutionAttempt).where(ExecutionAttempt.application_id == uuid.UUID(app_id))
         assert db.scalars(q).all() == []
@@ -576,7 +584,7 @@ def test_d172_your_own_permission_never_lets_the_rules_attempt_open_the_page(api
     pilot_on(OWNER, approvers={a.OWNER})
     requests = len(receiver.ledger()["requests"])
     assert runner.run_attempt(aid, "w1") == "failed_safe"
-    assert _reason(aid) == "live_not_authorized"
+    assert _reason(aid) == "live_not_authorized" and live.WHY["owner_only"] in _detail(aid)
     assert len(receiver.ledger()["requests"]) == requests
     assert receiver.ledger()["disclosures"] == []
 
@@ -591,7 +599,7 @@ def test_d172_the_send_gate_asks_whether_your_own_approvals_may_submit(api, rece
     pilot_on(OWNER, permitted=("read", "open", "disclose"), approvers={a.OWNER})
     pilot_add(PILOT_PERMISSIONS, approvers={a.RULE})
     assert runner.run_attempt(aid, "w1") == "abandoned"
-    assert _reason(aid) == "live_not_authorized"
+    assert _reason(aid) == "live_not_authorized" and live.WHY["rule_only"] in _detail(aid)
     assert receiver.ledger()["accepted"] == 0
 
 

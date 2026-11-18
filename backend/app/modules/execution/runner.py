@@ -293,10 +293,10 @@ def run_attempt(attempt_id: str, worker: str) -> str:
         if not intercept and s.env not in ("development", "test"):
             svc.fail_safe(aid, worker, gen, "request interception cannot be disabled here")
             return "failed_safe"
-        if adapter_name == live.ADAPTER and svc.pilot_refusal(aid, ("open", "disclose")):
+        if adapter_name == live.ADAPTER and (why := svc.pilot_refusal(aid, ("open", "disclose"))):
             # D103: before the page is opened (the pilot's permission 2) or anything entered;
             # D172: for the packages of whoever approved this one.
-            svc.fail_safe(aid, worker, gen, live.WHY["not_authorized"], code="live_not_authorized")
+            svc.fail_safe(aid, worker, gen, why, code="live_not_authorized")
             return "failed_safe"
         bound = _binding_refusal(aid)
         if bound:

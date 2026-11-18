@@ -797,7 +797,8 @@ def system(db: Session, user) -> dict:
     features.append(_feature(
         "greenhouse_pilot", "Applying to real Greenhouse jobs (fill and submit)",
         "NOEFFORTS_LIVE_GREENHOUSE_ENABLED", s.live_greenhouse_enabled,
-        (live.WHY.get(why, why) if why else None) or spent_for(authorizations.OWNER)
+        (live.words(why, approver=authorizations.OWNER) if why else None)
+        or spent_for(authorizations.OWNER)
         or (HELD if held else None), note=pilot_note))  # fmt: skip
     why = rule.owner_refusal(user)
     chosen = db.get(AutoApplyPrefs, user.id) is not None
@@ -810,7 +811,8 @@ def system(db: Session, user) -> dict:
     features.append(_feature(
         "auto_apply", "Automatic applying (your standing rule)", "NOEFFORTS_AUTO_APPLY_ENABLED",
         s.auto_apply_enabled,
-        (RULE_WHY.get(why, why) if why else None) or off or spent_for(authorizations.RULE)
+        (live.words(why, approver=authorizations.RULE) if why == "not_authorized" else
+         RULE_WHY.get(why, why) if why else None) or off or spent_for(authorizations.RULE)
         or (HELD if held else None),
         note=f"At most {s.auto_apply_daily_cap} automatic approvals a day{every} "
         f"(NOEFFORTS_AUTO_APPLY_DAILY_CAP); {rule.cap_used(db, user.id)} today."

@@ -52,7 +52,12 @@ def _state(db: Session, user: User) -> dict:
         "consent": service.CONSENT_TEXT,
         "unavailable": None
         if refusal is None
-        else {"code": refusal, "message": WHY[refusal].format(n=cap[0] if cap else 0)},
+        else {
+            "code": refusal,
+            "message": live.words(refusal, approver=authorizations.RULE)
+            if refusal == "not_authorized"
+            else WHY[refusal].format(n=cap[0] if cap else 0),
+        },
         "daily_cap": s.auto_apply_daily_cap,
         # D168: in sole-owner mode the cap counts every account's approvals (cap_used).
         "approved_today": service.cap_used(db, user.id),

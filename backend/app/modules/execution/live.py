@@ -57,6 +57,11 @@ WHY = {
     # D112: the recorded permission's own limit (a format string: n).
     "limit_reached": "The server owner's recorded permission covers at most {n} attempts on real "
     "Greenhouse pages, and they have been used; it must be renewed before another.",
+    # D172: the steps are recorded, for the other approver's applications only (`words`).
+    "owner_only": "Your recorded permission covers applications you approve yourself, one at a "
+    "time, not your standing rule's: the rule acts only under a permission that names it.",
+    "rule_only": "Your recorded permission covers applications your standing rule approves, not "
+    "ones you approve yourself: those need a permission that names your own approvals.",
 }
 # What a whole application through the pilot needs, short of submitting.
 TO_APPLY = ("read", "open", "disclose")
@@ -93,6 +98,17 @@ def permission_refusal(actions: tuple[str, ...], approver: str | None = None) ->
         for a in actions
     )
     return None if ok else "not_authorized"
+
+
+def words(why: str, actions: tuple[str, ...] = TO_APPLY, approver: str | None = None) -> str:
+    """The words for a refusal code. D172: "not_authorized" for `approver`'s applications where
+    every one of these steps is recorded for the other approver's says whose they are recorded
+    for, not that nothing is."""
+    if why == "not_authorized" and approver in authorizations.APPROVERS:
+        (other,) = authorizations.APPROVERS - {approver}
+        if permission_refusal(actions, other) is None:
+            return WHY["owner_only" if approver == authorizations.RULE else "rule_only"]
+    return WHY.get(why, why)
 
 
 def attempts_used(db, since, *, exclude=None) -> int:

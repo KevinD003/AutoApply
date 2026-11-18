@@ -16,7 +16,7 @@ from app.core.config import get_settings
 from app.core.db import SessionLocal, utcnow
 from app.modules.autoapply import service
 from app.modules.autoapply.models import AutoApplyEvent, AutoApplyPrefs
-from app.modules.execution import runner
+from app.modules.execution import live, runner
 from app.modules.execution import service as svc
 from app.modules.execution.models import ApplicationPause, ExecutionAttempt, RehearsalRecord
 from app.modules.identity.models import User
@@ -1872,15 +1872,16 @@ def test_d172_a_permission_for_your_own_approvals_only_stops_the_rule(api, recei
     job = v2_job(api)
     assert tick() == 0 and events(job) == [] and receiver.ledger()["requests"] == []
     state = api.get("/auto-apply").json()
-    assert state["active"] is False and state["unavailable"] is not None
+    assert state["active"] is False and state["unavailable"]["code"] == "not_authorized"
+    assert state["unavailable"]["message"] == live.WHY["owner_only"]
     assert state["submits"] is False
+    pilot_on(permitted=())  # nothing recorded at all: the words say so
+    assert api.get("/auto-apply").json()["unavailable"]["message"] == live.WHY["not_authorized"]
 
 
 def test_d172_the_rules_attempt_limit_is_that_of_its_own_entries(api, receiver, monkeypatch):
     """D112's limit, D172: of the entries covering the standing rule's approvals. Yours (1) used
     up stops your own attempts, not the rule: its card shows its own (5) and it approves."""
-    from app.modules.execution import live
-
     pilot_on(approvers={authorizations.OWNER}, max_attempts=1)
     pilot_add(PILOT_PERMISSIONS, approvers={authorizations.RULE}, max_attempts=5)
     monkeypatch.setattr(live, "attempts_used", lambda db, since, exclude=None: 1)

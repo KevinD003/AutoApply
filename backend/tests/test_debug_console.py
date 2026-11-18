@@ -469,13 +469,13 @@ def test_d172_each_row_reads_the_permissions_for_its_own_approvals(api, monkeypa
     monkeypatch.setattr(get_settings(), "auto_apply_enabled", True)
     pilot_on(approvers={authorizations.RULE})  # every step, for the standing rule's only
     v = api.get("/debug/system").json()
-    assert feature(v, "greenhouse_pilot")["why"] == live.WHY["not_authorized"]
+    assert feature(v, "greenhouse_pilot")["why"] == live.WHY["rule_only"]
     assert feature(v, "auto_apply")["why"] is None
     assert [p["approvers"] for p in v["permissions"]] == [["rule"]]
     pilot_on(approvers={authorizations.OWNER})  # every step, for your own only
     v = api.get("/debug/system").json()
     assert feature(v, "greenhouse_pilot")["why"] is None
-    assert feature(v, "auto_apply")["why"] == live.WHY["not_authorized"]
+    assert feature(v, "auto_apply")["why"] == live.WHY["owner_only"]
     assert [p["approvers"] for p in v["permissions"]] == [["owner"]]
     # Steps 1-3 for yours (one attempt), every step for the rule's (five): one attempt used.
     pilot_on(permitted=("read", "open", "disclose"), approvers={authorizations.OWNER},
