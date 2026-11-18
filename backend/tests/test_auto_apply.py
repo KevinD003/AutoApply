@@ -187,12 +187,14 @@ def requests_made(receiver) -> int:
     return len(receiver.ledger()["requests"])
 
 
-def back_date_failed_reads(job: str, by: timedelta) -> None:
-    """As if the failed reads of this job's post were `by` earlier (the limit is a day)."""
+def back_date_events(job: str, by: timedelta) -> None:
+    """As if everything the rule noted for this job happened `by` earlier, in the same order (the
+    read limit is a day; a note repeated last is never noted twice)."""
     with SessionLocal() as db:
         e = AutoApplyEvent
-        failed = (e.job_id == uuid.UUID(job), e.reason == "capture_failed")
-        db.execute(update(e).where(*failed).values(created_at=e.created_at - by))
+        db.execute(
+            update(e).where(e.job_id == uuid.UUID(job)).values(created_at=e.created_at - by)
+        )
         db.commit()
 
 
@@ -451,13 +453,13 @@ def test_d169_a_read_that_fails_leaves_the_pause_and_is_tried_again_a_day_after_
     assert tick() == 0 and len(reads) == 1  # not read again the same day
     (p,) = pause_rows(app_id)
     assert p.status == "open"
-    back_date_failed_reads(job, service.RECAPTURE_AFTER + timedelta(minutes=1))
+    back_date_events(job, service.RECAPTURE_AFTER + timedelta(minutes=1))
     assert tick() == 0 and len(reads) == 2  # a day later: read again, failed again
     assert tick() == 0 and len(reads) == 2  # the limit counts from that failure, not the first
-    back_date_failed_reads(job, service.RECAPTURE_AFTER + timedelta(minutes=1))
+    back_date_events(job, service.RECAPTURE_AFTER + timedelta(minutes=1))
     assert tick() == 0 and len(reads) == 3
     monkeypatch.setattr(service, "_capture", capture)
-    back_date_failed_reads(job, service.RECAPTURE_AFTER + timedelta(minutes=1))
+    back_date_events(job, service.RECAPTURE_AFTER + timedelta(minutes=1))
     assert tick() == 0 and events(job)[-1] == ("continued", "form_read_again")
 
 
