@@ -17,7 +17,9 @@ is that rule, and nothing wider. A worker task (`tick`) runs it for the pilot's 
     failed or ended with an unknown outcome (those wait for the owner). D169: for the owner's
     own accounts, an attempt the employer's changed form stopped before anything was entered is
     continued (the form read again; a version tried once more; at most `FORM_STOPS` stops),
-    never one that entered anything.
+    never one that entered anything. D170: whatever its job's age, until the rule continues it
+    or leaves it to the owner for good; a job its signals or the owner's preferences rule out is
+    declined before its post is read.
 
 Each approval it gives is the same approval the owner gives in the app (exact version and content
 hash), recorded with the rule as its reason, and every gate still checks it. Each thing the rule
@@ -260,6 +262,13 @@ def _note(db: Session, user_id, job: Job, app: Application | None, action: str, 
 
 
 def _candidates(db: Session, user: User) -> list[Job]:
+    """The jobs the rule examines: the newest it may apply to (`JOBS_PER_TICK` of them) and, D170,
+    every job whose application waits on a form-change pause, whatever its age or state. Such an
+    application is shown with the rule's verdict (`will_continue`): the rule continues it, or
+    leaves it to the owner for good (`_after_pause`), and never because newer jobs pushed it out
+    of the window; it would come back into it, and the owner may have applied by hand meanwhile."""
+    from app.modules.execution.models import PAUSE_UNRESOLVED, ApplicationPause
+
     jobs = db.scalars(
         select(Job)
         .where(
@@ -270,7 +279,23 @@ def _candidates(db: Session, user: User) -> list[Job]:
         .order_by(Job.created_at.desc())
         .limit(JOBS_PER_TICK * 4)
     ).all()
-    return [j for j in jobs if live.posting(j.url) is not None][:JOBS_PER_TICK]
+    newest = [j for j in jobs if live.posting(j.url) is not None][:JOBS_PER_TICK]
+    seen = {j.id for j in newest}
+    waiting = db.scalars(
+        select(Job)
+        .join(Application, Application.job_id == Job.id)
+        .join(ApplicationPause, ApplicationPause.application_id == Application.id)
+        .where(
+            Job.user_id == user.id,
+            Job.url.is_not(None),
+            Application.user_id == user.id,
+            ApplicationPause.user_id == user.id,
+            ApplicationPause.kind == "form_changed",
+            ApplicationPause.status.in_(PAUSE_UNRESOLVED),
+        )
+        .order_by(ApplicationPause.created_at)
+    ).all()
+    return newest + [j for j in waiting if j.id not in seen and live.posting(j.url) is not None]
 
 
 def _application(db: Session, user: User, job: Job) -> Application | None:
@@ -296,6 +321,19 @@ def _latest_attempt(db: Session, app: Application) -> ExecutionAttempt | None:
         .order_by(ExecutionAttempt.created_at.desc())
         .limit(1)
     )
+
+
+def _declined(db: Session, user: User, job: Job) -> str | None:
+    """D170: why the rule never applies to this job (a reason code), whatever it has read of it:
+    its signals (closed, excluded, a possible duplicate) or a checked preference it does not meet.
+    Judged before the job's post is read, so a job the rule declines is never read for it."""
+    from app.modules.jobs import signals
+
+    if signals.approval_refusal(db, job) is not None:
+        return "job_signal"
+    if _preferences_unmet(db, user, job):
+        return "preferences_not_met"
+    return None
 
 
 def _preferences_unmet(db: Session, user: User, job: Job) -> bool:
@@ -350,8 +388,9 @@ def _entered(db: Session, app) -> bool:
 
 
 def _handed_to_you(db: Session, app) -> bool:
-    """D132 left this application to the owner (an event recorded so before D169): it stays
-    theirs, as D132 said; they may have applied on the employer's site meanwhile."""
+    """D132 left this application to the owner (an event recorded so before D169), or the rule
+    did since, declining a paused application it showed as theirs (D170): it stays theirs; they
+    may have applied on the employer's site meanwhile."""
     return (
         db.scalar(
             select(AutoApplyEvent.id)
@@ -437,7 +476,19 @@ def _after_pause(db: Session, user: User, job: Job, app, now: datetime):
     current = _unresolved(pauses)
     if current is None:
         return True  # ended, by the owner or by a read
+    declined = _declined(db, user, job)
+    if declined is not None:
+        # D170: shown as the owner's (`will_continue`), so theirs for good, never read again: they
+        # may apply on the employer's site meanwhile, and a decline that lifts (a preference
+        # edited, "a different role") must not hand it back. Recorded as D132's hand-over
+        # (`_handed_to_you`).
+        _note(db, user.id, job, app, "skipped", declined)
+        _note(db, user.id, job, app, "skipped", "form_changed")
+        return False
     if current.status == "open":
+        if _limit_used(db):  # D170: nothing can be approved until a new permission: never read
+            _note(db, user.id, job, app, "skipped", "permission_limit")
+            return False
         if _read_failed_recently(db, job, now):
             return False
         if not _capture(db, user, job):  # commits; a differing version ends the pause
@@ -480,25 +531,51 @@ def _stopped_on_form_change(db: Session, att: ExecutionAttempt) -> bool:
     )
 
 
-def will_continue(db: Session, user: User, app) -> bool:
-    """D169: whether the standing rule continues this paused application by itself, as its next
-    steps will judge it (shown with the pause, so the owner does not apply by hand meanwhile).
-    For an application that has a pause waiting (the feed's and Questions' only callers)."""
-    from app.modules.jobs import signals
+# D170: what the rule does with an application that has a pause waiting (`verdict`).
+CONTINUES, WAITS, YOURS = "continues", "waits", "yours"
 
-    if owner_refusal(user) is not None or paused(db, user):
-        return False
+
+def _limit_used(db: Session) -> bool:
+    """D112: the recorded permission's attempt limit is used up (every step declines until the
+    owner records a new permission)."""
+    cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose")
+    return cap is not None and live.attempts_used(db, cap[1]) >= cap[0]
+
+
+def verdict(db: Session, user: User, app) -> str:
+    """D170: what the standing rule does with this paused application, as its next steps will judge
+    it; shown with the pause (the feed, Questions, the application's page), so the owner never
+    applies by hand while the rule may still send it:
+    - CONTINUES: it continues it by itself (D169);
+    - WAITS: it would, but automatic applying is stopped now (switched off or paused, the pilot not
+      running here, the recorded permission ended or its attempt limit used up): it continues
+      it when it runs again, and applying by hand means recording that here first;
+    - YOURS: it never will (D132's words): a final or revoked application, one begun before a
+      restore or while one is unresolved, a job it never examines or declines (its next step
+      records that for good, D170), or what `_yours` leaves to the owner.
+    For an application that has a pause waiting (its callers' only use)."""
     if app.state in FINAL_STATES or _owner_revoked(db, app):
-        return False
+        return YOURS
+    if restore.held(db):
+        return YOURS  # once resolved, an application begun before it is the owner's for good
     restored = restore.restored_at(db)
     if restored is not None and app.created_at < restored:
-        return False
+        return YOURS
     job = db.get(Job, app.job_id)
-    if job is None or job.id not in {j.id for j in _candidates(db, user)}:
-        return False
-    if signals.approval_refusal(db, job) is not None or _preferences_unmet(db, user, job):
-        return False
-    return _yours(db, user, app, _pauses(db, app)) is None
+    if job is None or job.url is None or live.posting(job.url) is None:
+        return YOURS  # never examined by the rule
+    if _declined(db, user, job) is not None:
+        return YOURS  # D170: its next step leaves it to the owner for good
+    if _yours(db, user, app, _pauses(db, app)) is not None:
+        return YOURS
+    if owner_refusal(user) is not None or paused(db, user) or _limit_used(db):
+        return WAITS
+    return CONTINUES
+
+
+def will_continue(db: Session, user: User, app) -> bool:
+    """D169: whether the standing rule continues this paused application by itself now."""
+    return verdict(db, user, app) == CONTINUES
 
 
 def _paused_before_entry(db: Session, att: ExecutionAttempt) -> bool:
@@ -544,7 +621,6 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
     """One step for one job. Returns "approved" when it queued something, else None."""
     from app.modules.execution.rehearsal import RehearsalRequired
     from app.modules.execution.service import enqueue
-    from app.modules.jobs import signals
     from app.modules.preparation import package as pk
     from app.modules.preparation.models import ApprovalScope
     from app.modules.providers.routing import form_checkpoint
@@ -582,6 +658,10 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
                 return None
     else:
         retry = None
+    declined = _declined(db, user, job)
+    if declined is not None:  # D170: before the post is read, never for a job the rule declines
+        _note(db, user.id, job, app, "skipped", declined)
+        return None
     form = pk.latest_form(db, job.id)
     if form is None:
         if _read_failed_recently(db, job, now):
@@ -597,12 +677,6 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
     if form_checkpoint(form.schema):
         _note(db, user.id, job, app, "skipped", "checkpoint")
         return None
-    if signals.approval_refusal(db, job) is not None:
-        _note(db, user.id, job, app, "skipped", "job_signal")
-        return None
-    if _preferences_unmet(db, user, job):
-        _note(db, user.id, job, app, "skipped", "preferences_not_met")
-        return None
     if app is None:
         app = _new_application(db, user, job)
     try:
@@ -613,8 +687,7 @@ def _advance(db: Session, user: User, job: Job, now: datetime) -> str | None:
     if pkg.content["unresolved"] or pkg.content["validation_errors"]:
         _note(db, user.id, job, app, "skipped", "open_questions")
         return None
-    cap = authorizations.limit(authorizations.GREENHOUSE_PILOT, "disclose")
-    if cap is not None and live.attempts_used(db, cap[1]) >= cap[0]:
+    if _limit_used(db):
         _note(db, user.id, job, app, "skipped", "permission_limit")
         return None
     if get_settings().sole_owner:

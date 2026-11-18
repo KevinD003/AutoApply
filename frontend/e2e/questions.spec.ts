@@ -81,19 +81,41 @@ test("a form that changes during a run pauses; read it again, answer, and one ne
     await expect(page.getByText("The employer's form no longer matches what you approved.")).toBeVisible();
     // D169: automatic applying is off here, so the card never says it continues this one.
     await expect(page.getByText(/continues it by itself/)).toHaveCount(0);
-    // When the account's rule continues it, the card says so (the server's own answer, altered
-    // in the browser only; nothing changes on the server).
-    await page.route("**/api/questions", async (route) => {
-      const response = await route.fetch();
-      const json = await response.json();
-      for (const item of json.items) if (item.pause) item.rule_continues = true;
-      await route.fulfill({ response, json });
-    });
-    await page.reload();
-    await expect(page.getByText(/Your automatic applying reads this form again and continues it by itself/)).toBeVisible();
+    // D170: the card says what the account's rule does with it, and D132's words (with their "or apply on the employer's site") only
+    // when it is yours (the server's own answer, altered in the browser only; nothing changes on the server).
+    const ruleSays = async (rule: string, status?: string) => {
+      await page.unroute("**/api/questions");
+      await page.route("**/api/questions", async (route) => {
+        const response = await route.fetch();
+        const json = await response.json();
+        for (const item of json.items)
+          if (item.pause) {
+            item.rule = rule;
+            item.rule_continues = rule === "continues";
+            if (status) item.pause.status = status;
+          }
+        await route.fulfill({ response, json });
+      });
+      await page.reload();
+    };
+    const card = page.getByRole("status").filter({ hasText: "The employer's form no longer matches what you approved." });
+    await ruleSays("continues");
+    await expect(card.getByText(/Your automatic applying continues it by itself/)).toBeVisible();
+    await expect(card.getByText(/Nothing can be approved or sent until/)).toHaveCount(0);
+    await ruleSays("continues", "unexplained");
+    await expect(card.getByText(/showed no difference NoEfforts can see/)).toBeVisible();
+    await expect(card.getByText(/or apply on the employer's site/)).toHaveCount(0);
+    await ruleSays("waits", "unexplained");
+    await expect(card.getByText(/Your automatic applying is stopped now/)).toBeVisible();
+    await expect(card.getByText(/first choose “I applied myself” for it in the Tracker/)).toBeVisible();
+    await expect(card.getByText(/or apply on the employer's site/)).toHaveCount(0);
+    await expect(card.getByText(/continues it by itself/)).toHaveCount(0);
+    await ruleSays("yours", "unexplained");
+    await expect(card.getByText(/Try this version again \(the page is checked again before anything is entered\), or apply on the employer's site/)).toBeVisible();
     await page.unroute("**/api/questions");
     await page.reload();
     await expect(page.getByText(/continues it by itself/)).toHaveCount(0);
+    await expect(page.getByText(/Nothing can be approved or sent until you read the form again/)).toBeVisible();
     await page.getByRole("button", { name: "Read the form again" }).click();
     await expect(page.getByText("The form was read again: answer what is new below, then approve on the application's page.")).toBeVisible();
     await page.getByLabel("Are you available to work weekends?").selectOption("Yes");

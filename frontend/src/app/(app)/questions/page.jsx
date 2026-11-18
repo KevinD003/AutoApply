@@ -44,23 +44,34 @@ function PauseCard({ item, busy, onRecapture, onDismiss }) {
     p.counts.changed && `${p.counts.changed} changed`,
     p.counts.missing && `${p.counts.missing} gone`,
   ].filter(Boolean);
+  // D169, D170: what your standing rule does with it. D132's words (and their invitation to apply on the employer's site) only when it
+  // is yours: never while the rule continues it, or waits to (automatic applying stopped now).
+  const rule = item.rule ?? (item.rule_continues ? "continues" : null);
+  const yours = rule !== "continues" && rule !== "waits";
   return (
     <div role="status" className="rounded-[var(--r-md)] border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
       <p className="font-medium">The employer&apos;s form no longer matches what you approved.</p>
       <p className="mt-1">
-        NoEfforts stopped before sending anything. {counts.length > 0 && `(${counts.join(", ")} question(s).)`} Nothing can be approved or sent
-        until you read the form again or try this version again.
+        NoEfforts stopped before sending anything. {counts.length > 0 && `(${counts.join(", ")} question(s).)`}
+        {yours && " Nothing can be approved or sent until you read the form again or try this version again."}
       </p>
-      {item.rule_continues && (
+      {rule === "continues" && (
         <p className="mt-2 font-medium">
-          Your automatic applying reads this form again and continues it by itself; a new question waits for your answer here. Do not apply
-          on the employer&apos;s site meanwhile.
+          Your automatic applying continues it by itself: it reads this form again, or tries this version once more (the page is checked
+          again before anything is entered); a new question waits for your answer here. Do not apply on the employer&apos;s site
+          meanwhile.
+        </p>
+      )}
+      {rule === "waits" && (
+        <p className="mt-2 font-medium">
+          Your automatic applying is stopped now (the Tracker shows why); when it runs again, it continues this application by itself. If you
+          apply on the employer&apos;s site yourself instead, first choose “I applied myself” for it in the Tracker, so it is never sent twice.
         </p>
       )}
       {p.status === "unexplained" ? (
         <p className="mt-2">
-          Reading the form again showed no difference NoEfforts can see (the page&apos;s own scripts may add it). Try this version again
-          (the page is checked again before anything is entered), or apply on the employer&apos;s site.
+          Reading the form again showed no difference NoEfforts can see (the page&apos;s own scripts may add it).
+          {yours && " Try this version again (the page is checked again before anything is entered), or apply on the employer's site."}
         </p>
       ) : item.recapture_available ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -71,7 +82,8 @@ function PauseCard({ item, busy, onRecapture, onDismiss }) {
         </div>
       ) : (
         <p className="mt-2">
-          This form was attached by you, so NoEfforts cannot read it again. Try this version again, or apply on the employer&apos;s site.
+          This form was attached by you, so NoEfforts cannot read it again.
+          {yours && " Try this version again, or apply on the employer's site."}
         </p>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-2">

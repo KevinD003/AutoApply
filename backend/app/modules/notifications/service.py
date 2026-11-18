@@ -186,12 +186,21 @@ _PAUSE_TEXT = (
     "sending anything. Read the form again under Questions, answer what is new and approve "
     "again; nothing is sent until you do."
 )
-# D169: the account's standing rule continues this one by itself (autoapply `will_continue`).
+# D169: the account's standing rule continues this one by itself (autoapply `verdict`).
 _RULE_CONTINUES = (
     "The employer's form no longer matched what you approved, so NoEfforts stopped before "
-    "sending anything. Your automatic applying reads the form again and continues it by itself "
-    "(a new question waits for your answer under Questions); do not apply on the employer's "
-    "site meanwhile."
+    "sending anything. Your automatic applying continues it by itself: it reads the form again, "
+    "or tries this version once more (the page is checked again before anything is entered); a "
+    "new question waits for your answer under Questions. Do not apply on the employer's site "
+    "meanwhile."
+)
+# D170: it would, but automatic applying is stopped now; it continues it when it runs again.
+_RULE_WAITS = (
+    "The employer's form no longer matched what you approved, so NoEfforts stopped before "
+    "sending anything. Your automatic applying is stopped now (the Tracker shows why); when it "
+    "runs again, it continues this application by itself. If you apply on the employer's site "
+    "yourself instead, first choose “I applied myself” for it in the Tracker, so it is never "
+    "sent twice."
 )
 _UNEXPLAINED = (
     "Reading the employer's form again showed no difference NoEfforts can see (the page's own "
@@ -208,7 +217,7 @@ _CONDITIONAL_TEXT = (
 
 
 def _pauses(db: Session, user_id) -> list[dict]:
-    from app.modules.autoapply.service import will_continue
+    from app.modules.autoapply.service import CONTINUES, WAITS, verdict
 
     user = db.get(User, user_id)
     out = []
@@ -223,10 +232,16 @@ def _pauses(db: Session, user_id) -> list[dict]:
                              _CONDITIONAL_TEXT, needs_action=True, link="/questions"))  # fmt: skip
             continue
         app = db.get(Application, p.application_id)
-        if user is not None and app is not None and will_continue(db, user, app):
+        rule = verdict(db, user, app) if user is not None and app is not None else None
+        if rule == CONTINUES:
             out.append(_item(f"pause:{p.id}:{p.status}:rule", "form_changed", p.created_at,
                              p.application_id, "The employer's form no longer matches",
                              _RULE_CONTINUES, link="/questions"))  # fmt: skip
+            continue
+        if rule == WAITS:  # D170: never D132's words while the rule may still send it
+            out.append(_item(f"pause:{p.id}:{p.status}:waits", "form_changed", p.created_at,
+                             p.application_id, "The employer's form no longer matches",
+                             _RULE_WAITS, needs_action=True, link="/questions"))  # fmt: skip
             continue
         text = _UNEXPLAINED if p.status == "unexplained" else _PAUSE_TEXT
         out.append(_item(f"pause:{p.id}:{p.status}", "form_changed", p.created_at,

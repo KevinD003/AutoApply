@@ -616,6 +616,15 @@ def _last_pause(db: Session, app_id: uuid.UUID):
     )
 
 
+def _rule(db: Session, app: Application, pause) -> str | None:
+    """D170: the standing rule's verdict on a form-change pause (continues, waits, yours)."""
+    from app.modules.autoapply.service import verdict
+
+    if pause is None or pause.kind != "form_changed":
+        return None
+    return verdict(db, db.get(User, app.user_id), app)
+
+
 def _pause_out(pause) -> dict | None:
     """What the owner sees of a pause: never a question's key or label."""
     if pause is None:
@@ -753,7 +762,10 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
         "job_signals": signals.view(db, db.get(Job, app.job_id)),
         # D132: the employer's form no longer matched under an attempt, while it waits for you;
         # nothing can be approved until it is resolved (a new form, or "Try this version again").
-        "pause": _pause_out(pk.unresolved_pause(db, app.id)),
+        "pause": _pause_out(pause := pk.unresolved_pause(db, app.id)),
+        # D170: what the account's standing rule does with that pause (autoapply `verdict`), so
+        # this page never invites applying by hand while the rule may still send it.
+        "rule": _rule(db, app, pause),
         "recapture_available": _recapture_available(db, app),
         "history": [
             {
