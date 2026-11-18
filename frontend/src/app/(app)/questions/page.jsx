@@ -49,7 +49,7 @@ function PauseCard({ item, busy, onRecapture, onDismiss }) {
       <p className="font-medium">The employer&apos;s form no longer matches what you approved.</p>
       <p className="mt-1">
         NoEfforts stopped before sending anything. {counts.length > 0 && `(${counts.join(", ")} question(s).)`} Nothing can be approved or sent
-        until you read the form again or try this version again.
+        until you read the form again or try this version again; automatic applying, when on, may do this for you.
       </p>
       {p.status === "unexplained" ? (
         <p className="mt-2">

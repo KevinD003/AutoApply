@@ -552,8 +552,9 @@ def dismiss_pause(
     """D132: "Try this version again". Ends the application's form-change pause (always found
     before anything was entered), so a package can be approved again: every approval was retired
     when it paused, and the live page is checked again before anything is entered, so a change
-    still there stops it again with nothing sent. Never approves, queues or sends anything; the
-    automatic rule never takes this step.
+    still there stops it again with nothing sent. Never approves, queues or sends anything. The
+    standing rule takes this step itself at most once per form version (D169, autoapply
+    `_after_pause`), never for a pause after filling.
 
     D135: a pause for a question the page revealed and required after filling ends only once
     every such question you can answer has your answer (`questions_open` otherwise): trying again

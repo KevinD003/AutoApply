@@ -184,7 +184,7 @@ def _attempts(db: Session, user_id) -> list[dict]:
 _PAUSE_TEXT = (
     "The employer's form no longer matched what you approved, so NoEfforts stopped before "
     "sending anything. Read the form again under Questions, answer what is new and approve "
-    "again; nothing is sent until you do."
+    "again; with automatic applying on, NoEfforts may read it again and continue for you."
 )
 _UNEXPLAINED = (
     "Reading the employer's form again showed no difference NoEfforts can see (the page's own "
