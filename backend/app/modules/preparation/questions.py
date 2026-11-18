@@ -80,7 +80,7 @@ def _row(a: dict, control: dict) -> dict:
 def questions(user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """Your applications that wait for an answer or a decision, each with its open questions and
     any form-change pause. Each package is brought up to date first, as its own page does."""
-    from app.modules.autoapply.service import verdict
+    from app.modules.autoapply.service import shown
     from app.modules.preparation.router import _RECAPTURE, _pause_out
 
     rows = db.execute(
@@ -101,11 +101,12 @@ def questions(user: User = Depends(current_user), db: Session = Depends(get_db))
             continue
         db.commit()
         pause = pk.unresolved_pause(db, app.id)  # as it stands after any rebuild
-        rule, rule_why = (
-            verdict(db, user, app)
+        shown_rule = (
+            shown(db, user, app, pause)
             if pause is not None and pause.kind == "form_changed"
-            else (None, None)
+            else {"rule": None, "rule_why": None, "rule_step4": False}
         )
+        rule, rule_why = shown_rule["rule"], shown_rule["rule_why"]
         controls = pk.review_controls(db, app.id, pkg.content)
         open_rows = [
             _row(a, controls.get(a["key"], {}))
@@ -129,6 +130,7 @@ def questions(user: User = Depends(current_user), db: Session = Depends(get_db))
                 # it by itself, waits to (automatic applying stopped now), or never will (yours).
                 "rule": rule,
                 "rule_why": rule_why,
+                "rule_step4": shown_rule["rule_step4"],  # D171: it waits for step 4 too
                 "rule_continues": rule == "continues",
                 "recapture_available": form is not None and form.source in _RECAPTURE,
                 "questions": open_rows,

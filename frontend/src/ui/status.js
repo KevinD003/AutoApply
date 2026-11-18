@@ -91,6 +91,11 @@ export const ANSWER_STATUS_TONE = {
   tracker/page.tsx did: submission basis wins, then failure/cancel, then the
   neutral state label. Returns { label, tone }.
 */
+// D171: the standing rule submits nothing for it until the recorded permission covers step 4 (the server's `rule_why`, `rule_step4`).
+function waitsForStep4(a) {
+  return a.rule === "waits" && (a.rule_why === "submit_not_permitted" || a.rule_step4 === true);
+}
+
 export function applicationStatus(a) {
   let label;
   if (a.state === "submitted_confirmed") {
@@ -101,8 +106,10 @@ export function applicationStatus(a) {
     else label = "Submitted (not confirmed)";
   } else if (a.state === "failed_terminal" && a.last_attempt?.state === "rejected") {
     label = "Form rejected";
-  } else if (a.state === "needs_user_action" && a.rule === "continues") {
-    label = "Automatic applying continues it"; // D170: paused on a changed form, the rule goes on with it
+  } else if (a.rule === "continues") {
+    label = "Automatic applying continues it"; // D170: paused on a changed form, the rule goes on with it (D171: or held for step 4)
+  } else if (waitsForStep4(a)) {
+    label = "Waits for your permission to submit"; // D171: the recorded permission does not cover step 4
   } else {
     label = STATE_LABEL[a.state] ?? a.state;
   }
@@ -111,7 +118,7 @@ export function applicationStatus(a) {
   if (a.submission === "receipt") tone = "positive";
   else if (a.submission === "user_claimed") tone = "brand";
   else if (a.state.startsWith("failed") || a.state === "cancelled" || a.state === "expired") tone = "danger";
-  else if (a.state === "needs_user_action" && a.rule === "continues") tone = "brand";
+  else if (a.rule === "continues") tone = "brand";
   else if (
     a.state === "needs_user_action" ||
     a.state === "awaiting_approval" ||
@@ -129,6 +136,10 @@ export function applicationStatus(a) {
 */
 export function journeyStage(a) {
   const rehearsed = a.last_attempt?.state === "rehearsed";
+  // D171: the standing rule held it for step 4 of the recorded permission, or goes on with it now that it covers submitting.
+  if (waitsForStep4(a)) return { key: "needs_you", label: "Waits for your permission to submit", tone: "caution" };
+  if (a.rule === "continues" && a.state !== "needs_user_action")
+    return { key: "in_progress", label: "Automatic applying continues it", tone: "brand" };
   switch (a.state) {
     case "draft":
     case "preparing":

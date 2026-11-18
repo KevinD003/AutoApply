@@ -619,13 +619,10 @@ def _last_pause(db: Session, app_id: uuid.UUID):
 
 def _rule(db: Session, app: Application, pause) -> dict:
     """D170: the standing rule's verdict on a form-change pause: continues, waits (and why) or
-    yours."""
-    from app.modules.autoapply.service import verdict
+    yours; D171: also on an application it held for the pilot's step 4 (autoapply `shown`)."""
+    from app.modules.autoapply.service import shown
 
-    if pause is None or pause.kind != "form_changed":
-        return {"rule": None, "rule_why": None}
-    rule, why = verdict(db, db.get(User, app.user_id), app)
-    return {"rule": rule, "rule_why": why}
+    return shown(db, db.get(User, app.user_id), app, pause)
 
 
 def _pause_out(pause) -> dict | None:
@@ -767,7 +764,8 @@ def _package_view(db: Session, app: Application, pkg: ApplicationPackage) -> dic
         # nothing can be approved until it is resolved (a new form, or "Try this version again").
         "pause": _pause_out(pause := pk.unresolved_pause(db, app.id)),
         # D170: what the account's standing rule does with that pause (autoapply `verdict`), so
-        # this page never invites applying by hand while the rule may still send it.
+        # this page never invites applying by hand while the rule may still send it; D171: or
+        # with an application it held for the pilot's step 4.
         **_rule(db, app, pause),
         "recapture_available": _recapture_available(db, app),
         "history": [

@@ -83,11 +83,11 @@ export default function AutoApplyCard() {
             Your recorded permission: {s.permission_attempts.used} of {s.permission_attempts.of} attempts used.
           </>
         )}
-        {s.active && s.submits === false && (
+        {!s.unavailable && s.submits === false && (
           <>
             {" "}
-            Your recorded permission covers rehearsals only: each employer&apos;s first application is filled and checked, and
-            nothing is submitted until it covers submitting (step 4).
+            Your recorded permission covers rehearsals only: applications to employers it has not rehearsed with yet are filled and
+            checked, and nothing is submitted until it covers submitting (step 4).
           </>
         )}
       </p>

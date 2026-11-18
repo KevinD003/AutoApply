@@ -446,6 +446,18 @@ def test_a_permission_running_or_not_yet_started_is_shown_as_such(api, monkeypat
     assert not any(w.startswith("No recorded permission covers") for w in v["warnings"])
 
 
+def test_d171_the_rule_says_a_permission_covers_rehearsals_only(api, monkeypatch):
+    # Steps 1-3 recorded, not step 4: the rule's row says it rehearses and submits nothing; with
+    # step 4 recorded, not.
+    monkeypatch.setattr(get_settings(), "auto_apply_enabled", True)
+    pilot_on(permitted=("read", "open", "disclose"))
+    rule = feature(api.get("/debug/system").json(), "auto_apply")
+    assert rule["why"] is None and "covers rehearsals only" in rule["note"]
+    pilot_on()
+    rule = feature(api.get("/debug/system").json(), "auto_apply")
+    assert rule["why"] is None and "covers rehearsals only" not in rule["note"]
+
+
 def test_each_feature_says_why_as_its_own_gate_decides(api, other_api, monkeypatch, tmp_path):
     """The pilot with its attempt limit used, the standing rule never turned on or paused, the
     stand-ins outside the test environment, connecting Gmail for an account not the owner's,

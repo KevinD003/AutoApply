@@ -146,10 +146,20 @@ def _approvals(db: Session, user_id) -> list[dict]:
 def _rehearsals(db: Session, user_id) -> list[dict]:
     out = []
     for r in db.scalars(select(RehearsalRecord).where(RehearsalRecord.user_id == user_id)):
-        text = (
-            "The form was filled, uploaded and checked, then stopped before the submit step: "
-            "nothing was submitted. Approve again to submit."
-        )
+        att = db.get(ExecutionAttempt, r.attempt_id)
+        if att is not None and att.queued_by_rule:
+            # D171: the standing rule goes on with it (or holds it for step 4), never the owner's
+            # approval to submit.
+            text = (
+                "The form was filled, uploaded and checked, then stopped before the submit step: "
+                "nothing was submitted. Automatic applying queued this rehearsal; the "
+                "application's page says what happens next."
+            )
+        else:
+            text = (
+                "The form was filled, uploaded and checked, then stopped before the submit step: "
+                "nothing was submitted. Approve again to submit."
+            )
         if r.revoked_at is not None:
             text += " " + _REVOKED.get(r.revoked_reason or "", "It no longer counts.")
         evidence = "fixture" if r.destination_class == "fixture" else "rehearsal"
@@ -202,16 +212,20 @@ _TAKE_OVER = (
     " If you apply on the employer's site yourself instead, first choose “I applied myself” for "
     "it in the Tracker, so it is never sent twice."
 )
+# D171: what it waits for besides, while the recorded permission does not cover submitting
+# ({step4} in each waiting reason's words; frontend lib/pauseWords.js says the same).
+_STEP4 = " and your recorded permission covers submitting (step 4)"
 _RULE_WAITS = {
     "stopped": _STOPPED + "Your automatic applying is stopped now (the Tracker shows why); "
-    "when it runs again, it continues this application by itself." + _TAKE_OVER,
+    "when it runs again{step4}, it continues this application by itself." + _TAKE_OVER,
     "declined": _STOPPED + "Your automatic applying does not continue it while this job's "
-    "signals or your preferences rule it out (the job's page says why); if that changes, it "
-    "continues it by itself." + _TAKE_OVER,
+    "signals or your preferences rule it out (the job's page says why); if that changes{step4}, "
+    "it continues it by itself." + _TAKE_OVER,
     "unreadable": _STOPPED + "Your automatic applying could not read the employer's page again "
-    "(it tries once a day); once it can, it continues this application by itself." + _TAKE_OVER,
+    "(it tries once a day); once it can{step4}, it continues this application by itself."
+    + _TAKE_OVER,
     "questions": _STOPPED + "Your automatic applying tries this version once more by itself as "
-    "soon as you answer the open questions under Questions." + _TAKE_OVER,
+    "soon as you answer the open questions under Questions{step4}." + _TAKE_OVER,
     # D171: a recorded permission for rehearsals only.
     "submit_not_permitted": _STOPPED + "This employer's rehearsal held, and your recorded "
     "permission does not cover submitting (step 4): once it does, your automatic applying "
@@ -232,7 +246,7 @@ _CONDITIONAL_TEXT = (
 
 
 def _pauses(db: Session, user_id) -> list[dict]:
-    from app.modules.autoapply.service import CONTINUES, WAITS, verdict
+    from app.modules.autoapply.service import CONTINUES, WAITS, verdict, withholds_submission
 
     user = db.get(User, user_id)
     out = []
@@ -255,9 +269,13 @@ def _pauses(db: Session, user_id) -> list[dict]:
             continue
         if rule == WAITS:  # D170: never D132's words while the rule may still send it
             link = "/questions" if why == "questions" else f"/tracker?highlight={p.application_id}"
-            out.append(_item(f"pause:{p.id}:{p.status}:waits:{why}", "form_changed",
-                             p.created_at, p.application_id,
-                             "The employer's form no longer matches", _RULE_WAITS[why],
+            # D171: for step 4 too; the key leaves out the pause's status (the words do not
+            # depend on it, and the rule still reads a pause that waits for step 4).
+            step4 = why != "submit_not_permitted" and withholds_submission(db, app)
+            text = _RULE_WAITS[why].format(step4=_STEP4 if step4 else "")
+            out.append(_item(f"pause:{p.id}:waits:{why}{':step4' if step4 else ''}",
+                             "form_changed", p.created_at, p.application_id,
+                             "The employer's form no longer matches", text,
                              needs_action=True, link=link))  # fmt: skip
             continue
         text = _UNEXPLAINED if p.status == "unexplained" else _PAUSE_TEXT
@@ -322,6 +340,8 @@ def _boards(db: Session, user_id, now: datetime) -> list[dict]:
 def _auto_apply(db: Session, user_id) -> list[dict]:
     """D115: the automatic rule read a job's form and some questions need your answer (the
     "pop-up" of the earlier bot): one item per application, while it still waits for you."""
+    from app.modules.autoapply.service import withholds_submission
+
     rows = db.execute(
         select(AutoApplyEvent.id, AutoApplyEvent.application_id, AutoApplyEvent.created_at)
         .join(Application, Application.id == AutoApplyEvent.application_id)
@@ -357,11 +377,18 @@ def _auto_apply(db: Session, user_id) -> list[dict]:
         seen.add(app_id)
         if app_id in paused or any(a == app_id and t > at for a, t in tried):
             continue
+        app = db.get(Application, app_id)
+        if app is not None and withholds_submission(db, app):  # D171: step 4 not recorded
+            text = ("Automatic applying read this job's form. Answer the open questions "
+                    "(suggestions from your saved answers are shown there); it submits nothing "
+                    "until your recorded permission covers submitting (step 4).")  # fmt: skip
+        else:
+            text = ("Automatic applying read this job's form. Answer the open questions "
+                    "(suggestions from your saved answers are shown there) and it continues by "
+                    "itself.")  # fmt: skip
         out.append(_item(f"autoapply:{eid}", "auto_apply_questions", at, app_id,
-                         "Questions are waiting for your answers",
-                         "Automatic applying read this job's form. Answer the open questions "
-                         "(suggestions from your saved answers are shown there) and it "
-                         "continues by itself.", needs_action=True))  # fmt: skip
+                         "Questions are waiting for your answers", text,
+                         needs_action=True))  # fmt: skip
     return out
 
 

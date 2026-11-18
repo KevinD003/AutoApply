@@ -1,6 +1,6 @@
 "use client";
 
-import { APPLIED_YOURSELF, RULE_CONTINUES, waitsWords } from "@/lib/pauseWords";
+import { APPLIED_YOURSELF, RULE_CONTINUES, heldWords, waitsWords } from "@/lib/pauseWords";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -242,7 +242,7 @@ export default function ReviewPage() {
                 : view.rule === "continues" // D170: D132's words only when the application is yours
                 ? `The employer's form no longer matched what you approved, so NoEfforts stopped before sending anything. ${RULE_CONTINUES}`
                 : view.rule === "waits"
-                ? `The employer's form no longer matched what you approved, so NoEfforts stopped before sending anything. ${waitsWords(view.rule_why)}`
+                ? `The employer's form no longer matched what you approved, so NoEfforts stopped before sending anything. ${waitsWords(view.rule_why, view.rule_step4)}`
                 : view.pause.status === "unexplained"
                 ? `The employer's form no longer matched what you approved, and reading it again showed no difference NoEfforts can see. Try this version again under Questions, or apply on the employer's site ${APPLIED_YOURSELF}.`
                 : "The employer's form no longer matched what you approved, so NoEfforts stopped before sending anything. Read the form again under Questions and answer what is new; nothing can be approved until then."}
@@ -252,6 +252,12 @@ export default function ReviewPage() {
                 Open Questions
               </Link>
             </p>
+          </div>
+        )}
+        {!view.pause && (view.rule === "continues" || view.rule === "waits") && (
+          // D171: the account's standing rule held this application for step 4 of the recorded permission.
+          <div className="mt-3 rounded-lg bg-caution-weak p-2 text-sm text-caution-ink" role="group" aria-label="Automatic applying">
+            <p>{heldWords(view.rule, view.rule_why, view.rule_step4)}</p>
           </div>
         )}
         <div className="mt-3 rounded-lg border border-hairline p-2 text-sm" role="group" aria-label="Before the first submission">

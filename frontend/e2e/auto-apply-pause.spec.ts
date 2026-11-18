@@ -49,12 +49,12 @@ test("a permission for rehearsals only is said on the card", async ({ page }, in
   const email = `d171.${info.project.name}.${Date.now()}@example.com`;
   const reg = await page.request.post("/api/auth/register", { data: { email, password: "synthetic-password-1" } });
   expect(reg.status()).toBe(201);
-  const stateSays = async (submits: boolean) => {
+  const stateSays = async (submits: boolean, more: Record<string, unknown> = {}) => {
     await page.unroute("**/api/auto-apply");
     await page.route("**/api/auto-apply", async (route) => {
       if (route.request().method() !== "GET") return route.fallback();
       const response = await route.fetch();
-      const json = { ...(await response.json()), active: true, paused: false, unavailable: null, submits };
+      const json = { ...(await response.json()), active: true, paused: false, unavailable: null, submits, ...more };
       await route.fulfill({ response, json });
     });
     await page.goto("/tracker");
@@ -66,5 +66,12 @@ test("a permission for rehearsals only is said on the card", async ({ page }, in
   await expect(card.getByText(/Your recorded permission covers rehearsals only/)).toBeVisible();
   await stateSays(true);
   await expect(card.getByText("On", { exact: true })).toBeVisible();
+  await expect(card.getByText(/covers rehearsals only/)).toHaveCount(0);
+  // Paused, it says so as well, so you know what turning it on would do; where the rule cannot act at all, its own reason instead.
+  await stateSays(false, { active: false, paused: true, chosen: true });
+  await expect(card.getByText("Paused by you")).toBeVisible();
+  await expect(card.getByText(/Your recorded permission covers rehearsals only/)).toBeVisible();
+  await stateSays(false, { active: false, unavailable: { code: "not_authorized", message: "No recorded permission covers this." } });
+  await expect(card.getByText("No recorded permission covers this.")).toBeVisible();
   await expect(card.getByText(/covers rehearsals only/)).toHaveCount(0);
 });

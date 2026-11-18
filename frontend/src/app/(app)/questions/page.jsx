@@ -57,7 +57,7 @@ function PauseCard({ item, busy, onRecapture, onDismiss }) {
         {yours && " Nothing can be approved or sent until you read the form again or try this version again."}
       </p>
       {rule === "continues" && <p className="mt-2 font-medium">{RULE_CONTINUES}</p>}
-      {rule === "waits" && <p className="mt-2 font-medium">{waitsWords(item.rule_why)}</p>}
+      {rule === "waits" && <p className="mt-2 font-medium">{waitsWords(item.rule_why, item.rule_step4)}</p>}
       {p.status === "unexplained" ? (
         <p className="mt-2">
           Reading the form again showed no difference NoEfforts can see (the page&apos;s own scripts may add it).
