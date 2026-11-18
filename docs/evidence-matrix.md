@@ -9,6 +9,27 @@ with Chromium 141.0.7390.37, Node 22.22.0, Next.js 15.5.4.
 "Oracle" = the synthetic receiver's own SQLite ledger (`fixtures/ats_receiver`), which shares
 no code or database with NoEfforts. "Mock" marks anything simulated.
 
+## The standing rule continues an application after a form change (D169, 2026-11-18; local only)
+
+Nothing here ran against a real page. Branch `rule-continues`. In `tests/test_auto_apply.py`
+(`test_d169_*`), against the Greenhouse-style stand-in playing a real board through the pilot; the
+receiver's own ledger is the oracle for what reached the employer.
+
+| Claim | Test | Result |
+|---|---|---|
+| A page that changed back: read again, no difference, tried once more, rehearsed, submitted exactly once | `a_page_changed_back_is_read_again_tried_once_more_and_sent_once` | pass |
+| A question the employer added: read, the pause ends, the new question waits for the owner's answer (asked again, also when the owner approved it), then rehearsed and sent with it, once | `a_question_the_employer_added_waits_for_your_answer_then_is_sent_once`, `an_application_you_approved_yourself_is_continued_and_asks_for_the_answer`, `a_note_after_continued_is_never_taken_for_a_repeat` | pass |
+| A change a read cannot see is tried once more on its form version, then the owner's, never read again; each version is tried once more | `a_change_a_read_cannot_see_is_tried_once_then_left_to_you`, `each_form_version_is_tried_once_more` | pass |
+| A page that keeps changing is the owner's after three stops, not read a fourth time; the owner's own try is continued | `a_page_that_keeps_changing_is_yours_after_three_stops` | pass |
+| An application one of whose attempts entered the owner's data is never followed by the rule (D135's pause; an attempt run meanwhile; a later stop before entry) | `a_stop_after_your_data_was_entered_is_never_run_again_by_the_rule`, `an_attempt_that_entered_data_meanwhile_is_never_followed_by_the_rule`, `only_a_stop_on_a_changed_form_before_anything_was_entered_is_continued` | pass |
+| What D132 handed to the owner, an account that is not the owner's and a revoked application stay as D132 and D134 left them | `what_d132_handed_to_you_stays_yours`, `an_account_that_is_not_the_owners_keeps_d132`, `a_pause_on_an_application_you_once_revoked_is_yours` | pass |
+| A read the capture route refuses leaves the pause open and is tried again a day after the last failed read | `a_read_that_fails_leaves_the_pause_and_is_tried_again_a_day_after_the_last` | pass |
+| The try happens at approval: a step any other check declines leaves the pause as it was | `a_step_any_other_check_declines_never_counts_as_a_try` | pass |
+| What the owner does during the rule's step is seen (pause, cancel, revocation, their own try or read); one outcome, no deadlock | `a_paused_rule_continues_nothing`, `a_pause_recorded_meanwhile_is_read_as_it_is_now`, `what_the_owner_does_during_the_rules_step_is_seen` (cancel, revoke), `trying_again_yourself_while_the_rule_does_waits_and_it_happens_once`, `a_form_read_during_the_rules_try_again_waits_and_is_never_lost`, `a_newer_pause_made_while_the_rule_reads_is_left_for_its_next_step`, `a_newer_pause_made_during_the_rules_try_is_never_tried_without_a_read` | pass |
+| The feed and Questions say whether the rule continues a pause, with D132's words and action when it does not | `the_pause_says_whether_the_rule_continues_it`, `a_pause_on_an_application_you_once_revoked_is_yours` | pass |
+| Every other flow unchanged | the suites the change touches; the regression set; the whole backend suite; the full e2e suite | pass (`docs/implementation-status.md`) |
+| Each part is needed | 49 changes, one at a time (`docs/implementation-status.md`) | each of the 42 changes named for a test fails it (46 failures among the 63 tests run, with one rerun). The note that a failed read is always recorded was caught only once the read limit's test shifted every note of the job, not the failed reads alone (ea62be4). Not caught, by design (D169): the pause row's own lock, two `user_id` scopes, and four of `will_continue`'s checks that mirror the rule's step |
+
 ## The owner's console: one application from start to finish, every switch and why; sole-owner mode (D168, 2026-11-17; local only)
 
 Nothing here ran against a real page or mailbox. Branch `process-debugger`. In

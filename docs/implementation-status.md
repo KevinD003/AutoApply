@@ -54,6 +54,45 @@ compact summary built from the same consolidation, so list and detail never disa
 
 Phase A/B tests below were run against `29a1960`. Phase C results are in the next sections.
 
+## The standing rule continues an application after a form change (D169, 2026-11-18; local only)
+
+The owner's words of 2026-11-18, outside the ranked backlog: "Do not pauses anything. Make it
+enable for the auto application." (D169 quotes them; they settle the decision rank 3 and
+capability row 32 left open.) Product changes:
+
+- `app/modules/autoapply/service.py`: `_after_pause` (an open pause: read the form again, record
+  what it found, end the step; an unexplained one: tried once more at approval), `_yours` (what
+  stays the owner's), `_entered`, `_handed_to_you`, `_unresolved`, `_lock_pause` (the job's, the
+  application's, then the pause's row), `_read_failed_recently`, `_stopped_on_form_change`,
+  `will_continue`, `FORM_STOPS`; `_advance` re-reads the application under its lock after
+  `_after_pause` and ends an unexplained pause just before the approval; `_note` flushes and
+  records every failed read; `paused()` reads the switch as it is now; `REASONS`:
+  `form_read_again`, `form_tried_again`, `form_kept_changing`, `stopped_after_entry`;
+  `models.py`: the `continued` action.
+- `app/modules/notifications/service.py` and `app/modules/preparation/questions.py`: whether the
+  rule continues a pause (`rule_continues`), with its words; `app/modules/preparation/router.py`:
+  `dismiss_pause`'s docstring; `frontend/src/app/(app)/questions/page.jsx`: the pause card says it.
+- `docs/audit-events.md`: `auto_apply.continued`.
+
+No migration, no new state or permission, no retry after disclosure; `SCHEMA_VERSION` unchanged.
+Nothing was run against a real page. `scripts/validate.sh all` was not run (it runs the whole
+backend and e2e suites); the full e2e suite, ruff, tsc and eslint were.
+
+| Check (branch `rule-continues`, from `process-debugger` at 4d9b103; D168's records and main with #77 merged in at 355dc9d; D168's fix at c19ccaa; main with #78 merged in at f9f0913) | Command | Result |
+|---|---|---|
+| The first version's tests | `test_auto_apply.py -k d169` (JUnit) on ecd7542 | 6 passed |
+| The suites the change touches, first version | the 26 suites that exercise the standing rule, pauses, notifications, the audit inventory and the documents (JUnit) on ecd7542 | exit 0, 1,028 passed (21 minutes) |
+| Tests added before the reviews returned | three races (a pause recorded during the rule's read; the step's hold after it; the owner's own "Try this version again" at the same moment), then five more (a form read on the job's page during the rule's step; a newer pause made during the rule's read; an application the owner approved; each form version tried once more; only a stop before anything was entered) | the jobs-page read deadlocked with the rule's step: the read held the job's row and waited for the pause's while the rule held the pause's and its note, referencing the job, waited for the job's (40P01). Fixed: the rule takes the job's row (key share) first, as a read takes them (3c215c2); then 14 passed |
+| The first removal runs | 28 changes on 9e7a0b2, one at a time (a worktree of its own) | 26 caught; the note's flush was not (a package rebuild flushed first on every path a test reached: a test of the note itself added), nor the pause row's lock (the job's and the application's locks keep every writer out; kept) |
+| Two independent reviews | on ecd7542 | the reviews' findings (D169) fixed in c7bd5a3, 6fb2b91 and 65c1989, each with its test: `test_auto_apply.py` 40, then 43, then 44 passed |
+| The suites the change touches, after the reviews | the 27 suites above with `test_lock_order.py` (JUnit) on 6fb2b91 (before `will_continue`'s last change, 65c1989; the regression set ran on the final head) | exit 0, 1,073 passed (21 minutes) |
+| Each part changed in turn | 49 changes on 65c1989 (one rerun on ea62be4), one at a time (a worktree of its own), the named tests run, the file restored | each of the 42 changes named for a test fails it (46 failures among the 63 tests run, with one rerun). The note that a failed read is always recorded was caught only once the read limit's test shifted every note of the job, not the failed reads alone (ea62be4). Not caught, by design (D169): the pause row's own lock, two `user_id` scopes, and four of `will_continue`'s checks that mirror the rule's step |
+| The regression set | `pytest` on 62 suites (D168's 41 with the execution, approval, rehearsal, conditional-question, sections, drafting and document suites; JUnit), in a copy of the branch at ea62be4, with a database and ports of its own | exit 0, 2,941 passed (45 minutes) |
+| The full e2e suite | `npx playwright test` on 8f210d3 (with `questions.spec.ts`'s new check) | exit 0; 196 passed, 3 skipped (14.5 minutes) |
+| The suites that scan the whole repository | `test_support_wording.py`, `test_applications.py`, `test_code_wait_quarantine.py`, `test_provider_admission.py`, `test_providers.py` and `test_runtime_dependencies.py`, with `test_debug_console.py` (JUnit), on c19ccaa (D168's fix merged in). None was in the regression set; D168's PR CI found one of them failing on its branch, which this branch carries | exit 0, 260 passed |
+| The whole backend suite | `pytest` on all 179 test files in two halves run at once, each with a database and ports of its own (JUnit), in a copy of the branch at c19ccaa | both halves exit 0: 7,108 passed, none failed or skipped (2,663 in 62 minutes and 4,445 in 57 minutes, run at once) |
+| After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`) and `test_auto_apply.py` (JUnit); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 89 passed in 147 s on f9f0913 with the records. `ruff format .` reformatted one line, a test helper committed without it in ea62be4 (a call joined onto one line; nothing else changes); then `ruff check .` found nothing and the format check passed |
+
 ## The owner's console: one application from start to finish, every switch and why; sole-owner mode (D168, 2026-11-17; local only)
 
 The owner's request of 2026-11-17, outside the ranked backlog (D168 quotes it). Product changes:
@@ -89,7 +128,8 @@ the whole backend and e2e suites); the full e2e suite, ruff, tsc and eslint were
 | The full e2e suite | `npx playwright test` on 4d9b103 | 194 passed, 3 skipped (14.1 minutes) |
 | After its records | the document tests (`test_doc_references.py`, `test_approval_reasons.py`, `test_audit_inventory.py`, `test_deployment_config.py`, `test_account.py`), `test_debug_console.py` and `test_auto_apply.py` (JUnit, after the cap lock's comment was corrected: the application's row lock comes before it); `ruff format .`, `ruff check .`, `ruff format --check .` | exit 0; 91 passed in 123 s; ruff formatted nothing, found nothing, and the format check passed |
 | PR CI (#78) on 5fab3fd | the four jobs | three passed; the backend job failed one test of 7,085 (`test_support_wording.py::test_the_frontend_writes_no_support_wording_of_its_own`): the console's form section wrote "not supported" itself, a support label only the API serves, for a control with no reason recorded. That suite, like five others that scan the whole repository, was not among the suites run locally |
-| The fix (the commit after 5fab3fd) | the failing test on 5fab3fd; then, with the page saying "no reason recorded", `test_support_wording.py` and the five other suites that scan the whole repository (`test_applications.py`, `test_code_wait_quarantine.py`, `test_provider_admission.py`, `test_providers.py`, `test_runtime_dependencies.py`) with `test_debug_console.py` (JUnit); `tsc --noEmit`, `npm run lint`; `debugger.spec.ts` (desktop and mobile) | it failed as in CI; then exit 0, 260 passed; tsc and eslint clean; 4 passed |
+| The fix (a827960) | the failing test on 5fab3fd; then, with the page saying "no reason recorded", `test_support_wording.py` and the five other suites that scan the whole repository (`test_applications.py`, `test_code_wait_quarantine.py`, `test_provider_admission.py`, `test_providers.py`, `test_runtime_dependencies.py`) with `test_debug_console.py` (JUnit); `tsc --noEmit`, `npm run lint`; `debugger.spec.ts` (desktop and mobile) | it failed as in CI; then exit 0, 260 passed; tsc and eslint clean; 4 passed |
+| PR CI (#78) on a827960 | the four jobs | all four passed; #78 merged (aaf3bac, tree as predicted) |
 
 ## Your licences and certifications fill a Workday-style Certifications section (D167, 2026-11-17; local only)
 

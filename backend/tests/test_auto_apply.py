@@ -192,9 +192,7 @@ def back_date_events(job: str, by: timedelta) -> None:
     read limit is a day; a note repeated last is never noted twice)."""
     with SessionLocal() as db:
         e = AutoApplyEvent
-        db.execute(
-            update(e).where(e.job_id == uuid.UUID(job)).values(created_at=e.created_at - by)
-        )
+        db.execute(update(e).where(e.job_id == uuid.UUID(job)).values(created_at=e.created_at - by))
         db.commit()
 
 
